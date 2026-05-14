@@ -63,11 +63,6 @@ struct WidgetEditView: View {
             )
             .padding(.bottom, 16)
 
-            if id != .price, id != .news {
-                BodyMText(t("widgets__widget__edit_description", variables: ["name": widget.name]))
-                    .padding(.bottom, 16)
-            }
-
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
                     ForEach(getItems(), id: \.key) { item in

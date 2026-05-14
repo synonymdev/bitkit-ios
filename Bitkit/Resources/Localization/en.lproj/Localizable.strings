@@ -1382,7 +1382,6 @@
 "widgets__widget__edit" = "Widget Feed";
 "widgets__widget__edit_default" = "Default";
 "widgets__widget__edit_custom" = "Custom";
-"widgets__widget__edit_description" = "Please select which fields you want to display in the {name} widget.";
 "widgets__widget__source" = "Source";
 "widgets__add" = "Add Widget";
 "widgets__list__button" = "Enable In Settings";

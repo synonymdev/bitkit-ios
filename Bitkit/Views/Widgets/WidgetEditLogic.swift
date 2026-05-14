@@ -37,10 +37,8 @@ class WidgetEditLogic: ObservableObject {
             // Blocks widget has many options, check if any are enabled
             return blocksOptions.height || blocksOptions.time || blocksOptions.date || blocksOptions.transactionCount || blocksOptions.size
                 || blocksOptions.weight || blocksOptions.difficulty || blocksOptions.hash || blocksOptions.merkleRoot || blocksOptions.showSource
-        case .news:
-            return newsOptions.showTitle || newsOptions.showSource || newsOptions.showDate
-        case .facts:
-            // Facts widget's static title is always shown, so it always has an enabled option
+        case .news, .facts:
+            // Static items (showTitle) are always enabled, so these widgets always have enabled options
             return true
         case .weather:
             // Weather widget has multiple options, check if any are enabled

@@ -317,7 +317,7 @@ enum WidgetEditItemFactory {
                     type: .staticItem,
                     titleView: AnyView(TitleText(data.title)),
                     valueView: nil,
-                    isChecked: newsOptions.showTitle
+                    isChecked: true // Static items are always shown
                 )
             )
 
