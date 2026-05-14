@@ -9,6 +9,7 @@ struct ForceTransferSheet: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var transfer: TransferViewModel
+
     let config: ForceTransferSheetItem
 
     @State private var isLoading = false
@@ -29,6 +30,7 @@ struct ForceTransferSheet: View {
                 onContinue: onForceTransfer
             )
         }
+        .offlineSheetOverlay(title: t("lightning__force_nav_title"))
     }
 
     private func onCancel() {
