@@ -44,8 +44,8 @@ class WidgetEditLogic: ObservableObject {
             // Weather widget has multiple options, check if any are enabled
             return weatherOptions.showStatus || weatherOptions.showText || weatherOptions.showMedian || weatherOptions.showNextBlockFee
         case .price:
-            // Price widget has options, check if at least one trading pair is selected
-            return !priceOptions.selectedPairs.isEmpty
+            // Price widget always has a selected pair (single-select).
+            return true
         case .calculator, .suggestions:
             return false
         }
@@ -77,7 +77,7 @@ class WidgetEditLogic: ObservableObject {
 
     func toggleOption(_ item: WidgetEditItem) {
         // Don't toggle static items
-        guard item.type == .toggleItem else { return }
+        guard item.type != .staticItem else { return }
 
         switch widgetType {
         case .blocks:
@@ -138,14 +138,8 @@ class WidgetEditLogic: ObservableObject {
             }
         case .price:
             switch item.key {
-            case "BTC/USD":
-                toggleTradingPair("BTC/USD")
-            case "BTC/EUR":
-                toggleTradingPair("BTC/EUR")
-            case "BTC/GBP":
-                toggleTradingPair("BTC/GBP")
-            case "BTC/JPY":
-                toggleTradingPair("BTC/JPY")
+            case "BTC/USD", "BTC/EUR", "BTC/GBP", "BTC/JPY":
+                selectTradingPair(item.key)
             case "1D":
                 priceOptions.selectedPeriod = .oneDay
             case "1W":
@@ -154,8 +148,6 @@ class WidgetEditLogic: ObservableObject {
                 priceOptions.selectedPeriod = .oneMonth
             case "1Y":
                 priceOptions.selectedPeriod = .oneYear
-            case "showSource":
-                priceOptions.showSource.toggle()
             default:
                 break
             }
@@ -165,12 +157,8 @@ class WidgetEditLogic: ObservableObject {
         onStateChange?()
     }
 
-    private func toggleTradingPair(_ pairName: String) {
-        if priceOptions.selectedPairs.contains(pairName) {
-            priceOptions.selectedPairs.removeAll { $0 == pairName }
-        } else {
-            priceOptions.selectedPairs.append(pairName)
-        }
+    private func selectTradingPair(_ pairName: String) {
+        priceOptions.selectedPair = pairName
     }
 
     func loadCurrentOptions() {

@@ -34,23 +34,43 @@ struct PriceWidgetProvider: TimelineProvider {
     }()
 
     func placeholder(in _: Context) -> PriceWidgetEntry {
-        Self.mockEntry
+        let options = PriceHomeScreenWidgetOptionsStore.load()
+        if let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod),
+           !cached.isEmpty
+        {
+            return PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: false)
+        }
+        return Self.mockEntry
     }
 
     func getSnapshot(in context: Context, completion: @escaping (PriceWidgetEntry) -> Void) {
         let options = PriceHomeScreenWidgetOptionsStore.load()
+        let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod) ?? []
 
-        if context.isPreview {
-            completion(PriceWidgetEntry(
-                date: Self.mockEntry.date,
-                prices: Self.mockEntry.prices,
-                options: options,
-                showsError: false
-            ))
+        if !cached.isEmpty {
+            completion(PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: false))
             return
         }
 
-        let cached = PriceWidgetService.cachedPrices(pairs: options.selectedPairs, period: options.selectedPeriod) ?? []
+        if context.isPreview {
+            Task {
+                if let fresh = try? await PriceWidgetService.fetchFreshPrices(
+                    pairs: [options.selectedPair],
+                    period: options.selectedPeriod
+                ), !fresh.isEmpty {
+                    completion(PriceWidgetEntry(date: Date(), prices: fresh, options: options, showsError: false))
+                } else {
+                    completion(PriceWidgetEntry(
+                        date: Self.mockEntry.date,
+                        prices: Self.mockEntry.prices,
+                        options: options,
+                        showsError: false
+                    ))
+                }
+            }
+            return
+        }
+
         completion(PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: false))
     }
 
@@ -61,12 +81,12 @@ struct PriceWidgetProvider: TimelineProvider {
             let entry: PriceWidgetEntry
             do {
                 let fresh = try await PriceWidgetService.fetchFreshPrices(
-                    pairs: options.selectedPairs,
+                    pairs: [options.selectedPair],
                     period: options.selectedPeriod
                 )
                 entry = PriceWidgetEntry(date: Date(), prices: fresh, options: options, showsError: false)
             } catch {
-                let cached = PriceWidgetService.cachedPrices(pairs: options.selectedPairs, period: options.selectedPeriod) ?? []
+                let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod) ?? []
                 entry = PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: cached.isEmpty)
             }
 
@@ -86,119 +106,110 @@ struct PriceHomeScreenWidgetEntryView: View {
     var entry: PriceWidgetProvider.Entry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            content
-            if entry.options.showSource, !entry.prices.isEmpty {
-                HStack {
-                    Spacer()
-                    CaptionBText("Bitfinex.com", textColor: secondaryTextColor)
-                }
-            }
-        }
-        .containerBackground(for: .widget) { backgroundView }
+        content
+            .containerBackground(for: .widget) { backgroundView }
     }
 
     @ViewBuilder
     private var content: some View {
         if entry.showsError {
             errorView
-        } else if entry.prices.isEmpty {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        } else {
+        } else if let primary = primaryPrice {
             switch widgetFamily {
             case .systemSmall:
-                smallContent
+                compactLayout(data: primary)
             default:
-                rowsAndChart
+                wideLayout(data: primary)
             }
+        } else {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
     }
 
-    // MARK: - Variants
+    private var primaryPrice: PriceData? {
+        if let match = entry.prices.first(where: { $0.name == entry.options.selectedPair }) {
+            return match
+        }
+        return entry.prices.first
+    }
 
-    private var smallContent: some View {
-        let primary = entry.prices.first
-        return VStack(alignment: .leading, spacing: 4) {
-            BodySSBText(primary?.name ?? "BTC/USD", textColor: secondaryTextColor)
-                .lineLimit(1)
+    // MARK: - Compact (small widget — 163×192)
 
-            TitleText(primary?.price ?? "—", textColor: valueTextColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .widgetAccentable()
+    private func compactLayout(data: PriceData) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 0) {
+                    CaptionMText(data.name, textColor: secondaryTextColor)
+                    Spacer(minLength: 0)
+                    CaptionMText(entry.options.selectedPeriod.rawValue, textColor: secondaryTextColor)
+                }
 
-            if let change = primary?.change {
-                BodySSBText(change.formatted, textColor: changeColor(isPositive: change.isPositive))
+                priceText(data.price, size: 22)
+
+                Text(data.change.formatted)
+                    .font(Fonts.semiBold(size: 15))
+                    .foregroundColor(changeColor(isPositive: data.change.isPositive))
                     .lineLimit(1)
                     .widgetAccentable()
             }
 
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+
+            chart(values: data.pastValues, isPositive: data.change.isPositive, idealHeight: 64)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var rowsAndChart: some View {
-        VStack(spacing: 0) {
-            ForEach(visibleRows, id: \.name) { data in
-                priceRow(data: data)
+    // MARK: - Wide (medium widget — 343×152)
+
+    private func wideLayout(data: PriceData) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .center, spacing: 16) {
+                    CaptionMText("\(data.name)  \(entry.options.selectedPeriod.rawValue)", textColor: secondaryTextColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Text(data.change.formatted)
+                        .font(Fonts.bold(size: 22))
+                        .foregroundColor(changeColor(isPositive: data.change.isPositive))
+                        .lineLimit(1)
+                        .widgetAccentable()
+                }
+
+                priceText(data.price, size: 34)
             }
 
-            if let firstPair = entry.prices.first {
-                PriceWidgetChart(
-                    values: firstPair.pastValues,
-                    isPositive: firstPair.change.isPositive,
-                    period: entry.options.selectedPeriod.rawValue,
-                    renderingMode: widgetRenderingMode
-                )
-                .frame(height: chartHeight)
-                .padding(.top, 8)
-            }
+            Spacer(minLength: 4)
+
+            chart(values: data.pastValues, isPositive: data.change.isPositive, idealHeight: 48, minHeight: 24)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var visibleRows: [PriceData] {
-        switch widgetFamily {
-        case .systemSmall: Array(entry.prices.prefix(1))
-        case .systemMedium: Array(entry.prices.prefix(2))
-        case .systemLarge, .systemExtraLarge: Array(entry.prices.prefix(4))
-        default: Array(entry.prices.prefix(1))
-        }
+    // MARK: - Sub-views
+
+    private func priceText(_ value: String, size: CGFloat) -> some View {
+        Text(value)
+            .font(Fonts.bold(size: size))
+            .foregroundColor(valueTextColor)
+            .lineLimit(1)
+            .widgetAccentable()
     }
 
-    private var chartHeight: CGFloat {
-        switch widgetFamily {
-        case .systemMedium: 64
-        case .systemLarge, .systemExtraLarge: 120
-        default: 96
-        }
+    private func chart(values: [Double], isPositive: Bool, idealHeight: CGFloat, minHeight: CGFloat = 32) -> some View {
+        PriceWidgetChart(
+            values: values,
+            isPositive: isPositive,
+            renderingMode: widgetRenderingMode
+        )
+        .frame(minHeight: minHeight, maxHeight: idealHeight)
+        .widgetAccentable()
     }
 
     private var errorView: some View {
         BodySText("Couldn’t load price.", textColor: secondaryTextColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    // MARK: - Row
-
-    private func priceRow(data: PriceData) -> some View {
-        HStack(spacing: 0) {
-            BodySSBText(data.name, textColor: secondaryTextColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(1)
-
-            BodySSBText(data.change.formatted, textColor: changeColor(isPositive: data.change.isPositive))
-                .padding(.trailing, 8)
-                .lineLimit(1)
-                .widgetAccentable()
-
-            BodySSBText(data.price, textColor: valueTextColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .widgetAccentable()
-        }
-        .frame(minHeight: 24)
     }
 
     // MARK: - Colors
@@ -226,7 +237,6 @@ struct PriceHomeScreenWidgetEntryView: View {
 private struct PriceWidgetChart: View {
     let values: [Double]
     let isPositive: Bool
-    let period: String
     let renderingMode: WidgetRenderingMode
 
     private var normalizedValues: [Double] {
@@ -243,55 +253,21 @@ private struct PriceWidgetChart: View {
         return isPositive ? .greenAccent : .redAccent
     }
 
-    private var gradientColors: [Color] {
-        guard renderingMode == .fullColor else { return [.primary.opacity(0.3), .clear] }
-        let base: Color = isPositive ? .greenAccent : .redAccent
-        return [base.opacity(0.64), base.opacity(0.08)]
-    }
-
-    private var labelColor: Color {
-        guard renderingMode == .fullColor else { return .secondary }
-        return isPositive ? .green50 : .red50
-    }
-
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            Chart {
-                ForEach(Array(normalizedValues.enumerated()), id: \.offset) { index, value in
-                    AreaMark(
-                        x: .value("Index", index),
-                        y: .value("Price", value)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(colors: gradientColors, startPoint: .top, endPoint: .bottom)
-                    )
-                    .interpolationMethod(.catmullRom)
-
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("Price", value)
-                    )
-                    .foregroundStyle(lineColor)
-                    .lineStyle(StrokeStyle(lineWidth: 1.3))
-                    .interpolationMethod(.catmullRom)
-                }
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .chartYScale(domain: 0.1 ... 0.9)
-            .clipShape(
-                .rect(
-                    topLeadingRadius: 0,
-                    bottomLeadingRadius: 8,
-                    bottomTrailingRadius: 8,
-                    topTrailingRadius: 0
+        Chart {
+            ForEach(Array(normalizedValues.enumerated()), id: \.offset) { index, value in
+                LineMark(
+                    x: .value("Index", index),
+                    y: .value("Price", value)
                 )
-            )
-            .widgetAccentable()
-
-            CaptionBText(period, textColor: labelColor)
-                .padding(7)
+                .foregroundStyle(lineColor)
+                .lineStyle(StrokeStyle(lineWidth: 1.3))
+                .interpolationMethod(.catmullRom)
+            }
         }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartYScale(domain: 0.1 ... 0.9)
     }
 }
 
@@ -307,6 +283,6 @@ struct BitkitPriceWidget: Widget {
         }
         .configurationDisplayName("Bitcoin Price")
         .description("Latest Bitcoin price and chart, mirroring the in-app price widget.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

@@ -57,14 +57,19 @@ struct WidgetEditView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("widgets__widget__edit"))
-                .padding(.bottom, 16)
-
-            BodyMText(
-                t("widgets__widget__edit_description", variables: ["name": widget.name]),
-                textColor: .textSecondary
+            NavigationBar(
+                title: id == .price ? widget.name : t("widgets__widget__edit"),
+                showMenuButton: id != .price
             )
             .padding(.bottom, 16)
+
+            if id != .price {
+                BodyMText(
+                    t("widgets__widget__edit_description", variables: ["name": widget.name]),
+                    textColor: .textSecondary
+                )
+                .padding(.bottom, 16)
+            }
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
@@ -73,7 +78,7 @@ struct WidgetEditView: View {
                             item: item,
                             onToggle: { editLogic?.toggleOption(item) }
                         )
-                        .accessibilityIdentifier("WidgetEditField-\(item.key)")
+                        .accessibilityIdentifier("\(item.key)_setting_row")
                     }
                 }
                 .id(refreshTrigger) // Force refresh when refreshTrigger changes
@@ -107,6 +112,7 @@ struct WidgetEditView: View {
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             if editLogic == nil {
                 let logic = WidgetEditLogic(widgetType: id, widgetsViewModel: widgets)

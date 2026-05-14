@@ -59,14 +59,11 @@ enum WidgetsBackupConverter {
                     }
                 case .price:
                     if let options = try? JSONDecoder().decode(PriceWidgetOptions.self, from: optionsData) {
-                        let androidPairs = options.selectedPairs.map { pair in
-                            pair.replacingOccurrences(of: "/", with: "_")
-                        }
+                        let androidPair = options.selectedPair.replacingOccurrences(of: "/", with: "_")
                         let androidPeriod = convertIosPeriodToAndroid(options.selectedPeriod)
                         pricePreferences = [
-                            "enabledPairs": androidPairs.isEmpty ? ["BTC_USD"] : androidPairs,
+                            "enabledPairs": [androidPair.isEmpty ? "BTC_USD" : androidPair],
                             "period": androidPeriod,
-                            "showSource": options.showSource,
                         ]
                     }
                 case .calculator, .suggestions:
@@ -166,21 +163,20 @@ enum WidgetsBackupConverter {
                 }
             case .price:
                 if let prefs = jsonDict["pricePreferences"] as? [String: Any] {
-                    var selectedPairs = ["BTC/USD"]
-                    if let pairsArray = prefs["enabledPairs"] as? [String] {
-                        selectedPairs = pairsArray.map { pairType in
-                            pairType.replacingOccurrences(of: "_", with: "/")
-                        }
-                        if selectedPairs.isEmpty {
-                            selectedPairs = ["BTC/USD"]
+                    var selectedPair = "BTC/USD"
+                    if let pairsArray = prefs["enabledPairs"] as? [String],
+                       let firstAndroidPair = pairsArray.first
+                    {
+                        let converted = firstAndroidPair.replacingOccurrences(of: "_", with: "/")
+                        if !converted.isEmpty {
+                            selectedPair = converted
                         }
                     }
 
                     let period = convertAndroidPeriodToIos(prefs["period"] as? String)
                     let iosOptions = PriceWidgetOptions(
-                        selectedPairs: selectedPairs,
-                        selectedPeriod: period,
-                        showSource: prefs["showSource"] as? Bool ?? false
+                        selectedPair: selectedPair,
+                        selectedPeriod: period
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
@@ -236,14 +232,11 @@ enum WidgetsBackupConverter {
 
     private static func getDefaultPricePreferences() -> [String: Any] {
         let defaults = PriceWidgetOptions()
-        let androidPairs = defaults.selectedPairs.map { pair in
-            pair.replacingOccurrences(of: "/", with: "_")
-        }
+        let androidPair = defaults.selectedPair.replacingOccurrences(of: "/", with: "_")
         let androidPeriod = convertIosPeriodToAndroid(defaults.selectedPeriod)
         return [
-            "enabledPairs": androidPairs.isEmpty ? ["BTC_USD"] : androidPairs,
+            "enabledPairs": [androidPair.isEmpty ? "BTC_USD" : androidPair],
             "period": androidPeriod,
-            "showSource": defaults.showSource,
         ]
     }
 

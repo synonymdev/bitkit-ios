@@ -431,7 +431,12 @@ struct MainNavView: View {
                 // Widgets
                 case .widgetsIntro: WidgetsIntroView()
                 case .widgetsList: WidgetsListView()
-                case let .widgetDetail(widgetType): WidgetDetailView(id: widgetType)
+                case let .widgetDetail(widgetType):
+                    if widgetType == .price {
+                        PriceWidgetPreviewView()
+                    } else {
+                        WidgetDetailView(id: widgetType)
+                    }
                 case let .widgetEdit(widgetType): WidgetEditView(id: widgetType)
 
                 // Settings

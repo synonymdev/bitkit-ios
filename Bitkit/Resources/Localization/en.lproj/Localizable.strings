@@ -1391,6 +1391,16 @@
 "widgets__price__name" = "Bitcoin Price";
 "widgets__price__description" = "Check the latest Bitcoin exchange rates for a variety of fiat currencies.";
 "widgets__price__error" = "Couldn\'t get price data";
+"widgets__price__currency" = "Currency";
+"widgets__price__timeframe" = "Timeframe";
+"widgets__price__period_day" = "Day";
+"widgets__price__period_week" = "Week";
+"widgets__price__period_month" = "Month";
+"widgets__price__period_year" = "Year";
+"widgets__widget__size_small" = "Small";
+"widgets__widget__size_wide" = "Wide";
+"widgets__widget__settings" = "Widget Settings";
+"widgets__widget__save_widget" = "Save Widget";
 "widgets__news__name" = "Bitcoin Headlines";
 "widgets__news__description" = "Read the latest & greatest Bitcoin headlines from various news sites.";
 "widgets__news__error" = "Couldn\'t get the latest news";
