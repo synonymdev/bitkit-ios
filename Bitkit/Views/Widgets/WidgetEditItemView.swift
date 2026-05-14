@@ -46,7 +46,7 @@ struct WidgetEditItemView: View {
     @ViewBuilder
     private var accessoryView: some View {
         switch item.type {
-        case .toggleItem:
+        case .staticItem, .toggleItem:
             Image("check-mark")
                 .resizable()
                 .foregroundColor(item.isChecked ? .brandAccent : .gray3)
@@ -61,7 +61,7 @@ struct WidgetEditItemView: View {
                 Color.clear
                     .frame(width: 32, height: 32)
             }
-        case .staticItem, .sectionHeader:
+        case .sectionHeader:
             EmptyView()
         }
     }

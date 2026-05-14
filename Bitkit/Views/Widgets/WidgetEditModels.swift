@@ -314,7 +314,7 @@ enum WidgetEditItemFactory {
             items.append(
                 WidgetEditItem(
                     key: "showTitle",
-                    type: .toggleItem,
+                    type: .staticItem,
                     titleView: AnyView(TitleText(data.title)),
                     valueView: nil,
                     isChecked: newsOptions.showTitle

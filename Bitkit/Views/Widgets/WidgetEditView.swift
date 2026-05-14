@@ -63,12 +63,9 @@ struct WidgetEditView: View {
             )
             .padding(.bottom, 16)
 
-            if id != .price {
-                BodyMText(
-                    t("widgets__widget__edit_description", variables: ["name": widget.name]),
-                    textColor: .textSecondary
-                )
-                .padding(.bottom, 16)
+            if id != .price, id != .news {
+                BodyMText(t("widgets__widget__edit_description", variables: ["name": widget.name]))
+                    .padding(.bottom, 16)
             }
 
             ScrollView(showsIndicators: false) {
