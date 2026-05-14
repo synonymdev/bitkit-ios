@@ -136,7 +136,8 @@ struct ShopDiscover: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .swipeSegmentedTabs(selection: $selectedTab)
-            }
+            },
+            scrollModifier: ShopDiscoverScrollModifier(disableOuterScroll: selectedTab == .map)
         )
         .navigationBarHidden(true)
         .offlineOverlay(title: navTitle)
@@ -186,6 +187,15 @@ struct ShopDiscover: View {
         }
         .padding(.top, 16)
         .padding(.horizontal, 16)
+    }
+}
+
+/// Disables the outer `InsetHeaderScrollView` vertical scroll on the map tab so `WKWebView` owns vertical panning.
+private struct ShopDiscoverScrollModifier: ViewModifier {
+    let disableOuterScroll: Bool
+
+    func body(content: Content) -> some View {
+        content.scrollDisabled(disableOuterScroll)
     }
 }
 
