@@ -22,22 +22,34 @@ struct MainSettingsScreen: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("settings__settings"))
-                .padding(.horizontal, 16)
+        InsetHeaderScrollView(
+            header: {
+                VStack(spacing: 0) {
+                    NavigationBar(title: t("settings__settings"))
+                        .padding(.horizontal, 16)
 
-            SegmentedControl(selectedTab: $selectedTab, tabItems: settingsTabItems)
-                .padding(.horizontal, 16)
-
-            Group {
-                switch selectedTab {
-                case .general: GeneralSettingsView()
-                case .security: SecuritySettingsView()
-                case .advanced: AdvancedSettingsView()
+                    SegmentedControl(selectedTab: $selectedTab, tabItems: settingsTabItems)
+                        .padding(.horizontal, 16)
                 }
+                .background(
+                    BlurView()
+                        .ignoresSafeArea(edges: .top)
+                )
+                .compositingGroup()
+                .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 20)
+            },
+            content: {
+                Group {
+                    switch selectedTab {
+                    case .general: GeneralSettingsView()
+                    case .security: SecuritySettingsView()
+                    case .advanced: AdvancedSettingsView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .swipeSegmentedTabs(selection: $selectedTab)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
+        )
         .navigationBarHidden(true)
     }
 }

@@ -5,7 +5,6 @@ struct ActivityList: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
-    @State private var isHorizontalSwipe = false
 
     let viewType: ActivityViewType
 
@@ -36,7 +35,6 @@ struct ActivityList: View {
                             )
                         }
                         .accessibilityIdentifier("Activity-\(index)")
-                        .disabled(isHorizontalSwipe)
                     }
                 }
             }
