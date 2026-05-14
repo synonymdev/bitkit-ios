@@ -188,9 +188,10 @@ class WidgetsViewModel: ObservableObject {
         // Don't add duplicates
         guard !isWidgetSaved(type) else { return }
 
-        let newSavedWidget = SavedWidget(type: type)
-        savedWidgetsWithOptions.append(newSavedWidget)
-        savedWidgets.append(newSavedWidget.toWidget())
+        if !savedWidgetsWithOptions.contains(where: { $0.type == type }) {
+            savedWidgetsWithOptions.append(SavedWidget(type: type))
+        }
+        savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
         persistSavedWidgets()
     }
 
