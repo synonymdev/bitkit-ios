@@ -77,7 +77,7 @@ class WidgetEditLogic: ObservableObject {
 
     func toggleOption(_ item: WidgetEditItem) {
         // Don't toggle static items
-        guard item.type == .toggleItem else { return }
+        guard item.type != .staticItem else { return }
 
         switch widgetType {
         case .blocks:

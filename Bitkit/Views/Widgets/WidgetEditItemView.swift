@@ -12,7 +12,7 @@ struct WidgetEditItemView: View {
                 .padding(.vertical, 16)
         case .staticItem:
             row
-        case .toggleItem:
+        case .toggleItem, .radioItem:
             Button(action: onToggle) {
                 row
             }
@@ -33,18 +33,36 @@ struct WidgetEditItemView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
-                if item.type != .staticItem {
-                    Image("check-mark")
-                        .resizable()
-                        .foregroundColor(item.isChecked ? .brandAccent : .white32)
-                        .frame(width: 32, height: 32)
-                }
+                accessoryView
             }
             .frame(minHeight: 32)
             .contentShape(Rectangle())
 
-            Divider()
+            CustomDivider()
         }
         .padding(.top, 8)
+    }
+
+    @ViewBuilder
+    private var accessoryView: some View {
+        switch item.type {
+        case .toggleItem:
+            Image("check-mark")
+                .resizable()
+                .foregroundColor(item.isChecked ? .brandAccent : .gray3)
+                .frame(width: 32, height: 32)
+        case .radioItem:
+            if item.isChecked {
+                Image("check-mark")
+                    .resizable()
+                    .foregroundColor(.brandAccent)
+                    .frame(width: 32, height: 32)
+            } else {
+                Color.clear
+                    .frame(width: 32, height: 32)
+            }
+        case .staticItem, .sectionHeader:
+            EmptyView()
+        }
     }
 }
