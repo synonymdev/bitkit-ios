@@ -12,7 +12,6 @@ struct ContactDetailView: View {
     let publicKey: String
 
     @State private var profile: PubkyProfile?
-    @State private var hasPayablePaymentEndpoint = false
     @State private var isLoading = true
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
@@ -39,7 +38,6 @@ struct ContactDetailView: View {
                 hasResolvedContactFromContacts = true
                 isLoading = false
             }
-            await loadPaymentEndpoints()
             isLoading = false
         }
         .onReceive(contactsManager.$contacts) { updatedContacts in
@@ -96,14 +94,12 @@ struct ContactDetailView: View {
 
     private var contactActions: some View {
         HStack(spacing: 16) {
-            if hasPayablePaymentEndpoint {
-                GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send")) {
-                    Task {
-                        await payContact()
-                    }
+            GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send")) {
+                Task {
+                    await payContact()
                 }
-                .accessibilityIdentifier("ContactPay")
             }
+            .accessibilityIdentifier("ContactPay")
 
             GradientCircleButton(icon: "activity", accessibilityLabel: t("wallet__activity")) {
                 navigation.navigate(.contactActivity(publicKey: publicKey))
@@ -241,7 +237,6 @@ struct ContactDetailView: View {
                 } else if let fetched = await contactsManager.fetchContactProfile(publicKey: publicKey) {
                     profile = fetched
                 }
-                await loadPaymentEndpoints()
             }
             .accessibilityIdentifier("ContactRetry")
             Spacer()
@@ -268,10 +263,6 @@ struct ContactDetailView: View {
             activityVC.popoverPresentationController?.sourceView = presentingVC.view
             presentingVC.present(activityVC, animated: true)
         }
-    }
-
-    private func loadPaymentEndpoints() async {
-        hasPayablePaymentEndpoint = await PrivatePaykitService.shared.resolveSavedContactPayableEndpoint(publicKey: publicKey, wallet: wallet)
     }
 
     private func payContact() async {

@@ -61,6 +61,18 @@ extension PrivatePaykitService {
         return invoice
     }
 
+    func paymentHash(forBolt11 bolt11: String) async -> String? {
+        guard case let .lightning(decodedInvoice) = try? await decode(invoice: bolt11) else {
+            return nil
+        }
+
+        return decodedInvoice.paymentHash.hex
+    }
+
+    func hasAttemptedOutboundBolt11Payment(paymentHash: String) async -> Bool {
+        await attemptedOutboundBolt11PaymentHashes().contains(paymentHash)
+    }
+
     @MainActor
     func walletHasUsableChannels(_ wallet: WalletViewModel) -> Bool {
         wallet.hasUsableChannels
@@ -101,6 +113,21 @@ extension PrivatePaykitService {
             payments.compactMap { payment in
                 guard payment.direction == .inbound,
                       payment.status == .succeeded,
+                      case .bolt11 = payment.kind
+                else { return nil }
+
+                return payment.id
+            }
+        )
+    }
+
+    func attemptedOutboundBolt11PaymentHashes() async -> Set<String> {
+        guard let payments = await LightningService.shared.listPayments() else { return [] }
+
+        return Set(
+            payments.compactMap { payment in
+                guard payment.direction == .outbound,
+                      payment.status != .failed,
                       case .bolt11 = payment.kind
                 else { return nil }
 

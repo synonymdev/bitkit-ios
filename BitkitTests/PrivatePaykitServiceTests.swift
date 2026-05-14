@@ -84,6 +84,20 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertFalse(isStaleState)
     }
 
+    func testDuplicatePaymentErrorClassificationUsesWrappedAppErrorReason() {
+        XCTAssertTrue(
+            PrivatePaykitService.isDuplicatePaymentError(
+                AppError(message: "Lightning payment failed", debugMessage: "Duplicate payment")
+            )
+        )
+
+        XCTAssertFalse(
+            PrivatePaykitService.isDuplicatePaymentError(
+                AppError(message: "Lightning payment failed", debugMessage: "Route not found")
+            )
+        )
+    }
+
     func testWalletBackupDecodesExistingPayloadWithoutPrivatePaykitFields() throws {
         let data = #"{"version":1,"createdAt":123,"transfers":[]}"#.data(using: .utf8)!
         let payload = try JSONDecoder().decode(WalletBackupV1.self, from: data)

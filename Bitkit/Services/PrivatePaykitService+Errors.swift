@@ -1,4 +1,5 @@
 import Foundation
+import LDKNode
 import Paykit
 
 enum PrivatePaykitError: LocalizedError {
@@ -21,6 +22,25 @@ enum PrivatePaykitError: LocalizedError {
 // MARK: - Error Classification
 
 extension PrivatePaykitService {
+    static func isDuplicatePaymentError(_ error: Error) -> Bool {
+        if let nodeError = error as? NodeError {
+            if case .DuplicatePayment = nodeError {
+                return true
+            }
+        }
+
+        let reason: String = if let appError = error as? AppError {
+            [appError.message, appError.debugMessage]
+                .compactMap { $0 }
+                .joined(separator: " ")
+        } else {
+            "\(error.localizedDescription) \(String(describing: error))"
+        }
+
+        let lowercasedReason = reason.lowercased()
+        return lowercasedReason.contains("duplicate payment") || lowercasedReason.contains("duplicatepayment")
+    }
+
     func shouldCountAsStaleLinkFailure(_ error: Error) -> Bool {
         if let paykitError = error as? PaykitFfiError {
             switch paykitError {

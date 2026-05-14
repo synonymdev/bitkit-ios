@@ -593,4 +593,25 @@ extension PrivatePaykitService {
         activeHandlesByContact[publicKey] = ContactPaykitHandles(linkId: linkId, handshakeId: nil)
         return linkId
     }
+
+    func restoreLinkHandleForReadRetry(publicKey: String, generation: UInt64) async throws -> String? {
+        try ensureCurrentGeneration(generation)
+        guard let snapshotHex = state.contacts[publicKey]?.linkSnapshotHex,
+              let secretKeyHex = try Keychain.loadString(key: .pubkySecretKey),
+              !secretKeyHex.isEmpty
+        else {
+            return nil
+        }
+
+        if let linkId = activeHandlesByContact[publicKey]?.linkId {
+            try? await PubkyService.closeEncryptedLink(linkId: linkId)
+        }
+        activeHandlesByContact[publicKey]?.linkId = nil
+
+        try ensureCurrentGeneration(generation)
+        let restoredLinkId = try await PubkyService.restoreEncryptedLink(secretKeyHex: secretKeyHex, snapshotHex: snapshotHex)
+        try ensureCurrentGeneration(generation)
+        activeHandlesByContact[publicKey] = ContactPaykitHandles(linkId: restoredLinkId, handshakeId: nil)
+        return restoredLinkId
+    }
 }

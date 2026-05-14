@@ -469,10 +469,24 @@ struct SendConfirmationView: View {
                         bolt11: invoice.bolt11,
                         sats: paymentSats,
                         onTimeout: {
+                            if let contactPublicKey {
+                                Task {
+                                    await PrivatePaykitService.shared.discardRemoteLightningEndpoints(
+                                        publicKey: contactPublicKey,
+                                        paymentHashes: [paymentHash]
+                                    )
+                                }
+                            }
                             app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
                             navigationPath.append(.pending(paymentHash: paymentHash))
                         }
                     )
+                    if let contactPublicKey {
+                        await PrivatePaykitService.shared.discardRemoteLightningEndpoints(
+                            publicKey: contactPublicKey,
+                            paymentHashes: [paymentHash]
+                        )
+                    }
                     await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
                     Logger.info("Lightning payment successful: \(paymentHash)")
                     navigationPath.append(.success(paymentId: paymentHash))
@@ -480,12 +494,26 @@ struct SendConfirmationView: View {
                     // onTimeout callback already navigated to .pending; suppress throw
                     return
                 } catch {
+                    if let contactPublicKey,
+                       PrivatePaykitService.isDuplicatePaymentError(error)
+                    {
+                        await PrivatePaykitService.shared.discardRemoteLightningEndpoints(
+                            publicKey: contactPublicKey,
+                            paymentHashes: [paymentHash]
+                        )
+                    }
                     throw error
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
                 let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: useMaxAmount)
+                if let contactPublicKey {
+                    await PrivatePaykitService.shared.discardRemoteOnchainEndpoints(
+                        publicKey: contactPublicKey,
+                        addresses: [invoice.address]
+                    )
+                }
 
                 // Create pre-activity metadata for tags and activity address
                 await createPreActivityMetadata(paymentId: txid, address: invoice.address, txId: txid, feeRate: wallet.selectedFeeRateSatsPerVByte)
