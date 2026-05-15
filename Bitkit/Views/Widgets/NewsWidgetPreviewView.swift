@@ -189,7 +189,7 @@ struct NewsWidgetPreviewView: View {
             Spacer()
             ForEach(0 ..< 2, id: \.self) { index in
                 Circle()
-                    .fill(carouselPage == index ? Color.brandAccent : Color.white.opacity(0.32))
+                    .fill(carouselPage == index ? Color.white : Color.white.opacity(0.32))
                     .frame(width: 8, height: 8)
             }
             Spacer()

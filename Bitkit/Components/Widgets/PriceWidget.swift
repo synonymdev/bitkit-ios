@@ -74,7 +74,9 @@ struct PriceWidgetWideContent: View {
                         textColor: data.change.isPositive ? .greenAccent : .redAccent
                     )
                     .lineLimit(1)
+                    .accessibilityIdentifier("price_card_pair_change_\(data.name)")
                 }
+                .accessibilityIdentifier("PriceWidgetRow-\(data.name)")
 
                 Text(data.price)
                     .font(Fonts.bold(size: 34))
@@ -82,10 +84,12 @@ struct PriceWidgetWideContent: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("price_card_pair_price_\(data.name)")
             }
 
             PriceChart(values: data.pastValues, isPositive: data.change.isPositive)
                 .frame(height: 48)
+                .accessibilityIdentifier("price_card_chart")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -107,22 +111,26 @@ struct PriceWidgetCompactContent: View {
                     CaptionMText(period.rawValue, textColor: .textSecondary)
                         .textCase(.uppercase)
                 }
+                .accessibilityIdentifier("price_card_small_pair_row_\(data.name)")
 
                 Text(data.price)
                     .font(Fonts.bold(size: 22))
                     .foregroundColor(.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                    .accessibilityIdentifier("price_card_small_pair_price_\(data.name)")
 
                 BodySSBText(
                     data.change.formatted,
                     textColor: data.change.isPositive ? .greenAccent : .redAccent
                 )
                 .lineLimit(1)
+                .accessibilityIdentifier("price_card_small_pair_change_\(data.name)")
             }
 
             PriceChart(values: data.pastValues, isPositive: data.change.isPositive)
                 .frame(height: 64)
+                .accessibilityIdentifier("price_card_small_chart")
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

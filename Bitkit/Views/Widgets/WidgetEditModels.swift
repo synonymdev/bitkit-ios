@@ -19,6 +19,7 @@ extension GraphPeriod {
 
 enum WidgetItemType {
     case toggleItem
+    case radioItem
     case staticItem
     /// Non-tappable section header (uppercase caption above a group of items).
     case sectionHeader
@@ -224,7 +225,7 @@ enum WidgetEditItemFactory {
             items.append(
                 WidgetEditItem(
                     key: pair,
-                    type: .toggleItem,
+                    type: .radioItem,
                     titleView: AnyView(
                         BodySSBText(pair, textColor: isSelected ? .textPrimary : .textSecondary)
                     ),
@@ -241,7 +242,7 @@ enum WidgetEditItemFactory {
             items.append(
                 WidgetEditItem(
                     key: period.rawValue,
-                    type: .toggleItem,
+                    type: .radioItem,
                     titleView: AnyView(
                         BodySSBText(period.editScreenLabel, textColor: isSelected ? .textPrimary : .textSecondary)
                     ),

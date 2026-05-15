@@ -83,7 +83,7 @@ class WidgetEditLogic: ObservableObject {
 
     func toggleOption(_ item: WidgetEditItem) {
         // Don't toggle static items
-        guard item.type == .toggleItem else { return }
+        guard item.type != .staticItem else { return }
 
         switch widgetType {
         case .blocks:
@@ -146,7 +146,7 @@ class WidgetEditLogic: ObservableObject {
         case .price:
             switch item.key {
             case "BTC/USD", "BTC/EUR", "BTC/GBP", "BTC/JPY":
-                selectTradingPair(item.key)
+                priceOptions.selectedPair = item.key
             case "1D":
                 priceOptions.selectedPeriod = .oneDay
             case "1W":
@@ -162,26 +162,6 @@ class WidgetEditLogic: ObservableObject {
             break
         }
         onStateChange?()
-    }
-
-    private func selectTradingPair(_ pairName: String) {
-        priceOptions.selectedPair = pairName
-    }
-
-    private func canToggleBlockOption(_ isCurrentlyEnabled: Bool) -> Bool {
-        isCurrentlyEnabled || enabledBlockOptionsCount < 4
-    }
-
-    private var enabledBlockOptionsCount: Int {
-        [
-            blocksOptions.height,
-            blocksOptions.time,
-            blocksOptions.date,
-            blocksOptions.transactionCount,
-            blocksOptions.size,
-            blocksOptions.fees,
-            blocksOptions.showSource,
-        ].filter { $0 }.count
     }
 
     func loadCurrentOptions() {
