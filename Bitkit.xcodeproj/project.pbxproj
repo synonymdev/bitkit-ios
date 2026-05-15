@@ -108,6 +108,7 @@
 				"Extensions/LDKNode+AddressType.swift",
 				Extensions/PaymentDetails.swift,
 				Models/BlocktankNotificationType.swift,
+				Models/BlocksWidgetOptions.swift,
 				Models/LnPeer.swift,
 				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
