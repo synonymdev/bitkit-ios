@@ -15,6 +15,7 @@
 		4A319B512E8F24F2002B9AC9 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A319B502E8F24F2002B9AC9 /* WidgetKit.framework */; };
 		4A319B532E8F24F2002B9AC9 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A319B522E8F24F2002B9AC9 /* SwiftUI.framework */; };
 		4A319B622E8F24F4002B9AC9 /* BitkitWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4A319B4F2E8F24F2002B9AC9 /* BitkitWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4A319B702E8F2600002B9AC9 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4A319B712E8F2600002B9AC9 /* Localizable.strings */; };
 		4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 4AAB08C92E1FE77600BA63DF /* Lottie */; };
 		961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 9613018B2C5022D700878183 /* LDKNode */; };
@@ -79,6 +80,21 @@
 		4A319B502E8F24F2002B9AC9 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		4A319B522E8F24F2002B9AC9 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		4A319B6E2E8F25F6002B9AC9 /* BitkitWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BitkitWidgetExtension.entitlements; sourceTree = "<group>"; };
+		4A319B722E8F2600002B9AC9 /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = Bitkit/Resources/Localization/ar.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B732E8F2600002B9AC9 /* ca */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ca; path = Bitkit/Resources/Localization/ca.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B742E8F2600002B9AC9 /* cs */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = cs; path = Bitkit/Resources/Localization/cs.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B752E8F2600002B9AC9 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = Bitkit/Resources/Localization/de.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B762E8F2600002B9AC9 /* el */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = el; path = Bitkit/Resources/Localization/el.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B772E8F2600002B9AC9 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = Bitkit/Resources/Localization/en.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B782E8F2600002B9AC9 /* es-419 */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "es-419"; path = "Bitkit/Resources/Localization/es-419.lproj/Localizable.strings"; sourceTree = SOURCE_ROOT; };
+		4A319B792E8F2600002B9AC9 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = Bitkit/Resources/Localization/es.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B7A2E8F2600002B9AC9 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = Bitkit/Resources/Localization/fr.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B7B2E8F2600002B9AC9 /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = Bitkit/Resources/Localization/it.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B7C2E8F2600002B9AC9 /* nl */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = nl; path = Bitkit/Resources/Localization/nl.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B7D2E8F2600002B9AC9 /* pl */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pl; path = Bitkit/Resources/Localization/pl.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B7E2E8F2600002B9AC9 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "Bitkit/Resources/Localization/pt-BR.lproj/Localizable.strings"; sourceTree = SOURCE_ROOT; };
+		4A319B7F2E8F2600002B9AC9 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pt; path = Bitkit/Resources/Localization/pt.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B802E8F2600002B9AC9 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = Bitkit/Resources/Localization/ru.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
 		961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BitkitNotification.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F722C2DE6AC006D0C8B /* BitkitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BitkitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -177,6 +193,7 @@
 				Models/BlocksWidgetData.swift,
 				Models/BlocksWidgetFields.swift,
 				Models/BlocksWidgetOptions.swift,
+				Models/BitcoinFacts.swift,
 				Models/NewsWidgetData.swift,
 				Models/NewsWidgetOptions.swift,
 				Models/PriceWidgetData.swift,
@@ -274,6 +291,7 @@
 				96A44F562CEF5F5400FBACFF /* BitkitUITests */,
 				96A44F5C2CEF5F5800FBACFF /* BitkitNotification */,
 				4A319B542E8F24F2002B9AC9 /* BitkitWidget */,
+				4A319B712E8F2600002B9AC9 /* Localizable.strings */,
 				96FE1F622C2DE6AA006D0C8B /* Products */,
 				961058EC2C35798C00E1F1D8 /* Frameworks */,
 			);
@@ -496,6 +514,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4A319B702E8F2600002B9AC9 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -528,6 +547,31 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		4A319B712E8F2600002B9AC9 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				4A319B722E8F2600002B9AC9 /* ar */,
+				4A319B732E8F2600002B9AC9 /* ca */,
+				4A319B742E8F2600002B9AC9 /* cs */,
+				4A319B752E8F2600002B9AC9 /* de */,
+				4A319B762E8F2600002B9AC9 /* el */,
+				4A319B772E8F2600002B9AC9 /* en */,
+				4A319B782E8F2600002B9AC9 /* es-419 */,
+				4A319B792E8F2600002B9AC9 /* es */,
+				4A319B7A2E8F2600002B9AC9 /* fr */,
+				4A319B7B2E8F2600002B9AC9 /* it */,
+				4A319B7C2E8F2600002B9AC9 /* nl */,
+				4A319B7D2E8F2600002B9AC9 /* pl */,
+				4A319B7E2E8F2600002B9AC9 /* pt-BR */,
+				4A319B7F2E8F2600002B9AC9 /* pt */,
+				4A319B802E8F2600002B9AC9 /* ru */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		96EMBED0012026012000FRAME /* Remove Static Framework Stubs */ = {
@@ -621,7 +665,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 186;
+				CURRENT_PROJECT_VERSION = 187;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -633,7 +677,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "to.bitkit.widget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -654,7 +698,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 186;
+				CURRENT_PROJECT_VERSION = 187;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -666,7 +710,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "to.bitkit.widget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

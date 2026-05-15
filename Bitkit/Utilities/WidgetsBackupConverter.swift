@@ -7,7 +7,6 @@ enum WidgetsBackupConverter {
         var widgetsArray: [[String: Any]] = []
         var blocksPreferences: [String: Any]?
         var newsPreferences: [String: Any]?
-        var factsPreferences: [String: Any]?
         var weatherPreferences: [String: Any]?
         var pricePreferences: [String: Any]?
 
@@ -42,12 +41,6 @@ enum WidgetsBackupConverter {
                             "showSource": options.showSource,
                         ]
                     }
-                case .facts:
-                    if let options = try? JSONDecoder().decode(FactsWidgetOptions.self, from: optionsData) {
-                        factsPreferences = [
-                            "showSource": options.showSource,
-                        ]
-                    }
                 case .weather:
                     if let options = try? JSONDecoder().decode(WeatherWidgetOptions.self, from: optionsData) {
                         weatherPreferences = [
@@ -66,7 +59,7 @@ enum WidgetsBackupConverter {
                             "period": androidPeriod,
                         ]
                     }
-                case .calculator, .suggestions:
+                case .calculator, .suggestions, .facts:
                     break
                 }
             }
@@ -75,7 +68,6 @@ enum WidgetsBackupConverter {
         return [
             "widgets": widgetsArray,
             "headlinePreferences": newsPreferences ?? getDefaultNewsPreferences(),
-            "factsPreferences": factsPreferences ?? getDefaultFactsPreferences(),
             "blocksPreferences": blocksPreferences ?? getDefaultBlocksPreferences(),
             "weatherPreferences": weatherPreferences ?? getDefaultWeatherPreferences(),
             "pricePreferences": pricePreferences ?? getDefaultPricePreferences(),
@@ -140,13 +132,6 @@ enum WidgetsBackupConverter {
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
-            case .facts:
-                if let prefs = jsonDict["factsPreferences"] as? [String: Any] {
-                    let iosOptions = FactsWidgetOptions(
-                        showSource: prefs["showSource"] as? Bool ?? false
-                    )
-                    optionsData = try? JSONEncoder().encode(iosOptions)
-                }
             case .weather:
                 if let prefs = jsonDict["weatherPreferences"] as? [String: Any] {
                     let iosOptions = WeatherWidgetOptions(
@@ -176,7 +161,7 @@ enum WidgetsBackupConverter {
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
-            case .calculator, .suggestions:
+            case .calculator, .suggestions, .facts:
                 break
             }
 
@@ -205,13 +190,6 @@ enum WidgetsBackupConverter {
         let defaults = NewsWidgetOptions()
         return [
             "showTime": defaults.showDate,
-            "showSource": defaults.showSource,
-        ]
-    }
-
-    private static func getDefaultFactsPreferences() -> [String: Any] {
-        let defaults = FactsWidgetOptions()
-        return [
             "showSource": defaults.showSource,
         ]
     }

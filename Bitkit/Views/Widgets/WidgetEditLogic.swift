@@ -5,7 +5,6 @@ import SwiftUI
 @MainActor
 class WidgetEditLogic: ObservableObject {
     @Published var blocksOptions = BlocksWidgetOptions()
-    @Published var factsOptions = FactsWidgetOptions()
     @Published var newsOptions = NewsWidgetOptions()
     @Published var weatherOptions = WeatherWidgetOptions()
     @Published var priceOptions = PriceWidgetOptions()
@@ -24,9 +23,9 @@ class WidgetEditLogic: ObservableObject {
 
     var hasOptions: Bool {
         switch widgetType {
-        case .facts, .blocks, .news, .price, .weather:
+        case .blocks, .news, .price, .weather:
             return true
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             return false
         }
     }
@@ -42,16 +41,13 @@ class WidgetEditLogic: ObservableObject {
                 || blocksOptions.fees
         case .news:
             return newsOptions.showTitle || newsOptions.showSource || newsOptions.showDate
-        case .facts:
-            // Facts widget's static title is always shown, so it always has an enabled option
-            return true
         case .weather:
             // Weather widget has multiple options, check if any are enabled
             return weatherOptions.showStatus || weatherOptions.showText || weatherOptions.showMedian || weatherOptions.showNextBlockFee
         case .price:
             // Price widget always has a selected pair (single-select).
             return true
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             return false
         }
     }
@@ -61,9 +57,6 @@ class WidgetEditLogic: ObservableObject {
         case .blocks:
             let defaultOptions = BlocksWidgetOptions()
             return blocksOptions != defaultOptions
-        case .facts:
-            let defaultOptions = FactsWidgetOptions()
-            return factsOptions != defaultOptions
         case .news:
             let defaultOptions = NewsWidgetOptions()
             return newsOptions != defaultOptions
@@ -73,7 +66,7 @@ class WidgetEditLogic: ObservableObject {
         case .price:
             let defaultOptions = PriceWidgetOptions()
             return priceOptions != defaultOptions
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             return false
         }
     }
@@ -105,13 +98,6 @@ class WidgetEditLogic: ObservableObject {
             case "fees":
                 guard canToggleBlockOption(blocksOptions.fees) else { break }
                 blocksOptions.fees.toggle()
-            default:
-                break
-            }
-        case .facts:
-            switch item.key {
-            case "showSource":
-                factsOptions.showSource.toggle()
             default:
                 break
             }
@@ -154,7 +140,7 @@ class WidgetEditLogic: ObservableObject {
             default:
                 break
             }
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             break
         }
         onStateChange?()
@@ -179,15 +165,13 @@ class WidgetEditLogic: ObservableObject {
         switch widgetType {
         case .blocks:
             blocksOptions = widgetsViewModel.getOptions(for: widgetType, as: BlocksWidgetOptions.self)
-        case .facts:
-            factsOptions = widgetsViewModel.getOptions(for: widgetType, as: FactsWidgetOptions.self)
         case .news:
             newsOptions = widgetsViewModel.getOptions(for: widgetType, as: NewsWidgetOptions.self)
         case .weather:
             weatherOptions = widgetsViewModel.getOptions(for: widgetType, as: WeatherWidgetOptions.self)
         case .price:
             priceOptions = widgetsViewModel.getOptions(for: widgetType, as: PriceWidgetOptions.self)
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             break
         }
     }
@@ -196,15 +180,13 @@ class WidgetEditLogic: ObservableObject {
         switch widgetType {
         case .blocks:
             blocksOptions = BlocksWidgetOptions()
-        case .facts:
-            factsOptions = FactsWidgetOptions()
         case .news:
             newsOptions = NewsWidgetOptions()
         case .weather:
             weatherOptions = WeatherWidgetOptions()
         case .price:
             priceOptions = PriceWidgetOptions()
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             break
         }
         onStateChange?()
@@ -214,15 +196,13 @@ class WidgetEditLogic: ObservableObject {
         switch widgetType {
         case .blocks:
             widgetsViewModel.saveOptions(blocksOptions, for: widgetType)
-        case .facts:
-            widgetsViewModel.saveOptions(factsOptions, for: widgetType)
         case .news:
             widgetsViewModel.saveOptions(newsOptions, for: widgetType)
         case .weather:
             widgetsViewModel.saveOptions(weatherOptions, for: widgetType)
         case .price:
             widgetsViewModel.saveOptions(priceOptions, for: widgetType)
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             break
         }
     }

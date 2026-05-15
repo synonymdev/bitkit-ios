@@ -15,7 +15,6 @@ struct WidgetEditView: View {
 
     // View models for getting actual content
     @StateObject private var blocksViewModel = BlocksViewModel.shared
-    @StateObject private var factsViewModel = FactsViewModel.shared
     @StateObject private var newsViewModel = NewsViewModel.shared
     @StateObject private var priceViewModel = PriceViewModel.shared
     @StateObject private var weatherViewModel = WeatherViewModel.shared
@@ -34,12 +33,10 @@ struct WidgetEditView: View {
         return WidgetEditItemFactory.getItems(
             for: id,
             blocksViewModel: blocksViewModel,
-            factsViewModel: factsViewModel,
             newsViewModel: newsViewModel,
             priceDataByPeriod: priceViewModel.dataByPeriod,
             weatherViewModel: weatherViewModel,
             blocksOptions: editLogic.blocksOptions,
-            factsOptions: editLogic.factsOptions,
             newsOptions: editLogic.newsOptions,
             priceOptions: editLogic.priceOptions,
             weatherOptions: editLogic.weatherOptions

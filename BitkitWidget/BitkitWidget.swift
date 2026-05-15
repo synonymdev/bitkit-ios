@@ -7,5 +7,6 @@ struct BitkitWidgetBundle: WidgetBundle {
         BitkitPriceWidget()
         BitkitNewsWidget()
         BitkitBlocksWidget()
+        BitkitFactsWidget()
     }
 }

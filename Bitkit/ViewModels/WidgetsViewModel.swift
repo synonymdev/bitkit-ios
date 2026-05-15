@@ -12,12 +12,10 @@ protocol WidgetOptionsProtocol: Codable, Equatable {
 /// Default options for each widget type
 func getDefaultOptions(for type: WidgetType) -> Any {
     switch type {
-    case .suggestions, .calculator:
+    case .suggestions, .calculator, .facts:
         return EmptyWidgetOptions()
     case .blocks:
         return BlocksWidgetOptions()
-    case .facts:
-        return FactsWidgetOptions()
     case .news:
         return NewsWidgetOptions()
     case .weather:
@@ -74,11 +72,7 @@ struct Widget: Identifiable {
         case .calculator:
             CalculatorWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
         case .facts:
-            FactsWidget(
-                options: widgetsViewModel.getOptions(for: type, as: FactsWidgetOptions.self),
-                isEditing: isEditing,
-                onEditingEnd: onEditingEnd
-            )
+            FactsWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
         case .news:
             NewsWidget(
                 options: widgetsViewModel.getOptions(for: type, as: NewsWidgetOptions.self),
@@ -275,15 +269,11 @@ class WidgetsViewModel: ObservableObject {
     /// Check if widget has custom options (different from default)
     func hasCustomOptions(for type: WidgetType) -> Bool {
         switch type {
-        case .suggestions, .calculator:
+        case .suggestions, .calculator, .facts:
             return false
         case .blocks:
             let current: BlocksWidgetOptions = getOptions(for: type, as: BlocksWidgetOptions.self)
             let defaultOptions = BlocksWidgetOptions()
-            return current != defaultOptions
-        case .facts:
-            let current: FactsWidgetOptions = getOptions(for: type, as: FactsWidgetOptions.self)
-            let defaultOptions = FactsWidgetOptions()
             return current != defaultOptions
         case .news:
             let current: NewsWidgetOptions = getOptions(for: type, as: NewsWidgetOptions.self)
