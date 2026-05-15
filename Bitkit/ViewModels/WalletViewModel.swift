@@ -62,6 +62,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("sharesPublicPaykitEndpoints") private var sharesPublicPaykitEndpoints = false
 
     private static let publicPaykitInvoiceRefreshBufferSeconds: TimeInterval = 30 * 60
+    private static let paykitChannelUsabilityRefreshDelay: UInt64 = 5_000_000_000
 
     private let lightningService: LightningService
     private let coreService: CoreService
@@ -218,9 +219,13 @@ class WalletViewModel: ObservableObject {
                         self.bolt11 = ""
                         Task {
                             await self.reconnectTrustedPeers()
-                            await self.refreshAndSyncState()
-                            try? await self.refreshBip21()
-                            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-ready refresh")
+                            await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
+                            try? await Task.sleep(nanoseconds: Self.paykitChannelUsabilityRefreshDelay)
+                            guard !Task.isCancelled else { return }
+                            await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
+                                reason: "channel-ready delayed refresh",
+                                forceRefreshLightning: true
+                            )
                         }
 
                     case let .channelClosed(channelId, _, _, reason):
@@ -894,9 +899,12 @@ class WalletViewModel: ObservableObject {
             channelCount = channels.count
         }
 
-        if sharesPublicPaykitEndpoints, hasUsableChannels, !hadUsableChannels {
+        if hasUsableChannels, !hadUsableChannels {
             Task { [weak self] in
-                await self?.syncPublicPaykitEndpointsAfterChannelBecameUsable()
+                await self?.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
+                    reason: "channel-usable refresh",
+                    forceRefreshLightning: true
+                )
             }
         }
     }
@@ -1028,6 +1036,21 @@ class WalletViewModel: ObservableObject {
         } catch {
             Logger.warn("Failed to refresh public Paykit endpoints after channel became usable: \(error)", context: "WalletViewModel")
         }
+    }
+
+    private func refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: String, forceRefreshLightning: Bool = false) async {
+        await refreshAndSyncState()
+        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning)
+
+        if sharesPublicPaykitEndpoints, hasUsableChannels {
+            await syncPublicPaykitEndpointsAfterChannelBecameUsable()
+        }
+
+        await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
+            wallet: self,
+            reason: reason,
+            forceRefreshLightning: forceRefreshLightning
+        )
     }
 
     private func hasReusablePublicPaykitInvoice() async -> Bool {

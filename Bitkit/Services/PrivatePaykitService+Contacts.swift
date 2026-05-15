@@ -16,10 +16,16 @@ extension PrivatePaykitService {
         await publishLocalEndpoints(for: publicKeys, wallet: wallet, maxAdvanceSteps: 1, reason: "refresh")
     }
 
-    func refreshKnownSavedContactEndpoints(wallet: WalletViewModel, reason: String) async {
+    func refreshKnownSavedContactEndpoints(wallet: WalletViewModel, reason: String, forceRefreshLightning: Bool = false) async {
         guard !knownSavedContactKeys.isEmpty else { return }
         guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
-        await publishLocalEndpoints(for: Array(knownSavedContactKeys), wallet: wallet, maxAdvanceSteps: 1, reason: reason)
+        await publishLocalEndpoints(
+            for: Array(knownSavedContactKeys),
+            wallet: wallet,
+            maxAdvanceSteps: 1,
+            reason: reason,
+            forceRefreshLightning: forceRefreshLightning
+        )
     }
 
     func removePublishedEndpoints() async throws {
@@ -117,7 +123,8 @@ extension PrivatePaykitService {
         maxAdvanceSteps: Int,
         reason: String,
         scheduleRetries: Bool = true,
-        forceLocalPublishWhenRemoteEmpty: Bool = false
+        forceLocalPublishWhenRemoteEmpty: Bool = false,
+        forceRefreshLightning: Bool = false
     ) async {
         let generation = stateGeneration
         for publicKey in publicKeys {
@@ -137,7 +144,13 @@ extension PrivatePaykitService {
                     if await shouldPublishLocalEndpoints(publicKey: normalizedKey, fetchedRemoteCount: 0),
                        !shouldDeferInitialLocalPublish(publicKey: normalizedKey, fetchedRemoteCount: 0)
                     {
-                        try await publishLocalEndpoints(to: normalizedKey, linkId: linkId, wallet: wallet, generation: generation)
+                        try await publishLocalEndpoints(
+                            to: normalizedKey,
+                            linkId: linkId,
+                            wallet: wallet,
+                            generation: generation,
+                            forceRefreshLightning: forceRefreshLightning
+                        )
                         if scheduleRetries {
                             schedulePendingPublicationRetry(for: normalizedKey, wallet: wallet)
                         }
@@ -164,7 +177,13 @@ extension PrivatePaykitService {
                         continue
                     }
 
-                    try await publishLocalEndpoints(to: normalizedKey, linkId: linkId, wallet: wallet, generation: generation)
+                    try await publishLocalEndpoints(
+                        to: normalizedKey,
+                        linkId: linkId,
+                        wallet: wallet,
+                        generation: generation,
+                        forceRefreshLightning: forceRefreshLightning
+                    )
                     if fetchedCount == 0, state.contacts[normalizedKey]?.remoteEndpoints.isEmpty != false {
                         if scheduleRetries {
                             schedulePendingPublicationRetry(for: normalizedKey, wallet: wallet)
@@ -204,7 +223,8 @@ extension PrivatePaykitService {
                     linkId: linkId,
                     wallet: wallet,
                     generation: generation,
-                    force: shouldForcePublish
+                    force: shouldForcePublish,
+                    forceRefreshLightning: forceRefreshLightning
                 )
                 if fetchedCount == 0, state.contacts[normalizedKey]?.remoteEndpoints.isEmpty != false {
                     if scheduleRetries {

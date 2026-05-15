@@ -15,6 +15,24 @@ extension PrivatePaykitService {
         return !payableEndpoints.isEmpty
     }
 
+    func cachedPrivatePaymentResult(publicKey: String) async -> PublicPaykitPaymentLaunchResult {
+        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
+            return .noEndpoint
+        }
+
+        let cachedEntries = state.contacts[normalizedKey]?.remoteEndpoints ?? []
+        let endpoints = cachedEntries.compactMap {
+            PublicPaykitService.parseEndpoint(methodId: $0.methodId, endpointData: $0.endpointData)
+        }
+        let payableEndpoints = await privatePayableEndpoints(from: endpoints, publicKey: normalizedKey)
+
+        guard !payableEndpoints.isEmpty else {
+            return cachedEntries.isEmpty ? .noEndpoint : .notOpened
+        }
+
+        return .opened(paymentRequest: PublicPaykitService.paymentRequest(from: payableEndpoints))
+    }
+
     func contactPublicKey(forPrivateInvoicePaymentHash paymentHash: String) -> String? {
         guard !paymentHash.isEmpty else { return nil }
 
@@ -78,7 +96,10 @@ extension PrivatePaykitService {
                 "Failed to resolve private Paykit endpoints for \(PubkyPublicKeyFormat.redacted(normalizedKey)): \(error)",
                 context: "PrivatePaykit"
             )
-            if hadCachedPrivateEndpoint, !shouldCountAsStaleLinkFailure(error) {
+            if hadCachedPrivateEndpoint {
+                if shouldCountAsStaleLinkFailure(error) {
+                    schedulePendingPublicationRetry(for: normalizedKey, wallet: wallet)
+                }
                 return true
             }
         }
@@ -131,44 +152,48 @@ extension PrivatePaykitService {
         }
 
         var fetchedCount = 0
+        var staleFetchError: Error?
         do {
             fetchedCount = try await fetchRemoteEndpoints(publicKey: normalizedKey, linkId: linkId, generation: generation)
         } catch {
             try Task.checkCancellation()
             if shouldCountAsStaleLinkFailure(error) {
                 Logger.warn(
-                    "Discarding cached private Paykit endpoints for \(PubkyPublicKeyFormat.redacted(normalizedKey)) after stale link failure: \(error)",
+                    "Private Paykit link is stale for \(PubkyPublicKeyFormat.redacted(normalizedKey)); using cached private endpoints if available while recovery retries: \(error)",
                     context: "PrivatePaykit"
                 )
-                throw error
+                staleFetchError = error
+                schedulePendingPublicationRetry(for: normalizedKey, wallet: wallet)
+            } else {
+                Logger.warn(
+                    "Failed to refresh private Paykit endpoints for \(PubkyPublicKeyFormat.redacted(normalizedKey)); using cached private endpoints if available: \(error)",
+                    context: "PrivatePaykit"
+                )
             }
-            Logger.warn(
-                "Failed to refresh private Paykit endpoints for \(PubkyPublicKeyFormat.redacted(normalizedKey)); using cached private endpoints if available: \(error)",
-                context: "PrivatePaykit"
+        }
+
+        if staleFetchError == nil {
+            let publishLinkId = activeHandlesByContact[normalizedKey]?.linkId ?? linkId
+            try await publishLocalEndpointsBestEffort(
+                to: normalizedKey,
+                linkId: publishLinkId,
+                wallet: wallet,
+                generation: generation,
+                context: "payment",
+                fetchedRemoteCount: fetchedCount
             )
         }
 
-        let publishLinkId = activeHandlesByContact[normalizedKey]?.linkId ?? linkId
-        try await publishLocalEndpointsBestEffort(
-            to: normalizedKey,
-            linkId: publishLinkId,
-            wallet: wallet,
-            generation: generation,
-            context: "payment",
-            fetchedRemoteCount: fetchedCount
-        )
-
-        let cachedEntries = state.contacts[normalizedKey]?.remoteEndpoints ?? []
-        let endpoints = cachedEntries.compactMap {
-            PublicPaykitService.parseEndpoint(methodId: $0.methodId, endpointData: $0.endpointData)
-        }
-        let payableEndpoints = await privatePayableEndpoints(from: endpoints, publicKey: normalizedKey)
-
-        guard !payableEndpoints.isEmpty else {
-            return cachedEntries.isEmpty ? .noEndpoint : .notOpened
+        let cachedResult = await cachedPrivatePaymentResult(publicKey: normalizedKey)
+        if case .opened = cachedResult {
+            return cachedResult
         }
 
-        return .opened(paymentRequest: PublicPaykitService.paymentRequest(from: payableEndpoints))
+        if let staleFetchError {
+            throw staleFetchError
+        }
+
+        return cachedResult
     }
 
     func privatePayableEndpoints(from endpoints: [PublicPaykitService.Endpoint], publicKey: String) async -> [PublicPaykitService.Endpoint] {

@@ -149,7 +149,14 @@ extension PrivatePaykitService {
         return now <= linkCompletedAt + Self.freshLinkInitialPublishDelaySeconds
     }
 
-    func publishLocalEndpoints(to publicKey: String, linkId: String, wallet: WalletViewModel, generation: UInt64, force: Bool = false) async throws {
+    func publishLocalEndpoints(
+        to publicKey: String,
+        linkId: String,
+        wallet: WalletViewModel,
+        generation: UInt64,
+        force: Bool = false,
+        forceRefreshLightning: Bool = false
+    ) async throws {
         let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
         let previousTask = publicationTasks[normalizedKey]?.task
         let taskId = UUID()
@@ -159,7 +166,14 @@ extension PrivatePaykitService {
             }
             guard let self else { throw PrivatePaykitError.privateUnavailable }
             try Task.checkCancellation()
-            try await publishLocalEndpointsUnlocked(to: normalizedKey, linkId: linkId, wallet: wallet, generation: generation, force: force)
+            try await publishLocalEndpointsUnlocked(
+                to: normalizedKey,
+                linkId: linkId,
+                wallet: wallet,
+                generation: generation,
+                force: force,
+                forceRefreshLightning: forceRefreshLightning
+            )
         }
         publicationTasks[normalizedKey] = PublicationTask(id: taskId, task: task)
 
@@ -176,12 +190,24 @@ extension PrivatePaykitService {
         }
     }
 
-    func publishLocalEndpointsUnlocked(to publicKey: String, linkId: String, wallet: WalletViewModel, generation: UInt64, force: Bool) async throws {
+    func publishLocalEndpointsUnlocked(
+        to publicKey: String,
+        linkId: String,
+        wallet: WalletViewModel,
+        generation: UInt64,
+        force: Bool,
+        forceRefreshLightning: Bool
+    ) async throws {
         guard await canPublishPrivateEndpoints(wallet: wallet),
               isKnownSavedContact(publicKey)
         else { return }
         try ensureCurrentGeneration(generation)
-        let endpoints = try await buildLocalEndpoints(for: publicKey, wallet: wallet, generation: generation)
+        let endpoints = try await buildLocalEndpoints(
+            for: publicKey,
+            wallet: wallet,
+            generation: generation,
+            forceRefreshLightning: forceRefreshLightning
+        )
         try ensureCurrentGeneration(generation)
         guard !endpoints.isEmpty else { return }
 
@@ -210,7 +236,7 @@ extension PrivatePaykitService {
     }
 
     func buildLocalEndpoints(for publicKey: String, wallet: WalletViewModel,
-                             generation: UInt64) async throws -> [PublicPaykitService.Endpoint]
+                             generation: UInt64, forceRefreshLightning: Bool = false) async throws -> [PublicPaykitService.Endpoint]
     {
         var endpoints: [PublicPaykitService.Endpoint] = []
         let reservedAddress = try await PrivatePaykitAddressReservationStore.shared.currentOrRotatedAddress(for: publicKey)
@@ -228,7 +254,12 @@ extension PrivatePaykitService {
 
         if await walletHasUsableChannels(wallet) {
             do {
-                let invoice = try await currentOrRotatedInvoice(for: publicKey, wallet: wallet, generation: generation)
+                let invoice = try await currentOrRotatedInvoice(
+                    for: publicKey,
+                    wallet: wallet,
+                    generation: generation,
+                    forceRefresh: forceRefreshLightning
+                )
                 try ensureCurrentGeneration(generation)
                 let invoicePayload = try PublicPaykitService.serializePayload(value: invoice.bolt11)
                 endpoints.append(

@@ -6,14 +6,16 @@ import UIKit
 // MARK: - Invoice Rotation
 
 extension PrivatePaykitService {
-    func currentOrRotatedInvoice(for publicKey: String, wallet: WalletViewModel, generation: UInt64) async throws -> StoredInvoice {
-        if let invoice = await reusablePrivateInvoice(for: publicKey) {
+    func currentOrRotatedInvoice(for publicKey: String, wallet: WalletViewModel, generation: UInt64,
+                                 forceRefresh: Bool = false) async throws -> StoredInvoice
+    {
+        if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey) {
             return invoice
         }
 
         let bolt11 = try await createVariableInvoice(wallet)
         try ensureCurrentGeneration(generation)
-        if let invoice = await reusablePrivateInvoice(for: publicKey) {
+        if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey) {
             return invoice
         }
 
