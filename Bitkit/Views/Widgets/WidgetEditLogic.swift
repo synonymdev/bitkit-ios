@@ -164,6 +164,22 @@ class WidgetEditLogic: ObservableObject {
         onStateChange?()
     }
 
+    private func canToggleBlockOption(_ isCurrentlyEnabled: Bool) -> Bool {
+        isCurrentlyEnabled || enabledBlockOptionsCount < 4
+    }
+
+    private var enabledBlockOptionsCount: Int {
+        [
+            blocksOptions.height,
+            blocksOptions.time,
+            blocksOptions.date,
+            blocksOptions.transactionCount,
+            blocksOptions.size,
+            blocksOptions.fees,
+            blocksOptions.showSource,
+        ].filter { $0 }.count
+    }
+
     func loadCurrentOptions() {
         switch widgetType {
         case .blocks:
