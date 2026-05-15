@@ -40,7 +40,6 @@ class WidgetEditLogic: ObservableObject {
                 || blocksOptions.transactionCount
                 || blocksOptions.size
                 || blocksOptions.fees
-                || blocksOptions.showSource
         case .news:
             return newsOptions.showTitle || newsOptions.showSource || newsOptions.showDate
         case .facts:
@@ -106,9 +105,6 @@ class WidgetEditLogic: ObservableObject {
             case "fees":
                 guard canToggleBlockOption(blocksOptions.fees) else { break }
                 blocksOptions.fees.toggle()
-            case "showSource":
-                guard canToggleBlockOption(blocksOptions.showSource) else { break }
-                blocksOptions.showSource.toggle()
             default:
                 break
             }
@@ -176,7 +172,6 @@ class WidgetEditLogic: ObservableObject {
             blocksOptions.transactionCount,
             blocksOptions.size,
             blocksOptions.fees,
-            blocksOptions.showSource,
         ].filter { $0 }.count
     }
 

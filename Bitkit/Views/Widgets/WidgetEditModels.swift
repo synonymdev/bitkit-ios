@@ -82,7 +82,6 @@ enum WidgetEditItemFactory {
 
         for field in BlocksWidgetField.allCases {
             let value: String = {
-                if field == .showSource { return "mempool.space" }
                 if let data = blocksViewModel.blockData { return field.value(from: data) }
                 return fallback[field] ?? ""
             }()
@@ -94,7 +93,7 @@ enum WidgetEditItemFactory {
                         .renderingMode(.template)
                         .foregroundColor(.brandAccent)
                         .frame(width: 20, height: 20)
-                    BodySSBText(field.inAppLabel, textColor: .textSecondary)
+                    BodySSBText(field.label, textColor: .textSecondary)
                 }
             )
             items.append(

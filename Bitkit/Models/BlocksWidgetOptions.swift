@@ -1,10 +1,6 @@
 import Foundation
 
 /// Options for configuring the in-app and home-screen Bitcoin Blocks widgets (shared via App Group).
-///
-/// v61 reduces the field set to seven (Block / Time / Date / Transactions / Size / Fees / Source).
-/// The custom decoder silently drops legacy keys (`weight`, `difficulty`, `hash`, `merkleRoot`) and
-/// fills in defaults for any keys missing from older persisted blobs.
 struct BlocksWidgetOptions: Codable, Equatable {
     var height: Bool = true
     var time: Bool = true
@@ -12,7 +8,6 @@ struct BlocksWidgetOptions: Codable, Equatable {
     var transactionCount: Bool = true
     var size: Bool = false
     var fees: Bool = false
-    var showSource: Bool = false
 
     init(
         height: Bool = true,
@@ -20,8 +15,7 @@ struct BlocksWidgetOptions: Codable, Equatable {
         date: Bool = true,
         transactionCount: Bool = true,
         size: Bool = false,
-        fees: Bool = false,
-        showSource: Bool = false
+        fees: Bool = false
     ) {
         self.height = height
         self.time = time
@@ -29,7 +23,7 @@ struct BlocksWidgetOptions: Codable, Equatable {
         self.transactionCount = transactionCount
         self.size = size
         self.fees = fees
-        self.showSource = showSource
+        limitEnabledFields()
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -39,7 +33,6 @@ struct BlocksWidgetOptions: Codable, Equatable {
         case transactionCount
         case size
         case fees
-        case showSource
     }
 
     init(from decoder: Decoder) throws {
@@ -50,6 +43,26 @@ struct BlocksWidgetOptions: Codable, Equatable {
         transactionCount = try container.decodeIfPresent(Bool.self, forKey: .transactionCount) ?? true
         size = try container.decodeIfPresent(Bool.self, forKey: .size) ?? false
         fees = try container.decodeIfPresent(Bool.self, forKey: .fees) ?? false
-        showSource = try container.decodeIfPresent(Bool.self, forKey: .showSource) ?? false
+        limitEnabledFields()
+    }
+
+    private mutating func limitEnabledFields() {
+        let fields: [WritableKeyPath<BlocksWidgetOptions, Bool>] = [
+            \.height,
+            \.time,
+            \.date,
+            \.transactionCount,
+            \.size,
+            \.fees,
+        ]
+
+        var enabledCount = 0
+        for field in fields where self[keyPath: field] {
+            if enabledCount < 4 {
+                enabledCount += 1
+            } else {
+                self[keyPath: field] = false
+            }
+        }
     }
 }

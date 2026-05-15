@@ -107,7 +107,7 @@ struct BlocksHomeScreenWidgetEntryView: View {
             case .systemSmall:
                 compactLayout(block: block)
             default:
-                wideLayout(block: block, fields: entry.options.compactFields)
+                wideLayout(block: block, fields: entry.options.enabledFields)
             }
         } else {
             ProgressView()
@@ -117,11 +117,10 @@ struct BlocksHomeScreenWidgetEntryView: View {
 
     // MARK: - Layouts
 
-    /// Compact (`.systemSmall`): icon + value rows, capped at 4. Default-selected fields
-    /// take priority; remaining slots are filled by extras in declared order.
+    /// Compact (`.systemSmall`): icon + value rows for the selected fields.
     private func compactLayout(block: CachedBlock) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            ForEach(entry.options.compactFields, id: \.self) { field in
+            ForEach(entry.options.enabledFields, id: \.self) { field in
                 HStack(alignment: .center, spacing: 8) {
                     iconImage(field: field)
                     Text(field.value(from: block))
@@ -132,15 +131,13 @@ struct BlocksHomeScreenWidgetEntryView: View {
                         .widgetAccentable()
                 }
             }
-            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    /// Wide layout (`.systemMedium`): icon + label + value rows, capped at 4 fields with the
-    /// same default-priority logic as the small widget.
+    /// Wide layout (`.systemMedium`): icon + label + value rows for the selected fields.
     private func wideLayout(block: CachedBlock, fields: [BlocksWidgetField]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             ForEach(fields, id: \.self) { field in
                 HStack(alignment: .center, spacing: 8) {
                     iconImage(field: field)
@@ -157,7 +154,6 @@ struct BlocksHomeScreenWidgetEntryView: View {
                         .widgetAccentable()
                 }
             }
-            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

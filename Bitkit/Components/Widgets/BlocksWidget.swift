@@ -1,17 +1,5 @@
 import SwiftUI
 
-// MARK: - In-app label override
-
-/// In-app screens use the localized `widgets__widget__source` value for the Source field;
-/// the OS widget uses the hardcoded English `BlocksWidgetField.label` since the widget
-/// extension target does not have access to `LocalizeHelpers`.
-extension BlocksWidgetField {
-    var inAppLabel: String {
-        if self == .showSource { return t("widgets__widget__source") }
-        return label
-    }
-}
-
 // MARK: - Widget
 
 /// In-app Bitcoin Blocks widget (v61). Renders the wide layout — used inside the home feed
@@ -86,7 +74,7 @@ private struct BlocksWidgetWideRow: View {
                 .foregroundColor(.brandAccent)
                 .frame(width: 20, height: 20)
 
-            BodyMText(field.inAppLabel, textColor: .white80)
+            BodyMText(field.label, textColor: .white80)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -105,7 +93,7 @@ struct BlocksWidgetCompactContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            ForEach(options.compactFields, id: \.self) { field in
+            ForEach(options.enabledFields, id: \.self) { field in
                 HStack(alignment: .center, spacing: 8) {
                     Image(field.iconName)
                         .resizable()
