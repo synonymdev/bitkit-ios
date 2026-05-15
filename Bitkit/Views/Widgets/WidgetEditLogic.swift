@@ -139,7 +139,7 @@ class WidgetEditLogic: ObservableObject {
         case .price:
             switch item.key {
             case "BTC/USD", "BTC/EUR", "BTC/GBP", "BTC/JPY":
-                selectTradingPair(item.key)
+                priceOptions.selectedPair = item.key
             case "1D":
                 priceOptions.selectedPeriod = .oneDay
             case "1W":
@@ -155,10 +155,6 @@ class WidgetEditLogic: ObservableObject {
             break
         }
         onStateChange?()
-    }
-
-    private func selectTradingPair(_ pairName: String) {
-        priceOptions.selectedPair = pairName
     }
 
     func loadCurrentOptions() {

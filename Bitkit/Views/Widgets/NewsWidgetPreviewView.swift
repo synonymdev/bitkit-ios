@@ -1,23 +1,23 @@
 import SwiftUI
 
-/// Preview screen for the Bitcoin Price widget.
-struct PriceWidgetPreviewView: View {
+/// Preview screen for the Bitcoin Headlines widget.
+struct NewsWidgetPreviewView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var widgets: WidgetsViewModel
 
-    @StateObject private var viewModel = PriceViewModel.shared
+    @StateObject private var viewModel = NewsViewModel.shared
 
     @State private var carouselPage: Int = 0
     @State private var showDeleteAlert = false
 
-    private let widgetType: WidgetType = .price
+    private let widgetType: WidgetType = .news
 
     private var widgetName: String {
-        t("widgets__price__name")
+        t("widgets__news__name")
     }
 
     private var widgetDescription: String {
-        t("widgets__price__description")
+        t("widgets__news__description")
     }
 
     private var isWidgetSaved: Bool {
@@ -28,17 +28,8 @@ struct PriceWidgetPreviewView: View {
         widgets.hasCustomOptions(for: widgetType)
     }
 
-    private var currentOptions: PriceWidgetOptions {
-        widgets.getOptions(for: widgetType, as: PriceWidgetOptions.self)
-    }
-
-    private var primaryPrice: PriceData? {
-        let options = currentOptions
-        let currentPeriodData = viewModel.getCurrentData(for: options.selectedPeriod)
-        if let match = currentPeriodData.first(where: { $0.name == options.selectedPair }) {
-            return match
-        }
-        return currentPeriodData.first
+    private var currentOptions: NewsWidgetOptions {
+        widgets.getOptions(for: widgetType, as: NewsWidgetOptions.self)
     }
 
     var body: some View {
@@ -72,8 +63,7 @@ struct PriceWidgetPreviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .bottomSafeAreaPadding()
         .task {
-            let options = currentOptions
-            viewModel.fetchPriceData(pairs: [options.selectedPair], period: options.selectedPeriod)
+            viewModel.startUpdates()
         }
         .alert(
             t("widgets__delete__title"),
@@ -135,8 +125,8 @@ struct PriceWidgetPreviewView: View {
         VStack {
             Spacer(minLength: 0)
             Group {
-                if let data = primaryPrice {
-                    PriceWidgetCompactContent(data: data, period: currentOptions.selectedPeriod)
+                if let data = viewModel.widgetData {
+                    NewsWidgetCompactContent(data: data, options: currentOptions)
                 } else {
                     placeholderCompact
                 }
@@ -151,8 +141,8 @@ struct PriceWidgetPreviewView: View {
         VStack {
             Spacer(minLength: 0)
             Group {
-                if let data = primaryPrice {
-                    PriceWidgetWideContent(data: data, period: currentOptions.selectedPeriod)
+                if let data = viewModel.widgetData {
+                    NewsWidgetWideContent(data: data, options: currentOptions)
                         .padding(16)
                         .background(Color.gray6)
                         .cornerRadius(16)
@@ -174,7 +164,7 @@ struct PriceWidgetPreviewView: View {
     private var placeholderWide: some View {
         Color.gray6
             .cornerRadius(16)
-            .frame(height: 152)
+            .frame(height: 118)
             .overlay(ProgressView())
     }
 
@@ -248,7 +238,7 @@ struct PriceWidgetPreviewView: View {
 
 #Preview {
     NavigationStack {
-        PriceWidgetPreviewView()
+        NewsWidgetPreviewView()
             .environmentObject(NavigationViewModel())
             .environmentObject(WidgetsViewModel())
     }

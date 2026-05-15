@@ -7,4 +7,6 @@ import Foundation
 /// because it depends on framework types that aren't linked into the widget extension.
 enum WidgetEnv {
     static let priceFeedBaseUrl = "https://feeds.synonym.to/price-feed/api"
+    static let newsFeedBaseUrl = "https://feeds.synonym.to/news-feed/api"
+    static let newsFeedArticlesUrl = "\(newsFeedBaseUrl)/articles"
 }

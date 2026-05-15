@@ -246,6 +246,12 @@ struct MainNavView: View {
             Task {
                 Logger.info("Received deeplink: \(url.absoluteString)")
 
+                // Web URLs from widgets (e.g. news article tap) bypass payment handling
+                if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+                    await UIApplication.shared.open(url)
+                    return
+                }
+
                 if let callback = PubkyRingAuthCallback.parse(url: url) {
                     let handlingResult = await pubkyProfile.handleAuthCallback(callback)
 
@@ -432,9 +438,12 @@ struct MainNavView: View {
                 case .widgetsIntro: WidgetsIntroView()
                 case .widgetsList: WidgetsListView()
                 case let .widgetDetail(widgetType):
-                    if widgetType == .price {
+                    switch widgetType {
+                    case .price:
                         PriceWidgetPreviewView()
-                    } else {
+                    case .news:
+                        NewsWidgetPreviewView()
+                    default:
                         WidgetDetailView(id: widgetType)
                     }
                 case let .widgetEdit(widgetType): WidgetEditView(id: widgetType)

@@ -308,17 +308,9 @@ enum WidgetEditItemFactory {
     ) -> [WidgetEditItem] {
         var items: [WidgetEditItem] = []
 
-        if let data = newsViewModel.widgetData {
-            items.append(
-                WidgetEditItem(
-                    key: "showDate",
-                    type: .toggleItem,
-                    titleView: AnyView(BodyMText(data.timeAgo, textColor: .textPrimary)),
-                    valueView: nil,
-                    isChecked: newsOptions.showDate
-                )
-            )
+        items.append(sectionHeaderItem(key: "news_content_header", title: t("widgets__news__content_header")))
 
+        if let data = newsViewModel.widgetData {
             items.append(
                 WidgetEditItem(
                     key: "showTitle",
@@ -333,30 +325,30 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showSource",
                     type: .toggleItem,
-                    title: t("widgets__widget__source"),
-                    valueView: AnyView(BodySSBText(data.publisher, textColor: .textSecondary)),
+                    titleView: AnyView(BodySSBText(data.publisher, textColor: .brandAccent)),
+                    valueView: nil,
                     isChecked: newsOptions.showSource
+                )
+            )
+
+            items.append(
+                WidgetEditItem(
+                    key: "showDate",
+                    type: .toggleItem,
+                    titleView: AnyView(BodySSBText(data.timeAgo, textColor: .textSecondary)),
+                    valueView: nil,
+                    isChecked: newsOptions.showDate
                 )
             )
         } else {
             // Fallback when no data is available
             items.append(
                 WidgetEditItem(
-                    key: "showDate",
-                    type: .toggleItem,
-                    titleView: AnyView(BodyMText("13 hours ago", textColor: .textPrimary)),
-                    valueView: nil,
-                    isChecked: newsOptions.showDate
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
                     key: "showTitle",
-                    type: .staticItem,
-                    titleView: AnyView(TitleText("Exodus Launches XO Pay, An In-App Bitcoin And Crypto Purchase Solution")),
+                    type: .toggleItem,
+                    titleView: AnyView(TitleText("How Bitcoin changed El Salvador in more ways...")),
                     valueView: nil,
-                    isChecked: true // Static items are always shown
+                    isChecked: newsOptions.showTitle
                 )
             )
 
@@ -364,9 +356,19 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showSource",
                     type: .toggleItem,
-                    title: t("widgets__widget__source"),
-                    valueView: AnyView(BodySSBText("Bitcoin Magazine", textColor: .textSecondary)),
+                    titleView: AnyView(BodySSBText("bitcoinmagazine.com", textColor: .brandAccent)),
+                    valueView: nil,
                     isChecked: newsOptions.showSource
+                )
+            )
+
+            items.append(
+                WidgetEditItem(
+                    key: "showDate",
+                    type: .toggleItem,
+                    titleView: AnyView(BodySSBText("1 min ago", textColor: .textSecondary)),
+                    valueView: nil,
+                    isChecked: newsOptions.showDate
                 )
             )
         }

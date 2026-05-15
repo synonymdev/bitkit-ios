@@ -1382,7 +1382,6 @@
 "widgets__widget__edit" = "Widget Feed";
 "widgets__widget__edit_default" = "Default";
 "widgets__widget__edit_custom" = "Custom";
-"widgets__widget__edit_description" = "Please select which fields you want to display in the {name} widget.";
 "widgets__widget__source" = "Source";
 "widgets__add" = "Add Widget";
 "widgets__list__button" = "Enable In Settings";
@@ -1404,6 +1403,7 @@
 "widgets__news__name" = "Bitcoin Headlines";
 "widgets__news__description" = "Read the latest & greatest Bitcoin headlines from various news sites.";
 "widgets__news__error" = "Couldn\'t get the latest news";
+"widgets__news__content_header" = "Content";
 "widgets__blocks__name" = "Bitcoin Blocks";
 "widgets__blocks__description" = "Examine various statistics on newly mined Bitcoin Blocks.";
 "widgets__blocks__error" = "Couldn\'t get blocks data";

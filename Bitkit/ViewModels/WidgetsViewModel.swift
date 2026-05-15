@@ -259,6 +259,10 @@ class WidgetsViewModel: ObservableObject {
             if type == .price, let priceOptions = options as? PriceWidgetOptions {
                 syncPriceOptionsToHomeScreenWidget(priceOptions)
             }
+
+            if type == .news, let newsOptions = options as? NewsWidgetOptions {
+                syncNewsOptionsToHomeScreenWidget(newsOptions)
+            }
         } catch {
             print("Failed to save widget options: \(error)")
         }
@@ -323,5 +327,13 @@ class WidgetsViewModel: ObservableObject {
     private func syncPriceOptionsToHomeScreenWidget(_ options: PriceWidgetOptions) {
         PriceHomeScreenWidgetOptionsStore.save(options)
         PriceHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+    }
+
+    /// Mirrors in-app news widget options to the App Group so the home-screen WidgetKit widget can read them.
+    /// Only invoked when the user explicitly changes news widget options — adding, deleting, or resetting
+    /// in-app widgets must not affect the independent OS home-screen widget.
+    private func syncNewsOptionsToHomeScreenWidget(_ options: NewsWidgetOptions) {
+        NewsHomeScreenWidgetOptionsStore.save(options)
+        NewsHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 }
