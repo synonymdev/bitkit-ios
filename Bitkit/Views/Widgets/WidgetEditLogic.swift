@@ -89,18 +89,25 @@ class WidgetEditLogic: ObservableObject {
         case .blocks:
             switch item.key {
             case "height":
+                guard canToggleBlockOption(blocksOptions.height) else { break }
                 blocksOptions.height.toggle()
             case "time":
+                guard canToggleBlockOption(blocksOptions.time) else { break }
                 blocksOptions.time.toggle()
             case "date":
+                guard canToggleBlockOption(blocksOptions.date) else { break }
                 blocksOptions.date.toggle()
             case "transactionCount":
+                guard canToggleBlockOption(blocksOptions.transactionCount) else { break }
                 blocksOptions.transactionCount.toggle()
             case "size":
+                guard canToggleBlockOption(blocksOptions.size) else { break }
                 blocksOptions.size.toggle()
             case "fees":
+                guard canToggleBlockOption(blocksOptions.fees) else { break }
                 blocksOptions.fees.toggle()
             case "showSource":
+                guard canToggleBlockOption(blocksOptions.showSource) else { break }
                 blocksOptions.showSource.toggle()
             default:
                 break
@@ -159,6 +166,22 @@ class WidgetEditLogic: ObservableObject {
 
     private func selectTradingPair(_ pairName: String) {
         priceOptions.selectedPair = pairName
+    }
+
+    private func canToggleBlockOption(_ isCurrentlyEnabled: Bool) -> Bool {
+        isCurrentlyEnabled || enabledBlockOptionsCount < 4
+    }
+
+    private var enabledBlockOptionsCount: Int {
+        [
+            blocksOptions.height,
+            blocksOptions.time,
+            blocksOptions.date,
+            blocksOptions.transactionCount,
+            blocksOptions.size,
+            blocksOptions.fees,
+            blocksOptions.showSource,
+        ].filter { $0 }.count
     }
 
     func loadCurrentOptions() {

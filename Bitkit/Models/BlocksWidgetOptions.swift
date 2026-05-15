@@ -9,7 +9,7 @@ struct BlocksWidgetOptions: Codable, Equatable {
     var height: Bool = true
     var time: Bool = true
     var date: Bool = true
-    var transactionCount: Bool = false
+    var transactionCount: Bool = true
     var size: Bool = false
     var fees: Bool = false
     var showSource: Bool = false
@@ -18,7 +18,7 @@ struct BlocksWidgetOptions: Codable, Equatable {
         height: Bool = true,
         time: Bool = true,
         date: Bool = true,
-        transactionCount: Bool = false,
+        transactionCount: Bool = true,
         size: Bool = false,
         fees: Bool = false,
         showSource: Bool = false
@@ -47,7 +47,7 @@ struct BlocksWidgetOptions: Codable, Equatable {
         height = try container.decodeIfPresent(Bool.self, forKey: .height) ?? true
         time = try container.decodeIfPresent(Bool.self, forKey: .time) ?? true
         date = try container.decodeIfPresent(Bool.self, forKey: .date) ?? true
-        transactionCount = try container.decodeIfPresent(Bool.self, forKey: .transactionCount) ?? false
+        transactionCount = try container.decodeIfPresent(Bool.self, forKey: .transactionCount) ?? true
         size = try container.decodeIfPresent(Bool.self, forKey: .size) ?? false
         fees = try container.decodeIfPresent(Bool.self, forKey: .fees) ?? false
         showSource = try container.decodeIfPresent(Bool.self, forKey: .showSource) ?? false
