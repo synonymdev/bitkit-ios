@@ -8,5 +8,6 @@ struct BitkitWidgetBundle: WidgetBundle {
         BitkitNewsWidget()
         BitkitBlocksWidget()
         BitkitFactsWidget()
+        BitkitCalculatorWidget()
     }
 }

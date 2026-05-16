@@ -8,11 +8,13 @@ enum NumberPadType {
 
 struct NumberPad: View {
     let type: NumberPadType
+    let decimalSeparator: String
     let errorKey: String?
     let onPress: (String) -> Void
 
-    init(type: NumberPadType = .simple, errorKey: String? = nil, onPress: @escaping (String) -> Void) {
+    init(type: NumberPadType = .simple, decimalSeparator: String = ".", errorKey: String? = nil, onPress: @escaping (String) -> Void) {
         self.type = type
+        self.decimalSeparator = decimalSeparator
         self.errorKey = errorKey
         self.onPress = onPress
     }
@@ -59,7 +61,7 @@ struct NumberPad: View {
                         }
                     case .decimal:
                         NumberPadButton(
-                            text: ".",
+                            text: decimalSeparator,
                             height: buttonHeight,
                             hasError: errorKey == ".",
                             testID: "NDecimal"

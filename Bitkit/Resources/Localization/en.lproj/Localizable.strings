@@ -1380,6 +1380,7 @@
 "widgets__nav_title" = "Widgets";
 "widgets__widget__nav_title" = "Widget";
 "widgets__widget__edit" = "Widget Feed";
+"widgets__widget__edit_description" = "Customize how {name} appears in your widget feed.";
 "widgets__widget__edit_default" = "Default";
 "widgets__widget__edit_custom" = "Custom";
 "widgets__widget__source" = "Source";

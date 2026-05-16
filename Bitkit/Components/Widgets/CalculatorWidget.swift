@@ -1,65 +1,18 @@
 import SwiftUI
 
-private let MAX_BITCOIN: UInt64 = 2_100_000_000_000_000
-
-/// A reusable input row component for currency conversion
-struct CurrencyInputRow: View {
-    let icon: CircularIcon
-    let placeholder: String = "0"
-    @Binding var text: String
-    let keyboardType: UIKeyboardType
-    let label: String
-    let isFocused: Bool
-    let onTextChange: (String) -> Void
-
-    @EnvironmentObject private var currency: CurrencyViewModel
-
-    var body: some View {
-        HStack(spacing: 0) {
-            icon
-
-            SwiftUI.TextField(placeholder, text: $text)
-                .keyboardType(keyboardType)
-                .font(.custom(Fonts.semiBold, size: 15))
-                .foregroundColor(.textPrimary)
-                .frame(maxWidth: .infinity)
-                .padding(.leading, 8)
-                .onChange(of: text) { _, newValue in onTextChange(newValue) }
-
-            CaptionBText(label, textColor: .textSecondary)
-                .textCase(.uppercase)
-        }
-        .padding(16)
-        .background(Color.black)
-        .cornerRadius(8)
-    }
-}
-
-/// A widget that provides Bitcoin to fiat currency conversion
+/// A widget that provides Bitcoin to fiat currency conversion.
 struct CalculatorWidget: View {
-    /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false
-
-    /// Callback to signal when editing should end
     var onEditingEnd: (() -> Void)?
 
-    /// Currency view model for currency conversion
     @EnvironmentObject private var currency: CurrencyViewModel
 
-    /// Bitcoin amount state (stored as string to preserve user input)
-    @State private var bitcoinAmount: String = "10000"
+    @State private var values = CalculatorWidgetValues()
+    @State private var activeInput: CalculatorMoneyType?
+    @State private var errorKey: String?
+    @State private var hasHydrated = false
+    @State private var previousDisplayUnit: BitcoinDisplayUnit = .modern
 
-    /// Fiat amount state (stored as string to preserve user input)
-    @State private var fiatAmount: String = ""
-
-    /// Focus state for text fields
-    @FocusState private var focusedField: FocusedField?
-
-    private enum FocusedField {
-        case bitcoin, fiat
-    }
-
-    /// Initialize the widget
     init(
         isEditing: Bool = false,
         onEditingEnd: (() -> Void)? = nil
@@ -74,266 +27,371 @@ struct CalculatorWidget: View {
             isEditing: isEditing,
             onEditingEnd: onEditingEnd
         ) {
-            VStack(spacing: 16) {
-                CurrencyInputRow(
-                    icon: CircularIcon(
-                        icon: "b-unit",
-                        iconColor: .brandAccent,
-                        backgroundColor: .gray6,
-                        size: 32
-                    ),
-                    text: $bitcoinAmount,
-                    keyboardType: .numberPad,
-                    label: "Bitcoin",
-                    isFocused: focusedField == .bitcoin,
-                    onTextChange: { newValue in
-                        // Validate and filter input in real-time
-                        let validatedValue = validateBitcoinInput(newValue)
-                        if validatedValue != newValue {
-                            bitcoinAmount = validatedValue
-                        }
-
-                        if focusedField == .bitcoin {
-                            updateFiatAmount(from: validatedValue)
-                        }
-                    }
+            VStack(spacing: 0) {
+                CalculatorWidgetWideContent(
+                    values: currentValues,
+                    activeInput: activeInput,
+                    onSelectInput: selectInput
                 )
-                .focused($focusedField, equals: .bitcoin)
 
-                CurrencyInputRow(
-                    icon: CircularIcon(
-                        icon: BodyMSBText(currency.symbol.count > 2 ? String(currency.symbol.prefix(1)) : currency.symbol, textColor: .brandAccent),
-                        backgroundColor: .gray6,
-                        size: 32
-                    ),
-                    text: $fiatAmount,
-                    keyboardType: .decimalPad,
-                    label: currency.selectedCurrency,
-                    isFocused: focusedField == .fiat,
-                    onTextChange: { newValue in
-                        // Validate and filter input in real-time
-                        let validatedValue = validateFiatInput(newValue)
-                        if validatedValue != newValue {
-                            fiatAmount = validatedValue
-                        }
-
-                        if focusedField == .fiat {
-                            updateBitcoinAmount(from: validatedValue)
-                        }
-                    }
-                )
-                .focused($focusedField, equals: .fiat)
-                .onSubmit {
-                    // Format with trailing zeros when user finishes editing
-                    fiatAmount = formatFiatInput(fiatAmount)
-                }
-                .onChange(of: focusedField) { _, newFocus in
-                    // Format fiat amount when focus leaves the field
-                    if newFocus != .fiat && !fiatAmount.isEmpty {
-                        fiatAmount = formatFiatInput(fiatAmount)
-                    }
+                if let activeInput {
+                    NumberPad(
+                        type: numberPadType(for: activeInput),
+                        decimalSeparator: CalculatorWidgetFormatter.decimalSeparator(),
+                        errorKey: errorKey,
+                        onPress: handleNumberPadInput
+                    )
+                    .padding(.top, 8)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .accessibilityIdentifier("CalculatorNumberPad")
                 }
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button(t("common__done")) {
-                        focusedField = nil
-                    }
-                }
-            }
+            .animation(.easeInOut(duration: 0.2), value: activeInput)
         }
-        .onAppear {
-            // Initialize fiat amount on first load
-            if fiatAmount.isEmpty {
-                updateFiatAmount(from: bitcoinAmount)
-            }
+        .task {
+            hydrateValuesIfNeeded()
         }
         .onChange(of: currency.selectedCurrency) {
-            // Update fiat amount when currency changes
-            updateFiatAmount(from: bitcoinAmount)
+            refreshCurrencyFields()
+            refreshFiatFromBitcoin()
+            persistValues()
+        }
+        .onChange(of: currency.displayUnit) { _, newUnit in
+            convertBitcoinValue(to: newUnit)
+            refreshCurrencyFields()
+            refreshFiatFromBitcoin()
+            persistValues()
+        }
+        .onChange(of: currency.rates) {
+            refreshCurrencyFields()
+            refreshFiatFromBitcoin()
+            persistValues()
+        }
+        .onDisappear {
+            activeInput = nil
         }
     }
 
-    /// Updates fiat amount based on bitcoin input
-    private func updateFiatAmount(from bitcoin: String) {
-        // Sanitize bitcoin input
-        let sanitizedBitcoin = sanitizeBitcoinInput(bitcoin)
+    private var currentValues: CalculatorWidgetValues {
+        CalculatorWidgetValues(
+            bitcoinValue: values.bitcoinValue,
+            fiatValue: values.fiatValue,
+            displayUnit: currency.displayUnit,
+            currencySymbol: currency.symbol,
+            selectedCurrency: currency.selectedCurrency
+        )
+    }
 
-        guard let amount = UInt64(sanitizedBitcoin), amount > 0 else {
-            fiatAmount = ""
+    private func hydrateValuesIfNeeded() {
+        guard !hasHydrated else { return }
+        hasHydrated = true
+
+        let saved = CalculatorHomeScreenWidgetOptionsStore.load()
+        let savedSats = CalculatorWidgetFormatter.bitcoinValueToSats(saved.bitcoinValue, displayUnit: saved.displayUnit)
+
+        values = CalculatorWidgetValues(
+            bitcoinValue: saved.bitcoinValue.isEmpty
+                ? ""
+                : CalculatorWidgetFormatter.satsToBitcoinValue(savedSats, displayUnit: currency.displayUnit),
+            fiatValue: saved.fiatValue,
+            displayUnit: currency.displayUnit,
+            currencySymbol: currency.symbol,
+            selectedCurrency: currency.selectedCurrency
+        )
+        previousDisplayUnit = currency.displayUnit
+
+        if values.bitcoinValue.isEmpty, saved.bitcoinValue.isEmpty {
+            values.bitcoinValue = CalculatorWidgetValues().bitcoinValue
+        }
+
+        refreshFiatFromBitcoin()
+        persistValues()
+    }
+
+    private func selectInput(_ input: CalculatorMoneyType) {
+        activeInput = input
+        errorKey = nil
+    }
+
+    private func handleNumberPadInput(_ key: String) {
+        guard let activeInput else { return }
+
+        let currentValue = rawValue(for: activeInput)
+        let nextValue = CalculatorWidgetFormatter.applyNumberPadInput(
+            rawValue: currentValue,
+            key: key,
+            maxDecimalPlaces: maxDecimalPlaces(for: activeInput)
+        )
+
+        guard nextValue != currentValue || key == "delete" else {
+            showInputError(for: key)
             return
         }
 
-        // Cap the amount at maximum bitcoin
-        let cappedAmount = min(amount, MAX_BITCOIN)
-
-        // Convert to fiat
-        if let converted = currency.convert(sats: cappedAmount) {
-            fiatAmount = formatFiatAmount(converted.value)
-        } else {
-            fiatAmount = ""
+        if activeInput == .bitcoin,
+           CalculatorWidgetFormatter.exceedsMaxBitcoin(nextValue, displayUnit: currency.displayUnit)
+        {
+            showInputError(for: key)
+            return
         }
 
-        // Update bitcoin amount if it was capped or needs formatting
-        let formattedBitcoin = formatNumberWithSeparators(String(cappedAmount))
-        if formattedBitcoin != bitcoin {
-            bitcoinAmount = formattedBitcoin
+        errorKey = nil
+
+        switch activeInput {
+        case .bitcoin:
+            values.bitcoinValue = nextValue
+            refreshFiatFromBitcoin()
+        case .fiat:
+            values.fiatValue = nextValue
+            refreshBitcoinFromFiat()
+        }
+
+        persistValues()
+    }
+
+    private func rawValue(for input: CalculatorMoneyType) -> String {
+        switch input {
+        case .bitcoin:
+            return values.bitcoinValue
+        case .fiat:
+            return values.fiatValue
         }
     }
 
-    /// Updates bitcoin amount based on fiat input
-    private func updateBitcoinAmount(from fiat: String) {
-        // Sanitize fiat input
-        let sanitizedFiat = sanitizeFiatInput(fiat)
+    private func numberPadType(for input: CalculatorMoneyType) -> NumberPadType {
+        switch input {
+        case .bitcoin where currency.displayUnit == .modern:
+            return .integer
+        default:
+            return .decimal
+        }
+    }
 
-        guard let amount = Double(sanitizedFiat), amount > 0 else {
-            bitcoinAmount = ""
+    private func maxDecimalPlaces(for input: CalculatorMoneyType) -> Int? {
+        switch input {
+        case .bitcoin where currency.displayUnit == .modern:
+            return nil
+        case .bitcoin:
+            return CalculatorWidgetFormatter.classicBitcoinDecimalPlaces
+        case .fiat:
+            return CalculatorWidgetFormatter.fiatDecimalPlaces
+        }
+    }
+
+    private func refreshCurrencyFields() {
+        values.displayUnit = currency.displayUnit
+        values.currencySymbol = currency.symbol
+        values.selectedCurrency = currency.selectedCurrency
+    }
+
+    private func convertBitcoinValue(to newUnit: BitcoinDisplayUnit) {
+        guard previousDisplayUnit != newUnit else { return }
+
+        let sats = CalculatorWidgetFormatter.bitcoinValueToSats(values.bitcoinValue, displayUnit: previousDisplayUnit)
+        values.bitcoinValue = CalculatorWidgetFormatter.satsToBitcoinValue(sats, displayUnit: newUnit)
+        previousDisplayUnit = newUnit
+    }
+
+    private func refreshFiatFromBitcoin() {
+        guard !values.bitcoinValue.isEmpty else {
+            values.fiatValue = ""
             return
         }
 
-        // Convert to sats
-        if let convertedSats = currency.convert(fiatAmount: amount) {
-            // Cap the amount at maximum bitcoin
-            let cappedSats = min(convertedSats, MAX_BITCOIN)
+        let sats = CalculatorWidgetFormatter.bitcoinValueToSats(values.bitcoinValue, displayUnit: currency.displayUnit)
+        if sats == 0 {
+            values.fiatValue = "0.00"
+            return
+        }
 
-            bitcoinAmount = formatNumberWithSeparators(String(cappedSats))
+        if let converted = currency.convert(sats: sats) {
+            values.fiatValue = CalculatorWidgetFormatter.fiatRawValue(from: converted.value)
+        }
+    }
 
-            // Update fiat amount if bitcoin was capped
-            if cappedSats != convertedSats {
-                if let converted = currency.convert(sats: cappedSats) {
-                    fiatAmount = formatFiatAmount(converted.value)
+    private func refreshBitcoinFromFiat() {
+        guard !values.fiatValue.isEmpty else {
+            values.bitcoinValue = ""
+            return
+        }
+
+        let fiatValue = CalculatorWidgetFormatter.fiatDecimalValue(values.fiatValue)
+        if NSDecimalNumber(decimal: fiatValue).compare(NSDecimalNumber.zero) == .orderedSame {
+            values.bitcoinValue = currency.displayUnit == .modern ? "0" : "0"
+            return
+        }
+
+        let fiatDouble = NSDecimalNumber(decimal: fiatValue).doubleValue
+        if let sats = currency.convert(fiatAmount: fiatDouble) {
+            let cappedSats = min(sats, CalculatorWidgetFormatter.maxBitcoinSats)
+            values.bitcoinValue = CalculatorWidgetFormatter.satsToBitcoinValue(cappedSats, displayUnit: currency.displayUnit)
+        }
+    }
+
+    private func persistValues() {
+        CalculatorHomeScreenWidgetOptionsStore.save(currentValues)
+        CalculatorHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+    }
+
+    private func showInputError(for key: String) {
+        Haptics.notify(.warning)
+        errorKey = key
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            errorKey = nil
+        }
+    }
+}
+
+// MARK: - Wide layout (in-app + carousel page + .systemMedium OS widget)
+
+struct CalculatorWidgetWideContent: View {
+    let values: CalculatorWidgetValues
+    var activeInput: CalculatorMoneyType?
+    var onSelectInput: ((CalculatorMoneyType) -> Void)?
+
+    var body: some View {
+        VStack(spacing: 16) {
+            CalculatorWidgetRow(
+                currencySymbol: "₿",
+                value: CalculatorWidgetFormatter.formatBitcoinValue(values.bitcoinValue, displayUnit: values.displayUnit),
+                label: t("settings__general__unit_bitcoin"),
+                iconSize: 32,
+                rowPadding: 16,
+                showsLabel: true,
+                isActive: activeInput == .bitcoin
+            ) {
+                onSelectInput?(.bitcoin)
+            }
+            .accessibilityIdentifier("CalculatorBtcInput")
+
+            CalculatorWidgetRow(
+                currencySymbol: values.currencySymbol,
+                value: CalculatorWidgetFormatter.formatFiatValue(values.fiatValue),
+                placeholder: CalculatorWidgetFormatter.formatFiatPlaceholder(values.fiatValue),
+                label: values.selectedCurrency,
+                iconSize: 32,
+                rowPadding: 16,
+                showsLabel: true,
+                isActive: activeInput == .fiat
+            ) {
+                onSelectInput?(.fiat)
+            }
+            .accessibilityIdentifier("CalculatorFiatInput")
+        }
+    }
+}
+
+// MARK: - Compact layout (small carousel page + .systemSmall OS widget)
+
+struct CalculatorWidgetCompactContent: View {
+    let values: CalculatorWidgetValues
+
+    var body: some View {
+        VStack(spacing: 16) {
+            CalculatorWidgetRow(
+                currencySymbol: "₿",
+                value: CalculatorWidgetFormatter.formatBitcoinValue(values.bitcoinValue, displayUnit: values.displayUnit),
+                iconSize: 24,
+                rowPadding: 12,
+                showsLabel: false,
+                isActive: false
+            )
+
+            CalculatorWidgetRow(
+                currencySymbol: values.currencySymbol,
+                value: CalculatorWidgetFormatter.formatFiatValue(values.fiatValue),
+                iconSize: 24,
+                rowPadding: 12,
+                showsLabel: false,
+                isActive: false
+            )
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.gray6)
+        .cornerRadius(16)
+    }
+}
+
+private struct CalculatorWidgetRow: View {
+    let currencySymbol: String
+    let value: String
+    var placeholder: String = ""
+    var label: String?
+    let iconSize: CGFloat
+    let rowPadding: CGFloat
+    let showsLabel: Bool
+    let isActive: Bool
+    var onTap: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color.gray6)
+
+                Text(CalculatorWidgetFormatter.displaySymbol(currencySymbol))
+                    .font(Fonts.semiBold(size: iconSize >= 32 ? 17 : 15))
+                    .foregroundColor(.brandAccent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(width: iconSize, height: iconSize)
+
+            HStack(spacing: 0) {
+                Text(displayValue)
+                    .font(Fonts.semiBold(size: 17))
+                    .foregroundColor(value.isEmpty ? .white50 : .textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                if isActive {
+                    CalculatorCursor()
+                }
+
+                if !placeholder.isEmpty {
+                    Text(placeholder)
+                        .font(Fonts.semiBold(size: 17))
+                        .foregroundColor(.white50)
+                        .lineLimit(1)
                 }
             }
-        } else {
-            bitcoinAmount = ""
-        }
-    }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
 
-    /// Sanitizes bitcoin input by removing non-numeric characters and leading zeros
-    private func sanitizeBitcoinInput(_ input: String) -> String {
-        let cleaned = input.replacingOccurrences(of: " ", with: "")
-        return cleaned.replacingOccurrences(of: "^0+(?=\\d)", with: "", options: .regularExpression)
-    }
-
-    /// Sanitizes fiat input by handling decimal points and limiting decimal places
-    private func sanitizeFiatInput(_ input: String) -> String {
-        let processed =
-            input
-                .replacingOccurrences(of: ",", with: ".")
-                .replacingOccurrences(of: " ", with: "")
-
-        let components = processed.components(separatedBy: ".")
-        if components.count > 2 {
-            // Only keep first decimal point
-            return components[0] + "." + components[1]
-        }
-
-        if components.count == 2 {
-            let integer = components[0].replacingOccurrences(of: "^0+(?=\\d)", with: "", options: .regularExpression)
-            let decimal = String(components[1].prefix(2)) // Limit to 2 decimal places
-            return (integer.isEmpty ? "0" : integer) + "." + decimal
-        }
-
-        return processed.replacingOccurrences(of: "^0+(?=\\d)", with: "", options: .regularExpression)
-    }
-
-    /// Formats a number with space separators for thousands
-    private func formatNumberWithSeparators(_ value: String) -> String {
-        let endsWithDecimal = value.hasSuffix(".")
-        let cleanNumber = value.replacingOccurrences(of: "[^\\d.]", with: "", options: .regularExpression)
-        let components = cleanNumber.components(separatedBy: ".")
-
-        let integer = components[0]
-        let formattedInteger = integer.replacingOccurrences(of: "\\B(?=(\\d{3})+(?!\\d))", with: " ", options: .regularExpression)
-
-        if components.count > 1 {
-            return formattedInteger + "." + components[1]
-        }
-
-        return endsWithDecimal ? formattedInteger + "." : formattedInteger
-    }
-
-    /// Formats fiat amount to string with proper decimal handling
-    private func formatFiatAmount(_ value: Decimal) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2 // Always show 2 decimal places
-        formatter.maximumFractionDigits = 2
-        formatter.groupingSeparator = " "
-
-        return formatter.string(from: value as NSDecimalNumber) ?? "0.00"
-    }
-
-    /// Formats user input to always show 2 decimal places when it contains a decimal
-    private func formatFiatInput(_ input: String) -> String {
-        // Don't format if empty or just a dot
-        if input.isEmpty || input == "." {
-            return input
-        }
-
-        // If it contains a decimal point, ensure 2 decimal places
-        if input.contains(".") {
-            let components = input.components(separatedBy: ".")
-            if components.count == 2 {
-                let integer = components[0]
-                let decimal = components[1]
-
-                // Pad decimal part to 2 digits
-                let paddedDecimal = decimal.padding(toLength: 2, withPad: "0", startingAt: 0)
-                return integer + "." + paddedDecimal
+            if showsLabel, let label {
+                CaptionBText(label.uppercased(), textColor: .textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
-
-        return input
+        .padding(rowPadding)
+        .frame(maxWidth: .infinity)
+        .background(Color.black)
+        .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap?()
+        }
     }
 
-    /// Validates fiat input to ensure only numbers and up to 2 decimal places
-    private func validateFiatInput(_ input: String) -> String {
-        // Convert comma to dot and remove spaces
-        let processed =
-            input
-                .replacingOccurrences(of: ",", with: ".")
-                .replacingOccurrences(of: " ", with: "")
+    private var displayValue: String {
+        value.isEmpty ? "0" : value
+    }
+}
 
-        // Check if input matches valid pattern: digits, optional dot, up to 2 decimal digits
-        let validPattern = "^\\d*\\.?\\d{0,2}$"
-
-        // Allow empty string, single dot, or "0."
-        if processed.isEmpty || processed == "." || processed == "0." {
-            return processed
+private struct CalculatorCursor: View {
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+            Rectangle()
+                .fill(isVisible(at: context.date) ? Color.brandAccent : Color.clear)
+                .frame(width: 2, height: 22)
         }
-
-        // Test against the pattern
-        if processed.range(of: validPattern, options: .regularExpression) != nil {
-            // Remove leading zeros except before decimal or if it's just "0"
-            if processed.hasPrefix("0") && processed.count > 1 && !processed.hasPrefix("0.") {
-                let withoutLeadingZeros = processed.replacingOccurrences(of: "^0+", with: "", options: .regularExpression)
-                return withoutLeadingZeros.isEmpty ? "0" : withoutLeadingZeros
-            }
-            return processed
-        }
-
-        // If invalid, return the previous valid value by removing the last character
-        return String(processed.dropLast())
+        .frame(width: 2, height: 22)
     }
 
-    /// Validates bitcoin input to ensure only numbers and spaces
-    private func validateBitcoinInput(_ input: String) -> String {
-        // Allow empty input
-        if input.isEmpty {
-            return input
-        }
-
-        // Only allow digits and spaces
-        let validPattern = "^[\\d\\s]+$"
-
-        if input.range(of: validPattern, options: .regularExpression) != nil {
-            return input
-        }
-
-        // If invalid, return the previous valid value by removing the last character
-        return String(input.dropLast())
+    private func isVisible(at date: Date) -> Bool {
+        Int(date.timeIntervalSince1970 * 2) % 2 == 0
     }
 }
 
