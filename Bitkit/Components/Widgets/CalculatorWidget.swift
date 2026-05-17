@@ -202,6 +202,8 @@ struct CalculatorWidget: View {
 
         if let converted = currency.convert(sats: sats) {
             values.fiatValue = CalculatorWidgetFormatter.fiatRawValue(from: converted.value)
+        } else {
+            values.fiatValue = ""
         }
     }
 
@@ -221,6 +223,8 @@ struct CalculatorWidget: View {
         if let sats = currency.convert(fiatAmount: fiatDouble) {
             let cappedSats = min(sats, CalculatorWidgetFormatter.maxBitcoinSats)
             values.bitcoinValue = CalculatorWidgetFormatter.satsToBitcoinValue(cappedSats, displayUnit: currency.displayUnit)
+        } else {
+            values.bitcoinValue = ""
         }
     }
 
