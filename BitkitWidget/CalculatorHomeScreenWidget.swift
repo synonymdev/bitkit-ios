@@ -169,7 +169,7 @@ struct BitkitCalculatorWidget: Widget {
             CalculatorHomeScreenWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("widgets__calculator__name")
-        .description("widgets__calculator__description")
+        .description("widgets__calculator__gallery_description")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

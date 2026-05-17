@@ -1181,6 +1181,7 @@
 "widgets__facts__description" = "Entdecke Fun Facts über Bitcoin, jedes Mal wenn du dein Wallet öffnest.";
 "widgets__calculator__name" = "Bitcoin Rechner";
 "widgets__calculator__description" = "Wandle ₿-Beträge in {fiatSymbol} und umgekehrt.";
+"widgets__calculator__gallery_description" = "Wandel ₿-bedragen om naar fiatvaluta en andersom.";
 "widgets__weather__name" = "Bitcoin Wetter";
 "widgets__weather__description" = "Finde heraus, wann es eine gute Zeit ist, um auf der Bitcoin blockchain Überweisungen zu tätigen.";
 "widgets__weather__condition__good__title" = "Gunstige Omstandigheden";

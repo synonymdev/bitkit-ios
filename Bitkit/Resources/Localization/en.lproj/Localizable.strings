@@ -1413,6 +1413,7 @@
 "widgets__facts__description" = "Discover fun facts about Bitcoin, every time you open your wallet.";
 "widgets__calculator__name" = "Bitcoin Calculator";
 "widgets__calculator__description" = "Convert ₿ amounts to {fiatSymbol} or vice versa.";
+"widgets__calculator__gallery_description" = "Convert ₿ amounts to fiat currency or vice versa.";
 "widgets__suggestions__name" = "Bitkit Suggestions";
 "widgets__suggestions__description" = "Discover everything Bitkit has to offer.";
 "widgets__weather__name" = "Bitcoin Weather";

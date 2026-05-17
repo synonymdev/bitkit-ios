@@ -1188,6 +1188,7 @@
 "widgets__facts__description" = "Odkrywaj ciekawostki o Bitcoinie za każdym razem, gdy otwierasz swój portfel.";
 "widgets__calculator__name" = "Bitcoinowy Kalkulator";
 "widgets__calculator__description" = "Przelicz kwoty ₿ na {fiatSymbol} lub odwrotnie.";
+"widgets__calculator__gallery_description" = "Przelicz kwoty ₿ na waluty fiat lub odwrotnie.";
 "widgets__weather__name" = "Bitcoinowa Pogoda";
 "widgets__weather__description" = "Sprawdź, kiedy jest dobry moment na transakcję w sieci Bitcoin.";
 "widgets__weather__condition__good__title" = "Korzystne warunki";

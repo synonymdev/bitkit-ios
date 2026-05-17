@@ -100,10 +100,6 @@ struct CalculatorWidget: View {
         )
         previousDisplayUnit = currency.displayUnit
 
-        if values.bitcoinValue.isEmpty, saved.bitcoinValue.isEmpty {
-            values.bitcoinValue = CalculatorWidgetValues().bitcoinValue
-        }
-
         refreshFiatFromBitcoin()
         persistValues()
     }

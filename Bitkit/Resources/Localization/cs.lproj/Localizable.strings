@@ -1161,6 +1161,7 @@
 "widgets__facts__description" = "Pokaždé, když otevřete peněženku, objevte zábavná fakta o bitcoinu.";
 "widgets__calculator__name" = "Bitcoinová kalkulačka";
 "widgets__calculator__description" = "Převeďte ₿ částky na {fiatSymbol} nebo naopak.";
+"widgets__calculator__gallery_description" = "Převeďte ₿ částky na fiat měnu nebo naopak.";
 "widgets__weather__name" = "Počasí v bitcoinu";
 "widgets__weather__description" = "Zjistěte, kdy je vhodná doba pro transakce v blockchainu bitcoinu.";
 "widgets__weather__condition__good__title" = "Příznivé podmínky";

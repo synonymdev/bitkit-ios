@@ -156,7 +156,7 @@ struct CalculatorWidgetPreviewView: View {
         let saved = CalculatorHomeScreenWidgetOptionsStore.load()
         let savedSats = CalculatorWidgetFormatter.bitcoinValueToSats(saved.bitcoinValue, displayUnit: saved.displayUnit)
         let bitcoinValue = saved.bitcoinValue.isEmpty
-            ? CalculatorWidgetValues().bitcoinValue
+            ? ""
             : CalculatorWidgetFormatter.satsToBitcoinValue(savedSats, displayUnit: currency.displayUnit)
 
         values = CalculatorWidgetValues(
@@ -169,6 +169,7 @@ struct CalculatorWidgetPreviewView: View {
     }
 
     private func fiatValue(for bitcoinValue: String) -> String {
+        guard !bitcoinValue.isEmpty else { return "" }
         let sats = CalculatorWidgetFormatter.bitcoinValueToSats(bitcoinValue, displayUnit: currency.displayUnit)
         if sats == 0 { return "0.00" }
         guard let converted = currency.convert(sats: sats) else {

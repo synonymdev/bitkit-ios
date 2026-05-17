@@ -1173,6 +1173,7 @@
 "widgets__facts__description" = "Descubra datos curiosos sobre Bitcoin, cada vez que abra su billetera.";
 "widgets__calculator__name" = "Calculadora Bitcoin";
 "widgets__calculator__description" = "Convierta los importes ₿ en {fiatSymbol} o viceversa.";
+"widgets__calculator__gallery_description" = "Convierta los importes ₿ a moneda fíat o viceversa.";
 "widgets__weather__name" = "Clima Bitcoin";
 "widgets__weather__description" = "Sepa cuándo es un buen momento para realizar transacciones en la blockchain de Bitcoin.";
 "widgets__weather__condition__good__title" = "Condiciones favorables";
