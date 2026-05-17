@@ -256,12 +256,12 @@ enum CalculatorWidgetFormatter {
         guard !value.isEmpty else { return "" }
         let normalized = value.drop { $0 == "0" }
         let integer = normalized.isEmpty ? "0" : String(normalized)
-        return integer.reversed().chunked(into: groupSize).joined(separator: String(groupingSeparator)).reversedString
+        return formatGroupedDigits(integer, groupingSeparator: groupingSeparator)
     }
 
     private static func formatGroupedIntegerPreservingZeros(value: String, groupingSeparator: Character) -> String {
         guard !value.isEmpty else { return "" }
-        return value.reversed().chunked(into: groupSize).joined(separator: String(groupingSeparator)).reversedString
+        return formatGroupedDigits(value, groupingSeparator: groupingSeparator)
     }
 
     private static func formatGroupedDecimal(value: String, groupingSeparator: Character, decimalSeparator: Character) -> String {
@@ -290,6 +290,23 @@ enum CalculatorWidgetFormatter {
         guard rawValue == "0" else { return rawValue + digits }
         let trimmed = digits.drop { $0 == "0" }
         return trimmed.isEmpty ? "0" : String(trimmed)
+    }
+
+    private static func formatGroupedDigits(_ value: String, groupingSeparator: Character) -> String {
+        guard value.count > groupSize else { return value }
+
+        var result = ""
+        let digits = Array(value)
+
+        for index in digits.indices {
+            if index > 0, (digits.count - index).isMultiple(of: groupSize) {
+                result.append(groupingSeparator)
+            }
+
+            result.append(digits[index])
+        }
+
+        return result
     }
 
     private static func decimalValue(_ rawValue: String) -> Decimal {
@@ -337,32 +354,5 @@ private enum DecimalFormatSymbols {
         let formatter = NumberFormatter()
         formatter.locale = locale
         return formatter.decimalSeparator ?? "."
-    }
-}
-
-private extension BidirectionalCollection {
-    func chunked(into size: Int) -> [SubSequence] {
-        var chunks: [SubSequence] = []
-        var currentEnd = endIndex
-
-        while currentEnd != startIndex {
-            let start = index(currentEnd, offsetBy: -size, limitedBy: startIndex) ?? startIndex
-            chunks.append(self[start ..< currentEnd])
-            currentEnd = start
-        }
-
-        return chunks
-    }
-}
-
-private extension Array where Element: Collection {
-    func joined(separator: String) -> String where Element.Element == Character {
-        map(String.init).joined(separator: separator)
-    }
-}
-
-private extension String {
-    var reversedString: String {
-        String(reversed())
     }
 }
