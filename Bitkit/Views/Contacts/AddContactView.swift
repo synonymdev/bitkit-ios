@@ -321,6 +321,7 @@ struct AddContactView: View {
             return false
         }
 
+        navigation.navigateBack()
         app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
         sheets.showSheet(.send, data: SendConfig(view: route))
         return true

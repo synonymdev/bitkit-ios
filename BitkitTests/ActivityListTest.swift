@@ -353,6 +353,93 @@ final class ActivityTests: XCTestCase {
         }
     }
 
+    func testSetContactPropagatesToReplacementTransaction() async throws {
+        let contactPublicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let replacedTxId = "test-replaced-txid"
+        let replacementTxId = "test-replacement-txid"
+
+        try await service.insert(
+            makeOnchainActivity(
+                id: replacedTxId,
+                txId: replacedTxId,
+                doesExist: false,
+                contact: nil
+            )
+        )
+        try await service.insert(
+            makeOnchainActivity(
+                id: replacementTxId,
+                txId: replacementTxId,
+                boostTxIds: [replacedTxId],
+                contact: nil
+            )
+        )
+
+        try await service.setContact(contactPublicKey, forActivity: replacedTxId)
+
+        guard case let .some(.onchain(replacedActivity)) = try await service.getActivity(id: replacedTxId),
+              case let .some(.onchain(replacementActivity)) = try await service.getActivity(id: replacementTxId)
+        else {
+            return XCTFail("Expected onchain activities")
+        }
+
+        XCTAssertEqual(replacedActivity.contact, contactPublicKey)
+        XCTAssertEqual(replacementActivity.contact, contactPublicKey)
+    }
+
+    func testSetContactFindsOnchainActivityByTxid() async throws {
+        let contactPublicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let activityId = "test-onchain-activity-id"
+        let txId = "test-onchain-txid"
+
+        try await service.insert(
+            makeOnchainActivity(
+                id: activityId,
+                txId: txId,
+                contact: nil
+            )
+        )
+
+        try await service.setContact(contactPublicKey, forActivity: txId)
+
+        guard case let .some(.onchain(activity)) = try await service.getActivity(id: activityId) else {
+            return XCTFail("Expected onchain activity")
+        }
+
+        XCTAssertEqual(activity.contact, contactPublicKey)
+    }
+
+    func testGetContactActivitiesFiltersReplacedSentTransaction() async throws {
+        let contactPublicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let replacedTxId = "test-contact-replaced-txid"
+        let replacementTxId = "test-contact-replacement-txid"
+
+        try await service.insert(
+            makeOnchainActivity(
+                id: replacedTxId,
+                txId: replacedTxId,
+                doesExist: false,
+                contact: contactPublicKey
+            )
+        )
+        try await service.insert(
+            makeOnchainActivity(
+                id: replacementTxId,
+                txId: replacementTxId,
+                boostTxIds: [replacedTxId],
+                contact: contactPublicKey
+            )
+        )
+
+        let activities = try await service.get(contact: contactPublicKey)
+
+        XCTAssertEqual(activities.count, 1)
+        guard case let .some(.onchain(activity)) = activities.first else {
+            return XCTFail("Expected replacement onchain activity")
+        }
+        XCTAssertEqual(activity.txId, replacementTxId)
+    }
+
     func testDeleteActivity() async throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
 
@@ -467,5 +554,39 @@ final class ActivityTests: XCTestCase {
         // Test without limit
         let allActivities = try await service.get(filter: .all)
         XCTAssertEqual(allActivities.count, 3)
+    }
+
+    private func makeOnchainActivity(
+        id: String,
+        txId: String,
+        boostTxIds: [String] = [],
+        doesExist: Bool = true,
+        contact: String?
+    ) -> Activity {
+        let timestamp = UInt64(Date().timeIntervalSince1970)
+        return Activity.onchain(
+            OnchainActivity(
+                id: id,
+                txType: .sent,
+                txId: txId,
+                value: 1000,
+                fee: 10,
+                feeRate: 1,
+                address: "bcrt1...",
+                confirmed: false,
+                timestamp: timestamp,
+                isBoosted: !boostTxIds.isEmpty,
+                boostTxIds: boostTxIds,
+                isTransfer: false,
+                doesExist: doesExist,
+                confirmTimestamp: nil,
+                channelId: nil,
+                transferTxId: nil,
+                contact: contact,
+                createdAt: nil,
+                updatedAt: nil,
+                seenAt: nil
+            )
+        )
     }
 }

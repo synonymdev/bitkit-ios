@@ -126,7 +126,7 @@ func fallbackRouteForMissingPendingImport(hasPendingImport: Bool) -> Route? {
     hasPendingImport ? nil : .payContacts
 }
 
-func resolvePastedPubkyRoute(input: String, ownPublicKey: String?, contacts: [PubkyContact]) -> Route? {
+func resolvePubkyRoute(input: String, ownPublicKey: String?, contacts: [PubkyContact]) -> Route? {
     guard let normalizedKey = PubkyPublicKeyFormat.normalized(input) else {
         return nil
     }
@@ -140,6 +140,10 @@ func resolvePastedPubkyRoute(input: String, ownPublicKey: String?, contacts: [Pu
     }
 
     return .addContact(publicKey: normalizedKey)
+}
+
+func resolvePastedPubkyRoute(input: String, ownPublicKey: String?, contacts: [PubkyContact]) -> Route? {
+    resolvePubkyRoute(input: input, ownPublicKey: ownPublicKey, contacts: contacts)
 }
 
 @MainActor

@@ -75,7 +75,7 @@ let cards: [SuggestionCardData] = [
         id: "support",
         title: t("cards__support__title"),
         description: t("cards__support__description"),
-        imageName: "lightbulb",
+        imageName: "lightbulb-figure",
         color: .yellow24,
         action: .support
     ),
@@ -245,10 +245,16 @@ struct Suggestions: View {
                 spacing: 16
             ) {
                 ForEach(visibleCards) { card in
-                    SuggestionCard(data: card, onDismiss: { dismissCard(card) })
-                        .onTapGesture { if !isPreview { onItemTap(card) } }
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
+                    SuggestionCard(
+                        title: card.title,
+                        description: card.description,
+                        imageName: card.imageName,
+                        accentColor: card.color,
+                        onTap: { if !isPreview { onItemTap(card) } },
+                        onDismiss: { dismissCard(card) }
+                    )
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
                 }
             }
             .allowsHitTesting(!isPreview)

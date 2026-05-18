@@ -3,9 +3,13 @@ import SwiftUI
 
 struct SendOptionsView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var scanner: ScannerManager
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     @Binding var navigationPath: [SendRoute]
@@ -71,8 +75,12 @@ struct SendOptionsView: View {
             wallet.syncState()
             scanner.configure(
                 app: app,
+                contactsManager: contactsManager,
                 currency: currency,
-                settings: settings
+                settings: settings,
+                navigation: navigation,
+                pubkyProfile: pubkyProfile,
+                sheets: sheets
             )
         }
     }
@@ -110,6 +118,13 @@ struct SendOptionsView: View {
                 NavigationStack {
                     SendOptionsView(navigationPath: .constant([]))
                         .environmentObject(AppViewModel())
+                        .environmentObject(ContactsManager())
+                        .environmentObject(CurrencyViewModel())
+                        .environmentObject(NavigationViewModel())
+                        .environmentObject(PubkyProfileManager())
+                        .environmentObject(ScannerManager())
+                        .environmentObject(SettingsViewModel.shared)
+                        .environmentObject(SheetViewModel())
                         .environmentObject(WalletViewModel())
                 }
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])

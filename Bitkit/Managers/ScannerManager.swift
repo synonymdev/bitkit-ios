@@ -38,6 +38,9 @@ class ScannerManager: ObservableObject {
     }
 
     func handleScan(_ uri: String, context: ScannerContext) async {
+        let uri = uri.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !uri.isEmpty else { return }
+
         Haptics.play(.scanSuccess)
 
         switch context {
@@ -90,7 +93,7 @@ class ScannerManager: ObservableObject {
         }
     }
 
-    private func handlePubkyRouteIfNeeded(_ input: String) -> Bool {
+    private func handlePubkyRouteIfNeeded(_ input: String, hiding sheetId: SheetID? = .scanner, reason: String = "Scanner routed pubky key") -> Bool {
         guard let navigation,
               let route = resolvePastedPubkyRoute(
                   input: input,
@@ -101,7 +104,9 @@ class ScannerManager: ObservableObject {
             return false
         }
 
-        sheets?.hideSheetIfActive(.scanner, reason: "Scanner routed pubky key")
+        if let sheetId {
+            sheets?.hideSheetIfActive(sheetId, reason: reason)
+        }
         navigation.navigate(route)
         return true
     }
@@ -115,6 +120,11 @@ class ScannerManager: ObservableObject {
         Haptics.play(.scanSuccess)
 
         do {
+            if handlePubkyRouteIfNeeded(uri, hiding: .send, reason: "Send scanner routed pubky key") {
+                completion(nil)
+                return
+            }
+
             try await app.handleScannedData(uri)
 
             let route = PaymentNavigationHelper.appropriateSendRoute(
@@ -177,7 +187,7 @@ class ScannerManager: ObservableObject {
             return
         }
 
-        await handleScan(uri, context: context)
+        await handleScan(uri.trimmingCharacters(in: .whitespacesAndNewlines), context: context)
     }
 
     func handleImageSelection(_ item: PhotosPickerItem?, context: ScannerContext, completion: @escaping (SendRoute?) -> Void = { _ in }) async {

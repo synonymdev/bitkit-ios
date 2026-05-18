@@ -216,6 +216,7 @@ class WalletViewModel: ObservableObject {
                     case .channelReady:
                         self.bolt11 = ""
                         Task {
+                            await self.reconnectTrustedPeers()
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21()
                         }
@@ -861,11 +862,19 @@ class WalletViewModel: ObservableObject {
 
     /// Sync channels and peers only
     private func syncChannelsAndPeers() {
+        let hadUsableChannels = channels?.contains(where: \.isUsable) ?? false
         peers = lightningService.peers
         channels = lightningService.channels
+        let hasUsableChannels = channels?.contains(where: \.isUsable) ?? false
 
         if let channels {
             channelCount = channels.count
+        }
+
+        if sharesPublicPaykitEndpoints, hasUsableChannels, !hadUsableChannels {
+            Task { [weak self] in
+                await self?.syncPublicPaykitEndpointsAfterChannelBecameUsable()
+            }
         }
     }
 
@@ -961,7 +970,7 @@ class WalletViewModel: ObservableObject {
     func refreshPublicPaykitEndpoints(forceRefreshBolt11: Bool = false) async throws -> (onchainAddress: String, bolt11: String) {
         let publicOnchainAddress = try await refreshReusableOnchainAddress()
 
-        if hasReadyChannels {
+        if hasUsableChannels {
             let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
             let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
             if shouldRefreshBolt11 {
@@ -981,6 +990,14 @@ class WalletViewModel: ObservableObject {
             try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
         } catch {
             Logger.warn("Failed to refresh public Paykit endpoints on foreground: \(error)", context: "WalletViewModel")
+        }
+    }
+
+    private func syncPublicPaykitEndpointsAfterChannelBecameUsable() async {
+        do {
+            try await PublicPaykitService.syncPublishedEndpoints(wallet: self, publish: true)
+        } catch {
+            Logger.warn("Failed to refresh public Paykit endpoints after channel became usable: \(error)", context: "WalletViewModel")
         }
     }
 
