@@ -270,10 +270,6 @@ private struct MigrationNewsWidgetOptions: Codable {
     var showSource: Bool
 }
 
-private struct MigrationFactsWidgetOptions: Codable {
-    var showSource: Bool
-}
-
 // MARK: - RN Migration Keys
 
 enum RNKeychainKey {
@@ -1958,17 +1954,6 @@ extension MigrationsService {
             )
             if let data = try? JSONEncoder().encode(options) {
                 result["blocks"] = data
-            }
-        }
-
-        let factsPrefs = (widgetsDict["factsPreferences"] as? [String: Any])
-            ?? (widgetsDict["facts"] as? [String: Any])
-        if let prefs = factsPrefs {
-            let options = MigrationFactsWidgetOptions(
-                showSource: getBool(from: prefs, key: "showSource", defaultValue: false)
-            )
-            if let data = try? JSONEncoder().encode(options) {
-                result["facts"] = data
             }
         }
 

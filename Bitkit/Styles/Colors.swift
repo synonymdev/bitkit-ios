@@ -10,6 +10,7 @@ extension Color {
     static let redAccent = Color(hex: 0xE95164)
     static let yellowAccent = Color(hex: 0xFFD200)
     static let pubkyGreen = Color(hex: 0xBEFF00)
+    static let bitcoin = Color(hex: 0xF7931A)
 
     // MARK: - Base
 

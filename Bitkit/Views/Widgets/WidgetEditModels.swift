@@ -111,32 +111,6 @@ enum WidgetEditItemFactory {
     }
 
     @MainActor
-    static func getFactsItems(factsViewModel: FactsViewModel, factsOptions: FactsWidgetOptions) -> [WidgetEditItem] {
-        var items: [WidgetEditItem] = []
-
-        items.append(
-            WidgetEditItem(
-                key: "showTitle",
-                type: .staticItem,
-                titleView: AnyView(TitleText(factsViewModel.fact)),
-                isChecked: true
-            )
-        )
-
-        items.append(
-            WidgetEditItem(
-                key: "showSource",
-                type: .toggleItem,
-                title: t("widgets__widget__source"),
-                valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
-                isChecked: factsOptions.showSource
-            )
-        )
-
-        return items
-    }
-
-    @MainActor
     static func getNewsItems(
         newsViewModel: NewsViewModel,
         newsOptions: NewsWidgetOptions
@@ -365,12 +339,10 @@ enum WidgetEditItemFactory {
     static func getItems(
         for widgetType: WidgetType,
         blocksViewModel: BlocksViewModel,
-        factsViewModel: FactsViewModel,
         newsViewModel: NewsViewModel,
         priceDataByPeriod: [GraphPeriod: [PriceData]] = [:],
         weatherViewModel: WeatherViewModel,
         blocksOptions: BlocksWidgetOptions,
-        factsOptions: FactsWidgetOptions,
         newsOptions: NewsWidgetOptions,
         priceOptions: PriceWidgetOptions,
         weatherOptions: WeatherWidgetOptions
@@ -378,15 +350,13 @@ enum WidgetEditItemFactory {
         switch widgetType {
         case .blocks:
             return getBlocksItems(blocksViewModel: blocksViewModel, blocksOptions: blocksOptions)
-        case .facts:
-            return getFactsItems(factsViewModel: factsViewModel, factsOptions: factsOptions)
         case .news:
             return getNewsItems(newsViewModel: newsViewModel, newsOptions: newsOptions)
         case .price:
             return getPriceItems(priceOptions: priceOptions, priceDataByPeriod: priceDataByPeriod)
         case .weather:
             return getWeatherItems(weatherViewModel: weatherViewModel, weatherOptions: weatherOptions)
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             return []
         }
     }
