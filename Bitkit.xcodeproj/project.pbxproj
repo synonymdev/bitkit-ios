@@ -208,6 +208,7 @@
 				Styles/Colors.swift,
 				Styles/Fonts.swift,
 				Styles/TextStyle.swift,
+				Utilities/LocalizeHelpers.swift,
 			);
 			target = 4A319B4E2E8F24F2002B9AC9 /* BitkitWidgetExtension */;
 		};

@@ -92,45 +92,21 @@ struct WeatherHomeScreenWidgetEntryView: View {
                 WeatherWidgetCompactContent(
                     data: data,
                     metric: metric,
-                    conditionTitle: conditionEnglishShortTitle(data.condition),
-                    metricLabel: metric.englishLabel
+                    conditionTitle: t(data.condition.shortTitleKey),
+                    metricLabel: t(metric.labelKey)
                 )
             default:
                 WeatherWidgetWideContent(
                     data: data,
                     metric: metric,
-                    conditionTitle: conditionEnglishTitle(data.condition),
-                    conditionDescription: conditionEnglishDescription(data.condition),
-                    metricLabel: metric.englishLabel
+                    conditionTitle: t(data.condition.titleKey),
+                    conditionDescription: t(data.condition.descriptionKey),
+                    metricLabel: t(metric.labelKey)
                 )
             }
         } else {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        }
-    }
-
-    private func conditionEnglishTitle(_ condition: FeeCondition) -> String {
-        switch condition {
-        case .good: return "Favorable Conditions"
-        case .average: return "Average Conditions"
-        case .poor: return "Poor Conditions"
-        }
-    }
-
-    private func conditionEnglishShortTitle(_ condition: FeeCondition) -> String {
-        switch condition {
-        case .good: return "Favorable"
-        case .average: return "Average"
-        case .poor: return "Poor"
-        }
-    }
-
-    private func conditionEnglishDescription(_ condition: FeeCondition) -> String {
-        switch condition {
-        case .good: return "All clear. Now would be a good time to transact on the blockchain."
-        case .average: return "The next block rate is close to the monthly averages."
-        case .poor: return "If you are not in a hurry to transact, it may be better to wait a bit."
         }
     }
 
@@ -149,8 +125,8 @@ struct BitkitWeatherWidget: Widget {
         ) { entry in
             WeatherHomeScreenWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("Bitcoin Weather")
-        .description("Find out when it's a good time to transact on the Bitcoin blockchain.")
+        .configurationDisplayName(t("widgets__weather__name"))
+        .description(t("widgets__weather__description"))
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
