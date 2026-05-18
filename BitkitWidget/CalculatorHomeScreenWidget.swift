@@ -171,5 +171,6 @@ struct BitkitCalculatorWidget: Widget {
         .configurationDisplayName("widgets__calculator__name")
         .description("widgets__calculator__gallery_description")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
 }
