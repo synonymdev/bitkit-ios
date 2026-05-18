@@ -12,8 +12,6 @@ struct HomeWidgetsView: View {
 
     @Binding var isEditingWidgets: Bool
     @State private var calculatorFrame: CGRect = .zero
-    @State private var calculatorContentOffset: CGFloat = 0
-    @State private var isScrollLocked = false
 
     private var bottomPadding: CGFloat {
         // Keep the calculator widget fully scrollable above the keyboard.
@@ -30,13 +28,27 @@ struct HomeWidgetsView: View {
         }
     }
 
+    private var visibleWidgets: [Widget] {
+        guard calculatorInput.isPresented,
+              let calculatorIndex = widgetsToShow.firstIndex(where: { $0.type == .calculator })
+        else {
+            return widgetsToShow
+        }
+
+        return Array(widgetsToShow.prefix(through: calculatorIndex))
+    }
+
+    private var shouldAnchorCalculator: Bool {
+        calculatorInput.isPresented && widgetsToShow.first?.type == .calculator
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 DraggableList(
-                    widgetsToShow,
+                    visibleWidgets,
                     id: \.id,
-                    enableDrag: isEditingWidgets,
+                    enableDrag: isEditingWidgets && !calculatorInput.isPresented,
                     itemHeight: 80,
                     onReorder: { sourceIndex, destinationIndex in
                         widgets.reorderWidgets(from: sourceIndex, to: destinationIndex)
@@ -44,21 +56,22 @@ struct HomeWidgetsView: View {
                 ) { widget in
                     rowContent(widget)
                 }
-                .id(widgetsToShow.map(\.id))
+                .id(visibleWidgets.map(\.id))
 
-                CustomButton(title: t("widgets__add"), variant: .tertiary) {
-                    calculatorInput.dismiss()
+                if !calculatorInput.isPresented {
+                    CustomButton(title: t("widgets__add"), variant: .tertiary) {
+                        calculatorInput.dismiss()
 
-                    if app.hasSeenWidgetsIntro {
-                        navigation.navigate(.widgetsList)
-                    } else {
-                        navigation.navigate(.widgetsIntro)
+                        if app.hasSeenWidgetsIntro {
+                            navigation.navigate(.widgetsList)
+                        } else {
+                            navigation.navigate(.widgetsIntro)
+                        }
                     }
+                    .padding(.top, 16)
+                    .accessibilityIdentifier("WidgetsAdd")
                 }
-                .padding(.top, 16)
-                .accessibilityIdentifier("WidgetsAdd")
             }
-            .offset(y: -calculatorContentOffset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.top, ScreenLayout.topPaddingWithSafeArea)
             .padding(.bottom, bottomPadding)
@@ -71,10 +84,7 @@ struct HomeWidgetsView: View {
                     }
             }
         }
-        .scrollDisabled(isScrollLocked)
-        .mask {
-            calculatorContentMask
-        }
+        .scrollDisabled(calculatorInput.isPresented)
         .simultaneousGesture(
             DragGesture(minimumDistance: 8).onChanged { _ in
                 if calculatorInput.isPresented {
@@ -89,51 +99,34 @@ struct HomeWidgetsView: View {
                 calculatorFrame = frame
             }
         }
-        .onChange(of: calculatorInput.activeInput) {
-            guard calculatorInput.activeInput != nil else {
-                calculatorContentOffset = 0
-                isScrollLocked = false
-                return
-            }
-
-            calculatorContentOffset = focusedCalculatorOffset()
-            isScrollLocked = true
-        }
     }
 
-    @ViewBuilder
-    private var calculatorContentMask: some View {
-        if calculatorInput.isPresented {
-            VStack(spacing: 0) {
-                Color.clear
-                    .frame(height: ScreenLayout.topPaddingWithSafeArea + 8)
+    private var anchoredCalculatorTopPadding: CGFloat {
+        guard shouldAnchorCalculator else { return 0 }
 
-                Color.white
-            }
-        } else {
-            Color.white
-        }
-    }
-
-    private func focusedCalculatorOffset() -> CGFloat {
         let bottomInset = windowSafeAreaInsets.bottom > 0 ? windowSafeAreaInsets.bottom : 16
         let numberPadTop = UIScreen.main.bounds.height - bottomInset - NumberPad.contentHeight
         let preferredGap: CGFloat = 16
-        let focusedBottom = numberPadTop - preferredGap
-        let focusedTop = max(ScreenLayout.topPaddingWithSafeArea + 8, focusedBottom - calculatorFrame.height)
-        return max(0, calculatorFrame.minY - focusedTop)
+        let calculatorHeight = calculatorFrame.height > 0 ? calculatorFrame.height : 144
+        return max(0, numberPadTop - ScreenLayout.topPaddingWithSafeArea - calculatorHeight - preferredGap)
     }
 
     @ViewBuilder
     private func rowContent(_ widget: Widget) -> some View {
         if widget.type == .calculator {
-            widget.view(
-                widgetsViewModel: widgets,
-                isEditing: isEditingWidgets,
-                onEditingEnd: { withAnimation { isEditingWidgets = false } }
-            )
-            .id(widget.id)
-            .trackCalculatorWidgetFrame()
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: anchoredCalculatorTopPadding)
+                    .animation(.easeInOut(duration: 0.2), value: anchoredCalculatorTopPadding)
+
+                widget.view(
+                    widgetsViewModel: widgets,
+                    isEditing: isEditingWidgets,
+                    onEditingEnd: { withAnimation { isEditingWidgets = false } }
+                )
+                .id(widget.id)
+                .trackCalculatorWidgetFrame()
+            }
         } else {
             widget.view(
                 widgetsViewModel: widgets,

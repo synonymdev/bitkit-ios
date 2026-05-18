@@ -33,7 +33,6 @@ struct CalculatorWidget: View {
                     onSelectInput: selectInput
                 )
             }
-            .animation(.easeInOut(duration: 0.2), value: calculatorInput.activeInput)
         }
         .task {
             hydrateValuesIfNeeded()

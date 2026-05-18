@@ -64,7 +64,6 @@ struct HomeScreen: View {
 
             if calculatorInput.isPresented {
                 calculatorNumberPad
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(10)
             }
 
@@ -90,7 +89,6 @@ struct HomeScreen: View {
             .allowsHitTesting(false)
         }
         .navigationBarHidden(true)
-        .animation(.easeInOut(duration: 0.2), value: calculatorInput.isPresented)
         .onAppear {
             TimedSheetManager.shared.onHomeScreenEntered()
         }
