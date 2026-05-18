@@ -75,6 +75,8 @@ struct WeatherWidgetWideContent: View {
                 VStack(alignment: .leading, spacing: 4) {
                     SubtitleText(conditionTitle, textColor: .white)
                     BodySText(conditionDescription, textColor: .white80)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 WeatherFeeMetric(label: metricLabel, value: metric.value(from: data))
