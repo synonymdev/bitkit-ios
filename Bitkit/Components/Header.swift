@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct Header: View {
+    @Environment(CalculatorInputManager.self) private var calculatorInput
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
@@ -25,12 +26,14 @@ struct Header: View {
                 AppStatus(
                     testID: "HeaderAppStatus",
                     onPress: {
+                        calculatorInput.dismiss()
                         navigation.navigate(.appStatus)
                     }
                 )
 
                 if showWidgetEditButton {
                     Button(action: {
+                        calculatorInput.dismiss()
                         isEditingWidgets.toggle()
                     }) {
                         Image(isEditingWidgets ? "check-mark" : "pencil")
@@ -45,6 +48,8 @@ struct Header: View {
                 }
 
                 Button {
+                    calculatorInput.dismiss()
+
                     withAnimation {
                         app.showDrawer = true
                     }
@@ -65,9 +70,10 @@ struct Header: View {
         .padding(.trailing, 10)
     }
 
-    @ViewBuilder
     private var profileButton: some View {
         Button {
+            calculatorInput.dismiss()
+
             if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
                 navigation.navigate(.profile)
             } else if pubkyProfile.initializationErrorMessage != nil {

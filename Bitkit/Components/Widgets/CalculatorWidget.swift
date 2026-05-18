@@ -5,11 +5,10 @@ struct CalculatorWidget: View {
     var isEditing: Bool = false
     var onEditingEnd: (() -> Void)?
 
+    @Environment(CalculatorInputManager.self) private var calculatorInput
     @EnvironmentObject private var currency: CurrencyViewModel
 
     @State private var values = CalculatorWidgetValues()
-    @State private var activeInput: CalculatorMoneyType?
-    @State private var errorKey: String?
     @State private var hasHydrated = false
     @State private var previousDisplayUnit: BitcoinDisplayUnit = .modern
 
@@ -30,23 +29,11 @@ struct CalculatorWidget: View {
             VStack(spacing: 0) {
                 CalculatorWidgetWideContent(
                     values: currentValues,
-                    activeInput: activeInput,
+                    activeInput: calculatorInput.activeInput,
                     onSelectInput: selectInput
                 )
-
-                if let activeInput {
-                    NumberPad(
-                        type: numberPadType(for: activeInput),
-                        decimalSeparator: CalculatorWidgetFormatter.decimalSeparator(),
-                        errorKey: errorKey,
-                        onPress: handleNumberPadInput
-                    )
-                    .padding(.top, 8)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    .accessibilityIdentifier("CalculatorNumberPad")
-                }
             }
-            .animation(.easeInOut(duration: 0.2), value: activeInput)
+            .animation(.easeInOut(duration: 0.2), value: calculatorInput.activeInput)
         }
         .task {
             hydrateValuesIfNeeded()
@@ -54,12 +41,14 @@ struct CalculatorWidget: View {
         .onChange(of: currency.selectedCurrency) {
             refreshCurrencyFields()
             refreshFiatFromBitcoin()
+            refreshNumberPadConfiguration()
             persistValues()
         }
         .onChange(of: currency.displayUnit) { _, newUnit in
             convertBitcoinValue(to: newUnit)
             refreshCurrencyFields()
             refreshFiatFromBitcoin()
+            refreshNumberPadConfiguration()
             persistValues()
         }
         .onChange(of: currency.rates) {
@@ -67,8 +56,12 @@ struct CalculatorWidget: View {
             refreshFiatFromBitcoin()
             persistValues()
         }
+        .onChange(of: calculatorInput.submittedKey?.id) {
+            guard let key = calculatorInput.submittedKey?.value else { return }
+            handleNumberPadInput(key)
+        }
         .onDisappear {
-            activeInput = nil
+            calculatorInput.dismiss()
         }
     }
 
@@ -105,12 +98,15 @@ struct CalculatorWidget: View {
     }
 
     private func selectInput(_ input: CalculatorMoneyType) {
-        activeInput = input
-        errorKey = nil
+        calculatorInput.activate(
+            input,
+            numberPadType: numberPadType(for: input),
+            decimalSeparator: CalculatorWidgetFormatter.decimalSeparator()
+        )
     }
 
     private func handleNumberPadInput(_ key: String) {
-        guard let activeInput else { return }
+        guard let activeInput = calculatorInput.activeInput else { return }
 
         let currentValue = rawValue(for: activeInput)
         let nextValue = CalculatorWidgetFormatter.applyNumberPadInput(
@@ -131,7 +127,7 @@ struct CalculatorWidget: View {
             return
         }
 
-        errorKey = nil
+        calculatorInput.errorKey = nil
 
         switch activeInput {
         case .bitcoin:
@@ -172,6 +168,14 @@ struct CalculatorWidget: View {
         case .fiat:
             return CalculatorWidgetFormatter.fiatDecimalPlaces
         }
+    }
+
+    private func refreshNumberPadConfiguration() {
+        guard let activeInput = calculatorInput.activeInput else { return }
+        calculatorInput.updateConfiguration(
+            numberPadType: numberPadType(for: activeInput),
+            decimalSeparator: CalculatorWidgetFormatter.decimalSeparator()
+        )
     }
 
     private func refreshCurrencyFields() {
@@ -235,9 +239,11 @@ struct CalculatorWidget: View {
 
     private func showInputError(for key: String) {
         Haptics.notify(.warning)
-        errorKey = key
+        calculatorInput.errorKey = key
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            errorKey = nil
+            if calculatorInput.errorKey == key {
+                calculatorInput.errorKey = nil
+            }
         }
     }
 }
@@ -347,6 +353,8 @@ private struct CalculatorWidgetRow: View {
 
                 if isActive {
                     CalculatorCursor()
+                        .frame(width: 0)
+                        .offset(x: -1)
                 }
 
                 if !placeholder.isEmpty {
@@ -399,6 +407,7 @@ private struct CalculatorCursor: View {
     CalculatorWidget()
         .padding()
         .background(Color.black)
+        .environment(CalculatorInputManager())
         .environmentObject(CurrencyViewModel())
         .preferredColorScheme(.dark)
 }
@@ -407,6 +416,7 @@ private struct CalculatorCursor: View {
     CalculatorWidget(isEditing: true)
         .padding()
         .background(Color.black)
+        .environment(CalculatorInputManager())
         .environmentObject(CurrencyViewModel())
         .preferredColorScheme(.dark)
 }

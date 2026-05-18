@@ -12,6 +12,14 @@ struct NumberPad: View {
     let errorKey: String?
     let onPress: (String) -> Void
 
+    static var contentHeight: CGFloat {
+        buttonHeight * 4
+    }
+
+    private static var buttonHeight: CGFloat {
+        UIScreen.main.isSmall ? 65 : 44 + 34
+    }
+
     init(type: NumberPadType = .simple, decimalSeparator: String = ".", errorKey: String? = nil, onPress: @escaping (String) -> Void) {
         self.type = type
         self.decimalSeparator = decimalSeparator
@@ -19,9 +27,11 @@ struct NumberPad: View {
         self.onPress = onPress
     }
 
-    private let buttonHeight: CGFloat = UIScreen.main.isSmall ? 65 : 44 + 34
     private let gridItems = Array(repeating: GridItem(.flexible(), spacing: 0), count: 3)
     private let numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    private var buttonHeight: CGFloat {
+        Self.buttonHeight
+    }
 
     var body: some View {
         VStack(spacing: 0) {

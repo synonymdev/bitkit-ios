@@ -1,11 +1,14 @@
 import SwiftUI
 
 struct TabBar: View {
+    @Environment(CalculatorInputManager.self) private var calculatorInput
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     var shouldShow: Bool {
+        if calculatorInput.isPresented { return false }
+
         let routesWithTabBar = Set<Route>([.activityList, .savingsWallet, .spendingWallet])
         if navigation.path.isEmpty { return true }
         return navigation.currentRoute.map { routesWithTabBar.contains($0) } ?? false
@@ -66,6 +69,7 @@ struct TabBar: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .overlay {
         TabBar()
+            .environment(CalculatorInputManager())
             .environmentObject(NavigationViewModel())
             .environmentObject(SheetViewModel())
     }
@@ -79,6 +83,7 @@ struct TabBar: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .overlay {
         TabBar()
+            .environment(CalculatorInputManager())
             .environmentObject(NavigationViewModel())
             .environmentObject(SheetViewModel())
     }

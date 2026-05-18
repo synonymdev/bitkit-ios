@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct HomeScreen: View {
+    @Environment(CalculatorInputManager.self) private var calculatorInput
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -39,6 +40,10 @@ struct HomeScreen: View {
                 .scrollTargetBehavior(.paging)
                 .scrollPosition(id: $scrollPosition)
                 .onChange(of: scrollPosition) { _, newValue in
+                    if newValue != 1 {
+                        calculatorInput.dismiss()
+                    }
+
                     // Dismiss this hint after the user has seen it and scrolls to widgets
                     if hasActivity, newValue == 1 {
                         app.hasDismissedWidgetsOnboardingHint = true
@@ -56,6 +61,12 @@ struct HomeScreen: View {
                 }
             }
             .ignoresSafeArea()
+
+            if calculatorInput.isPresented {
+                calculatorNumberPad
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(10)
+            }
 
             // Top and bottom gradients
             VStack(spacing: 0) {
@@ -79,11 +90,33 @@ struct HomeScreen: View {
             .allowsHitTesting(false)
         }
         .navigationBarHidden(true)
+        .animation(.easeInOut(duration: 0.2), value: calculatorInput.isPresented)
         .onAppear {
             TimedSheetManager.shared.onHomeScreenEntered()
         }
         .onDisappear {
             TimedSheetManager.shared.onHomeScreenExited()
+        }
+    }
+
+    private var calculatorNumberPad: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            VStack(spacing: 0) {
+                Divider()
+
+                NumberPad(
+                    type: calculatorInput.numberPadType,
+                    decimalSeparator: calculatorInput.decimalSeparator,
+                    errorKey: calculatorInput.errorKey
+                ) { key in
+                    calculatorInput.submit(key)
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.bottom, windowSafeAreaInsets.bottom > 0 ? 0 : 16)
+            .background(Color.black.ignoresSafeArea(edges: .bottom))
         }
     }
 }
