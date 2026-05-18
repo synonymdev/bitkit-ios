@@ -14,17 +14,6 @@ extension WeatherDisplayMetric {
         }
     }
 
-    /// Hard-coded English label used inside the WidgetKit extension where the `t()` helper
-    /// is not available. Values are uppercased at render via `.textCase(.uppercase)`.
-    var englishLabel: String {
-        switch self {
-        case .fiatFee, .satsFee:
-            return "Current fee"
-        case .nextBlockFee:
-            return "Next block inclusion"
-        }
-    }
-
     /// Render value text from a cached weather snapshot.
     func value(from data: CachedWeather) -> String {
         switch self {
