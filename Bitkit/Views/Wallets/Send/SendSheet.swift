@@ -2,6 +2,7 @@ import SwiftUI
 
 enum SendRoute: Hashable {
     case options
+    case contact
     case manual
     case amount
     case utxoSelection
@@ -291,6 +292,8 @@ struct SendSheet: View {
         switch route {
         case .options:
             SendOptionsView(navigationPath: $navigationPath)
+        case .contact:
+            SendContactSelectView(navigationPath: $navigationPath)
         case .manual:
             SendEnterManuallyView(navigationPath: $navigationPath)
         case .amount:

@@ -6,6 +6,7 @@ enum PrivatePaykitError: LocalizedError {
     case privateUnavailable
     case payloadTooLarge
     case staleLinkState
+    case routeHintsUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -15,6 +16,8 @@ enum PrivatePaykitError: LocalizedError {
             "The private Paykit payload is too large."
         case .staleLinkState:
             "The private Paykit link state changed."
+        case .routeHintsUnavailable:
+            "A reachable private Lightning endpoint is not available yet."
         }
     }
 }
@@ -73,8 +76,6 @@ extension PrivatePaykitService {
             "decrypt",
             "decryption",
             "cipher",
-            "noise state",
-            "counter",
             "invalid tag",
             "bad mac",
         ].contains { lowercasedReason.contains($0) }

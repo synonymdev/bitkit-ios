@@ -25,7 +25,11 @@ struct LnurlPayConfirm: View {
 
     var body: some View {
         VStack {
-            SheetHeader(title: t("wallet__lnurl_p_title"), showBackButton: true)
+            SheetHeader(
+                title: t("wallet__lnurl_p_title"),
+                showBackButton: true,
+                action: AnyView(SendContactHeaderAvatar())
+            )
 
             VStack(alignment: .leading) {
                 MoneyStack(

@@ -766,7 +766,8 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private static func clearPublicPaykitSharingState() {
-        UserDefaults.standard.set(false, forKey: "sharesPublicPaykitEndpoints")
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: "hasConfirmedPublicPaykitEndpoints")
         PrivatePaykitService.setContactSharingCleanupPending(false)
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")

@@ -62,13 +62,15 @@ final class PrivatePaykitServiceTests: XCTestCase {
 
     func testStaleLinkFailureClassificationUsesTypedPaykitErrors() async {
         let service = PrivatePaykitService()
-        let noiseFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Transport(reason: "noise state decrypt failed"))
+        let noiseFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Transport(reason: "bad mac while decrypting payload"))
         let linkHandleFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Validation(reason: "Unknown encrypted-link handle: 123"))
+        let counterFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Transport(reason: "counter mismatch"))
         let networkFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Transport(reason: "connection timed out"))
         let sessionFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Session(reason: "No active session"))
 
         XCTAssertTrue(noiseFailure)
         XCTAssertTrue(linkHandleFailure)
+        XCTAssertFalse(counterFailure)
         XCTAssertFalse(networkFailure)
         XCTAssertFalse(sessionFailure)
     }
@@ -96,6 +98,16 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 AppError(message: "Lightning payment failed", debugMessage: "Route not found")
             )
         )
+    }
+
+    func testReceivedPrivateInvoiceHashKeepsContactAttribution() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycontact"
+
+        await service.rememberReceivedInvoicePaymentHash("payment-hash", publicKey: publicKey)
+
+        let matchedPublicKey = await service.contactPublicKey(forPrivateInvoicePaymentHash: "payment-hash")
+        XCTAssertEqual(matchedPublicKey, publicKey)
     }
 
     func testWalletBackupDecodesExistingPayloadWithoutPrivatePaykitFields() throws {

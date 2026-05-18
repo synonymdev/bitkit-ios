@@ -59,7 +59,7 @@ class WalletViewModel: ObservableObject {
     private var probeOutcomes: [PaymentId: ProbeOutcome] = [:]
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
-    @AppStorage("sharesPublicPaykitEndpoints") private var sharesPublicPaykitEndpoints = false
+    @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
 
     private static let publicPaykitInvoiceRefreshBufferSeconds: TimeInterval = 30 * 60
     private static let paykitChannelUsabilityRefreshDelay: UInt64 = 5_000_000_000
@@ -1004,20 +1004,34 @@ class WalletViewModel: ObservableObject {
         return onchainAddress
     }
 
-    func refreshPublicPaykitEndpoints(forceRefreshBolt11: Bool = false) async throws -> (onchainAddress: String, bolt11: String) {
-        let publicOnchainAddress = try await refreshReusableOnchainAddress()
+    func refreshPublicPaykitEndpoints(
+        forceRefreshBolt11: Bool = false,
+        includeOnchain: Bool = true,
+        includeLightning: Bool = true
+    ) async throws -> (onchainAddress: String, bolt11: String) {
+        let publicOnchainAddress = includeOnchain ? try await refreshReusableOnchainAddress() : ""
 
-        if hasUsableChannels {
+        if includeLightning, hasUsableChannels {
             let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
             let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
             if shouldRefreshBolt11 {
-                try await refreshPublicPaykitBolt11()
+                do {
+                    try await refreshPublicPaykitBolt11()
+                } catch let error as PublicPaykitError {
+                    guard case .routeHintsUnavailable = error else {
+                        throw error
+                    }
+                    Logger.warn(
+                        "Public Paykit Lightning invoice has no route hints yet; publishing without Lightning for now",
+                        context: "WalletViewModel"
+                    )
+                }
             }
-        } else {
+        } else if includeLightning {
             clearPublicPaykitBolt11()
         }
 
-        return (publicOnchainAddress, publicPaykitBolt11)
+        return (publicOnchainAddress, includeLightning ? publicPaykitBolt11 : "")
     }
 
     func refreshPublicPaykitEndpointsOnForeground() async {
@@ -1042,8 +1056,16 @@ class WalletViewModel: ObservableObject {
         await refreshAndSyncState()
         try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning)
 
-        if sharesPublicPaykitEndpoints, hasUsableChannels {
-            await syncPublicPaykitEndpointsAfterChannelBecameUsable()
+        if sharesPublicPaykitEndpoints {
+            do {
+                if hasUsableChannels {
+                    await syncPublicPaykitEndpointsAfterChannelBecameUsable()
+                } else {
+                    try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
+                }
+            } catch {
+                Logger.warn("Failed to refresh public Paykit endpoints after channel availability changed: \(error)", context: "WalletViewModel")
+            }
         }
 
         await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
@@ -1058,7 +1080,10 @@ class WalletViewModel: ObservableObject {
         guard publicPaykitBolt11ExpiresAt > Date().timeIntervalSince1970 + Self.publicPaykitInvoiceRefreshBufferSeconds else { return false }
 
         guard case let .lightning(lightningInvoice) = try? await decode(invoice: publicPaykitBolt11) else { return false }
-        return !lightningInvoice.isExpired && lightningInvoice.amountSatoshis == 0 && (lightningInvoice.description ?? "").isEmpty
+        return !lightningInvoice.isExpired &&
+            lightningInvoice.amountSatoshis == 0 &&
+            (lightningInvoice.description ?? "").isEmpty &&
+            PublicPaykitService.hasLightningRouteHints(bolt11: publicPaykitBolt11)
     }
 
     private func refreshPublicPaykitBolt11() async throws {
@@ -1066,6 +1091,10 @@ class WalletViewModel: ObservableObject {
         guard case let .lightning(lightningInvoice) = try await decode(invoice: invoice) else {
             clearPublicPaykitBolt11()
             throw PublicPaykitError.invalidPayload
+        }
+        guard PublicPaykitService.hasLightningRouteHints(bolt11: invoice) else {
+            clearPublicPaykitBolt11()
+            throw PublicPaykitError.routeHintsUnavailable
         }
 
         publicPaykitBolt11 = invoice

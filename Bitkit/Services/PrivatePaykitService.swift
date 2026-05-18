@@ -16,7 +16,7 @@ actor PrivatePaykitService {
     static let invoiceRefreshBufferSeconds: TimeInterval = 30 * 60
     static let maxReceivedInvoicePaymentHashesPerContact = 100
     static let staleLinkFailureThreshold = 3
-    static let publishingEnabledKey = "sharesPublicPaykitEndpoints"
+    static let publishingEnabledKey = "sharesPrivatePaykitEndpoints"
     static let cleanupPendingKey = "paykitContactSharingCleanupPending"
     static let cacheStateKey = "privatePaykitCacheState"
     static let privateEndpointRemovalPayload = #"{"value":""}"#

@@ -4,6 +4,7 @@ import SwiftUI
 struct SendConfirmationView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activityList: ActivityListViewModel
+    @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var settings: SettingsViewModel
@@ -86,9 +87,21 @@ struct SendConfirmationView: View {
         return invoice.amountSatoshis == 0
     }
 
+    private var contactPaymentContact: PubkyContact? {
+        guard let publicKey = app.contactPaymentContext?.publicKey else {
+            return nil
+        }
+
+        return contactsManager.contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) })
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: t("wallet__send_review"), showBackButton: !navigationPath.isEmpty)
+            SheetHeader(
+                title: t("wallet__send_review"),
+                showBackButton: !navigationPath.isEmpty,
+                action: AnyView(SendContactHeaderAvatar())
+            )
 
             VStack(alignment: .leading, spacing: 0) {
                 if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
@@ -253,19 +266,25 @@ struct SendConfirmationView: View {
                     .accessibilityIdentifier("SendConfirmAssetButton")
                 }
 
-                Button {
-                    navigateToManual(with: invoice.address)
-                } label: {
+                if let contact = contactPaymentContact {
                     SendSectionView(t("wallet__send_to")) {
-                        BodySSBText(invoice.address.ellipsis(maxLength: 18))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(height: 28)
+                        contactRecipient(contact)
                     }
+                } else {
+                    Button {
+                        navigateToManual(with: invoice.address)
+                    } label: {
+                        SendSectionView(t("wallet__send_to")) {
+                            BodySSBText(invoice.address.ellipsis(maxLength: 18))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(height: 28)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("ReviewUri")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("ReviewUri")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -354,18 +373,24 @@ struct SendConfirmationView: View {
 
                 Spacer(minLength: 16)
 
-                Button {
-                    navigateToManual(with: invoice.bolt11)
-                } label: {
+                if let contact = contactPaymentContact {
                     SendSectionView(t("wallet__send_to")) {
-                        BodySSBText(invoice.bolt11.ellipsis(maxLength: 18))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(height: 28)
+                        contactRecipient(contact)
                     }
+                } else {
+                    Button {
+                        navigateToManual(with: invoice.bolt11)
+                    } label: {
+                        SendSectionView(t("wallet__send_to")) {
+                            BodySSBText(invoice.bolt11.ellipsis(maxLength: 18))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(height: 28)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("ReviewUri")
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("ReviewUri")
             }
 
             HStack(alignment: .top, spacing: 16) {
@@ -445,6 +470,17 @@ struct SendConfirmationView: View {
         }
     }
 
+    private func contactRecipient(_ contact: PubkyContact) -> some View {
+        HStack(spacing: 8) {
+            PubkyContactAvatar(contact: contact, size: 24)
+
+            BodySSBText(contact.displayName)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 2)
+        .accessibilityIdentifier("ReviewContactRecipient")
+    }
+
     private func performPayment() async throws {
         var createdMetadataPaymentId: String? = nil
         let contactPublicKey = app.contactPaymentContext?.publicKey
@@ -494,9 +530,7 @@ struct SendConfirmationView: View {
                     // onTimeout callback already navigated to .pending; suppress throw
                     return
                 } catch {
-                    if let contactPublicKey,
-                       PrivatePaykitService.isDuplicatePaymentError(error)
-                    {
+                    if let contactPublicKey {
                         await PrivatePaykitService.shared.discardRemoteLightningEndpoints(
                             publicKey: contactPublicKey,
                             paymentHashes: [paymentHash]

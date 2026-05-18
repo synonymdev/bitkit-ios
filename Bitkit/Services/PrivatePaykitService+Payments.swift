@@ -207,6 +207,15 @@ extension PrivatePaykitService {
                     continue
                 }
 
+                guard PublicPaykitService.hasLightningRouteHints(bolt11: endpoint.value) else {
+                    staleLightningPaymentHashes.insert(paymentHash)
+                    Logger.warn(
+                        "Ignoring private Paykit Lightning endpoint without route hints from \(PubkyPublicKeyFormat.redacted(publicKey))",
+                        context: "PrivatePaykit"
+                    )
+                    continue
+                }
+
                 if await hasAttemptedOutboundBolt11Payment(paymentHash: paymentHash) {
                     staleLightningPaymentHashes.insert(paymentHash)
                     Logger.warn(
@@ -286,8 +295,7 @@ extension PrivatePaykitService {
 
         guard !remoteEntries.isEmpty else {
             // Paykit returns an empty map when there are no unread private-payment messages.
-            // Keep the cached map in that case; the current rc5 API cannot distinguish
-            // "no unread update" from a peer intentionally publishing an empty map.
+            // Keep the cached map in that case so transient empty reads do not drop the last known endpoints.
             return 0
         }
 

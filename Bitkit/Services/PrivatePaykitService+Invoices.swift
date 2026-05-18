@@ -22,6 +22,9 @@ extension PrivatePaykitService {
         guard case let .lightning(decodedInvoice) = try await decode(invoice: bolt11) else {
             throw PublicPaykitError.invalidPayload
         }
+        guard PublicPaykitService.hasLightningRouteHints(bolt11: bolt11) else {
+            throw PrivatePaykitError.routeHintsUnavailable
+        }
 
         let invoice = StoredInvoice(
             bolt11: bolt11,
@@ -55,7 +58,8 @@ extension PrivatePaykitService {
               await !isReceivedInvoiceSettled(paymentHash: invoice.paymentHash),
               case let .lightning(decodedInvoice) = try? await decode(invoice: invoice.bolt11),
               !decodedInvoice.isExpired,
-              decodedInvoice.amountSatoshis == 0
+              decodedInvoice.amountSatoshis == 0,
+              PublicPaykitService.hasLightningRouteHints(bolt11: invoice.bolt11)
         else {
             return nil
         }
@@ -78,6 +82,16 @@ extension PrivatePaykitService {
     @MainActor
     func walletHasUsableChannels(_ wallet: WalletViewModel) -> Bool {
         wallet.hasUsableChannels
+    }
+
+    func shouldRetryMissingPrivateLightningEndpoint(for publicKey: String, wallet: WalletViewModel) async -> Bool {
+        guard PublicPaykitService.isLightningPaymentOptionEnabled(),
+              await walletHasUsableChannels(wallet)
+        else {
+            return false
+        }
+
+        return await reusablePrivateInvoice(for: publicKey) == nil
     }
 
     @MainActor
