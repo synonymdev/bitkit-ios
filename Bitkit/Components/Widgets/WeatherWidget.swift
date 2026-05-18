@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// In-app Bitcoin Weather widget (v61). Renders the wide layout — used inside the home feed
-/// and the wide carousel page on the preview screen.
 struct WeatherWidget: View {
     var options: WeatherWidgetOptions = .init()
     var isEditing: Bool = false
