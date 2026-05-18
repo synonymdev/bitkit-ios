@@ -46,10 +46,7 @@ struct WeatherFeeMetric: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(Fonts.medium(size: 13))
-                .foregroundColor(.white.opacity(0.64))
-                .kerning(1)
+            CaptionMText(label, textColor: .white64)
                 .textCase(.uppercase)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
@@ -76,12 +73,8 @@ struct WeatherWidgetWideContent: View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(conditionTitle)
-                        .font(Fonts.bold(size: 17))
-                        .foregroundColor(.white)
-                    Text(conditionDescription)
-                        .font(Fonts.regular(size: 15))
-                        .foregroundColor(.white.opacity(0.8))
+                    SubtitleText(conditionTitle, textColor: .white)
+                    BodySText(conditionDescription, textColor: .white80)
                 }
 
                 WeatherFeeMetric(label: metricLabel, value: metric.value(from: data))
@@ -111,9 +104,7 @@ struct WeatherWidgetCompactContent: View {
                 Text(data.condition.icon)
                     .font(.system(size: 52))
                     .widgetAccentable()
-                Text(conditionTitle)
-                    .font(Fonts.bold(size: 17))
-                    .foregroundColor(.white)
+                SubtitleText(conditionTitle, textColor: .white)
                     .lineLimit(1)
             }
             .padding(.top, 16)
