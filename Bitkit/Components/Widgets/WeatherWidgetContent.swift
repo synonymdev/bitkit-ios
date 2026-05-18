@@ -62,13 +62,12 @@ struct WeatherFeeMetric: View {
                 .kerning(1)
                 .textCase(.uppercase)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.85)
             Text(value)
                 .font(Fonts.bold(size: valueSize))
                 .foregroundColor(valueColor)
                 .kerning(-1)
                 .lineLimit(1)
-                .minimumScaleFactor(0.5)
         }
     }
 }
@@ -111,8 +110,6 @@ struct WeatherWidgetWideContent: View {
 struct WeatherWidgetCompactContent: View {
     let data: CachedWeather
     let metric: WeatherDisplayMetric
-    /// Short single-word title (e.g. "Favorable" / "Average" / "Poor") — full sentence titles
-    /// don't fit in the small widget.
     let conditionTitle: String
     let metricLabel: String
 
@@ -125,8 +122,9 @@ struct WeatherWidgetCompactContent: View {
                     .font(Fonts.bold(size: 17))
                     .foregroundColor(.white)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
             }
+
+            Spacer()
 
             WeatherFeeMetric(
                 label: metricLabel,
