@@ -30,10 +30,12 @@ struct ReceiveSheetItem: SheetItem {
 }
 
 struct ReceiveSheet: View {
-    let config: ReceiveSheetItem
-    @State private var navigationPath: [ReceiveRoute] = []
-    @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var tagManager: TagManager
+    @EnvironmentObject private var wallet: WalletViewModel
+
+    let config: ReceiveSheetItem
+
+    @State private var navigationPath: [ReceiveRoute] = []
 
     var body: some View {
         Sheet(id: .receive, data: config) {
@@ -44,6 +46,7 @@ struct ReceiveSheet: View {
                     }
             }
         }
+        .offlineSheetOverlay(title: t("wallet__receive_bitcoin"))
         .onAppear {
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""

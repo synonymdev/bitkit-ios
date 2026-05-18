@@ -1144,6 +1144,10 @@ extension LightningService {
                     Logger.error(error, context: "node.eventHandled()")
                 }
 
+                if case .channelReady = event {
+                    await refreshChannelCache()
+                }
+
                 onEvent?(event)
 
                 switch event {
@@ -1204,7 +1208,6 @@ extension LightningService {
                     Logger.info(
                         "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") fundingTxo: \(fundingTxo != nil ? "\(fundingTxo!.txid):\(fundingTxo!.vout)" : "nil")"
                     )
-                    await refreshChannelCache()
                 case let .channelClosed(channelId, userChannelId, counterpartyNodeId, reason):
                     let reasonString = reason.map { String(describing: $0) } ?? ""
                     Logger.info(

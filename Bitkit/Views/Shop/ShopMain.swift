@@ -10,6 +10,8 @@ struct ShopMain: View {
 
     let page: String
 
+    let navTitle = t("other__shop__main__nav_title")
+
     private var uri: String {
         let baseUrl = "https://embed.bitrefill.com"
         let paymentMethod = "bitcoin" // Payment method "bitcoin" gives a unified invoice
@@ -19,13 +21,14 @@ struct ShopMain: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("other__shop__main__nav_title"))
+            NavigationBar(title: navTitle)
 
             ShopWebView(url: uri, onMessage: handleMessage)
                 .padding(.top, 16)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
+        .offlineOverlay(title: navTitle)
     }
 
     private func handleMessage(_ message: String) {
