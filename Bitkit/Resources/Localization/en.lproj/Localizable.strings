@@ -1405,8 +1405,9 @@
 "widgets__news__error" = "Couldn\'t get the latest news";
 "widgets__news__content_header" = "Content";
 "widgets__blocks__name" = "Bitcoin Blocks";
-"widgets__blocks__description" = "Examine various statistics on newly mined Bitcoin Blocks.";
+"widgets__blocks__description" = "Examine various statistics on newly mined Bitcoin Blocks. Powered by mempool.space.";
 "widgets__blocks__error" = "Couldn\'t get blocks data";
+"widgets__blocks__data_header" = "Data (max 4)";
 "widgets__facts__name" = "Bitcoin Facts";
 "widgets__facts__description" = "Discover fun facts about Bitcoin, every time you open your wallet.";
 "widgets__calculator__name" = "Bitcoin Calculator";

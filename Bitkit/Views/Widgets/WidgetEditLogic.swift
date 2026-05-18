@@ -34,11 +34,16 @@ class WidgetEditLogic: ObservableObject {
     var hasEnabledOption: Bool {
         switch widgetType {
         case .blocks:
-            // Blocks widget has many options, check if any are enabled
-            return blocksOptions.height || blocksOptions.time || blocksOptions.date || blocksOptions.transactionCount || blocksOptions.size
-                || blocksOptions.weight || blocksOptions.difficulty || blocksOptions.hash || blocksOptions.merkleRoot || blocksOptions.showSource
-        case .news, .facts:
-            // Static items (showTitle) are always enabled, so these widgets always have enabled options
+            return blocksOptions.height
+                || blocksOptions.time
+                || blocksOptions.date
+                || blocksOptions.transactionCount
+                || blocksOptions.size
+                || blocksOptions.fees
+        case .news:
+            return newsOptions.showTitle || newsOptions.showSource || newsOptions.showDate
+        case .facts:
+            // Facts widget's static title is always shown, so it always has an enabled option
             return true
         case .weather:
             // Weather widget has multiple options, check if any are enabled
@@ -83,25 +88,23 @@ class WidgetEditLogic: ObservableObject {
         case .blocks:
             switch item.key {
             case "height":
+                guard canToggleBlockOption(blocksOptions.height) else { break }
                 blocksOptions.height.toggle()
             case "time":
+                guard canToggleBlockOption(blocksOptions.time) else { break }
                 blocksOptions.time.toggle()
             case "date":
+                guard canToggleBlockOption(blocksOptions.date) else { break }
                 blocksOptions.date.toggle()
             case "transactionCount":
+                guard canToggleBlockOption(blocksOptions.transactionCount) else { break }
                 blocksOptions.transactionCount.toggle()
             case "size":
+                guard canToggleBlockOption(blocksOptions.size) else { break }
                 blocksOptions.size.toggle()
-            case "weight":
-                blocksOptions.weight.toggle()
-            case "difficulty":
-                blocksOptions.difficulty.toggle()
-            case "hash":
-                blocksOptions.hash.toggle()
-            case "merkleRoot":
-                blocksOptions.merkleRoot.toggle()
-            case "showSource":
-                blocksOptions.showSource.toggle()
+            case "fees":
+                guard canToggleBlockOption(blocksOptions.fees) else { break }
+                blocksOptions.fees.toggle()
             default:
                 break
             }
@@ -155,6 +158,21 @@ class WidgetEditLogic: ObservableObject {
             break
         }
         onStateChange?()
+    }
+
+    private func canToggleBlockOption(_ isCurrentlyEnabled: Bool) -> Bool {
+        isCurrentlyEnabled || enabledBlockOptionsCount < 4
+    }
+
+    private var enabledBlockOptionsCount: Int {
+        [
+            blocksOptions.height,
+            blocksOptions.time,
+            blocksOptions.date,
+            blocksOptions.transactionCount,
+            blocksOptions.size,
+            blocksOptions.fees,
+        ].filter { $0 }.count
     }
 
     func loadCurrentOptions() {

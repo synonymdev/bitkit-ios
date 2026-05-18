@@ -6,7 +6,7 @@ import SwiftUI
 class BlocksViewModel: ObservableObject {
     static let shared = BlocksViewModel()
 
-    @Published var blockData: BlockData?
+    @Published var blockData: CachedBlock?
     @Published var isLoading = false
     @Published var error: Error?
 

@@ -270,19 +270,6 @@ private struct MigrationNewsWidgetOptions: Codable {
     var showSource: Bool
 }
 
-private struct MigrationBlocksWidgetOptions: Codable {
-    var height: Bool
-    var time: Bool
-    var date: Bool
-    var transactionCount: Bool
-    var size: Bool
-    var weight: Bool
-    var difficulty: Bool
-    var hash: Bool
-    var merkleRoot: Bool
-    var showSource: Bool
-}
-
 private struct MigrationFactsWidgetOptions: Codable {
     var showSource: Bool
 }
@@ -1962,17 +1949,12 @@ extension MigrationsService {
         let blocksPrefs = (widgetsDict["blocksPreferences"] as? [String: Any])
             ?? (widgetsDict["blocks"] as? [String: Any])
         if let prefs = blocksPrefs {
-            let options = MigrationBlocksWidgetOptions(
+            let options = BlocksWidgetOptions(
                 height: getBool(from: prefs, key: "height", fallbackKey: "showBlock", defaultValue: true),
                 time: getBool(from: prefs, key: "time", fallbackKey: "showTime", defaultValue: true),
                 date: getBool(from: prefs, key: "date", fallbackKey: "showDate", defaultValue: true),
-                transactionCount: getBool(from: prefs, key: "transactionCount", fallbackKey: "showTransactions", defaultValue: false),
-                size: getBool(from: prefs, key: "size", fallbackKey: "showSize", defaultValue: false),
-                weight: getBool(from: prefs, key: "weight", defaultValue: false),
-                difficulty: getBool(from: prefs, key: "difficulty", defaultValue: false),
-                hash: getBool(from: prefs, key: "hash", defaultValue: false),
-                merkleRoot: getBool(from: prefs, key: "merkleRoot", defaultValue: false),
-                showSource: getBool(from: prefs, key: "showSource", defaultValue: false)
+                transactionCount: getBool(from: prefs, key: "transactionCount", fallbackKey: "showTransactions", defaultValue: true),
+                size: getBool(from: prefs, key: "size", fallbackKey: "showSize", defaultValue: false)
             )
             if let data = try? JSONEncoder().encode(options) {
                 result["blocks"] = data

@@ -32,7 +32,7 @@ enum WidgetsBackupConverter {
                             "showDate": options.date,
                             "showTransactions": options.transactionCount,
                             "showSize": options.size,
-                            "showSource": options.showSource,
+                            "showFees": options.fees,
                         ]
                     }
                 case .news:
@@ -125,13 +125,9 @@ enum WidgetsBackupConverter {
                         height: prefs["showBlock"] as? Bool ?? true,
                         time: prefs["showTime"] as? Bool ?? true,
                         date: prefs["showDate"] as? Bool ?? true,
-                        transactionCount: prefs["showTransactions"] as? Bool ?? false,
+                        transactionCount: prefs["showTransactions"] as? Bool ?? true,
                         size: prefs["showSize"] as? Bool ?? false,
-                        weight: false,
-                        difficulty: false,
-                        hash: false,
-                        merkleRoot: false,
-                        showSource: prefs["showSource"] as? Bool ?? false
+                        fees: prefs["showFees"] as? Bool ?? false
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
@@ -201,7 +197,7 @@ enum WidgetsBackupConverter {
             "showDate": defaults.date,
             "showTransactions": defaults.transactionCount,
             "showSize": defaults.size,
-            "showSource": defaults.showSource,
+            "showFees": defaults.fees,
         ]
     }
 
