@@ -43,12 +43,7 @@ enum WidgetsBackupConverter {
                     }
                 case .weather:
                     if let options = try? JSONDecoder().decode(WeatherWidgetOptions.self, from: optionsData) {
-                        weatherPreferences = [
-                            "showTitle": options.showStatus,
-                            "showDescription": options.showText,
-                            "showCurrentFee": options.showMedian,
-                            "showNextBlockFee": options.showNextBlockFee,
-                        ]
+                        weatherPreferences = androidWeatherPreferences(for: options.selectedMetric)
                     }
                 case .price:
                     if let options = try? JSONDecoder().decode(PriceWidgetOptions.self, from: optionsData) {
@@ -135,10 +130,7 @@ enum WidgetsBackupConverter {
             case .weather:
                 if let prefs = jsonDict["weatherPreferences"] as? [String: Any] {
                     let iosOptions = WeatherWidgetOptions(
-                        showStatus: prefs["showTitle"] as? Bool ?? true,
-                        showText: prefs["showDescription"] as? Bool ?? false,
-                        showMedian: prefs["showCurrentFee"] as? Bool ?? false,
-                        showNextBlockFee: prefs["showNextBlockFee"] as? Bool ?? false
+                        selectedMetric: weatherMetric(fromAndroidPrefs: prefs)
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
@@ -196,12 +188,37 @@ enum WidgetsBackupConverter {
 
     private static func getDefaultWeatherPreferences() -> [String: Any] {
         let defaults = WeatherWidgetOptions()
-        return [
-            "showTitle": defaults.showStatus,
-            "showDescription": defaults.showText,
-            "showCurrentFee": defaults.showMedian,
-            "showNextBlockFee": defaults.showNextBlockFee,
+        return androidWeatherPreferences(for: defaults.selectedMetric)
+    }
+
+    /// Maps the v61 single-select weather metric to the legacy Android 4-toggle preference
+    /// shape so cross-platform backup files stay readable on Android.
+    private static func androidWeatherPreferences(for metric: WeatherDisplayMetric) -> [String: Any] {
+        var prefs: [String: Any] = [
+            "showTitle": true,
+            "showDescription": true,
+            "showCurrentFee": false,
+            "showNextBlockFee": false,
         ]
+        switch metric {
+        case .fiatFee, .satsFee:
+            prefs["showCurrentFee"] = true
+        case .nextBlockFee:
+            prefs["showNextBlockFee"] = true
+        }
+        return prefs
+    }
+
+    /// Maps legacy Android 4-toggle weather prefs to the v61 single-select metric. Prefers
+    /// "showNextBlockFee" when it's the only enabled metric, otherwise defaults to fiat fee.
+    private static func weatherMetric(fromAndroidPrefs prefs: [String: Any]) -> WeatherDisplayMetric {
+        let showCurrentFee = prefs["showCurrentFee"] as? Bool ?? false
+        let showNextBlockFee = prefs["showNextBlockFee"] as? Bool ?? false
+
+        if showNextBlockFee && !showCurrentFee {
+            return .nextBlockFee
+        }
+        return .fiatFee
     }
 
     private static func getDefaultPricePreferences() -> [String: Any] {

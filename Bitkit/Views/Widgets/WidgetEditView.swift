@@ -52,10 +52,10 @@ struct WidgetEditView: View {
         editLogic?.resetOptions()
     }
 
-    /// v61 widget configuration screens (Price, News, Blocks) use the widget name as the title
+    /// v61 widget configuration screens (Price, News, Blocks, Weather) use the widget name as the title
     /// and skip the legacy description block.
     private var usesV61Header: Bool {
-        id == .price || id == .blocks
+        id == .price || id == .blocks || id == .weather
     }
 
     var body: some View {

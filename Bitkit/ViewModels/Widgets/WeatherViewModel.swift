@@ -19,7 +19,7 @@ struct BlockFeeRates: Codable {
 class WeatherViewModel: ObservableObject {
     static let shared = WeatherViewModel()
 
-    @Published var weatherData: WeatherData?
+    @Published var weatherData: CachedWeather?
     @Published var isLoading: Bool = false
     @Published var error: Error?
 
@@ -106,7 +106,7 @@ class WeatherViewModel: ObservableObject {
 
     /// Fetches fresh weather data from API (always hits the network)
     @discardableResult
-    private func fetchFreshWeatherData() async throws -> WeatherData {
+    private func fetchFreshWeatherData() async throws -> CachedWeather {
         let response = try await weatherService.fetchWeatherData()
 
         // Calculate condition using USD threshold logic
@@ -115,16 +115,18 @@ class WeatherViewModel: ObservableObject {
             percentile: response.historicalPercentile
         )
 
-        let avgFee = Int(response.fees.mid) * vbytesSize
-        let formattedFee = try formatFeeAmount(avgFee)
+        let medianFeeSats = Int(response.fees.mid) * vbytesSize
+        let formattedFiat = try formatFeeAmount(medianFeeSats)
 
-        let data = WeatherData(
+        let data = CachedWeather(
             condition: condition,
-            currentFee: formattedFee,
+            currentFeeFiat: formattedFiat,
+            currentFeeSats: medianFeeSats,
             nextBlockFee: Int(response.fees.fast)
         )
 
         weatherService.cacheData(data)
+        WeatherHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
         weatherData = data
         error = nil
 

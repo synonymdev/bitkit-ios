@@ -261,6 +261,10 @@ class WidgetsViewModel: ObservableObject {
             if type == .blocks, let blocksOptions = options as? BlocksWidgetOptions {
                 syncBlocksOptionsToHomeScreenWidget(blocksOptions)
             }
+
+            if type == .weather, let weatherOptions = options as? WeatherWidgetOptions {
+                syncWeatherOptionsToHomeScreenWidget(weatherOptions)
+            }
         } catch {
             print("Failed to save widget options: \(error)")
         }
@@ -337,5 +341,13 @@ class WidgetsViewModel: ObservableObject {
     private func syncBlocksOptionsToHomeScreenWidget(_ options: BlocksWidgetOptions) {
         BlocksHomeScreenWidgetOptionsStore.save(options)
         BlocksHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+    }
+
+    /// Mirrors in-app weather widget options to the App Group so the home-screen WidgetKit widget can read them.
+    /// Only invoked when the user explicitly changes weather widget options — adding, deleting, or resetting
+    /// in-app widgets must not affect the independent OS home-screen widget.
+    private func syncWeatherOptionsToHomeScreenWidget(_ options: WeatherWidgetOptions) {
+        WeatherHomeScreenWidgetOptionsStore.save(options)
+        WeatherHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 }

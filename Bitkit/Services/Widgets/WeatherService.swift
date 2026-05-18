@@ -13,11 +13,12 @@ struct FeePercentile {
     let highThreshold: Double // 66th percentile
 }
 
-/// Service for fetching and caching Bitcoin fee weather data
+/// Service for fetching and caching Bitcoin fee weather data.
+///
+/// Writes the result to the App Group cache (`WeatherWidgetCache`) so the WidgetKit extension
+/// can surface the same data.
 class WeatherService {
     static let shared = WeatherService()
-    private let cache = UserDefaults.standard
-    private let cacheKey = "weather_widget_cache"
     private let baseUrl = "https://mempool.space/api/v1"
     private let refreshInterval: TimeInterval = 2 * 60 // 2 minutes
 
@@ -28,6 +29,7 @@ class WeatherService {
 
     private init() {
         coreService = CoreService.shared
+        WeatherWidgetCache.legacyDropStandardSuiteCache()
     }
 
     /// Fetches weather data from mempool.space API and fee estimates
@@ -48,31 +50,14 @@ class WeatherService {
         )
     }
 
-    /// Caches weather data to UserDefaults
-    /// - Parameter data: Weather data to cache
-    func cacheData(_ data: WeatherData) {
-        do {
-            let encoder = JSONEncoder()
-            let encoded = try encoder.encode(data)
-            cache.set(encoded, forKey: cacheKey)
-        } catch {
-            // Handle silently
-        }
+    /// Caches weather data to the App Group so the WidgetKit extension can read it.
+    func cacheData(_ data: CachedWeather) {
+        WeatherWidgetCache.saveLatest(data)
     }
 
-    /// Retrieves cached weather data
-    /// - Returns: Weather data if available
-    func getCachedData() -> WeatherData? {
-        guard let data = cache.data(forKey: cacheKey) else {
-            return nil
-        }
-
-        do {
-            let decoder = JSONDecoder()
-            return try decoder.decode(WeatherData.self, from: data)
-        } catch {
-            return nil
-        }
+    /// Retrieves cached weather data from the App Group.
+    func getCachedData() -> CachedWeather? {
+        WeatherWidgetCache.loadLatest()
     }
 
     // MARK: - Private Methods
