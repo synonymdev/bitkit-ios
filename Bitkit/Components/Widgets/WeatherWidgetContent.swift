@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 // MARK: - Display metric helpers
 
@@ -68,6 +69,7 @@ struct WeatherFeeMetric: View {
                 .foregroundColor(valueColor)
                 .kerning(-1)
                 .lineLimit(1)
+                .widgetAccentable()
         }
     }
 }
@@ -100,6 +102,7 @@ struct WeatherWidgetWideContent: View {
             Text(data.condition.icon)
                 .font(.system(size: 82))
                 .frame(width: 82, height: 82)
+                .widgetAccentable()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -118,6 +121,7 @@ struct WeatherWidgetCompactContent: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(data.condition.icon)
                     .font(.system(size: 52))
+                    .widgetAccentable()
                 Text(conditionTitle)
                     .font(Fonts.bold(size: 17))
                     .foregroundColor(.white)
