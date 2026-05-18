@@ -123,14 +123,14 @@ struct WeatherWidgetCompactContent: View {
                     .foregroundColor(.white)
                     .lineLimit(1)
             }
-
-            Spacer()
+            .padding(.top, 16)
 
             WeatherFeeMetric(
                 label: metricLabel,
                 value: metric.value(from: data),
                 valueSize: 22
             )
+            .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
