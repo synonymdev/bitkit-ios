@@ -24,10 +24,8 @@ enum ShopTab: String, CaseIterable, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .shop:
-            return t("other__shop__discover__tabs__shop")
-        case .map:
-            return t("other__shop__discover__tabs__map")
+        case .shop: t("other__shop__discover__tabs__shop")
+        case .map: t("other__shop__discover__tabs__map")
         }
     }
 }
@@ -98,130 +96,106 @@ struct ShopDiscover: View {
     ]
 
     var body: some View {
-        VStack(spacing: 0) {
-            NavigationBar(title: navTitle)
-                .padding(.horizontal, 16)
+        InsetHeaderScrollView(
+            header: {
+                VStack(spacing: 0) {
+                    NavigationBar(title: navTitle)
+                        .padding(.horizontal, 16)
 
-            SegmentedControl(selectedTab: $selectedTab, tabs: ShopTab.allCases)
-                .padding(.horizontal, 16)
-
-            Group {
-                switch selectedTab {
-                case .shop:
-                    shopContent
-                case .map:
-                    ShopWebView(url: Env.btcMapUrl)
-                        .padding(.top, 16)
+                    SegmentedControl(selectedTab: $selectedTab, tabs: ShopTab.allCases)
                         .padding(.horizontal, 16)
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
+                .background(
+                    ZStack {
+                        BlurView()
+                        LinearGradient(
+                            gradient: Gradient(stops: [
+                                .init(color: Color.black, location: 0.0),
+                                .init(color: Color.black, location: 0.4),
+                                .init(color: Color.black.opacity(0), location: 1.0),
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    }
+                    .ignoresSafeArea(edges: .top)
+                )
+                .compositingGroup()
+                .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 20)
+            },
+            content: {
+                Group {
+                    switch selectedTab {
+                    case .shop:
+                        shopContent
+                    case .map:
+                        ShopWebView(url: Env.btcMapUrl)
+                            .padding(.top, 16)
+                            .padding(.horizontal, 16)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .swipeSegmentedTabs(selection: $selectedTab)
+            },
+            scrollModifier: ShopDiscoverScrollModifier(disableOuterScroll: selectedTab == .map)
+        )
         .navigationBarHidden(true)
         .offlineOverlay(title: navTitle)
     }
 
     private var shopContent: some View {
-        GeometryReader { geometry in
-            let cardSize = (geometry.size.width - 32 - 16) / 2
-
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: 16),
-                            GridItem(.flexible(), spacing: 16),
-                        ],
-                        spacing: 16
-                    ) {
-                        ForEach(cards) { card in
-                            ShopDiscoverCard(
-                                title: card.title,
-                                description: card.description,
-                                imageName: card.imageName,
-                                color: card.color,
-                                size: cardSize
-                            ) {
-                                navigation.navigate(.shopMain(page: card.route))
-                            }
+        VStack(alignment: .leading, spacing: 0) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 16),
+                    GridItem(.flexible(), spacing: 16),
+                ],
+                spacing: 16
+            ) {
+                ForEach(cards) { card in
+                    SuggestionCard(
+                        title: card.title,
+                        description: card.description,
+                        imageName: card.imageName,
+                        accentColor: card.color,
+                        onTap: {
+                            navigation.navigate(.shopMain(page: card.route))
                         }
-                    }
-                    .padding(.bottom, 16)
+                    )
+                }
+            }
+            .padding(.bottom, 16)
 
-                    VStack {
-                        CaptionMText(t("other__shop__discover__label"))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(height: 50)
+            VStack {
+                CaptionMText(t("other__shop__discover__label"))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 8)
+            }
+            .frame(height: 50)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 8)
 
-                    LazyVStack(spacing: 0) {
-                        ForEach(categories) { category in
-                            ShopCategoryRow(
-                                title: category.title,
-                                iconName: category.iconName
-                            ) {
-                                navigation.navigate(.shopMain(page: category.route))
-                            }
-                        }
+            LazyVStack(spacing: 0) {
+                ForEach(categories) { category in
+                    ShopCategoryRow(
+                        title: category.title,
+                        iconName: category.iconName
+                    ) {
+                        navigation.navigate(.shopMain(page: category.route))
                     }
                 }
-                .padding(.top, 16)
-                .padding(.horizontal, 16)
             }
         }
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
     }
 }
 
-// MARK: - Shop Discover Card Component
+/// Disables the outer `InsetHeaderScrollView` vertical scroll on the map tab so `WKWebView` owns vertical panning.
+private struct ShopDiscoverScrollModifier: ViewModifier {
+    let disableOuterScroll: Bool
 
-struct ShopDiscoverCard: View {
-    let title: String
-    let description: String
-    let imageName: String
-    let color: Color
-    let size: CGFloat
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 0) {
-                Spacer()
-
-                Image(imageName)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 96, height: 96)
-                    .frame(maxWidth: .infinity, alignment: .center)
-
-                Text(title)
-                    .font(.custom(Fonts.black, size: 20))
-                    .lineLimit(1)
-                    .kerning(-0.5)
-                    .textCase(.uppercase)
-                    .padding(.top, 4)
-
-                CaptionBText(description)
-            }
-            .padding()
-            .frame(width: size, height: size, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(stops: [
-                                .init(color: color, location: 0.0),
-                                .init(color: Color.black.opacity(0.1), location: 0.9),
-                                .init(color: Color.black, location: 1.0),
-                            ]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
+    func body(content: Content) -> some View {
+        content.scrollDisabled(disableOuterScroll)
     }
 }
 
