@@ -4,7 +4,6 @@ import WidgetKit
 /// Mirrors in-app Weather widget options into the App Group so the WidgetKit extension can read them,
 /// and centralizes the WidgetKit reload trigger for the Weather home-screen widget.
 enum WeatherHomeScreenWidgetOptionsStore {
-    /// WidgetKit `kind` for the home-screen Weather widget (must match `BitkitWeatherWidget`).
     static let weatherHomeScreenWidgetKind = "BitkitWeatherWidget"
 
     private static let suiteName = "group.bitkit"
