@@ -12,7 +12,7 @@ struct WeatherWidgetEntry: TimelineEntry {
 // MARK: - Timeline Provider
 
 struct WeatherWidgetProvider: TimelineProvider {
-    private static let refreshInterval: TimeInterval = 2 * 60
+    private static let refreshInterval: TimeInterval = 10 * 60
 
     /// Stable mock for widget gallery / placeholder snapshots.
     private static let mockData = CachedWeather(
