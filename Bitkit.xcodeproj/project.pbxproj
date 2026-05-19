@@ -202,6 +202,7 @@
 				Models/WeatherWidgetData.swift,
 				Models/WeatherWidgetOptions.swift,
 				Services/Widgets/BlocksHomeScreenWidgetOptionsStore.swift,
+				Services/Widgets/MempoolWeatherAPI.swift,
 				Services/Widgets/NewsHomeScreenWidgetOptionsStore.swift,
 				Services/Widgets/PriceHomeScreenWidgetOptionsStore.swift,
 				Services/Widgets/WeatherHomeScreenWidgetOptionsStore.swift,

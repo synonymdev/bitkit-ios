@@ -1,14 +1,12 @@
 import Foundation
 
-/// Slim Bitcoin fee weather fetcher used inside the WidgetKit extension.
+/// Slim Bitcoin fee weather fetcher used inside the WidgetKit extension. Network/decoding is
+/// delegated to `MempoolWeatherAPI` so the URL strings and wire shapes stay in one place.
 enum WeatherWidgetService {
     enum FetchError: Error {
-        case invalidURL
-        case unexpectedResponse
         case missingData
     }
 
-    private static let baseUrl = "https://mempool.space/api"
     /// Average native segwit transaction size used to convert sats/vByte → total sats.
     private static let vbytesSize = 140
 
@@ -30,8 +28,8 @@ enum WeatherWidgetService {
     }
 
     static func fetchFreshLatest() async throws -> CachedWeather {
-        async let feesPromise = fetchRecommendedFees()
-        async let pricesPromise = fetchPrices()
+        async let feesPromise = MempoolWeatherAPI.fetchRecommendedFees()
+        async let pricesPromise = MempoolWeatherAPI.fetchPrices()
         async let percentilePromise = resolvePercentile()
 
         let fees = try await feesPromise
@@ -81,51 +79,12 @@ enum WeatherWidgetService {
         if let cached = WeatherWidgetCache.loadPercentile() {
             return cached
         }
-        let history = try await fetchHistoricalFees()
+        let history = try await MempoolWeatherAPI.fetchHistoricalFees()
         guard let percentile = FeePercentile(history: history) else {
             throw FetchError.missingData
         }
         WeatherWidgetCache.savePercentile(percentile)
         return percentile
-    }
-
-    // MARK: - Network
-
-    private static func fetchRecommendedFees() async throws -> WireRecommendedFees {
-        guard let url = URL(string: "\(baseUrl)/v1/fees/recommended") else {
-            throw FetchError.invalidURL
-        }
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw FetchError.unexpectedResponse
-        }
-        return try JSONDecoder().decode(WireRecommendedFees.self, from: data)
-    }
-
-    /// Returns the BTC spot price map from mempool.space (currency code → unit price for 1 BTC).
-    /// The endpoint reports a handful of fiat currencies (USD, EUR, GBP, CAD, CHF, AUD, JPY) plus
-    /// a `time` field which is stripped here.
-    private static func fetchPrices() async throws -> [String: Double] {
-        guard let url = URL(string: "\(baseUrl)/v1/prices") else {
-            throw FetchError.invalidURL
-        }
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw FetchError.unexpectedResponse
-        }
-        let raw = try JSONDecoder().decode([String: Double].self, from: data)
-        return raw.filter { $0.key != "time" }
-    }
-
-    private static func fetchHistoricalFees() async throws -> [BlockFeeRates] {
-        guard let url = URL(string: "\(baseUrl)/v1/mining/blocks/fee-rates/3m") else {
-            throw FetchError.invalidURL
-        }
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw FetchError.unexpectedResponse
-        }
-        return try JSONDecoder().decode([BlockFeeRates].self, from: data)
     }
 
     // MARK: - Formatting
@@ -147,14 +106,4 @@ enum WeatherWidgetService {
         let amount = Double(sats) / 100_000_000.0 * currencyPerBtc
         return formatter.string(from: NSNumber(value: amount)) ?? String(format: "%.2f \(currencyCode)", amount)
     }
-}
-
-// MARK: - Wire models
-
-private struct WireRecommendedFees: Codable {
-    let fastestFee: Int
-    let halfHourFee: Int
-    let hourFee: Int
-    let economyFee: Int
-    let minimumFee: Int
 }
