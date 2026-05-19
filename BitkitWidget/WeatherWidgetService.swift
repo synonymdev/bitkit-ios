@@ -1,10 +1,6 @@
 import Foundation
 
 /// Slim Bitcoin fee weather fetcher used inside the WidgetKit extension.
-///
-/// Reads cached `CachedWeather` from the App Group (written by the main app's `WeatherService`)
-/// and falls back to a direct mempool.space fetch when the cache is empty. The cache itself is
-/// owned by the main app — this service intentionally does not write back to it.
 enum WeatherWidgetService {
     enum FetchError: Error {
         case invalidURL
@@ -69,7 +65,6 @@ enum WeatherWidgetService {
 
     // MARK: - Formatting / classification
 
-    /// Formats a satoshi amount to a USD string using a BTC/USD rate. Returns "—" if rate is missing.
     private static func formatFiat(sats: Int, usdPerBtc: Double?) -> String {
         guard let usdPerBtc, usdPerBtc > 0 else { return "$ —" }
         let usd = Double(sats) / 100_000_000.0 * usdPerBtc
