@@ -86,7 +86,6 @@ struct EditProfileView: View {
 
     // MARK: - Avatar Picker
 
-    @ViewBuilder
     private var avatarPicker: some View {
         PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
             avatarContent
@@ -176,6 +175,7 @@ struct EditProfileView: View {
     }
 
     private func performDeleteProfile() async throws {
+        await PrivatePaykitService.shared.markProfileRecoveryPendingIfNeeded()
         try await contactsManager.deleteAllContacts()
         try await pubkyProfile.deleteProfile()
         navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]

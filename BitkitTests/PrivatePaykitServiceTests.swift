@@ -217,4 +217,86 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertFalse(cacheJson.contains("secret-link"))
         XCTAssertFalse(cacheJson.contains("secret-handshake"))
     }
+
+    func testCloseAndClearCanMarkProfileRecoveryPendingWhenPrivateContactStateExists() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: [:],
+                linkCompletedAt: 123,
+                handshakeUpdatedAt: nil,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil
+            ),
+        ])
+
+        PrivatePaykitService.setProfileRecoveryPending(false)
+        await service.closeAndClear(markProfileRecoveryPending: true)
+        defer { PrivatePaykitService.setProfileRecoveryPending(false) }
+
+        XCTAssertTrue(PrivatePaykitService.isProfileRecoveryPending)
+    }
+
+    func testMarkProfileRecoveryPendingUsesPrivateContactStateBeforeContactDelete() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: [:],
+                linkCompletedAt: 123,
+                handshakeUpdatedAt: nil,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil
+            ),
+        ])
+
+        PrivatePaykitService.setProfileRecoveryPending(false)
+        await service.markProfileRecoveryPendingIfNeeded()
+        await service.pruneUnsavedContactState(savedPublicKeys: [])
+        defer { PrivatePaykitService.setProfileRecoveryPending(false) }
+
+        XCTAssertTrue(PrivatePaykitService.isProfileRecoveryPending)
+        let snapshot = await service.backupSnapshot()
+        XCTAssertNil(snapshot)
+    }
+
+    func testProfileRecoveryStateClearsOldEndpointMetadata() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        let remoteEndpoints = [
+            PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue: #"{"value":"bcrt1qcached"}"#,
+        ]
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: remoteEndpoints,
+                linkCompletedAt: 123,
+                handshakeUpdatedAt: 100,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil
+            ),
+        ])
+
+        await service.markContactForProfileRecovery(publicKey, startedAt: 456)
+        let snapshot = await service.backupSnapshot()?[publicKey]
+
+        XCTAssertEqual(snapshot?.recoveryStartedAt, 456)
+        XCTAssertNil(snapshot?.linkSnapshotHex)
+        XCTAssertNil(snapshot?.handshakeSnapshotHex)
+        XCTAssertEqual(snapshot?.remoteEndpoints, [:])
+        XCTAssertNil(snapshot?.linkCompletedAt)
+        XCTAssertNil(snapshot?.handshakeUpdatedAt)
+    }
 }

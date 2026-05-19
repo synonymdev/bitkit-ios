@@ -3,7 +3,15 @@ import Foundation
 // MARK: - Active Paykit Handles
 
 extension PrivatePaykitService {
-    func closeAndClear() async {
+    func markProfileRecoveryPendingIfNeeded() {
+        guard !state.contacts.isEmpty || !knownSavedContactKeys.isEmpty else { return }
+        Self.setProfileRecoveryPending(true)
+    }
+
+    func closeAndClear(markProfileRecoveryPending: Bool = false) async {
+        if markProfileRecoveryPending {
+            markProfileRecoveryPendingIfNeeded()
+        }
         resetInFlightWork()
         await closeActivePaykitHandles()
         activeHandlesByContact.removeAll()
@@ -195,6 +203,16 @@ extension PrivatePaykitService {
             return true
         }
 
+        return await purgePrivatePaymentStorage(reason: reason)
+    }
+
+    @discardableResult
+    func purgePrivatePaymentOutboxForProfileRecovery(reason: String) async -> Bool {
+        await purgePrivatePaymentStorage(reason: reason)
+    }
+
+    @discardableResult
+    private func purgePrivatePaymentStorage(reason: String) async -> Bool {
         guard let sessionSecret = try? Keychain.loadString(key: .paykitSession),
               !sessionSecret.isEmpty
         else { return false }

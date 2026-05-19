@@ -605,6 +605,7 @@ class PubkyProfileManager: ObservableObject {
                 try? Keychain.delete(key: .pubkySecretKey)
                 try Self.upsertKeychainString(.paykitSession, value: sessionSecret)
                 UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+                PrivatePaykitService.setProfileRecoveryPending(false)
                 Self.notifyAppStateBackupChanged()
             } catch {
                 await PubkyService.forceSignOut()
@@ -755,7 +756,7 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Sign Out
 
     static func clearLocalState() async {
-        await PrivatePaykitService.shared.closeAndClear()
+        await PrivatePaykitService.shared.closeAndClear(markProfileRecoveryPending: true)
         await PrivatePaykitAddressReservationStore.shared.clearContactAssignments()
         await PubkyService.forceSignOut()
         try? Keychain.delete(key: .paykitSession)

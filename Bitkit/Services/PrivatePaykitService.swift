@@ -18,6 +18,7 @@ actor PrivatePaykitService {
     static let staleLinkFailureThreshold = 3
     static let publishingEnabledKey = "sharesPrivatePaykitEndpoints"
     static let cleanupPendingKey = "paykitContactSharingCleanupPending"
+    static let profileRecoveryPendingKey = "privatePaykitProfileRecoveryPending"
     static let cacheStateKey = "privatePaykitCacheState"
     static let privateEndpointRemovalPayload = #"{"value":""}"#
     static let recoveryMarkerStageInit = "init"
@@ -56,5 +57,13 @@ actor PrivatePaykitService {
 
     static func setContactSharingCleanupPending(_ isPending: Bool) {
         UserDefaults.standard.set(isPending, forKey: cleanupPendingKey)
+    }
+
+    static func setProfileRecoveryPending(_ isPending: Bool) {
+        UserDefaults.standard.set(isPending, forKey: profileRecoveryPendingKey)
+    }
+
+    static var isProfileRecoveryPending: Bool {
+        UserDefaults.standard.bool(forKey: profileRecoveryPendingKey)
     }
 }

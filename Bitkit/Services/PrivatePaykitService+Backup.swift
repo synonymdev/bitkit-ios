@@ -41,6 +41,7 @@ extension PrivatePaykitService {
         guard let backup else {
             state = PrivatePaykitState(contacts: [:])
             persistState()
+            Self.setProfileRecoveryPending(false)
             return
         }
 
@@ -72,6 +73,7 @@ extension PrivatePaykitService {
 
         state = PrivatePaykitState(contacts: restoredContacts)
         persistState()
+        Self.setProfileRecoveryPending(false)
     }
 
     func validatedSnapshot(

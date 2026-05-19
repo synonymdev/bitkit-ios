@@ -11,6 +11,13 @@ extension PrivatePaykitService {
     ) async -> Error? {
         let publicKeys = rememberSavedContacts(publicKeys, replacing: true)
         guard await canPublishPrivateEndpoints(wallet: wallet) else { return nil }
+        if Self.isProfileRecoveryPending, !publicKeys.isEmpty {
+            return await recoverSavedContactsAfterProfileRecreation(
+                publicKeys,
+                wallet: wallet,
+                requireImmediatePublication: requireImmediatePublication
+            )
+        }
         await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
         return await publishLocalEndpoints(
             for: publicKeys,
@@ -19,6 +26,57 @@ extension PrivatePaykitService {
             reason: "prepare",
             requireImmediatePublication: requireImmediatePublication
         )
+    }
+
+    @discardableResult
+    func recoverSavedContactsAfterProfileRecreation(
+        _ publicKeys: [String],
+        wallet: WalletViewModel,
+        requireImmediatePublication: Bool = false
+    ) async -> Error? {
+        let publicKeys = rememberSavedContacts(publicKeys, replacing: true)
+        guard !publicKeys.isEmpty else { return nil }
+        guard await canPublishPrivateEndpoints(wallet: wallet) else { return nil }
+
+        invalidateLinkEstablishmentWork()
+        guard await purgePrivatePaymentOutboxForProfileRecovery(reason: "profile recovery") else {
+            Self.setProfileRecoveryPending(true)
+            return requireImmediatePublication ? PrivatePaykitError.privateUnavailable : nil
+        }
+
+        let startedAt = UInt64(Date().timeIntervalSince1970)
+        for publicKey in publicKeys {
+            if let linkId = activeHandlesByContact[publicKey]?.linkId {
+                try? await PubkyService.closeEncryptedLink(linkId: linkId)
+            }
+            if let handshakeId = activeHandlesByContact[publicKey]?.handshakeId {
+                try? await PubkyService.dropEncryptedLinkHandshake(handshakeId: handshakeId)
+            }
+
+            markContactForProfileRecovery(publicKey, startedAt: startedAt)
+        }
+
+        persistState(markWalletBackup: true)
+        Self.setProfileRecoveryPending(false)
+        await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+
+        return await publishLocalEndpoints(
+            for: publicKeys,
+            wallet: wallet,
+            maxAdvanceSteps: 3,
+            reason: "profile recovery",
+            forceLocalPublishWhenRemoteEmpty: true,
+            requireImmediatePublication: requireImmediatePublication
+        )
+    }
+
+    func markContactForProfileRecovery(_ publicKey: String, startedAt: UInt64) {
+        activeHandlesByContact[publicKey] = ContactPaykitHandles()
+
+        var contactState = ContactState()
+        contactState.recoveryStartedAt = startedAt
+        state.contacts[publicKey] = contactState
+        cancelPendingPublicationRetry(for: publicKey)
     }
 
     func refreshSavedContactEndpoints(for publicKeys: [String], wallet: WalletViewModel) async {
@@ -211,7 +269,10 @@ extension PrivatePaykitService {
                         throw error
                     }
 
-                    guard await shouldPublishLocalEndpoints(publicKey: normalizedKey, fetchedRemoteCount: fetchedCount) else {
+                    let shouldForcePublish = forceLocalPublishWhenRemoteEmpty &&
+                        fetchedCount == 0 &&
+                        state.contacts[normalizedKey]?.remoteEndpoints.isEmpty != false
+                    guard shouldForcePublish || await shouldPublishLocalEndpoints(publicKey: normalizedKey, fetchedRemoteCount: fetchedCount) else {
                         if scheduleRetries {
                             schedulePendingPublicationRetry(for: normalizedKey, wallet: wallet)
                         }
@@ -223,6 +284,7 @@ extension PrivatePaykitService {
                         linkId: linkId,
                         wallet: wallet,
                         generation: generation,
+                        force: shouldForcePublish,
                         forceRefreshLightning: forceRefreshLightning
                     )
                     if fetchedCount == 0, state.contacts[normalizedKey]?.remoteEndpoints.isEmpty != false {
