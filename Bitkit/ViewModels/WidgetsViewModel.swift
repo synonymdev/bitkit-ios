@@ -319,33 +319,21 @@ class WidgetsViewModel: ObservableObject {
         }
     }
 
-    /// Mirrors in-app price widget options to the App Group so the home-screen WidgetKit widget can read them.
-    /// Only invoked when the user explicitly changes price widget options — adding, deleting, or resetting
-    /// in-app widgets must not affect the independent OS home-screen widget.
     private func syncPriceOptionsToHomeScreenWidget(_ options: PriceWidgetOptions) {
         PriceHomeScreenWidgetOptionsStore.save(options)
         PriceHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 
-    /// Mirrors in-app news widget options to the App Group so the home-screen WidgetKit widget can read them.
-    /// Only invoked when the user explicitly changes news widget options — adding, deleting, or resetting
-    /// in-app widgets must not affect the independent OS home-screen widget.
     private func syncNewsOptionsToHomeScreenWidget(_ options: NewsWidgetOptions) {
         NewsHomeScreenWidgetOptionsStore.save(options)
         NewsHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 
-    /// Mirrors in-app blocks widget options to the App Group so the home-screen WidgetKit widget can read them.
-    /// Only invoked when the user explicitly changes blocks widget options — adding, deleting, or resetting
-    /// in-app widgets must not affect the independent OS home-screen widget.
     private func syncBlocksOptionsToHomeScreenWidget(_ options: BlocksWidgetOptions) {
         BlocksHomeScreenWidgetOptionsStore.save(options)
         BlocksHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 
-    /// Mirrors in-app weather widget options to the App Group so the home-screen WidgetKit widget can read them.
-    /// Only invoked when the user explicitly changes weather widget options — adding, deleting, or resetting
-    /// in-app widgets must not affect the independent OS home-screen widget.
     private func syncWeatherOptionsToHomeScreenWidget(_ options: WeatherWidgetOptions) {
         WeatherHomeScreenWidgetOptionsStore.save(options)
         WeatherHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
