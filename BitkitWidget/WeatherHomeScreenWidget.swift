@@ -53,18 +53,20 @@ struct WeatherWidgetProvider: TimelineProvider {
 
     func getTimeline(in _: Context, completion: @escaping (Timeline<WeatherWidgetEntry>) -> Void) {
         let options = WeatherHomeScreenWidgetOptionsStore.load()
+        let nextRefresh = Date().addingTimeInterval(Self.refreshInterval)
+
+        if let cached = WeatherWidgetService.cachedLatest() {
+            let entry = WeatherWidgetEntry(date: Date(), data: cached, options: options)
+            completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
+            return
+        }
 
         Task {
-            let entry: WeatherWidgetEntry
-            do {
-                let fresh = try await WeatherWidgetService.fetchFreshLatest()
-                entry = WeatherWidgetEntry(date: Date(), data: fresh, options: options)
-            } catch {
-                let cached = WeatherWidgetService.cachedLatest()
-                entry = WeatherWidgetEntry(date: Date(), data: cached, options: options)
+            let entry = if let fresh = try? await WeatherWidgetService.fetchFreshLatest() {
+                WeatherWidgetEntry(date: Date(), data: fresh, options: options)
+            } else {
+                WeatherWidgetEntry(date: Date(), data: nil, options: options)
             }
-
-            let nextRefresh = Date().addingTimeInterval(Self.refreshInterval)
             completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
         }
     }

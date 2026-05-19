@@ -1,19 +1,6 @@
 import Foundation
 import SwiftUI
 
-/// Block fee rates structure from mempool.space API
-struct BlockFeeRates: Codable {
-    let avgHeight: Int
-    let timestamp: Int
-    let avgFee_0: Double
-    let avgFee_10: Double
-    let avgFee_25: Double
-    let avgFee_50: Double
-    let avgFee_75: Double
-    let avgFee_90: Double
-    let avgFee_100: Double
-}
-
 /// Weather widget view model for handling fee weather data
 @MainActor
 class WeatherViewModel: ObservableObject {
@@ -109,13 +96,16 @@ class WeatherViewModel: ObservableObject {
     private func fetchFreshWeatherData() async throws -> CachedWeather {
         let response = try await weatherService.fetchWeatherData()
 
-        // Calculate condition using USD threshold logic
-        let condition = calculateCondition(
-            feeRate: Double(response.fees.mid),
+        let midSatsPerVbyte = Double(response.fees.mid)
+        let medianFeeSats = Int(response.fees.mid) * vbytesSize
+
+        let condition = FeeCondition.evaluate(
+            midSatsPerVbyte: midSatsPerVbyte,
+            totalSats: medianFeeSats,
+            usdPerBtc: usdPerBtcRate(),
             percentile: response.historicalPercentile
         )
 
-        let medianFeeSats = Int(response.fees.mid) * vbytesSize
         let formattedFiat = try formatFeeAmount(medianFeeSats)
 
         let data = CachedWeather(
@@ -126,6 +116,7 @@ class WeatherViewModel: ObservableObject {
         )
 
         weatherService.cacheData(data)
+        WeatherWidgetCache.savePercentile(response.historicalPercentile)
         WeatherHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
         weatherData = data
         error = nil
@@ -133,31 +124,16 @@ class WeatherViewModel: ObservableObject {
         return data
     }
 
-    /// Calculates fee condition using USD threshold and historical percentiles
-    private func calculateCondition(
-        feeRate: Double,
-        percentile: FeePercentile
-    ) -> FeeCondition {
-        // Constants for condition calculation
-        let usdGoodThreshold = Decimal(1.0) // $1 USD threshold for good condition
-
-        // Check USD threshold first using currency conversion
-        if let currencyViewModel,
-           let converted = currencyViewModel.convert(sats: UInt64(feeRate), to: "USD")
-        {
-            if converted.value <= usdGoodThreshold {
-                return .good
-            }
+    /// Derives BTC/USD spot price from the injected `CurrencyViewModel` by converting 1 BTC to
+    /// USD. Returns `nil` if conversion is unavailable so callers can fall back to the
+    /// percentile-only branch in `FeeCondition.evaluate`.
+    private func usdPerBtcRate() -> Double? {
+        guard let currencyViewModel,
+              let converted = currencyViewModel.convert(sats: 100_000_000, to: "USD")
+        else {
+            return nil
         }
-
-        // Determine status based on current fee relative to percentiles
-        if feeRate <= percentile.lowThreshold {
-            return .good
-        } else if feeRate >= percentile.highThreshold {
-            return .poor
-        } else {
-            return .average
-        }
+        return NSDecimalNumber(decimal: converted.value).doubleValue
     }
 
     /// Formats fee amount using CurrencyViewModel - throws error if conversion fails

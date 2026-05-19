@@ -7,20 +7,11 @@ struct WeatherServiceResponse {
     let fees: FeeRates
 }
 
-/// Historical fee percentile information
-struct FeePercentile {
-    let lowThreshold: Double // 33rd percentile
-    let highThreshold: Double // 66th percentile
-}
-
 /// Service for fetching and caching Bitcoin fee weather data.
 class WeatherService {
     static let shared = WeatherService()
     private let baseUrl = "https://mempool.space/api/v1"
     private let refreshInterval: TimeInterval = 2 * 60 // 2 minutes
-
-    private let percentileLow = 0.33
-    private let percentileHigh = 0.66
 
     private let coreService: CoreService
 
@@ -39,7 +30,12 @@ class WeatherService {
 
         let (fees, history) = try await (feeEstimates, historicalData)
 
-        let percentile = try calculatePercentileThresholds(history: history)
+        guard let percentile = FeePercentile(history: history) else {
+            throw URLError(
+                .resourceUnavailable,
+                userInfo: [NSLocalizedDescriptionKey: "Historical fee data is unavailable"]
+            )
+        }
 
         return WeatherServiceResponse(
             historicalPercentile: percentile,
@@ -89,25 +85,5 @@ class WeatherService {
         }
 
         return try JSONDecoder().decode([BlockFeeRates].self, from: data)
-    }
-
-    /// Calculates percentile thresholds from historical data
-    private func calculatePercentileThresholds(history: [BlockFeeRates]) throws -> FeePercentile {
-        guard !history.isEmpty else {
-            throw URLError(
-                .resourceUnavailable,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Historical fee data is unavailable",
-                ]
-            )
-        }
-
-        let historical = history.map(\.avgFee_50)
-        let sorted = historical.sorted()
-
-        let lowThreshold = sorted[Int(Double(sorted.count) * percentileLow)]
-        let highThreshold = sorted[Int(Double(sorted.count) * percentileHigh)]
-
-        return FeePercentile(lowThreshold: lowThreshold, highThreshold: highThreshold)
     }
 }
