@@ -36,7 +36,8 @@ struct WeatherWidgetProvider: TimelineProvider {
         let options = WeatherHomeScreenWidgetOptionsStore.load()
 
         if context.isPreview {
-            completion(WeatherWidgetEntry(date: Self.mockEntry.date, data: Self.mockData, options: options))
+            let data = WeatherWidgetService.cachedLatest() ?? Self.mockData
+            completion(WeatherWidgetEntry(date: Date(), data: data, options: options))
             return
         }
 
