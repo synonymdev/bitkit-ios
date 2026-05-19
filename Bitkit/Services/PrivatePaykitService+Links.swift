@@ -481,7 +481,7 @@ extension PrivatePaykitService {
             return true
         }
 
-        return marker.createdAt > linkCompletedAt + Self.completedLinkRecoveryMarkerGraceSeconds
+        return marker.createdAt > linkCompletedAt
     }
 
     func validateSnapshot(

@@ -60,6 +60,30 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(aliceToBob.hasSuffix(".json"))
     }
 
+    func testNewerRecoveryMarkerReplacesRecentlyCompletedLink() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: [:],
+                linkCompletedAt: 100,
+                handshakeUpdatedAt: nil,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil
+            ),
+        ])
+
+        let marker = PrivatePaykitService.RecoveryMarker(version: 1, path: "", stage: "init", attemptId: "attempt", createdAt: 101)
+
+        let shouldReplace = await service.shouldReplaceUsableLink(with: marker, publicKey: publicKey)
+
+        XCTAssertTrue(shouldReplace)
+    }
+
     func testStaleLinkFailureClassificationUsesTypedPaykitErrors() async {
         let service = PrivatePaykitService()
         let noiseFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Transport(reason: "bad mac while decrypting payload"))

@@ -27,7 +27,6 @@ actor PrivatePaykitService {
     static let pendingPublicationRetryDelay: UInt64 = 5_000_000_000
     static let pendingPublicationRetryAttempts = 60
     static let freshLinkInitialPublishDelaySeconds: UInt64 = 8
-    static let completedLinkRecoveryMarkerGraceSeconds: UInt64 = 5 * 60
     static let privateStorageRootPath = "/pub/paykit/v0/private/"
     static let privateStoragePurgeMaxEntries = 500
     static let privateStoragePurgeMaxDepth = 3
