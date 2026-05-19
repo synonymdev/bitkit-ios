@@ -16,6 +16,13 @@ enum WeatherWidgetService {
         WeatherWidgetCache.loadLatest()
     }
 
+    /// Returns the cached weather only while it's within the freshness TTL set by
+    /// `WeatherWidgetCache.cacheFreshnessTTL`. The widget timeline uses this so it can fall
+    /// back to its own fetch when the main app hasn't refreshed in a while.
+    static func cachedLatestIfFresh() -> CachedWeather? {
+        WeatherWidgetCache.loadLatestIfFresh()
+    }
+
     static func fetchFreshLatest() async throws -> CachedWeather {
         async let feesPromise = fetchRecommendedFees()
         async let usdRatePromise = fetchUsdRate()
@@ -37,12 +44,17 @@ enum WeatherWidgetService {
 
         let fiatString = formatFiat(sats: medianFeeSats, usdPerBtc: usdRate)
 
-        return CachedWeather(
+        let entry = CachedWeather(
             condition: condition,
             currentFeeFiat: fiatString,
             currentFeeSats: medianFeeSats,
             nextBlockFee: fees.fastestFee
         )
+
+        // Persist to the shared App Group cache. The main app will overwrite this on the next
+        // foreground refresh; until then the next timeline tick within the TTL reuses our write.
+        WeatherWidgetCache.saveLatest(entry)
+        return entry
     }
 
     // MARK: - Percentile resolution

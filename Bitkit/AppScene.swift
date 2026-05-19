@@ -436,6 +436,7 @@ struct AppScene: View {
                 walletViewModel: wallet,
                 currencyViewModel: currency
             )
+
         } catch {
             app.toast(error)
         }

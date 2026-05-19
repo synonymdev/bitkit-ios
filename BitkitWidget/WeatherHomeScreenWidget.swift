@@ -55,15 +55,23 @@ struct WeatherWidgetProvider: TimelineProvider {
         let options = WeatherHomeScreenWidgetOptionsStore.load()
         let nextRefresh = Date().addingTimeInterval(Self.refreshInterval)
 
-        if let cached = WeatherWidgetService.cachedLatest() {
-            let entry = WeatherWidgetEntry(date: Date(), data: cached, options: options)
+        // Prefer the main app's cache while it's still within `cacheFreshnessTTL` — that
+        // guarantees the widget value matches what the in-app card shows.
+        if let fresh = WeatherWidgetService.cachedLatestIfFresh() {
+            let entry = WeatherWidgetEntry(date: Date(), data: fresh, options: options)
             completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
             return
         }
 
+        // Cache is stale (or missing). Fetch independently so the widget stays useful even
+        // when the user hasn't opened the app recently — accept the small data-source drift
+        // between mempool and BitkitCore feeds.
         Task {
             let entry = if let fresh = try? await WeatherWidgetService.fetchFreshLatest() {
                 WeatherWidgetEntry(date: Date(), data: fresh, options: options)
+            } else if let stale = WeatherWidgetService.cachedLatest() {
+                // Last resort: keep showing the most recently known value rather than blanking.
+                WeatherWidgetEntry(date: Date(), data: stale, options: options)
             } else {
                 WeatherWidgetEntry(date: Date(), data: nil, options: options)
             }

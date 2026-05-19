@@ -130,21 +130,30 @@ struct CachedFeePercentile: Codable, Equatable {
 enum WeatherWidgetCache {
     static let appGroupSuiteName = "group.bitkit"
     private static let latestKey = "weather_widget_latest_v1"
+    private static let latestTimestampKey = "weather_widget_latest_timestamp_v1"
     private static let percentileKey = "weather_widget_percentile_v1"
     private static let legacyStandardKey = "weather_widget_cache"
 
     /// How long the cached percentile is considered fresh.
     static let percentileTTL: TimeInterval = 30 * 60
 
+    /// How long the cached `CachedWeather` is considered authoritative. Beyond this the OS
+    /// widget falls back to its own fetch so it stays useful between app sessions.
+    static let cacheFreshnessTTL: TimeInterval = 10 * 60
+
     private static func defaults() -> UserDefaults {
         UserDefaults(suiteName: appGroupSuiteName) ?? .standard
     }
 
-    static func saveLatest(_ data: CachedWeather) {
+    static func saveLatest(_ data: CachedWeather, now: Date = Date()) {
         guard let encoded = try? JSONEncoder().encode(data) else { return }
-        defaults().set(encoded, forKey: latestKey)
+        let store = defaults()
+        store.set(encoded, forKey: latestKey)
+        store.set(now.timeIntervalSince1970, forKey: latestTimestampKey)
     }
 
+    /// Returns whatever's cached, regardless of age. Used by the in-app stale-while-revalidate
+    /// flow that displays cached data immediately and refreshes in the background.
     static func loadLatest() -> CachedWeather? {
         guard let data = defaults().data(forKey: latestKey),
               let decoded = try? JSONDecoder().decode(CachedWeather.self, from: data)
@@ -152,6 +161,18 @@ enum WeatherWidgetCache {
             return nil
         }
         return decoded
+    }
+
+    /// Returns the cached value only when its sibling timestamp is within
+    /// `cacheFreshnessTTL`. Used by the OS widget timeline so it can decide whether to fall
+    /// back to its own fetch when the main app hasn't refreshed in a while.
+    static func loadLatestIfFresh(now: Date = Date()) -> CachedWeather? {
+        guard let cached = loadLatest() else { return nil }
+        let timestamp = defaults().double(forKey: latestTimestampKey)
+        guard timestamp > 0, now.timeIntervalSince1970 - timestamp <= cacheFreshnessTTL else {
+            return nil
+        }
+        return cached
     }
 
     static func savePercentile(_ percentile: FeePercentile, now: Date = Date()) {
