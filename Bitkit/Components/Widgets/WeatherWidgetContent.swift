@@ -4,7 +4,6 @@ import WidgetKit
 // MARK: - Display metric helpers
 
 extension WeatherDisplayMetric {
-    /// Localization key for the uppercase caption shown above the metric value.
     var labelKey: String {
         switch self {
         case .fiatFee, .satsFee:
@@ -14,7 +13,6 @@ extension WeatherDisplayMetric {
         }
     }
 
-    /// Render value text from a cached weather snapshot.
     func value(from data: CachedWeather) -> String {
         switch self {
         case .fiatFee:
@@ -26,7 +24,6 @@ extension WeatherDisplayMetric {
         }
     }
 
-    /// Stable preview value used in the edit screen when no real data is available.
     var fallbackPreviewValue: String {
         switch self {
         case .fiatFee: return "$ 0.52"
@@ -36,7 +33,7 @@ extension WeatherDisplayMetric {
     }
 }
 
-// MARK: - Shared metric block (caption + big green value)
+// MARK: - Shared metric block
 
 struct WeatherFeeMetric: View {
     let label: String
@@ -59,8 +56,6 @@ struct WeatherFeeMetric: View {
         }
     }
 }
-
-// MARK: - Wide content (in-app + .systemMedium OS widget + wide carousel page)
 
 struct WeatherWidgetWideContent: View {
     let data: CachedWeather
@@ -91,8 +86,6 @@ struct WeatherWidgetWideContent: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
-
-// MARK: - Compact content (.systemSmall OS widget + small carousel page)
 
 struct WeatherWidgetCompactContent: View {
     let data: CachedWeather
