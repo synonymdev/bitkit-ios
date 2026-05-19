@@ -602,7 +602,9 @@ class PubkyProfileManager: ObservableObject {
             }
 
             do {
+                try? Keychain.delete(key: .pubkySecretKey)
                 try Self.upsertKeychainString(.paykitSession, value: sessionSecret)
+                UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
                 Self.notifyAppStateBackupChanged()
             } catch {
                 await PubkyService.forceSignOut()
@@ -869,6 +871,23 @@ class PubkyProfileManager: ObservableObject {
 
     var isAuthenticated: Bool {
         publicKey != nil
+    }
+
+    var hasLocalSecretKeyForCurrentProfile: Bool {
+        Self.hasLocalSecretKey(for: publicKey)
+    }
+
+    nonisolated static func hasLocalSecretKey(for publicKey: String?) -> Bool {
+        guard let publicKey,
+              let secretKeyHex = try? Keychain.loadString(key: .pubkySecretKey),
+              !secretKeyHex.isEmpty,
+              let rawPublicKey = try? PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        else {
+            return false
+        }
+
+        let prefixedPublicKey = rawPublicKey.hasPrefix("pubky") ? rawPublicKey : "pubky\(rawPublicKey)"
+        return PubkyPublicKeyFormat.matches(prefixedPublicKey, publicKey)
     }
 
     nonisolated static func snapshotSessionBackupState(

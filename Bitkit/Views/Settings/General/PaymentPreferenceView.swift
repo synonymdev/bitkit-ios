@@ -52,6 +52,10 @@ struct PaymentPreferenceView: View {
         )
     }
 
+    private var canUsePrivateContactPayments: Bool {
+        pubkyProfile.hasLocalSecretKeyForCurrentProfile
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("settings__adv__payment_preference"))
@@ -86,13 +90,15 @@ struct PaymentPreferenceView: View {
                         SettingsSectionHeader(t("settings__adv__pp_contacts").localizedUppercase)
                             .padding(.top, 16)
 
-                        SettingsRow(
-                            title: t("settings__adv__pp_private_contacts"),
-                            rightIcon: nil,
-                            toggle: privateToggle,
-                            disabled: isUpdatingPrivate,
-                            testIdentifier: "PrivateContactPaymentsToggle"
-                        )
+                        if canUsePrivateContactPayments {
+                            SettingsRow(
+                                title: t("settings__adv__pp_private_contacts"),
+                                rightIcon: nil,
+                                toggle: privateToggle,
+                                disabled: isUpdatingPrivate,
+                                testIdentifier: "PrivateContactPaymentsToggle"
+                            )
+                        }
 
                         SettingsRow(
                             title: t("settings__adv__pp_public_contacts"),
@@ -116,11 +122,19 @@ struct PaymentPreferenceView: View {
         }
         .background(Color.customBlack)
         .navigationBarHidden(true)
+        .task(id: canUsePrivateContactPayments) {
+            await reconcilePrivateSharingAvailability()
+        }
     }
 
     private func updatePrivateSharing(_ enabled: Bool) async {
         guard !isUpdatingPrivate else { return }
         guard !enabled || pubkyProfile.isAuthenticated else {
+            showProfileRequiredError()
+            return
+        }
+        guard !enabled || canUsePrivateContactPayments else {
+            sharesPrivatePaykitEndpoints = false
             showProfileRequiredError()
             return
         }
@@ -165,6 +179,11 @@ struct PaymentPreferenceView: View {
             Logger.error("Failed to update public contact payments: \(error)", context: "PaymentPreferenceView")
             app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
         }
+    }
+
+    private func reconcilePrivateSharingAvailability() async {
+        guard sharesPrivatePaykitEndpoints, !canUsePrivateContactPayments else { return }
+        sharesPrivatePaykitEndpoints = false
     }
 
     private enum PaymentOption {
@@ -218,7 +237,7 @@ struct PaymentPreferenceView: View {
             try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: true)
         }
 
-        if sharesPrivatePaykitEndpoints {
+        if sharesPrivatePaykitEndpoints, canUsePrivateContactPayments {
             if let privatePublishError = await PrivatePaykitService.shared.prepareSavedContacts(
                 contactsManager.contacts.map(\.publicKey),
                 wallet: wallet,
@@ -238,7 +257,7 @@ struct PaymentPreferenceView: View {
             }
         }
 
-        if sharesPrivatePaykitEndpoints {
+        if sharesPrivatePaykitEndpoints, canUsePrivateContactPayments {
             await PrivatePaykitService.shared.prepareSavedContacts(
                 contactsManager.contacts.map(\.publicKey),
                 wallet: wallet

@@ -95,11 +95,17 @@ extension PrivatePaykitService {
     }
 
     @MainActor
-    func canPublishPrivateEndpoints(wallet: WalletViewModel) -> Bool {
-        UserDefaults.standard.bool(forKey: Self.publishingEnabledKey) &&
-            UIApplication.shared.applicationState == .active &&
-            wallet.walletExists == true &&
-            wallet.nodeLifecycleState == .running
+    func canPublishPrivateEndpoints(wallet: WalletViewModel) async -> Bool {
+        guard UserDefaults.standard.bool(forKey: Self.publishingEnabledKey),
+              UIApplication.shared.applicationState == .active,
+              wallet.walletExists == true,
+              wallet.nodeLifecycleState == .running,
+              let ownPublicKey = await PubkyService.currentPublicKey()
+        else {
+            return false
+        }
+
+        return PubkyProfileManager.hasLocalSecretKey(for: ownPublicKey)
     }
 
     @MainActor

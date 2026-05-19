@@ -8,6 +8,7 @@ struct PayContactsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var wallet: WalletViewModel
 
     @State private var enablePayments = true
@@ -75,14 +76,17 @@ struct PayContactsView: View {
         do {
             if publish {
                 try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: true)
-                sharesPrivatePaykitEndpoints = true
+                let canUsePrivateContactPayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
+                sharesPrivatePaykitEndpoints = canUsePrivateContactPayments
                 sharesPublicPaykitEndpoints = true
                 hasConfirmedPublicPaykitEndpoints = true
-                PrivatePaykitService.setContactSharingCleanupPending(false)
-                await PrivatePaykitService.shared.prepareSavedContacts(
-                    contactsManager.contacts.map(\.publicKey),
-                    wallet: wallet
-                )
+                if canUsePrivateContactPayments {
+                    PrivatePaykitService.setContactSharingCleanupPending(false)
+                    await PrivatePaykitService.shared.prepareSavedContacts(
+                        contactsManager.contacts.map(\.publicKey),
+                        wallet: wallet
+                    )
+                }
             } else {
                 var cleanupError: Error?
                 sharesPrivatePaykitEndpoints = false
@@ -127,6 +131,7 @@ struct PayContactsView: View {
             .environmentObject(AppViewModel())
             .environmentObject(ContactsManager())
             .environmentObject(NavigationViewModel())
+            .environmentObject(PubkyProfileManager())
             .environmentObject(WalletViewModel())
     }
     .preferredColorScheme(.dark)

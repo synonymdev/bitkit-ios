@@ -111,6 +111,11 @@ extension PrivatePaykitService {
         guard let normalizedKey = knownSavedContact(publicKey) else {
             return try await PublicPaykitService.beginPayment(to: publicKey)
         }
+        guard let ownPublicKey = await PubkyService.currentPublicKey(),
+              PubkyProfileManager.hasLocalSecretKey(for: ownPublicKey)
+        else {
+            return try await PublicPaykitService.beginPayment(to: publicKey)
+        }
 
         do {
             let privateResult = try await beginPrivatePayment(
