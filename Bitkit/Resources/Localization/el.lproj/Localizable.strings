@@ -864,3 +864,6 @@
 "widgets__weather__current_fee" = "Τρέχον μέσο τέλος";
 "widgets__weather__next_block" = "Συμπερίληψη σε επόμενο block";
 "widgets__weather__error" = "Δεν ήταν δυνατή η λήψη τρέχοντος καιρού τελών";
+"widgets__weather__condition__good__short_title" = "Ευνοϊκές";
+"widgets__weather__condition__average__short_title" = "Μέσες";
+"widgets__weather__condition__poor__short_title" = "Κακές";

@@ -1006,3 +1006,6 @@
 "widgets__weather__current_fee" = "Comissió mitjana actual";
 "widgets__weather__next_block" = "Inclusió al proper bloc";
 "widgets__weather__error" = "No s\'ha pogut obtenir el temps de comissions actual";
+"widgets__weather__condition__good__short_title" = "Favorables";
+"widgets__weather__condition__average__short_title" = "Mitjanes";
+"widgets__weather__condition__poor__short_title" = "Dolentes";

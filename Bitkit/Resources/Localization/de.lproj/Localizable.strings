@@ -1168,3 +1168,6 @@
 "widgets__weather__current_fee" = "Momentane Durchschnittsgebühr";
 "widgets__weather__next_block" = "Nächster Block-Einschluss";
 "widgets__weather__error" = "Konnte aktuelle Gebührenwetterlage nicht ermitteln.";
+"widgets__weather__condition__good__short_title" = "Günstig";
+"widgets__weather__condition__average__short_title" = "Durchschnittlich";
+"widgets__weather__condition__poor__short_title" = "Schlecht";

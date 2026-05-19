@@ -1192,3 +1192,6 @@
 "widgets__weather__current_fee" = "Huidige gemiddelde vergoeding";
 "widgets__weather__next_block" = "Opname in volgend blok";
 "widgets__weather__error" = "Kon huidige vergoedingsweer niet ophalen";
+"widgets__weather__condition__good__short_title" = "Gunstig";
+"widgets__weather__condition__average__short_title" = "Gemiddeld";
+"widgets__weather__condition__poor__short_title" = "Slecht";

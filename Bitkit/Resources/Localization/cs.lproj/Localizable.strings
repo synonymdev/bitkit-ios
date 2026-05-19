@@ -1172,3 +1172,6 @@
 "widgets__weather__current_fee" = "Aktuální průměrný poplatek";
 "widgets__weather__next_block" = "Zařazení do dalšího bloku";
 "widgets__weather__error" = "Nepodařilo se získat aktuální poplatkovou úroveň";
+"widgets__weather__condition__good__short_title" = "Příznivé";
+"widgets__weather__condition__average__short_title" = "Průměrné";
+"widgets__weather__condition__poor__short_title" = "Špatné";

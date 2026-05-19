@@ -1198,3 +1198,6 @@
 "widgets__weather__current_fee" = "Frais moyen actuel";
 "widgets__weather__next_block" = "Inclusion dans le bloc suivant";
 "widgets__weather__error" = "Impossible d'obtenir les frais de transaction actuels";
+"widgets__weather__condition__good__short_title" = "Favorables";
+"widgets__weather__condition__average__short_title" = "Moyennes";
+"widgets__weather__condition__poor__short_title" = "Mauvaises";

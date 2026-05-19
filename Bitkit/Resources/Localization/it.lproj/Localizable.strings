@@ -1144,3 +1144,6 @@
 "widgets__weather__current_fee" = "Commissione media attuale";
 "widgets__weather__next_block" = "Inclusione prossimo blocco";
 "widgets__weather__error" = "Impossibile ottenere le condizioni attuali delle commissioni";
+"widgets__weather__condition__good__short_title" = "Favorevoli";
+"widgets__weather__condition__average__short_title" = "Medie";
+"widgets__weather__condition__poor__short_title" = "Sfavorevoli";

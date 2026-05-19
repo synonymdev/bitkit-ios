@@ -1184,3 +1184,6 @@
 "widgets__weather__current_fee" = "Tasa media actual";
 "widgets__weather__next_block" = "Inclusión en siguiente bloque";
 "widgets__weather__error" = "No se pudo consultar la condición actual de fees";
+"widgets__weather__condition__good__short_title" = "Favorables";
+"widgets__weather__condition__average__short_title" = "Promedio";
+"widgets__weather__condition__poor__short_title" = "Malas";
