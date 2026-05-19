@@ -191,30 +191,34 @@ enum WidgetsBackupConverter {
         return androidWeatherPreferences(for: defaults.selectedMetric)
     }
 
-    /// Maps the v61 single-select weather metric to the legacy Android 4-toggle preference
-    /// shape so cross-platform backup files stay readable on Android.
     private static func androidWeatherPreferences(for metric: WeatherDisplayMetric) -> [String: Any] {
-        var prefs: [String: Any] = [
-            "showTitle": true,
-            "showDescription": true,
-            "showCurrentFee": false,
-            "showNextBlockFee": false,
-        ]
-        switch metric {
-        case .fiatFee, .satsFee:
-            prefs["showCurrentFee"] = true
-        case .nextBlockFee:
-            prefs["showNextBlockFee"] = true
-        }
-        return prefs
+        ["selectedOption": androidSelectedOption(for: metric)]
     }
 
-    /// Maps legacy Android 4-toggle weather prefs to the v61 single-select metric. Prefers
-    /// "showNextBlockFee" when it's the only enabled metric, otherwise defaults to fiat fee.
+    private static func androidSelectedOption(for metric: WeatherDisplayMetric) -> String {
+        switch metric {
+        case .fiatFee: return "CURRENT_FEE_FIAT"
+        case .satsFee: return "CURRENT_FEE_SATS"
+        case .nextBlockFee: return "NEXT_BLOCK_INCLUSION"
+        }
+    }
+
+    /// Maps Android `WeatherPreferences` to the v61 iOS metric. Prefers the v61
+    /// `selectedOption` enum string; falls back to the legacy 4-toggle shape for backups
+    /// produced by older builds.
     private static func weatherMetric(fromAndroidPrefs prefs: [String: Any]) -> WeatherDisplayMetric {
+        if let selected = prefs["selectedOption"] as? String {
+            switch selected {
+            case "CURRENT_FEE_FIAT": return .fiatFee
+            case "CURRENT_FEE_SATS": return .satsFee
+            case "NEXT_BLOCK_INCLUSION": return .nextBlockFee
+            default: break
+            }
+        }
+
+        // Legacy fallback: older builds stored four booleans instead of an enum.
         let showCurrentFee = prefs["showCurrentFee"] as? Bool ?? false
         let showNextBlockFee = prefs["showNextBlockFee"] as? Bool ?? false
-
         if showNextBlockFee && !showCurrentFee {
             return .nextBlockFee
         }
