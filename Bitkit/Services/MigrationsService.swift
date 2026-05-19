@@ -1187,9 +1187,12 @@ extension MigrationsService {
 
         if let currency = settings.selectedCurrency {
             defaults.set(currency, forKey: "selectedCurrency")
+            WeatherCurrencyAppGroupStore.save(code: currency)
+            WeatherHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
         }
         if let language = settings.selectedLanguage {
             defaults.set(language, forKey: "selectedLanguageCode")
+            LanguageManager.mirrorToAppGroup(code: language)
         }
         if let unit = settings.unit {
             let nativeValue = unit == "BTC" ? "Bitcoin" : "Fiat"

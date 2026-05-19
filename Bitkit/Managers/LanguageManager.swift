@@ -7,8 +7,8 @@ import WidgetKit
 final class LanguageManager: ObservableObject {
     static let shared = LanguageManager()
 
-    private static let appGroupSuiteName = "group.bitkit"
-    private static let selectedLanguageCodeKey = "selectedLanguageCode"
+    nonisolated static let appGroupSuiteName = "group.bitkit"
+    nonisolated static let selectedLanguageCodeKey = "selectedLanguageCode"
 
     @Published var currentLanguage: SupportedLanguage
     @AppStorage("selectedLanguageCode") private var selectedLanguageCode: String = ""
@@ -42,8 +42,15 @@ final class LanguageManager: ObservableObject {
     }
 
     private func syncSelectedLanguageToAppGroup(_ code: String) {
-        guard let defaults = UserDefaults(suiteName: Self.appGroupSuiteName) else { return }
-        defaults.set(code, forKey: Self.selectedLanguageCodeKey)
+        Self.mirrorToAppGroup(code: code)
+    }
+
+    /// Thread-safe mirror of the language code into the App Group, suitable for callers that
+    /// can't reach the `@MainActor` instance (e.g. `MigrationsService` writing during restore
+    /// flows). `UserDefaults` and `WidgetCenter` are both safe to call off the main actor.
+    nonisolated static func mirrorToAppGroup(code: String) {
+        guard let defaults = UserDefaults(suiteName: appGroupSuiteName) else { return }
+        defaults.set(code, forKey: selectedLanguageCodeKey)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
