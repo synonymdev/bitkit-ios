@@ -42,6 +42,7 @@ extension PrivatePaykitService {
         }
         if let completedAttemptId {
             state.contacts[publicKey]?.lastCompletedRecoveryAttemptId = completedAttemptId
+            state.contacts[publicKey]?.awaitingRecoveredRemoteEndpoints = true
         }
         persistState(markWalletBackup: true)
     }
@@ -120,6 +121,7 @@ extension PrivatePaykitService {
         state.contacts[publicKey]?.recoveryStartedAt = UInt64(Date().timeIntervalSince1970)
         state.contacts[publicKey]?.mainRecoveryAttemptId = nil
         state.contacts[publicKey]?.responderRecoveryAttemptId = nil
+        state.contacts[publicKey]?.awaitingRecoveredRemoteEndpoints = false
         persistState(markWalletBackup: true)
     }
 

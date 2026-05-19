@@ -21,7 +21,8 @@ extension PrivatePaykitService {
                         handshakeUpdatedAt: contactState.handshakeUpdatedAt,
                         recoveryStartedAt: contactState.recoveryStartedAt,
                         mainRecoveryAttemptId: contactState.mainRecoveryAttemptId,
-                        responderRecoveryAttemptId: contactState.responderRecoveryAttemptId
+                        responderRecoveryAttemptId: contactState.responderRecoveryAttemptId,
+                        awaitingRecoveredRemoteEndpoints: contactState.awaitingRecoveredRemoteEndpoints ? true : nil
                     )
                 )
             }
@@ -68,6 +69,7 @@ extension PrivatePaykitService {
             contactState.recoveryStartedAt = contactBackup.recoveryStartedAt
             contactState.mainRecoveryAttemptId = contactBackup.mainRecoveryAttemptId
             contactState.responderRecoveryAttemptId = contactBackup.responderRecoveryAttemptId
+            contactState.awaitingRecoveredRemoteEndpoints = contactBackup.awaitingRecoveredRemoteEndpoints == true
             restoredContacts[normalizedKey] = contactState
         }
 

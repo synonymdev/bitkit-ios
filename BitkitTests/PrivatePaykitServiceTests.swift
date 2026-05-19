@@ -194,7 +194,8 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     handshakeUpdatedAt: 123,
                     recoveryStartedAt: 789,
                     mainRecoveryAttemptId: "main-attempt",
-                    responderRecoveryAttemptId: "responder-attempt"
+                    responderRecoveryAttemptId: "responder-attempt",
+                    awaitingRecoveredRemoteEndpoints: true
                 ),
             ]
         )
@@ -207,6 +208,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(decoded.transfers.isEmpty)
         XCTAssertNil(decoded.privatePaykitHighestReservedReceiveIndexByAddressType)
         XCTAssertEqual(decoded.privatePaykitContactLinks, backup.privatePaykitContactLinks)
+        XCTAssertEqual(decoded.privatePaykitContactLinks?["pubkycontact"]?.awaitingRecoveredRemoteEndpoints, true)
     }
 
     func testPrivatePaykitStateStoresOnlySnapshotsInKeychainState() throws {
@@ -346,5 +348,81 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(snapshot?.remoteEndpoints, [:])
         XCTAssertNil(snapshot?.linkCompletedAt)
         XCTAssertNil(snapshot?.handshakeUpdatedAt)
+    }
+
+    func testPrivatePaymentDefersPublicFallbackAfterRecoveryLinkCompletesWithoutEndpoints() async {
+        let service = PrivatePaykitService()
+        var contactState = PrivatePaykitService.ContactState()
+        contactState.linkCompletedAt = 123
+        contactState.lastCompletedRecoveryAttemptId = "attempt"
+        contactState.awaitingRecoveredRemoteEndpoints = true
+
+        let shouldDefer = await service.shouldDeferPublicFallbackForPrivateRecovery(contactState: contactState)
+
+        XCTAssertTrue(shouldDefer)
+    }
+
+    func testPrivatePaymentDoesNotDeferPublicFallbackForConsumedRecoveredEndpoints() async {
+        let service = PrivatePaykitService()
+        var contactState = PrivatePaykitService.ContactState()
+        contactState.linkCompletedAt = 123
+        contactState.lastCompletedRecoveryAttemptId = "attempt"
+
+        let shouldDefer = await service.shouldDeferPublicFallbackForPrivateRecovery(contactState: contactState)
+
+        XCTAssertFalse(shouldDefer)
+    }
+
+    func testPrivatePaymentClearAwaitingRecoveredEndpointsAllowsLaterPublicFallback() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: [:],
+                linkCompletedAt: 123,
+                handshakeUpdatedAt: nil,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil,
+                awaitingRecoveredRemoteEndpoints: true
+            ),
+        ])
+
+        await service.clearAwaitingRecoveredRemoteEndpoints(publicKey: publicKey)
+        let snapshot = await service.backupSnapshot()?[publicKey]
+
+        await XCTAssertFalse(service.shouldDeferPublicFallbackForPrivateRecovery(publicKey: publicKey))
+        XCTAssertNil(snapshot?.awaitingRecoveredRemoteEndpoints)
+    }
+
+    func testPrivatePaymentDoesNotRetryGenericPrivateUnavailableBeforePublicFallback() async throws {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        let result: Result<PublicPaykitPaymentLaunchResult, Error> = .failure(PrivatePaykitError.privateUnavailable)
+
+        let shouldRetry = try await service.shouldRetryPrivatePaymentBeforePublicFallback(
+            publicKey: publicKey,
+            result: result,
+            shouldDeferPublicFallback: false
+        )
+
+        XCTAssertFalse(shouldRetry)
+    }
+
+    func testPrivatePaymentRetriesPrivateUnavailableDuringRecovery() async throws {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        let result: Result<PublicPaykitPaymentLaunchResult, Error> = .failure(PrivatePaykitError.privateUnavailable)
+
+        let shouldRetry = try await service.shouldRetryPrivatePaymentBeforePublicFallback(
+            publicKey: publicKey,
+            result: result,
+            shouldDeferPublicFallback: true
+        )
+
+        XCTAssertTrue(shouldRetry)
     }
 }
