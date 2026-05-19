@@ -248,6 +248,8 @@ class WidgetsViewModel: ObservableObject {
                 savedWidgetsWithOptions.append(SavedWidget(type: type, optionsData: optionsData))
             }
 
+            // Keep the @Published mirror in lockstep so other callers see a consistent picture.
+            savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
             persistSavedWidgets()
 
             if type == .price, let priceOptions = options as? PriceWidgetOptions {
@@ -300,14 +302,40 @@ class WidgetsViewModel: ObservableObject {
         let widgetsData = UserDefaults.standard.data(forKey: Self.savedWidgetsKey) ?? .init()
 
         do {
-            savedWidgetsWithOptions = try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
-            savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
+            let decoded = try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
+            let deduped = Self.dedupedByType(decoded)
+            savedWidgetsWithOptions = deduped
+            savedWidgets = deduped.map { $0.toWidget() }
+            // If we removed duplicates, rewrite the blob so the bad state disappears permanently.
+            if deduped.count != decoded.count { persistSavedWidgets() }
         } catch {
             // If no saved data or decode fails, start with default widgets
             savedWidgetsWithOptions = WidgetsViewModel.defaultSavedWidgets
             savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
             persistSavedWidgets()
         }
+    }
+
+    /// Collapses `widgets` to at most one entry per `WidgetType`, preserving the first-seen order.
+    /// When the input contains duplicates, prefers the entry that carries `optionsData` so the
+    /// user's customisation isn't lost — within duplicates, the first non-nil `optionsData` wins.
+    static func dedupedByType(_ widgets: [SavedWidget]) -> [SavedWidget] {
+        var preferredByType: [WidgetType: SavedWidget] = [:]
+        var order: [WidgetType] = []
+        for widget in widgets {
+            if preferredByType[widget.type] == nil {
+                preferredByType[widget.type] = widget
+                order.append(widget.type)
+                continue
+            }
+            if let existing = preferredByType[widget.type],
+               existing.optionsData == nil,
+               widget.optionsData != nil
+            {
+                preferredByType[widget.type] = widget
+            }
+        }
+        return order.compactMap { preferredByType[$0] }
     }
 
     private func persistSavedWidgets() {
