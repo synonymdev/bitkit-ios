@@ -14,8 +14,6 @@ enum FeeCondition: String, Codable {
         }
     }
 
-    /// Single-word title used in the compact small widget where the full "Favorable Conditions"
-    /// sentence doesn't fit.
     var shortTitleKey: String {
         switch self {
         case .good: return "widgets__weather__condition__good__short_title"
@@ -41,9 +39,6 @@ enum FeeCondition: String, Codable {
     }
 }
 
-/// Persistable representation of the latest fee weather, shared between the main app and the
-/// widget extension via the App Group. Strings are pre-formatted by `WeatherViewModel` so the
-/// widget extension can render without re-running currency conversion.
 struct CachedWeather: Codable, Equatable {
     let condition: FeeCondition
     /// Pre-formatted fiat string (e.g. "$ 0.52").
