@@ -1,6 +1,7 @@
 import BitkitCore
 import Foundation
 import Security
+import WidgetKit
 
 // MARK: - MMKV Parser
 
@@ -309,6 +310,29 @@ class MigrationsService: ObservableObject {
     static var shared = MigrationsService()
 
     private let fileManager = FileManager.default
+
+    private static let appGroupSuiteName = "group.bitkit"
+    private static let appGroupCurrencyKey = "home_screen_display_currency_code_v1"
+    private static let appGroupLanguageKey = "selectedLanguageCode"
+    private static let weatherWidgetKind = "BitkitWeatherWidget"
+
+    /// Mirrors the migrated display currency into the App Group and pokes the weather widget
+    /// timeline. Inlined here (rather than calling `WeatherCurrencyAppGroupStore` /
+    /// `WeatherHomeScreenWidgetOptionsStore`) because this file is also compiled into the
+    /// `BitkitTests` target, which doesn't pick up those helper files. Keys must match the
+    /// canonical helpers.
+    static func mirrorCurrencyToAppGroup(code: String) {
+        UserDefaults(suiteName: appGroupSuiteName)?.set(code, forKey: appGroupCurrencyKey)
+        WidgetCenter.shared.reloadTimelines(ofKind: weatherWidgetKind)
+    }
+
+    /// Mirrors the migrated language code into the App Group and reloads all widget timelines.
+    /// Same coupling-avoidance rationale as `mirrorCurrencyToAppGroup` above; the equivalent
+    /// canonical helper is `LanguageManager.mirrorToAppGroup(code:)`.
+    static func mirrorLanguageToAppGroup(code: String) {
+        UserDefaults(suiteName: appGroupSuiteName)?.set(code, forKey: appGroupLanguageKey)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
 
     private static let rnMigrationCompletedKey = "rnMigrationCompleted"
     private static let rnMigrationCheckedKey = "rnMigrationChecked"
@@ -1187,12 +1211,11 @@ extension MigrationsService {
 
         if let currency = settings.selectedCurrency {
             defaults.set(currency, forKey: "selectedCurrency")
-            WeatherCurrencyAppGroupStore.save(code: currency)
-            WeatherHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+            Self.mirrorCurrencyToAppGroup(code: currency)
         }
         if let language = settings.selectedLanguage {
             defaults.set(language, forKey: "selectedLanguageCode")
-            LanguageManager.mirrorToAppGroup(code: language)
+            Self.mirrorLanguageToAppGroup(code: language)
         }
         if let unit = settings.unit {
             let nativeValue = unit == "BTC" ? "Bitcoin" : "Fiat"
