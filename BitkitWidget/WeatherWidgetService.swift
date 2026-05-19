@@ -23,6 +23,12 @@ enum WeatherWidgetService {
         WeatherWidgetCache.loadLatestIfFresh()
     }
 
+    static func latestWeather() async -> CachedWeather? {
+        if let fresh = cachedLatestIfFresh() { return fresh }
+        if let fresh = try? await fetchFreshLatest() { return fresh }
+        return cachedLatest()
+    }
+
     static func fetchFreshLatest() async throws -> CachedWeather {
         async let feesPromise = fetchRecommendedFees()
         async let usdRatePromise = fetchUsdRate()
