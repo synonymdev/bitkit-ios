@@ -30,6 +30,24 @@ class WeatherViewModel: ObservableObject {
         self.currencyViewModel = currencyViewModel
     }
 
+    func handleCurrencyChange() {
+        guard let cached = weatherData ?? weatherService.getCachedData() else { return }
+
+        guard let reformatted = try? formatFeeAmount(cached.currentFeeSats) else {
+            WeatherWidgetCache.invalidateFreshness()
+            return
+        }
+
+        let updated = CachedWeather(
+            condition: cached.condition,
+            currentFeeFiat: reformatted,
+            currentFeeSats: cached.currentFeeSats,
+            nextBlockFee: cached.nextBlockFee
+        )
+        weatherData = updated
+        weatherService.cacheData(updated)
+    }
+
     /// Start loading data and periodic updates (idempotent - only starts once)
     func startUpdates() {
         guard !hasStartedUpdates else { return }

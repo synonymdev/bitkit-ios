@@ -192,6 +192,10 @@ enum WeatherWidgetCache {
         return entry.percentile
     }
 
+    static func invalidateFreshness() {
+        defaults().removeObject(forKey: latestTimestampKey)
+    }
+
     /// One-time cleanup of the pre-App-Group cache that lived in `UserDefaults.standard`.
     static func legacyDropStandardSuiteCache() {
         UserDefaults.standard.removeObject(forKey: legacyStandardKey)

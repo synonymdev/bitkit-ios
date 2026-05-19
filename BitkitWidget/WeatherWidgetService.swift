@@ -31,12 +31,18 @@ enum WeatherWidgetService {
 
     static func fetchFreshLatest() async throws -> CachedWeather {
         async let feesPromise = fetchRecommendedFees()
-        async let usdRatePromise = fetchUsdRate()
+        async let pricesPromise = fetchPrices()
         async let percentilePromise = resolvePercentile()
 
         let fees = try await feesPromise
-        let usdRate = try? await usdRatePromise
+        let prices = await (try? pricesPromise) ?? [:]
         let percentile = try? await percentilePromise
+
+        // USD is always used for the $1 "favorable" threshold, regardless of display currency.
+        let usdRate = prices["USD"]
+        let displayCurrency = WeatherCurrencyAppGroupStore.load()
+        let displayRate = prices[displayCurrency] ?? usdRate
+        let resolvedCurrency = prices[displayCurrency] != nil ? displayCurrency : WeatherCurrencyAppGroupStore.fallbackCode
 
         let midSatsPerVbyte = Double(fees.halfHourFee)
         let medianFeeSats = fees.halfHourFee * Self.vbytesSize
@@ -48,7 +54,11 @@ enum WeatherWidgetService {
             percentile: percentile
         )
 
-        let fiatString = formatFiat(sats: medianFeeSats, usdPerBtc: usdRate)
+        let fiatString = formatFiat(
+            sats: medianFeeSats,
+            currencyPerBtc: displayRate,
+            currencyCode: resolvedCurrency
+        )
 
         let entry = CachedWeather(
             condition: condition,
@@ -92,8 +102,10 @@ enum WeatherWidgetService {
         return try JSONDecoder().decode(WireRecommendedFees.self, from: data)
     }
 
-    /// Returns USD spot price for 1 BTC, or nil on failure (fiat string will fall back to "—").
-    private static func fetchUsdRate() async throws -> Double {
+    /// Returns the BTC spot price map from mempool.space (currency code → unit price for 1 BTC).
+    /// The endpoint reports a handful of fiat currencies (USD, EUR, GBP, CAD, CHF, AUD, JPY) plus
+    /// a `time` field which is stripped here.
+    private static func fetchPrices() async throws -> [String: Double] {
         guard let url = URL(string: "\(baseUrl)/v1/prices") else {
             throw FetchError.invalidURL
         }
@@ -101,7 +113,8 @@ enum WeatherWidgetService {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw FetchError.unexpectedResponse
         }
-        return try JSONDecoder().decode(WirePrices.self, from: data).USD
+        let raw = try JSONDecoder().decode([String: Double].self, from: data)
+        return raw.filter { $0.key != "time" }
     }
 
     private static func fetchHistoricalFees() async throws -> [BlockFeeRates] {
@@ -117,11 +130,22 @@ enum WeatherWidgetService {
 
     // MARK: - Formatting
 
-    /// Formats a satoshi amount to a USD string using a BTC/USD rate. Returns "$ —" if rate is missing.
-    private static func formatFiat(sats: Int, usdPerBtc: Double?) -> String {
-        guard let usdPerBtc, usdPerBtc > 0 else { return "$ —" }
-        let usd = Double(sats) / 100_000_000.0 * usdPerBtc
-        return String(format: "$ %.2f", usd)
+    /// Formats a satoshi amount in the user's selected display currency. Falls back to a "—"
+    /// placeholder string formatted in the resolved currency when the rate is missing.
+    private static func formatFiat(sats: Int, currencyPerBtc: Double?, currencyCode: String) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = currencyCode
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
+
+        guard let currencyPerBtc, currencyPerBtc > 0 else {
+            let symbol = formatter.currencySymbol ?? currencyCode
+            return "\(symbol) —"
+        }
+
+        let amount = Double(sats) / 100_000_000.0 * currencyPerBtc
+        return formatter.string(from: NSNumber(value: amount)) ?? String(format: "%.2f \(currencyCode)", amount)
     }
 }
 
@@ -133,8 +157,4 @@ private struct WireRecommendedFees: Codable {
     let hourFee: Int
     let economyFee: Int
     let minimumFee: Int
-}
-
-private struct WirePrices: Codable {
-    let USD: Double
 }

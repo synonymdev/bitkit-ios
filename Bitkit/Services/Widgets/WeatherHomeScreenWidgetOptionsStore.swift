@@ -33,3 +33,24 @@ enum WeatherHomeScreenWidgetOptionsStore {
         WidgetCenter.shared.reloadTimelines(ofKind: weatherHomeScreenWidgetKind)
     }
 }
+
+enum WeatherCurrencyAppGroupStore {
+    private static let suiteName = "group.bitkit"
+    private static let key = "home_screen_display_currency_code_v1"
+    static let fallbackCode = "USD"
+
+    static func save(code: String) {
+        guard let defaults = UserDefaults(suiteName: suiteName) else { return }
+        defaults.set(code, forKey: key)
+    }
+
+    static func load() -> String {
+        guard let defaults = UserDefaults(suiteName: suiteName),
+              let code = defaults.string(forKey: key),
+              !code.isEmpty
+        else {
+            return fallbackCode
+        }
+        return code
+    }
+}
