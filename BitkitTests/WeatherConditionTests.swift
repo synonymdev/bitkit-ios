@@ -158,16 +158,6 @@ final class FeePercentileInitTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeRates(avgFee50: Double) -> BlockFeeRates {
-        BlockFeeRates(
-            avgHeight: 0,
-            timestamp: 0,
-            avgFee_0: 0,
-            avgFee_10: 0,
-            avgFee_25: 0,
-            avgFee_50: avgFee50,
-            avgFee_75: 0,
-            avgFee_90: 0,
-            avgFee_100: 0
-        )
+        BlockFeeRates(avgFee_50: avgFee50)
     }
 }

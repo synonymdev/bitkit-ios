@@ -67,19 +67,8 @@ extension FeeCondition {
     }
 }
 
-/// Block fee rates structure from mempool.space `/v1/mining/blocks/fee-rates/3m`. Only
-/// `avgFee_50` (median per-block fee) is consumed for percentile classification, but the other
-/// fields are decoded for compatibility with the wire response.
 struct BlockFeeRates: Codable {
-    let avgHeight: Int
-    let timestamp: Int
-    let avgFee_0: Double
-    let avgFee_10: Double
-    let avgFee_25: Double
     let avgFee_50: Double
-    let avgFee_75: Double
-    let avgFee_90: Double
-    let avgFee_100: Double
 }
 
 /// 33rd / 66th percentile thresholds computed from a 3-month window of median block fees.
