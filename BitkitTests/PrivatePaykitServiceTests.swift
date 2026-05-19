@@ -269,6 +269,30 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertNil(snapshot)
     }
 
+    func testProfileRecoveryPurgeFailureKeepsMarkerPending() async {
+        let service = PrivatePaykitService()
+
+        PrivatePaykitService.setProfileRecoveryPending(false)
+        let error = await service.handleProfileRecoveryPurgeFailure(requireImmediatePublication: false)
+        defer { PrivatePaykitService.setProfileRecoveryPending(false) }
+
+        XCTAssertNil(error)
+        XCTAssertTrue(PrivatePaykitService.isProfileRecoveryPending)
+    }
+
+    func testProfileRecoveryPurgeFailureFailsImmediateMode() async {
+        let service = PrivatePaykitService()
+
+        PrivatePaykitService.setProfileRecoveryPending(false)
+        let error = await service.handleProfileRecoveryPurgeFailure(requireImmediatePublication: true)
+        defer { PrivatePaykitService.setProfileRecoveryPending(false) }
+
+        guard case .privateUnavailable = error as? PrivatePaykitError else {
+            return XCTFail("Expected privateUnavailable")
+        }
+        XCTAssertTrue(PrivatePaykitService.isProfileRecoveryPending)
+    }
+
     func testProfileRecoveryStateClearsOldEndpointMetadata() async {
         let service = PrivatePaykitService()
         let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"

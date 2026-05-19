@@ -4,7 +4,7 @@ import Foundation
 
 extension PrivatePaykitService {
     func markProfileRecoveryPendingIfNeeded() {
-        guard !state.contacts.isEmpty || !knownSavedContactKeys.isEmpty else { return }
+        guard !state.contacts.isEmpty else { return }
         Self.setProfileRecoveryPending(true)
     }
 

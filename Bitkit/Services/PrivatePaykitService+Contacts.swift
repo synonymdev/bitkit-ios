@@ -40,8 +40,7 @@ extension PrivatePaykitService {
 
         invalidateLinkEstablishmentWork()
         guard await purgePrivatePaymentOutboxForProfileRecovery(reason: "profile recovery") else {
-            Self.setProfileRecoveryPending(true)
-            return requireImmediatePublication ? PrivatePaykitError.privateUnavailable : nil
+            return handleProfileRecoveryPurgeFailure(requireImmediatePublication: requireImmediatePublication)
         }
 
         let startedAt = UInt64(Date().timeIntervalSince1970)
@@ -70,6 +69,11 @@ extension PrivatePaykitService {
         )
     }
 
+    func handleProfileRecoveryPurgeFailure(requireImmediatePublication: Bool) -> Error? {
+        Self.setProfileRecoveryPending(true)
+        return requireImmediatePublication ? PrivatePaykitError.privateUnavailable : nil
+    }
+
     func markContactForProfileRecovery(_ publicKey: String, startedAt: UInt64) {
         activeHandlesByContact[publicKey] = ContactPaykitHandles()
 
@@ -82,12 +86,20 @@ extension PrivatePaykitService {
     func refreshSavedContactEndpoints(for publicKeys: [String], wallet: WalletViewModel) async {
         let publicKeys = rememberSavedContacts(publicKeys, replacing: true)
         guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
+        if Self.isProfileRecoveryPending, !publicKeys.isEmpty {
+            await recoverSavedContactsAfterProfileRecreation(publicKeys, wallet: wallet)
+            return
+        }
         await publishLocalEndpoints(for: publicKeys, wallet: wallet, maxAdvanceSteps: 1, reason: "refresh")
     }
 
     func refreshKnownSavedContactEndpoints(wallet: WalletViewModel, reason: String, forceRefreshLightning: Bool = false) async {
         guard !knownSavedContactKeys.isEmpty else { return }
         guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
+        if Self.isProfileRecoveryPending {
+            await recoverSavedContactsAfterProfileRecreation(Array(knownSavedContactKeys), wallet: wallet)
+            return
+        }
         await publishLocalEndpoints(
             for: Array(knownSavedContactKeys),
             wallet: wallet,
@@ -272,7 +284,12 @@ extension PrivatePaykitService {
                     let shouldForcePublish = forceLocalPublishWhenRemoteEmpty &&
                         fetchedCount == 0 &&
                         state.contacts[normalizedKey]?.remoteEndpoints.isEmpty != false
-                    guard shouldForcePublish || await shouldPublishLocalEndpoints(publicKey: normalizedKey, fetchedRemoteCount: fetchedCount) else {
+                    let shouldPublish = if shouldForcePublish {
+                        true
+                    } else {
+                        await shouldPublishLocalEndpoints(publicKey: normalizedKey, fetchedRemoteCount: fetchedCount)
+                    }
+                    guard shouldPublish else {
                         if scheduleRetries {
                             schedulePendingPublicationRetry(for: normalizedKey, wallet: wallet)
                         }
