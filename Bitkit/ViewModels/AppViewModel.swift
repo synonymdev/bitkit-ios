@@ -10,6 +10,10 @@ struct SendSheetPendingResolution: Equatable {
     let success: Bool
 }
 
+struct ContactPaymentContext: Equatable {
+    let publicKey: String
+}
+
 enum ManualEntryValidationResult: Equatable {
     case valid
     case empty
@@ -28,6 +32,7 @@ class AppViewModel: ObservableObject {
     @Published var manualEntryInput: String = ""
     @Published var isManualEntryInputValid: Bool = false
     @Published var manualEntryValidationResult: ManualEntryValidationResult = .empty
+    @Published var contactPaymentContext: ContactPaymentContext?
 
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
@@ -62,6 +67,7 @@ class AppViewModel: ObservableObject {
     /// Payment hashes for which we navigated to the pending screen.
     /// When payment succeeds/fails, we show toast and publish resolution so SendPendingScreen can navigate.
     private var pendingPaymentHashes: Set<String> = []
+    private var pendingContactPaymentContexts: [String: ContactPaymentContext] = [:]
 
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
@@ -74,11 +80,6 @@ class AppViewModel: ObservableObject {
     /// Called when node reaches running state
     func markAppStatusInit() {
         appStatusInit = true
-    }
-
-    /// Called when app goes to background to reset the status facade
-    func resetAppStatusInit() {
-        appStatusInit = false
     }
 
     private let lightningService: LightningService
@@ -288,8 +289,25 @@ extension AppViewModel {
 // MARK: Pending payment tracking
 
 extension AppViewModel {
-    func addPendingPaymentHash(_ hash: String) {
+    func addPendingPaymentHash(_ hash: String, contactPublicKey: String? = nil) {
         pendingPaymentHashes.insert(hash)
+
+        if let contactPublicKey {
+            pendingContactPaymentContexts[hash] = ContactPaymentContext(publicKey: contactPublicKey)
+        }
+    }
+
+    func addPendingContactPaymentContext(_ hash: String, contactPublicKey: String?) {
+        guard let contactPublicKey else { return }
+        pendingContactPaymentContexts[hash] = ContactPaymentContext(publicKey: contactPublicKey)
+    }
+
+    func contactPaymentContext(forPendingPaymentHash hash: String) -> ContactPaymentContext? {
+        pendingContactPaymentContexts[hash]
+    }
+
+    func consumeContactPaymentContext(forPendingPaymentHash hash: String) {
+        pendingContactPaymentContexts.removeValue(forKey: hash)
     }
 
     /// Called by SendPendingScreen when it consumes a resolution. Clears the published value.
@@ -586,6 +604,7 @@ extension AppViewModel {
         selectedWalletToPayFrom = .onchain // Reset to default
         lnurlPayData = nil
         lnurlWithdrawData = nil
+        contactPaymentContext = nil
     }
 }
 
@@ -640,6 +659,13 @@ extension AppViewModel {
             manualEntryValidationResult = .invalid
             isManualEntryInputValid = false
             showValidationErrorToast(for: .invalid)
+            return
+        }
+
+        if PubkyPublicKeyFormat.normalized(normalized) != nil {
+            guard currentSequence == manualEntryValidationSequence else { return }
+            manualEntryValidationResult = .valid
+            isManualEntryInputValid = true
             return
         }
 
@@ -774,6 +800,7 @@ extension AppViewModel {
                             message: "",
                             timestamp: now,
                             preimage: nil,
+                            contact: nil,
                             createdAt: now,
                             updatedAt: nil,
                             seenAt: nil

@@ -131,6 +131,7 @@ struct SpendingConfirm: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .offlineOverlay(title: t("lightning__transfer__nav_title"))
         .task {
             await calculateTransactionFee()
         }
@@ -212,7 +213,8 @@ struct SpendingConfirm: View {
                 useSendAll = DustChangeHelper.shouldUseSendAllToAvoidDust(
                     totalInput: totalInput,
                     amountSats: currentOrder.feeSat,
-                    normalFee: normalFee
+                    normalFee: normalFee,
+                    isMaxAmount: true
                 )
             } catch {
                 Logger.info("Normal coin selection failed, using sendAll: \(error)")

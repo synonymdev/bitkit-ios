@@ -47,6 +47,10 @@ class ActivityListViewModel: ObservableObject {
 
     @Published private(set) var availableTags: [String] = []
 
+    var activitiesChangedPublisher: AnyPublisher<Void, Never> {
+        coreService.activity.activitiesChangedPublisher
+    }
+
     private func updateAvailableTags() async {
         do {
             availableTags = try await coreService.activity.allPossibleTags()
@@ -133,7 +137,7 @@ class ActivityListViewModel: ObservableObject {
     func syncState() async {
         do {
             // Get latest activities first as that's displayed on the home view
-            let limitLatest: UInt32 = UIScreen.main.isSmall ? 2 : 3
+            let limitLatest = UInt32(ActivityDisplayConstants.maxHomeActivityItems)
             // Fetch extra to account for potential filtering of replaced transactions
             let latest = try await coreService.activity.get(filter: .all, limit: limitLatest * 3)
             let filtered = await filterOutReplacedSentTransactions(latest)
@@ -266,6 +270,19 @@ class ActivityListViewModel: ObservableObject {
         }
 
         return activity
+    }
+
+    func contactActivities(publicKey: String) async throws -> [Activity] {
+        try await coreService.activity.get(contact: publicKey, sortDirection: .desc)
+    }
+
+    func setContact(_ contactPublicKey: String, forPaymentId paymentId: String, syncLdkPayments: Bool = true) async throws {
+        if syncLdkPayments {
+            try? await syncLdkNodePayments()
+        }
+
+        try await coreService.activity.setContact(contactPublicKey, forActivity: paymentId)
+        await syncState()
     }
 
     func getAllPossibleTags() async throws -> [String] {
@@ -452,19 +469,7 @@ extension ActivityListViewModel {
         // Get cached set of txIds that appear in boostTxIds
         let txIdsInBoostTxIds = await coreService.activity.getTxIdsInBoostTxIds()
 
-        // Filter out activities that:
-        // 1. Are onchain
-        // 2. Have doesExist = false
-        // 3. Are sent transactions
-        // 4. Appear in another transaction's boostTxIds
-        return activities.filter { activity in
-            if case let .onchain(onchain) = activity {
-                if !onchain.doesExist && onchain.txType == .sent && txIdsInBoostTxIds.contains(onchain.txId) {
-                    return false
-                }
-            }
-            return true
-        }
+        return activities.filter { !$0.isReplacedSentTransaction(txIdsInBoostTxIds: txIdsInBoostTxIds) }
     }
 
     /// Filter activities based on the selected tab

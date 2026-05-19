@@ -5,6 +5,10 @@ struct SendEnterManuallyView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var contactsManager: ContactsManager
+    @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject var sheets: SheetViewModel
 
     @Binding var navigationPath: [SendRoute]
     @FocusState private var isTextEditorFocused: Bool
@@ -77,6 +81,16 @@ struct SendEnterManuallyView: View {
 
         guard !uri.isEmpty, app.isManualEntryInputValid else { return }
 
+        if let route = resolvePubkyRoute(
+            input: uri,
+            ownPublicKey: pubkyProfile.publicKey,
+            contacts: contactsManager.contacts
+        ) {
+            sheets.hideSheetIfActive(.send, reason: "Manual pubky entry routed to contacts")
+            navigation.navigate(route)
+            return
+        }
+
         do {
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
 
@@ -106,5 +120,11 @@ struct SendEnterManuallyView: View {
     SendEnterManuallyView(navigationPath: .constant([]))
         .environmentObject(AppViewModel())
         .environmentObject(WalletViewModel())
+        .environmentObject(CurrencyViewModel())
+        .environmentObject(SettingsViewModel.shared)
+        .environmentObject(ContactsManager())
+        .environmentObject(NavigationViewModel())
+        .environmentObject(PubkyProfileManager())
+        .environmentObject(SheetViewModel())
         .preferredColorScheme(.dark)
 }

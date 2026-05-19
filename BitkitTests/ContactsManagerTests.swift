@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import XCTest
 
 @MainActor
@@ -24,6 +25,92 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(PubkyPublicKeyFormat.matches(prefixedKey, "pubkyinvalid"))
     }
 
+    func testActivityContactResolvesLightningContactKey() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let contact = makeContact(publicKey: "pubky\(rawKey)")
+        let activity = Activity.lightning(
+            LightningActivity(
+                id: "test-lightning-contact",
+                txType: .sent,
+                status: .succeeded,
+                value: 1000,
+                fee: 10,
+                invoice: "lnbc...",
+                message: "",
+                timestamp: 0,
+                preimage: nil,
+                contact: rawKey,
+                createdAt: nil,
+                updatedAt: nil,
+                seenAt: nil
+            )
+        )
+
+        XCTAssertEqual(activity.contact(in: [contact])?.publicKey, contact.publicKey)
+    }
+
+    func testActivityContactResolvesBoostingOnchainContactKey() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let contact = makeContact(publicKey: "pubky\(rawKey)")
+        let activity = Activity.onchain(
+            OnchainActivity(
+                id: "test-onchain-boosting-contact",
+                txType: .sent,
+                txId: "txid",
+                value: 1000,
+                fee: 10,
+                feeRate: 1,
+                address: "bcrt1...",
+                confirmed: false,
+                timestamp: 0,
+                isBoosted: true,
+                boostTxIds: [],
+                isTransfer: false,
+                doesExist: true,
+                confirmTimestamp: nil,
+                channelId: nil,
+                transferTxId: nil,
+                contact: contact.publicKey,
+                createdAt: nil,
+                updatedAt: nil,
+                seenAt: nil
+            )
+        )
+
+        XCTAssertEqual(activity.contact(in: [contact])?.publicKey, contact.publicKey)
+    }
+
+    func testActivityDetectsReplacedSentTransaction() {
+        let replacedTxId = "replaced_tx_id"
+        let activity = Activity.onchain(
+            OnchainActivity(
+                id: replacedTxId,
+                txType: .sent,
+                txId: replacedTxId,
+                value: 1000,
+                fee: 10,
+                feeRate: 1,
+                address: "bcrt1...",
+                confirmed: false,
+                timestamp: 0,
+                isBoosted: false,
+                boostTxIds: [],
+                isTransfer: false,
+                doesExist: false,
+                confirmTimestamp: nil,
+                channelId: nil,
+                transferTxId: nil,
+                contact: nil,
+                createdAt: nil,
+                updatedAt: nil,
+                seenAt: nil
+            )
+        )
+
+        XCTAssertTrue(activity.isReplacedSentTransaction(txIdsInBoostTxIds: [replacedTxId]))
+        XCTAssertFalse(activity.isReplacedSentTransaction(txIdsInBoostTxIds: ["other_tx_id"]))
+    }
+
     func testResolveAddContactValidationReturnsEmptyForBlankInput() {
         XCTAssertEqual(resolveAddContactValidation(input: "   ", ownPublicKey: nil), .empty)
     }
@@ -45,6 +132,20 @@ final class ContactsManagerTests: XCTestCase {
         )
     }
 
+    func testResolveAddContactValidationReturnsExistingContactForDuplicate() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let publicKey = "pubky\(rawKey)"
+
+        XCTAssertEqual(
+            resolveAddContactValidation(
+                input: rawKey,
+                ownPublicKey: nil,
+                existingContacts: [makeContact(publicKey: publicKey)]
+            ),
+            .existingContact
+        )
+    }
+
     func testResolveAddContactValidationReturnsNormalizedKeyForValidInput() {
         let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
@@ -62,6 +163,7 @@ final class ContactsManagerTests: XCTestCase {
         manager.contacts = [contact]
         manager.hasLoaded = true
         manager.loadErrorMessage = "still here"
+        manager.shouldOpenAddContactSheet = true
         manager.pendingImportProfile = profile
         manager.pendingImportContacts = [contact]
 
@@ -70,6 +172,7 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(manager.contacts, [contact])
         XCTAssertTrue(manager.hasLoaded)
         XCTAssertEqual(manager.loadErrorMessage, "still here")
+        XCTAssertTrue(manager.shouldOpenAddContactSheet)
         XCTAssertNil(manager.pendingImportProfile)
         XCTAssertTrue(manager.pendingImportContacts.isEmpty)
         XCTAssertFalse(manager.hasPendingImport)
@@ -178,6 +281,19 @@ final class ContactsManagerTests: XCTestCase {
         )
     }
 
+    func testResolvePastedPubkyRouteTrimsClipboardInput() {
+        let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+        XCTAssertEqual(
+            resolvePastedPubkyRoute(
+                input: "  \(contactKey)\n",
+                ownPublicKey: nil,
+                contacts: [makeContact(publicKey: contactKey)]
+            ),
+            .contactDetail(publicKey: contactKey)
+        )
+    }
+
     func testResolvePastedPubkyRouteReturnsAddContactForUnknownKey() {
         let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
@@ -201,8 +317,8 @@ final class ContactsManagerTests: XCTestCase {
         )
     }
 
-    private func makeProfile(publicKey: String) -> PubkyProfile {
-        PubkyProfile(
+    private func makeProfile(publicKey: String) -> Bitkit.PubkyProfile {
+        Bitkit.PubkyProfile(
             publicKey: publicKey,
             name: "Alice",
             bio: "bio",
@@ -213,7 +329,7 @@ final class ContactsManagerTests: XCTestCase {
         )
     }
 
-    private func makeContact(publicKey: String) -> PubkyContact {
-        PubkyContact(publicKey: publicKey, profile: makeProfile(publicKey: publicKey))
+    private func makeContact(publicKey: String) -> Bitkit.PubkyContact {
+        Bitkit.PubkyContact(publicKey: publicKey, profile: makeProfile(publicKey: publicKey))
     }
 }

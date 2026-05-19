@@ -61,103 +61,102 @@ struct SupportScreen: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("settings__support__title"))
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+        InsetHeaderScrollView(
+            header: {
+                NavigationBar(title: t("settings__support__title"))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+            },
+            content: {
+                ZStack {
+                    // Orange diagonal background (scrolls with content)
+                    Color.brandAccent
+                        .clipShape(DiagonalCut())
+                        .ignoresSafeArea()
 
-            GeometryReader { geometry in
-                ScrollView(showsIndicators: false) {
-                    ZStack {
-                        // Orange diagonal background (scrolls with content)
-                        Color.brandAccent
-                            .clipShape(DiagonalCut())
-                            .ignoresSafeArea()
-
-                        VStack(alignment: .leading, spacing: 0) {
-                            BodyMText(t("settings__support__text"))
-                                .padding(.bottom, 16)
-
-                            VStack(spacing: 0) {
-                                NavigationLink(value: Route.reportIssue) {
-                                    SettingsRow(title: t("settings__support__report"), iconName: "warning")
-                                }
-
-                                Button(action: {
-                                    openURL(URL(string: Env.helpUrl)!)
-                                }) {
-                                    SettingsRow(title: t("settings__support__help"), iconName: "question")
-                                }
-
-                                NavigationLink(value: Route.appStatus) {
-                                    SettingsRow(title: t("settings__support__status"), iconName: "power")
-                                }
-                                .accessibilityIdentifier("AppStatus")
-
-                                Button(action: {
-                                    openURL(URL(string: Env.termsOfServiceUrl)!)
-                                }) {
-                                    SettingsRow(title: t("settings__about__legal"), iconName: "file-text")
-                                }
-
-                                ShareLink(item: shareText, message: Text(shareText)) {
-                                    SettingsRow(title: t("settings__about__share"), iconName: "share")
-                                }
-
-                                Button(action: {
-                                    onVersionTap()
-                                }) {
-                                    SettingsRow(
-                                        title: t("settings__about__version"),
-                                        iconName: "stack",
-                                        rightText: appVersion,
-                                        rightIcon: nil
-                                    )
-                                }
-                                .accessibilityIdentifier("DevOptions")
-                            }
-
-                            Spacer(minLength: 32)
-
-                            VStack(alignment: .center, spacing: 0) {
-                                Image("logo")
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(maxHeight: 100)
-                                    .accessibilityIdentifier("AboutLogo")
-                            }
-                            .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 0) {
+                        BodyMText(t("settings__support__text"))
                             .padding(.bottom, 16)
 
-                            Social()
-                                .padding(.bottom, 16)
-
-                            BodyMText("Bitkit was crafted by Synonym Software, S.A. DE C.V. ©2025. All rights reserved.")
-                                .padding(.bottom, 16)
-
-                            HStack(alignment: .center, spacing: 10) {
-                                Image("synonym-logo")
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(height: 24)
-
-                                Image("tether-logo")
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(height: 16)
+                        VStack(spacing: 0) {
+                            NavigationLink(value: Route.reportIssue) {
+                                SettingsRow(title: t("settings__support__report"), iconName: "warning")
                             }
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .frame(height: 24)
-                            .padding(.bottom, 32)
+
+                            Button(action: {
+                                openURL(URL(string: Env.helpUrl)!)
+                            }) {
+                                SettingsRow(title: t("settings__support__help"), iconName: "question")
+                            }
+
+                            NavigationLink(value: Route.appStatus) {
+                                SettingsRow(title: t("settings__support__status"), iconName: "power")
+                            }
+                            .accessibilityIdentifier("AppStatus")
+
+                            Button(action: {
+                                openURL(URL(string: Env.termsOfServiceUrl)!)
+                            }) {
+                                SettingsRow(title: t("settings__about__legal"), iconName: "file-text")
+                            }
+
+                            ShareLink(item: shareText, message: Text(shareText)) {
+                                SettingsRow(title: t("settings__about__share"), iconName: "share")
+                            }
+
+                            Button(action: {
+                                onVersionTap()
+                            }) {
+                                SettingsRow(
+                                    title: t("settings__about__version"),
+                                    iconName: "stack",
+                                    rightText: appVersion,
+                                    rightIcon: nil
+                                )
+                            }
+                            .accessibilityIdentifier("DevOptions")
                         }
-                        .frame(minHeight: geometry.size.height)
-                        .padding(.horizontal, 16)
-                        .bottomSafeAreaPadding()
+
+                        Spacer(minLength: 32)
+
+                        VStack(alignment: .center, spacing: 0) {
+                            Image("logo")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 100)
+                                .accessibilityIdentifier("AboutLogo")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 16)
+
+                        Social()
+                            .padding(.bottom, 16)
+
+                        BodyMText("Bitkit was crafted by Synonym Software, S.A. DE C.V. ©2025. All rights reserved.")
+                            .padding(.bottom, 16)
+
+                        HStack(alignment: .center, spacing: 10) {
+                            Image("synonym-logo")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 24)
+
+                            Image("tether-logo")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 16)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(height: 24)
+                        .padding(.bottom, 32)
                     }
+                    .padding(.horizontal, 16)
+                    .bottomSafeAreaPadding()
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .ignoresSafeArea()
-        }
+        )
+        .ignoresSafeArea(edges: .bottom)
         .navigationBarHidden(true)
     }
 

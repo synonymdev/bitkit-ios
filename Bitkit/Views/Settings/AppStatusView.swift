@@ -13,7 +13,7 @@ struct AppStatusView: View {
             NavigationBar(title: t("settings__status__title"))
                 .padding(.bottom, 16)
 
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     internetStatusRow
                     bitcoinNodeStatusRow
@@ -90,7 +90,7 @@ struct AppStatusView: View {
 
     private var bitcoinNodeStatusRow: some View {
         let status = AppStatusHelper.bitcoinNodeStatus(from: wallet, network: network)
-        let description: String = t("settings__status__electrum__\(status.rawValue)")
+        let description = t("settings__status__electrum__\(status.rawValue)")
 
         return StatusRow(
             imageName: "status-bitcoin",
@@ -106,7 +106,7 @@ struct AppStatusView: View {
 
     private var nodeStatusRow: some View {
         let status = AppStatusHelper.nodeStatus(from: wallet, network: network)
-        let description: String = t("settings__status__lightning_node__\(status.rawValue)")
+        let description = t("settings__status__lightning_node__\(status.rawValue)")
 
         return StatusRow(
             imageName: "status-node",
@@ -121,8 +121,8 @@ struct AppStatusView: View {
     }
 
     private var channelsStatusRow: some View {
-        let status = AppStatusHelper.channelsStatus(from: wallet)
-        let description: String = t("settings__status__lightning_connection__\(status.rawValue)")
+        let status = AppStatusHelper.channelsStatus(from: wallet, network: network)
+        let description = t("settings__status__lightning_connection__\(status.rawValue)")
 
         return StatusRow(
             imageName: "status-lightning",

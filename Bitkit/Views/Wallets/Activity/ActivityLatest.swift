@@ -1,9 +1,13 @@
+import BitkitCore
 import SwiftUI
 
 struct ActivityLatest: View {
     @EnvironmentObject private var activity: ActivityListViewModel
+    @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
     private var shouldShowBanner: Bool {
@@ -30,6 +34,21 @@ struct ActivityLatest: View {
         return BlockTimeHelpers.getDurationForBlocks(blocksRemaining)
     }
 
+    /// Three or four vertical slots (by screen size) shared by: transfer banner, widgets onboarding
+    /// and activity items; only the item count shrinks so the total stays within the cap.
+    private var maxActivityItemsOnHome: Int {
+        let slotCapacity = UIScreen.main.isSmall ? ActivityDisplayConstants.maxHomeActivityItems - 1 : ActivityDisplayConstants.maxHomeActivityItems
+        var nonItemSlots = 0
+        if shouldShowBanner { nonItemSlots += 1 }
+        if settings.showWidgets, !app.hasDismissedWidgetsOnboardingHint { nonItemSlots += 1 }
+        return max(0, slotCapacity - nonItemSlots)
+    }
+
+    private var displayedActivities: [Activity]? {
+        guard let items = activity.latestActivities, !items.isEmpty else { return nil }
+        return Array(items.prefix(maxActivityItemsOnHome))
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if shouldShowBanner {
@@ -38,11 +57,15 @@ struct ActivityLatest: View {
                     .transition(.opacity)
             }
 
-            if let items = activity.latestActivities {
+            if let rows = displayedActivities {
                 LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(Array(zip(items.indices, items)), id: \.1) { index, item in
+                    ForEach(Array(zip(rows.indices, rows)), id: \.1) { index, item in
                         NavigationLink(value: Route.activityDetail(item)) {
-                            ActivityRow(item: item, feeEstimates: feeEstimatesManager.estimates)
+                            ActivityRow(
+                                item: item,
+                                feeEstimates: feeEstimatesManager.estimates,
+                                contact: item.contact(in: contactsManager.contacts)
+                            )
                         }
                         .accessibilityIdentifier("ActivityShort-\(index)")
                     }
@@ -55,6 +78,7 @@ struct ActivityLatest: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: shouldShowBanner)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: maxActivityItemsOnHome)
         .task {
             await feeEstimatesManager.getEstimates(refresh: false)
         }

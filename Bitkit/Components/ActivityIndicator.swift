@@ -18,7 +18,6 @@ struct ActivityIndicator: View {
     }
 
     var body: some View {
-        let strokeWidth = size / 12
         let color = theme == .light ? Color.white : Color.black
 
         ZStack {
@@ -31,18 +30,11 @@ struct ActivityIndicator: View {
                         startAngle: .degrees(0),
                         endAngle: .degrees(360)
                     ),
-                    style: StrokeStyle(
-                        lineWidth: strokeWidth,
-                        lineCap: .round
-                    )
+                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
                 )
                 .frame(width: size, height: size)
                 .rotationEffect(.degrees(isRotating ? 360 : 0))
-                .animation(
-                    .linear(duration: 1.2)
-                        .repeatForever(autoreverses: false),
-                    value: isRotating
-                )
+                .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: isRotating)
         }
         .opacity(opacity)
         .onAppear {

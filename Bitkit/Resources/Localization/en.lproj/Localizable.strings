@@ -305,8 +305,6 @@
 "lightning__order_state__open" = "Connection open";
 "lightning__order_state__inactive" = "Connection inactive";
 "lightning__peer_disconnected" = "Peer disconnected.";
-"lightning__wait_text_top" = "Please wait for Bitkit to connect to the payment network (±10 seconds).";
-"lightning__wait_text_bottom" = "Connecting & Syncing...";
 "onboarding__tos_header" = "Bitkit\n<accent>terms of use</accent>";
 "onboarding__tos_checkbox" = "Terms of use";
 "onboarding__tos_checkbox_value" = "I declare that I have read and accept the <accent>terms of use.</accent>";
@@ -958,6 +956,8 @@
 "slashtags__onboarding_text" = "Get automatic updates from your Bitkit contacts, pay them, and follow their public profiles.";
 "slashtags__onboarding_button" = "Add First Contact";
 "contacts__detail_title" = "Contact";
+"contacts__activity_sent_to" = "Sent to {name}";
+"contacts__activity_received_from" = "Received from {name}";
 "contacts__detail_empty_state" = "Unable to load contact.";
 "contacts__empty_state" = "You don't have any contacts yet.";
 "contacts__intro_add_contact" = "Add Contact";
@@ -973,6 +973,7 @@
 "contacts__add_pubky_placeholder" = "Paste a pubky";
 "contacts__add_scan_qr" = "Scan QR";
 "contacts__add_button" = "Add";
+"contacts__add_error_existing" = "This pubky is already in your contacts.";
 "contacts__add_error_invalid_key" = "Invalid pubky key format. Please check and try again.";
 "contacts__add_error_self" = "You can't add your own pubky as a contact.";
 "contacts__add_retrieving" = "Retrieving\n<accent>contact info</accent>";
@@ -1037,6 +1038,7 @@
 "slashtags__error_deleting_profile" = "Unable To Delete Profile";
 "slashtags__error_pay_title" = "Unable To Pay Contact";
 "slashtags__error_pay_empty_msg" = "The contact you're trying to send to hasn't enabled payments.";
+"slashtags__error_pay_not_opened_msg" = "No compatible payment endpoint is available.";
 "slashtags__auth_depricated_title" = "Deprecated";
 "slashtags__auth_depricated_msg" = "Slashauth is deprecated. Please use Bitkit Beta.";
 "profile__nav_title" = "Profile";
@@ -1122,6 +1124,10 @@
 "wallet__create_wallet_mnemonic_restore_error" = "Please double-check if your recovery phrase is accurate.";
 "wallet__send_bitcoin" = "Send Bitcoin";
 "wallet__send_from" = "From";
+"wallet__send_sync_title" = "<accent>Connecting</accent>\nto network";
+"wallet__send_sync_description" = "Please wait for Bitkit to connect to the payment network (±10 seconds).";
+"wallet__send_sync_long_title" = "<accent>Connection</accent>\nissues";
+"wallet__send_sync_long_description" = "It appears you’re disconnected. Please check your connection. Bitkit will try to reconnect every few seconds.";
 "wallet__send_to" = "To";
 "wallet__recipient_contact" = "Contact";
 "wallet__recipient_invoice" = "Paste Invoice";

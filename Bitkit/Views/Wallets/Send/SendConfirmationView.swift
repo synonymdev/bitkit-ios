@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SendConfirmationView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var activityList: ActivityListViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var settings: SettingsViewModel
@@ -17,7 +18,6 @@ struct SendConfirmationView: View {
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var transactionFee: Int = 0
-    @State private var shouldUseSendAll: Bool = false
     @State private var currentWarning: WarningType?
     @State private var pendingWarnings: [WarningType] = []
     @State private var warningContinuation: CheckedContinuation<Bool, Error>?
@@ -127,6 +127,8 @@ struct SendConfirmationView: View {
                     .rotationEffect(.degrees(swipeProgress * 14))
             }
 
+            Spacer(minLength: 16)
+
             if !UIScreen.main.isSmall || !showDetails {
                 CustomButton(
                     title: showDetails ? t("common__hide_details") : t("common__show_details"),
@@ -134,16 +136,15 @@ struct SendConfirmationView: View {
                     icon: Image(showDetails ? "eye-slash" : app.selectedWalletToPayFrom == .lightning ? "bolt-hollow" : "speed-normal")
                         .resizable()
                         .frame(width: 16, height: 16)
-                        .foregroundColor(accentColor)
+                        .foregroundColor(accentColor),
+                    background: Color(hex: 0x151515)
                 ) {
                     showDetails.toggle()
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 16)
+                .padding(.bottom, 62)
                 .accessibilityIdentifier("SendConfirmToggleDetails")
             }
-
-            Spacer(minLength: 16)
 
             SwipeButton(title: t("wallet__send_swipe"), accentColor: accentColor, swipeProgress: $swipeProgress) {
                 // Validate payment and show warnings if needed
@@ -446,6 +447,7 @@ struct SendConfirmationView: View {
 
     private func performPayment() async throws {
         var createdMetadataPaymentId: String? = nil
+        let contactPublicKey = app.contactPaymentContext?.publicKey
 
         do {
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
@@ -467,10 +469,11 @@ struct SendConfirmationView: View {
                         bolt11: invoice.bolt11,
                         sats: paymentSats,
                         onTimeout: {
-                            app.addPendingPaymentHash(paymentHash)
+                            app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
                             navigationPath.append(.pending(paymentHash: paymentHash))
                         }
                     )
+                    await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
                     Logger.info("Lightning payment successful: \(paymentHash)")
                     navigationPath.append(.success(paymentId: paymentHash))
                 } catch is PaymentTimeoutError {
@@ -481,8 +484,7 @@ struct SendConfirmationView: View {
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
-                // Use sendAll if explicitly MAX or if change would be dust
-                let useMaxAmount = wallet.isMaxAmountSend || shouldUseSendAll
+                let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
                 let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: useMaxAmount)
 
                 // Create pre-activity metadata for tags and activity address
@@ -494,7 +496,8 @@ struct SendConfirmationView: View {
                     address: invoice.address,
                     amount: amount,
                     fee: UInt64(transactionFee),
-                    feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1
+                    feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1,
+                    contact: contactPublicKey
                 )
 
                 // Set the amount for the success screen
@@ -522,6 +525,20 @@ struct SendConfirmationView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 navigationPath.append(.failure)
             }
+        }
+    }
+
+    private func syncContactForActivity(paymentId: String, contactPublicKey: String?) async {
+        guard let contactPublicKey else {
+            return
+        }
+
+        do {
+            app.addPendingContactPaymentContext(paymentId, contactPublicKey: contactPublicKey)
+            try await activityList.setContact(contactPublicKey, forPaymentId: paymentId)
+            app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
+        } catch {
+            Logger.warn("Failed to set contact for activity \(paymentId): \(error)", context: "SendConfirmationView")
         }
     }
 
@@ -600,6 +617,28 @@ struct SendConfirmationView: View {
         }
 
         return true
+    }
+
+    private func shouldUseMaxOnchainSend(address: String, amountSats: UInt64, feeRate: UInt32? = nil) async -> Bool {
+        guard wallet.isMaxAmountSend else { return false }
+        guard let rate = feeRate ?? wallet.selectedFeeRateSatsPerVByte else { return false }
+
+        do {
+            let currentMaxSendable = try await wallet.calculateMaxSendableAmount(address: address, satsPerVByte: rate)
+            let matchesCurrentMax = amountSats == currentMaxSendable
+
+            if !matchesCurrentMax {
+                Logger.warn(
+                    "Ignoring stale max on-chain send flag: amount=\(amountSats), currentMaxSendable=\(currentMaxSendable)",
+                    context: "SendConfirmationView"
+                )
+            }
+
+            return matchesCurrentMax
+        } catch {
+            Logger.error("Failed to verify max on-chain send amount: \(error)", context: "SendConfirmationView")
+            return false
+        }
     }
 
     private func createPreActivityMetadata(
@@ -722,43 +761,31 @@ struct SendConfirmationView: View {
         }
 
         do {
-            // Fee for normal send (recipient + change outputs) - used to check if change would be dust
-            let normalFee = try await wallet.calculateTotalFee(
-                address: address,
-                amountSats: amountSats,
-                satsPerVByte: feeRate,
-                utxosToSpend: wallet.selectedUtxos
-            )
-            let totalInput = wallet.selectedUtxos?.reduce(0) { $0 + $1.valueSats }
-                ?? UInt64(wallet.spendableOnchainBalanceSats)
-            let useSendAll = DustChangeHelper.shouldUseSendAllToAvoidDust(
-                totalInput: totalInput,
-                amountSats: amountSats,
-                normalFee: normalFee
-            )
-
-            if useSendAll {
-                // Change would be dust - use sendAll and add dust to fee
+            if await shouldUseMaxOnchainSend(address: address, amountSats: amountSats, feeRate: feeRate) {
                 let sendAllFee = try await wallet.estimateSendAllFee(
                     address: address,
                     satsPerVByte: feeRate
                 )
                 await MainActor.run {
                     transactionFee = Int(sendAllFee)
-                    shouldUseSendAll = true
                 }
-            } else {
-                // Normal send with change output
-                await MainActor.run {
-                    transactionFee = Int(normalFee)
-                    shouldUseSendAll = false
-                }
+                return
+            }
+
+            // Fee for normal send (recipient + change outputs).
+            let normalFee = try await wallet.calculateTotalFee(
+                address: address,
+                amountSats: amountSats,
+                satsPerVByte: feeRate,
+                utxosToSpend: wallet.selectedUtxos
+            )
+            await MainActor.run {
+                transactionFee = Int(normalFee)
             }
         } catch {
             Logger.error("Failed to calculate actual fee: \(error)")
             await MainActor.run {
                 transactionFee = 0
-                shouldUseSendAll = false
                 app.toast(type: .error, title: t("other__try_again"))
             }
         }
