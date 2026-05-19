@@ -14,9 +14,6 @@ struct FeePercentile {
 }
 
 /// Service for fetching and caching Bitcoin fee weather data.
-///
-/// Writes the result to the App Group cache (`WeatherWidgetCache`) so the WidgetKit extension
-/// can surface the same data.
 class WeatherService {
     static let shared = WeatherService()
     private let baseUrl = "https://mempool.space/api/v1"
