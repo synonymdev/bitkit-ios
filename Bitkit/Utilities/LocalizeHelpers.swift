@@ -3,15 +3,9 @@ import Foundation
 /// Centralized localization helper with English fallback support
 enum LocalizationHelper {
     private static let notFoundValue = "___NOTFOUND___"
-    /// App Group used to share the user-selected language between the main app and the
-    /// WidgetKit extension. Widget extensions have a separate `UserDefaults.standard`, so the
-    /// in-app selection wouldn't reach them without this shared suite.
     private static let appGroupSuiteName = "group.bitkit"
     private static let selectedLanguageCodeKey = "selectedLanguageCode"
 
-    /// Gets the current language code from user preferences. Checks the App Group first (set
-    /// by `LanguageManager`) so the widget extension picks up the in-app selection; falls back
-    /// to `UserDefaults.standard` for legacy installs, then to the device locale.
     private static var currentLanguageCode: String {
         let appGroupCode = UserDefaults(suiteName: appGroupSuiteName)?.string(forKey: selectedLanguageCodeKey) ?? ""
         if !appGroupCode.isEmpty { return appGroupCode }
@@ -42,7 +36,6 @@ enum LocalizationHelper {
             return getStringFromBundle(englishBundle, key: key, comment: comment)
         }
 
-        // Try selected language first, fallback to English if key missing
         if keyExists(in: selectedBundle, key: key) {
             return NSLocalizedString(key, bundle: selectedBundle, comment: comment)
         } else {
