@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Bitcoin fee weather condition (good/average/poor).
 enum FeeCondition: String, Codable {
@@ -35,6 +36,15 @@ enum FeeCondition: String, Codable {
         case .good: return "☀️"
         case .average: return "⛅"
         case .poor: return "⛈️"
+        }
+    }
+
+    /// Accent color applied to the fee value, signalling how favorable current fees are.
+    var valueColor: Color {
+        switch self {
+        case .good: return .greenAccent
+        case .average: return .yellowAccent
+        case .poor: return .brandAccent
         }
     }
 }

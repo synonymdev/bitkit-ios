@@ -89,7 +89,11 @@ struct WeatherWidgetWideContent: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                WeatherFeeMetric(label: metricLabel, value: metric.value(from: data))
+                WeatherFeeMetric(
+                    label: metricLabel,
+                    value: metric.value(from: data),
+                    valueColor: data.condition.valueColor
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -124,6 +128,7 @@ struct WeatherWidgetCompactContent: View {
             WeatherFeeMetric(
                 label: metricLabel,
                 value: metric.value(from: data),
+                valueColor: data.condition.valueColor,
                 valueSize: 28,
                 compactLabel: true
             )
