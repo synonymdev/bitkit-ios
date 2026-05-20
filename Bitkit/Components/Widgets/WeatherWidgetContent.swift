@@ -52,6 +52,7 @@ struct WeatherFeeMetric: View {
                 .foregroundColor(valueColor)
                 .kerning(-1)
                 .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .widgetAccentable()
         }
     }
@@ -94,23 +95,22 @@ struct WeatherWidgetCompactContent: View {
     let metricLabel: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(data.condition.icon)
-                    .font(.system(size: 52))
+                    .font(.system(size: 48))
                     .widgetAccentable()
                 SubtitleText(conditionTitle, textColor: .white)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .padding(.top, 16)
 
             WeatherFeeMetric(
                 label: metricLabel,
                 value: metric.value(from: data),
                 valueSize: 22
             )
-            .padding(.bottom, 16)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 }
