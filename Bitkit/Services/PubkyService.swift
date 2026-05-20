@@ -288,11 +288,12 @@ enum PubkyService {
 
     static func setPrivatePayments(linkId: String, entries: [FfiPaymentEntry]) async throws {
         try await ServiceQueue.background(.core, wrapErrors: false) {
-            try await paykitSetPrivatePayments(linkId: linkId, entries: entries)
+            let payload = FfiPrivatePaymentsPayload(reference: paykitGeneratePaymentReference(), entries: entries)
+            try await paykitSetPrivatePayments(linkId: linkId, payload: payload)
         }
     }
 
-    static func getPrivatePayments(linkId: String) async throws -> [FfiPaymentEntry] {
+    static func getPrivatePayments(linkId: String) async throws -> FfiPrivatePaymentsPayload? {
         try await ServiceQueue.background(.core, wrapErrors: false) {
             try await paykitGetPrivatePayments(linkId: linkId)
         }

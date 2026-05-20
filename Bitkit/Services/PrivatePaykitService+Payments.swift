@@ -396,25 +396,22 @@ extension PrivatePaykitService {
 
     @discardableResult
     func readRemoteEndpoints(publicKey: String, linkId: String, generation: UInt64) async throws -> Int {
-        let remoteEntries = try await PubkyService.getPrivatePayments(linkId: linkId)
+        let remotePayload = try await PubkyService.getPrivatePayments(linkId: linkId)
         try ensureCurrentGeneration(generation)
         recordLinkSuccess(publicKey: publicKey)
         try await persistLinkSnapshot(linkId: linkId, publicKey: publicKey, generation: generation)
         try ensureCurrentGeneration(generation)
 
-        guard !remoteEntries.isEmpty else {
-            // Paykit returns an empty map when there are no unread private-payment messages.
-            // Keep the cached map in that case so transient empty reads do not drop the last known endpoints.
+        guard let remotePayload else {
+            // No unread private-payment envelope. Keep the cached map so transient empty reads do not drop the last known endpoints.
             return 0
         }
 
-        return cacheRemoteEndpoints(remoteEntries, publicKey: publicKey)
+        return cacheRemoteEndpoints(remotePayload.entries, publicKey: publicKey)
     }
 
     @discardableResult
     func cacheRemoteEndpoints(_ remoteEntries: [FfiPaymentEntry], publicKey: String) -> Int {
-        guard !remoteEntries.isEmpty else { return 0 }
-
         state.contacts[publicKey, default: ContactState()].remoteEndpoints = remoteEntries.map(StoredPaymentEntry.init(entry:))
         persistState(markWalletBackup: true)
         return remoteEntries.count

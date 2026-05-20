@@ -12,7 +12,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertFalse(PrivatePaykitService.shouldInitiate(ownPublicKey: lower, remotePublicKey: higher))
     }
 
-    func testPrivatePayloadLimitAcceptsV1EndpointMap() throws {
+    func testPrivatePayloadLimitAcceptsV1Envelope() throws {
         let invoicePayload = try PublicPaykitService.serializePayload(value: "lnbc1privateinvoice")
         let addressPayload = try PublicPaykitService.serializePayload(value: "bcrt1qprivateaddress")
 
@@ -24,12 +24,27 @@ final class PrivatePaykitServiceTests: XCTestCase {
         )
     }
 
-    func testPrivatePayloadLimitRejectsOversizedEndpointMap() {
+    func testPrivatePayloadLimitRejectsOversizedEnvelope() {
         XCTAssertFalse(
             PrivatePaykitService.isNoisePayloadWithinLimit([
                 PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue: String(repeating: "x", count: 1200),
             ])
         )
+    }
+
+    func testPrivatePayloadLimitRejectsMapThatOnlyFitsWithoutEnvelope() throws {
+        let methodId = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+
+        for valueLength in 1 ... 1000 {
+            let paymentMap = [methodId: String(repeating: "x", count: valueLength)]
+            let rawMapSize = try JSONSerialization.data(withJSONObject: paymentMap).count
+
+            if rawMapSize <= 1000, !PrivatePaykitService.isNoisePayloadWithinLimit(paymentMap) {
+                return
+            }
+        }
+
+        XCTFail("Expected to find a payload where the raw entries map fits but the rc8 envelope exceeds the Noise limit")
     }
 
     func testPrivateRemovalTombstoneMapFitsNoisePayloadLimitAndIsNotPayable() {

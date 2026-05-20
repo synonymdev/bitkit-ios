@@ -5,8 +5,17 @@ import Paykit
 // MARK: - Endpoint Publishing
 
 extension PrivatePaykitService {
+    private static let privatePaymentsEnvelopeKind = "paykit.private_payments"
+    private static let privatePaymentsReferencePlaceholder = "550e8400-e29b-41d4-a716-446655440000"
+
     static func isNoisePayloadWithinLimit(_ paymentMap: [String: String]) -> Bool {
-        guard let data = try? JSONSerialization.data(withJSONObject: paymentMap) else {
+        let envelope: [String: Any] = [
+            "version": 1,
+            "kind": privatePaymentsEnvelopeKind,
+            "reference": privatePaymentsReferencePlaceholder,
+            "entries": paymentMap,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: envelope) else {
             return false
         }
         return data.count <= maxNoisePayloadBytes
