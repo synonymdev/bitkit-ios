@@ -28,6 +28,7 @@ class CurrencyViewModel: ObservableObject {
             UserDefaults.standard.set(newValue, forKey: Self.selectedCurrencyKey)
             WeatherCurrencyAppGroupStore.save(code: newValue)
 
+            WeatherViewModel.shared.setCurrencyViewModel(self)
             WeatherViewModel.shared.handleCurrencyChange()
             WeatherHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
         }
