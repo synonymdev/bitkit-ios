@@ -49,8 +49,6 @@ struct FactsWidgetCompactContent: View {
 
 // MARK: - Bitcoin badge
 
-/// Orange ₿ badge in full color; a white circle with the glyph knocked out in tinted/monochrome
-/// mode so it reads against the system wallpaper. `bitcoin` is a template glyph asset.
 struct BitcoinLogo: View {
     @Environment(\.widgetRenderingMode) private var renderingMode
 
@@ -80,7 +78,7 @@ struct BitcoinLogo: View {
     }
 
     private var glyph: some View {
-        Image("bitcoin")
+        Image("bitcoin-symbol")
             .resizable()
             .renderingMode(.template)
     }
