@@ -1,4 +1,5 @@
 import Foundation
+import Paykit
 
 // MARK: - Payment Resolution
 
@@ -146,7 +147,6 @@ extension PrivatePaykitService {
                     context: "PrivatePaykit"
                 )
             }
-            clearAwaitingRecoveredRemoteEndpoints(publicKey: normalizedKey)
             return privateResult ?? .noEndpoint
         }
 
@@ -226,7 +226,7 @@ extension PrivatePaykitService {
         }
 
         state.contacts[publicKey]?.awaitingRecoveredRemoteEndpoints = false
-        persistState()
+        persistState(markWalletBackup: true)
     }
 
     private func privatePaymentAttempt(to publicKey: String, wallet: WalletViewModel) async -> Result<PublicPaykitPaymentLaunchResult, Error> {
@@ -295,6 +295,7 @@ extension PrivatePaykitService {
 
         let cachedResult = await cachedPrivatePaymentResult(publicKey: normalizedKey)
         if case .opened = cachedResult {
+            clearAwaitingRecoveredRemoteEndpoints(publicKey: normalizedKey)
             return cachedResult
         }
 
@@ -408,8 +409,14 @@ extension PrivatePaykitService {
             return 0
         }
 
+        return cacheRemoteEndpoints(remoteEntries, publicKey: publicKey)
+    }
+
+    @discardableResult
+    func cacheRemoteEndpoints(_ remoteEntries: [FfiPaymentEntry], publicKey: String) -> Int {
+        guard !remoteEntries.isEmpty else { return 0 }
+
         state.contacts[publicKey, default: ContactState()].remoteEndpoints = remoteEntries.map(StoredPaymentEntry.init(entry:))
-        state.contacts[publicKey]?.awaitingRecoveredRemoteEndpoints = false
         persistState(markWalletBackup: true)
         return remoteEntries.count
     }
