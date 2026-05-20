@@ -4,11 +4,13 @@ import SwiftUI
 struct ActivityRowOnchain: View {
     let item: OnchainActivity
     let feeEstimates: FeeRates?
+    let contact: PubkyContact?
     let titleOverride: String?
 
-    init(item: OnchainActivity, feeEstimates: FeeRates?, titleOverride: String? = nil) {
+    init(item: OnchainActivity, feeEstimates: FeeRates?, contact: PubkyContact? = nil, titleOverride: String? = nil) {
         self.item = item
         self.feeEstimates = feeEstimates
+        self.contact = contact
         self.titleOverride = titleOverride
     }
 
@@ -78,7 +80,11 @@ struct ActivityRowOnchain: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            ActivityIcon(activity: .onchain(item), size: 40, isCpfpChild: isCpfpChild, context: .row)
+            if let contact {
+                PubkyContactAvatar(contact: contact, size: 40)
+            } else {
+                ActivityIcon(activity: .onchain(item), size: 40, isCpfpChild: isCpfpChild, context: .row)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 BodyMSBText(status).lineLimit(1)

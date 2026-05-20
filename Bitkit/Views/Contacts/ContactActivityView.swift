@@ -64,7 +64,8 @@ struct ContactActivityView: View {
                             ActivityRow(
                                 item: activity,
                                 feeEstimates: feeEstimatesManager.estimates,
-                                contact: activityContact
+                                contact: activityContact,
+                                showContactAvatar: false
                             )
                         }
                         .accessibilityIdentifier("ContactActivity-\(index)")

@@ -217,7 +217,7 @@ class ActivityListViewModel: ObservableObject {
             return
         }
 
-        if let ldkPayments = lightningService.payments {
+        if let ldkPayments = await lightningService.listPayments() {
             isSyncingLdkNodePayments = true
             do {
                 try await coreService.activity.syncLdkNodePayments(ldkPayments)
@@ -276,7 +276,7 @@ class ActivityListViewModel: ObservableObject {
         try await coreService.activity.get(contact: publicKey, sortDirection: .desc)
     }
 
-    func setContact(_ contactPublicKey: String, forPaymentId paymentId: String, syncLdkPayments: Bool = true) async throws {
+    func setContact(_ contactPublicKey: String?, forPaymentId paymentId: String, syncLdkPayments: Bool = true) async throws {
         if syncLdkPayments {
             try? await syncLdkNodePayments()
         }

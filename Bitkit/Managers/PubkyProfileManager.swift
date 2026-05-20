@@ -602,7 +602,10 @@ class PubkyProfileManager: ObservableObject {
             }
 
             do {
+                try? Keychain.delete(key: .pubkySecretKey)
                 try Self.upsertKeychainString(.paykitSession, value: sessionSecret)
+                UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+                PrivatePaykitService.setProfileRecoveryPending(false)
                 Self.notifyAppStateBackupChanged()
             } catch {
                 await PubkyService.forceSignOut()
@@ -753,6 +756,8 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Sign Out
 
     static func clearLocalState() async {
+        await PrivatePaykitService.shared.closeAndClear(markProfileRecoveryPending: true)
+        await PrivatePaykitAddressReservationStore.shared.clearContactAssignments()
         await PubkyService.forceSignOut()
         try? Keychain.delete(key: .paykitSession)
         try? Keychain.delete(key: .pubkySecretKey)
@@ -764,8 +769,10 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private static func clearPublicPaykitSharingState() {
-        UserDefaults.standard.set(false, forKey: "sharesPublicPaykitEndpoints")
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: "hasConfirmedPublicPaykitEndpoints")
+        PrivatePaykitService.setContactSharingCleanupPending(false)
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
@@ -786,9 +793,18 @@ class PubkyProfileManager: ObservableObject {
         try? await removePublicPaykitEndpoints(context: context)
     }
 
+    static func removePrivatePaykitEndpointsBestEffort(context: String) async {
+        do {
+            try await PrivatePaykitService.shared.removePublishedEndpoints()
+        } catch {
+            Logger.warn("Failed to remove private Paykit endpoints before clearing session: \(error)", context: context)
+        }
+    }
+
     func signOut() async {
         await Task.detached {
             await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
+            await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
             do {
                 try await PubkyService.signOut()
             } catch {
@@ -856,6 +872,23 @@ class PubkyProfileManager: ObservableObject {
 
     var isAuthenticated: Bool {
         publicKey != nil
+    }
+
+    var hasLocalSecretKeyForCurrentProfile: Bool {
+        Self.hasLocalSecretKey(for: publicKey)
+    }
+
+    nonisolated static func hasLocalSecretKey(for publicKey: String?) -> Bool {
+        guard let publicKey,
+              let secretKeyHex = try? Keychain.loadString(key: .pubkySecretKey),
+              !secretKeyHex.isEmpty,
+              let rawPublicKey = try? PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        else {
+            return false
+        }
+
+        let prefixedPublicKey = rawPublicKey.hasPrefix("pubky") ? rawPublicKey : "pubky\(rawPublicKey)"
+        return PubkyPublicKeyFormat.matches(prefixedPublicKey, publicKey)
     }
 
     nonisolated static func snapshotSessionBackupState(

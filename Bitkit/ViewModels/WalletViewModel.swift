@@ -59,9 +59,10 @@ class WalletViewModel: ObservableObject {
     private var probeOutcomes: [PaymentId: ProbeOutcome] = [:]
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
-    @AppStorage("sharesPublicPaykitEndpoints") private var sharesPublicPaykitEndpoints = false
+    @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
 
     private static let publicPaykitInvoiceRefreshBufferSeconds: TimeInterval = 30 * 60
+    private static let paykitChannelUsabilityRefreshDelay: UInt64 = 5_000_000_000
 
     private let lightningService: LightningService
     private let coreService: CoreService
@@ -210,6 +211,7 @@ class WalletViewModel: ObservableObject {
                         self.bolt11 = ""
                         self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
                         Task {
+                            await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21()
                         }
@@ -217,8 +219,13 @@ class WalletViewModel: ObservableObject {
                         self.bolt11 = ""
                         Task {
                             await self.reconnectTrustedPeers()
-                            await self.refreshAndSyncState()
-                            try? await self.refreshBip21()
+                            await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
+                            try? await Task.sleep(nanoseconds: Self.paykitChannelUsabilityRefreshDelay)
+                            guard !Task.isCancelled else { return }
+                            await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
+                                reason: "channel-ready delayed refresh",
+                                forceRefreshLightning: true
+                            )
                         }
 
                     case let .channelClosed(channelId, _, _, reason):
@@ -227,14 +234,33 @@ class WalletViewModel: ObservableObject {
                             await self.refreshAndSyncState()
                             await self.handleChannelClosed(channelId: channelId, reason: reason)
                             try? await self.refreshBip21()
+                            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-closed refresh")
                         }
 
                     // MARK: Onchain Transaction Events
 
-                    case .onchainTransactionReceived, .onchainTransactionConfirmed, .onchainTransactionReplaced, .onchainTransactionReorged,
-                         .onchainTransactionEvicted:
+                    case let .onchainTransactionReceived(_, details):
                         Task {
                             await self.refreshAndSyncState()
+                            await PrivatePaykitService.shared.handleOnchainActivity(
+                                receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
+                                wallet: self
+                            )
+                        }
+
+                    case let .onchainTransactionConfirmed(_, _, _, _, details):
+                        Task {
+                            await self.refreshAndSyncState()
+                            await PrivatePaykitService.shared.handleOnchainActivity(
+                                receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
+                                wallet: self
+                            )
+                        }
+
+                    case .onchainTransactionReplaced, .onchainTransactionReorged, .onchainTransactionEvicted:
+                        Task {
+                            await self.refreshAndSyncState()
+                            await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
                         }
 
                     // MARK: Sync Events
@@ -453,6 +479,8 @@ class WalletViewModel: ObservableObject {
 
         isSyncingWallet = false
         syncState()
+        await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
+        await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
     }
 
     /// Sends bitcoin to an on-chain address
@@ -871,9 +899,12 @@ class WalletViewModel: ObservableObject {
             channelCount = channels.count
         }
 
-        if sharesPublicPaykitEndpoints, hasUsableChannels, !hadUsableChannels {
+        if hasUsableChannels, !hadUsableChannels {
             Task { [weak self] in
-                await self?.syncPublicPaykitEndpointsAfterChannelBecameUsable()
+                await self?.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
+                    reason: "channel-usable refresh",
+                    forceRefreshLightning: true
+                )
             }
         }
     }
@@ -952,35 +983,55 @@ class WalletViewModel: ObservableObject {
 
     @discardableResult
     private func refreshReusableOnchainAddress() async throws -> String {
+        let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+
+        if await PrivatePaykitAddressReservationStore.shared.isUnavailableForReusableReceive(address: onchainAddress) {
+            onchainAddress = ""
+        }
+
         if onchainAddress.isEmpty {
-            onchainAddress = try await lightningService.newAddress()
+            onchainAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
         } else {
             // Check if current address has been used
             let hasTransactions = try await coreService.utility.isAddressUsed(address: onchainAddress)
 
             if hasTransactions {
                 // Address has been used, generate a new one
-                onchainAddress = try await lightningService.newAddress()
+                onchainAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
             }
         }
 
         return onchainAddress
     }
 
-    func refreshPublicPaykitEndpoints(forceRefreshBolt11: Bool = false) async throws -> (onchainAddress: String, bolt11: String) {
-        let publicOnchainAddress = try await refreshReusableOnchainAddress()
+    func refreshPublicPaykitEndpoints(
+        forceRefreshBolt11: Bool = false,
+        includeOnchain: Bool = true,
+        includeLightning: Bool = true
+    ) async throws -> (onchainAddress: String, bolt11: String) {
+        let publicOnchainAddress = includeOnchain ? try await refreshReusableOnchainAddress() : ""
 
-        if hasUsableChannels {
+        if includeLightning, hasUsableChannels {
             let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
             let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
             if shouldRefreshBolt11 {
-                try await refreshPublicPaykitBolt11()
+                do {
+                    try await refreshPublicPaykitBolt11()
+                } catch let error as PublicPaykitError {
+                    guard case .routeHintsUnavailable = error else {
+                        throw error
+                    }
+                    Logger.warn(
+                        "Public Paykit Lightning invoice has no route hints yet; publishing without Lightning for now",
+                        context: "WalletViewModel"
+                    )
+                }
             }
-        } else {
+        } else if includeLightning {
             clearPublicPaykitBolt11()
         }
 
-        return (publicOnchainAddress, publicPaykitBolt11)
+        return (publicOnchainAddress, includeLightning ? publicPaykitBolt11 : "")
     }
 
     func refreshPublicPaykitEndpointsOnForeground() async {
@@ -1001,12 +1052,38 @@ class WalletViewModel: ObservableObject {
         }
     }
 
+    private func refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: String, forceRefreshLightning: Bool = false) async {
+        await refreshAndSyncState()
+        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning)
+
+        if sharesPublicPaykitEndpoints {
+            do {
+                if hasUsableChannels {
+                    await syncPublicPaykitEndpointsAfterChannelBecameUsable()
+                } else {
+                    try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
+                }
+            } catch {
+                Logger.warn("Failed to refresh public Paykit endpoints after channel availability changed: \(error)", context: "WalletViewModel")
+            }
+        }
+
+        await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
+            wallet: self,
+            reason: reason,
+            forceRefreshLightning: forceRefreshLightning
+        )
+    }
+
     private func hasReusablePublicPaykitInvoice() async -> Bool {
         guard !publicPaykitBolt11.isEmpty else { return false }
         guard publicPaykitBolt11ExpiresAt > Date().timeIntervalSince1970 + Self.publicPaykitInvoiceRefreshBufferSeconds else { return false }
 
         guard case let .lightning(lightningInvoice) = try? await decode(invoice: publicPaykitBolt11) else { return false }
-        return !lightningInvoice.isExpired && lightningInvoice.amountSatoshis == 0 && (lightningInvoice.description ?? "").isEmpty
+        return !lightningInvoice.isExpired &&
+            lightningInvoice.amountSatoshis == 0 &&
+            (lightningInvoice.description ?? "").isEmpty &&
+            PublicPaykitService.hasLightningRouteHints(bolt11: publicPaykitBolt11)
     }
 
     private func refreshPublicPaykitBolt11() async throws {
@@ -1014,6 +1091,10 @@ class WalletViewModel: ObservableObject {
         guard case let .lightning(lightningInvoice) = try await decode(invoice: invoice) else {
             clearPublicPaykitBolt11()
             throw PublicPaykitError.invalidPayload
+        }
+        guard PublicPaykitService.hasLightningRouteHints(bolt11: invoice) else {
+            clearPublicPaykitBolt11()
+            throw PublicPaykitError.routeHintsUnavailable
         }
 
         publicPaykitBolt11 = invoice
