@@ -28,7 +28,7 @@ extension WeatherDisplayMetric {
         switch self {
         case .fiatFee: return "$ 0.52"
         case .satsFee: return "₿ 520"
-        case .nextBlockFee: return "6 ₿/vbyte"
+        case .nextBlockFee: return "6 ₿/VBYTE"
         }
     }
 }
