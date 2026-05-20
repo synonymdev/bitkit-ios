@@ -46,13 +46,13 @@ struct WeatherFeeMetric: View {
             CaptionMText(label, textColor: .white64)
                 .textCase(.uppercase)
                 .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.78)
             Text(value)
                 .font(Fonts.bold(size: valueSize))
                 .foregroundColor(valueColor)
                 .kerning(-1)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.9)
                 .widgetAccentable()
         }
     }
@@ -108,7 +108,7 @@ struct WeatherWidgetCompactContent: View {
             WeatherFeeMetric(
                 label: metricLabel,
                 value: metric.value(from: data),
-                valueSize: 22
+                valueSize: 28
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
