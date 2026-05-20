@@ -379,6 +379,16 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertFalse(shouldDefer)
     }
 
+    func testPrivatePaymentDoesNotDeferPublicFallbackForPendingNonRecoveryHandshake() async {
+        let service = PrivatePaykitService()
+        var contactState = PrivatePaykitService.ContactState()
+        contactState.handshakeSnapshotHex = "pending-handshake"
+
+        let shouldDefer = await service.shouldDeferPublicFallbackForPrivateRecovery(contactState: contactState)
+
+        XCTAssertFalse(shouldDefer)
+    }
+
     func testPrivatePaymentKeepsAwaitingRecoveredEndpointsUntilRemoteEntriesArrive() async {
         let service = PrivatePaykitService()
         let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"

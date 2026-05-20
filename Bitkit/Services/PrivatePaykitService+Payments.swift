@@ -216,7 +216,6 @@ extension PrivatePaykitService {
         return contactState.recoveryStartedAt != nil ||
             contactState.mainRecoveryAttemptId != nil ||
             contactState.responderRecoveryAttemptId != nil ||
-            (contactState.handshakeSnapshotHex != nil && contactState.linkCompletedAt == nil) ||
             contactState.awaitingRecoveredRemoteEndpoints
     }
 
