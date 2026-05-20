@@ -839,7 +839,6 @@
 "wallet__balance_hidden_message" = "Σύρετε το υπόλοιπο του πορτοφολιού σας για να το αποκαλύψετε ξανά.";
 "wallet__balance_unit_switched_title" = "Αλλαγή σε {unit}";
 "wallet__balance_unit_switched_message" = "Πατήστε στο υπόλοιπο του πορτοφολιού σας για να το αλλάξετε πίσω σε {unit}.";
-"widgets__widgets" = "Widgets";
 "widgets__onboarding__title" = "Γεια σας,\n<accent>Widgets</accent>";
 "widgets__onboarding__description" = "Απολαύστε αποκεντρωμένες ροές από τις αγαπημένες σας υπηρεσίες web, προσθέτοντας διασκεδαστικά και χρήσιμα widgets στο πορτοφόλι Bitkit σας.";
 "widgets__nav_title" = "Widgets";

@@ -1006,7 +1006,6 @@
 "wallet__balance_unit_switched_title" = "Cambió a {unit}";
 "wallet__balance_unit_switched_message" = "Toca tu saldo del monedero para cambiarlo de nuevo a {unit}.";
 "wallet__ldk_sync_error_title" = "Error de Sincronización de Lightning";
-"widgets__widgets" = "Widgets";
 "widgets__onboarding__title" = "Hola,\n<accent>Widgets</accent>";
 "widgets__onboarding__description" = "Disfruta de fuentes descentralizadas de tus servicios web favoritos, añadiendo widgets divertidos y útiles a tu monedero Bitkit.";
 "widgets__nav_title" = "Widgets";

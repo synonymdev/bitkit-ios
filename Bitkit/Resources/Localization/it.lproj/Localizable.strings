@@ -1115,7 +1115,6 @@
 "wallet__ldk_sync_error_title" = "Errore di sincronizzazione Lightning";
 "wallet__receive_insufficient_title" = "Saldo di ricezione insufficiente.";
 "wallet__receive_insufficient_text" = "Capacità di ricezione insufficiente per ricevere questo importo tramite Lightning.";
-"widgets__widgets" = "Widget";
 "widgets__onboarding__title" = "Ciao,\n<accent>Widgets</accent>";
 "widgets__onboarding__description" = "Goditi i feed decentralizzati dai tuoi servizi web preferiti, aggiungendo widget divertenti e utili al tuo portafoglio Bitkit.";
 "widgets__nav_title" = "Widget";

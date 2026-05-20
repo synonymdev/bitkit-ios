@@ -134,8 +134,8 @@ struct BitkitFactsWidget: Widget {
         ) { entry in
             FactsHomeScreenWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("widgets__facts__name")
-        .description("widgets__facts__description")
+        .configurationDisplayName(t("widgets__facts__name"))
+        .description(t("widgets__facts__description"))
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

@@ -270,8 +270,8 @@ struct BitkitNewsWidget: Widget {
         ) { entry in
             NewsHomeScreenWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("Bitcoin Headlines")
-        .description("Latest Bitcoin news headlines, mirroring the in-app headlines widget.")
+        .configurationDisplayName(t("widgets__news__name"))
+        .description(t("widgets__news__description"))
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

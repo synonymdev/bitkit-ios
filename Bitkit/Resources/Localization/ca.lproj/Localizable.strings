@@ -978,7 +978,6 @@
 "wallet__balance_hidden_message" = "Llisca el saldo de la teva cartera per revelar-lo de nou.";
 "wallet__balance_unit_switched_title" = "Canviat a {unit}";
 "wallet__balance_unit_switched_message" = "Toca el saldo de la teva cartera per tornar-lo a {unit}.";
-"widgets__widgets" = "Ginys";
 "widgets__onboarding__title" = "Hola,\n<accent>Ginys</accent>";
 "widgets__onboarding__description" = "Gaudeix de fonts descentralitzades dels teus serveis web preferits afegint ginys divertits i útils a la teva cartera Bitkit.";
 "widgets__widget__nav_title" = "Giny";

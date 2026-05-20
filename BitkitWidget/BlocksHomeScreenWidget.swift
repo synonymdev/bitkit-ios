@@ -203,8 +203,8 @@ struct BitkitBlocksWidget: Widget {
         ) { entry in
             BlocksHomeScreenWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("Bitcoin Blocks")
-        .description("Latest mined Bitcoin block, mirroring the in-app blocks widget.")
+        .configurationDisplayName(t("widgets__blocks__name"))
+        .description(t("widgets__blocks__description"))
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

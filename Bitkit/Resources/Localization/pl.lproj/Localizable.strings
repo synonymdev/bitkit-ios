@@ -1162,7 +1162,6 @@
 "wallet__receive_insufficient_text" = "Niewystarczająca zdolność odbiorcza, aby otrzymać tę kwotę przez Lightning.";
 "wallet__receive_foreground_title" = "Zachowaj Bitkit na pierwszym planie";
 "wallet__receive_foreground_msg" = "Płatności na saldo wydatków mogą się nie powieść, jeśli przełączą się Państwo między aplikacjami.";
-"widgets__widgets" = "Widgety";
 "widgets__onboarding__title" = "Hej,\n<accent>Widgety</accent>";
 "widgets__onboarding__description" = "Korzystaj ze zdecentralizowanych kanałów swoich ulubionych usług internetowych, dodając do portfela Bitkit przydatne i interaktywne widgety.";
 "widgets__nav_title" = "Widgety";

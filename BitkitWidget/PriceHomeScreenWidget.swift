@@ -281,8 +281,8 @@ struct BitkitPriceWidget: Widget {
         ) { entry in
             PriceHomeScreenWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("Bitcoin Price")
-        .description("Latest Bitcoin price and chart, mirroring the in-app price widget.")
+        .configurationDisplayName(t("widgets__price__name"))
+        .description(t("widgets__price__description"))
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

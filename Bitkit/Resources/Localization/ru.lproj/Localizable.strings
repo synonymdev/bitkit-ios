@@ -1149,7 +1149,6 @@
 "wallet__ldk_sync_error_title" = "Ошибка Синхронизации Lightning";
 "wallet__receive_insufficient_title" = "Недостаточный входящий баланс.";
 "wallet__receive_insufficient_text" = "Недостаточно входящей ликвидности для получения данной суммы через Lightning.";
-"widgets__widgets" = "Виджеты";
 "widgets__onboarding__title" = "Привет,\n<accent>Виджеты</accent>";
 "widgets__onboarding__description" = "Наслаждайтесь децентрализованными лентами ваших любимых веб-сервисов, добавляя интересные и полезные виджеты в ваш кошелёк Bitkit.";
 "widgets__nav_title" = "Виджеты";
