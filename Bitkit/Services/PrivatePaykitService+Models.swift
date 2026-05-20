@@ -26,6 +26,11 @@ extension PrivatePaykitService {
         var didFail: Bool
     }
 
+    struct PrivatePaymentAttempt {
+        var result: Result<PublicPaykitPaymentLaunchResult, Error>
+        var shouldDeferPublicFallback: Bool
+    }
+
     struct PrivatePaykitState {
         var contacts: [String: ContactState]
 
@@ -86,6 +91,7 @@ extension PrivatePaykitService {
         var mainRecoveryAttemptId: String?
         var responderRecoveryAttemptId: String?
         var lastCompletedRecoveryAttemptId: String?
+        var awaitingRecoveredRemoteEndpoints = false
         var linkFailureCount: Int = 0
 
         init() {}
@@ -101,6 +107,7 @@ extension PrivatePaykitService {
             mainRecoveryAttemptId = cacheState.mainRecoveryAttemptId
             responderRecoveryAttemptId = cacheState.responderRecoveryAttemptId
             lastCompletedRecoveryAttemptId = cacheState.lastCompletedRecoveryAttemptId
+            awaitingRecoveredRemoteEndpoints = cacheState.awaitingRecoveredRemoteEndpoints == true
             linkFailureCount = cacheState.linkFailureCount
         }
 
@@ -149,6 +156,7 @@ extension PrivatePaykitService {
         var mainRecoveryAttemptId: String?
         var responderRecoveryAttemptId: String?
         var lastCompletedRecoveryAttemptId: String?
+        var awaitingRecoveredRemoteEndpoints: Bool?
         var linkFailureCount: Int = 0
 
         init(contactState: ContactState) {
@@ -162,6 +170,7 @@ extension PrivatePaykitService {
             mainRecoveryAttemptId = contactState.mainRecoveryAttemptId
             responderRecoveryAttemptId = contactState.responderRecoveryAttemptId
             lastCompletedRecoveryAttemptId = contactState.lastCompletedRecoveryAttemptId
+            awaitingRecoveredRemoteEndpoints = contactState.awaitingRecoveredRemoteEndpoints ? true : nil
             linkFailureCount = contactState.linkFailureCount
         }
 
@@ -176,6 +185,7 @@ extension PrivatePaykitService {
                 mainRecoveryAttemptId != nil ||
                 responderRecoveryAttemptId != nil ||
                 lastCompletedRecoveryAttemptId != nil ||
+                awaitingRecoveredRemoteEndpoints == true ||
                 linkFailureCount != 0
         }
     }

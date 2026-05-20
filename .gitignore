@@ -23,4 +23,5 @@ buildServer.json
 
 # AIs
 .ai/
+.codex/
 .claude/*.local*

@@ -21,6 +21,7 @@ struct PrivatePaykitContactLinkBackupV1: Codable, Equatable {
     let recoveryStartedAt: UInt64?
     let mainRecoveryAttemptId: String?
     let responderRecoveryAttemptId: String?
+    var awaitingRecoveredRemoteEndpoints: Bool? = nil
 }
 
 struct MetadataBackupV1: Codable {

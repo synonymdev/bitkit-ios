@@ -271,14 +271,7 @@ struct ContactDetailView: View {
 
             switch result {
             case let .opened(paymentRequest):
-                guard await openContactPayment(paymentRequest: paymentRequest) else {
-                    app.toast(
-                        type: .warning,
-                        title: t("slashtags__error_pay_title"),
-                        description: t("slashtags__error_pay_not_opened_msg")
-                    )
-                    return
-                }
+                _ = await openContactPayment(paymentRequest: paymentRequest)
             case .noEndpoint, .notOpened:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
@@ -304,6 +297,11 @@ struct ContactDetailView: View {
             try await app.handleScannedData(paymentRequest)
         } catch {
             Logger.warn("Failed to decode contact payment request: \(error)", context: "ContactDetailView")
+            app.toast(
+                type: .warning,
+                title: t("slashtags__error_pay_title"),
+                description: t("slashtags__error_pay_not_opened_msg")
+            )
             return false
         }
 

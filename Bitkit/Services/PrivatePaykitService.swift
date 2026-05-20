@@ -16,8 +16,9 @@ actor PrivatePaykitService {
     static let invoiceRefreshBufferSeconds: TimeInterval = 30 * 60
     static let maxReceivedInvoicePaymentHashesPerContact = 100
     static let staleLinkFailureThreshold = 3
-    static let publishingEnabledKey = "sharesPublicPaykitEndpoints"
+    static let publishingEnabledKey = "sharesPrivatePaykitEndpoints"
     static let cleanupPendingKey = "paykitContactSharingCleanupPending"
+    static let profileRecoveryPendingKey = "privatePaykitProfileRecoveryPending"
     static let cacheStateKey = "privatePaykitCacheState"
     static let privateEndpointRemovalPayload = #"{"value":""}"#
     static let recoveryMarkerStageInit = "init"
@@ -25,8 +26,9 @@ actor PrivatePaykitService {
     static let recoveryMarkerStageFinal = "final"
     static let pendingPublicationRetryDelay: UInt64 = 5_000_000_000
     static let pendingPublicationRetryAttempts = 60
+    static let privatePaymentRecoveryRetryDelay: UInt64 = 2_000_000_000
+    static let privatePaymentRecoveryRetryAttempts = 12
     static let freshLinkInitialPublishDelaySeconds: UInt64 = 8
-    static let completedLinkRecoveryMarkerGraceSeconds: UInt64 = 5 * 60
     static let privateStorageRootPath = "/pub/paykit/v0/private/"
     static let privateStoragePurgeMaxEntries = 500
     static let privateStoragePurgeMaxDepth = 3
@@ -56,5 +58,13 @@ actor PrivatePaykitService {
 
     static func setContactSharingCleanupPending(_ isPending: Bool) {
         UserDefaults.standard.set(isPending, forKey: cleanupPendingKey)
+    }
+
+    static func setProfileRecoveryPending(_ isPending: Bool) {
+        UserDefaults.standard.set(isPending, forKey: profileRecoveryPendingKey)
+    }
+
+    static var isProfileRecoveryPending: Bool {
+        UserDefaults.standard.bool(forKey: profileRecoveryPendingKey)
     }
 }

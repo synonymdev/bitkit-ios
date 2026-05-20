@@ -186,6 +186,7 @@ extension PrivatePaykitService {
                 state.contacts[normalizedKey]?.recoveryStartedAt = remoteRecoveryMarker.createdAt
                 state.contacts[normalizedKey]?.lastLocalPayloadHash = nil
                 state.contacts[normalizedKey]?.remoteEndpoints = []
+                state.contacts[normalizedKey]?.awaitingRecoveredRemoteEndpoints = false
                 persistState(markWalletBackup: true)
             }
 
@@ -222,6 +223,7 @@ extension PrivatePaykitService {
             state.contacts[normalizedKey]?.recoveryStartedAt = createdAt
             state.contacts[normalizedKey]?.lastLocalPayloadHash = nil
             state.contacts[normalizedKey]?.remoteEndpoints = []
+            state.contacts[normalizedKey]?.awaitingRecoveredRemoteEndpoints = false
             persistState(markWalletBackup: true)
 
             await publishRecoveryMarker(
@@ -448,6 +450,7 @@ extension PrivatePaykitService {
         state.contacts[publicKey]?.recoveryStartedAt = startedAt
         state.contacts[publicKey]?.mainRecoveryAttemptId = nil
         state.contacts[publicKey]?.responderRecoveryAttemptId = nil
+        state.contacts[publicKey]?.awaitingRecoveredRemoteEndpoints = false
         persistState(markWalletBackup: true)
         return true
     }
@@ -481,7 +484,7 @@ extension PrivatePaykitService {
             return true
         }
 
-        return marker.createdAt > linkCompletedAt + Self.completedLinkRecoveryMarkerGraceSeconds
+        return marker.createdAt > linkCompletedAt
     }
 
     func validateSnapshot(

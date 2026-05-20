@@ -54,7 +54,11 @@ struct SendAmountView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("wallet__send_amount"), showBackButton: true)
+            SheetHeader(
+                title: t("wallet__send_amount"),
+                showBackButton: true,
+                action: AnyView(SendContactHeaderAvatar())
+            )
 
             VStack(alignment: .leading, spacing: 0) {
                 NumberPadTextField(viewModel: amountViewModel, testIdentifier: "SendNumberField")

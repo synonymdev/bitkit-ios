@@ -21,7 +21,8 @@ extension PrivatePaykitService {
                         handshakeUpdatedAt: contactState.handshakeUpdatedAt,
                         recoveryStartedAt: contactState.recoveryStartedAt,
                         mainRecoveryAttemptId: contactState.mainRecoveryAttemptId,
-                        responderRecoveryAttemptId: contactState.responderRecoveryAttemptId
+                        responderRecoveryAttemptId: contactState.responderRecoveryAttemptId,
+                        awaitingRecoveredRemoteEndpoints: contactState.awaitingRecoveredRemoteEndpoints ? true : nil
                     )
                 )
             }
@@ -41,6 +42,7 @@ extension PrivatePaykitService {
         guard let backup else {
             state = PrivatePaykitState(contacts: [:])
             persistState()
+            Self.setProfileRecoveryPending(false)
             return
         }
 
@@ -67,11 +69,13 @@ extension PrivatePaykitService {
             contactState.recoveryStartedAt = contactBackup.recoveryStartedAt
             contactState.mainRecoveryAttemptId = contactBackup.mainRecoveryAttemptId
             contactState.responderRecoveryAttemptId = contactBackup.responderRecoveryAttemptId
+            contactState.awaitingRecoveredRemoteEndpoints = contactBackup.awaitingRecoveredRemoteEndpoints == true
             restoredContacts[normalizedKey] = contactState
         }
 
         state = PrivatePaykitState(contacts: restoredContacts)
         persistState()
+        Self.setProfileRecoveryPending(false)
     }
 
     func validatedSnapshot(

@@ -386,6 +386,7 @@ struct MainNavView: View {
                 case .contactsIntro: ContactsIntroView()
                 case let .contactDetail(publicKey): ContactDetailView(publicKey: publicKey)
                 case let .contactActivity(publicKey): ContactActivityView(publicKey: publicKey)
+                case let .assignActivityContact(activityId): AssignActivityContactView(activityId: activityId)
                 case .contactImportOverview:
                     if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
                         missingPendingImportView(fallbackRoute: fallbackRoute)
@@ -450,6 +451,7 @@ struct MainNavView: View {
                 case .widgetsSettings: WidgetsSettingsScreen()
                 case .notifications: NotificationsSettings()
                 case .notificationsIntro: NotificationsIntro()
+                case .paymentPreference: PaymentPreferenceView()
 
                 // Security settings
                 case .changePin: ChangePinScreen()

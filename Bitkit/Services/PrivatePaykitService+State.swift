@@ -3,7 +3,15 @@ import Foundation
 // MARK: - Active Paykit Handles
 
 extension PrivatePaykitService {
-    func closeAndClear() async {
+    func markProfileRecoveryPendingIfNeeded() {
+        guard !state.contacts.isEmpty else { return }
+        Self.setProfileRecoveryPending(true)
+    }
+
+    func closeAndClear(markProfileRecoveryPending: Bool = false) async {
+        if markProfileRecoveryPending {
+            markProfileRecoveryPendingIfNeeded()
+        }
         resetInFlightWork()
         await closeActivePaykitHandles()
         activeHandlesByContact.removeAll()
@@ -34,6 +42,7 @@ extension PrivatePaykitService {
         }
         if let completedAttemptId {
             state.contacts[publicKey]?.lastCompletedRecoveryAttemptId = completedAttemptId
+            state.contacts[publicKey]?.awaitingRecoveredRemoteEndpoints = true
         }
         persistState(markWalletBackup: true)
     }
@@ -112,6 +121,7 @@ extension PrivatePaykitService {
         state.contacts[publicKey]?.recoveryStartedAt = UInt64(Date().timeIntervalSince1970)
         state.contacts[publicKey]?.mainRecoveryAttemptId = nil
         state.contacts[publicKey]?.responderRecoveryAttemptId = nil
+        state.contacts[publicKey]?.awaitingRecoveredRemoteEndpoints = false
         persistState(markWalletBackup: true)
     }
 
@@ -195,6 +205,16 @@ extension PrivatePaykitService {
             return true
         }
 
+        return await purgePrivatePaymentStorage(reason: reason)
+    }
+
+    @discardableResult
+    func purgePrivatePaymentOutboxForProfileRecovery(reason: String) async -> Bool {
+        await purgePrivatePaymentStorage(reason: reason)
+    }
+
+    @discardableResult
+    private func purgePrivatePaymentStorage(reason: String) async -> Bool {
         guard let sessionSecret = try? Keychain.loadString(key: .paykitSession),
               !sessionSecret.isEmpty
         else { return false }

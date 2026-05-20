@@ -1,4 +1,5 @@
 @testable import Bitkit
+import Combine
 import Paykit
 import XCTest
 
@@ -11,7 +12,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertFalse(PrivatePaykitService.shouldInitiate(ownPublicKey: lower, remotePublicKey: higher))
     }
 
-    func testPrivatePayloadLimitAcceptsV1EndpointMap() throws {
+    func testPrivatePayloadLimitAcceptsV1Envelope() throws {
         let invoicePayload = try PublicPaykitService.serializePayload(value: "lnbc1privateinvoice")
         let addressPayload = try PublicPaykitService.serializePayload(value: "bcrt1qprivateaddress")
 
@@ -23,12 +24,27 @@ final class PrivatePaykitServiceTests: XCTestCase {
         )
     }
 
-    func testPrivatePayloadLimitRejectsOversizedEndpointMap() {
+    func testPrivatePayloadLimitRejectsOversizedEnvelope() {
         XCTAssertFalse(
             PrivatePaykitService.isNoisePayloadWithinLimit([
                 PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue: String(repeating: "x", count: 1200),
             ])
         )
+    }
+
+    func testPrivatePayloadLimitRejectsMapThatOnlyFitsWithoutEnvelope() throws {
+        let methodId = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+
+        for valueLength in 1 ... 1000 {
+            let paymentMap = [methodId: String(repeating: "x", count: valueLength)]
+            let rawMapSize = try JSONSerialization.data(withJSONObject: paymentMap).count
+
+            if rawMapSize <= 1000, !PrivatePaykitService.isNoisePayloadWithinLimit(paymentMap) {
+                return
+            }
+        }
+
+        XCTFail("Expected to find a payload where the raw entries map fits but the rc8 envelope exceeds the Noise limit")
     }
 
     func testPrivateRemovalTombstoneMapFitsNoisePayloadLimitAndIsNotPayable() {
@@ -60,15 +76,41 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(aliceToBob.hasSuffix(".json"))
     }
 
+    func testNewerRecoveryMarkerReplacesRecentlyCompletedLink() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: [:],
+                linkCompletedAt: 100,
+                handshakeUpdatedAt: nil,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil
+            ),
+        ])
+
+        let marker = PrivatePaykitService.RecoveryMarker(version: 1, path: "", stage: "init", attemptId: "attempt", createdAt: 101)
+
+        let shouldReplace = await service.shouldReplaceUsableLink(with: marker, publicKey: publicKey)
+
+        XCTAssertTrue(shouldReplace)
+    }
+
     func testStaleLinkFailureClassificationUsesTypedPaykitErrors() async {
         let service = PrivatePaykitService()
-        let noiseFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Transport(reason: "noise state decrypt failed"))
+        let noiseFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Transport(reason: "bad mac while decrypting payload"))
         let linkHandleFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Validation(reason: "Unknown encrypted-link handle: 123"))
+        let counterFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Transport(reason: "counter mismatch"))
         let networkFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Transport(reason: "connection timed out"))
         let sessionFailure = await service.shouldCountAsStaleLinkFailure(PaykitFfiError.Session(reason: "No active session"))
 
         XCTAssertTrue(noiseFailure)
         XCTAssertTrue(linkHandleFailure)
+        XCTAssertFalse(counterFailure)
         XCTAssertFalse(networkFailure)
         XCTAssertFalse(sessionFailure)
     }
@@ -96,6 +138,16 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 AppError(message: "Lightning payment failed", debugMessage: "Route not found")
             )
         )
+    }
+
+    func testReceivedPrivateInvoiceHashKeepsContactAttribution() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycontact"
+
+        await service.rememberReceivedInvoicePaymentHash("payment-hash", publicKey: publicKey)
+
+        let matchedPublicKey = await service.contactPublicKey(forPrivateInvoicePaymentHash: "payment-hash")
+        XCTAssertEqual(matchedPublicKey, publicKey)
     }
 
     func testWalletBackupDecodesExistingPayloadWithoutPrivatePaykitFields() throws {
@@ -158,7 +210,8 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     handshakeUpdatedAt: 123,
                     recoveryStartedAt: 789,
                     mainRecoveryAttemptId: "main-attempt",
-                    responderRecoveryAttemptId: "responder-attempt"
+                    responderRecoveryAttemptId: "responder-attempt",
+                    awaitingRecoveredRemoteEndpoints: true
                 ),
             ]
         )
@@ -171,6 +224,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(decoded.transfers.isEmpty)
         XCTAssertNil(decoded.privatePaykitHighestReservedReceiveIndexByAddressType)
         XCTAssertEqual(decoded.privatePaykitContactLinks, backup.privatePaykitContactLinks)
+        XCTAssertEqual(decoded.privatePaykitContactLinks?["pubkycontact"]?.awaitingRecoveredRemoteEndpoints, true)
     }
 
     func testPrivatePaykitStateStoresOnlySnapshotsInKeychainState() throws {
@@ -204,5 +258,276 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(cacheJson.contains("payload-hash"))
         XCTAssertFalse(cacheJson.contains("secret-link"))
         XCTAssertFalse(cacheJson.contains("secret-handshake"))
+    }
+
+    func testCloseAndClearCanMarkProfileRecoveryPendingWhenPrivateContactStateExists() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: [:],
+                linkCompletedAt: 123,
+                handshakeUpdatedAt: nil,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil
+            ),
+        ])
+
+        PrivatePaykitService.setProfileRecoveryPending(false)
+        await service.closeAndClear(markProfileRecoveryPending: true)
+        defer { PrivatePaykitService.setProfileRecoveryPending(false) }
+
+        XCTAssertTrue(PrivatePaykitService.isProfileRecoveryPending)
+    }
+
+    func testMarkProfileRecoveryPendingUsesPrivateContactStateWhenContactCleanupDefers() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: [:],
+                linkCompletedAt: 123,
+                handshakeUpdatedAt: nil,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil
+            ),
+        ])
+
+        PrivatePaykitService.setProfileRecoveryPending(false)
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        await service.markProfileRecoveryPendingIfNeeded()
+        await service.pruneUnsavedContactState(savedPublicKeys: [])
+        defer {
+            PrivatePaykitService.setProfileRecoveryPending(false)
+            PrivatePaykitService.setContactSharingCleanupPending(false)
+        }
+
+        XCTAssertTrue(PrivatePaykitService.isProfileRecoveryPending)
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey))
+        let snapshot = await service.backupSnapshot()?[publicKey]
+        XCTAssertEqual(snapshot?.linkCompletedAt, 123)
+    }
+
+    func testProfileRecoveryPurgeFailureKeepsMarkerPending() async {
+        let service = PrivatePaykitService()
+
+        PrivatePaykitService.setProfileRecoveryPending(false)
+        let error = await service.handleProfileRecoveryPurgeFailure(requireImmediatePublication: false)
+        defer { PrivatePaykitService.setProfileRecoveryPending(false) }
+
+        XCTAssertNil(error)
+        XCTAssertTrue(PrivatePaykitService.isProfileRecoveryPending)
+    }
+
+    func testProfileRecoveryPurgeFailureFailsImmediateMode() async {
+        let service = PrivatePaykitService()
+
+        PrivatePaykitService.setProfileRecoveryPending(false)
+        let error = await service.handleProfileRecoveryPurgeFailure(requireImmediatePublication: true)
+        defer { PrivatePaykitService.setProfileRecoveryPending(false) }
+
+        guard case .privateUnavailable = error as? PrivatePaykitError else {
+            return XCTFail("Expected privateUnavailable")
+        }
+        XCTAssertTrue(PrivatePaykitService.isProfileRecoveryPending)
+    }
+
+    func testProfileRecoveryStateClearsOldEndpointMetadata() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        let remoteEndpoints = [
+            PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue: #"{"value":"bcrt1qcached"}"#,
+        ]
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: remoteEndpoints,
+                linkCompletedAt: 123,
+                handshakeUpdatedAt: 100,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil
+            ),
+        ])
+
+        await service.markContactForProfileRecovery(publicKey, startedAt: 456)
+        let snapshot = await service.backupSnapshot()?[publicKey]
+
+        XCTAssertEqual(snapshot?.recoveryStartedAt, 456)
+        XCTAssertNil(snapshot?.linkSnapshotHex)
+        XCTAssertNil(snapshot?.handshakeSnapshotHex)
+        XCTAssertEqual(snapshot?.remoteEndpoints, [:])
+        XCTAssertNil(snapshot?.linkCompletedAt)
+        XCTAssertNil(snapshot?.handshakeUpdatedAt)
+    }
+
+    func testPrivatePaymentDefersPublicFallbackAfterRecoveryLinkCompletesWithoutEndpoints() async {
+        let service = PrivatePaykitService()
+        var contactState = PrivatePaykitService.ContactState()
+        contactState.linkCompletedAt = 123
+        contactState.lastCompletedRecoveryAttemptId = "attempt"
+        contactState.awaitingRecoveredRemoteEndpoints = true
+
+        let shouldDefer = await service.shouldDeferPublicFallbackForPrivateRecovery(contactState: contactState)
+
+        XCTAssertTrue(shouldDefer)
+    }
+
+    func testPrivatePaymentDoesNotDeferPublicFallbackForConsumedRecoveredEndpoints() async {
+        let service = PrivatePaykitService()
+        var contactState = PrivatePaykitService.ContactState()
+        contactState.linkCompletedAt = 123
+        contactState.lastCompletedRecoveryAttemptId = "attempt"
+
+        let shouldDefer = await service.shouldDeferPublicFallbackForPrivateRecovery(contactState: contactState)
+
+        XCTAssertFalse(shouldDefer)
+    }
+
+    func testPrivatePaymentDoesNotDeferPublicFallbackForPendingNonRecoveryHandshake() async {
+        let service = PrivatePaykitService()
+        var contactState = PrivatePaykitService.ContactState()
+        contactState.handshakeSnapshotHex = "pending-handshake"
+
+        let shouldDefer = await service.shouldDeferPublicFallbackForPrivateRecovery(contactState: contactState)
+
+        XCTAssertFalse(shouldDefer)
+    }
+
+    func testPrivatePaymentKeepsAwaitingRecoveredEndpointsUntilRemoteEntriesArrive() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: [:],
+                linkCompletedAt: 123,
+                handshakeUpdatedAt: nil,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil,
+                awaitingRecoveredRemoteEndpoints: true
+            ),
+        ])
+
+        let snapshot = await service.backupSnapshot()?[publicKey]
+        let shouldDefer = await service.shouldDeferPublicFallbackForPrivateRecovery(publicKey: publicKey)
+
+        XCTAssertTrue(shouldDefer)
+        XCTAssertEqual(snapshot?.awaitingRecoveredRemoteEndpoints, true)
+    }
+
+    func testPrivatePaymentKeepsAwaitingRecoveredEndpointsForTombstones() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: [:],
+                linkCompletedAt: 123,
+                handshakeUpdatedAt: nil,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil,
+                awaitingRecoveredRemoteEndpoints: true
+            ),
+        ])
+
+        await service.cacheRemoteEndpoints(
+            [
+                FfiPaymentEntry(
+                    methodId: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                    endpointData: PrivatePaykitService.privateEndpointRemovalPayload
+                ),
+                FfiPaymentEntry(
+                    methodId: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+                    endpointData: PrivatePaykitService.privateEndpointRemovalPayload
+                ),
+            ],
+            publicKey: publicKey
+        )
+
+        let result = await service.cachedPrivatePaymentResult(publicKey: publicKey)
+        let snapshot = await service.backupSnapshot()?[publicKey]
+        let shouldDefer = await service.shouldDeferPublicFallbackForPrivateRecovery(publicKey: publicKey)
+
+        guard case .notOpened = result else {
+            return XCTFail("Expected tombstones to be non-payable")
+        }
+        XCTAssertTrue(shouldDefer)
+        XCTAssertEqual(snapshot?.awaitingRecoveredRemoteEndpoints, true)
+    }
+
+    func testPrivatePaymentClearingAwaitingRecoveredEndpointsMarksWalletBackupChanged() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        await service.restoreBackup([
+            publicKey: PrivatePaykitContactLinkBackupV1(
+                publicKey: publicKey,
+                linkSnapshotHex: nil,
+                handshakeSnapshotHex: nil,
+                remoteEndpoints: [:],
+                linkCompletedAt: 123,
+                handshakeUpdatedAt: nil,
+                recoveryStartedAt: nil,
+                mainRecoveryAttemptId: nil,
+                responderRecoveryAttemptId: nil,
+                awaitingRecoveredRemoteEndpoints: true
+            ),
+        ])
+
+        let backupChanged = expectation(description: "private Paykit recovery marker clear marks wallet backup data changed")
+        let cancellable = PrivatePaykitService.walletBackupDataChangedPublisher.sink {
+            backupChanged.fulfill()
+        }
+
+        await service.clearAwaitingRecoveredRemoteEndpoints(publicKey: publicKey)
+        await fulfillment(of: [backupChanged], timeout: 1)
+
+        let snapshot = await service.backupSnapshot()?[publicKey]
+        XCTAssertNil(snapshot?.awaitingRecoveredRemoteEndpoints)
+        _ = cancellable
+    }
+
+    func testPrivatePaymentDoesNotRetryGenericPrivateUnavailableBeforePublicFallback() async throws {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        let result: Result<PublicPaykitPaymentLaunchResult, Error> = .failure(PrivatePaykitError.privateUnavailable)
+
+        let shouldRetry = try await service.shouldRetryPrivatePaymentBeforePublicFallback(
+            publicKey: publicKey,
+            result: result,
+            shouldDeferPublicFallback: false
+        )
+
+        XCTAssertFalse(shouldRetry)
+    }
+
+    func testPrivatePaymentRetriesPrivateUnavailableDuringRecovery() async throws {
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycytinw71a3ge1esmzj5e53hsr3jtj6t4pogpgr6k75w9mzmyokzo"
+        let result: Result<PublicPaykitPaymentLaunchResult, Error> = .failure(PrivatePaykitError.privateUnavailable)
+
+        let shouldRetry = try await service.shouldRetryPrivatePaymentBeforePublicFallback(
+            publicKey: publicKey,
+            result: result,
+            shouldDeferPublicFallback: true
+        )
+
+        XCTAssertTrue(shouldRetry)
     }
 }

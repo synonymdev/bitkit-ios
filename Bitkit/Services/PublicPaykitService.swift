@@ -6,6 +6,7 @@ enum PublicPaykitError: LocalizedError {
     case noSupportedEndpoint
     case walletNotReady
     case invalidPayload
+    case routeHintsUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -15,6 +16,8 @@ enum PublicPaykitError: LocalizedError {
             return "Bitkit could not prepare a public payment endpoint because the wallet is not ready."
         case .invalidPayload:
             return "The public payment endpoint payload is invalid."
+        case .routeHintsUnavailable:
+            return "A reachable Lightning payment endpoint is not available yet."
         }
     }
 }
@@ -69,6 +72,10 @@ private actor PublicPaykitEndpointLock {
 
 enum PublicPaykitService {
     private static let endpointLock = PublicPaykitEndpointLock()
+    static let publishingEnabledKey = "sharesPublicPaykitEndpoints"
+    static let lightningPaymentOptionEnabledKey = "paykitPaymentOptionLightningEnabled"
+    static let onchainPaymentOptionEnabledKey = "paykitPaymentOptionOnchainEnabled"
+
     enum MethodId: String, Hashable, CaseIterable {
         case bitcoinLightningBolt11 = "btc-lightning-bolt11"
         case bitcoinLightningLnurl = "btc-lightning-lnurl"
@@ -233,13 +240,13 @@ enum PublicPaykitService {
             return
         }
 
-        let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true)
+        let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true)
         try await applyPublishedEndpoints(desiredEndpoints)
     }
 
     @MainActor
     static func syncCurrentPublishedEndpoints(wallet: WalletViewModel) async throws {
-        let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false)
+        let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false, requireEndpoint: false)
         try await applyPublishedEndpoints(desiredEndpoints)
     }
 
@@ -323,6 +330,22 @@ enum PublicPaykitService {
         MethodId.publishableMethodIds.filter { existingMethodIds.contains($0) }
     }
 
+    static func isLightningPaymentOptionEnabled(defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: lightningPaymentOptionEnabledKey) as? Bool ?? true
+    }
+
+    static func isOnchainPaymentOptionEnabled(defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: onchainPaymentOptionEnabledKey) as? Bool ?? true
+    }
+
+    static func hasLightningRouteHints(bolt11: String) -> Bool {
+        guard let invoice = try? Bolt11Invoice.fromStr(invoiceStr: bolt11) else {
+            return false
+        }
+
+        return invoice.routeHints().contains { !$0.isEmpty }
+    }
+
     static func publishedEndpointSyncPlan(existingEndpoints: [MethodId: String], desiredEndpoints: [Endpoint]) -> EndpointSyncPlan {
         let desiredMethodIds = Set(desiredEndpoints.map(\.methodId))
         return EndpointSyncPlan(
@@ -400,7 +423,10 @@ enum PublicPaykitService {
     }
 
     @MainActor
-    private static func buildWalletEndpoints(wallet: WalletViewModel, refreshIfNeeded: Bool) async throws -> [Endpoint] {
+    private static func buildWalletEndpoints(wallet: WalletViewModel, refreshIfNeeded: Bool, requireEndpoint: Bool) async throws -> [Endpoint] {
+        let includeOnchain = isOnchainPaymentOptionEnabled()
+        let includeLightning = isLightningPaymentOptionEnabled()
+
         if refreshIfNeeded {
             let isNodeReady = await wallet.waitForNodeToRun()
             let lifecycleState = wallet.nodeLifecycleState
@@ -408,14 +434,22 @@ enum PublicPaykitService {
                 throw PublicPaykitError.walletNotReady
             }
 
-            _ = try await wallet.refreshPublicPaykitEndpoints(forceRefreshBolt11: true)
+            _ = try await wallet.refreshPublicPaykitEndpoints(
+                forceRefreshBolt11: includeLightning,
+                includeOnchain: includeOnchain,
+                includeLightning: includeLightning
+            )
         }
 
-        let publicEndpoints = try await wallet.refreshPublicPaykitEndpoints(forceRefreshBolt11: false)
+        let publicEndpoints = try await wallet.refreshPublicPaykitEndpoints(
+            forceRefreshBolt11: false,
+            includeOnchain: includeOnchain,
+            includeLightning: includeLightning
+        )
         var endpoints: [Endpoint] = []
 
         let onchainAddress = publicEndpoints.onchainAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !onchainAddress.isEmpty {
+        if includeOnchain, !onchainAddress.isEmpty {
             try endpoints.append(
                 Endpoint(
                     methodId: onchainMethodId(for: onchainAddress),
@@ -428,7 +462,7 @@ enum PublicPaykitService {
         }
 
         let bolt11 = publicEndpoints.bolt11.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !bolt11.isEmpty {
+        if includeLightning, !bolt11.isEmpty {
             try endpoints.append(
                 Endpoint(
                     methodId: .bitcoinLightningBolt11,
@@ -440,7 +474,7 @@ enum PublicPaykitService {
             )
         }
 
-        guard !endpoints.isEmpty else {
+        guard !endpoints.isEmpty || !requireEndpoint else {
             throw PublicPaykitError.noSupportedEndpoint
         }
 
