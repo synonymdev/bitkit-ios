@@ -1176,11 +1176,11 @@
 "widgets__weather__name" = "Clima Bitcoin";
 "widgets__weather__description" = "Sepa cuándo es un buen momento para realizar transacciones en la blockchain de Bitcoin.";
 "widgets__weather__condition__good__title" = "Condiciones favorables";
-"widgets__weather__condition__good__description" = "Todo despejado. Ahora sería un buen momento para realizar transacciones en la blockchain.";
+"widgets__weather__condition__good__description" = "Ahora sería un buen momento para realizar transacciones en la blockchain.";
 "widgets__weather__condition__average__title" = "Condiciones promedio";
-"widgets__weather__condition__average__description" = "La tasa del siguiente bloque se acerca a las medias mensuales.";
+"widgets__weather__condition__average__description" = "La tasa del siguiente bloque se acerca a las medias mensuales y anuales.";
 "widgets__weather__condition__poor__title" = "Malas condiciones";
-"widgets__weather__condition__poor__description" = "Si no tiene prisa por realizar una transacción, quizá sea mejor esperar un poco.";
+"widgets__weather__condition__poor__description" = "Si no tiene prisa por realizar una transacción, quizá sea mejor esperar.";
 "widgets__weather__current_fee" = "Tasa media actual";
 "widgets__weather__next_block" = "Inclusión en siguiente bloque";
 "widgets__weather__error" = "No se pudo consultar la condición actual de fees";

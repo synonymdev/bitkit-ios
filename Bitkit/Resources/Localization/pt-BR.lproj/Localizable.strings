@@ -1192,11 +1192,11 @@
 "widgets__weather__name" = "Tempo do Bitcoin";
 "widgets__weather__description" = "Descubra quando é um bom momento para fazer transações na blockchain do Bitcoin.";
 "widgets__weather__condition__good__title" = "Condições favoráveis";
-"widgets__weather__condition__good__description" = "Tudo limpo. Agora seria um bom momento para fazer transações na blockchain.";
+"widgets__weather__condition__good__description" = "Agora seria um bom momento para fazer transações na blockchain.";
 "widgets__weather__condition__average__title" = "Condições normais";
-"widgets__weather__condition__average__description" = "A taxa do próximo bloco está próxima das médias mensais.";
+"widgets__weather__condition__average__description" = "A taxa do próximo bloco está próxima das médias mensais e anuais.";
 "widgets__weather__condition__poor__title" = "Condições ruins";
-"widgets__weather__condition__poor__description" = "Se você não estiver com pressa para fazer uma transação, talvez seja melhor esperar um pouco.";
+"widgets__weather__condition__poor__description" = "Se você não estiver com pressa para fazer uma transação, talvez seja melhor esperar.";
 "widgets__weather__current_fee" = "Taxa atual";
 "widgets__weather__next_block" = "Inclusão no próximo bloco";
 "widgets__weather__error" = "Não foi possível obter o tempo atual da taxa";

@@ -1191,11 +1191,11 @@
 "widgets__weather__name" = "Bitcoinowa Pogoda";
 "widgets__weather__description" = "Sprawdź, kiedy jest dobry moment na transakcję w sieci Bitcoin.";
 "widgets__weather__condition__good__title" = "Korzystne warunki";
-"widgets__weather__condition__good__description" = "Brak przeszkód. Teraz jest dobry moment na transakcję w sieci blockchain.";
+"widgets__weather__condition__good__description" = "Teraz jest dobry moment na transakcję w sieci blockchain.";
 "widgets__weather__condition__average__title" = "Średnie warunki";
-"widgets__weather__condition__average__description" = "Opłaty za następny blok są zbliżone do miesięcznych średnich.";
+"widgets__weather__condition__average__description" = "Opłaty za następny blok są zbliżone do miesięcznych i rocznych średnich.";
 "widgets__weather__condition__poor__title" = "Niekorzystne warunki";
-"widgets__weather__condition__poor__description" = "Jeśli nie musisz się spieszyć z transakcją, lepiej chwilę poczekać.";
+"widgets__weather__condition__poor__description" = "Jeśli nie musisz się spieszyć z transakcją, lepiej poczekać.";
 "widgets__weather__current_fee" = "Obecna średnia opłata";
 "widgets__weather__next_block" = "Włączenie do następnego bloku";
 "widgets__weather__error" = "Nie udało się pobrać aktualnych danych o opłatach";

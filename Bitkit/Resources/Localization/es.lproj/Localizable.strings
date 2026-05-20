@@ -1027,11 +1027,11 @@
 "widgets__blocks__error" = "No se pudieron obtener los datos de bloques";
 "widgets__facts__name" = "Hechos Bitcoin";
 "widgets__weather__condition__good__title" = "Condiciones Favorables";
-"widgets__weather__condition__good__description" = "Todo despejado. Ahora sería un buen momento para realizar transacciones en la blockchain.";
+"widgets__weather__condition__good__description" = "Ahora sería un buen momento para realizar transacciones en la blockchain.";
 "widgets__weather__condition__average__title" = "Condiciones Promedio";
-"widgets__weather__condition__average__description" = "La tasa del próximo bloque está cerca de los promedios mensuales.";
+"widgets__weather__condition__average__description" = "La tasa del próximo bloque está cerca de los promedios mensuales y anuales.";
 "widgets__weather__condition__poor__title" = "Condiciones Desfavorables";
-"widgets__weather__condition__poor__description" = "Si no tienes prisa por hacer transacciones, puede ser mejor esperar un poco.";
+"widgets__weather__condition__poor__description" = "Si no tienes prisa por hacer transacciones, puede ser mejor esperar.";
 "widgets__weather__current_fee" = "Comisión promedio actual";
 "widgets__weather__next_block" = "Inclusión en el próximo bloque";
 "widgets__weather__error" = "No se pudo obtener el clima de comisiones actual";

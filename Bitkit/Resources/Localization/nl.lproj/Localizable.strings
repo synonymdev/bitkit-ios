@@ -1184,11 +1184,11 @@
 "widgets__weather__name" = "Bitcoin Wetter";
 "widgets__weather__description" = "Finde heraus, wann es eine gute Zeit ist, um auf der Bitcoin blockchain Überweisungen zu tätigen.";
 "widgets__weather__condition__good__title" = "Gunstige Omstandigheden";
-"widgets__weather__condition__good__description" = "Alles vrij. Nu is een goed moment om op de blockchain te transacteren.";
+"widgets__weather__condition__good__description" = "Nu is een goed moment om op de blockchain te transacteren.";
 "widgets__weather__condition__average__title" = "Gemiddelde Omstandigheden";
-"widgets__weather__condition__average__description" = "Het tarief voor het volgende blok ligt dicht bij het maandelijks gemiddelde.";
+"widgets__weather__condition__average__description" = "Het tarief voor het volgende blok ligt dicht bij het maandelijks en jaarlijks gemiddelde.";
 "widgets__weather__condition__poor__title" = "Slechte Omstandigheden";
-"widgets__weather__condition__poor__description" = "Als u geen haast heeft om te transacteren, is het misschien beter om even te wachten.";
+"widgets__weather__condition__poor__description" = "Als u geen haast heeft om te transacteren, is het misschien beter om te wachten.";
 "widgets__weather__current_fee" = "Huidige gemiddelde vergoeding";
 "widgets__weather__next_block" = "Opname in volgend blok";
 "widgets__weather__error" = "Kon huidige vergoedingsweer niet ophalen";
