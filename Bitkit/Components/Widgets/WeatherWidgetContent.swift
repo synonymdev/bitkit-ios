@@ -40,13 +40,13 @@ struct WeatherFeeMetric: View {
     let value: String
     var valueColor: Color = .greenAccent
     var valueSize: CGFloat = 30
+    /// Use a smaller label (`FootnoteText`) so the caption doesn't dominate the value
+    /// in the space-constrained compact widget.
+    var compactLabel: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            CaptionMText(label, textColor: .white64)
-                .textCase(.uppercase)
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
+            labelView
             Text(value)
                 .font(Fonts.bold(size: valueSize))
                 .foregroundColor(valueColor)
@@ -54,6 +54,20 @@ struct WeatherFeeMetric: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.9)
                 .widgetAccentable()
+        }
+    }
+
+    @ViewBuilder
+    private var labelView: some View {
+        if compactLabel {
+            FootnoteText(label, textColor: .white64)
+                .textCase(.uppercase)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        } else {
+            CaptionMText(label, textColor: .white64)
+                .textCase(.uppercase)
+                .lineLimit(1)
         }
     }
 }
@@ -96,19 +110,21 @@ struct WeatherWidgetCompactContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading) {
                 Text(data.condition.icon)
-                    .font(.system(size: 48))
+                    .font(.system(size: 58))
+                    .minimumScaleFactor(0.85)
                     .widgetAccentable()
                 SubtitleText(conditionTitle, textColor: .white)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.6)
             }
 
             WeatherFeeMetric(
                 label: metricLabel,
                 value: metric.value(from: data),
-                valueSize: 28
+                valueSize: 28,
+                compactLabel: true
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
