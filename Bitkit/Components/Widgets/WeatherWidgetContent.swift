@@ -119,6 +119,7 @@ struct WeatherWidgetCompactContent: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             WeatherFeeMetric(
                 label: metricLabel,
