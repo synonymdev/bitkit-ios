@@ -44,72 +44,13 @@ struct NewsWidget: View {
         } else if viewModel.error != nil {
             WidgetContentBuilder.errorView(t("widgets__news__error"))
         } else if let data = viewModel.widgetData {
-            NewsWidgetWideContent(data: data, options: options)
+            NewsWidgetWideContent(
+                title: data.title,
+                publisher: data.publisher,
+                timeAgo: data.timeAgo,
+                options: options
+            )
         }
-    }
-}
-
-// MARK: - Wide layout (in-app + 343-wide carousel page)
-
-struct NewsWidgetWideContent: View {
-    let data: WidgetData
-    let options: NewsWidgetOptions
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if options.showTitle {
-                TitleText(data.title)
-                    .lineLimit(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if options.showSource || options.showDate {
-                HStack(alignment: .center, spacing: 8) {
-                    if options.showSource {
-                        BodySSBText(data.publisher, textColor: .brandAccent)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
-                    if options.showDate {
-                        BodySSBText(data.timeAgo, textColor: .textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-// MARK: - Compact layout (small carousel preview + 163×192 OS widget)
-
-struct NewsWidgetCompactContent: View {
-    let data: WidgetData
-    let options: NewsWidgetOptions
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if options.showTitle {
-                TitleText(data.title)
-                    .lineLimit(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            Spacer(minLength: 8)
-
-            if options.showDate {
-                HStack {
-                    Spacer(minLength: 0)
-                    BodySSBText(data.timeAgo, textColor: .textSecondary)
-                        .lineLimit(1)
-                }
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.gray6)
-        .cornerRadius(16)
     }
 }
 

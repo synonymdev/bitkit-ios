@@ -126,7 +126,10 @@ struct NewsWidgetPreviewView: View {
             Spacer(minLength: 0)
             Group {
                 if let data = viewModel.widgetData {
-                    NewsWidgetCompactContent(data: data, options: currentOptions)
+                    NewsWidgetCompactContent(title: data.title, timeAgo: data.timeAgo, options: currentOptions)
+                        .padding(16)
+                        .background(Color.gray6)
+                        .cornerRadius(16)
                 } else {
                     placeholderCompact
                 }
@@ -142,10 +145,15 @@ struct NewsWidgetPreviewView: View {
             Spacer(minLength: 0)
             Group {
                 if let data = viewModel.widgetData {
-                    NewsWidgetWideContent(data: data, options: currentOptions)
-                        .padding(16)
-                        .background(Color.gray6)
-                        .cornerRadius(16)
+                    NewsWidgetWideContent(
+                        title: data.title,
+                        publisher: data.publisher,
+                        timeAgo: data.timeAgo,
+                        options: currentOptions
+                    )
+                    .padding(16)
+                    .background(Color.gray6)
+                    .cornerRadius(16)
                 } else {
                     placeholderWide
                 }

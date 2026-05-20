@@ -137,6 +137,9 @@ struct PriceWidgetPreviewView: View {
             Group {
                 if let data = primaryPrice {
                     PriceWidgetCompactContent(data: data, period: currentOptions.selectedPeriod)
+                        .padding(16)
+                        .background(Color.gray6)
+                        .cornerRadius(16)
                 } else {
                     placeholderCompact
                 }

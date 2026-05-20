@@ -109,6 +109,44 @@
 			);
 			target = 4A319B4E2E8F24F2002B9AC9 /* BitkitWidgetExtension */;
 		};
+		4A319B672E8F24F5002B9AC9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Components/Widgets/BlocksWidgetContent.swift,
+				Components/Widgets/FactsWidgetContent.swift,
+				Components/Widgets/NewsWidgetContent.swift,
+				Components/Widgets/PriceWidgetContent.swift,
+				Components/Widgets/WeatherWidgetContent.swift,
+				Components/Widgets/WidgetPalette.swift,
+				Constants/WidgetEnv.swift,
+				"Fonts/InterTight-Black.ttf",
+				"Fonts/InterTight-Bold.ttf",
+				"Fonts/InterTight-ExtraBold.ttf",
+				"Fonts/InterTight-Medium.ttf",
+				"Fonts/InterTight-Regular.ttf",
+				"Fonts/InterTight-SemiBold.ttf",
+				Models/BitcoinFacts.swift,
+				Models/BlocksWidgetData.swift,
+				Models/BlocksWidgetFields.swift,
+				Models/BlocksWidgetOptions.swift,
+				Models/NewsWidgetData.swift,
+				Models/NewsWidgetOptions.swift,
+				Models/PriceWidgetData.swift,
+				Models/PriceWidgetOptions.swift,
+				Models/WeatherWidgetData.swift,
+				Models/WeatherWidgetOptions.swift,
+				Services/Widgets/BlocksHomeScreenWidgetOptionsStore.swift,
+				Services/Widgets/MempoolWeatherAPI.swift,
+				Services/Widgets/NewsHomeScreenWidgetOptionsStore.swift,
+				Services/Widgets/PriceHomeScreenWidgetOptionsStore.swift,
+				Services/Widgets/WeatherHomeScreenWidgetOptionsStore.swift,
+				Styles/Colors.swift,
+				Styles/Fonts.swift,
+				Styles/TextStyle.swift,
+				Utilities/LocalizeHelpers.swift,
+			);
+			target = 4A319B4E2E8F24F2002B9AC9 /* BitkitWidgetExtension */;
+		};
 		96A44F3D2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -123,8 +161,8 @@
 				Extensions/HexBytes.swift,
 				"Extensions/LDKNode+AddressType.swift",
 				Extensions/PaymentDetails.swift,
-				Models/BlocktankNotificationType.swift,
 				Models/BlocksWidgetOptions.swift,
+				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
 				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
@@ -179,39 +217,6 @@
 				NotificationService.swift,
 			);
 			target = 961058DB2C355B5500E1F1D8 /* BitkitNotification */;
-		};
-		4A319B672E8F24F5002B9AC9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Fonts/InterTight-Black.ttf,
-				Fonts/InterTight-Bold.ttf,
-				Fonts/InterTight-ExtraBold.ttf,
-				Fonts/InterTight-Medium.ttf,
-				Fonts/InterTight-Regular.ttf,
-				Constants/WidgetEnv.swift,
-				Fonts/InterTight-SemiBold.ttf,
-				Components/Widgets/WeatherWidgetContent.swift,
-				Models/BlocksWidgetData.swift,
-				Models/BlocksWidgetFields.swift,
-				Models/BlocksWidgetOptions.swift,
-				Models/BitcoinFacts.swift,
-				Models/NewsWidgetData.swift,
-				Models/NewsWidgetOptions.swift,
-				Models/PriceWidgetData.swift,
-				Models/PriceWidgetOptions.swift,
-				Models/WeatherWidgetData.swift,
-				Models/WeatherWidgetOptions.swift,
-				Services/Widgets/BlocksHomeScreenWidgetOptionsStore.swift,
-				Services/Widgets/MempoolWeatherAPI.swift,
-				Services/Widgets/NewsHomeScreenWidgetOptionsStore.swift,
-				Services/Widgets/PriceHomeScreenWidgetOptionsStore.swift,
-				Services/Widgets/WeatherHomeScreenWidgetOptionsStore.swift,
-				Styles/Colors.swift,
-				Styles/Fonts.swift,
-				Styles/TextStyle.swift,
-				Utilities/LocalizeHelpers.swift,
-			);
-			target = 4A319B4E2E8F24F2002B9AC9 /* BitkitWidgetExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -554,31 +559,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXVariantGroup section */
-		4A319B712E8F2600002B9AC9 /* Localizable.strings */ = {
-			isa = PBXVariantGroup;
-			children = (
-				4A319B722E8F2600002B9AC9 /* ar */,
-				4A319B732E8F2600002B9AC9 /* ca */,
-				4A319B742E8F2600002B9AC9 /* cs */,
-				4A319B752E8F2600002B9AC9 /* de */,
-				4A319B762E8F2600002B9AC9 /* el */,
-				4A319B772E8F2600002B9AC9 /* en */,
-				4A319B782E8F2600002B9AC9 /* es-419 */,
-				4A319B792E8F2600002B9AC9 /* es */,
-				4A319B7A2E8F2600002B9AC9 /* fr */,
-				4A319B7B2E8F2600002B9AC9 /* it */,
-				4A319B7C2E8F2600002B9AC9 /* nl */,
-				4A319B7D2E8F2600002B9AC9 /* pl */,
-				4A319B7E2E8F2600002B9AC9 /* pt-BR */,
-				4A319B7F2E8F2600002B9AC9 /* pt */,
-				4A319B802E8F2600002B9AC9 /* ru */,
-			);
-			name = Localizable.strings;
-			sourceTree = "<group>";
-		};
-/* End PBXVariantGroup section */
-
 /* Begin PBXShellScriptBuildPhase section */
 		96EMBED0012026012000FRAME /* Remove Static Framework Stubs */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -663,6 +643,31 @@
 		};
 /* End PBXTargetDependency section */
 
+/* Begin PBXVariantGroup section */
+		4A319B712E8F2600002B9AC9 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				4A319B722E8F2600002B9AC9 /* ar */,
+				4A319B732E8F2600002B9AC9 /* ca */,
+				4A319B742E8F2600002B9AC9 /* cs */,
+				4A319B752E8F2600002B9AC9 /* de */,
+				4A319B762E8F2600002B9AC9 /* el */,
+				4A319B772E8F2600002B9AC9 /* en */,
+				4A319B782E8F2600002B9AC9 /* es-419 */,
+				4A319B792E8F2600002B9AC9 /* es */,
+				4A319B7A2E8F2600002B9AC9 /* fr */,
+				4A319B7B2E8F2600002B9AC9 /* it */,
+				4A319B7C2E8F2600002B9AC9 /* nl */,
+				4A319B7D2E8F2600002B9AC9 /* pl */,
+				4A319B7E2E8F2600002B9AC9 /* pt-BR */,
+				4A319B7F2E8F2600002B9AC9 /* pt */,
+				4A319B802E8F2600002B9AC9 /* ru */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin XCBuildConfiguration section */
 		4A319B632E8F24F4002B9AC9 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -684,7 +689,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2.2.1;
-				PRODUCT_BUNDLE_IDENTIFIER = "to.bitkit.widget";
+				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -717,7 +722,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2.2.1;
-				PRODUCT_BUNDLE_IDENTIFIER = "to.bitkit.widget";
+				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1143,7 +1148,7 @@
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
 				kind = exactVersion;
-				version = 0.1.0-rc5;
+				version = "0.1.0-rc5";
 			};
 		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {

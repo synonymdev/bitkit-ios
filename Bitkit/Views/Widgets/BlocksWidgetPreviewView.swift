@@ -124,6 +124,9 @@ struct BlocksWidgetPreviewView: View {
             Group {
                 if let data = viewModel.blockData {
                     BlocksWidgetCompactContent(data: data, options: currentOptions)
+                        .padding(16)
+                        .background(Color.gray6)
+                        .cornerRadius(16)
                 } else {
                     placeholderCompact
                 }

@@ -72,9 +72,13 @@ struct WeatherHomeScreenWidgetEntryView: View {
 
     var entry: WeatherWidgetProvider.Entry
 
+    private var palette: WidgetPalette {
+        WidgetPalette(renderingMode: widgetRenderingMode)
+    }
+
     var body: some View {
         content
-            .containerBackground(for: .widget) { backgroundView }
+            .containerBackground(for: .widget) { palette.background }
     }
 
     @ViewBuilder

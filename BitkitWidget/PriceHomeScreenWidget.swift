@@ -1,4 +1,3 @@
-import Charts
 import SwiftUI
 import WidgetKit
 
@@ -105,9 +104,13 @@ struct PriceHomeScreenWidgetEntryView: View {
 
     var entry: PriceWidgetProvider.Entry
 
+    private var palette: WidgetPalette {
+        WidgetPalette(renderingMode: widgetRenderingMode)
+    }
+
     var body: some View {
         content
-            .containerBackground(for: .widget) { backgroundView }
+            .containerBackground(for: .widget) { palette.background }
     }
 
     @ViewBuilder
@@ -117,9 +120,10 @@ struct PriceHomeScreenWidgetEntryView: View {
         } else if let primary = primaryPrice {
             switch widgetFamily {
             case .systemSmall:
-                compactLayout(data: primary)
+                PriceWidgetCompactContent(data: primary, period: entry.options.selectedPeriod)
             default:
-                wideLayout(data: primary)
+                PriceWidgetWideContent(data: primary, period: entry.options.selectedPeriod)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         } else {
             ProgressView()
@@ -134,140 +138,9 @@ struct PriceHomeScreenWidgetEntryView: View {
         return entry.prices.first
     }
 
-    // MARK: - Compact (small widget — 163×192)
-
-    private func compactLayout(data: PriceData) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 0) {
-                    CaptionMText(data.name, textColor: secondaryTextColor)
-                    Spacer(minLength: 0)
-                    CaptionMText(entry.options.selectedPeriod.rawValue, textColor: secondaryTextColor)
-                }
-
-                priceText(data.price, size: 22)
-
-                Text(data.change.formatted)
-                    .font(Fonts.semiBold(size: 15))
-                    .foregroundColor(changeColor(isPositive: data.change.isPositive))
-                    .lineLimit(1)
-                    .widgetAccentable()
-            }
-
-            Spacer(minLength: 8)
-
-            chart(values: data.pastValues, isPositive: data.change.isPositive, idealHeight: 64)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    // MARK: - Wide (medium widget — 343×152)
-
-    private func wideLayout(data: PriceData) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .center, spacing: 16) {
-                    CaptionMText("\(data.name)  \(entry.options.selectedPeriod.rawValue)", textColor: secondaryTextColor)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Text(data.change.formatted)
-                        .font(Fonts.bold(size: 22))
-                        .foregroundColor(changeColor(isPositive: data.change.isPositive))
-                        .lineLimit(1)
-                        .widgetAccentable()
-                }
-
-                priceText(data.price, size: 34)
-            }
-
-            Spacer(minLength: 4)
-
-            chart(values: data.pastValues, isPositive: data.change.isPositive, idealHeight: 48, minHeight: 24)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    // MARK: - Sub-views
-
-    private func priceText(_ value: String, size: CGFloat) -> some View {
-        Text(value)
-            .font(Fonts.bold(size: size))
-            .foregroundColor(valueTextColor)
-            .lineLimit(1)
-            .widgetAccentable()
-    }
-
-    private func chart(values: [Double], isPositive: Bool, idealHeight: CGFloat, minHeight: CGFloat = 32) -> some View {
-        PriceWidgetChart(
-            values: values,
-            isPositive: isPositive,
-            renderingMode: widgetRenderingMode
-        )
-        .frame(minHeight: minHeight, maxHeight: idealHeight)
-        .widgetAccentable()
-    }
-
     private var errorView: some View {
-        BodySText("Couldn’t load price.", textColor: secondaryTextColor)
+        BodySText(t("widgets__price__error"), textColor: palette.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    // MARK: - Colors
-
-    private var backgroundView: some View {
-        widgetRenderingMode == .fullColor ? Color.gray6 : Color.clear
-    }
-
-    private var secondaryTextColor: Color {
-        widgetRenderingMode == .fullColor ? .white.opacity(0.64) : .secondary
-    }
-
-    private var valueTextColor: Color {
-        widgetRenderingMode == .fullColor ? .white : .primary
-    }
-
-    private func changeColor(isPositive: Bool) -> Color {
-        guard widgetRenderingMode == .fullColor else { return .primary }
-        return isPositive ? .greenAccent : .redAccent
-    }
-}
-
-// MARK: - Chart
-
-private struct PriceWidgetChart: View {
-    let values: [Double]
-    let isPositive: Bool
-    let renderingMode: WidgetRenderingMode
-
-    private var normalizedValues: [Double] {
-        guard values.count > 1 else { return values }
-        let minValue = values.min() ?? 0
-        let maxValue = values.max() ?? 0
-        let range = maxValue - minValue
-        guard range > 0 else { return values.map { _ in 0.5 } }
-        return values.map { 0.15 + (($0 - minValue) / range) * 0.7 }
-    }
-
-    private var lineColor: Color {
-        guard renderingMode == .fullColor else { return .primary }
-        return isPositive ? .greenAccent : .redAccent
-    }
-
-    var body: some View {
-        Chart {
-            ForEach(Array(normalizedValues.enumerated()), id: \.offset) { index, value in
-                LineMark(
-                    x: .value("Index", index),
-                    y: .value("Price", value)
-                )
-                .foregroundStyle(lineColor)
-                .lineStyle(StrokeStyle(lineWidth: 1.3))
-                .interpolationMethod(.catmullRom)
-            }
-        }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartYScale(domain: 0.1 ... 0.9)
     }
 }
 

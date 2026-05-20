@@ -71,6 +71,9 @@ struct FactsWidgetPreviewView: View {
         VStack {
             Spacer(minLength: 0)
             FactsWidgetCompactContent(fact: viewModel.fact)
+                .padding(16)
+                .background(Color.gray6)
+                .cornerRadius(16)
                 .frame(width: 163, height: 192)
             Spacer(minLength: 0)
         }
