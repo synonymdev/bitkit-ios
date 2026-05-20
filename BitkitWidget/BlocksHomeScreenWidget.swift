@@ -117,9 +117,22 @@ struct BlocksHomeScreenWidgetEntryView: View {
 
     // MARK: - Layouts
 
+    /// Candidate row spacings, from roomiest to tightest. `ViewThatFits` picks the first that
+    /// fits the available height, so larger screens keep 16pt while iPhone SE falls back to less.
+    private static let rowSpacings: [CGFloat] = [16, 10, 6, 2]
+
     /// Compact (`.systemSmall`): icon + value rows for the selected fields.
     private func compactLayout(block: CachedBlock) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ViewThatFits(in: .vertical) {
+            ForEach(Self.rowSpacings, id: \.self) { spacing in
+                compactStack(block: block, spacing: spacing)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func compactStack(block: CachedBlock, spacing: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: spacing) {
             ForEach(entry.options.enabledFields, id: \.self) { field in
                 HStack(alignment: .center, spacing: 8) {
                     iconImage(field: field)
@@ -132,12 +145,21 @@ struct BlocksHomeScreenWidgetEntryView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     /// Wide layout (`.systemMedium`): icon + label + value rows for the selected fields.
     private func wideLayout(block: CachedBlock, fields: [BlocksWidgetField]) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ViewThatFits(in: .vertical) {
+            ForEach(Self.rowSpacings, id: \.self) { spacing in
+                wideStack(block: block, fields: fields, spacing: spacing)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func wideStack(block: CachedBlock, fields: [BlocksWidgetField], spacing: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: spacing) {
             ForEach(fields, id: \.self) { field in
                 HStack(alignment: .center, spacing: 8) {
                     iconImage(field: field)
@@ -155,7 +177,7 @@ struct BlocksHomeScreenWidgetEntryView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func iconImage(field: BlocksWidgetField) -> some View {
