@@ -1197,7 +1197,7 @@
 "widgets__weather__condition__average__description" = "A taxa do próximo bloco está próxima das médias mensais.";
 "widgets__weather__condition__poor__title" = "Condições ruins";
 "widgets__weather__condition__poor__description" = "Se você não estiver com pressa para fazer uma transação, talvez seja melhor esperar um pouco.";
-"widgets__weather__current_fee" = "Tarifa média atual";
+"widgets__weather__current_fee" = "Taxa atual";
 "widgets__weather__next_block" = "Inclusão no próximo bloco";
 "widgets__weather__error" = "Não foi possível obter o tempo atual da taxa";
 "widgets__weather__condition__good__short_title" = "Favoráveis";
