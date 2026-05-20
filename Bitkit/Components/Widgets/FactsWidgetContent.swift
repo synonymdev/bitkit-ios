@@ -21,7 +21,7 @@ struct FactsWidgetWideContent: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .widgetAccentable()
 
-            BitcoinLogo(renderingMode: renderingMode)
+            BitcoinLogo()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -40,10 +40,10 @@ struct FactsWidgetCompactContent: View {
             .lineLimit(4)
             .minimumScaleFactor(0.85)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .overlay(alignment: .bottomTrailing) {
-                BitcoinLogo(renderingMode: renderingMode)
-            }
             .widgetAccentable()
+            .overlay(alignment: .bottomTrailing) {
+                BitcoinLogo()
+            }
     }
 }
 
@@ -52,7 +52,7 @@ struct FactsWidgetCompactContent: View {
 /// Orange ₿ badge in full color; a white circle with the glyph knocked out in tinted/monochrome
 /// mode so it reads against the system wallpaper. `bitcoin` is a template glyph asset.
 struct BitcoinLogo: View {
-    var renderingMode: WidgetRenderingMode = .fullColor
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
         Group {
@@ -76,6 +76,7 @@ struct BitcoinLogo: View {
             }
         }
         .frame(width: 32, height: 32)
+        .widgetAccentable()
     }
 
     private var glyph: some View {
