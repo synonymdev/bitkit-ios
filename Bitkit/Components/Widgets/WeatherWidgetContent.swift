@@ -20,7 +20,7 @@ extension WeatherDisplayMetric {
         case .satsFee:
             return "₿ \(data.currentFeeSats)"
         case .nextBlockFee:
-            return "\(data.nextBlockFee) ₿/vbyte"
+            return "\(data.nextBlockFee) ₿/VBYTE"
         }
     }
 
