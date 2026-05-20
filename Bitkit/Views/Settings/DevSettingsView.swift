@@ -2,12 +2,19 @@ import SwiftUI
 import UIKit
 
 struct DevSettingsView: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage("hasConfirmedPublicPaykitEndpoints") private var hasConfirmedPublicPaykitEndpoints = false
+    @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
+    @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var notificationManager: PushNotificationManager
     @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
+
+    @State private var showPaykitWarning = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -44,6 +51,28 @@ struct DevSettingsView: View {
 
                     NavigationLink(value: Route.orders) {
                         SettingsRow(title: "Orders")
+                    }
+
+                    if PaykitFeatureFlags.isUIAvailable {
+                        SettingsSectionHeader("PAYKIT")
+                            .padding(.top, 16)
+
+                        SettingsRow(
+                            title: "Enable Paykit UI",
+                            rightIcon: nil,
+                            toggle: Binding(
+                                get: { isPaykitUIEnabled },
+                                set: { enabled in
+                                    if enabled {
+                                        showPaykitWarning = true
+                                    } else {
+                                        Task {
+                                            await disablePaykitUI()
+                                        }
+                                    }
+                                }
+                            )
+                        )
                     }
 
                     Button {
@@ -147,6 +176,54 @@ struct DevSettingsView: View {
             }
         }
         .navigationBarHidden(true)
+        .alert("Enable Paykit UI?", isPresented: $showPaykitWarning) {
+            Button("Cancel", role: .cancel) {}
+            Button("Enable") {
+                if PaykitFeatureFlags.isUIAvailable {
+                    isPaykitUIEnabled = true
+                    app.toast(type: .success, title: "Paykit UI enabled")
+                }
+            }
+        } message: {
+            Text("Paykit features are still experimental and may not work reliably until supporting homeserver changes are deployed.")
+        }
+    }
+
+    @MainActor
+    private func disablePaykitUI() async {
+        isPaykitUIEnabled = false
+        hasConfirmedPublicPaykitEndpoints = false
+        sharesPrivatePaykitEndpoints = false
+        sharesPublicPaykitEndpoints = false
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
+
+        var cleanupError: Error?
+        do {
+            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
+        } catch {
+            cleanupError = error
+            Logger.warn("Failed to remove public Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
+        }
+
+        do {
+            try await PrivatePaykitService.shared.removePublishedEndpoints()
+        } catch {
+            if cleanupError == nil {
+                cleanupError = error
+            }
+            Logger.warn("Failed to remove private Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
+        }
+
+        if let cleanupError {
+            PrivatePaykitService.setContactSharingCleanupPending(true)
+            app.toast(type: .error, title: "Paykit UI disabled", description: cleanupError.localizedDescription)
+            return
+        }
+
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        app.toast(type: .success, title: "Paykit UI disabled")
     }
 }
 

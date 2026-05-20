@@ -2,6 +2,8 @@ import PhotosUI
 import SwiftUI
 
 struct SendOptionsView: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var currency: CurrencyViewModel
@@ -14,6 +16,10 @@ struct SendOptionsView: View {
 
     @Binding var navigationPath: [SendRoute]
     @State private var selectedItem: PhotosPickerItem?
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -104,7 +110,7 @@ struct SendOptionsView: View {
     }
 
     func handleContact() {
-        navigationPath.append(.contact)
+        navigationPath.append(isPaykitUIActive ? .contact : .comingSoon)
     }
 }
 

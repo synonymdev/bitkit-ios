@@ -59,10 +59,15 @@ class WalletViewModel: ObservableObject {
     private var probeOutcomes: [PaymentId: ProbeOutcome] = [:]
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
 
     private static let publicPaykitInvoiceRefreshBufferSeconds: TimeInterval = 30 * 60
     private static let paykitChannelUsabilityRefreshDelay: UInt64 = 5_000_000_000
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
 
     private let lightningService: LightningService
     private let coreService: CoreService
@@ -209,9 +214,13 @@ class WalletViewModel: ObservableObject {
                         )
                     case let .paymentReceived(_, paymentHash, _, _):
                         self.bolt11 = ""
-                        self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
+                        if self.isPaykitUIActive {
+                            self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
+                        }
                         Task {
-                            await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
+                            if self.isPaykitUIActive {
+                                await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
+                            }
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21()
                         }
@@ -234,7 +243,9 @@ class WalletViewModel: ObservableObject {
                             await self.refreshAndSyncState()
                             await self.handleChannelClosed(channelId: channelId, reason: reason)
                             try? await self.refreshBip21()
-                            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-closed refresh")
+                            if self.isPaykitUIActive {
+                                await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-closed refresh")
+                            }
                         }
 
                     // MARK: Onchain Transaction Events
@@ -242,25 +253,31 @@ class WalletViewModel: ObservableObject {
                     case let .onchainTransactionReceived(_, details):
                         Task {
                             await self.refreshAndSyncState()
-                            await PrivatePaykitService.shared.handleOnchainActivity(
-                                receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
-                                wallet: self
-                            )
+                            if self.isPaykitUIActive {
+                                await PrivatePaykitService.shared.handleOnchainActivity(
+                                    receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
+                                    wallet: self
+                                )
+                            }
                         }
 
                     case let .onchainTransactionConfirmed(_, _, _, _, details):
                         Task {
                             await self.refreshAndSyncState()
-                            await PrivatePaykitService.shared.handleOnchainActivity(
-                                receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
-                                wallet: self
-                            )
+                            if self.isPaykitUIActive {
+                                await PrivatePaykitService.shared.handleOnchainActivity(
+                                    receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
+                                    wallet: self
+                                )
+                            }
                         }
 
                     case .onchainTransactionReplaced, .onchainTransactionReorged, .onchainTransactionEvicted:
                         Task {
                             await self.refreshAndSyncState()
-                            await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
+                            if self.isPaykitUIActive {
+                                await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
+                            }
                         }
 
                     // MARK: Sync Events
@@ -479,8 +496,10 @@ class WalletViewModel: ObservableObject {
 
         isSyncingWallet = false
         syncState()
-        await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
-        await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
+        if isPaykitUIActive {
+            await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
+            await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
+        }
     }
 
     /// Sends bitcoin to an on-chain address
@@ -1009,6 +1028,10 @@ class WalletViewModel: ObservableObject {
         includeOnchain: Bool = true,
         includeLightning: Bool = true
     ) async throws -> (onchainAddress: String, bolt11: String) {
+        guard isPaykitUIActive else {
+            return ("", "")
+        }
+
         let publicOnchainAddress = includeOnchain ? try await refreshReusableOnchainAddress() : ""
 
         if includeLightning, hasUsableChannels {
@@ -1035,7 +1058,7 @@ class WalletViewModel: ObservableObject {
     }
 
     func refreshPublicPaykitEndpointsOnForeground() async {
-        guard sharesPublicPaykitEndpoints else { return }
+        guard isPaykitUIActive, sharesPublicPaykitEndpoints else { return }
 
         do {
             try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
@@ -1045,6 +1068,8 @@ class WalletViewModel: ObservableObject {
     }
 
     private func syncPublicPaykitEndpointsAfterChannelBecameUsable() async {
+        guard isPaykitUIActive else { return }
+
         do {
             try await PublicPaykitService.syncPublishedEndpoints(wallet: self, publish: true)
         } catch {
@@ -1055,6 +1080,8 @@ class WalletViewModel: ObservableObject {
     private func refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: String, forceRefreshLightning: Bool = false) async {
         await refreshAndSyncState()
         try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning)
+
+        guard isPaykitUIActive else { return }
 
         if sharesPublicPaykitEndpoints {
             do {
@@ -1171,7 +1198,7 @@ class WalletViewModel: ObservableObject {
         // Persist metadata with migrated tags
         await persistPreActivityMetadata(tags: tagsToMigrate)
 
-        if sharesPublicPaykitEndpoints {
+        if isPaykitUIActive, sharesPublicPaykitEndpoints {
             do {
                 try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
             } catch {

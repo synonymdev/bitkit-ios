@@ -96,7 +96,8 @@ extension PrivatePaykitService {
 
     @MainActor
     func canPublishPrivateEndpoints(wallet: WalletViewModel) async -> Bool {
-        guard UserDefaults.standard.bool(forKey: Self.publishingEnabledKey),
+        guard PaykitFeatureFlags.isUIEnabled,
+              UserDefaults.standard.bool(forKey: Self.publishingEnabledKey),
               UIApplication.shared.applicationState == .active,
               wallet.walletExists == true,
               wallet.nodeLifecycleState == .running,

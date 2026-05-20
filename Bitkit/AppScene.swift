@@ -53,6 +53,7 @@ struct AppScene: View {
 
         // Run app data migrations before any feature code loads migrated state
         AppDataMigrations.run()
+        PaykitFeatureFlags.enforceBuildAvailability()
 
         _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
         _sheets = StateObject(wrappedValue: sheetViewModel)
@@ -146,13 +147,21 @@ struct AppScene: View {
             .environment(keyboardManager)
             .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
-                    Task { try? await contactsManager.loadContacts(for: pk) }
+                    Task {
+                        try? await contactsManager.loadContacts(for: pk)
+                        if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
+                            await retryPendingPaykitEndpointRemoval()
+                        }
+                    }
                 } else if authState == .idle {
                     contactsManager.reset()
                 }
             }
             .onReceive(contactsManager.$contacts) { contacts in
-                guard wallet.walletExists == true, pubkyProfile.authState == .authenticated else { return }
+                guard PaykitFeatureFlags.isUIEnabled,
+                      wallet.walletExists == true,
+                      pubkyProfile.authState == .authenticated
+                else { return }
                 let publicKeys = contacts.map(\.publicKey)
                 Task {
                     await PrivatePaykitService.shared.prepareSavedContacts(publicKeys, wallet: wallet)
@@ -383,6 +392,9 @@ struct AppScene: View {
         do {
             try await wallet.start()
             try await activity.syncLdkNodePayments()
+            if !PaykitFeatureFlags.isUIEnabled {
+                await retryPendingPaykitEndpointRemoval()
+            }
 
             // Start watching pending orders after wallet is ready
             await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
@@ -544,6 +556,10 @@ struct AppScene: View {
             app.markAppStatusInit()
             BackupService.shared.startObservingBackups()
             Task {
+                if !PaykitFeatureFlags.isUIEnabled {
+                    await retryPendingPaykitEndpointRemoval()
+                }
+                guard PaykitFeatureFlags.isUIEnabled else { return }
                 await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
                 await PrivatePaykitService.shared.prepareSavedContacts(
                     contactsManager.contacts.map(\.publicKey),
@@ -576,18 +592,24 @@ struct AppScene: View {
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
                     try? await wallet.sync()
-                    await PrivatePaykitService.shared.retryPendingEndpointRemoval(
-                        wallet: wallet,
-                        savedPublicKeys: contactsManager.contacts.map(\.publicKey)
-                    )
+                    await retryPendingPaykitEndpointRemoval()
                     await wallet.refreshPublicPaykitEndpointsOnForeground()
-                    await PrivatePaykitService.shared.refreshSavedContactEndpoints(
-                        for: contactsManager.contacts.map(\.publicKey),
-                        wallet: wallet
-                    )
+                    if PaykitFeatureFlags.isUIEnabled {
+                        await PrivatePaykitService.shared.refreshSavedContactEndpoints(
+                            for: contactsManager.contacts.map(\.publicKey),
+                            wallet: wallet
+                        )
+                    }
                 }
             }
         }
+    }
+
+    private func retryPendingPaykitEndpointRemoval() async {
+        await PrivatePaykitService.shared.retryPendingEndpointRemoval(
+            wallet: wallet,
+            savedPublicKeys: contactsManager.contacts.map(\.publicKey)
+        )
     }
 
     /// Removes all delivered notifications from Notification Center so the app can handle them when opened.

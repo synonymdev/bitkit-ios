@@ -172,7 +172,12 @@ struct Suggestions: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
     @State private var showShareSheet = false
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
 
     /// Which suggestion cards to show.
     /// Up to 4 for current wallet state, in priority order; completed and dismissed are skipped.
@@ -183,6 +188,7 @@ struct Suggestions: View {
         settings: SettingsViewModel,
         suggestionsManager: SuggestionsManager,
         pubkyProfile: PubkyProfileManager? = nil,
+        isPaykitUIEnabled: Bool = PaykitFeatureFlags.isUIEnabled,
         isPreview: Bool = false
     ) -> [SuggestionCardData] {
         if isPreview {
@@ -199,6 +205,7 @@ struct Suggestions: View {
         var result: [SuggestionCardData] = []
         for id in orderedIds {
             guard let card = cardsById[id] else { continue }
+            if !isPaykitUIEnabled, card.isPaykitCard { continue }
             if isCardCompleted(card, app: app, settings: settings, pubkyProfile: pubkyProfile) { continue }
             if suggestionsManager.isDismissed(card.id) { continue }
             result.append(card)
@@ -229,6 +236,7 @@ struct Suggestions: View {
             settings: settings,
             suggestionsManager: suggestionsManager,
             pubkyProfile: pubkyProfile,
+            isPaykitUIEnabled: isPaykitUIActive,
             isPreview: isPreview
         )
     }
@@ -273,6 +281,7 @@ struct Suggestions: View {
     }
 
     private func onItemTap(_ card: SuggestionCardData) {
+        if card.isPaykitCard, !PaykitFeatureFlags.isUIEnabled { return }
         var route: Route?
 
         switch card.action {
@@ -319,6 +328,12 @@ struct Suggestions: View {
         withAnimation(.easeInOut(duration: 0.3)) {
             suggestionsManager.dismiss(card.id)
         }
+    }
+}
+
+private extension SuggestionCardData {
+    var isPaykitCard: Bool {
+        action == .profile
     }
 }
 

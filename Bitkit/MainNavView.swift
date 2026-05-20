@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MainNavView: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject private var app: AppViewModel
     @Environment(CameraManager.self) private var cameraManager
     @EnvironmentObject private var contactsManager: ContactsManager
@@ -15,6 +17,10 @@ struct MainNavView: View {
 
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
 
     // Delay constants for clipboard processing
     private static let nodeReadyDelayNanoseconds: UInt64 = 500_000_000 // 0.5 seconds
@@ -247,6 +253,15 @@ struct MainNavView: View {
                 Logger.info("Received deeplink: \(url.absoluteString)")
 
                 if let callback = PubkyRingAuthCallback.parse(url: url) {
+                    guard isPaykitUIActive else {
+                        app.toast(
+                            type: .error,
+                            title: t("profile__auth_error_title"),
+                            description: t("other__qr_error_text")
+                        )
+                        return
+                    }
+
                     let handlingResult = await pubkyProfile.handleAuthCallback(callback)
 
                     switch handlingResult {
@@ -368,7 +383,9 @@ struct MainNavView: View {
 
                 // Profile & Contacts
                 case .contacts:
-                    if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
+                    if !isPaykitUIActive {
+                        ComingSoonScreen()
+                    } else if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
                         pubkyInitializationErrorView(message: initializationErrorMessage)
                     } else if app.hasSeenContactsIntro || !contactsManager.contacts.isEmpty {
                         if !pubkyProfile.isInitialized {
@@ -383,12 +400,18 @@ struct MainNavView: View {
                     } else {
                         ContactsIntroView()
                     }
-                case .contactsIntro: ContactsIntroView()
-                case let .contactDetail(publicKey): ContactDetailView(publicKey: publicKey)
-                case let .contactActivity(publicKey): ContactActivityView(publicKey: publicKey)
-                case let .assignActivityContact(activityId): AssignActivityContactView(activityId: activityId)
+                case .contactsIntro:
+                    if isPaykitUIActive { ContactsIntroView() } else { ComingSoonScreen() }
+                case let .contactDetail(publicKey):
+                    if isPaykitUIActive { ContactDetailView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                case let .contactActivity(publicKey):
+                    if isPaykitUIActive { ContactActivityView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                case let .assignActivityContact(activityId):
+                    if isPaykitUIActive { AssignActivityContactView(activityId: activityId) } else { paykitDisabledRedirectView }
                 case .contactImportOverview:
-                    if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
+                    if !isPaykitUIActive {
+                        paykitDisabledRedirectView
+                    } else if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
                         missingPendingImportView(fallbackRoute: fallbackRoute)
                     } else if let profile = contactsManager.pendingImportProfile {
                         ContactImportOverviewView(
@@ -399,15 +422,21 @@ struct MainNavView: View {
                         missingPendingImportView(fallbackRoute: .payContacts)
                     }
                 case .contactImportSelect:
-                    if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
+                    if !isPaykitUIActive {
+                        paykitDisabledRedirectView
+                    } else if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
                         missingPendingImportView(fallbackRoute: fallbackRoute)
                     } else {
                         ContactImportSelectView(contacts: contactsManager.pendingImportContacts)
                     }
-                case let .addContact(publicKey): AddContactView(publicKey: publicKey)
-                case let .editContact(publicKey): EditContactView(publicKey: publicKey)
+                case let .addContact(publicKey):
+                    if isPaykitUIActive { AddContactView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                case let .editContact(publicKey):
+                    if isPaykitUIActive { EditContactView(publicKey: publicKey) } else { paykitDisabledRedirectView }
                 case .profile:
-                    if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
+                    if !isPaykitUIActive {
+                        ComingSoonScreen()
+                    } else if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
                         pubkyInitializationErrorView(message: initializationErrorMessage)
                     } else if !pubkyProfile.isInitialized {
                         pubkyLoadingView
@@ -418,11 +447,16 @@ struct MainNavView: View {
                     } else {
                         ProfileIntroView()
                     }
-                case .profileIntro: ProfileIntroView()
-                case .pubkyChoice: PubkyChoiceView()
-                case .createProfile: CreateProfileView()
-                case .editProfile: EditProfileView()
-                case .payContacts: PayContactsView()
+                case .profileIntro:
+                    if isPaykitUIActive { ProfileIntroView() } else { ComingSoonScreen() }
+                case .pubkyChoice:
+                    if isPaykitUIActive { PubkyChoiceView() } else { paykitDisabledRedirectView }
+                case .createProfile:
+                    if isPaykitUIActive { CreateProfileView() } else { paykitDisabledRedirectView }
+                case .editProfile:
+                    if isPaykitUIActive { EditProfileView() } else { paykitDisabledRedirectView }
+                case .payContacts:
+                    if isPaykitUIActive { PayContactsView() } else { paykitDisabledRedirectView }
 
                 // Shop
                 case .shopIntro: ShopIntro()
@@ -451,7 +485,8 @@ struct MainNavView: View {
                 case .widgetsSettings: WidgetsSettingsScreen()
                 case .notifications: NotificationsSettings()
                 case .notificationsIntro: NotificationsIntro()
-                case .paymentPreference: PaymentPreferenceView()
+                case .paymentPreference:
+                    if isPaykitUIActive { PaymentPreferenceView() } else { paykitDisabledRedirectView }
 
                 // Security settings
                 case .changePin: ChangePinScreen()
@@ -495,6 +530,13 @@ struct MainNavView: View {
                 }
 
                 navigation.path = [fallbackRoute]
+            }
+    }
+
+    private var paykitDisabledRedirectView: some View {
+        Color.customBlack
+            .task {
+                navigation.reset()
             }
     }
 

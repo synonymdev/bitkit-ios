@@ -4,6 +4,16 @@ import XCTest
 
 @MainActor
 final class ContactsManagerTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
+        super.tearDown()
+    }
+
     func testPubkyPublicKeyFormatNormalizesPrefixedAndUnprefixedKeys() {
         let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         let prefixedKey = "pubky\(rawKey)"
@@ -260,6 +270,7 @@ final class ContactsManagerTests: XCTestCase {
     }
 
     func testResolvePastedPubkyRouteReturnsProfileForOwnKey() {
+        enablePaykitUIForRouteTests()
         let ownPublicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
         XCTAssertEqual(
@@ -269,6 +280,7 @@ final class ContactsManagerTests: XCTestCase {
     }
 
     func testResolvePastedPubkyRouteReturnsContactDetailForExistingContact() {
+        enablePaykitUIForRouteTests()
         let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
         XCTAssertEqual(
@@ -282,6 +294,7 @@ final class ContactsManagerTests: XCTestCase {
     }
 
     func testResolvePastedPubkyRouteTrimsClipboardInput() {
+        enablePaykitUIForRouteTests()
         let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
         XCTAssertEqual(
@@ -295,6 +308,7 @@ final class ContactsManagerTests: XCTestCase {
     }
 
     func testResolvePastedPubkyRouteReturnsAddContactForUnknownKey() {
+        enablePaykitUIForRouteTests()
         let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
         XCTAssertEqual(
@@ -308,6 +322,8 @@ final class ContactsManagerTests: XCTestCase {
     }
 
     func testResolvePastedPubkyRouteReturnsNilForInvalidInput() {
+        enablePaykitUIForRouteTests()
+
         XCTAssertNil(
             resolvePastedPubkyRoute(
                 input: "not-a-pubky",
@@ -315,6 +331,22 @@ final class ContactsManagerTests: XCTestCase {
                 contacts: []
             )
         )
+    }
+
+    func testResolvePastedPubkyRouteReturnsNilWhenPaykitUIIsDisabled() {
+        let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+        XCTAssertNil(
+            resolvePastedPubkyRoute(
+                input: contactKey,
+                ownPublicKey: nil,
+                contacts: [makeContact(publicKey: contactKey)]
+            )
+        )
+    }
+
+    private func enablePaykitUIForRouteTests() {
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
     }
 
     private func makeProfile(publicKey: String) -> Bitkit.PubkyProfile {

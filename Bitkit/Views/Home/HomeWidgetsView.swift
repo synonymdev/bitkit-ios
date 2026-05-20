@@ -11,6 +11,12 @@ struct HomeWidgetsView: View {
 
     @Binding var isEditingWidgets: Bool
 
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
     private var bottomPadding: CGFloat {
         // Keep the calculator widget fully scrollable above the keyboard.
         let inset = keyboard.height + ScreenLayout.bottomSpacing
@@ -22,7 +28,13 @@ struct HomeWidgetsView: View {
         widgets.savedWidgets.filter { widget in
             if widget.type != .suggestions { return true }
             if isEditingWidgets { return true }
-            return !Suggestions.visibleCards(wallet: wallet, app: app, settings: settings, suggestionsManager: suggestionsManager).isEmpty
+            return !Suggestions.visibleCards(
+                wallet: wallet,
+                app: app,
+                settings: settings,
+                suggestionsManager: suggestionsManager,
+                isPaykitUIEnabled: isPaykitUIActive
+            ).isEmpty
         }
     }
 
