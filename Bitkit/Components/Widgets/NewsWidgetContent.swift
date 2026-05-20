@@ -19,7 +19,7 @@ struct NewsWidgetWideContent: View {
 
     var body: some View {
         let palette = WidgetPalette(renderingMode: renderingMode)
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 16) {
             if options.showTitle {
                 TitleText(title, textColor: palette.title)
                     .lineLimit(4)
@@ -27,8 +27,6 @@ struct NewsWidgetWideContent: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .widgetAccentable()
             }
-
-            Spacer(minLength: 8)
 
             if options.showSource || options.showDate {
                 HStack(alignment: .center, spacing: 8) {
