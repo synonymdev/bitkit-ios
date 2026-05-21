@@ -630,7 +630,6 @@
 "settings__general__language_other" = "Langue de l'interface";
 "settings__widgets__nav_title" = "Widgets";
 "settings__widgets__showWidgets" = "Widgets";
-"settings__widgets__showWidgetTitles" = "Afficher les titres des widgets";
 "settings__notifications__nav_title" = "Paiements en arrière-plan";
 "settings__notifications__intro__title" = "Soyez rémunéré\n<accent>de manière passive</accent>";
 "settings__notifications__intro__text" = "Activez les notifications pour être payé, même lorsque votre application Bitkit est fermée.";

@@ -617,7 +617,6 @@
 "settings__general__language_other" = "Oberflächensprache";
 "settings__widgets__nav_title" = "Widgets";
 "settings__widgets__showWidgets" = "Widgets";
-"settings__widgets__showWidgetTitles" = "Titel anzeigen";
 "settings__notifications__nav_title" = "Hintergrundzahlungen";
 "settings__notifications__intro__title" = "Passiv\n<accent>bezahlt werden</accent>";
 "settings__notifications__intro__text" = "Aktiviere Benachrichtigungen, um Zahlungen zu erhalten, auch wenn Bitkit geschlossen ist.";

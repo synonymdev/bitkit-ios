@@ -566,7 +566,6 @@
 "settings__general__language_other" = "Idioma de la interfaz";
 "settings__widgets__nav_title" = "Widgets";
 "settings__widgets__showWidgets" = "Widgets";
-"settings__widgets__showWidgetTitles" = "Mostrar Títulos de Widgets";
 "settings__notifications__nav_title" = "Pagos en Segundo Plano";
 "settings__notifications__intro__title" = "Recibe Pagos\n<accent>Pasivamente</accent>";
 "settings__notifications__intro__text" = "Activa las notificaciones para recibir pagos, incluso cuando tu app Bitkit esté cerrada.";

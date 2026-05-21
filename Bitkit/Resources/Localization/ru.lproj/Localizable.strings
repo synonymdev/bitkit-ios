@@ -631,7 +631,6 @@
 "settings__general__language_other" = "Язык интерфейса";
 "settings__widgets__nav_title" = "Виджеты";
 "settings__widgets__showWidgets" = "Виджеты";
-"settings__widgets__showWidgetTitles" = "Показывать Заголовки Виджетов";
 "settings__notifications__nav_title" = "Фоновые Платежи";
 "settings__notifications__intro__title" = "Получайте Платежи\n<accent>Пассивно</accent>";
 "settings__notifications__intro__text" = "Включите уведомления, чтобы получать платежи, даже когда приложение Bitkit закрыто.";

@@ -85,7 +85,6 @@ struct BaseWidget<Content: View>: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var widgets: WidgetsViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
-    @EnvironmentObject private var settings: SettingsViewModel
 
     /// Widget metadata computed from type
     private var metadata: WidgetMetadata {
@@ -127,7 +126,7 @@ struct BaseWidget<Content: View>: View {
     var body: some View {
         Button {} label: {
             VStack(spacing: 0) {
-                if type == .suggestions ? isEditing : (settings.showWidgetTitles || isEditing) {
+                if isEditing {
                     HStack {
                         HStack(spacing: 16) {
                             Image(metadata.icon)
@@ -184,12 +183,6 @@ struct BaseWidget<Content: View>: View {
                                     .accessibilityIdentifier("\(metadata.name)_WidgetActionReorder")
                             }
                         }
-                    }
-
-                    // Add spacer only when showing title and not editing
-                    if settings.showWidgetTitles && !isEditing {
-                        Spacer()
-                            .frame(height: 16)
                     }
                 }
 

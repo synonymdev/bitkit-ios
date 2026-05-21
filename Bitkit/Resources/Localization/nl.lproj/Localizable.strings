@@ -627,7 +627,6 @@
 "settings__general__language_other" = "Interface taal";
 "settings__widgets__nav_title" = "Widgets";
 "settings__widgets__showWidgets" = "Widgets";
-"settings__widgets__showWidgetTitles" = "Widget titels tonen";
 "settings__notifications__nav_title" = "Achtergrondbetalingen";
 "settings__notifications__intro__title" = "Ontvang\n<accent>Passief</accent>";
 "settings__notifications__intro__text" = "Schakel notificaties in om betaald te worden, zelfs wanneer uw Bitkit app gesloten is.";

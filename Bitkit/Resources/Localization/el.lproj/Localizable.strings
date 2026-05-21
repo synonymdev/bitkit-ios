@@ -499,7 +499,6 @@
 "settings__general__language_other" = "Γλώσσα διεπαφής";
 "settings__widgets__nav_title" = "Widgets";
 "settings__widgets__showWidgets" = "Widgets";
-"settings__widgets__showWidgetTitles" = "Εμφάνιση Τίτλων Widget";
 "settings__notifications__nav_title" = "Πληρωμές Παρασκηνίου";
 "settings__notifications__intro__title" = "Λάβετε Πληρωμή\n<accent>Παθητικά</accent>";
 "settings__notifications__intro__text" = "Ενεργοποιήστε τις ειδοποιήσεις για να λαμβάνετε πληρωμές, ακόμα και όταν η εφαρμογή Bitkit είναι κλειστή.";

@@ -619,7 +619,6 @@
 "settings__general__language_other" = "Jazyk rozhraní";
 "settings__widgets__nav_title" = "Widgety";
 "settings__widgets__showWidgets" = "Widgety";
-"settings__widgets__showWidgetTitles" = "Zobrazit názvy widgetů";
 "settings__notifications__nav_title" = "Platby na pozadí";
 "settings__notifications__intro__title" = "Přijímat platby\n<accent>pasivně</accent>";
 "settings__notifications__intro__text" = "Zapněte oznámení, abyste mohli přijímat platby, i když je vaše aplikace Bitkit zavřená.";

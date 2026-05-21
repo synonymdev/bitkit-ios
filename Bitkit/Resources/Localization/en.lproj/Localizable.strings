@@ -669,7 +669,6 @@
 "settings__widgets__section_display" = "Display";
 "settings__widgets__section_reset" = "Reset To Defaults";
 "settings__widgets__showWidgets" = "Show Widgets";
-"settings__widgets__showWidgetTitles" = "Show Widget Titles";
 "settings__widgets__reset_widgets" = "Reset Widgets";
 "settings__widgets__reset_widgets_dialog_title" = "Reset Widgets?";
 "settings__widgets__reset_widgets_dialog_description" = "Are you sure you want to reset the widgets? The default widget set with default configurations will be displayed.";

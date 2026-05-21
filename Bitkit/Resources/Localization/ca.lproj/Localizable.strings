@@ -551,7 +551,6 @@
 "settings__general__language_other" = "Idioma de la interfície";
 "settings__widgets__nav_title" = "Ginys";
 "settings__widgets__showWidgets" = "Ginys";
-"settings__widgets__showWidgetTitles" = "Mostra títols dels ginys";
 "settings__notifications__nav_title" = "Pagaments en segon pla";
 "settings__notifications__intro__title" = "Rep pagaments\n<accent>passivament</accent>";
 "settings__notifications__intro__text" = "Activa les notificacions per rebre pagaments, fins i tot quan l\'aplicació Bitkit està tancada.";

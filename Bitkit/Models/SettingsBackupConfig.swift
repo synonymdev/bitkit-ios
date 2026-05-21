@@ -45,7 +45,6 @@ enum SettingsBackupConfig {
         "addressTypesToMonitor": .string(optional: true),
         "enableQuickpay": .bool,
         "showWidgets": .bool,
-        "showWidgetTitles": .bool,
         "swipeBalanceToHide": .bool,
         "hideBalance": .bool,
         "hideBalanceOnOpen": .bool,

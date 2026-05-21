@@ -102,7 +102,6 @@ struct RNSettings: Codable {
     var enableQuickpay: Bool?
     var quickpayAmount: Int?
     var showWidgets: Bool?
-    var showWidgetTitles: Bool?
     var transactionSpeed: String?
     var customFeeRate: Int?
     var hideBalance: Bool?
@@ -1247,9 +1246,6 @@ extension MigrationsService {
         }
         if let showWidgets = settings.showWidgets {
             defaults.set(showWidgets, forKey: "showWidgets")
-        }
-        if let showWidgetTitles = settings.showWidgetTitles {
-            defaults.set(showWidgetTitles, forKey: "showWidgetTitles")
         }
         if let speed = settings.transactionSpeed {
             defaults.set(speed, forKey: "defaultTransactionSpeed")
