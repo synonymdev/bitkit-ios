@@ -7,7 +7,8 @@ struct PriceWidgetPreviewView: View {
 
     @StateObject private var viewModel = PriceViewModel.shared
 
-    @State private var carouselPage: Int = 0
+    // TODO: revert to 0 to re-enable the compact widget preview
+    @State private var carouselPage: Int = 1
     @State private var showDeleteAlert = false
 
     private let widgetType: WidgetType = .price
@@ -59,9 +60,11 @@ struct PriceWidgetPreviewView: View {
             VStack(spacing: 16) {
                 carousel
 
-                sizeLabel
+                // Size label hidden while only the wide widget is shown
+                // sizeLabel
 
-                pageIndicator
+                // Page indicator hidden while only the wide widget is shown
+                // pageIndicator
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -121,8 +124,9 @@ struct PriceWidgetPreviewView: View {
 
     private var carousel: some View {
         TabView(selection: $carouselPage) {
-            compactPage
-                .tag(0)
+            // Compact preview temporarily hidden — only the wide widget can be added for now
+            // compactPage
+            //     .tag(0)
 
             widePage
                 .tag(1)
