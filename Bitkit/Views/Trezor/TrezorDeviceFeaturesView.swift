@@ -16,6 +16,7 @@ struct TrezorDeviceFeaturesContent: View {
                 NoFeaturesView()
             }
         }
+        .accessibilityIdentifier("TrezorDeviceFeatures")
     }
 }
 
@@ -159,6 +160,7 @@ private struct ActionsSection: View {
                 .background(Color.orange.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
+            .accessibilityIdentifier("TrezorClearCredentials")
 
             Text("This will require re-pairing via Bluetooth on next connection")
                 .font(.system(size: 12))
@@ -182,6 +184,7 @@ private struct NoFeaturesView: View {
                 .foregroundColor(.white.opacity(0.6))
         }
         .padding(48)
+        .accessibilityIdentifier("TrezorNoFeatures")
     }
 }
 
@@ -205,6 +208,7 @@ private struct InfoSection<Content: View>: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
+        .accessibilityIdentifier("TrezorDeviceInfo-\(title.replacingOccurrences(of: " ", with: ""))")
     }
 }
 
@@ -227,6 +231,7 @@ private struct InfoRow: View {
                 .font(.system(size: 14, design: isMonospaced ? .monospaced : .default))
                 .foregroundColor(.white)
                 .lineLimit(1)
+                .accessibilityIdentifier("TrezorDeviceInfoValue-\(label.replacingOccurrences(of: " ", with: ""))")
         }
     }
 }

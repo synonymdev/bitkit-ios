@@ -28,6 +28,7 @@ struct TrezorConnectedView: View {
                         title: "Get Address",
                         icon: "qrcode",
                         description: "Generate a receiving address",
+                        accessibilityIdentifier: "TrezorSection-Address",
                         isExpanded: $isAddressExpanded
                     ) {
                         TrezorAddressContent()
@@ -37,6 +38,7 @@ struct TrezorConnectedView: View {
                         title: "Sign Message",
                         icon: "signature",
                         description: "Sign a message with your Trezor",
+                        accessibilityIdentifier: "TrezorSection-SignMessage",
                         isExpanded: $isSignMessageExpanded
                     ) {
                         TrezorSignMessageContent()
@@ -46,6 +48,7 @@ struct TrezorConnectedView: View {
                         title: "Public Key",
                         icon: "key",
                         description: "Get xpub and public key",
+                        accessibilityIdentifier: "TrezorSection-PublicKey",
                         isExpanded: $isPublicKeyExpanded
                     ) {
                         TrezorPublicKeyContent()
@@ -55,6 +58,7 @@ struct TrezorConnectedView: View {
                         title: "Balance Lookup",
                         icon: "magnifyingglass",
                         description: "Check balance & UTXOs for any address or xpub",
+                        accessibilityIdentifier: "TrezorSection-BalanceLookup",
                         isExpanded: $isBalanceLookupExpanded
                     ) {
                         TrezorBalanceLookupContent()
@@ -64,6 +68,7 @@ struct TrezorConnectedView: View {
                         title: "Transaction History",
                         icon: "list.bullet.rectangle",
                         description: "Get transaction history for any xpub",
+                        accessibilityIdentifier: "TrezorSection-TxHistory",
                         isExpanded: $isTxHistoryExpanded
                     ) {
                         TrezorTransactionHistoryContent()
@@ -73,6 +78,7 @@ struct TrezorConnectedView: View {
                         title: "Transaction Detail",
                         icon: "doc.text.magnifyingglass",
                         description: "Get detailed info for a specific transaction",
+                        accessibilityIdentifier: "TrezorSection-TxDetail",
                         isExpanded: $isTxDetailExpanded
                     ) {
                         TrezorTransactionDetailContent()
@@ -82,6 +88,7 @@ struct TrezorConnectedView: View {
                         title: "Device Info",
                         icon: "info.circle",
                         description: "View device details and features",
+                        accessibilityIdentifier: "TrezorSection-DeviceInfo",
                         isExpanded: $isDeviceInfoExpanded
                     ) {
                         TrezorDeviceFeaturesContent()
@@ -105,6 +112,7 @@ struct TrezorConnectedView: View {
                     .background(Color.red.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .accessibilityIdentifier("TrezorDisconnectButton")
             }
             .padding(16)
             .contentShape(Rectangle())
@@ -116,6 +124,7 @@ struct TrezorConnectedView: View {
         .background(Color.black)
         .navigationTitle("Trezor")
         .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("TrezorConnectedView")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 TrezorStatusBadge(
@@ -171,6 +180,7 @@ private struct DeviceInfoCard: View {
         .frame(maxWidth: .infinity)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .accessibilityIdentifier("TrezorDeviceInfoCard")
     }
 }
 

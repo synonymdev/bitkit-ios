@@ -55,6 +55,7 @@ struct TrezorDeviceRow: View {
         }
         .buttonStyle(.plain)
         .disabled(isConnecting)
+        .accessibilityIdentifier(device.path.hasPrefix("bridge:") ? "TrezorDevice-bridge" : "TrezorDevice-\(device.path)")
     }
 
     private var displayName: String {
@@ -150,6 +151,7 @@ struct KnownDeviceRow: View {
         .padding(16)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .accessibilityIdentifier("TrezorKnownDevice-\(device.id)")
     }
 }
 

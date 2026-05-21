@@ -1326,4 +1326,27 @@ class TrezorViewModel {
             trezorLog("Failed to clear credentials: \(error)", level: "error")
         }
     }
+
+    // MARK: - AI Test Hooks
+
+    func testShowPinPrompt() {
+        guard Env.isTrezorEmulatorTesting else { return }
+        showPinEntry = true
+    }
+
+    func testShowPassphrasePrompt() {
+        guard Env.isTrezorEmulatorTesting else { return }
+        showPassphraseEntry = true
+    }
+
+    func testShowPairingCodePrompt() {
+        guard Env.isTrezorEmulatorTesting else { return }
+        showPairingCode = true
+    }
+
+    func testShowConfirmOnDevicePrompt() {
+        guard Env.isTrezorEmulatorTesting else { return }
+        confirmMessage = "Confirm test action on your Trezor"
+        showConfirmOnDevice = true
+    }
 }

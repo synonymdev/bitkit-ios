@@ -19,6 +19,7 @@ struct TrezorPublicKeyContent: View {
                     .padding(12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("TrezorPublicKeyPath")
             }
 
             // Show on device toggle
@@ -37,6 +38,7 @@ struct TrezorPublicKeyContent: View {
                 Toggle("", isOn: $trezor.showPublicKeyOnDevice)
                     .labelsHidden()
                     .tint(.green)
+                    .accessibilityIdentifier("TrezorShowPublicKeyOnDevice")
             }
             .padding(16)
             .background(Color.white.opacity(0.05))
@@ -65,14 +67,15 @@ struct TrezorPublicKeyContent: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .disabled(trezor.isOperating)
+            .accessibilityIdentifier("TrezorPublicKeyGet")
 
             // Results
             if let xpub = trezor.xpub {
-                CopyableField(label: "Extended Public Key (xpub)", value: xpub)
+                CopyableField(label: "Extended Public Key (xpub)", value: xpub, accessibilityIdentifier: "TrezorXpub")
             }
 
             if let pubKey = trezor.publicKeyHex {
-                CopyableField(label: "Compressed Public Key", value: pubKey)
+                CopyableField(label: "Compressed Public Key", value: pubKey, accessibilityIdentifier: "TrezorPublicKeyHex")
             }
 
             // Error
@@ -102,6 +105,7 @@ struct TrezorPublicKeyView: View {
 private struct CopyableField: View {
     let label: String
     let value: String
+    let accessibilityIdentifier: String
     @State private var copied = false
 
     var body: some View {
@@ -117,6 +121,7 @@ private struct CopyableField: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.white.opacity(0.05))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityIdentifier(accessibilityIdentifier)
 
             Button(action: {
                 UIPasteboard.general.string = value
@@ -133,10 +138,12 @@ private struct CopyableField: View {
                 .font(.system(size: 12))
                 .foregroundColor(.white.opacity(0.6))
             }
+            .accessibilityIdentifier("\(accessibilityIdentifier)Copy")
         }
         .padding(16)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityIdentifier("\(accessibilityIdentifier)Card")
     }
 }
 

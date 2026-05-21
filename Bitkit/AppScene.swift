@@ -194,7 +194,9 @@ struct AppScene: View {
 
     private var mainContent: some View {
         ZStack {
-            if migrations.isShowingMigrationLoading {
+            if Env.isTrezorEmulatorTesting {
+                trezorEmulatorTestContent
+            } else if migrations.isShowingMigrationLoading {
                 migrationLoadingContent
             } else if showRecoveryScreen {
                 RecoveryRouter()
@@ -205,7 +207,7 @@ struct AppScene: View {
                 walletContent
             }
 
-            if !removeSplash && !session.skipSplashOnce {
+            if !Env.isTrezorEmulatorTesting, !removeSplash, !session.skipSplashOnce {
                 SplashView()
                     .opacity(hideSplash ? 0 : 1)
             }
@@ -265,6 +267,13 @@ struct AppScene: View {
         } else if wallet.walletExists == false {
             onboardingContent
         }
+    }
+
+    private var trezorEmulatorTestContent: some View {
+        NavigationStack {
+            TrezorRootView()
+        }
+        .accentColor(.white)
     }
 
     @ViewBuilder

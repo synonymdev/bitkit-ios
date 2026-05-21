@@ -96,6 +96,7 @@ private struct AddressTypeSection: View {
             .padding(12)
             .background(Color.white.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("TrezorAddressType")
         }
     }
 }
@@ -125,6 +126,7 @@ private struct DerivationPathSection: View {
                 .padding(12)
                 .background(Color.white.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityIdentifier("TrezorDerivationPath")
 
             // Address index stepper
             HStack {
@@ -140,16 +142,19 @@ private struct DerivationPathSection: View {
                         .foregroundColor(trezor.addressIndex == 0 ? .white.opacity(0.2) : .white.opacity(0.6))
                 }
                 .disabled(trezor.addressIndex == 0)
+                .accessibilityIdentifier("TrezorAddressIndexDecrement")
 
                 Button(action: { trezor.incrementAddressIndex() }) {
                     Image(systemName: "plus.circle")
                         .font(.system(size: 20))
                         .foregroundColor(.white.opacity(0.6))
                 }
+                .accessibilityIdentifier("TrezorAddressIndexIncrement")
             }
             .padding(12)
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("TrezorAddressIndex")
 
             Button(action: {
                 trezor.derivationPath = selectedScriptType.defaultPath(coinType: trezor.coinTypeComponent)
@@ -159,6 +164,7 @@ private struct DerivationPathSection: View {
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.6))
             }
+            .accessibilityIdentifier("TrezorAddressDefaultPath")
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -193,6 +199,7 @@ private struct VerifyOnDeviceSection: View {
             Toggle("", isOn: $trezor.showAddressOnDevice)
                 .labelsHidden()
                 .tint(.green)
+                .accessibilityIdentifier("TrezorShowAddressOnDevice")
         }
         .padding(16)
         .background(Color.white.opacity(0.05))
@@ -228,6 +235,7 @@ private struct GenerateButtonSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .disabled(trezor.isOperating)
+        .accessibilityIdentifier("TrezorGenerateAddress")
     }
 }
 
@@ -257,6 +265,7 @@ private struct AddressResultSection: View {
                     .background(Color.white.opacity(0.15))
                     .clipShape(Capsule())
                 }
+                .accessibilityIdentifier("TrezorAddressNextIndex")
             }
 
             if let error = trezor.error {
@@ -282,6 +291,7 @@ private struct GeneratedAddressCard: View {
         .frame(maxWidth: .infinity)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .accessibilityIdentifier("TrezorGeneratedAddressCard")
     }
 }
 
@@ -313,6 +323,7 @@ private struct QRCodeView: View {
         .task(id: content) {
             qrImage = Self.generateQRCode(from: content)
         }
+        .accessibilityIdentifier("TrezorGeneratedAddressQr")
     }
 
     private static func generateQRCode(from string: String) -> UIImage? {
@@ -351,6 +362,7 @@ private struct AddressText: View {
             .foregroundColor(.white)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 16)
+            .accessibilityIdentifier("TrezorGeneratedAddress")
     }
 }
 
@@ -371,12 +383,12 @@ private struct CopyButton: View {
             .background(Color.white.opacity(0.15))
             .clipShape(Capsule())
         }
+        .accessibilityIdentifier("TrezorCopyAddress")
     }
 
     private func copyAddress() {
         UIPasteboard.general.string = address
         copied = true
-
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             copied = false

@@ -145,6 +145,7 @@ private struct InputSection: View {
                 .padding(12)
                 .background(Color.white.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityIdentifier("TrezorLookupInput")
                 .toolbar {
                     ToolbarItemGroup(placement: .keyboard) {
                         Spacer()
@@ -167,6 +168,7 @@ private struct InputSection: View {
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.6))
                 }
+                .accessibilityIdentifier("TrezorLookupPaste")
 
                 if !input.isEmpty {
                     Button(action: { input = "" }) {
@@ -177,6 +179,7 @@ private struct InputSection: View {
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.6))
                     }
+                    .accessibilityIdentifier("TrezorLookupClear")
                 }
             }
         }
@@ -245,6 +248,7 @@ private struct LookupButton: View {
         }
         .disabled(isDisabled || isLoading)
         .opacity(isDisabled ? 0.5 : 1.0)
+        .accessibilityIdentifier("TrezorLookupButton")
     }
 }
 
@@ -270,14 +274,19 @@ private struct AccountResultSection: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
+        .accessibilityIdentifier("TrezorAccountResult")
     }
 
     private func accountTypeLabel(_ type: AccountType) -> String {
         switch type {
-        case .legacy: "Legacy (BIP44 / P2PKH)"
-        case .wrappedSegwit: "Wrapped SegWit (BIP49 / P2SH-P2WPKH)"
-        case .nativeSegwit: "Native SegWit (BIP84 / P2WPKH)"
-        case .taproot: "Taproot (BIP86 / P2TR)"
+        case .legacy:
+            return "Legacy (BIP44 / P2PKH)"
+        case .wrappedSegwit:
+            return "Wrapped SegWit (BIP49 / P2SH-P2WPKH)"
+        case .nativeSegwit:
+            return "Native SegWit (BIP84 / P2WPKH)"
+        case .taproot:
+            return "Taproot (BIP86 / P2TR)"
         }
     }
 }
@@ -304,6 +313,7 @@ private struct AddressResultSection: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
+        .accessibilityIdentifier("TrezorAddressLookupResult")
     }
 }
 
@@ -327,6 +337,7 @@ private struct ResultRow: View {
 
             Spacer()
         }
+        .accessibilityIdentifier("TrezorResultRow-\(label.replacingOccurrences(of: " ", with: ""))")
     }
 }
 
@@ -348,6 +359,7 @@ private struct UTXOListSection: View {
                     }
                 }
             }
+            .accessibilityIdentifier("TrezorUtxoList")
         }
     }
 }
@@ -432,6 +444,7 @@ private struct UTXORow: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .accessibilityIdentifier("TrezorUtxoRow")
     }
 
     private var truncatedTxid: String {

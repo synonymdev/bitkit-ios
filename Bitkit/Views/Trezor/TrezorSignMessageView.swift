@@ -24,6 +24,7 @@ struct TrezorSignMessageContent: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("TrezorSignMessageMode")
 
             switch selectedTab {
             case .sign:
@@ -77,6 +78,7 @@ private struct SignMessageContent: View {
                     .padding(12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("TrezorMessageSigningPath")
             }
 
             // Message input
@@ -93,6 +95,7 @@ private struct SignMessageContent: View {
                     .padding(12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("TrezorMessageToSign")
             }
 
             // Sign button
@@ -120,6 +123,7 @@ private struct SignMessageContent: View {
             }
             .disabled(trezor.isOperating || trezor.messageToSign.isEmpty)
             .opacity(trezor.messageToSign.isEmpty ? 0.5 : 1.0)
+            .accessibilityIdentifier("TrezorSignMessageButton")
 
             // Result display
             if let signedMessage = trezor.signedMessage {
@@ -169,6 +173,7 @@ private struct VerifyMessageContent: View {
                     .padding(12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("TrezorVerifyAddress")
             }
 
             // Signature input
@@ -185,6 +190,7 @@ private struct VerifyMessageContent: View {
                     .padding(12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("TrezorVerifySignature")
             }
 
             // Message input
@@ -201,6 +207,7 @@ private struct VerifyMessageContent: View {
                     .padding(12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("TrezorVerifyMessage")
             }
 
             // Verify button
@@ -232,6 +239,7 @@ private struct VerifyMessageContent: View {
             }
             .disabled(trezor.isOperating || !isFormValid)
             .opacity(isFormValid ? 1.0 : 0.5)
+            .accessibilityIdentifier("TrezorVerifySignatureButton")
 
             // Verification result
             if let result = verificationResult {
@@ -280,6 +288,7 @@ private struct SignedMessageResult: View {
                 Text(response.address)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.white)
+                    .accessibilityIdentifier("TrezorSignedMessageAddress")
             }
 
             // Signature
@@ -292,13 +301,13 @@ private struct SignedMessageResult: View {
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.white)
                     .lineLimit(3)
+                    .accessibilityIdentifier("TrezorSignature")
             }
 
             // Copy button
             Button(action: {
                 UIPasteboard.general.string = response.signature
                 copiedSignature = true
-
 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     copiedSignature = false
@@ -311,11 +320,13 @@ private struct SignedMessageResult: View {
                 .font(.system(size: 12))
                 .foregroundColor(.white.opacity(0.8))
             }
+            .accessibilityIdentifier("TrezorCopySignature")
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.green.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityIdentifier("TrezorSignedMessageResult")
     }
 }
 
@@ -338,6 +349,7 @@ private struct VerificationResultBanner: View {
         .padding(16)
         .background((isValid ? Color.green : Color.red).opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityIdentifier(isValid ? "TrezorSignatureValid" : "TrezorSignatureInvalid")
     }
 }
 

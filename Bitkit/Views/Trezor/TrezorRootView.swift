@@ -10,6 +10,10 @@ struct TrezorRootView: View {
         VStack(spacing: 0) {
             NetworkSelectorRow()
 
+            if Env.isTrezorEmulatorTesting {
+                TrezorEmulatorTestHooksView()
+            }
+
             ZStack(alignment: .bottom) {
                 TrezorContentSwitcher()
                     .frame(maxHeight: .infinity)
@@ -18,6 +22,7 @@ struct TrezorRootView: View {
                 TrezorDebugLogWrapper()
             }
         }
+        .accessibilityIdentifier("TrezorRoot")
         .modifier(TrezorDialogsModifier())
     }
 }
@@ -119,6 +124,7 @@ private struct NetworkSelectorRow: View {
                             .background(trezor.selectedNetwork == network ? Color.white.opacity(0.2) : Color.white.opacity(0.05))
                             .clipShape(Capsule())
                     }
+                    .accessibilityIdentifier("TrezorNetwork-\(label)")
                 }
             }
         }
@@ -171,6 +177,7 @@ struct TrezorPinEntrySheet: View {
                         .background(Color.white.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .accessibilityIdentifier("TrezorPinCancel")
 
                 Button(action: {
                     trezor.submitPin(pin)
@@ -186,6 +193,7 @@ struct TrezorPinEntrySheet: View {
                 }
                 .disabled(pin.isEmpty)
                 .opacity(pin.isEmpty ? 0.5 : 1.0)
+                .accessibilityIdentifier("TrezorPinConfirm")
             }
             .padding(.horizontal, 16)
         }
@@ -193,6 +201,7 @@ struct TrezorPinEntrySheet: View {
         .padding(.bottom, 16)
         .background(Color.black)
         .interactiveDismissDisabled()
+        .accessibilityIdentifier("TrezorPinSheet")
     }
 }
 
@@ -242,6 +251,7 @@ struct TrezorPairingCodeSheet: View {
                         .background(Color.white.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .accessibilityIdentifier("TrezorPairingCancel")
 
                 Button(action: {
                     guard !hasSubmitted else { return }
@@ -259,6 +269,7 @@ struct TrezorPairingCodeSheet: View {
                 }
                 .disabled(code.count < digitCount || hasSubmitted)
                 .opacity(code.count < digitCount || hasSubmitted ? 0.5 : 1.0)
+                .accessibilityIdentifier("TrezorPairingConfirm")
             }
             .padding(.horizontal, 16)
         }
@@ -266,6 +277,7 @@ struct TrezorPairingCodeSheet: View {
         .padding(.bottom, 16)
         .background(Color.black)
         .interactiveDismissDisabled()
+        .accessibilityIdentifier("TrezorPairingSheet")
         .onChange(of: code) { newValue in
             if newValue.count == digitCount {
                 guard !hasSubmitted else { return }
@@ -364,6 +376,7 @@ struct TrezorPassphraseSheet: View {
                         .background(Color.white.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .accessibilityIdentifier("TrezorPassphraseCancel")
 
                 Button(action: {
                     trezor.submitPassphrase(passphrase)
@@ -379,6 +392,7 @@ struct TrezorPassphraseSheet: View {
                 }
                 .disabled(!isValid)
                 .opacity(isValid ? 1.0 : 0.5)
+                .accessibilityIdentifier("TrezorPassphraseConfirm")
             }
             .padding(.horizontal, 16)
         }
@@ -386,6 +400,7 @@ struct TrezorPassphraseSheet: View {
         .padding(.bottom, 16)
         .background(Color.black)
         .interactiveDismissDisabled()
+        .accessibilityIdentifier("TrezorPassphraseSheet")
         .task {
             focusedField = .passphrase
         }
@@ -411,6 +426,43 @@ private struct SecureInputField: View {
         .padding(16)
         .background(Color.white.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityIdentifier("TrezorSecureInput-\(placeholder.replacingOccurrences(of: " ", with: ""))")
+    }
+}
+
+// MARK: - AI Test Hooks
+
+private struct TrezorEmulatorTestHooksView: View {
+    @Environment(TrezorViewModel.self) private var trezor
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button("PIN") {
+                trezor.testShowPinPrompt()
+            }
+            .accessibilityIdentifier("TrezorTestHook-Pin")
+
+            Button("Passphrase") {
+                trezor.testShowPassphrasePrompt()
+            }
+            .accessibilityIdentifier("TrezorTestHook-Passphrase")
+
+            Button("Pair") {
+                trezor.testShowPairingCodePrompt()
+            }
+            .accessibilityIdentifier("TrezorTestHook-Pairing")
+
+            Button("Confirm") {
+                trezor.testShowConfirmOnDevicePrompt()
+            }
+            .accessibilityIdentifier("TrezorTestHook-Confirm")
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(.white.opacity(0.7))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.04))
+        .accessibilityIdentifier("TrezorTestHooks")
     }
 }
 
@@ -449,6 +501,7 @@ struct TrezorDebugLogPanel: View {
                 .padding(.vertical, 10)
             }
             .background(Color.white.opacity(0.05))
+            .accessibilityIdentifier("TrezorDebugLogToggle")
 
             // Expanded content
             if isExpanded {
@@ -466,6 +519,7 @@ struct TrezorDebugLogPanel: View {
                             .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.5))
                         }
+                        .accessibilityIdentifier("TrezorDebugLogCopy")
 
                         Button(action: { debugLog.clear() }) {
                             HStack(spacing: 4) {
@@ -475,6 +529,7 @@ struct TrezorDebugLogPanel: View {
                             .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.5))
                         }
+                        .accessibilityIdentifier("TrezorDebugLogClear")
 
                         Spacer()
                     }
@@ -495,6 +550,7 @@ struct TrezorDebugLogPanel: View {
                             .padding(.horizontal, 16)
                         }
                         .frame(maxHeight: 300)
+                        .accessibilityIdentifier("TrezorDebugLogEntries")
                         .onChange(of: debugLog.entries.count) { _ in
                             if let lastIndex = debugLog.entries.indices.last {
                                 proxy.scrollTo(lastIndex, anchor: .bottom)

@@ -30,6 +30,7 @@ struct TrezorPairingCodeInput: View {
                 .focused($isFocused)
                 .frame(width: 1, height: 1)
                 .opacity(0.01) // Nearly invisible but still functional
+                .accessibilityIdentifier("TrezorPairingCodeInput")
                 .onChange(of: code) { newValue in
                     // Filter to only digits and limit length
                     let filtered = newValue.filter(\.isNumber)
@@ -48,6 +49,7 @@ struct TrezorPairingCodeInput: View {
             try? await Task.sleep(nanoseconds: 200_000_000)
             isFocused = true
         }
+        .accessibilityIdentifier("TrezorPairingCodeDisplay")
     }
 
     /// Get digit at specific index, or nil if not entered yet

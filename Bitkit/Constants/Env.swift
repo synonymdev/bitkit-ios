@@ -166,6 +166,10 @@ enum Env {
         return configValue("TREZOR_ELECTRUM_URL")
     }
 
+    static var isTrezorEmulatorTesting: Bool {
+        (isDebug || isE2E) && boolConfigValue("TEST_TREZOR_EMU")
+    }
+
     static var appStorageUrl: URL {
         // App group so files can be shared with extensions
         guard let documentsDirectory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.bitkit") else {
