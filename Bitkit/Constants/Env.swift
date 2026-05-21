@@ -30,6 +30,19 @@ enum Env {
         return trimmed?.isEmpty == false ? trimmed : nil
     }
 
+    private static func configValue(_ key: String) -> String? {
+        let envValue = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if envValue?.isEmpty == false {
+            return envValue
+        }
+        return infoPlistValue(key)
+    }
+
+    private static func boolConfigValue(_ key: String) -> Bool {
+        guard let value = configValue(key)?.lowercased() else { return false }
+        return ["1", "true", "yes", "y"].contains(value)
+    }
+
     private static var e2eBackend: String {
         (infoPlistValue("E2E_BACKEND") ?? "local").lowercased()
     }
@@ -138,6 +151,19 @@ enum Env {
         case .testnet: return "ssl://electrum.blockstream.info:60002"
         case .regtest: return "ssl://electrs.bitkit.stag0.blocktank.to:9999"
         }
+    }
+
+    static var trezorBridgeEnabled: Bool {
+        (isDebug || isE2E) && boolConfigValue("TREZOR_BRIDGE")
+    }
+
+    static var trezorBridgeUrl: String {
+        configValue("TREZOR_BRIDGE_URL") ?? "http://127.0.0.1:21325"
+    }
+
+    static var trezorElectrumUrl: String? {
+        guard isDebug || isE2E else { return nil }
+        return configValue("TREZOR_ELECTRUM_URL")
     }
 
     static var appStorageUrl: URL {

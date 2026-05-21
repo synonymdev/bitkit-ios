@@ -223,6 +223,10 @@ class TrezorViewModel {
         TrezorBLEManager.shared.bluetoothState
     }
 
+    var isBridgeModeEnabled: Bool {
+        transport.isBridgeEnabled
+    }
+
     // MARK: - Private Properties
 
     private let trezorService = TrezorService.shared
@@ -292,9 +296,11 @@ class TrezorViewModel {
     /// Called from TrezorRootView's .task to prepare the UI layer.
     func setup() {
         guard !hasSetupSubscriptions else { return }
-        // Start BLE stack early so bluetoothState is updated by the time
-        // TrezorDeviceListView renders (the delegate callback fires async).
-        TrezorBLEManager.shared.ensureStarted()
+        if !transport.isBridgeEnabled {
+            // Start BLE stack early so bluetoothState is updated by the time
+            // TrezorDeviceListView renders (the delegate callback fires async).
+            TrezorBLEManager.shared.ensureStarted()
+        }
         setupCallbackSubscriptions()
         hasSetupSubscriptions = true
     }
@@ -333,15 +339,17 @@ class TrezorViewModel {
             devices = []
         }
 
-        // Start BLE scanning
-        transport.startBLEScanning()
+        if !transport.isBridgeEnabled {
+            // Start BLE scanning
+            transport.startBLEScanning()
 
-        // Wait for BLE to discover devices (like Android's 3-second scan)
-        // This ensures devices are found before we call the FFI enumerate
-        try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+            // Wait for BLE to discover devices (like Android's 3-second scan)
+            // This ensures devices are found before we call the FFI enumerate
+            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
 
-        // Stop BLE scanning before calling FFI to prevent race conditions
-        transport.stopBLEScanning()
+            // Stop BLE scanning before calling FFI to prevent race conditions
+            transport.stopBLEScanning()
+        }
 
         do {
             // Trigger FFI scan which will use our transport callbacks
@@ -798,10 +806,17 @@ class TrezorViewModel {
 
     /// Get the Electrum server URL for a specific network (hardcoded per-network URLs)
     static func electrumUrlForNetwork(_ network: TrezorCoinType) -> String {
+        if network == .regtest, let trezorElectrumUrl = Env.trezorElectrumUrl {
+            return trezorElectrumUrl
+        }
+
         switch network {
-        case .bitcoin: "ssl://bitkit.to:9999"
-        case .testnet, .signet: "ssl://electrum.blockstream.info:60002"
-        case .regtest: "ssl://electrs.bitkit.stag0.blocktank.to:9999"
+        case .bitcoin:
+            return "ssl://bitkit.to:9999"
+        case .testnet, .signet:
+            return "ssl://electrum.blockstream.info:60002"
+        case .regtest:
+            return "ssl://electrs.bitkit.stag0.blocktank.to:9999"
         }
     }
 
