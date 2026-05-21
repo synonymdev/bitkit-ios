@@ -32,6 +32,17 @@ final class SamRockSetupRequestTests: XCTestCase {
         XCTAssertEqual(setup.postURL.absoluteString, "https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123")
     }
 
+    func testParsesSamRockSetupUrlWithBasePath() throws {
+        let setup = try XCTUnwrap(SamRockSetupRequest.parse(
+            "https://btcpay.example/btcpay/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"
+        ))
+
+        XCTAssertEqual(setup.storeId, "store123")
+        XCTAssertEqual(setup.hostDisplayName, "btcpay.example")
+        XCTAssertEqual(setup.postURL.absoluteString, "https://btcpay.example/btcpay/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123")
+        XCTAssertTrue(SamRockSetupRequest.isProtocolURL("https://btcpay.example/btcpay/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"))
+    }
+
     func testDefaultsMissingSetupToAllSupportedMethods() {
         let setup = SamRockSetupRequest.parse("https://btcpay.example/plugins/store123/samrock/protocol?otp=abc123")
 
@@ -115,6 +126,7 @@ final class SamRockSetupRequestTests: XCTestCase {
         XCTAssertNil(SamRockSetupRequest.parse("bitcoin:bc1qexample"))
         XCTAssertNil(SamRockSetupRequest.parse("https://btcpay.example/plugins/store123/other/protocol?otp=abc123"))
         XCTAssertNil(SamRockSetupRequest.parse("https://btcpay.example/plugins/store123/samrock/protocol"))
+        XCTAssertNil(SamRockSetupRequest.parse("https://btcpay.example/plugins/store123/samrock/protocol/extra?otp=abc123"))
     }
 
     func testMapsSelectedAddressTypeToDescriptorAccountType() {

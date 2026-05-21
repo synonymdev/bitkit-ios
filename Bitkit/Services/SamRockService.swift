@@ -58,10 +58,7 @@ struct SamRockSetupRequest: Equatable {
             .split(separator: "/")
             .map(String.init)
 
-        guard pathComponents.count == 4,
-              pathComponents[0] == "plugins",
-              pathComponents[2].caseInsensitiveCompare("samrock") == .orderedSame,
-              pathComponents[3].caseInsensitiveCompare("protocol") == .orderedSame
+        guard let storeId = samRockStoreId(in: pathComponents)
         else {
             return nil
         }
@@ -89,7 +86,7 @@ struct SamRockSetupRequest: Equatable {
         return SamRockSetupRequest(
             url: url,
             postURL: postURL,
-            storeId: pathComponents[1].removingPercentEncoding ?? pathComponents[1],
+            storeId: storeId,
             otp: otp,
             requestedMethods: parsedMethods.methods,
             hasUnknownSetupMethods: parsedMethods.hasUnknownMethods
@@ -181,14 +178,24 @@ struct SamRockSetupRequest: Equatable {
     }
 
     private static func isProtocolPath(_ components: URLComponents) -> Bool {
-        let pathComponents = components.path
+        samRockStoreId(in: components.path
             .split(separator: "/")
-            .map(String.init)
+            .map(String.init)) != nil
+    }
 
-        return pathComponents.count == 4
-            && pathComponents[0] == "plugins"
-            && pathComponents[2].caseInsensitiveCompare("samrock") == .orderedSame
-            && pathComponents[3].caseInsensitiveCompare("protocol") == .orderedSame
+    private static func samRockStoreId(in pathComponents: [String]) -> String? {
+        guard pathComponents.count >= 4 else { return nil }
+
+        let pluginsIndex = pathComponents.count - 4
+        guard pathComponents[pluginsIndex] == "plugins",
+              pathComponents[pluginsIndex + 2].caseInsensitiveCompare("samrock") == .orderedSame,
+              pathComponents[pluginsIndex + 3].caseInsensitiveCompare("protocol") == .orderedSame
+        else {
+            return nil
+        }
+
+        let storeId = pathComponents[pluginsIndex + 1]
+        return storeId.removingPercentEncoding ?? storeId
     }
 
     private static func allowsSetupURLScheme(_ components: URLComponents) -> Bool {
@@ -245,7 +252,7 @@ private extension String {
             return self
         }
 
-        return self[..<authorityStart] + authority[authority.index(after: userInfoEnd)...] + self[pathStart...]
+        return String(self[..<authorityStart]) + String(authority[authority.index(after: userInfoEnd)...]) + String(self[pathStart...])
     }
 }
 
