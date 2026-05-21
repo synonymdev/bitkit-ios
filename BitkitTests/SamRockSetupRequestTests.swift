@@ -21,6 +21,17 @@ final class SamRockSetupRequestTests: XCTestCase {
         XCTAssertEqual(setup?.requestsUnsupportedMethods, true)
     }
 
+    func testParsesLightningWrappedSamRockSetupUrl() throws {
+        let setup = try XCTUnwrap(SamRockSetupRequest.parse(
+            "lightning:https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"
+        ))
+
+        XCTAssertEqual(setup.storeId, "store123")
+        XCTAssertEqual(setup.otp, "abc123")
+        XCTAssertEqual(setup.hostDisplayName, "btcpay.example")
+        XCTAssertEqual(setup.postURL.absoluteString, "https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123")
+    }
+
     func testDefaultsMissingSetupToAllSupportedMethods() {
         let setup = SamRockSetupRequest.parse("https://btcpay.example/plugins/store123/samrock/protocol?otp=abc123")
 
@@ -62,6 +73,8 @@ final class SamRockSetupRequestTests: XCTestCase {
         XCTAssertNil(SamRockSetupRequest.parse("http://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"))
         XCTAssertTrue(SamRockSetupRequest
             .isPublicHTTPProtocolURL("http://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"))
+        XCTAssertTrue(SamRockSetupRequest
+            .isPublicHTTPProtocolURL("lightning:http://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"))
     }
 
     func testAllowsLocalHttpSetupUrl() {
@@ -81,6 +94,10 @@ final class SamRockSetupRequestTests: XCTestCase {
     func testSanitizedDescriptionStripsSensitiveSetupValues() {
         XCTAssertEqual(
             SamRockSetupRequest.sanitizedDescription("https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=secret#frag"),
+            "https://btcpay.example/plugins/store123/samrock/protocol"
+        )
+        XCTAssertEqual(
+            SamRockSetupRequest.sanitizedDescription("lightning:https://btcpay.example/plugins/store123/samrock/protocol?otp=secret"),
             "https://btcpay.example/plugins/store123/samrock/protocol"
         )
         XCTAssertEqual(

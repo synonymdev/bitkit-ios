@@ -43,7 +43,7 @@ struct SamRockSetupRequest: Equatable {
     }
 
     static func parse(_ rawValue: String) -> SamRockSetupRequest? {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = setupURLString(from: rawValue)
         guard let components = URLComponents(string: trimmed),
               let url = components.url,
               allowsSetupURLScheme(components),
@@ -97,7 +97,7 @@ struct SamRockSetupRequest: Equatable {
     }
 
     static func sanitizedDescription(_ rawValue: String) -> String? {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = setupURLString(from: rawValue)
         if var components = URLComponents(string: trimmed),
            components.host != nil,
            isProtocolPath(components)
@@ -136,7 +136,7 @@ struct SamRockSetupRequest: Equatable {
     }
 
     static func isPublicHTTPProtocolURL(_ rawValue: String) -> Bool {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = setupURLString(from: rawValue)
         guard let components = URLComponents(string: trimmed),
               components.scheme?.lowercased() == "http",
               let host = components.host?.lowercased(),
@@ -146,6 +146,16 @@ struct SamRockSetupRequest: Equatable {
         }
 
         return !isLocalOrPrivateHost(host)
+    }
+
+    private static func setupURLString(from rawValue: String) -> String {
+        var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in setupURLWrapperPrefixes {
+            if value.range(of: prefix, options: [.anchored, .caseInsensitive]) != nil {
+                value.removeFirst(prefix.count)
+            }
+        }
+        return value
     }
 
     private static func parseMethods(_ value: String?) -> (methods: Set<PaymentMethod>, hasUnknownMethods: Bool) {
@@ -218,6 +228,8 @@ struct SamRockSetupRequest: Equatable {
             || (octets[0] == 192 && octets[1] == 168)
             || (octets[0] == 169 && octets[1] == 254)
     }
+
+    private static let setupURLWrapperPrefixes = ["lightning:", "lnurl:", "lnurlw:", "lnurlc:", "lnurlp:"]
 }
 
 private extension String {
