@@ -29,7 +29,12 @@ struct FactsWidgetPreviewView: View {
         VStack(alignment: .leading, spacing: 16) {
             NavigationBar(title: widgetName, showMenuButton: false)
 
-            BodyMText(widgetDescription, textColor: .textSecondary)
+            VStack(alignment: .leading, spacing: 0) {
+                BodyMText(widgetDescription, textColor: .textSecondary)
+                    .padding(.bottom, 16)
+
+                Divider().background(Color.white.opacity(0.1))
+            }
 
             VStack(spacing: 16) {
                 carousel
