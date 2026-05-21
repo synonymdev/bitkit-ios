@@ -4,7 +4,7 @@ enum PaykitFeatureFlags {
     static let uiEnabledKey = "paykitUiEnabled"
 
     static var isUIAvailable: Bool {
-        #if PAYKIT_UI_DISABLED
+        #if FEATURE_PAYKIT_UI_DISABLED
             false
         #else
             true
