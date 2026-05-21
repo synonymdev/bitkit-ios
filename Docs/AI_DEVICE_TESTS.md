@@ -32,3 +32,9 @@ xcodebuild test \
 ```
 
 The equivalent GitHub Actions entry point is the manual `ai-device-tests` workflow with suite `trezor-emu`.
+
+## Why Bridge
+
+Current iOS releases do not expose WebUSB-style access for devices like Trezor in Safari/WebKit. The connected-device path on iOS is Bluetooth for Trezor models that support it.
+
+The `bitkit-docker` emulator tooling still stays useful for iOS automation because Trezor User Env exposes the emulator through Trezor Bridge on the Mac. The simulator can use that localhost Bridge endpoint while exercising the same dashboard behavior. If Trezor User Env later exposes a BLE peripheral that CoreBluetooth can scan, this suite should move to that transport without changing the dashboard coverage.
