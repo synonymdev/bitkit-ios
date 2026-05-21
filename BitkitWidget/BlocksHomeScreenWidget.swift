@@ -112,7 +112,6 @@ struct BlocksHomeScreenWidgetEntryView: View {
                 BlocksWidgetCompactContent(data: block, options: entry.options)
             default:
                 BlocksWidgetWideContent(data: block, options: entry.options)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         } else {
             ProgressView()

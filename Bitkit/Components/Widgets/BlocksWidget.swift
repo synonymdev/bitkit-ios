@@ -42,6 +42,7 @@ struct BlocksWidget: View {
             WidgetContentBuilder.errorView(t("widgets__blocks__error"))
         } else if let data = viewModel.blockData {
             BlocksWidgetWideContent(data: data, options: options)
+                .frame(height: BlocksWidgetWideContent.inAppContentHeight)
         }
     }
 }

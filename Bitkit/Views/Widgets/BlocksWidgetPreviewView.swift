@@ -143,6 +143,7 @@ struct BlocksWidgetPreviewView: View {
             Group {
                 if let data = viewModel.blockData {
                     BlocksWidgetWideContent(data: data, options: currentOptions)
+                        .frame(height: BlocksWidgetWideContent.inAppContentHeight)
                         .padding(16)
                         .background(Color.gray6)
                         .cornerRadius(16)
@@ -162,10 +163,12 @@ struct BlocksWidgetPreviewView: View {
     }
 
     private var placeholderWide: some View {
-        Color.gray6
+        ProgressView()
+            .frame(maxWidth: .infinity)
+            .frame(height: BlocksWidgetWideContent.inAppContentHeight)
+            .padding(16)
+            .background(Color.gray6)
             .cornerRadius(16)
-            .frame(height: 180)
-            .overlay(ProgressView())
     }
 
     // MARK: - Size label & page indicator

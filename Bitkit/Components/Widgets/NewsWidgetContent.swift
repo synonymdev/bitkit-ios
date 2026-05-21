@@ -10,7 +10,7 @@ import WidgetKit
 // MARK: - Wide layout (in-app + 343-wide carousel page + .systemMedium OS widget)
 
 struct NewsWidgetWideContent: View {
-    static let inAppHeight: CGFloat = 118
+    static let inAppContentHeight: CGFloat = 86
 
     let title: String
     let publisher: String

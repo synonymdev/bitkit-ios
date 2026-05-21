@@ -4,33 +4,27 @@ import WidgetKit
 // Shared Bitcoin Blocks widget content, reused by the in-app feed, the carousel preview, and the
 // home-screen WidgetKit extension. Colors adapt to `widgetRenderingMode` via ``WidgetPalette``.
 
-private let blocksRowSpacings: [CGFloat] = [16, 10, 6, 2]
-
 // MARK: - Wide layout (in-app + 343-wide carousel page + .systemMedium / .systemLarge OS widget)
 
 struct BlocksWidgetWideContent: View {
+    static let inAppContentHeight: CGFloat = 124
+
     let data: CachedBlock
     let options: BlocksWidgetOptions
 
     @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            ForEach(blocksRowSpacings, id: \.self) { spacing in
-                stack(spacing: spacing)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private func stack(spacing: CGFloat) -> some View {
         let palette = WidgetPalette(renderingMode: renderingMode)
-        return VStack(alignment: .leading, spacing: spacing) {
-            ForEach(options.enabledFields, id: \.self) { field in
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(options.enabledFields.enumerated()), id: \.element) { index, field in
+                if index > 0 {
+                    Spacer(minLength: 8)
+                }
                 BlocksWidgetWideRow(field: field, value: field.value(from: data), palette: palette)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -64,18 +58,12 @@ struct BlocksWidgetCompactContent: View {
     @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            ForEach(blocksRowSpacings, id: \.self) { spacing in
-                stack(spacing: spacing)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private func stack(spacing: CGFloat) -> some View {
         let palette = WidgetPalette(renderingMode: renderingMode)
-        return VStack(alignment: .leading, spacing: spacing) {
-            ForEach(options.enabledFields, id: \.self) { field in
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(options.enabledFields.enumerated()), id: \.element) { index, field in
+                if index > 0 {
+                    Spacer(minLength: 8)
+                }
                 HStack(alignment: .center, spacing: 8) {
                     BlocksWidgetIcon(field: field, palette: palette)
 
@@ -86,7 +74,7 @@ struct BlocksWidgetCompactContent: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

@@ -151,7 +151,7 @@ struct NewsWidgetPreviewView: View {
                         timeAgo: data.timeAgo,
                         options: currentOptions
                     )
-                    .frame(height: NewsWidgetWideContent.inAppHeight)
+                    .frame(height: NewsWidgetWideContent.inAppContentHeight)
                     .padding(16)
                     .background(Color.gray6)
                     .cornerRadius(16)
@@ -171,10 +171,12 @@ struct NewsWidgetPreviewView: View {
     }
 
     private var placeholderWide: some View {
-        Color.gray6
+        ProgressView()
+            .frame(maxWidth: .infinity)
+            .frame(height: NewsWidgetWideContent.inAppContentHeight)
+            .padding(16)
+            .background(Color.gray6)
             .cornerRadius(16)
-            .frame(height: NewsWidgetWideContent.inAppHeight)
-            .overlay(ProgressView())
     }
 
     // MARK: - Size label & page indicator
