@@ -151,7 +151,7 @@ class ScannerManager: ObservableObject {
     }
 
     private func shouldOpenPaymentFlow(for uri: String) -> Bool {
-        SamRockSetupRequest.parse(uri) == nil
+        !SamRockSetupRequest.isProtocolURL(uri)
     }
 
     private func handleElectrumScan(_ uri: String) async {

@@ -1388,6 +1388,8 @@
 "btcpay__error_title" = "BTCPay setup failed";
 "btcpay__unsupported_title" = "Setup not supported";
 "btcpay__unsupported_text" = "This QR does not request Bitcoin on-chain setup.";
+"btcpay__unsupported_http_text" = "BTCPay setup links must use HTTPS unless they point to a local or private server.";
+"btcpay__invalid_link_text" = "This BTCPay setup link is invalid.";
 "btcpay__missing_mnemonic" = "Bitkit could not read your recovery phrase.";
 "btcpay__request_error" = "Could not prepare the setup request.";
 "btcpay__invalid_response" = "Invalid setup response.";

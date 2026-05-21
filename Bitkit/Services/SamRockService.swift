@@ -47,6 +47,8 @@ struct SamRockSetupRequest: Equatable {
         guard let components = URLComponents(string: trimmed),
               let url = components.url,
               allowsSetupURLScheme(components),
+              components.user == nil,
+              components.password == nil,
               let queryItems = components.queryItems
         else {
             return nil
@@ -94,6 +96,58 @@ struct SamRockSetupRequest: Equatable {
         )
     }
 
+    static func sanitizedDescription(_ rawValue: String) -> String? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if var components = URLComponents(string: trimmed),
+           components.host != nil,
+           isProtocolPath(components)
+        {
+            components.user = nil
+            components.password = nil
+            components.query = nil
+            components.fragment = nil
+            return components.string
+        }
+
+        let withoutQuery = trimmed.prefix { character in
+            character != "?" && character != "#"
+        }
+        let normalized = withoutQuery.lowercased()
+        guard normalized.contains("/plugins/"),
+              normalized.contains("/samrock/protocol")
+        else {
+            return nil
+        }
+
+        let fallback = String(withoutQuery)
+        if var components = URLComponents(string: fallback),
+           components.host != nil
+        {
+            components.user = nil
+            components.password = nil
+            return components.string ?? fallback.strippingUserInfoFromAuthority()
+        }
+
+        return fallback.strippingUserInfoFromAuthority()
+    }
+
+    static func isProtocolURL(_ rawValue: String) -> Bool {
+        sanitizedDescription(rawValue) != nil
+    }
+
+    static func isPublicHTTPProtocolURL(_ rawValue: String) -> Bool {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let components = URLComponents(string: trimmed),
+              components.scheme?.lowercased() == "http",
+              let host = components.host?.lowercased(),
+              isProtocolPath(components)
+        else {
+            return false
+        }
+
+        return !isLocalOrPrivateHost(host)
+    }
+
     private static func parseMethods(_ value: String?) -> (methods: Set<PaymentMethod>, hasUnknownMethods: Bool) {
         guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return ([.all], false)
@@ -114,6 +168,17 @@ struct SamRockSetupRequest: Equatable {
         }
 
         return (methods, hasUnknownMethods)
+    }
+
+    private static func isProtocolPath(_ components: URLComponents) -> Bool {
+        let pathComponents = components.path
+            .split(separator: "/")
+            .map(String.init)
+
+        return pathComponents.count == 4
+            && pathComponents[0] == "plugins"
+            && pathComponents[2].caseInsensitiveCompare("samrock") == .orderedSame
+            && pathComponents[3].caseInsensitiveCompare("protocol") == .orderedSame
     }
 
     private static func allowsSetupURLScheme(_ components: URLComponents) -> Bool {
@@ -155,6 +220,23 @@ struct SamRockSetupRequest: Equatable {
     }
 }
 
+private extension String {
+    func strippingUserInfoFromAuthority() -> String {
+        guard let schemeRange = range(of: "://") else {
+            return self
+        }
+
+        let authorityStart = schemeRange.upperBound
+        let pathStart = self[authorityStart...].firstIndex(of: "/") ?? endIndex
+        let authority = self[authorityStart ..< pathStart]
+        guard let userInfoEnd = authority.lastIndex(of: "@") else {
+            return self
+        }
+
+        return self[..<authorityStart] + authority[authority.index(after: userInfoEnd)...] + self[pathStart...]
+    }
+}
+
 final class SamRockService {
     static let shared = SamRockService()
 
@@ -183,7 +265,14 @@ final class SamRockService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = Data("json=\(Self.formEncode(json))".utf8)
 
-        let (data, response) = try await urlSession.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await urlSession.data(for: request)
+        } catch {
+            throw AppError(message: t("btcpay__request_error"), debugMessage: error.localizedDescription)
+        }
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AppError(message: t("btcpay__invalid_response"), debugMessage: nil)
         }
@@ -194,11 +283,15 @@ final class SamRockService {
             throw AppError(message: message, debugMessage: "SamRock HTTP \(httpResponse.statusCode)")
         }
 
-        guard envelope?.success != false else {
-            throw AppError(message: envelope?.message ?? t("btcpay__setup_failed"), debugMessage: nil)
+        guard let envelope else {
+            throw AppError(message: t("btcpay__invalid_response"), debugMessage: nil)
         }
 
-        guard let btcResult = envelope?.result?.results?["BTC"] else {
+        guard envelope.success else {
+            throw AppError(message: envelope.message ?? t("btcpay__setup_failed"), debugMessage: nil)
+        }
+
+        guard let btcResult = envelope.result?.results?["BTC"] else {
             throw AppError(message: t("btcpay__missing_result"), debugMessage: nil)
         }
 

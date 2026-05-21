@@ -60,6 +60,8 @@ final class SamRockSetupRequestTests: XCTestCase {
 
     func testRejectsPublicHttpSetupUrl() {
         XCTAssertNil(SamRockSetupRequest.parse("http://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"))
+        XCTAssertTrue(SamRockSetupRequest
+            .isPublicHTTPProtocolURL("http://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"))
     }
 
     func testAllowsLocalHttpSetupUrl() {
@@ -70,6 +72,26 @@ final class SamRockSetupRequestTests: XCTestCase {
         XCTAssertEqual(localhost?.requestsBitcoinOnchain, true)
         XCTAssertEqual(loopback?.requestsBitcoinOnchain, true)
         XCTAssertEqual(privateNetwork?.requestsBitcoinOnchain, true)
+    }
+
+    func testRejectsSetupUrlWithUserInfo() {
+        XCTAssertNil(SamRockSetupRequest.parse("https://user:pass@btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"))
+    }
+
+    func testSanitizedDescriptionStripsSensitiveSetupValues() {
+        XCTAssertEqual(
+            SamRockSetupRequest.sanitizedDescription("https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=secret#frag"),
+            "https://btcpay.example/plugins/store123/samrock/protocol"
+        )
+        XCTAssertEqual(
+            SamRockSetupRequest.sanitizedDescription("https://user:pass@btcpay.example/plugins/store123/samrock/protocol?otp=secret"),
+            "https://btcpay.example/plugins/store123/samrock/protocol"
+        )
+        XCTAssertEqual(
+            SamRockSetupRequest.sanitizedDescription("https://btcpay.example/plugins/%zz/samrock/protocol?otp=secret"),
+            "https://btcpay.example/plugins/%zz/samrock/protocol"
+        )
+        XCTAssertNil(SamRockSetupRequest.sanitizedDescription("bitcoin:bc1qexample?amount=1"))
     }
 
     func testRejectsNonSamRockUrls() {
@@ -152,8 +174,108 @@ final class SamRockSetupRequestTests: XCTestCase {
         XCTAssertEqual(response.message, "Wallet setup successfully.")
         XCTAssertEqual(response.result?.results?["BTC"]?.success, true)
     }
+
+    func testRegisterTreatsMalformedSuccessBodyAsInvalidResponse() async throws {
+        let service = try makeServiceReturning(statusCode: 200, body: "<html></html>")
+        let setup = try XCTUnwrap(SamRockSetupRequest.parse("https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"))
+
+        await assertThrowsAppError({
+            try await service.registerBitcoinOnchain(setup, walletIndex: Self.testWalletIndex)
+        }, t("btcpay__invalid_response"))
+    }
+
+    func testRegisterWrapsTransportError() async throws {
+        let service = try makeServiceThrowing(URLError(.notConnectedToInternet))
+        let setup = try XCTUnwrap(SamRockSetupRequest.parse("https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"))
+
+        await assertThrowsAppError({
+            try await service.registerBitcoinOnchain(setup, walletIndex: Self.testWalletIndex)
+        }, t("btcpay__request_error"))
+    }
 }
 
 private extension SamRockSetupRequestTests {
     static let testMnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    static let testWalletIndex = 99
+
+    func makeServiceReturning(statusCode: Int, body: String) throws -> SamRockService {
+        try prepareWalletKeychain()
+        SamRockURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: statusCode,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data(body.utf8))
+        }
+
+        return SamRockService(urlSession: samRockURLSession())
+    }
+
+    func makeServiceThrowing(_ error: Error) throws -> SamRockService {
+        try prepareWalletKeychain()
+        SamRockURLProtocol.handler = { _ in throw error }
+
+        return SamRockService(urlSession: samRockURLSession())
+    }
+
+    func prepareWalletKeychain() throws {
+        try? Keychain.delete(key: .bip39Mnemonic(index: Self.testWalletIndex))
+        try? Keychain.delete(key: .bip39Passphrase(index: Self.testWalletIndex))
+        try Keychain.saveString(key: .bip39Mnemonic(index: Self.testWalletIndex), str: Self.testMnemonic)
+        UserDefaults.standard.removeObject(forKey: "selectedAddressType")
+    }
+
+    func samRockURLSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SamRockURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    func assertThrowsAppError(
+        _ operation: () async throws -> Void,
+        _ message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        do {
+            try await operation()
+            XCTFail("Expected AppError", file: file, line: line)
+        } catch let error as AppError {
+            XCTAssertEqual(error.message, message, file: file, line: line)
+        } catch {
+            XCTFail("Expected AppError, got \(error)", file: file, line: line)
+        }
+    }
+}
+
+private final class SamRockURLProtocol: URLProtocol {
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.handler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }

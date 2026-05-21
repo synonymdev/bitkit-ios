@@ -329,6 +329,11 @@ extension AppViewModel {
             return
         }
 
+        if SamRockSetupRequest.isProtocolURL(uri) {
+            handleInvalidBTCPayConnection(uri)
+            return
+        }
+
         // Workaround for duplicated BIP21 URIs (bitkit-core#63)
         if Bip21Utils.isDuplicatedBip21(uri) {
             toast(
@@ -506,6 +511,14 @@ extension AppViewModel {
         }
 
         sheetViewModel.showSheet(.btcpayConnection, data: BTCPayConnectionConfig(setup: setup))
+    }
+
+    private func handleInvalidBTCPayConnection(_ uri: String) {
+        toast(
+            type: .warning,
+            title: t("btcpay__unsupported_title"),
+            description: SamRockSetupRequest.isPublicHTTPProtocolURL(uri) ? t("btcpay__unsupported_http_text") : t("btcpay__invalid_link_text")
+        )
     }
 
     private func handleScannedLightningInvoice(_ invoice: LightningInvoice, bolt11: String, onchainInvoice: OnChainInvoice? = nil) {

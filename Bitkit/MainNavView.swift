@@ -629,14 +629,24 @@ struct MainNavView: View {
     }
 
     private func shouldOpenPaymentSheet(for uri: String) -> Bool {
-        SamRockSetupRequest.parse(uri) == nil
+        !SamRockSetupRequest.isProtocolURL(uri)
     }
 
     private func sanitizedDeeplinkDescription(_ url: URL) -> String {
+        if let description = SamRockSetupRequest.sanitizedDescription(url.absoluteString) {
+            return description
+        }
+
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             return url.scheme ?? "unknown"
         }
 
+        guard components.host != nil else {
+            return components.scheme ?? "unknown"
+        }
+
+        components.user = nil
+        components.password = nil
         components.query = nil
         components.fragment = nil
 
