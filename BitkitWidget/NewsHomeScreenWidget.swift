@@ -171,7 +171,8 @@ struct NewsHomeScreenWidgetEntryView: View {
                     title: article.title,
                     publisher: article.publisher,
                     timeAgo: entry.timeAgo,
-                    options: entry.options
+                    options: entry.options,
+                    titleLineLimit: 3
                 )
             }
         } else {

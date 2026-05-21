@@ -16,6 +16,7 @@ struct NewsWidgetWideContent: View {
     let publisher: String
     let timeAgo: String
     let options: NewsWidgetOptions
+    var titleLineLimit: Int = 2
 
     @Environment(\.widgetRenderingMode) private var renderingMode
 
@@ -24,7 +25,7 @@ struct NewsWidgetWideContent: View {
         VStack(alignment: .leading, spacing: 0) {
             if options.showTitle {
                 TitleText(title, textColor: palette.title)
-                    .lineLimit(4)
+                    .lineLimit(titleLineLimit)
                     .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .widgetAccentable()
