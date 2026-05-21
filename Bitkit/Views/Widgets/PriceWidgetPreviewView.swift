@@ -60,8 +60,8 @@ struct PriceWidgetPreviewView: View {
             VStack(spacing: 16) {
                 carousel
 
-                sizeLabel
-                    .padding(.bottom, 16)
+                // Size label hidden while only the wide widget is shown
+                // sizeLabel
 
                 // Page indicator hidden while only the wide widget is shown
                 // pageIndicator
