@@ -3,10 +3,12 @@ import SwiftUI
 
 struct ActivityRowLightning: View {
     let item: LightningActivity
+    let contact: PubkyContact?
     let titleOverride: String?
 
-    init(item: LightningActivity, titleOverride: String? = nil) {
+    init(item: LightningActivity, contact: PubkyContact? = nil, titleOverride: String? = nil) {
         self.item = item
+        self.contact = contact
         self.titleOverride = titleOverride
     }
 
@@ -47,7 +49,11 @@ struct ActivityRowLightning: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            ActivityIcon(activity: .lightning(item), size: 40, context: .row)
+            if let contact {
+                PubkyContactAvatar(contact: contact, size: 40)
+            } else {
+                ActivityIcon(activity: .lightning(item), size: 40, context: .row)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 BodyMSBText(status).lineLimit(1)

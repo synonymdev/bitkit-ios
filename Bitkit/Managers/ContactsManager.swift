@@ -77,6 +77,7 @@ enum ContactsManagerError: LocalizedError {
 
 // MARK: - PubkyContact
 
+// swiftformat:disable:next redundantSendable
 struct PubkyContact: Identifiable, Hashable, Sendable {
     let id: String
     let publicKey: String
@@ -173,6 +174,10 @@ class ContactsManager: ObservableObject {
             let contactPaths = try await Task.detached {
                 try await PubkyService.sessionList(sessionSecret: sessionSecret, dirPath: basePath)
             }.value
+            let savedContactKeys = contactPaths
+                .map(extractPublicKey(from:))
+                .filter { !$0.isEmpty }
+                .map(ensurePubkyPrefix)
 
             Logger.debug("Listed \(contactPaths.count) contacts from homeserver", context: "ContactsManager")
 
@@ -226,6 +231,7 @@ class ContactsManager: ObservableObject {
 
             if !contactPaths.isEmpty, loadedResult.contacts.isEmpty {
                 if loadedResult.failures == loadedResult.missingFailures {
+                    await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
                     contacts = []
                     hasLoaded = true
                     Logger.info("Contacts storage entries were missing, treating list as empty", context: "ContactsManager")
@@ -235,6 +241,7 @@ class ContactsManager: ObservableObject {
             }
 
             contacts = loadedResult.contacts.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+            await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: savedContactKeys)
             hasLoaded = true
 
             if loadedResult.failures > 0 {
@@ -247,6 +254,7 @@ class ContactsManager: ObservableObject {
             Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
         } catch {
             if Self.isMissingContactsDataError(error) {
+                await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
                 contacts = []
                 hasLoaded = true
                 loadErrorMessage = nil
@@ -403,6 +411,7 @@ class ContactsManager: ObservableObject {
         Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
 
         contacts.removeAll { $0.publicKey == prefixedKey }
+        await PrivatePaykitService.shared.removeSavedContact(publicKey: prefixedKey)
     }
 
     /// Delete all contacts from the homeserver and keep local state in sync with completed deletions.
@@ -418,6 +427,7 @@ class ContactsManager: ObservableObject {
             }.value
         } catch {
             if Self.isMissingContactsDataError(error) {
+                await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
                 contacts.removeAll()
                 return
             }
@@ -448,11 +458,13 @@ class ContactsManager: ObservableObject {
         if let firstError {
             if !deletedKeys.isEmpty {
                 contacts.removeAll { deletedKeys.contains($0.publicKey) }
+                await PrivatePaykitService.shared.removeSavedContacts(publicKeys: Array(deletedKeys))
             }
             throw firstError
         }
 
         // All remote deletes succeeded, so clear any local-only contacts too.
+        await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
         contacts.removeAll()
         Logger.info("Deleted all contacts", context: "ContactsManager")
     }

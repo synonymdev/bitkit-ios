@@ -39,7 +39,9 @@ class ServiceQueue {
     ///   - blocking: The function to run
     ///   - functionName: The name of the function for logging
     /// - Returns: The result of the blocking function
-    static func background<T>(_ service: ServiceTypes, _ blocking: @escaping () throws -> T, functionName: String = #function) async throws -> T {
+    static func background<T>(_ service: ServiceTypes, wrapErrors: Bool = true, _ blocking: @escaping () throws -> T,
+                              functionName: String = #function) async throws -> T
+    {
         let startTime = CFAbsoluteTimeGetCurrent()
         let result = try await withCheckedThrowingContinuation { continuation in
             service.queue.async {
@@ -47,9 +49,7 @@ class ServiceQueue {
                     let res = try blocking()
                     continuation.resume(with: .success(res))
                 } catch {
-                    let appError = AppError(error: error)
-                    Logger.error("\(appError.message) [\(appError.debugMessage ?? "")]", context: "ServiceQueue: \(service)")
-                    continuation.resume(throwing: appError)
+                    continuation.resume(throwing: queueError(from: error, service: service, wrapErrors: wrapErrors))
                 }
             }
         }
@@ -66,7 +66,7 @@ class ServiceQueue {
     ///   - execute: The function
     ///   - functionName: The name of the function for logging
     /// - Returns: The result of the async function
-    static func background<T>(_ service: ServiceTypes, _ execute: @escaping () async throws -> T,
+    static func background<T>(_ service: ServiceTypes, wrapErrors: Bool = true, _ execute: @escaping () async throws -> T,
                               functionName: String = #function) async throws -> T
     {
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -78,9 +78,7 @@ class ServiceQueue {
                         let result = try await execute()
                         continuation.resume(returning: result)
                     } catch {
-                        let appError = AppError(error: error)
-                        Logger.error("\(appError.message) [\(appError.debugMessage ?? "")]", context: "ServiceQueue: \(service)")
-                        continuation.resume(throwing: appError)
+                        continuation.resume(throwing: queueError(from: error, service: service, wrapErrors: wrapErrors))
                     }
 
                     let timeElapsed = Double(round(100 * (CFAbsoluteTimeGetCurrent() - startTime)) / 100)
@@ -88,6 +86,17 @@ class ServiceQueue {
                 }
             }
         }
+    }
+
+    private static func queueError(from error: Error, service: ServiceTypes, wrapErrors: Bool) -> Error {
+        guard wrapErrors else {
+            Logger.error(error.localizedDescription, context: "ServiceQueue: \(service)")
+            return error
+        }
+
+        let appError = AppError(error: error)
+        Logger.error("\(appError.message) [\(appError.debugMessage ?? "")]", context: "ServiceQueue: \(service)")
+        return appError
     }
 
     /// Executes a function on chosen service queue with completion handler

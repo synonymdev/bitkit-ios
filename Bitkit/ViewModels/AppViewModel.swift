@@ -970,7 +970,7 @@ extension AppViewModel {
 
             if MigrationsService.shared.needsPostMigrationSync {
                 Task { @MainActor in
-                    try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.payments ?? [])
+                    try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.listPayments() ?? [])
                     await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
                     await MigrationsService.shared.reapplyMetadataAfterSync()
 

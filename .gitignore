@@ -23,5 +23,6 @@ buildServer.json
 
 # AIs
 .ai/
+.codex/
 .claude/*.local*
 .claude/scheduled_tasks.lock

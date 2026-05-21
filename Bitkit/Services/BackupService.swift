@@ -203,6 +203,9 @@ class BackupService {
             try await performRestore(category: .wallet) { dataBytes in
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 try TransferStorage.shared.upsertList(payload.transfers)
+                await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
+                await PrivatePaykitService.shared.restoreBackup(payload.privatePaykitContactLinks)
+                await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
 
                 Logger.debug("Restored \(payload.transfers.count) transfers", context: "BackupService")
             }
@@ -321,6 +324,23 @@ class BackupService {
             }
             .store(in: &cancellables)
 
+        // PRIVATE PAYKIT WALLET DATA
+        PrivatePaykitAddressReservationStore.walletBackupDataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .wallet)
+            }
+            .store(in: &cancellables)
+
+        PrivatePaykitService.walletBackupDataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .wallet)
+            }
+            .store(in: &cancellables)
+
         // ACTIVITIES
         CoreService.shared.activity.activitiesChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
@@ -374,7 +394,7 @@ class BackupService {
             }
             .store(in: &cancellables)
 
-        Logger.debug("Started 7 data store listeners", context: "BackupService")
+        Logger.debug("Started 9 data store listeners", context: "BackupService")
     }
 
     private func startPeriodicBackupFailureCheck() {
@@ -653,10 +673,14 @@ class BackupService {
 
         case .wallet:
             let transfers = try TransferStorage.shared.getAll()
+            let privatePaykitHighestReservedReceiveIndexByAddressType = await PrivatePaykitAddressReservationStore.shared.backupSnapshot()
+            let privatePaykitContactLinks = await PrivatePaykitService.shared.backupSnapshot()
             let payload = WalletBackupV1(
                 version: 1,
                 createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
-                transfers: transfers
+                transfers: transfers,
+                privatePaykitHighestReservedReceiveIndexByAddressType: privatePaykitHighestReservedReceiveIndexByAddressType,
+                privatePaykitContactLinks: privatePaykitContactLinks
             )
             return try JSONEncoder().encode(payload)
 

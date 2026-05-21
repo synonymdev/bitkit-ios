@@ -218,6 +218,87 @@ enum PubkyService {
         }
     }
 
+    // MARK: - Private Payments
+
+    static func initiateEncryptedLink(secretKeyHex: String, receiverPublicKey: String) async throws -> String {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await paykitInitiateEncryptedLink(secretKeyHex: secretKeyHex, receiverPublicKey: receiverPublicKey)
+        }
+    }
+
+    static func acceptEncryptedLink(secretKeyHex: String, senderPublicKey: String) async throws -> String {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await paykitAcceptEncryptedLink(secretKeyHex: secretKeyHex, senderPublicKey: senderPublicKey)
+        }
+    }
+
+    static func advanceHandshake(handshakeId: String) async throws -> FfiHandshakeProgress {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await paykitAdvanceHandshake(handshakeId: handshakeId)
+        }
+    }
+
+    static func restoreEncryptedLink(secretKeyHex: String, snapshotHex: String) async throws -> String {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await paykitRestoreEncryptedLink(secretKeyHex: secretKeyHex, snapshotHex: snapshotHex)
+        }
+    }
+
+    static func encryptedLinkSnapshotRecipient(snapshotHex: String) async throws -> String {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try paykitEncryptedLinkSnapshotRecipient(snapshotHex: snapshotHex)
+        }
+    }
+
+    static func restoreEncryptedLinkHandshake(secretKeyHex: String, snapshotHex: String) async throws -> String {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await paykitRestoreEncryptedLinkHandshake(secretKeyHex: secretKeyHex, snapshotHex: snapshotHex)
+        }
+    }
+
+    static func encryptedLinkHandshakeSnapshotRecipient(snapshotHex: String) async throws -> String {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try paykitEncryptedLinkHandshakeSnapshotRecipient(snapshotHex: snapshotHex)
+        }
+    }
+
+    static func serializeEncryptedLink(linkId: String) async throws -> String {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await paykitSerializeEncryptedLink(linkId: linkId)
+        }
+    }
+
+    static func serializeEncryptedLinkHandshake(handshakeId: String) async throws -> String {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await paykitSerializeEncryptedLinkHandshake(handshakeId: handshakeId)
+        }
+    }
+
+    static func closeEncryptedLink(linkId: String) async throws {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await paykitCloseEncryptedLink(linkId: linkId)
+        }
+    }
+
+    static func dropEncryptedLinkHandshake(handshakeId: String) async throws {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await paykitDropEncryptedLinkHandshake(handshakeId: handshakeId)
+        }
+    }
+
+    static func setPrivatePayments(linkId: String, entries: [FfiPaymentEntry]) async throws {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            let payload = FfiPrivatePaymentsPayload(reference: paykitGeneratePaymentReference(), entries: entries)
+            try await paykitSetPrivatePayments(linkId: linkId, payload: payload)
+        }
+    }
+
+    static func getPrivatePayments(linkId: String) async throws -> FfiPrivatePaymentsPayload? {
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await paykitGetPrivatePayments(linkId: linkId)
+        }
+    }
+
     // MARK: - Sign Out
 
     static func signOut() async throws {

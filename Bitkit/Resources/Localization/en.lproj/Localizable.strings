@@ -816,7 +816,7 @@
 "settings__adv__pp_header" = "Choose how you prefer to receive money when users send funds to your profile key.";
 "settings__adv__pp_footer" = "* This requires sharing payment data.";
 "settings__adv__pp_drag" = "Payment preference (drag to reorder)";
-"settings__adv__pp_contacts" = "Pay to/from contacts";
+"settings__adv__pp_contacts" = "Payments from contacts";
 "settings__adv__pp_contacts_switch" = "Enable payments with contacts*";
 "settings__adv__address_viewer" = "Address Viewer";
 "settings__adv__sweep_funds" = "Sweep Funds";
@@ -1431,3 +1431,13 @@
 "widgets__weather__condition__good__short_title" = "Favorable";
 "widgets__weather__condition__average__short_title" = "Average";
 "widgets__weather__condition__poor__short_title" = "Poor";
+
+"settings__adv__pp_options" = "Payment options";
+"settings__adv__pp_lightning" = "Lightning (Bitkit)";
+"settings__adv__pp_onchain" = "On-chain (Bitkit)";
+"settings__adv__pp_private_contacts" = "Private payments with contacts";
+"settings__adv__pp_public_contacts" = "Public payments with contacts*";
+"settings__adv__pp_public_footer" = "*Public payments with contacts requires payment data to be shared publicly.";
+"settings__adv__pp_both" = "Both";
+"settings__adv__pp_lightning_short" = "Lightning";
+"settings__adv__pp_onchain_short" = "On-chain";

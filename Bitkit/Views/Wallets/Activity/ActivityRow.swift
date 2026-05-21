@@ -6,12 +6,14 @@ struct ActivityRow: View {
     let feeEstimates: FeeRates?
     let contact: PubkyContact?
     let titleOverride: String?
+    let showContactAvatar: Bool
 
-    init(item: Activity, feeEstimates: FeeRates?, contact: PubkyContact? = nil, titleOverride: String? = nil) {
+    init(item: Activity, feeEstimates: FeeRates?, contact: PubkyContact? = nil, titleOverride: String? = nil, showContactAvatar: Bool = true) {
         self.item = item
         self.feeEstimates = feeEstimates
         self.contact = contact
         self.titleOverride = titleOverride
+        self.showContactAvatar = showContactAvatar
     }
 
     private var rowTitleOverride: String? {
@@ -51,13 +53,21 @@ struct ActivityRow: View {
         }
     }
 
+    private var rowContactAvatar: PubkyContact? {
+        guard showContactAvatar, contactTitle != nil else {
+            return nil
+        }
+
+        return contact
+    }
+
     var body: some View {
         Group {
             switch item {
             case let .lightning(activity):
-                ActivityRowLightning(item: activity, titleOverride: rowTitleOverride)
+                ActivityRowLightning(item: activity, contact: rowContactAvatar, titleOverride: rowTitleOverride)
             case let .onchain(activity):
-                ActivityRowOnchain(item: activity, feeEstimates: feeEstimates, titleOverride: rowTitleOverride)
+                ActivityRowOnchain(item: activity, feeEstimates: feeEstimates, contact: rowContactAvatar, titleOverride: rowTitleOverride)
             }
         }
         .padding(16)

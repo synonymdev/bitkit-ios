@@ -8,15 +8,16 @@ struct AddContactView: View {
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     let publicKey: String
 
     @State private var fetchedProfile: PubkyProfile?
-    @State private var hasPublicPaymentEndpoint = false
     @State private var isLoading = true
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var canRetryError = true
+    @State private var hasPayableEndpoint = false
 
     private var truncatedPublicKey: String {
         let displayKey = normalizedPublicKey ?? publicKey
@@ -141,7 +142,7 @@ struct AddContactView: View {
             .padding(.horizontal, 32)
             .padding(.bottom, 16)
 
-            if hasPublicPaymentEndpoint {
+            if hasPayableEndpoint {
                 CustomButton(title: t("wallet__send"), variant: .secondary) {
                     await payContact()
                 }
@@ -200,6 +201,7 @@ struct AddContactView: View {
         fetchedProfile = nil
         errorMessage = nil
         canRetryError = true
+        hasPayableEndpoint = false
 
         switch resolveAddContactValidation(
             input: publicKey,
@@ -224,10 +226,10 @@ struct AddContactView: View {
         case let .valid(normalizedKey):
             if let profile = await contactsManager.fetchContactProfile(publicKey: normalizedKey, includePlaceholder: true) {
                 fetchedProfile = profile
+                hasPayableEndpoint = await (try? PublicPaykitService.hasPayablePublicEndpoint(publicKey: normalizedKey)) == true
             } else {
                 errorMessage = t("contacts__add_error")
             }
-            await loadPaymentEndpoints(publicKey: normalizedKey)
         }
 
         isLoading = false
@@ -258,18 +260,6 @@ struct AddContactView: View {
         }
     }
 
-    private func loadPaymentEndpoints(publicKey: String) async {
-        do {
-            hasPublicPaymentEndpoint = try await PublicPaykitService.hasPayablePublicEndpoint(publicKey: publicKey)
-        } catch {
-            Logger.warn(
-                "Failed to load public payment endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
-                context: "AddContactView"
-            )
-            hasPublicPaymentEndpoint = false
-        }
-    }
-
     private func payContact() async {
         guard let normalizedPublicKey else {
             app.toast(type: .warning, title: t("slashtags__error_pay_title"), description: t("slashtags__error_pay_empty_msg"))
@@ -281,14 +271,7 @@ struct AddContactView: View {
 
             switch result {
             case let .opened(paymentRequest):
-                guard await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey) else {
-                    app.toast(
-                        type: .warning,
-                        title: t("slashtags__error_pay_title"),
-                        description: t("slashtags__error_pay_not_opened_msg")
-                    )
-                    return
-                }
+                _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey)
             case .noEndpoint, .notOpened:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
@@ -314,6 +297,11 @@ struct AddContactView: View {
             try await app.handleScannedData(paymentRequest)
         } catch {
             Logger.warn("Failed to decode contact payment request: \(error)", context: "AddContactView")
+            app.toast(
+                type: .warning,
+                title: t("slashtags__error_pay_title"),
+                description: t("slashtags__error_pay_not_opened_msg")
+            )
             return false
         }
 
@@ -338,6 +326,7 @@ struct AddContactView: View {
             .environmentObject(PubkyProfileManager())
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
+            .environmentObject(WalletViewModel())
     }
     .preferredColorScheme(.dark)
 }
