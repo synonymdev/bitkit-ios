@@ -483,6 +483,7 @@ struct MainNavView: View {
                 case .probingTool: ProbingToolScreen()
                 case .orders: ChannelOrders()
                 case .logs: LogView()
+                case .trezor: TrezorRootView()
                 }
             }
     }

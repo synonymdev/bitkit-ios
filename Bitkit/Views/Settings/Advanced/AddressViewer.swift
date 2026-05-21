@@ -19,7 +19,7 @@ struct AddressViewer: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var settings: SettingsViewModel
 
-    @State private var addresses: [BitkitCore.AddressInfo] = []
+    @State private var addresses: [AddressInfo] = []
     @State private var addressBalances: [String: UInt64] = [:]
     @State private var loadedCount: UInt32 = 20
     @State private var isLoading = false
@@ -69,7 +69,7 @@ struct AddressViewer: View {
         return 0 // Default to first address index
     }
 
-    private var filteredAddresses: [BitkitCore.AddressInfo] {
+    private var filteredAddresses: [AddressInfo] {
         if searchText.isEmpty {
             return addresses
         }

@@ -101,6 +101,16 @@ struct AdvancedSettingsView: View {
                         )
                     }
                     .accessibilityIdentifier("RGSServer")
+
+                    if showDevSettings {
+                        NavigationLink(value: Route.trezor) {
+                            SettingsRow(
+                                title: "Trezor Hardware Wallet",
+                                iconName: "device-mobile-speaker"
+                            )
+                        }
+                        .accessibilityIdentifier("Trezor")
+                    }
                 }
                 .padding(.top, 16)
                 .padding(.horizontal, 16)
