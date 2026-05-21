@@ -1170,11 +1170,14 @@
 "widgets__blocks__error" = "Не удалось получить данные о блоках";
 "widgets__facts__name" = "Биткоин Факты";
 "widgets__weather__condition__good__title" = "Благоприятные Условия";
-"widgets__weather__condition__good__description" = "Всё хорошо. Сейчас подходящее время для транзакций в блокчейне.";
+"widgets__weather__condition__good__description" = "Сейчас подходящее время для транзакций в блокчейне.";
 "widgets__weather__condition__average__title" = "Средние Условия";
-"widgets__weather__condition__average__description" = "Ставка следующего блока близка к средним месячным показателям.";
+"widgets__weather__condition__average__description" = "Ставка следующего блока близка к средним месячным и годовым показателям.";
 "widgets__weather__condition__poor__title" = "Плохие Условия";
-"widgets__weather__condition__poor__description" = "Если вы не спешите с транзакцией, возможно, лучше немного подождать.";
+"widgets__weather__condition__poor__description" = "Если вы не спешите с транзакцией, возможно, лучше подождать.";
 "widgets__weather__current_fee" = "Текущая средняя комиссия";
 "widgets__weather__next_block" = "Включение в следующий блок";
 "widgets__weather__error" = "Не удалось получить данные о погоде комиссий";
+"widgets__weather__condition__good__short_title" = "Благоприятные";
+"widgets__weather__condition__average__short_title" = "Средние";
+"widgets__weather__condition__poor__short_title" = "Плохие";

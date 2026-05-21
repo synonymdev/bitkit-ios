@@ -3,12 +3,17 @@ import Foundation
 /// Centralized localization helper with English fallback support
 enum LocalizationHelper {
     private static let notFoundValue = "___NOTFOUND___"
+    private static let appGroupSuiteName = "group.bitkit"
+    private static let selectedLanguageCodeKey = "selectedLanguageCode"
 
-    /// Gets the current language code from user preferences
     private static var currentLanguageCode: String {
-        let storedCode = UserDefaults.standard.string(forKey: "selectedLanguageCode") ?? ""
-        let deviceLanguageCode = Locale.current.language.languageCode?.identifier ?? "en"
-        return storedCode.isEmpty ? deviceLanguageCode : storedCode
+        let appGroupCode = UserDefaults(suiteName: appGroupSuiteName)?.string(forKey: selectedLanguageCodeKey) ?? ""
+        if !appGroupCode.isEmpty { return appGroupCode }
+
+        let standardCode = UserDefaults.standard.string(forKey: selectedLanguageCodeKey) ?? ""
+        if !standardCode.isEmpty { return standardCode }
+
+        return Locale.current.language.languageCode?.identifier ?? "en"
     }
 
     /// Checks if a localization key exists in a specific bundle
@@ -31,7 +36,6 @@ enum LocalizationHelper {
             return getStringFromBundle(englishBundle, key: key, comment: comment)
         }
 
-        // Try selected language first, fallback to English if key missing
         if keyExists(in: selectedBundle, key: key) {
             return NSLocalizedString(key, bundle: selectedBundle, comment: comment)
         } else {

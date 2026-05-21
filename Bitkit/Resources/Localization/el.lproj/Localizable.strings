@@ -856,11 +856,14 @@
 "widgets__news__error" = "Δεν ήταν δυνατή η λήψη τελευταίων ειδήσεων";
 "widgets__blocks__error" = "Δεν ήταν δυνατή η λήψη δεδομένων blocks";
 "widgets__weather__condition__good__title" = "Ευνοϊκές Συνθήκες";
-"widgets__weather__condition__good__description" = "Όλα καλά. Τώρα θα ήταν καλή στιγμή για συναλλαγές στο blockchain.";
+"widgets__weather__condition__good__description" = "Τώρα θα ήταν καλή στιγμή για συναλλαγές στο blockchain.";
 "widgets__weather__condition__average__title" = "Μέσες Συνθήκες";
-"widgets__weather__condition__average__description" = "Το ποσοστό επόμενου block είναι κοντά στους μηνιαίους μέσους όρους.";
+"widgets__weather__condition__average__description" = "Το ποσοστό επόμενου block είναι κοντά στους μηνιαίους και ετήσιους μέσους όρους.";
 "widgets__weather__condition__poor__title" = "Κακές Συνθήκες";
-"widgets__weather__condition__poor__description" = "Αν δεν βιάζεστε να κάνετε συναλλαγές, μπορεί να είναι καλύτερα να περιμένετε λίγο.";
+"widgets__weather__condition__poor__description" = "Αν δεν βιάζεστε να κάνετε συναλλαγές, μπορεί να είναι καλύτερα να περιμένετε.";
 "widgets__weather__current_fee" = "Τρέχον μέσο τέλος";
 "widgets__weather__next_block" = "Συμπερίληψη σε επόμενο block";
 "widgets__weather__error" = "Δεν ήταν δυνατή η λήψη τρέχοντος καιρού τελών";
+"widgets__weather__condition__good__short_title" = "Ευνοϊκές";
+"widgets__weather__condition__average__short_title" = "Μέσες";
+"widgets__weather__condition__poor__short_title" = "Κακές";

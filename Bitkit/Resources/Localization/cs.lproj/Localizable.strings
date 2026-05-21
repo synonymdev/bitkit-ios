@@ -1164,11 +1164,14 @@
 "widgets__weather__name" = "Počasí v bitcoinu";
 "widgets__weather__description" = "Zjistěte, kdy je vhodná doba pro transakce v blockchainu bitcoinu.";
 "widgets__weather__condition__good__title" = "Příznivé podmínky";
-"widgets__weather__condition__good__description" = "Všude čisto. Nyní je vhodná doba pro transakce na blockchainu.";
+"widgets__weather__condition__good__description" = "Nyní je vhodná doba pro transakce na blockchainu.";
 "widgets__weather__condition__average__title" = "Průměrné podmínky";
-"widgets__weather__condition__average__description" = "Poplatek dalšího bloku se blíží měsíčním průměrům.";
+"widgets__weather__condition__average__description" = "Poplatek dalšího bloku se blíží měsíčním a ročním průměrům.";
 "widgets__weather__condition__poor__title" = "Špatné podmínky";
-"widgets__weather__condition__poor__description" = "Pokud na transakci nespěcháte, je lepší chvíli počkat.";
+"widgets__weather__condition__poor__description" = "Pokud na transakci nespěcháte, je lepší počkat.";
 "widgets__weather__current_fee" = "Aktuální průměrný poplatek";
 "widgets__weather__next_block" = "Zařazení do dalšího bloku";
 "widgets__weather__error" = "Nepodařilo se získat aktuální poplatkovou úroveň";
+"widgets__weather__condition__good__short_title" = "Příznivé";
+"widgets__weather__condition__average__short_title" = "Průměrné";
+"widgets__weather__condition__poor__short_title" = "Špatné";

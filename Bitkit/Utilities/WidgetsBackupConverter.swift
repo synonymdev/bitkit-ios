@@ -43,12 +43,7 @@ enum WidgetsBackupConverter {
                     }
                 case .weather:
                     if let options = try? JSONDecoder().decode(WeatherWidgetOptions.self, from: optionsData) {
-                        weatherPreferences = [
-                            "showTitle": options.showStatus,
-                            "showDescription": options.showText,
-                            "showCurrentFee": options.showMedian,
-                            "showNextBlockFee": options.showNextBlockFee,
-                        ]
+                        weatherPreferences = androidWeatherPreferences(for: options.selectedMetric)
                     }
                 case .price:
                     if let options = try? JSONDecoder().decode(PriceWidgetOptions.self, from: optionsData) {
@@ -135,10 +130,7 @@ enum WidgetsBackupConverter {
             case .weather:
                 if let prefs = jsonDict["weatherPreferences"] as? [String: Any] {
                     let iosOptions = WeatherWidgetOptions(
-                        showStatus: prefs["showTitle"] as? Bool ?? true,
-                        showText: prefs["showDescription"] as? Bool ?? false,
-                        showMedian: prefs["showCurrentFee"] as? Bool ?? false,
-                        showNextBlockFee: prefs["showNextBlockFee"] as? Bool ?? false
+                        selectedMetric: weatherMetric(fromAndroidPrefs: prefs)
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
@@ -196,12 +188,41 @@ enum WidgetsBackupConverter {
 
     private static func getDefaultWeatherPreferences() -> [String: Any] {
         let defaults = WeatherWidgetOptions()
-        return [
-            "showTitle": defaults.showStatus,
-            "showDescription": defaults.showText,
-            "showCurrentFee": defaults.showMedian,
-            "showNextBlockFee": defaults.showNextBlockFee,
-        ]
+        return androidWeatherPreferences(for: defaults.selectedMetric)
+    }
+
+    private static func androidWeatherPreferences(for metric: WeatherDisplayMetric) -> [String: Any] {
+        ["selectedOption": androidSelectedOption(for: metric)]
+    }
+
+    private static func androidSelectedOption(for metric: WeatherDisplayMetric) -> String {
+        switch metric {
+        case .fiatFee: return "CURRENT_FEE_FIAT"
+        case .satsFee: return "CURRENT_FEE_SATS"
+        case .nextBlockFee: return "NEXT_BLOCK_INCLUSION"
+        }
+    }
+
+    /// Maps Android `WeatherPreferences` to the v61 iOS metric. Prefers the v61
+    /// `selectedOption` enum string; falls back to the legacy 4-toggle shape for backups
+    /// produced by older builds.
+    private static func weatherMetric(fromAndroidPrefs prefs: [String: Any]) -> WeatherDisplayMetric {
+        if let selected = prefs["selectedOption"] as? String {
+            switch selected {
+            case "CURRENT_FEE_FIAT": return .fiatFee
+            case "CURRENT_FEE_SATS": return .satsFee
+            case "NEXT_BLOCK_INCLUSION": return .nextBlockFee
+            default: break
+            }
+        }
+
+        // Legacy fallback: older builds stored four booleans instead of an enum.
+        let showCurrentFee = prefs["showCurrentFee"] as? Bool ?? false
+        let showNextBlockFee = prefs["showNextBlockFee"] as? Bool ?? false
+        if showNextBlockFee && !showCurrentFee {
+            return .nextBlockFee
+        }
+        return .fiatFee
     }
 
     private static func getDefaultPricePreferences() -> [String: Any] {

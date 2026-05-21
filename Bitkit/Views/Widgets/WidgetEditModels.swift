@@ -249,85 +249,35 @@ enum WidgetEditItemFactory {
     ) -> [WidgetEditItem] {
         var items: [WidgetEditItem] = []
 
-        if let data = weatherViewModel.weatherData {
-            items.append(
-                WidgetEditItem(
-                    key: "showStatus",
-                    type: .toggleItem,
-                    titleView: AnyView(TitleText(data.condition.title)),
-                    valueView: AnyView(Text(data.condition.icon).font(.system(size: 52))),
-                    isChecked: weatherOptions.showStatus
-                )
+        items.append(sectionHeaderItem(key: "weather_display_header", title: t("widgets__widget__display")))
+
+        let data = weatherViewModel.weatherData
+
+        for metric in WeatherDisplayMetric.allCases {
+            let isSelected = weatherOptions.selectedMetric == metric
+            let value = data.map { metric.value(from: $0) } ?? metric.fallbackPreviewValue
+            let labelText = t(metric.labelKey)
+
+            let titleView = AnyView(
+                VStack(alignment: .leading, spacing: 4) {
+                    CaptionMText(labelText, textColor: .textSecondary)
+                        .textCase(.uppercase)
+                    Text(value)
+                        .font(Fonts.bold(size: 30))
+                        .foregroundColor(.greenAccent)
+                        .kerning(-1)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
             )
 
             items.append(
                 WidgetEditItem(
-                    key: "showText",
-                    type: .toggleItem,
-                    titleView: AnyView(BodyMText(data.condition.description, textColor: .textPrimary)),
+                    key: metric.rawValue,
+                    type: .radioItem,
+                    titleView: titleView,
                     valueView: nil,
-                    isChecked: weatherOptions.showText
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showMedian",
-                    type: .toggleItem,
-                    title: t("widgets__weather__current_fee"),
-                    value: data.currentFee,
-                    isChecked: weatherOptions.showMedian
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showNextBlockFee",
-                    type: .toggleItem,
-                    title: t("widgets__weather__next_block"),
-                    value: "\(data.nextBlockFee) ₿/vByte",
-                    isChecked: weatherOptions.showNextBlockFee
-                )
-            )
-        } else {
-            // Fallback when no data is available
-            items.append(
-                WidgetEditItem(
-                    key: "showStatus",
-                    type: .toggleItem,
-                    titleView: AnyView(TitleText("Good")),
-                    valueView: AnyView(Text("☀️").font(.system(size: 30))),
-                    isChecked: weatherOptions.showStatus
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showText",
-                    type: .toggleItem,
-                    titleView: AnyView(BodyMText("Fees are low and transactions are fast", textColor: .textPrimary)),
-                    valueView: nil,
-                    isChecked: weatherOptions.showText
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showMedian",
-                    type: .toggleItem,
-                    title: t("widgets__weather__current_fee"),
-                    value: "$0.50",
-                    isChecked: weatherOptions.showMedian
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showNextBlockFee",
-                    type: .toggleItem,
-                    title: t("widgets__weather__next_block"),
-                    value: "15 ₿/vByte",
-                    isChecked: weatherOptions.showNextBlockFee
+                    isChecked: isSelected
                 )
             )
         }

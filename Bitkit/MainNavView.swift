@@ -447,6 +447,8 @@ struct MainNavView: View {
                         BlocksWidgetPreviewView()
                     case .facts:
                         FactsWidgetPreviewView()
+                    case .weather:
+                        WeatherWidgetPreviewView()
                     default:
                         WidgetDetailView(id: widgetType)
                     }

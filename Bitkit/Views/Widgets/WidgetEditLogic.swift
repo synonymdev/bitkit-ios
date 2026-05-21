@@ -42,8 +42,8 @@ class WidgetEditLogic: ObservableObject {
         case .news:
             return newsOptions.showTitle || newsOptions.showSource || newsOptions.showDate
         case .weather:
-            // Weather widget has multiple options, check if any are enabled
-            return weatherOptions.showStatus || weatherOptions.showText || weatherOptions.showMedian || weatherOptions.showNextBlockFee
+            // Weather widget always has a selected metric (single-select), so it always has an enabled option.
+            return true
         case .price:
             // Price widget always has a selected pair (single-select).
             return true
@@ -113,17 +113,8 @@ class WidgetEditLogic: ObservableObject {
                 break
             }
         case .weather:
-            switch item.key {
-            case "showStatus":
-                weatherOptions.showStatus.toggle()
-            case "showText":
-                weatherOptions.showText.toggle()
-            case "showMedian":
-                weatherOptions.showMedian.toggle()
-            case "showNextBlockFee":
-                weatherOptions.showNextBlockFee.toggle()
-            default:
-                break
+            if let metric = WeatherDisplayMetric(rawValue: item.key) {
+                weatherOptions.selectedMetric = metric
             }
         case .price:
             switch item.key {

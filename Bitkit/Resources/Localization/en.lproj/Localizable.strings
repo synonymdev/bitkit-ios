@@ -1401,6 +1401,7 @@
 "widgets__price__period_year" = "Year";
 "widgets__widget__size_small" = "Small";
 "widgets__widget__size_wide" = "Wide";
+"widgets__widget__display" = "Display";
 "widgets__widget__settings" = "Widget Settings";
 "widgets__widget__save_widget" = "Save Widget";
 "widgets__news__name" = "Bitcoin Headlines";
@@ -1420,11 +1421,14 @@
 "widgets__weather__name" = "Bitcoin Weather";
 "widgets__weather__description" = "Find out when it's a good time to transact on the Bitcoin blockchain.";
 "widgets__weather__condition__good__title" = "Favorable Conditions";
-"widgets__weather__condition__good__description" = "All clear. Now would be a good time to transact on the blockchain.";
+"widgets__weather__condition__good__description" = "Now would be a good time to transact on the blockchain.";
 "widgets__weather__condition__average__title" = "Average Conditions";
-"widgets__weather__condition__average__description" = "The next block rate is close to the monthly averages.";
+"widgets__weather__condition__average__description" = "Next block rate is close to the monthly and yearly averages.";
 "widgets__weather__condition__poor__title" = "Poor Conditions";
-"widgets__weather__condition__poor__description" = "If you are not in a hurry to transact, it may be better to wait a bit.";
-"widgets__weather__current_fee" = "Current average fee";
+"widgets__weather__condition__poor__description" = "If you are not in a hurry to transact, it may be better to wait.";
+"widgets__weather__current_fee" = "Current fee";
 "widgets__weather__next_block" = "Next block inclusion";
 "widgets__weather__error" = "Couldn\'t get current fee weather";
+"widgets__weather__condition__good__short_title" = "Favorable";
+"widgets__weather__condition__average__short_title" = "Average";
+"widgets__weather__condition__poor__short_title" = "Poor";

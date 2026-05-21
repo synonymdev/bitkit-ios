@@ -248,6 +248,8 @@ class WidgetsViewModel: ObservableObject {
                 savedWidgetsWithOptions.append(SavedWidget(type: type, optionsData: optionsData))
             }
 
+            // Keep the @Published mirror in lockstep so other callers see a consistent picture.
+            savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
             persistSavedWidgets()
 
             if type == .price, let priceOptions = options as? PriceWidgetOptions {
@@ -260,6 +262,10 @@ class WidgetsViewModel: ObservableObject {
 
             if type == .blocks, let blocksOptions = options as? BlocksWidgetOptions {
                 syncBlocksOptionsToHomeScreenWidget(blocksOptions)
+            }
+
+            if type == .weather, let weatherOptions = options as? WeatherWidgetOptions {
+                syncWeatherOptionsToHomeScreenWidget(weatherOptions)
             }
         } catch {
             print("Failed to save widget options: \(error)")
@@ -296,14 +302,40 @@ class WidgetsViewModel: ObservableObject {
         let widgetsData = UserDefaults.standard.data(forKey: Self.savedWidgetsKey) ?? .init()
 
         do {
-            savedWidgetsWithOptions = try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
-            savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
+            let decoded = try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
+            let deduped = Self.dedupedByType(decoded)
+            savedWidgetsWithOptions = deduped
+            savedWidgets = deduped.map { $0.toWidget() }
+            // If we removed duplicates, rewrite the blob so the bad state disappears permanently.
+            if deduped.count != decoded.count { persistSavedWidgets() }
         } catch {
             // If no saved data or decode fails, start with default widgets
             savedWidgetsWithOptions = WidgetsViewModel.defaultSavedWidgets
             savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
             persistSavedWidgets()
         }
+    }
+
+    /// Collapses `widgets` to at most one entry per `WidgetType`, preserving the first-seen order.
+    /// When the input contains duplicates, prefers the entry that carries `optionsData` so the
+    /// user's customisation isn't lost — within duplicates, the first non-nil `optionsData` wins.
+    static func dedupedByType(_ widgets: [SavedWidget]) -> [SavedWidget] {
+        var preferredByType: [WidgetType: SavedWidget] = [:]
+        var order: [WidgetType] = []
+        for widget in widgets {
+            if preferredByType[widget.type] == nil {
+                preferredByType[widget.type] = widget
+                order.append(widget.type)
+                continue
+            }
+            if let existing = preferredByType[widget.type],
+               existing.optionsData == nil,
+               widget.optionsData != nil
+            {
+                preferredByType[widget.type] = widget
+            }
+        }
+        return order.compactMap { preferredByType[$0] }
     }
 
     private func persistSavedWidgets() {
@@ -315,27 +347,23 @@ class WidgetsViewModel: ObservableObject {
         }
     }
 
-    /// Mirrors in-app price widget options to the App Group so the home-screen WidgetKit widget can read them.
-    /// Only invoked when the user explicitly changes price widget options — adding, deleting, or resetting
-    /// in-app widgets must not affect the independent OS home-screen widget.
     private func syncPriceOptionsToHomeScreenWidget(_ options: PriceWidgetOptions) {
         PriceHomeScreenWidgetOptionsStore.save(options)
         PriceHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 
-    /// Mirrors in-app news widget options to the App Group so the home-screen WidgetKit widget can read them.
-    /// Only invoked when the user explicitly changes news widget options — adding, deleting, or resetting
-    /// in-app widgets must not affect the independent OS home-screen widget.
     private func syncNewsOptionsToHomeScreenWidget(_ options: NewsWidgetOptions) {
         NewsHomeScreenWidgetOptionsStore.save(options)
         NewsHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 
-    /// Mirrors in-app blocks widget options to the App Group so the home-screen WidgetKit widget can read them.
-    /// Only invoked when the user explicitly changes blocks widget options — adding, deleting, or resetting
-    /// in-app widgets must not affect the independent OS home-screen widget.
     private func syncBlocksOptionsToHomeScreenWidget(_ options: BlocksWidgetOptions) {
         BlocksHomeScreenWidgetOptionsStore.save(options)
         BlocksHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+    }
+
+    private func syncWeatherOptionsToHomeScreenWidget(_ options: WeatherWidgetOptions) {
+        WeatherHomeScreenWidgetOptionsStore.save(options)
+        WeatherHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 }

@@ -998,11 +998,14 @@
 "widgets__blocks__error" = "No s\'han pogut obtenir les dades dels blocs";
 "widgets__facts__name" = "Bitcoin Fets";
 "widgets__weather__condition__good__title" = "Condicions favorables";
-"widgets__weather__condition__good__description" = "Tot clar. Ara seria un bon moment per fer transaccions a la blockchain.";
+"widgets__weather__condition__good__description" = "Ara seria un bon moment per fer transaccions a la blockchain.";
 "widgets__weather__condition__average__title" = "Condicions mitjanes";
-"widgets__weather__condition__average__description" = "La taxa del proper bloc està prop dels valors mitjans mensuals.";
+"widgets__weather__condition__average__description" = "La taxa del proper bloc està prop dels valors mitjans mensuals i anuals.";
 "widgets__weather__condition__poor__title" = "Condicions dolentes";
-"widgets__weather__condition__poor__description" = "Si no tens pressa per fer transaccions, pot ser millor esperar una mica.";
+"widgets__weather__condition__poor__description" = "Si no tens pressa per fer transaccions, pot ser millor esperar.";
 "widgets__weather__current_fee" = "Comissió mitjana actual";
 "widgets__weather__next_block" = "Inclusió al proper bloc";
 "widgets__weather__error" = "No s\'ha pogut obtenir el temps de comissions actual";
+"widgets__weather__condition__good__short_title" = "Favorables";
+"widgets__weather__condition__average__short_title" = "Mitjanes";
+"widgets__weather__condition__poor__short_title" = "Dolentes";
