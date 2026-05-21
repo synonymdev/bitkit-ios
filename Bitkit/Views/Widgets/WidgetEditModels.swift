@@ -93,7 +93,7 @@ enum WidgetEditItemFactory {
                         .renderingMode(.template)
                         .foregroundColor(.brandAccent)
                         .frame(width: 20, height: 20)
-                    BodySSBText(field.label, textColor: .textSecondary)
+                    BodyMText(field.label, textColor: .white80)
                 }
             )
             items.append(
@@ -101,7 +101,7 @@ enum WidgetEditItemFactory {
                     key: field.rawValue,
                     type: .toggleItem,
                     titleView: titleView,
-                    valueView: AnyView(BodySSBText(value, textColor: .textSecondary)),
+                    valueView: AnyView(BodyMSBText(value)),
                     isChecked: field.isEnabled(in: blocksOptions)
                 )
             )
