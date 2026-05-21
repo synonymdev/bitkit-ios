@@ -44,12 +44,15 @@ struct WeatherFeeMetric: View {
     /// in the space-constrained compact widget.
     var compactLabel: Bool = false
 
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
     var body: some View {
+        let palette = WidgetPalette(renderingMode: renderingMode)
         VStack(alignment: .leading, spacing: 4) {
-            labelView
+            labelView(palette: palette)
             Text(value)
                 .font(Fonts.bold(size: valueSize))
-                .foregroundColor(valueColor)
+                .foregroundColor(palette.data(valueColor))
                 .kerning(-1)
                 .lineLimit(1)
                 .minimumScaleFactor(0.9)
@@ -58,14 +61,14 @@ struct WeatherFeeMetric: View {
     }
 
     @ViewBuilder
-    private var labelView: some View {
+    private func labelView(palette: WidgetPalette) -> some View {
         if compactLabel {
-            FootnoteText(label, textColor: .white64)
+            FootnoteText(label, textColor: palette.secondary)
                 .textCase(.uppercase)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         } else {
-            CaptionMText(label, textColor: .white64)
+            CaptionMText(label, textColor: palette.secondary)
                 .textCase(.uppercase)
                 .lineLimit(1)
         }
@@ -79,12 +82,15 @@ struct WeatherWidgetWideContent: View {
     let conditionDescription: String
     let metricLabel: String
 
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
     var body: some View {
+        let palette = WidgetPalette(renderingMode: renderingMode)
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
-                    SubtitleText(conditionTitle, textColor: .white)
-                    BodySText(conditionDescription, textColor: .white80)
+                    SubtitleText(conditionTitle, textColor: palette.title)
+                    BodySText(conditionDescription, textColor: palette.label)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -112,14 +118,17 @@ struct WeatherWidgetCompactContent: View {
     let conditionTitle: String
     let metricLabel: String
 
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
     var body: some View {
+        let palette = WidgetPalette(renderingMode: renderingMode)
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading) {
                 Text(data.condition.icon)
                     .font(.system(size: 58))
                     .minimumScaleFactor(0.85)
                     .widgetAccentable()
-                SubtitleText(conditionTitle, textColor: .white)
+                SubtitleText(conditionTitle, textColor: palette.title)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }

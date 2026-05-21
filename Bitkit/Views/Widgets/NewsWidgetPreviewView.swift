@@ -126,7 +126,10 @@ struct NewsWidgetPreviewView: View {
             Spacer(minLength: 0)
             Group {
                 if let data = viewModel.widgetData {
-                    NewsWidgetCompactContent(data: data, options: currentOptions)
+                    NewsWidgetCompactContent(title: data.title, timeAgo: data.timeAgo, options: currentOptions)
+                        .padding(16)
+                        .background(Color.gray6)
+                        .cornerRadius(16)
                 } else {
                     placeholderCompact
                 }
@@ -142,10 +145,16 @@ struct NewsWidgetPreviewView: View {
             Spacer(minLength: 0)
             Group {
                 if let data = viewModel.widgetData {
-                    NewsWidgetWideContent(data: data, options: currentOptions)
-                        .padding(16)
-                        .background(Color.gray6)
-                        .cornerRadius(16)
+                    NewsWidgetWideContent(
+                        title: data.title,
+                        publisher: data.publisher,
+                        timeAgo: data.timeAgo,
+                        options: currentOptions
+                    )
+                    .frame(height: NewsWidgetWideContent.inAppContentHeight)
+                    .padding(16)
+                    .background(Color.gray6)
+                    .cornerRadius(16)
                 } else {
                     placeholderWide
                 }
@@ -162,10 +171,12 @@ struct NewsWidgetPreviewView: View {
     }
 
     private var placeholderWide: some View {
-        Color.gray6
+        ProgressView()
+            .frame(maxWidth: .infinity)
+            .frame(height: NewsWidgetWideContent.inAppContentHeight)
+            .padding(16)
+            .background(Color.gray6)
             .cornerRadius(16)
-            .frame(height: 118)
-            .overlay(ProgressView())
     }
 
     // MARK: - Size label & page indicator

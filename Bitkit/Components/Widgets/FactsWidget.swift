@@ -25,48 +25,6 @@ struct FactsWidget: View {
     }
 }
 
-struct FactsWidgetWideContent: View {
-    let fact: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 32) {
-            TitleText(fact)
-                .lineLimit(4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            BitcoinLogo()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-struct FactsWidgetCompactContent: View {
-    let fact: String
-
-    var body: some View {
-        BodyMSBText(fact)
-            .lineLimit(4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .minimumScaleFactor(0.85)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .overlay(alignment: .bottomTrailing) {
-                BitcoinLogo()
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color.gray6)
-            .cornerRadius(16)
-    }
-}
-
-private struct BitcoinLogo: View {
-    var body: some View {
-        Image("bitcoin")
-            .resizable()
-            .frame(width: 32, height: 32)
-    }
-}
-
 #Preview {
     VStack(spacing: 16) {
         FactsWidget()

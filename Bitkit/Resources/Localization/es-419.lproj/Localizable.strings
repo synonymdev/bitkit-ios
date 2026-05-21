@@ -1147,7 +1147,6 @@
 "wallet__receive_insufficient_text" = "Capacidad de recepción insuficiente para recibir esta cantidad a través de Lightning.";
 "wallet__receive_foreground_title" = "Mantener Bitkit en primer plano";
 "wallet__receive_foreground_msg" = "Los pagos a su saldo de gastos pueden fallar si cambia de una aplicación a otra.";
-"widgets__widgets" = "Widgets";
 "widgets__onboarding__title" = "Hola,\n<accent>Widgets</accent>";
 "widgets__onboarding__description" = "Disfruta feeds descentralizados de tus servicios web favoritos añadiendo widgets útiles y divertidos a tu wallet de Bitkit.";
 "widgets__nav_title" = "Widgets";

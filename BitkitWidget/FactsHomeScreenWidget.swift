@@ -42,85 +42,25 @@ struct FactsHomeScreenWidgetEntryView: View {
 
     var entry: FactsWidgetProvider.Entry
 
+    private var palette: WidgetPalette {
+        WidgetPalette(renderingMode: widgetRenderingMode)
+    }
+
     var body: some View {
         content
-            .containerBackground(for: .widget) { backgroundView }
+            .containerBackground(for: .widget) { palette.background }
     }
 
     @ViewBuilder
     private var content: some View {
         switch widgetFamily {
         case .systemSmall:
-            compactLayout
+            FactsWidgetCompactContent(fact: entry.fact)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         default:
-            wideLayout
+            FactsWidgetWideContent(fact: entry.fact)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-    }
-
-    private var compactLayout: some View {
-        Text(entry.fact)
-            .font(Fonts.semiBold(size: 17))
-            .foregroundColor(textColor)
-            .lineLimit(4)
-            .minimumScaleFactor(0.85)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .overlay(alignment: .bottomTrailing) {
-                bitcoinLogo
-            }
-            .widgetAccentable()
-    }
-
-    private var wideLayout: some View {
-        HStack(alignment: .top, spacing: 32) {
-            Text(entry.fact)
-                .font(Fonts.bold(size: 22))
-                .foregroundColor(textColor)
-                .lineLimit(4)
-                .minimumScaleFactor(0.85)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .widgetAccentable()
-
-            bitcoinLogo
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var bitcoinLogo: some View {
-        Group {
-            if widgetRenderingMode == .fullColor {
-                ZStack {
-                    Circle()
-                        .fill(Color.bitcoin)
-
-                    bitcoinGlyph
-                        .foregroundColor(.white)
-                }
-            } else {
-                ZStack {
-                    Circle()
-                        .fill(Color.white)
-
-                    bitcoinGlyph
-                        .blendMode(.destinationOut)
-                }
-                .compositingGroup()
-            }
-        }
-        .frame(width: 32, height: 32)
-    }
-
-    private var bitcoinGlyph: some View {
-        Image("bitcoin")
-            .resizable()
-            .renderingMode(.template)
-    }
-
-    private var backgroundView: some View {
-        widgetRenderingMode == .fullColor ? Color.gray6 : Color.clear
-    }
-
-    private var textColor: Color {
-        widgetRenderingMode == .fullColor ? .white : .primary
     }
 }
 
@@ -134,8 +74,8 @@ struct BitkitFactsWidget: Widget {
         ) { entry in
             FactsHomeScreenWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("widgets__facts__name")
-        .description("widgets__facts__description")
+        .configurationDisplayName(t("widgets__facts__name"))
+        .description(t("widgets__facts__description"))
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

@@ -1136,7 +1136,6 @@
 "wallet__receive_insufficient_text" = "Nedostatečná přijímací kapacita pro příjem této částky přes lightning.";
 "wallet__receive_foreground_title" = "Udržovat Bitkit na popředí";
 "wallet__receive_foreground_msg" = "Při přepínání mezi aplikacemi může dojít k selhání plateb na váš disponibilní zůstatek.";
-"widgets__widgets" = "Widgety";
 "widgets__onboarding__title" = "Dobrý den,\n<accent>Widgety</accent>";
 "widgets__onboarding__description" = "Užívejte si decentralizované kanály ze svých oblíbených webových služeb přidáním zábavných a užitečných widgetů do peněženky Bitkit.";
 "widgets__widget__nav_title" = "Widget";
