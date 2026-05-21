@@ -1141,7 +1141,6 @@
 "widgets__widget__edit" = "Widget Feed";
 "widgets__widget__edit_default" = "Výchozí";
 "widgets__widget__edit_custom" = "Vlastní";
-"widgets__widget__edit_description" = "Vyberte, která pole chcete zobrazit ve widgetu {name}.";
 "widgets__widget__source" = "Zdroj";
 "widgets__add" = "Přidat widget";
 "widgets__delete__title" = "Smazat Widget?";

@@ -34,7 +34,6 @@
 "widgets__widget__edit" = "موجز الأداة";
 "widgets__widget__edit_default" = "افتراضي";
 "widgets__widget__edit_custom" = "مخصص";
-"widgets__widget__edit_description" = "يرجى اختيار الحقول التي تريد عرضها في أداة {name}.";
 "widgets__widget__source" = "المصدر";
 "widgets__add" = "إضافة أداة";
 "widgets__delete__title" = "حذف الأداة؟";

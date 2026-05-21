@@ -1168,7 +1168,6 @@
 "widgets__widget__edit" = "Panel widgetów";
 "widgets__widget__edit_default" = "Domyślne";
 "widgets__widget__edit_custom" = "Własna";
-"widgets__widget__edit_description" = "Wybierz pola, które chcesz wyświetlić w widgecie {name}.";
 "widgets__widget__source" = "Źródło";
 "widgets__add" = "Dodaj widget";
 "widgets__delete__title" = "Usunąć widget?";

@@ -1161,7 +1161,6 @@
 "widgets__widget__edit" = "Widget Feed";
 "widgets__widget__edit_default" = "Standaard";
 "widgets__widget__edit_custom" = "Op maat";
-"widgets__widget__edit_description" = "Selecteer welke velden u wilt weergeven in de {name} widget.";
 "widgets__widget__source" = "Bron";
 "widgets__add" = "Widget Toevoegen";
 "widgets__delete__title" = "Widget Verwijderen?";

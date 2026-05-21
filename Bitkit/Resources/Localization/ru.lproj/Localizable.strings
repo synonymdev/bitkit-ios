@@ -1155,7 +1155,6 @@
 "widgets__widget__edit" = "Фид Виджета";
 "widgets__widget__edit_default" = "По умолчанию";
 "widgets__widget__edit_custom" = "Другое";
-"widgets__widget__edit_description" = "Пожалуйста, выберите, какие поля вы хотите отображать в виджете {name}.";
 "widgets__widget__source" = "Источник";
 "widgets__add" = "Добавить Виджет";
 "widgets__delete__title" = "Удалить виджет?";

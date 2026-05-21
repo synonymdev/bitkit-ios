@@ -1169,7 +1169,6 @@
 "widgets__widget__edit" = "Widget Feed";
 "widgets__widget__edit_default" = "Padrão";
 "widgets__widget__edit_custom" = "Personalizada";
-"widgets__widget__edit_description" = "Por favor, selecione quais campos você deseja exibir no widget {name}.";
 "widgets__widget__source" = "Fonte";
 "widgets__add" = "Adicionar Widget";
 "widgets__delete__title" = "Excluir o Widget?";

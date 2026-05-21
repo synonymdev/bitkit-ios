@@ -845,7 +845,6 @@
 "widgets__widget__edit" = "Ροή Widget";
 "widgets__widget__edit_default" = "Προεπιλεγμένο";
 "widgets__widget__edit_custom" = "Προσαρμοσμένο";
-"widgets__widget__edit_description" = "Παρακαλώ επιλέξτε ποια πεδία θέλετε να εμφανίζονται στο widget {name}.";
 "widgets__widget__source" = "Πηγή";
 "widgets__add" = "Προσθήκη Widget";
 "widgets__delete__title" = "Διαγραφή Widget;";
