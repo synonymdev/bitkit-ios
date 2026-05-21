@@ -42,7 +42,6 @@ struct SendOptionsView: View {
                         icon: "users",
                         iconColor: .brandAccent,
                         title: t("wallet__recipient_contact"),
-                        isDisabled: true,
                         testID: "RecipientContact"
                     ) {
                         handleContact()
@@ -105,8 +104,7 @@ struct SendOptionsView: View {
     }
 
     func handleContact() {
-        // TODO: implement contacts
-        // navigationPath.append(.contact)
+        navigationPath.append(.contact)
     }
 }
 

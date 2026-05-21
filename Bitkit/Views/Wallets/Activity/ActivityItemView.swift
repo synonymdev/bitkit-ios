@@ -7,6 +7,7 @@ struct ActivityItemView: View {
     @EnvironmentObject var activityList: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
@@ -97,6 +98,10 @@ struct ActivityItemView: View {
     private var transferChannelId: String? {
         guard case let .onchain(activity) = viewModel.activity else { return nil }
         return activity.channelId
+    }
+
+    private var assignedContact: PubkyContact? {
+        viewModel.activity.contact(in: contactsManager.contacts)
     }
 
     private var navigationTitle: String {
@@ -206,7 +211,7 @@ struct ActivityItemView: View {
                     statusSection
                     timestampSection
                     feeSection
-                    tagsSection
+                    contactTagsSection
                     note
                     buttons
 
@@ -410,7 +415,52 @@ struct ActivityItemView: View {
     }
 
     @ViewBuilder
-    private var tagsSection: some View {
+    private var contactTagsSection: some View {
+        if assignedContact != nil, !viewModel.tags.isEmpty {
+            HStack(alignment: .top, spacing: 16) {
+                contactCell
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                tagsCell
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else if assignedContact != nil {
+            contactCell
+        } else if !viewModel.tags.isEmpty {
+            tagsCell
+        }
+    }
+
+    @ViewBuilder
+    private var contactCell: some View {
+        if let assignedContact {
+            VStack(alignment: .leading, spacing: 0) {
+                CaptionMText(t("wallet__activity_contact"))
+                    .padding(.bottom, 8)
+
+                Button {
+                    navigation.navigate(.contactDetail(publicKey: assignedContact.publicKey))
+                } label: {
+                    HStack(spacing: 8) {
+                        PubkyContactAvatar(contact: assignedContact, size: 24)
+                        BodySSBText(assignedContact.displayName)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.gray6)
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 16)
+
+                Divider()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var tagsCell: some View {
         if !viewModel.tags.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 CaptionMText(t("wallet__tags"))
@@ -459,15 +509,20 @@ struct ActivityItemView: View {
         VStack(spacing: 16) {
             HStack(spacing: 16) {
                 CustomButton(
-                    title: t("wallet__activity_assign"), size: .small,
-                    icon: Image("user-plus")
+                    title: assignedContact == nil ? t("wallet__activity_assign") : t("wallet__activity_detach"), size: .small,
+                    icon: Image(assignedContact == nil ? "user-plus" : "user-minus")
                         .foregroundColor(accentColor),
-                    isDisabled: true,
                     shouldExpand: true
                 ) {
-                    // TODO: add assign contact action
-                    Logger.info("Assign contact action not implemented")
+                    if assignedContact == nil {
+                        navigation.navigate(.assignActivityContact(activityId: viewModel.activityId))
+                    } else {
+                        Task {
+                            await detachContact()
+                        }
+                    }
                 }
+                .accessibilityIdentifier(assignedContact == nil ? "ActivityAssignContact" : "ActivityDetachContact")
 
                 CustomButton(
                     title: t("wallet__activity_tag"), size: .small,
@@ -527,6 +582,16 @@ struct ActivityItemView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func detachContact() async {
+        do {
+            try await activityList.setContact(nil, forPaymentId: viewModel.activityId)
+            await viewModel.refreshActivity()
+        } catch {
+            Logger.error("Failed to detach contact from activity \(viewModel.activityId): \(error)", context: "ActivityItemView")
+            app.toast(type: .error, title: t("contacts__error_saving"), description: error.localizedDescription)
+        }
     }
 }
 

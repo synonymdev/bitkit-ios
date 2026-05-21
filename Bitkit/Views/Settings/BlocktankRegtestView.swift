@@ -1,3 +1,4 @@
+import LDKNode
 import SwiftUI
 
 struct BlocktankRegtestScreen: View {
@@ -40,7 +41,8 @@ struct BlocktankRegtestScreen: View {
             // Generate a fresh address when the view appears
             Task {
                 do {
-                    let newAddress = try await LightningService.shared.newAddress()
+                    let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+                    let newAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
                     depositAddress = newAddress
                 } catch {
                     // Fallback to wallet's current address if generation fails
@@ -71,7 +73,10 @@ struct BlocktankRegtestScreen: View {
                     Button {
                         Task {
                             do {
-                                let newAddress = try await LightningService.shared.newAddress()
+                                let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+                                let newAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(
+                                    addressType: addressType
+                                )
                                 depositAddress = newAddress
                             } catch {
                                 app.toast(type: .error, title: "Failed to generate address", description: error.localizedDescription)
@@ -95,7 +100,8 @@ struct BlocktankRegtestScreen: View {
                             throw ValidationError("Invalid amount")
                         }
 
-                        let newAddress = try await LightningService.shared.newAddress()
+                        let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+                        let newAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
                         Logger.debug("Generated new address for deposit: \(newAddress)", context: "BlocktankRegtestScreen")
 
                         let txId = try await CoreService.shared.blocktank.regtestDepositFunds(

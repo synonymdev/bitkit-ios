@@ -7,11 +7,11 @@ struct ContactDetailView: View {
     @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     let publicKey: String
 
     @State private var profile: PubkyProfile?
-    @State private var hasPublicPaymentEndpoint = false
     @State private var isLoading = true
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
@@ -36,8 +36,8 @@ struct ContactDetailView: View {
             if let cached = contactsManager.contacts.first(where: { $0.publicKey == publicKey }) {
                 profile = cached.profile
                 hasResolvedContactFromContacts = true
+                isLoading = false
             }
-            await loadPaymentEndpoints()
             isLoading = false
         }
         .onReceive(contactsManager.$contacts) { updatedContacts in
@@ -94,14 +94,12 @@ struct ContactDetailView: View {
 
     private var contactActions: some View {
         HStack(spacing: 16) {
-            if hasPublicPaymentEndpoint {
-                GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send")) {
-                    Task {
-                        await payContact()
-                    }
+            GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send")) {
+                Task {
+                    await payContact()
                 }
-                .accessibilityIdentifier("ContactPay")
             }
+            .accessibilityIdentifier("ContactPay")
 
             GradientCircleButton(icon: "activity", accessibilityLabel: t("wallet__activity")) {
                 navigation.navigate(.contactActivity(publicKey: publicKey))
@@ -239,7 +237,6 @@ struct ContactDetailView: View {
                 } else if let fetched = await contactsManager.fetchContactProfile(publicKey: publicKey) {
                     profile = fetched
                 }
-                await loadPaymentEndpoints()
             }
             .accessibilityIdentifier("ContactRetry")
             Spacer()
@@ -268,32 +265,13 @@ struct ContactDetailView: View {
         }
     }
 
-    private func loadPaymentEndpoints() async {
-        do {
-            hasPublicPaymentEndpoint = try await PublicPaykitService.hasPayablePublicEndpoint(publicKey: publicKey)
-        } catch {
-            Logger.warn(
-                "Failed to load public payment endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
-                context: "ContactDetailView"
-            )
-            hasPublicPaymentEndpoint = false
-        }
-    }
-
     private func payContact() async {
         do {
-            let result = try await PublicPaykitService.beginPayment(to: publicKey)
+            let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: publicKey, wallet: wallet)
 
             switch result {
             case let .opened(paymentRequest):
-                guard await openContactPayment(paymentRequest: paymentRequest) else {
-                    app.toast(
-                        type: .warning,
-                        title: t("slashtags__error_pay_title"),
-                        description: t("slashtags__error_pay_not_opened_msg")
-                    )
-                    return
-                }
+                _ = await openContactPayment(paymentRequest: paymentRequest)
             case .noEndpoint, .notOpened:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
@@ -319,6 +297,11 @@ struct ContactDetailView: View {
             try await app.handleScannedData(paymentRequest)
         } catch {
             Logger.warn("Failed to decode contact payment request: \(error)", context: "ContactDetailView")
+            app.toast(
+                type: .warning,
+                title: t("slashtags__error_pay_title"),
+                description: t("slashtags__error_pay_not_opened_msg")
+            )
             return false
         }
 
@@ -341,6 +324,7 @@ struct ContactDetailView: View {
             .environmentObject(ContactsManager())
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
+            .environmentObject(WalletViewModel())
     }
     .preferredColorScheme(.dark)
 }

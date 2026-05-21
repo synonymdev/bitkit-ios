@@ -215,6 +215,20 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertTrue(plan.methodIdsToRemove.isEmpty)
     }
 
+    func testPublishedEndpointSyncPlanRemovesAllManagedEndpointsWhenDesiredSetIsEmpty() {
+        let plan = PublicPaykitService.publishedEndpointSyncPlan(
+            existingEndpoints: [
+                .bitcoinLightningBolt11: #"{"value":"lnbc1old"}"#,
+                .bitcoinLightningLnurl: #"{"value":"lnurl1external"}"#,
+                .bitcoinOnchainP2wpkh: #"{"value":"bc1qold"}"#,
+            ],
+            desiredEndpoints: []
+        )
+
+        XCTAssertTrue(plan.endpointsToSet.isEmpty)
+        XCTAssertEqual(plan.methodIdsToRemove, [.bitcoinLightningBolt11, .bitcoinOnchainP2wpkh])
+    }
+
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {
         PublicPaykitService.Endpoint(
             methodId: methodId,

@@ -1,8 +1,12 @@
 import SwiftUI
 
 struct GeneralSettingsView: View {
+    @AppStorage(PublicPaykitService.lightningPaymentOptionEnabledKey) private var lightningPaymentOptionEnabled = true
+    @AppStorage(PublicPaykitService.onchainPaymentOptionEnabledKey) private var onchainPaymentOptionEnabled = true
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var tagManager: TagManager
     @StateObject private var languageManager = LanguageManager.shared
@@ -73,6 +77,17 @@ struct GeneralSettingsView: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("TransactionSpeedSettings")
 
+                if pubkyProfile.isAuthenticated {
+                    NavigationLink(value: Route.paymentPreference) {
+                        SettingsRow(
+                            title: t("settings__adv__payment_preference"),
+                            iconName: "list-dashes",
+                            rightText: paymentPreferenceSummary
+                        )
+                    }
+                    .accessibilityIdentifier("PaymentPreferenceSettings")
+                }
+
                 NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
                     SettingsRow(
                         title: t("settings__quickpay__nav_title"),
@@ -96,6 +111,19 @@ struct GeneralSettingsView: View {
             .bottomSafeAreaPadding()
         }
     }
+
+    private var paymentPreferenceSummary: String {
+        switch (lightningPaymentOptionEnabled, onchainPaymentOptionEnabled) {
+        case (true, true):
+            t("settings__adv__pp_both")
+        case (true, false):
+            t("settings__adv__pp_lightning_short")
+        case (false, true):
+            t("settings__adv__pp_onchain_short")
+        case (false, false):
+            t("common__off")
+        }
+    }
 }
 
 #Preview {
@@ -103,6 +131,7 @@ struct GeneralSettingsView: View {
         GeneralSettingsView()
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(CurrencyViewModel())
+            .environmentObject(PubkyProfileManager())
             .environmentObject(AppViewModel())
     }
     .preferredColorScheme(.dark)

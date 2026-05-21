@@ -36,6 +36,17 @@ class ActivityService {
         metadataChangedSubject.eraseToAnyPublisher()
     }
 
+    private var privateInvoiceContactResolver: (@Sendable (String) async -> String?)?
+    private var privateOnchainAddressContactResolver: (@Sendable (String) async -> String?)?
+
+    func setPrivatePaykitContactResolvers(
+        invoice: (@Sendable (String) async -> String?)?,
+        onchainAddress: (@Sendable (String) async -> String?)?
+    ) {
+        privateInvoiceContactResolver = invoice
+        privateOnchainAddressContactResolver = onchainAddress
+    }
+
     // MARK: - Constants
 
     private let addressSearchCoordinator: AddressSearchCoordinator
@@ -265,7 +276,7 @@ class ActivityService {
     }
 
     func isReceivedTransaction(txid: String) async -> Bool {
-        guard let payments = LightningService.shared.payments,
+        guard let payments = await LightningService.shared.listPayments(),
               let payment = payments.first(where: { payment in
                   if case let .onchain(paymentTxid, _) = payment.kind {
                       return paymentTxid == txid
@@ -300,7 +311,7 @@ class ActivityService {
 
     init(coreService: CoreService) {
         self.coreService = coreService
-        addressSearchCoordinator = AddressSearchCoordinator(coreService: coreService)
+        addressSearchCoordinator = AddressSearchCoordinator()
     }
 
     func removeAll() async throws {
@@ -380,8 +391,9 @@ class ActivityService {
         if let existingActivity, case let .onchain(existing) = existingActivity {
             let existingUpdatedAt = existing.updatedAt ?? 0
             let confirmationStatusChanging = existing.confirmed != ldkConfirmed
+            let needsPrivateContactAttribution = existing.contact == nil && payment.direction == .inbound
 
-            if existingUpdatedAt > paymentTimestamp && !confirmationStatusChanging {
+            if existingUpdatedAt > paymentTimestamp && !confirmationStatusChanging && !needsPrivateContactAttribution {
                 return
             }
         }
@@ -411,7 +423,7 @@ class ActivityService {
         var isTransfer = existingOnchain?.isTransfer ?? false
         var channelId = existingOnchain?.channelId
         let transferTxId = existingOnchain?.transferTxId
-        let contact = existingOnchain?.contact
+        var contact = existingOnchain?.contact
         let feeRate = existingOnchain?.feeRate ?? 1
         let preservedAddress = existingOnchain?.address ?? "Loading..."
         let doesExist = existingOnchain?.doesExist ?? true
@@ -451,6 +463,10 @@ class ActivityService {
                 }
             } catch {
                 Logger.error("Failed to find address for txid \(txid): \(error)", context: "CoreService.processOnchainPayment")
+            }
+
+            if contact == nil {
+                contact = await privatePaykitContactPublicKey(forReservedAddress: address)
             }
         }
 
@@ -499,7 +515,7 @@ class ActivityService {
     // MARK: - Onchain Event Handlers
 
     private func processOnchainTransaction(txid: String, details: BitkitCore.TransactionDetails, context: String) async throws {
-        guard let payments = LightningService.shared.payments else {
+        guard let payments = await LightningService.shared.listPayments() else {
             Logger.warn("No payments available for transaction \(txid)", context: context)
             return
         }
@@ -568,7 +584,7 @@ class ActivityService {
                 var replacementActivity = try? await self.getOnchainActivityByTxId(txid: conflictTxid)
 
                 if replacementActivity == nil,
-                   let payments = LightningService.shared.payments,
+                   let payments = await LightningService.shared.listPayments(),
                    let replacementPayment = payments.first(where: { payment in
                        if case let .onchain(paymentTxid, _) = payment.kind {
                            return paymentTxid == conflictTxid
@@ -661,12 +677,12 @@ class ActivityService {
 
     /// Handle a single payment event by processing the specific payment
     func handlePaymentEvent(paymentHash: String) async throws {
-        try await ServiceQueue.background(.core) {
-            guard let payments = LightningService.shared.payments else {
-                Logger.warn("No payments available for hash \(paymentHash)", context: "CoreService.handlePaymentEvent")
-                return
-            }
+        guard let payments = await LightningService.shared.listPayments() else {
+            Logger.warn("No payments available for hash \(paymentHash)", context: "CoreService.handlePaymentEvent")
+            return
+        }
 
+        try await ServiceQueue.background(.core) {
             if let payment = payments.first(where: { $0.id == paymentHash }) {
                 try await self.processLightningPayment(payment)
             } else {
@@ -695,9 +711,19 @@ class ActivityService {
         // Skip if existing activity has newer timestamp, unless payment status is changing
         if let existing = existingLightning, let existingUpdatedAt = existing.updatedAt {
             let statusChanging = existing.status != state
-            if existingUpdatedAt > paymentTimestamp && !statusChanging {
+            let needsPrivateContactAttribution = existing.contact == nil && payment.direction == .inbound
+            if existingUpdatedAt > paymentTimestamp && !statusChanging && !needsPrivateContactAttribution {
                 return
             }
+        }
+
+        let contact = if let existingContact = existingLightning?.contact {
+            existingContact
+        } else {
+            await privatePaykitContactPublicKey(
+                forReceivedInvoicePaymentHash: payment.id,
+                direction: payment.direction
+            )
         }
 
         let ln = LightningActivity(
@@ -710,7 +736,7 @@ class ActivityService {
             message: description ?? "",
             timestamp: paymentTimestamp,
             preimage: preimage,
-            contact: existingLightning?.contact,
+            contact: contact,
             createdAt: paymentTimestamp,
             updatedAt: paymentTimestamp,
             seenAt: existingLightning?.seenAt
@@ -721,6 +747,15 @@ class ActivityService {
         } else {
             try await upsert(.lightning(ln))
         }
+    }
+
+    private func privatePaykitContactPublicKey(forReceivedInvoicePaymentHash paymentHash: String, direction: PaymentDirection) async -> String? {
+        guard direction == .inbound else { return nil }
+        return await privateInvoiceContactResolver?(paymentHash)
+    }
+
+    private func privatePaykitContactPublicKey(forReservedAddress address: String) async -> String? {
+        await privateOnchainAddressContactResolver?(address)
     }
 
     /// Sync all LDK node payments to activities
@@ -1372,13 +1407,8 @@ class ActivityService {
 // MARK: - Address search (actor for single-flight concurrency)
 
 private actor AddressSearchCoordinator {
-    private let coreService: CoreService
     private var isSearching = false
     private var waitQueue: [CheckedContinuation<Void, Never>] = []
-
-    init(coreService: CoreService) {
-        self.coreService = coreService
-    }
 
     /// Runs the batch address search at most one at a time. Enqueues if a search is already in progress.
     func runAddressSearch(
@@ -1430,23 +1460,35 @@ private actor AddressSearchCoordinator {
 
         let addressTypesToSearch = LDKNode.AddressType.prioritized(selected: selectedAddressType)
 
-        for isChange in [false, true] {
+        let keychains: [(isChange: Bool, keychain: LDKNode.KeychainKind)] = [
+            (false, .external),
+            (true, .internal),
+        ]
+
+        for (isChange, keychain) in keychains {
             for addressType in addressTypesToSearch {
                 let key = isChange ? "addressSearch_lastUsedChangeIndex_\(addressType.stringValue)" : "addressSearch_lastUsedReceiveIndex_\(addressType.stringValue)"
-                let lastUsed: UInt32? = (UserDefaults.standard.object(forKey: key) as? Int).flatMap { $0 >= 0 ? UInt32($0) : nil }
-                let endIndex = lastUsed.map { $0 + searchWindow } ?? searchWindow
+                let lastUsed: UInt32? = (UserDefaults.standard.object(forKey: key) as? Int).flatMap {
+                    guard $0 >= 0, $0 <= Int(UInt32.max) else { return nil }
+                    return UInt32($0)
+                }
+                let endIndex = lastUsed.map { $0 > UInt32.max - searchWindow ? UInt32.max : $0 + searchWindow } ?? searchWindow
 
                 var index: UInt32 = 0
                 var currentAddressBatch: UInt32?
                 while index < endIndex {
-                    let accountAddresses = try await coreService.utility.getAccountAddresses(
-                        walletIndex: 0,
-                        isChange: isChange,
-                        startIndex: index,
-                        count: batchSize,
-                        addressTypeString: addressType.stringValue
-                    )
-                    let addresses = accountAddresses.unused.map(\.address) + accountAddresses.used.map(\.address)
+                    let addresses: [String]
+                    do {
+                        addresses = try await LightningService.shared
+                            .addressInfosForType(addressType, keychain: keychain, startIndex: index, count: batchSize)
+                            .map(\.address)
+                    } catch {
+                        Logger.warn(
+                            "Skipping \(addressType.stringValue) \(isChange ? "change" : "receive") address search batch \(index): \(error)",
+                            context: "CoreService.AddressSearch"
+                        )
+                        break
+                    }
 
                     if !currentWalletAddress.isEmpty, currentAddressBatch == nil, addresses.contains(currentWalletAddress) {
                         currentAddressBatch = index
@@ -1455,8 +1497,10 @@ private actor AddressSearchCoordinator {
                         UserDefaults.standard.set(Int(index), forKey: key)
                         return match
                     }
-                    if let found = currentAddressBatch, index >= found + batchSize { break }
-                    if addresses.count < Int(batchSize) { break }
+                    if let found = currentAddressBatch {
+                        let stopIndex = found > UInt32.max - batchSize ? UInt32.max : found + batchSize
+                        if index >= stopIndex { break }
+                    }
                     index += batchSize
                 }
             }

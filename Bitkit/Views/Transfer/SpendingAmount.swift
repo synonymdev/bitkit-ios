@@ -1,3 +1,4 @@
+import LDKNode
 import SwiftUI
 
 struct SpendingAmount: View {
@@ -153,10 +154,9 @@ struct SpendingAmount: View {
             return
         }
 
-        let lightningService = LightningService.shared
-
         do {
-            let address = try await lightningService.newAddress()
+            let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+            let address = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
 
             guard let feeEstimates = await feeEstimatesManager.getEstimates(refresh: true) else {
                 await MainActor.run {
