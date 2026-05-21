@@ -71,7 +71,8 @@ struct DevSettingsView: View {
                                         }
                                     }
                                 }
-                            )
+                            ),
+                            testIdentifier: "PaykitUiToggle"
                         )
                     }
 
@@ -181,7 +182,7 @@ struct DevSettingsView: View {
             Button("Enable") {
                 if PaykitFeatureFlags.isUIAvailable {
                     isPaykitUIEnabled = true
-                    app.toast(type: .success, title: "Paykit UI enabled")
+                    app.toast(type: .success, title: "Paykit UI enabled", accessibilityIdentifier: "PaykitUiEnabledToast")
                 }
             }
         } message: {
@@ -218,12 +219,17 @@ struct DevSettingsView: View {
 
         if let cleanupError {
             PrivatePaykitService.setContactSharingCleanupPending(true)
-            app.toast(type: .error, title: "Paykit UI disabled", description: cleanupError.localizedDescription)
+            app.toast(
+                type: .error,
+                title: "Paykit UI disabled",
+                description: cleanupError.localizedDescription,
+                accessibilityIdentifier: "PaykitUiDisabledToast"
+            )
             return
         }
 
         PrivatePaykitService.setContactSharingCleanupPending(false)
-        app.toast(type: .success, title: "Paykit UI disabled")
+        app.toast(type: .success, title: "Paykit UI disabled", accessibilityIdentifier: "PaykitUiDisabledToast")
     }
 }
 
