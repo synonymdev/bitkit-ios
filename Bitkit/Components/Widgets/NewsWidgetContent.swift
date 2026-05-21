@@ -1,12 +1,6 @@
 import SwiftUI
 import WidgetKit
 
-// Shared Bitcoin Headlines widget content, reused by the in-app feed, the carousel preview, and the
-// home-screen WidgetKit extension. Colors adapt to `widgetRenderingMode` via ``WidgetPalette``.
-//
-// Takes primitive fields rather than a model so both the in-app `WidgetData` and the widget
-// extension's `CachedNewsArticle` can feed it. Card chrome is supplied by the caller.
-
 // MARK: - Wide layout (in-app + 343-wide carousel page + .systemMedium OS widget)
 
 struct NewsWidgetWideContent: View {
