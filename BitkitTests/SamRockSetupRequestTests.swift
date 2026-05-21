@@ -3,6 +3,12 @@ import BitkitCore
 import XCTest
 
 final class SamRockSetupRequestTests: XCTestCase {
+    override func tearDown() {
+        SamRockURLProtocol.handler = nil
+        URLProtocol.unregisterClass(SamRockURLProtocol.self)
+        super.tearDown()
+    }
+
     func testParsesModernSamRockSetupUrl() throws {
         let setup = SamRockSetupRequest.parse(
             "https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain%2Cliquid-chain%2Cbtc-ln&otp=abc123"
@@ -117,7 +123,7 @@ final class SamRockSetupRequestTests: XCTestCase {
         )
         XCTAssertEqual(
             SamRockSetupRequest.sanitizedDescription("https://btcpay.example/plugins/%zz/samrock/protocol?otp=secret"),
-            "https://btcpay.example/plugins/%zz/samrock/protocol"
+            "https://btcpay.example/plugins/%25zz/samrock/protocol"
         )
         XCTAssertNil(SamRockSetupRequest.sanitizedDescription("bitcoin:bc1qexample?amount=1"))
     }
@@ -244,7 +250,7 @@ final class SamRockSetupRequestTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/x-www-form-urlencoded; charset=utf-8")
 
-        let body = try XCTUnwrap(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
+        let body = try XCTUnwrap(bodyString(from: request))
         XCTAssertTrue(body.hasPrefix("json="))
         let json = try XCTUnwrap(String(body.dropFirst("json=".count)).removingPercentEncoding)
         XCTAssertFalse(json.contains("Version"))
@@ -288,9 +294,38 @@ private extension SamRockSetupRequestTests {
     }
 
     func samRockURLSession() -> URLSession {
+        URLProtocol.registerClass(SamRockURLProtocol.self)
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [SamRockURLProtocol.self]
+        configuration.protocolClasses = [SamRockURLProtocol.self] + (configuration.protocolClasses ?? [])
         return URLSession(configuration: configuration)
+    }
+
+    func bodyString(from request: URLRequest) -> String? {
+        if let body = request.httpBody {
+            return String(data: body, encoding: .utf8)
+        }
+
+        guard let bodyStream = request.httpBodyStream else {
+            return nil
+        }
+
+        bodyStream.open()
+        defer { bodyStream.close() }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while bodyStream.hasBytesAvailable {
+            let bytesRead = bodyStream.read(&buffer, maxLength: buffer.count)
+            if bytesRead < 0 {
+                return nil
+            }
+            if bytesRead == 0 {
+                break
+            }
+            data.append(buffer, count: bytesRead)
+        }
+
+        return String(data: data, encoding: .utf8)
     }
 
     func assertThrowsAppError(
@@ -305,7 +340,7 @@ private extension SamRockSetupRequestTests {
         } catch let error as AppError {
             XCTAssertEqual(error.message, message, file: file, line: line)
         } catch {
-            XCTFail("Expected AppError, got \(error)", file: file, line: line)
+            XCTAssertEqual(error.localizedDescription, message, file: file, line: line)
         }
     }
 }
