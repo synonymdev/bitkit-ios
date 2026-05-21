@@ -346,11 +346,9 @@ final class SamRockService {
 }
 
 private struct SamRockProtocolPayload: Encodable {
-    let version = "1.0"
     let btc: SamRockDescriptorPayload
 
     enum CodingKeys: String, CodingKey {
-        case version = "Version"
         case btc = "BTC"
     }
 }

@@ -192,6 +192,37 @@ final class SamRockSetupRequestTests: XCTestCase {
             try await service.registerBitcoinOnchain(setup, walletIndex: Self.testWalletIndex)
         }, t("btcpay__request_error"))
     }
+
+    func testRegisterPostsDescriptorFormPayload() async throws {
+        try prepareWalletKeychain()
+        let setup = try XCTUnwrap(SamRockSetupRequest.parse("https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123"))
+        var capturedRequest: URLRequest?
+        SamRockURLProtocol.handler = { request in
+            capturedRequest = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data("""{"Success":true,"Result":{"Results":{"BTC":{"Success":true}}}}""".utf8))
+        }
+
+        try await SamRockService(urlSession: samRockURLSession()).registerBitcoinOnchain(setup, walletIndex: Self.testWalletIndex)
+
+        let request = try XCTUnwrap(capturedRequest)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/x-www-form-urlencoded; charset=utf-8")
+
+        let body = try XCTUnwrap(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
+        XCTAssertTrue(body.hasPrefix("json="))
+        let json = try XCTUnwrap(String(body.dropFirst("json=".count)).removingPercentEncoding)
+        XCTAssertFalse(json.contains("Version"))
+        XCTAssertTrue(json.contains(#""BTC""#))
+        XCTAssertTrue(json.contains(#""Descriptor""#))
+        XCTAssertTrue(json.contains("wpkh(["))
+    }
 }
 
 private extension SamRockSetupRequestTests {
