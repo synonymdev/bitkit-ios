@@ -5,17 +5,27 @@ import XCTest
 final class TrezorBridgeDashboardUITests: XCTestCase {
     private var app: XCUIApplication!
     private let userEnv = TrezorUserEnvController()
+    private let approvalLock = NSLock()
     private let regtest = RegtestRpcClient()
+    private var approvalDeadline = Date.distantPast
+    private var isApprovalLoopRunning = false
 
     override func setUpWithError() throws {
         try super.setUpWithError()
         continueAfterFailure = false
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["TEST_TREZOR_EMU"] == "1", "AI-only Trezor emulator tests are disabled")
+        #if TEST_TREZOR_EMU
+            let isEnabled = true
+        #else
+            let isEnabled = ProcessInfo.processInfo.environment["TEST_TREZOR_EMU"] == "1"
+        #endif
+        try XCTSkipUnless(isEnabled, "AI-only Trezor emulator tests are disabled")
     }
 
     override func tearDownWithError() throws {
+        stopApprovingOnEmulator()
         app?.terminate()
         app = nil
+        releaseBridgeSessionIfAny()
         try super.tearDownWithError()
     }
 
@@ -49,10 +59,19 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         app.buttons["TrezorDebugLogToggle"].tap()
         XCTAssertTrue(app.buttons["TrezorDebugLogClear"].waitForExistence(timeout: 5))
         app.buttons["TrezorDebugLogClear"].tap()
+        app.buttons["TrezorDebugLogToggle"].tap()
 
         scrollTo(app.buttons["TrezorDisconnectButton"])
         app.buttons["TrezorDisconnectButton"].tap()
-        XCTAssertTrue(app.otherElements["TrezorDeviceList"].waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            app.otherElements["TrezorDeviceList"].waitForExistence(timeout: 10),
+            "Device list did not appear after disconnect: \(app.debugDescription)"
+        )
+
+        let forgetButton = app.buttons["TrezorForgetDevice-bridge"]
+        XCTAssertTrue(forgetButton.waitForExistence(timeout: 5), "Known bridge device was not available to forget: \(app.debugDescription)")
+        forgetButton.tap()
+        XCTAssertFalse(app.buttons["TrezorKnownDeviceConnect-bridge"].waitForExistence(timeout: 3))
 
         connectBridgeDevice()
         XCTAssertTrue(app.otherElements["TrezorConnectedView"].waitForExistence(timeout: 20))
@@ -102,6 +121,7 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         app = XCUIApplication()
         app.launchEnvironment = [
             "TEST_TREZOR_EMU": "1",
+            "TEST_TREZOR_RESET_STATE": "1",
             "TREZOR_BRIDGE": "true",
             "TREZOR_BRIDGE_URL": bridgeUrl,
             "TREZOR_ELECTRUM_URL": "tcp://127.0.0.1:60001",
@@ -110,8 +130,18 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
             "E2E_NETWORK": "regtest",
             "GEO": "false",
         ]
+        app.launchArguments = [
+            "-TEST_TREZOR_EMU", "1",
+            "-TEST_TREZOR_RESET_STATE", "1",
+            "-TREZOR_BRIDGE", "true",
+            "-TREZOR_BRIDGE_URL", bridgeUrl,
+            "-TREZOR_ELECTRUM_URL", "tcp://127.0.0.1:60001",
+        ]
         app.launch()
-        XCTAssertTrue(app.otherElements["TrezorRoot"].waitForExistence(timeout: 20))
+        let root = app.otherElements["TrezorRoot"]
+        if !root.waitForExistence(timeout: 20) {
+            XCTFail("TrezorRoot did not appear. Accessibility tree: \(app.debugDescription)")
+        }
     }
 
     private func connectBridgeDevice() {
@@ -127,28 +157,45 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         let bridgeDevice = app.buttons["TrezorDevice-bridge"]
         XCTAssertTrue(bridgeDevice.waitForExistence(timeout: 20))
 
-        approveOnEmulator(for: 20)
         bridgeDevice.tap()
-        XCTAssertTrue(app.otherElements["TrezorConnectedView"].waitForExistence(timeout: 30))
+        XCTAssertTrue(
+            app.otherElements["TrezorConnectedView"].waitForExistence(timeout: 60),
+            "Bridge device was tapped but the dashboard never reached connected state: \(app.debugDescription)"
+        )
     }
 
     private func generateAllAddressTypes() throws -> [String: String] {
         app.buttons["TrezorSection-Address"].tap()
 
         var addresses: [String: String] = [:]
+        var previousAddress: String?
         for addressType in ["Legacy (P2PKH)", "Nested SegWit (P2SH-P2WPKH)", "Native SegWit (P2WPKH)", "Taproot (P2TR)"] {
             selectAddressType(addressType)
-            approveOnEmulator(for: 10)
+            approveOnEmulator(for: 30)
             app.buttons["TrezorGenerateAddress"].tap()
-            let address = readStaticText("TrezorGeneratedAddress", timeout: 20)
+            let address = readStaticText("TrezorGeneratedAddress", timeout: 45, previousValue: previousAddress)
+            stopApprovingOnEmulator()
             XCTAssertFalse(address.isEmpty)
             addresses[addressType] = address
+            previousAddress = address
         }
 
-        XCTAssertTrue(addresses["Legacy (P2PKH)"]?.hasPrefix("m") == true || addresses["Legacy (P2PKH)"]?.hasPrefix("n") == true)
-        XCTAssertTrue(addresses["Nested SegWit (P2SH-P2WPKH)"]?.hasPrefix("2") == true)
-        XCTAssertTrue(addresses["Native SegWit (P2WPKH)"]?.hasPrefix("bcrt1q") == true)
-        XCTAssertTrue(addresses["Taproot (P2TR)"]?.hasPrefix("bcrt1p") == true)
+        XCTAssertTrue(
+            addresses["Legacy (P2PKH)"]?.hasPrefix("m") == true || addresses["Legacy (P2PKH)"]?.hasPrefix("n") == true,
+            "Unexpected legacy address: \(addresses["Legacy (P2PKH)"] ?? "<nil>")"
+        )
+        XCTAssertTrue(
+            addresses["Nested SegWit (P2SH-P2WPKH)"]?.hasPrefix("2") == true,
+            "Unexpected nested SegWit address: \(addresses["Nested SegWit (P2SH-P2WPKH)"] ?? "<nil>")"
+        )
+        XCTAssertTrue(
+            addresses["Native SegWit (P2WPKH)"]?.hasPrefix("bcrt1q") == true,
+            "Unexpected native SegWit address: \(addresses["Native SegWit (P2WPKH)"] ?? "<nil>")"
+        )
+        XCTAssertTrue(
+            addresses["Taproot (P2TR)"]?.hasPrefix("bcrt1p") == true,
+            "Unexpected Taproot address: \(addresses["Taproot (P2TR)"] ?? "<nil>")"
+        )
         XCTAssertTrue(app.images["TrezorGeneratedAddressQr"].exists || app.otherElements["TrezorGeneratedAddressQr"].exists)
 
         return addresses
@@ -160,9 +207,11 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         }
         selectAddressType("Native SegWit (P2WPKH)")
         app.buttons["TrezorAddressIndexIncrement"].tap()
-        approveOnEmulator(for: 10)
+        let previousAddress = app.staticTexts["TrezorGeneratedAddress"].exists ? app.staticTexts["TrezorGeneratedAddress"].label : nil
+        approveOnEmulator(for: 30)
         app.buttons["TrezorGenerateAddress"].tap()
-        let address = readStaticText("TrezorGeneratedAddress", timeout: 20)
+        let address = readStaticText("TrezorGeneratedAddress", timeout: 45, previousValue: previousAddress)
+        stopApprovingOnEmulator()
         XCTAssertTrue(address.hasPrefix("bcrt1q"))
         return address
     }
@@ -179,9 +228,10 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
 
     private func exportPublicKey() throws -> String {
         app.buttons["TrezorSection-PublicKey"].tap()
-        approveOnEmulator(for: 10)
-        app.buttons["TrezorPublicKeyGet"].tap()
-        let xpub = readStaticText("TrezorXpub", timeout: 20)
+        let getButton = app.buttons["TrezorPublicKeyGet"]
+        scrollTo(getButton)
+        getButton.tap()
+        let xpub = readStaticText("TrezorXpub", timeout: 45)
         XCTAssertTrue(xpub.hasPrefix("tpub") || xpub.hasPrefix("vpub") || xpub.hasPrefix("xpub") || xpub.hasPrefix("zpub"))
         XCTAssertFalse(readStaticText("TrezorPublicKeyHex", timeout: 5).isEmpty)
         return xpub
@@ -190,24 +240,38 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
     private func signAndVerifyMessage() throws {
         app.buttons["TrezorSection-SignMessage"].tap()
         clearAndType(app.textFields["TrezorMessageToSign"], text: "Bitkit Trezor emulator test")
-        approveOnEmulator(for: 15)
+        approveOnEmulator(for: 90)
         app.buttons["TrezorSignMessageButton"].tap()
 
-        let signature = readStaticText("TrezorSignature", timeout: 20)
+        let signature = readStaticText("TrezorSignature", timeout: 90)
+        stopApprovingOnEmulator()
         let address = readStaticText("TrezorSignedMessageAddress", timeout: 5)
         XCTAssertFalse(signature.isEmpty)
         XCTAssertFalse(address.isEmpty)
 
         app.segmentedControls["TrezorSignMessageMode"].buttons["Verify"].tap()
-        clearAndType(app.textFields["TrezorVerifyAddress"], text: address)
-        clearAndType(app.textFields["TrezorVerifySignature"], text: signature)
-        clearAndType(app.textFields["TrezorVerifyMessage"], text: "Bitkit Trezor emulator test")
+        XCTAssertTrue(app.textFields["TrezorVerifyAddress"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["TrezorVerifyAddress"].value as? String, address)
+        XCTAssertFalse((app.textFields["TrezorVerifySignature"].value as? String ?? "").isEmpty)
+        XCTAssertEqual(app.textFields["TrezorVerifyMessage"].value as? String, "Bitkit Trezor emulator test")
+        scrollTo(app.buttons["TrezorVerifySignatureButton"])
+        approveOnEmulator(for: 90)
         app.buttons["TrezorVerifySignatureButton"].tap()
-        XCTAssertTrue(app.otherElements["TrezorSignatureValid"].waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            app.otherElements["TrezorSignatureValid"].waitForExistence(timeout: 90),
+            "Expected valid signature verification. Accessibility tree: \(app.debugDescription)"
+        )
+        stopApprovingOnEmulator()
 
         clearAndType(app.textFields["TrezorVerifyMessage"], text: "Tampered Bitkit Trezor emulator test")
+        scrollTo(app.buttons["TrezorVerifySignatureButton"])
+        approveOnEmulator(for: 90)
         app.buttons["TrezorVerifySignatureButton"].tap()
-        XCTAssertTrue(app.otherElements["TrezorSignatureInvalid"].waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            app.otherElements["TrezorSignatureInvalid"].waitForExistence(timeout: 90),
+            "Expected tampered message verification to fail. Accessibility tree: \(app.debugDescription)"
+        )
+        stopApprovingOnEmulator()
     }
 
     private func lookupBalanceHistoryAndDetail(xpub: String, address: String) throws {
@@ -224,7 +288,7 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         app.buttons["TrezorSection-TxHistory"].tap()
         clearAndType(app.textFields["TrezorTxHistoryInput"], text: xpub)
         app.buttons["TrezorTxHistoryButton"].tap()
-        let txRow = app.otherElements["TrezorTxHistoryRow"]
+        let txRow = app.otherElements.matching(identifier: "TrezorTxHistoryRow").firstMatch
         XCTAssertTrue(txRow.waitForExistence(timeout: 30))
         let txid = txRow.value as? String ?? txRow.label
         XCTAssertFalse(txid.isEmpty)
@@ -252,9 +316,10 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         app.buttons["TrezorComposeButton"].tap()
         XCTAssertTrue(app.otherElements["TrezorComposeReview"].waitForExistence(timeout: 30))
 
-        approveOnEmulator(for: 30)
+        approveOnEmulator(for: 120)
         app.buttons["TrezorSignTxButton"].tap()
-        XCTAssertTrue(app.otherElements["TrezorSignedTxResult"].waitForExistence(timeout: 40))
+        XCTAssertTrue(app.otherElements["TrezorSignedTxResult"].waitForExistence(timeout: 120))
+        stopApprovingOnEmulator()
 
         app.buttons["TrezorBroadcastButton"].tap()
         XCTAssertTrue(app.otherElements["TrezorBroadcastResult"].waitForExistence(timeout: 30))
@@ -262,19 +327,102 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
     }
 
     private func approveOnEmulator(for seconds: TimeInterval) {
-        let deadline = Date().addingTimeInterval(seconds)
-        DispatchQueue.global(qos: .userInitiated).async { [userEnv] in
-            while Date() < deadline {
-                try? userEnv.send(type: "emulator-press-yes")
-                Thread.sleep(forTimeInterval: 0.4)
-            }
+        approvalLock.lock()
+        approvalDeadline = max(approvalDeadline, Date().addingTimeInterval(seconds))
+        let shouldStart = !isApprovalLoopRunning
+        if shouldStart {
+            isApprovalLoopRunning = true
+        }
+        approvalLock.unlock()
+
+        guard shouldStart else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.runApprovalLoop()
         }
     }
 
-    private func readStaticText(_ identifier: String, timeout: TimeInterval) -> String {
+    private func stopApprovingOnEmulator() {
+        approvalLock.lock()
+        approvalDeadline = Date()
+        approvalLock.unlock()
+    }
+
+    private func runApprovalLoop() {
+        while true {
+            approvalLock.lock()
+            let shouldContinue = Date() < approvalDeadline
+            if !shouldContinue {
+                isApprovalLoopRunning = false
+                approvalLock.unlock()
+                return
+            }
+            approvalLock.unlock()
+
+            try? userEnv.send(type: "emulator-press-yes")
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+    }
+
+    private func releaseBridgeSessionIfAny() {
+        guard let enumerateUrl = URL(string: "http://127.0.0.1:21325/enumerate"),
+              let enumerateData = try? post(enumerateUrl),
+              let devices = try? JSONDecoder().decode([BridgeDevice].self, from: enumerateData)
+        else {
+            return
+        }
+
+        for device in devices {
+            guard let session = device.session,
+                  let releaseUrl = URL(string: "http://127.0.0.1:21325/release/\(session)")
+            else {
+                continue
+            }
+            _ = try? post(releaseUrl)
+        }
+    }
+
+    private func post(_ url: URL) throws -> Data {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: Result<Data, Error>?
+
+        URLSession(configuration: .ephemeral).dataTask(with: request) { data, _, error in
+            defer { semaphore.signal() }
+            if let error {
+                result = .failure(error)
+            } else {
+                result = .success(data ?? Data())
+            }
+        }.resume()
+
+        semaphore.wait()
+        return try result?.get() ?? Data()
+    }
+
+    private func readStaticText(_ identifier: String, timeout: TimeInterval, previousValue: String? = nil) -> String {
         let element = app.staticTexts[identifier]
-        XCTAssertTrue(element.waitForExistence(timeout: timeout), "Missing static text \(identifier)")
-        return element.label
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists {
+                let value = element.label
+                if !value.isEmpty, value != previousValue {
+                    scrollTo(element)
+                    return value
+                }
+            } else {
+                app.swipeUp()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+
+        XCTFail(
+            "Missing or unchanged static text \(identifier). Previous value: \(previousValue ?? "<none>"). Accessibility tree: \(app.debugDescription)"
+        )
+        return element.exists ? element.label : ""
     }
 
     private func clearAndType(_ element: XCUIElement, text: String) {
@@ -295,6 +443,10 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
             app.swipeUp()
         }
     }
+}
+
+private struct BridgeDevice: Decodable {
+    let session: String?
 }
 
 private final class TrezorUserEnvController {

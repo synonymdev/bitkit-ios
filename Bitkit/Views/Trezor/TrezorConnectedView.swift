@@ -124,7 +124,7 @@ struct TrezorConnectedView: View {
         .background(Color.black)
         .navigationTitle("Trezor")
         .navigationBarTitleDisplayMode(.inline)
-        .accessibilityIdentifier("TrezorConnectedView")
+        .trezorAccessibilityAnchor("TrezorConnectedView")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 TrezorStatusBadge(
@@ -180,7 +180,7 @@ private struct DeviceInfoCard: View {
         .frame(maxWidth: .infinity)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .accessibilityIdentifier("TrezorDeviceInfoCard")
+        .trezorAccessibilityAnchor("TrezorDeviceInfoCard")
     }
 }
 

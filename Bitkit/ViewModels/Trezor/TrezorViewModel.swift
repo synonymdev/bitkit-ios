@@ -118,6 +118,10 @@ class TrezorViewModel {
     /// Status text during auto-reconnect
     var autoReconnectStatus: String?
 
+    /// Prevents a user-initiated disconnect from immediately reconnecting
+    /// when the disconnected device list appears.
+    private var suppressNextAutoReconnect = false
+
     // MARK: - Address Index
 
     /// Current address index (last path component)
@@ -386,6 +390,7 @@ class TrezorViewModel {
     /// Connect to a device
     func connect(device: TrezorDeviceInfo) async {
         error = nil
+        suppressNextAutoReconnect = false
 
         trezorLog("=== Connecting to device: \(device.path) ===")
 
@@ -408,6 +413,7 @@ class TrezorViewModel {
     /// Disconnect from current device
     func disconnect() async {
         guard connectedDevice != nil else { return }
+        suppressNextAutoReconnect = true
 
         do {
             try await trezorService.disconnect()
@@ -640,6 +646,11 @@ class TrezorViewModel {
     func autoReconnect() async {
         guard !knownDevices.isEmpty else { return }
         guard !isAutoReconnecting else { return }
+        if suppressNextAutoReconnect {
+            suppressNextAutoReconnect = false
+            trezorLog("Auto-reconnect: skipped after manual disconnect")
+            return
+        }
 
         isAutoReconnecting = true
         autoReconnectStatus = "Scanning for known devices..."

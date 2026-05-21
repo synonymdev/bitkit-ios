@@ -74,7 +74,7 @@ struct SendTransactionSection: View {
                 TrezorErrorBanner(message: sendError)
             }
         }
-        .accessibilityIdentifier("TrezorSendSection")
+        .trezorAccessibilityAnchor("TrezorSendSection")
     }
 }
 
@@ -312,7 +312,7 @@ private struct ReviewSectionView: View {
                         .foregroundColor(.white.opacity(0.4))
                 }
             }
-            .accessibilityIdentifier("TrezorComposeReview")
+            .trezorAccessibilityAnchor("TrezorComposeReview")
         }
     }
 }
@@ -355,7 +355,7 @@ private struct PSBTPreview: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
-        .accessibilityIdentifier("TrezorPsbtPreview")
+        .trezorAccessibilityAnchor("TrezorPsbtPreview")
     }
 }
 
@@ -453,7 +453,7 @@ private struct SignedResultSectionView: View {
             }
             .accessibilityIdentifier("TrezorNewTransaction")
         }
-        .accessibilityIdentifier("TrezorSignedTxResult")
+        .trezorAccessibilityAnchor("TrezorSignedTxResult")
     }
 }
 
@@ -494,7 +494,7 @@ private struct BroadcastResultCard: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
-        .accessibilityIdentifier("TrezorBroadcastResult")
+        .trezorAccessibilityAnchor("TrezorBroadcastResult")
     }
 }
 

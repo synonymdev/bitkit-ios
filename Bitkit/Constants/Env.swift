@@ -35,7 +35,31 @@ enum Env {
         if envValue?.isEmpty == false {
             return envValue
         }
+        if let argumentValue = launchArgumentValue(key) {
+            return argumentValue
+        }
         return infoPlistValue(key)
+    }
+
+    private static func launchArgumentValue(_ key: String) -> String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        for argument in arguments {
+            for prefix in ["-\(key)=", "--\(key)=", "\(key)="] where argument.hasPrefix(prefix) {
+                let value = String(argument.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                return value.isEmpty ? nil : value
+            }
+        }
+
+        for (index, argument) in arguments.enumerated() where argument == "-\(key)" || argument == "--\(key)" || argument == key {
+            let nextIndex = index + 1
+            guard nextIndex < arguments.count else { return "true" }
+            let value = arguments[nextIndex]
+            guard !value.hasPrefix("-") else { return "true" }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        return nil
     }
 
     private static func boolConfigValue(_ key: String) -> Bool {
@@ -167,7 +191,15 @@ enum Env {
     }
 
     static var isTrezorEmulatorTesting: Bool {
-        (isDebug || isE2E) && boolConfigValue("TEST_TREZOR_EMU")
+        #if TEST_TREZOR_EMU
+            return isDebug || isE2E
+        #else
+            return (isDebug || isE2E) && boolConfigValue("TEST_TREZOR_EMU")
+        #endif
+    }
+
+    static var shouldResetTrezorEmulatorState: Bool {
+        isTrezorEmulatorTesting && boolConfigValue("TEST_TREZOR_RESET_STATE")
     }
 
     static var appStorageUrl: URL {

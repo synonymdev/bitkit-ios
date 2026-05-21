@@ -98,6 +98,19 @@ enum TrezorCredentialStorage {
         }
     }
 
+    /// Delete all stored THP credentials.
+    static func deleteAll() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
+        ]
+
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess, status != errSecItemNotFound {
+            Logger.warn("Failed to delete all THP credentials: \(status)", context: "TrezorCredentialStorage")
+        }
+    }
+
     /// List all device IDs with stored credentials
     /// - Returns: Array of device IDs (sanitized form)
     static func listAllDeviceIds() -> [String] {

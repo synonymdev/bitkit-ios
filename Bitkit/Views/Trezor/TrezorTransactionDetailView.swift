@@ -289,7 +289,7 @@ private struct TxDetailOverviewSection: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
-        .accessibilityIdentifier("TrezorTxDetailOverview")
+        .trezorAccessibilityAnchor("TrezorTxDetailOverview")
     }
 
     private var directionLabel: String {
@@ -330,7 +330,7 @@ private struct TxDetailInputsSection: View {
                     }
                 }
             }
-            .accessibilityIdentifier("TrezorTxDetailInputs")
+            .trezorAccessibilityAnchor("TrezorTxDetailInputs")
         }
     }
 }
@@ -405,7 +405,7 @@ private struct TxInputRow: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
-        .accessibilityIdentifier("TrezorTxDetailInputRow")
+        .trezorAccessibilityAnchor("TrezorTxDetailInputRow")
     }
 
     private var truncatedTxid: String {
@@ -435,7 +435,7 @@ private struct TxDetailOutputsSection: View {
                     }
                 }
             }
-            .accessibilityIdentifier("TrezorTxDetailOutputs")
+            .trezorAccessibilityAnchor("TrezorTxDetailOutputs")
         }
     }
 }
@@ -489,7 +489,7 @@ private struct TxOutputRow: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
-        .accessibilityIdentifier("TrezorTxDetailOutputRow")
+        .trezorAccessibilityAnchor("TrezorTxDetailOutputRow")
     }
 }
 

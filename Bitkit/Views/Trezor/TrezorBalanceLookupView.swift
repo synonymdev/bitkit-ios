@@ -274,7 +274,7 @@ private struct AccountResultSection: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
-        .accessibilityIdentifier("TrezorAccountResult")
+        .trezorAccessibilityAnchor("TrezorAccountResult")
     }
 
     private func accountTypeLabel(_ type: AccountType) -> String {
@@ -313,7 +313,7 @@ private struct AddressResultSection: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
-        .accessibilityIdentifier("TrezorAddressLookupResult")
+        .trezorAccessibilityAnchor("TrezorAddressLookupResult")
     }
 }
 
@@ -359,7 +359,7 @@ private struct UTXOListSection: View {
                     }
                 }
             }
-            .accessibilityIdentifier("TrezorUtxoList")
+            .trezorAccessibilityAnchor("TrezorUtxoList")
         }
     }
 }
@@ -444,7 +444,7 @@ private struct UTXORow: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
-        .accessibilityIdentifier("TrezorUtxoRow")
+        .trezorAccessibilityAnchor("TrezorUtxoRow")
     }
 
     private var truncatedTxid: String {

@@ -154,7 +154,7 @@ private struct DerivationPathSection: View {
             .padding(12)
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .accessibilityIdentifier("TrezorAddressIndex")
+            .trezorAccessibilityAnchor("TrezorAddressIndex")
 
             Button(action: {
                 trezor.derivationPath = selectedScriptType.defaultPath(coinType: trezor.coinTypeComponent)
@@ -291,7 +291,7 @@ private struct GeneratedAddressCard: View {
         .frame(maxWidth: .infinity)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .accessibilityIdentifier("TrezorGeneratedAddressCard")
+        .trezorAccessibilityAnchor("TrezorGeneratedAddressCard")
     }
 }
 

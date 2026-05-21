@@ -143,7 +143,7 @@ private struct CopyableField: View {
         .padding(16)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .accessibilityIdentifier("\(accessibilityIdentifier)Card")
+        .trezorAccessibilityAnchor("\(accessibilityIdentifier)Card")
     }
 }
 

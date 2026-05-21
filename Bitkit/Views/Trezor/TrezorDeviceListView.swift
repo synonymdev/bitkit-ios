@@ -115,7 +115,7 @@ struct TrezorDeviceListView: View {
         .background(Color.black)
         .navigationTitle("Connect Trezor")
         .navigationBarTitleDisplayMode(.inline)
-        .accessibilityIdentifier("TrezorDeviceList")
+        .trezorAccessibilityAnchor("TrezorDeviceList")
         .task {
             trezor.loadKnownDevices()
 
@@ -186,7 +186,7 @@ private struct AutoReconnectIndicator: View {
                 .foregroundColor(.white.opacity(0.6))
         }
         .padding(16)
-        .accessibilityIdentifier("TrezorAutoReconnectIndicator")
+        .trezorAccessibilityAnchor("TrezorAutoReconnectIndicator")
     }
 }
 
@@ -212,7 +212,7 @@ private struct BluetoothStatusCard: View {
         .frame(maxWidth: .infinity)
         .background(Color.orange.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .accessibilityIdentifier("TrezorBluetoothStatus")
+        .trezorAccessibilityAnchor("TrezorBluetoothStatus")
     }
 
     private var statusTitle: String {
@@ -259,7 +259,7 @@ private struct ScanningIndicator: View {
                 .multilineTextAlignment(.center)
         }
         .padding(32)
-        .accessibilityIdentifier("TrezorScanningIndicator")
+        .trezorAccessibilityAnchor("TrezorScanningIndicator")
     }
 }
 
@@ -282,7 +282,7 @@ private struct TrezorEmptyStateView: View {
             }
         }
         .padding(32)
-        .accessibilityIdentifier("TrezorEmptyState")
+        .trezorAccessibilityAnchor("TrezorEmptyState")
     }
 }
 
@@ -303,7 +303,7 @@ private struct ErrorCard: View {
         .padding(16)
         .background(Color.red.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .accessibilityIdentifier("TrezorDeviceListError")
+        .trezorAccessibilityAnchor("TrezorDeviceListError")
     }
 }
 

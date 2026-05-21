@@ -69,7 +69,7 @@ struct TrezorConfirmOnDeviceOverlay: View {
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.9))
-        .accessibilityIdentifier("TrezorConfirmOnDeviceOverlay")
+        .trezorAccessibilityAnchor("TrezorConfirmOnDeviceOverlay")
     }
 }
 
@@ -120,7 +120,7 @@ struct TrezorErrorBanner: View {
         .padding(16)
         .background(Color.red.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .accessibilityIdentifier("TrezorErrorBanner")
+        .trezorAccessibilityAnchor("TrezorErrorBanner")
     }
 }
 

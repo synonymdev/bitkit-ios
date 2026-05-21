@@ -189,7 +189,7 @@ private struct TxHistorySummarySection: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
-        .accessibilityIdentifier("TrezorTxHistorySummary")
+        .trezorAccessibilityAnchor("TrezorTxHistorySummary")
     }
 
     private func accountTypeLabel(_ type: AccountType) -> String {
@@ -220,7 +220,7 @@ private struct TxHistoryListSection: View {
                     }
                 }
             }
-            .accessibilityIdentifier("TrezorTxHistoryList")
+            .trezorAccessibilityAnchor("TrezorTxHistoryList")
         }
     }
 }
@@ -320,7 +320,7 @@ private struct TxHistoryRow: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
-        .accessibilityIdentifier("TrezorTxHistoryRow")
+        .trezorAccessibilityAnchor("TrezorTxHistoryRow")
         .accessibilityValue(tx.txid)
     }
 

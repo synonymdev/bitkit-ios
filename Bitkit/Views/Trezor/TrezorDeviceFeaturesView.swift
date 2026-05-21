@@ -16,7 +16,7 @@ struct TrezorDeviceFeaturesContent: View {
                 NoFeaturesView()
             }
         }
-        .accessibilityIdentifier("TrezorDeviceFeatures")
+        .trezorAccessibilityAnchor("TrezorDeviceFeatures")
     }
 }
 
@@ -184,7 +184,7 @@ private struct NoFeaturesView: View {
                 .foregroundColor(.white.opacity(0.6))
         }
         .padding(48)
-        .accessibilityIdentifier("TrezorNoFeatures")
+        .trezorAccessibilityAnchor("TrezorNoFeatures")
     }
 }
 
@@ -208,7 +208,7 @@ private struct InfoSection<Content: View>: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
-        .accessibilityIdentifier("TrezorDeviceInfo-\(title.replacingOccurrences(of: " ", with: ""))")
+        .trezorAccessibilityAnchor("TrezorDeviceInfo-\(title.replacingOccurrences(of: " ", with: ""))")
     }
 }
 

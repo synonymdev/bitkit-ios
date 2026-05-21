@@ -10,6 +10,7 @@ enum TrezorSignMessageTab: String, CaseIterable {
 
 /// Inline content for message signing, used by expandable section.
 struct TrezorSignMessageContent: View {
+    @Environment(TrezorViewModel.self) private var trezor
     @State private var verifyAddress: String = ""
     @State private var verifySignature: String = ""
     @State private var verifyMessage: String = ""
@@ -37,6 +38,13 @@ struct TrezorSignMessageContent: View {
                     verificationResult: $verificationResult
                 )
             }
+        }
+        .onChange(of: selectedTab) { _, tab in
+            guard tab == .verify, let signedMessage = trezor.signedMessage else { return }
+            verifyAddress = signedMessage.address
+            verifySignature = signedMessage.signature
+            verifyMessage = trezor.messageToSign
+            verificationResult = nil
         }
     }
 }
@@ -326,7 +334,7 @@ private struct SignedMessageResult: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.green.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .accessibilityIdentifier("TrezorSignedMessageResult")
+        .trezorAccessibilityAnchor("TrezorSignedMessageResult")
     }
 }
 
@@ -349,7 +357,7 @@ private struct VerificationResultBanner: View {
         .padding(16)
         .background((isValid ? Color.green : Color.red).opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .accessibilityIdentifier(isValid ? "TrezorSignatureValid" : "TrezorSignatureInvalid")
+        .trezorAccessibilityAnchor(isValid ? "TrezorSignatureValid" : "TrezorSignatureInvalid")
     }
 }
 

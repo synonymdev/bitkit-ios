@@ -42,6 +42,11 @@ enum TrezorKnownDeviceStorage {
         }
     }
 
+    /// Remove all remembered Trezor devices.
+    static func removeAll() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
     /// Check if a device is known
     static func isKnown(id: String) -> Bool {
         loadAll().contains { $0.id == id }

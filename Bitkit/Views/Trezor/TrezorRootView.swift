@@ -7,23 +7,47 @@ import SwiftUI
 /// are isolated in child views so this view doesn't re-render on every property change.
 struct TrezorRootView: View {
     var body: some View {
-        VStack(spacing: 0) {
-            NetworkSelectorRow()
-
+        ZStack(alignment: .topLeading) {
             if Env.isTrezorEmulatorTesting {
-                TrezorEmulatorTestHooksView()
+                TrezorAccessibilityAnchor(id: "TrezorRoot")
             }
 
-            ZStack(alignment: .bottom) {
-                TrezorContentSwitcher()
-                    .frame(maxHeight: .infinity)
-                    .padding(.bottom, 40)
+            VStack(spacing: 0) {
+                NetworkSelectorRow()
 
-                TrezorDebugLogWrapper()
+                if Env.isTrezorEmulatorTesting {
+                    TrezorEmulatorTestHooksView()
+                }
+
+                ZStack(alignment: .bottom) {
+                    TrezorContentSwitcher()
+                        .frame(maxHeight: .infinity)
+                        .padding(.bottom, 40)
+
+                    TrezorDebugLogWrapper()
+                }
             }
         }
-        .accessibilityIdentifier("TrezorRoot")
         .modifier(TrezorDialogsModifier())
+    }
+}
+
+struct TrezorAccessibilityAnchor: View {
+    let id: String
+
+    var body: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier(id)
+    }
+}
+
+extension View {
+    func trezorAccessibilityAnchor(_ id: String) -> some View {
+        overlay(alignment: .topLeading) {
+            TrezorAccessibilityAnchor(id: id)
+        }
     }
 }
 
@@ -201,7 +225,7 @@ struct TrezorPinEntrySheet: View {
         .padding(.bottom, 16)
         .background(Color.black)
         .interactiveDismissDisabled()
-        .accessibilityIdentifier("TrezorPinSheet")
+        .trezorAccessibilityAnchor("TrezorPinSheet")
     }
 }
 
@@ -277,7 +301,7 @@ struct TrezorPairingCodeSheet: View {
         .padding(.bottom, 16)
         .background(Color.black)
         .interactiveDismissDisabled()
-        .accessibilityIdentifier("TrezorPairingSheet")
+        .trezorAccessibilityAnchor("TrezorPairingSheet")
         .onChange(of: code) { newValue in
             if newValue.count == digitCount {
                 guard !hasSubmitted else { return }
@@ -400,7 +424,7 @@ struct TrezorPassphraseSheet: View {
         .padding(.bottom, 16)
         .background(Color.black)
         .interactiveDismissDisabled()
-        .accessibilityIdentifier("TrezorPassphraseSheet")
+        .trezorAccessibilityAnchor("TrezorPassphraseSheet")
         .task {
             focusedField = .passphrase
         }
@@ -462,7 +486,7 @@ private struct TrezorEmulatorTestHooksView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(Color.white.opacity(0.04))
-        .accessibilityIdentifier("TrezorTestHooks")
+        .trezorAccessibilityAnchor("TrezorTestHooks")
     }
 }
 
@@ -550,7 +574,7 @@ struct TrezorDebugLogPanel: View {
                             .padding(.horizontal, 16)
                         }
                         .frame(maxHeight: 300)
-                        .accessibilityIdentifier("TrezorDebugLogEntries")
+                        .trezorAccessibilityAnchor("TrezorDebugLogEntries")
                         .onChange(of: debugLog.entries.count) { _ in
                             if let lastIndex = debugLog.entries.indices.last {
                                 proxy.scrollTo(lastIndex, anchor: .bottom)

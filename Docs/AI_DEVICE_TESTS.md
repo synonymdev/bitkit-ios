@@ -16,6 +16,7 @@ Run the iOS suite from this repository:
 
 ```bash
 TEST_TREZOR_EMU=1 \
+TEST_TREZOR_RESET_STATE=1 \
 TREZOR_BRIDGE=true \
 TREZOR_BRIDGE_URL=http://127.0.0.1:21325 \
 TREZOR_ELECTRUM_URL=tcp://127.0.0.1:60001 \
@@ -26,7 +27,7 @@ xcodebuild test \
   -configuration Debug \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' \
   -derivedDataPath DerivedData \
-  SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD' \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD TEST_TREZOR_EMU' \
   -only-testing:BitkitUITests/TrezorBridgeDashboardUITests \
   -parallel-testing-enabled NO
 ```
