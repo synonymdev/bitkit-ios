@@ -234,7 +234,7 @@ final class SamRockSetupRequestTests: XCTestCase {
                 httpVersion: nil,
                 headerFields: nil
             )!
-            return (response, Data("""{"Success":true,"Result":{"Results":{"BTC":{"Success":true}}}}""".utf8))
+            return (response, Data(#"{"Success":true,"Result":{"Results":{"BTC":{"Success":true}}}}"#.utf8))
         }
 
         try await SamRockService(urlSession: samRockURLSession()).registerBitcoinOnchain(setup, walletIndex: Self.testWalletIndex)
