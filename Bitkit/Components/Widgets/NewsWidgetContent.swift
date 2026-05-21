@@ -10,6 +10,8 @@ import WidgetKit
 // MARK: - Wide layout (in-app + 343-wide carousel page + .systemMedium OS widget)
 
 struct NewsWidgetWideContent: View {
+    static let inAppHeight: CGFloat = 118
+
     let title: String
     let publisher: String
     let timeAgo: String
@@ -19,7 +21,7 @@ struct NewsWidgetWideContent: View {
 
     var body: some View {
         let palette = WidgetPalette(renderingMode: renderingMode)
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             if options.showTitle {
                 TitleText(title, textColor: palette.title)
                     .lineLimit(4)
@@ -27,6 +29,8 @@ struct NewsWidgetWideContent: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .widgetAccentable()
             }
+
+            Spacer(minLength: 0)
 
             if options.showSource || options.showDate {
                 HStack(alignment: .center, spacing: 8) {
@@ -43,7 +47,7 @@ struct NewsWidgetWideContent: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

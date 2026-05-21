@@ -173,7 +173,6 @@ struct NewsHomeScreenWidgetEntryView: View {
                     timeAgo: entry.timeAgo,
                     options: entry.options
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         } else {
             ProgressView()

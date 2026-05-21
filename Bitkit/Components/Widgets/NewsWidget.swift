@@ -50,6 +50,7 @@ struct NewsWidget: View {
                 timeAgo: data.timeAgo,
                 options: options
             )
+            .frame(height: NewsWidgetWideContent.inAppHeight)
         }
     }
 }
