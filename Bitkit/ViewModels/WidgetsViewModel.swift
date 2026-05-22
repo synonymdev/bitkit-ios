@@ -12,12 +12,10 @@ protocol WidgetOptionsProtocol: Codable, Equatable {
 /// Default options for each widget type
 func getDefaultOptions(for type: WidgetType) -> Any {
     switch type {
-    case .suggestions, .calculator:
+    case .suggestions, .calculator, .facts:
         return EmptyWidgetOptions()
     case .blocks:
         return BlocksWidgetOptions()
-    case .facts:
-        return FactsWidgetOptions()
     case .news:
         return NewsWidgetOptions()
     case .weather:
@@ -74,11 +72,7 @@ struct Widget: Identifiable {
         case .calculator:
             CalculatorWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
         case .facts:
-            FactsWidget(
-                options: widgetsViewModel.getOptions(for: type, as: FactsWidgetOptions.self),
-                isEditing: isEditing,
-                onEditingEnd: onEditingEnd
-            )
+            FactsWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
         case .news:
             NewsWidget(
                 options: widgetsViewModel.getOptions(for: type, as: NewsWidgetOptions.self),
@@ -188,9 +182,10 @@ class WidgetsViewModel: ObservableObject {
         // Don't add duplicates
         guard !isWidgetSaved(type) else { return }
 
-        let newSavedWidget = SavedWidget(type: type)
-        savedWidgetsWithOptions.append(newSavedWidget)
-        savedWidgets.append(newSavedWidget.toWidget())
+        if !savedWidgetsWithOptions.contains(where: { $0.type == type }) {
+            savedWidgetsWithOptions.append(SavedWidget(type: type))
+        }
+        savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
         persistSavedWidgets()
     }
 
@@ -253,7 +248,25 @@ class WidgetsViewModel: ObservableObject {
                 savedWidgetsWithOptions.append(SavedWidget(type: type, optionsData: optionsData))
             }
 
+            // Keep the @Published mirror in lockstep so other callers see a consistent picture.
+            savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
             persistSavedWidgets()
+
+            if type == .price, let priceOptions = options as? PriceWidgetOptions {
+                syncPriceOptionsToHomeScreenWidget(priceOptions)
+            }
+
+            if type == .news, let newsOptions = options as? NewsWidgetOptions {
+                syncNewsOptionsToHomeScreenWidget(newsOptions)
+            }
+
+            if type == .blocks, let blocksOptions = options as? BlocksWidgetOptions {
+                syncBlocksOptionsToHomeScreenWidget(blocksOptions)
+            }
+
+            if type == .weather, let weatherOptions = options as? WeatherWidgetOptions {
+                syncWeatherOptionsToHomeScreenWidget(weatherOptions)
+            }
         } catch {
             print("Failed to save widget options: \(error)")
         }
@@ -262,15 +275,11 @@ class WidgetsViewModel: ObservableObject {
     /// Check if widget has custom options (different from default)
     func hasCustomOptions(for type: WidgetType) -> Bool {
         switch type {
-        case .suggestions, .calculator:
+        case .suggestions, .calculator, .facts:
             return false
         case .blocks:
             let current: BlocksWidgetOptions = getOptions(for: type, as: BlocksWidgetOptions.self)
             let defaultOptions = BlocksWidgetOptions()
-            return current != defaultOptions
-        case .facts:
-            let current: FactsWidgetOptions = getOptions(for: type, as: FactsWidgetOptions.self)
-            let defaultOptions = FactsWidgetOptions()
             return current != defaultOptions
         case .news:
             let current: NewsWidgetOptions = getOptions(for: type, as: NewsWidgetOptions.self)
@@ -293,14 +302,40 @@ class WidgetsViewModel: ObservableObject {
         let widgetsData = UserDefaults.standard.data(forKey: Self.savedWidgetsKey) ?? .init()
 
         do {
-            savedWidgetsWithOptions = try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
-            savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
+            let decoded = try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
+            let deduped = Self.dedupedByType(decoded)
+            savedWidgetsWithOptions = deduped
+            savedWidgets = deduped.map { $0.toWidget() }
+            // If we removed duplicates, rewrite the blob so the bad state disappears permanently.
+            if deduped.count != decoded.count { persistSavedWidgets() }
         } catch {
             // If no saved data or decode fails, start with default widgets
             savedWidgetsWithOptions = WidgetsViewModel.defaultSavedWidgets
             savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
             persistSavedWidgets()
         }
+    }
+
+    /// Collapses `widgets` to at most one entry per `WidgetType`, preserving the first-seen order.
+    /// When the input contains duplicates, prefers the entry that carries `optionsData` so the
+    /// user's customisation isn't lost — within duplicates, the first non-nil `optionsData` wins.
+    static func dedupedByType(_ widgets: [SavedWidget]) -> [SavedWidget] {
+        var preferredByType: [WidgetType: SavedWidget] = [:]
+        var order: [WidgetType] = []
+        for widget in widgets {
+            if preferredByType[widget.type] == nil {
+                preferredByType[widget.type] = widget
+                order.append(widget.type)
+                continue
+            }
+            if let existing = preferredByType[widget.type],
+               existing.optionsData == nil,
+               widget.optionsData != nil
+            {
+                preferredByType[widget.type] = widget
+            }
+        }
+        return order.compactMap { preferredByType[$0] }
     }
 
     private func persistSavedWidgets() {
@@ -310,5 +345,25 @@ class WidgetsViewModel: ObservableObject {
         } catch {
             print("Failed to persist widgets: \(error)")
         }
+    }
+
+    private func syncPriceOptionsToHomeScreenWidget(_ options: PriceWidgetOptions) {
+        PriceHomeScreenWidgetOptionsStore.save(options)
+        PriceHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+    }
+
+    private func syncNewsOptionsToHomeScreenWidget(_ options: NewsWidgetOptions) {
+        NewsHomeScreenWidgetOptionsStore.save(options)
+        NewsHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+    }
+
+    private func syncBlocksOptionsToHomeScreenWidget(_ options: BlocksWidgetOptions) {
+        BlocksHomeScreenWidgetOptionsStore.save(options)
+        BlocksHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+    }
+
+    private func syncWeatherOptionsToHomeScreenWidget(_ options: WeatherWidgetOptions) {
+        WeatherHomeScreenWidgetOptionsStore.save(options)
+        WeatherHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 }

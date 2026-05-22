@@ -627,7 +627,6 @@
 "settings__general__language_other" = "Interface taal";
 "settings__widgets__nav_title" = "Widgets";
 "settings__widgets__showWidgets" = "Widgets";
-"settings__widgets__showWidgetTitles" = "Widget titels tonen";
 "settings__notifications__nav_title" = "Achtergrondbetalingen";
 "settings__notifications__intro__title" = "Ontvang\n<accent>Passief</accent>";
 "settings__notifications__intro__text" = "Schakel notificaties in om betaald te worden, zelfs wanneer uw Bitkit app gesloten is.";
@@ -1155,7 +1154,6 @@
 "wallet__receive_insufficient_text" = "Onvoldoende ontvangstcapaciteit om dit bedrag via Lightning te ontvangen.";
 "wallet__receive_foreground_title" = "Bitkit im Vordergrund halten";
 "wallet__receive_foreground_msg" = "Zahlungen auf Ihr Guthaben können fehlschlagen, wenn Sie zwischen Apps wechseln.";
-"widgets__widgets" = "Widgets";
 "widgets__onboarding__title" = "Hallo,\n<accent>Widgets</accent>";
 "widgets__onboarding__description" = "Geniet van gedecentraliseerde feeds van uw favoriete webdiensten, door leuke en nuttige widgets aan uw Bitkit wallet toe te voegen.";
 "widgets__nav_title" = "Widgets";
@@ -1163,7 +1161,6 @@
 "widgets__widget__edit" = "Widget Feed";
 "widgets__widget__edit_default" = "Standaard";
 "widgets__widget__edit_custom" = "Op maat";
-"widgets__widget__edit_description" = "Selecteer welke velden u wilt weergeven in de {name} widget.";
 "widgets__widget__source" = "Bron";
 "widgets__add" = "Widget Toevoegen";
 "widgets__delete__title" = "Widget Verwijderen?";
@@ -1184,11 +1181,14 @@
 "widgets__weather__name" = "Bitcoin Wetter";
 "widgets__weather__description" = "Finde heraus, wann es eine gute Zeit ist, um auf der Bitcoin blockchain Überweisungen zu tätigen.";
 "widgets__weather__condition__good__title" = "Gunstige Omstandigheden";
-"widgets__weather__condition__good__description" = "Alles vrij. Nu is een goed moment om op de blockchain te transacteren.";
+"widgets__weather__condition__good__description" = "Nu is een goed moment om op de blockchain te transacteren.";
 "widgets__weather__condition__average__title" = "Gemiddelde Omstandigheden";
-"widgets__weather__condition__average__description" = "Het tarief voor het volgende blok ligt dicht bij het maandelijks gemiddelde.";
+"widgets__weather__condition__average__description" = "Het tarief voor het volgende blok ligt dicht bij het maandelijks en jaarlijks gemiddelde.";
 "widgets__weather__condition__poor__title" = "Slechte Omstandigheden";
-"widgets__weather__condition__poor__description" = "Als u geen haast heeft om te transacteren, is het misschien beter om even te wachten.";
+"widgets__weather__condition__poor__description" = "Als u geen haast heeft om te transacteren, is het misschien beter om te wachten.";
 "widgets__weather__current_fee" = "Huidige gemiddelde vergoeding";
 "widgets__weather__next_block" = "Opname in volgend blok";
 "widgets__weather__error" = "Kon huidige vergoedingsweer niet ophalen";
+"widgets__weather__condition__good__short_title" = "Gunstig";
+"widgets__weather__condition__average__short_title" = "Gemiddeld";
+"widgets__weather__condition__poor__short_title" = "Slecht";

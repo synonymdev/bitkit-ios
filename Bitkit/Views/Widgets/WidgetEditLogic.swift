@@ -5,7 +5,6 @@ import SwiftUI
 @MainActor
 class WidgetEditLogic: ObservableObject {
     @Published var blocksOptions = BlocksWidgetOptions()
-    @Published var factsOptions = FactsWidgetOptions()
     @Published var newsOptions = NewsWidgetOptions()
     @Published var weatherOptions = WeatherWidgetOptions()
     @Published var priceOptions = PriceWidgetOptions()
@@ -24,9 +23,9 @@ class WidgetEditLogic: ObservableObject {
 
     var hasOptions: Bool {
         switch widgetType {
-        case .facts, .blocks, .news, .price, .weather:
+        case .blocks, .news, .price, .weather:
             return true
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             return false
         }
     }
@@ -34,19 +33,21 @@ class WidgetEditLogic: ObservableObject {
     var hasEnabledOption: Bool {
         switch widgetType {
         case .blocks:
-            // Blocks widget has many options, check if any are enabled
-            return blocksOptions.height || blocksOptions.time || blocksOptions.date || blocksOptions.transactionCount || blocksOptions.size
-                || blocksOptions.weight || blocksOptions.difficulty || blocksOptions.hash || blocksOptions.merkleRoot || blocksOptions.showSource
-        case .news, .facts:
-            // Static items (showTitle) are always enabled, so these widgets always have enabled options
-            return true
+            return blocksOptions.height
+                || blocksOptions.time
+                || blocksOptions.date
+                || blocksOptions.transactionCount
+                || blocksOptions.size
+                || blocksOptions.fees
+        case .news:
+            return newsOptions.showTitle || newsOptions.showSource || newsOptions.showDate
         case .weather:
-            // Weather widget has multiple options, check if any are enabled
-            return weatherOptions.showStatus || weatherOptions.showText || weatherOptions.showMedian || weatherOptions.showNextBlockFee
+            // Weather widget always has a selected metric (single-select), so it always has an enabled option.
+            return true
         case .price:
-            // Price widget has options, check if at least one trading pair is selected
-            return !priceOptions.selectedPairs.isEmpty
-        case .calculator, .suggestions:
+            // Price widget always has a selected pair (single-select).
+            return true
+        case .calculator, .suggestions, .facts:
             return false
         }
     }
@@ -56,9 +57,6 @@ class WidgetEditLogic: ObservableObject {
         case .blocks:
             let defaultOptions = BlocksWidgetOptions()
             return blocksOptions != defaultOptions
-        case .facts:
-            let defaultOptions = FactsWidgetOptions()
-            return factsOptions != defaultOptions
         case .news:
             let defaultOptions = NewsWidgetOptions()
             return newsOptions != defaultOptions
@@ -68,7 +66,7 @@ class WidgetEditLogic: ObservableObject {
         case .price:
             let defaultOptions = PriceWidgetOptions()
             return priceOptions != defaultOptions
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             return false
         }
     }
@@ -77,38 +75,29 @@ class WidgetEditLogic: ObservableObject {
 
     func toggleOption(_ item: WidgetEditItem) {
         // Don't toggle static items
-        guard item.type == .toggleItem else { return }
+        guard item.type != .staticItem else { return }
 
         switch widgetType {
         case .blocks:
             switch item.key {
             case "height":
+                guard canToggleBlockOption(blocksOptions.height) else { break }
                 blocksOptions.height.toggle()
             case "time":
+                guard canToggleBlockOption(blocksOptions.time) else { break }
                 blocksOptions.time.toggle()
             case "date":
+                guard canToggleBlockOption(blocksOptions.date) else { break }
                 blocksOptions.date.toggle()
             case "transactionCount":
+                guard canToggleBlockOption(blocksOptions.transactionCount) else { break }
                 blocksOptions.transactionCount.toggle()
             case "size":
+                guard canToggleBlockOption(blocksOptions.size) else { break }
                 blocksOptions.size.toggle()
-            case "weight":
-                blocksOptions.weight.toggle()
-            case "difficulty":
-                blocksOptions.difficulty.toggle()
-            case "hash":
-                blocksOptions.hash.toggle()
-            case "merkleRoot":
-                blocksOptions.merkleRoot.toggle()
-            case "showSource":
-                blocksOptions.showSource.toggle()
-            default:
-                break
-            }
-        case .facts:
-            switch item.key {
-            case "showSource":
-                factsOptions.showSource.toggle()
+            case "fees":
+                guard canToggleBlockOption(blocksOptions.fees) else { break }
+                blocksOptions.fees.toggle()
             default:
                 break
             }
@@ -116,36 +105,19 @@ class WidgetEditLogic: ObservableObject {
             switch item.key {
             case "showDate":
                 newsOptions.showDate.toggle()
-            case "showTitle":
-                newsOptions.showTitle.toggle()
             case "showSource":
                 newsOptions.showSource.toggle()
             default:
                 break
             }
         case .weather:
-            switch item.key {
-            case "showStatus":
-                weatherOptions.showStatus.toggle()
-            case "showText":
-                weatherOptions.showText.toggle()
-            case "showMedian":
-                weatherOptions.showMedian.toggle()
-            case "showNextBlockFee":
-                weatherOptions.showNextBlockFee.toggle()
-            default:
-                break
+            if let metric = WeatherDisplayMetric(rawValue: item.key) {
+                weatherOptions.selectedMetric = metric
             }
         case .price:
             switch item.key {
-            case "BTC/USD":
-                toggleTradingPair("BTC/USD")
-            case "BTC/EUR":
-                toggleTradingPair("BTC/EUR")
-            case "BTC/GBP":
-                toggleTradingPair("BTC/GBP")
-            case "BTC/JPY":
-                toggleTradingPair("BTC/JPY")
+            case "BTC/USD", "BTC/EUR", "BTC/GBP", "BTC/JPY":
+                priceOptions.selectedPair = item.key
             case "1D":
                 priceOptions.selectedPeriod = .oneDay
             case "1W":
@@ -154,38 +126,43 @@ class WidgetEditLogic: ObservableObject {
                 priceOptions.selectedPeriod = .oneMonth
             case "1Y":
                 priceOptions.selectedPeriod = .oneYear
-            case "showSource":
-                priceOptions.showSource.toggle()
             default:
                 break
             }
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             break
         }
         onStateChange?()
     }
 
-    private func toggleTradingPair(_ pairName: String) {
-        if priceOptions.selectedPairs.contains(pairName) {
-            priceOptions.selectedPairs.removeAll { $0 == pairName }
-        } else {
-            priceOptions.selectedPairs.append(pairName)
-        }
+    private func canToggleBlockOption(_ isCurrentlyEnabled: Bool) -> Bool {
+        isCurrentlyEnabled || enabledBlockOptionsCount < 4
+    }
+
+    private var enabledBlockOptionsCount: Int {
+        [
+            blocksOptions.height,
+            blocksOptions.time,
+            blocksOptions.date,
+            blocksOptions.transactionCount,
+            blocksOptions.size,
+            blocksOptions.fees,
+        ].filter { $0 }.count
     }
 
     func loadCurrentOptions() {
         switch widgetType {
         case .blocks:
             blocksOptions = widgetsViewModel.getOptions(for: widgetType, as: BlocksWidgetOptions.self)
-        case .facts:
-            factsOptions = widgetsViewModel.getOptions(for: widgetType, as: FactsWidgetOptions.self)
         case .news:
             newsOptions = widgetsViewModel.getOptions(for: widgetType, as: NewsWidgetOptions.self)
+            // Title is mandatory and cannot be unselected, so always keep it enabled.
+            newsOptions.showTitle = true
         case .weather:
             weatherOptions = widgetsViewModel.getOptions(for: widgetType, as: WeatherWidgetOptions.self)
         case .price:
             priceOptions = widgetsViewModel.getOptions(for: widgetType, as: PriceWidgetOptions.self)
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             break
         }
     }
@@ -194,15 +171,13 @@ class WidgetEditLogic: ObservableObject {
         switch widgetType {
         case .blocks:
             blocksOptions = BlocksWidgetOptions()
-        case .facts:
-            factsOptions = FactsWidgetOptions()
         case .news:
             newsOptions = NewsWidgetOptions()
         case .weather:
             weatherOptions = WeatherWidgetOptions()
         case .price:
             priceOptions = PriceWidgetOptions()
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             break
         }
         onStateChange?()
@@ -212,15 +187,13 @@ class WidgetEditLogic: ObservableObject {
         switch widgetType {
         case .blocks:
             widgetsViewModel.saveOptions(blocksOptions, for: widgetType)
-        case .facts:
-            widgetsViewModel.saveOptions(factsOptions, for: widgetType)
         case .news:
             widgetsViewModel.saveOptions(newsOptions, for: widgetType)
         case .weather:
             widgetsViewModel.saveOptions(weatherOptions, for: widgetType)
         case .price:
             widgetsViewModel.saveOptions(priceOptions, for: widgetType)
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             break
         }
     }

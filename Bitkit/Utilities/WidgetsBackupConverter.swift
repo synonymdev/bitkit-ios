@@ -7,7 +7,6 @@ enum WidgetsBackupConverter {
         var widgetsArray: [[String: Any]] = []
         var blocksPreferences: [String: Any]?
         var newsPreferences: [String: Any]?
-        var factsPreferences: [String: Any]?
         var weatherPreferences: [String: Any]?
         var pricePreferences: [String: Any]?
 
@@ -32,7 +31,7 @@ enum WidgetsBackupConverter {
                             "showDate": options.date,
                             "showTransactions": options.transactionCount,
                             "showSize": options.size,
-                            "showSource": options.showSource,
+                            "showFees": options.fees,
                         ]
                     }
                 case .news:
@@ -42,34 +41,20 @@ enum WidgetsBackupConverter {
                             "showSource": options.showSource,
                         ]
                     }
-                case .facts:
-                    if let options = try? JSONDecoder().decode(FactsWidgetOptions.self, from: optionsData) {
-                        factsPreferences = [
-                            "showSource": options.showSource,
-                        ]
-                    }
                 case .weather:
                     if let options = try? JSONDecoder().decode(WeatherWidgetOptions.self, from: optionsData) {
-                        weatherPreferences = [
-                            "showTitle": options.showStatus,
-                            "showDescription": options.showText,
-                            "showCurrentFee": options.showMedian,
-                            "showNextBlockFee": options.showNextBlockFee,
-                        ]
+                        weatherPreferences = androidWeatherPreferences(for: options.selectedMetric)
                     }
                 case .price:
                     if let options = try? JSONDecoder().decode(PriceWidgetOptions.self, from: optionsData) {
-                        let androidPairs = options.selectedPairs.map { pair in
-                            pair.replacingOccurrences(of: "/", with: "_")
-                        }
+                        let androidPair = options.selectedPair.replacingOccurrences(of: "/", with: "_")
                         let androidPeriod = convertIosPeriodToAndroid(options.selectedPeriod)
                         pricePreferences = [
-                            "enabledPairs": androidPairs.isEmpty ? ["BTC_USD"] : androidPairs,
+                            "enabledPairs": [androidPair.isEmpty ? "BTC_USD" : androidPair],
                             "period": androidPeriod,
-                            "showSource": options.showSource,
                         ]
                     }
-                case .calculator, .suggestions:
+                case .calculator, .suggestions, .facts:
                     break
                 }
             }
@@ -78,7 +63,6 @@ enum WidgetsBackupConverter {
         return [
             "widgets": widgetsArray,
             "headlinePreferences": newsPreferences ?? getDefaultNewsPreferences(),
-            "factsPreferences": factsPreferences ?? getDefaultFactsPreferences(),
             "blocksPreferences": blocksPreferences ?? getDefaultBlocksPreferences(),
             "weatherPreferences": weatherPreferences ?? getDefaultWeatherPreferences(),
             "pricePreferences": pricePreferences ?? getDefaultPricePreferences(),
@@ -128,13 +112,9 @@ enum WidgetsBackupConverter {
                         height: prefs["showBlock"] as? Bool ?? true,
                         time: prefs["showTime"] as? Bool ?? true,
                         date: prefs["showDate"] as? Bool ?? true,
-                        transactionCount: prefs["showTransactions"] as? Bool ?? false,
+                        transactionCount: prefs["showTransactions"] as? Bool ?? true,
                         size: prefs["showSize"] as? Bool ?? false,
-                        weight: false,
-                        difficulty: false,
-                        hash: false,
-                        merkleRoot: false,
-                        showSource: prefs["showSource"] as? Bool ?? false
+                        fees: prefs["showFees"] as? Bool ?? false
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
@@ -147,44 +127,33 @@ enum WidgetsBackupConverter {
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
-            case .facts:
-                if let prefs = jsonDict["factsPreferences"] as? [String: Any] {
-                    let iosOptions = FactsWidgetOptions(
-                        showSource: prefs["showSource"] as? Bool ?? false
-                    )
-                    optionsData = try? JSONEncoder().encode(iosOptions)
-                }
             case .weather:
                 if let prefs = jsonDict["weatherPreferences"] as? [String: Any] {
                     let iosOptions = WeatherWidgetOptions(
-                        showStatus: prefs["showTitle"] as? Bool ?? true,
-                        showText: prefs["showDescription"] as? Bool ?? false,
-                        showMedian: prefs["showCurrentFee"] as? Bool ?? false,
-                        showNextBlockFee: prefs["showNextBlockFee"] as? Bool ?? false
+                        selectedMetric: weatherMetric(fromAndroidPrefs: prefs)
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
             case .price:
                 if let prefs = jsonDict["pricePreferences"] as? [String: Any] {
-                    var selectedPairs = ["BTC/USD"]
-                    if let pairsArray = prefs["enabledPairs"] as? [String] {
-                        selectedPairs = pairsArray.map { pairType in
-                            pairType.replacingOccurrences(of: "_", with: "/")
-                        }
-                        if selectedPairs.isEmpty {
-                            selectedPairs = ["BTC/USD"]
+                    var selectedPair = "BTC/USD"
+                    if let pairsArray = prefs["enabledPairs"] as? [String],
+                       let firstAndroidPair = pairsArray.first
+                    {
+                        let converted = firstAndroidPair.replacingOccurrences(of: "_", with: "/")
+                        if !converted.isEmpty {
+                            selectedPair = converted
                         }
                     }
 
                     let period = convertAndroidPeriodToIos(prefs["period"] as? String)
                     let iosOptions = PriceWidgetOptions(
-                        selectedPairs: selectedPairs,
-                        selectedPeriod: period,
-                        showSource: prefs["showSource"] as? Bool ?? false
+                        selectedPair: selectedPair,
+                        selectedPeriod: period
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
-            case .calculator, .suggestions:
+            case .calculator, .suggestions, .facts:
                 break
             }
 
@@ -205,7 +174,7 @@ enum WidgetsBackupConverter {
             "showDate": defaults.date,
             "showTransactions": defaults.transactionCount,
             "showSize": defaults.size,
-            "showSource": defaults.showSource,
+            "showFees": defaults.fees,
         ]
     }
 
@@ -217,33 +186,52 @@ enum WidgetsBackupConverter {
         ]
     }
 
-    private static func getDefaultFactsPreferences() -> [String: Any] {
-        let defaults = FactsWidgetOptions()
-        return [
-            "showSource": defaults.showSource,
-        ]
-    }
-
     private static func getDefaultWeatherPreferences() -> [String: Any] {
         let defaults = WeatherWidgetOptions()
-        return [
-            "showTitle": defaults.showStatus,
-            "showDescription": defaults.showText,
-            "showCurrentFee": defaults.showMedian,
-            "showNextBlockFee": defaults.showNextBlockFee,
-        ]
+        return androidWeatherPreferences(for: defaults.selectedMetric)
+    }
+
+    private static func androidWeatherPreferences(for metric: WeatherDisplayMetric) -> [String: Any] {
+        ["selectedOption": androidSelectedOption(for: metric)]
+    }
+
+    private static func androidSelectedOption(for metric: WeatherDisplayMetric) -> String {
+        switch metric {
+        case .fiatFee: return "CURRENT_FEE_FIAT"
+        case .satsFee: return "CURRENT_FEE_SATS"
+        case .nextBlockFee: return "NEXT_BLOCK_INCLUSION"
+        }
+    }
+
+    /// Maps Android `WeatherPreferences` to the v61 iOS metric. Prefers the v61
+    /// `selectedOption` enum string; falls back to the legacy 4-toggle shape for backups
+    /// produced by older builds.
+    private static func weatherMetric(fromAndroidPrefs prefs: [String: Any]) -> WeatherDisplayMetric {
+        if let selected = prefs["selectedOption"] as? String {
+            switch selected {
+            case "CURRENT_FEE_FIAT": return .fiatFee
+            case "CURRENT_FEE_SATS": return .satsFee
+            case "NEXT_BLOCK_INCLUSION": return .nextBlockFee
+            default: break
+            }
+        }
+
+        // Legacy fallback: older builds stored four booleans instead of an enum.
+        let showCurrentFee = prefs["showCurrentFee"] as? Bool ?? false
+        let showNextBlockFee = prefs["showNextBlockFee"] as? Bool ?? false
+        if showNextBlockFee && !showCurrentFee {
+            return .nextBlockFee
+        }
+        return .fiatFee
     }
 
     private static func getDefaultPricePreferences() -> [String: Any] {
         let defaults = PriceWidgetOptions()
-        let androidPairs = defaults.selectedPairs.map { pair in
-            pair.replacingOccurrences(of: "/", with: "_")
-        }
+        let androidPair = defaults.selectedPair.replacingOccurrences(of: "/", with: "_")
         let androidPeriod = convertIosPeriodToAndroid(defaults.selectedPeriod)
         return [
-            "enabledPairs": androidPairs.isEmpty ? ["BTC_USD"] : androidPairs,
+            "enabledPairs": [androidPair.isEmpty ? "BTC_USD" : androidPair],
             "period": androidPeriod,
-            "showSource": defaults.showSource,
         ]
     }
 

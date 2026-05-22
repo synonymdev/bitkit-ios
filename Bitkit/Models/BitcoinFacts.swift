@@ -1,26 +1,7 @@
 import Foundation
 
-/// Service for managing Bitcoin facts
-class FactsService {
-    static let shared = FactsService()
-
-    private init() {}
-
-    /// Returns a random Bitcoin fact
-    /// - Returns: A Bitcoin fact string
-    func getRandomFact() -> String {
-        return facts.randomElement()!
-    }
-
-    /// Returns all available Bitcoin facts
-    /// - Returns: Array of Bitcoin facts
-    func getAllFacts() -> [String] {
-        return facts
-    }
-
-    // MARK: - Private Properties
-
-    private let facts = [
+enum BitcoinFacts {
+    static let all = [
         "Satoshi Nakamoto mined more than 1M Bitcoin.",
         "You don't need permission to use Bitcoin.",
         "You don't need a bank account to use Bitcoin.",
@@ -36,7 +17,7 @@ class FactsService {
         "The largest transaction was 500,000 bitcoin.",
         "Bitcoin is legal tender in El Salvador.",
         "Not your keys, not your coins.",
-        "’Bitcoin’ is the network, ‘bitcoin’ is the currency.",
+        "'Bitcoin' is the network, 'bitcoin' is the currency.",
         "Bitcoin was not the first digital currency.",
         "Bitcoin was first created with 31,000 lines of code.",
         "Bitcoin does not have a CEO.",
@@ -48,10 +29,10 @@ class FactsService {
         "The identity of Bitcoin's inventor is unknown.",
         "If you lose your keys, you lose your coins.",
         "Bitcoins don't grow on trees.",
-        "There can only be 21 million bitcoins. ",
+        "There can only be 21 million bitcoins.",
         "Bitcoins are created when a block is mined.",
         "One bitcoin is 100,000,000 satoshis.",
-        "The smallest unit of Bitcoin is a “satoshi.”",
+        "The smallest unit of Bitcoin is a \"satoshi.\"",
         "Bitcoins live on the blockchain, not in wallets.",
         "You can hold keys, but you cannot hold bitcoin.",
         "Private keys allow you to sign transactions.",
@@ -84,7 +65,7 @@ class FactsService {
         "The genesis block reward is not spendable.",
         "You can count 1 day of blocks on 2 hands.",
         "There are enough sats for everyone.",
-        "More computing power ≠ more bitcoin.",
+        "More computing power != more bitcoin.",
         "Bitcoin doesn't need your personal info.",
         "Satoshi considered calling it Netcoin.",
     ]

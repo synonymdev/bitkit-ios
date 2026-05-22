@@ -630,7 +630,6 @@
 "settings__general__language_other" = "Langue de l'interface";
 "settings__widgets__nav_title" = "Widgets";
 "settings__widgets__showWidgets" = "Widgets";
-"settings__widgets__showWidgetTitles" = "Afficher les titres des widgets";
 "settings__notifications__nav_title" = "Paiements en arrière-plan";
 "settings__notifications__intro__title" = "Soyez rémunéré\n<accent>de manière passive</accent>";
 "settings__notifications__intro__text" = "Activez les notifications pour être payé, même lorsque votre application Bitkit est fermée.";
@@ -1161,7 +1160,6 @@
 "wallet__receive_insufficient_text" = "Capacité insuffisante pour recevoir ce montant en Lightning.";
 "wallet__receive_foreground_title" = "Garder Bitkit au premier plan";
 "wallet__receive_foreground_msg" = "Les paiements sur votre solde du compte courant peuvent échouer si vous passez d\'une application à l\'autre.";
-"widgets__widgets" = "Widgets";
 "widgets__onboarding__title" = "Bonjour, \n<accent>Widgets</accent>";
 "widgets__onboarding__description" = "Profitez des flux décentralisés de vos services web préférés en ajoutant des widgets amusants et utiles à votre portefeuille Bitkit.";
 "widgets__nav_title" = "Widgets";
@@ -1169,7 +1167,6 @@
 "widgets__widget__edit" = "Widget de Flux";
 "widgets__widget__edit_default" = "Défaut";
 "widgets__widget__edit_custom" = "Personnalisé";
-"widgets__widget__edit_description" = "Veuillez sélectionner les champs que vous souhaitez afficher dans le widget {name}.";
 "widgets__widget__source" = "Source";
 "widgets__add" = "Ajouter un widget";
 "widgets__delete__title" = "Supprimer le widget ?";
@@ -1190,11 +1187,14 @@
 "widgets__weather__name" = "Météo Bitcoin";
 "widgets__weather__description" = "Découvrez quel est le bon moment pour effectuer des transactions sur la blockchain Bitcoin.";
 "widgets__weather__condition__good__title" = "Conditions favorables";
-"widgets__weather__condition__good__description" = "Tout est clair. C\'est le bon moment pour effectuer des transactions sur la blockchain.";
+"widgets__weather__condition__good__description" = "C\'est le bon moment pour effectuer des transactions sur la blockchain.";
 "widgets__weather__condition__average__title" = "Conditions moyennes";
-"widgets__weather__condition__average__description" = "Les frais du bloc suivant sont proches des moyennes mensuelles.";
+"widgets__weather__condition__average__description" = "Les frais du bloc suivant sont proches des moyennes mensuelles et annuelles.";
 "widgets__weather__condition__poor__title" = "Mauvaises conditions";
-"widgets__weather__condition__poor__description" = "Si vous n\'êtes pas pressé d\'effectuer une transaction, il peut être préférable d\'attendre un peu.";
+"widgets__weather__condition__poor__description" = "Si vous n\'êtes pas pressé d\'effectuer une transaction, il peut être préférable d\'attendre.";
 "widgets__weather__current_fee" = "Frais moyen actuel";
 "widgets__weather__next_block" = "Inclusion dans le bloc suivant";
 "widgets__weather__error" = "Impossible d'obtenir les frais de transaction actuels";
+"widgets__weather__condition__good__short_title" = "Favorables";
+"widgets__weather__condition__average__short_title" = "Moyennes";
+"widgets__weather__condition__poor__short_title" = "Mauvaises";
