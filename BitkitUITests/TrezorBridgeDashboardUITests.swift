@@ -99,7 +99,12 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         app.buttons["TrezorDebugLogToggle"].tap()
         let debugEntries = app.otherElements["TrezorDebugLogEntries"]
         XCTAssertTrue(debugEntries.waitForExistence(timeout: 5))
-        let debugText = debugEntries.label.lowercased()
+        let debugLogEntries = app.staticTexts.matching(identifier: "TrezorDebugLogEntry")
+        XCTAssertGreaterThan(debugLogEntries.count, 0, "Expected visible debug log entries before checking redaction")
+        let debugText = (0 ..< debugLogEntries.count)
+            .map { debugLogEntries.element(boundBy: $0).label }
+            .joined(separator: "\n")
+            .lowercased()
         XCTAssertFalse(debugText.contains("all all all all"), "Debug log must not expose the deterministic mnemonic")
         XCTAssertFalse(debugText.contains("passphrase"), "Debug log must not expose passphrase payloads")
     }

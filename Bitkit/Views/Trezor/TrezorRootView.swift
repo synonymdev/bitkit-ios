@@ -568,6 +568,7 @@ struct TrezorDebugLogPanel: View {
                                     Text(entry)
                                         .font(.system(size: 10, design: .monospaced))
                                         .foregroundColor(.white.opacity(0.6))
+                                        .accessibilityIdentifier("TrezorDebugLogEntry")
                                         .id(index)
                                 }
                             }
