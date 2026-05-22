@@ -204,6 +204,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         quickpayAmount = 5
         enableNotifications = false
         enableNotificationsAmount = false
+        UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: "hasConfirmedPublicPaykitEndpoints")

@@ -3,6 +3,7 @@ import SwiftUI
 enum SendRoute: Hashable {
     case options
     case contact
+    case comingSoon
     case manual
     case amount
     case utxoSelection
@@ -294,6 +295,8 @@ struct SendSheet: View {
             SendOptionsView(navigationPath: $navigationPath)
         case .contact:
             SendContactSelectView(navigationPath: $navigationPath)
+        case .comingSoon:
+            SendComingSoonView()
         case .manual:
             SendEnterManuallyView(navigationPath: $navigationPath)
         case .amount:
@@ -333,5 +336,37 @@ struct SendSheet: View {
         case let .lnurlWithdrawFailure(amount):
             LnurlWithdrawFailure(amount: amount)
         }
+    }
+}
+
+private struct SendComingSoonView: View {
+    @EnvironmentObject private var sheets: SheetViewModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SheetHeader(title: t("coming_soon__nav_title"), showBackButton: true)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Image("stopwatch")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.bottom, 48)
+
+                DisplayText(t("coming_soon__headline"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                BodyMText(t("coming_soon__description"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 14)
+
+                CustomButton(title: t("coming_soon__button")) {
+                    sheets.hideSheet()
+                }
+                .padding(.top, 32)
+            }
+        }
+        .sheetBackground()
+        .padding(.horizontal, 16)
     }
 }

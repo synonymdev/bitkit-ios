@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct GeneralSettingsView: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
     @AppStorage(PublicPaykitService.lightningPaymentOptionEnabledKey) private var lightningPaymentOptionEnabled = true
     @AppStorage(PublicPaykitService.onchainPaymentOptionEnabledKey) private var onchainPaymentOptionEnabled = true
 
@@ -10,6 +11,10 @@ struct GeneralSettingsView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var tagManager: TagManager
     @StateObject private var languageManager = LanguageManager.shared
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -77,7 +82,7 @@ struct GeneralSettingsView: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("TransactionSpeedSettings")
 
-                if pubkyProfile.isAuthenticated {
+                if isPaykitUIActive, pubkyProfile.isAuthenticated {
                     NavigationLink(value: Route.paymentPreference) {
                         SettingsRow(
                             title: t("settings__adv__payment_preference"),

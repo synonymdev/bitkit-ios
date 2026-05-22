@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct Header: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
@@ -10,6 +12,10 @@ struct Header: View {
     /// Binding to widgets edit state; used when showWidgetEditButton is true.
     @Binding var isEditingWidgets: Bool
 
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
     init(showWidgetEditButton: Bool = false, isEditingWidgets: Binding<Bool> = .constant(false)) {
         self.showWidgetEditButton = showWidgetEditButton
         _isEditingWidgets = isEditingWidgets
@@ -17,7 +23,9 @@ struct Header: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
-            profileButton
+            if isPaykitUIActive {
+                profileButton
+            }
 
             Spacer()
 
@@ -65,7 +73,6 @@ struct Header: View {
         .padding(.trailing, 10)
     }
 
-    @ViewBuilder
     private var profileButton: some View {
         Button {
             if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
