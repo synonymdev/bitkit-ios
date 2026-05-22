@@ -5,7 +5,23 @@ struct WidgetEditItemView: View {
     let onToggle: () -> Void
 
     var body: some View {
-        let content = VStack(spacing: 0) {
+        switch item.type {
+        case .sectionHeader:
+            item.titleView
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 16)
+        case .staticItem:
+            row
+        case .toggleItem, .radioItem:
+            Button(action: onToggle) {
+                row
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    private var row: some View {
+        VStack(spacing: 8) {
             HStack(spacing: 16) {
                 item.titleView
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -17,24 +33,36 @@ struct WidgetEditItemView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
-                Image("check-mark")
-                    .resizable()
-                    .foregroundColor(item.isChecked ? .brandAccent : .gray3)
-                    .frame(width: 32, height: 32)
+                accessoryView
             }
-            .padding(.vertical, 16)
+            .frame(minHeight: 32)
             .contentShape(Rectangle())
 
-            Divider()
+            CustomDivider()
         }
+        .padding(.top, 8)
+    }
 
-        if item.type == .staticItem {
-            content
-        } else {
-            Button(action: onToggle) {
-                content
+    @ViewBuilder
+    private var accessoryView: some View {
+        switch item.type {
+        case .staticItem, .toggleItem:
+            Image("check-mark")
+                .resizable()
+                .foregroundColor(item.isChecked ? .brandAccent : .gray3)
+                .frame(width: 32, height: 32)
+        case .radioItem:
+            if item.isChecked {
+                Image("check-mark")
+                    .resizable()
+                    .foregroundColor(.brandAccent)
+                    .frame(width: 32, height: 32)
+            } else {
+                Color.clear
+                    .frame(width: 32, height: 32)
             }
-            .buttonStyle(PlainButtonStyle())
+        case .sectionHeader:
+            EmptyView()
         }
     }
 }

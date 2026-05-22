@@ -55,8 +55,7 @@ struct ConvertedAmount {
     }
 
     func formattedWithSymbol(withSpace: Bool = false) -> String {
-        let separator = withSpace ? " " : ""
-        return isSymbolSuffix ? "\(formatted)\(separator)\(symbol)" : "\(symbol)\(separator)\(formatted)"
+        formatFiatWithSymbol(formatted: formatted, symbol: symbol, currencyCode: currency, withSpace: withSpace)
     }
 
     struct BitcoinDisplayComponents {
@@ -87,6 +86,30 @@ struct ConvertedAmount {
 
 func isSuffixSymbolCurrency(_ currencyCode: String) -> Bool {
     suffixSymbolCurrencies.contains(currencyCode)
+}
+
+/// Formats a fiat amount the way the in-app currency display does: 2 fraction digits,
+/// "." decimal / "," grouping. Single source of truth shared by the app and the widget
+/// extension so both produce identical strings.
+func formatFiatAmount(_ value: Decimal) -> String {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.minimumFractionDigits = 2
+    formatter.maximumFractionDigits = 2
+    formatter.locale = Locale.current
+    formatter.decimalSeparator = "."
+    formatter.groupingSeparator = ","
+    return formatter.string(from: value as NSDecimalNumber) ?? "0.00"
+}
+
+/// Composes a formatted number with its currency symbol, honoring suffix-symbol currencies.
+/// Using the backend-provided symbol here (rather than a locale-derived one) keeps USD as
+/// "$" instead of the disambiguated "US$".
+func formatFiatWithSymbol(formatted: String, symbol: String, currencyCode: String, withSpace: Bool = false) -> String {
+    let separator = withSpace ? " " : ""
+    return isSuffixSymbolCurrency(currencyCode)
+        ? "\(formatted)\(separator)\(symbol)"
+        : "\(symbol)\(separator)\(formatted)"
 }
 
 private let suffixSymbolCurrencies: Set<String> = [

@@ -631,7 +631,6 @@
 "settings__general__language_other" = "Język interfejsu";
 "settings__widgets__nav_title" = "Widgety";
 "settings__widgets__showWidgets" = "Widgety";
-"settings__widgets__showWidgetTitles" = "Pokazuj tytuły widgetów";
 "settings__notifications__nav_title" = "Płatności w tle";
 "settings__notifications__intro__title" = "Otrzymuj płatności\n<accent>pasywnie</accent>";
 "settings__notifications__intro__text" = "Włącz powiadomienia, aby otrzymywać płatności, nawet gdy aplikacja Bitkit jest zamknięta.";
@@ -1162,7 +1161,6 @@
 "wallet__receive_insufficient_text" = "Niewystarczająca zdolność odbiorcza, aby otrzymać tę kwotę przez Lightning.";
 "wallet__receive_foreground_title" = "Zachowaj Bitkit na pierwszym planie";
 "wallet__receive_foreground_msg" = "Płatności na saldo wydatków mogą się nie powieść, jeśli przełączą się Państwo między aplikacjami.";
-"widgets__widgets" = "Widgety";
 "widgets__onboarding__title" = "Hej,\n<accent>Widgety</accent>";
 "widgets__onboarding__description" = "Korzystaj ze zdecentralizowanych kanałów swoich ulubionych usług internetowych, dodając do portfela Bitkit przydatne i interaktywne widgety.";
 "widgets__nav_title" = "Widgety";
@@ -1170,7 +1168,6 @@
 "widgets__widget__edit" = "Panel widgetów";
 "widgets__widget__edit_default" = "Domyślne";
 "widgets__widget__edit_custom" = "Własna";
-"widgets__widget__edit_description" = "Wybierz pola, które chcesz wyświetlić w widgecie {name}.";
 "widgets__widget__source" = "Źródło";
 "widgets__add" = "Dodaj widget";
 "widgets__delete__title" = "Usunąć widget?";
@@ -1191,11 +1188,14 @@
 "widgets__weather__name" = "Bitcoinowa Pogoda";
 "widgets__weather__description" = "Sprawdź, kiedy jest dobry moment na transakcję w sieci Bitcoin.";
 "widgets__weather__condition__good__title" = "Korzystne warunki";
-"widgets__weather__condition__good__description" = "Brak przeszkód. Teraz jest dobry moment na transakcję w sieci blockchain.";
+"widgets__weather__condition__good__description" = "Teraz jest dobry moment na transakcję w sieci blockchain.";
 "widgets__weather__condition__average__title" = "Średnie warunki";
-"widgets__weather__condition__average__description" = "Opłaty za następny blok są zbliżone do miesięcznych średnich.";
+"widgets__weather__condition__average__description" = "Opłaty za następny blok są zbliżone do miesięcznych i rocznych średnich.";
 "widgets__weather__condition__poor__title" = "Niekorzystne warunki";
-"widgets__weather__condition__poor__description" = "Jeśli nie musisz się spieszyć z transakcją, lepiej chwilę poczekać.";
+"widgets__weather__condition__poor__description" = "Jeśli nie musisz się spieszyć z transakcją, lepiej poczekać.";
 "widgets__weather__current_fee" = "Obecna średnia opłata";
 "widgets__weather__next_block" = "Włączenie do następnego bloku";
 "widgets__weather__error" = "Nie udało się pobrać aktualnych danych o opłatach";
+"widgets__weather__condition__good__short_title" = "Korzystne";
+"widgets__weather__condition__average__short_title" = "Średnie";
+"widgets__weather__condition__poor__short_title" = "Niekorzystne";
