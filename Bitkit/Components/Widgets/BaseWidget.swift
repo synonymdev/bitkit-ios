@@ -191,6 +191,7 @@ struct BaseWidget<Content: View>: View {
             }
         }
         .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifierIfPresent(isEditing ? nil : "\(type.rawValue.capitalized)Widget")
         .frame(maxWidth: .infinity)
         .padding((hasBackground || isEditing) ? 16 : 0)
