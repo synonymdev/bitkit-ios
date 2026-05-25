@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct Header: View {
+    @Environment(CalculatorInputManager.self) private var calculatorInput
+
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @EnvironmentObject var app: AppViewModel
@@ -33,12 +35,14 @@ struct Header: View {
                 AppStatus(
                     testID: "HeaderAppStatus",
                     onPress: {
+                        if dismissCalculatorIfNeeded() { return }
                         navigation.navigate(.appStatus)
                     }
                 )
 
                 if showWidgetEditButton {
                     Button(action: {
+                        if dismissCalculatorIfNeeded() { return }
                         isEditingWidgets.toggle()
                     }) {
                         Image(isEditingWidgets ? "check-mark" : "pencil")
@@ -53,6 +57,8 @@ struct Header: View {
                 }
 
                 Button {
+                    if dismissCalculatorIfNeeded() { return }
+
                     withAnimation {
                         app.showDrawer = true
                     }
@@ -75,6 +81,8 @@ struct Header: View {
 
     private var profileButton: some View {
         Button {
+            if dismissCalculatorIfNeeded() { return }
+
             if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
                 navigation.navigate(.profile)
             } else if pubkyProfile.initializationErrorMessage != nil {
@@ -101,6 +109,12 @@ struct Header: View {
         }
         .accessibilityLabel(pubkyProfile.displayName ?? t("profile__nav_title"))
         .accessibilityIdentifier("ProfileButton")
+    }
+
+    private func dismissCalculatorIfNeeded() -> Bool {
+        guard calculatorInput.isPresented else { return false }
+        calculatorInput.dismiss()
+        return true
     }
 
     @ViewBuilder

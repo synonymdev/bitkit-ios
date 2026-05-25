@@ -124,77 +124,74 @@ struct BaseWidget<Content: View>: View {
     }
 
     var body: some View {
-        Button {} label: {
-            VStack(spacing: 0) {
-                if isEditing {
-                    HStack {
-                        HStack(spacing: 16) {
-                            Image(metadata.icon)
-                                .resizable()
-                                .frame(width: 32, height: 32)
+        VStack(spacing: 0) {
+            if isEditing {
+                HStack {
+                    HStack(spacing: 16) {
+                        Image(metadata.icon)
+                            .resizable()
+                            .frame(width: 32, height: 32)
 
-                            BodyMSBText(truncate(metadata.name, 18))
-                                .lineLimit(1)
-                        }
+                        BodyMSBText(truncate(metadata.name, 18))
+                            .lineLimit(1)
+                    }
 
-                        Spacer()
+                    Spacer()
 
-                        // Action buttons when in edit mode
-                        if isEditing {
-                            HStack(spacing: 8) {
-                                // Delete button
-                                Button {
-                                    onDelete()
-                                } label: {
-                                    Image("trash")
-                                        .resizable()
-                                        .foregroundColor(.textPrimary)
-                                        .frame(width: 24, height: 24)
-                                }
-                                .frame(width: 32, height: 32)
-                                .contentShape(Rectangle())
-                                .accessibilityIdentifier("\(metadata.name)_WidgetActionDelete")
-
-                                // Edit button
-                                Button {
-                                    onEdit()
-                                } label: {
-                                    Image("gear-six")
-                                        .resizable()
-                                        .foregroundColor(.textPrimary)
-                                        .frame(width: 24, height: 24)
-                                }
-                                .frame(width: 32, height: 32)
-                                .contentShape(Rectangle())
-                                .accessibilityIdentifier("\(metadata.name)_WidgetActionEdit")
-
-                                Image("burger")
+                    // Action buttons when in edit mode
+                    if isEditing {
+                        HStack(spacing: 8) {
+                            // Delete button
+                            Button {
+                                onDelete()
+                            } label: {
+                                Image("trash")
                                     .resizable()
                                     .foregroundColor(.textPrimary)
                                     .frame(width: 24, height: 24)
-                                    .frame(width: 32, height: 32)
-                                    .contentShape(Rectangle())
-                                    .overlay {
-                                        Color.clear
-                                            .frame(width: 44, height: 44)
-                                            .contentShape(Rectangle())
-                                            .trackDragHandle()
-                                    }
-                                    .accessibilityIdentifier("\(metadata.name)_WidgetActionReorder")
                             }
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                            .accessibilityIdentifier("\(metadata.name)_WidgetActionDelete")
+
+                            // Edit button
+                            Button {
+                                onEdit()
+                            } label: {
+                                Image("gear-six")
+                                    .resizable()
+                                    .foregroundColor(.textPrimary)
+                                    .frame(width: 24, height: 24)
+                            }
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                            .accessibilityIdentifier("\(metadata.name)_WidgetActionEdit")
+
+                            Image("burger")
+                                .resizable()
+                                .foregroundColor(.textPrimary)
+                                .frame(width: 24, height: 24)
+                                .frame(width: 32, height: 32)
+                                .contentShape(Rectangle())
+                                .overlay {
+                                    Color.clear
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
+                                        .trackDragHandle()
+                                }
+                                .accessibilityIdentifier("\(metadata.name)_WidgetActionReorder")
                         }
                     }
                 }
-
-                // Widget content (only shown when not editing)
-                if !isEditing {
-                    content
-                }
             }
-            .contentShape(Rectangle())
+
+            // Widget content (only shown when not editing)
+            if !isEditing {
+                content
+            }
         }
-        .accessibilityIdentifier("\(type.rawValue.capitalized)Widget")
-        .buttonStyle(WidgetButtonStyle())
+        .contentShape(Rectangle())
+        .accessibilityIdentifierIfPresent(isEditing ? nil : "\(type.rawValue.capitalized)Widget")
         .frame(maxWidth: .infinity)
         .padding((hasBackground || isEditing) ? 16 : 0)
         .background((hasBackground || isEditing) ? Color.gray6 : Color.clear)
@@ -226,14 +223,6 @@ struct BaseWidget<Content: View>: View {
 
         let index = text.index(text.startIndex, offsetBy: maxLength - 3)
         return String(text[..<index]) + "..."
-    }
-}
-
-/// Custom button style for widgets
-struct WidgetButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.9 : 1.0)
     }
 }
 
