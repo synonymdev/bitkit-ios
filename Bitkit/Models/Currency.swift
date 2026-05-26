@@ -24,7 +24,7 @@ struct FxRate: Codable, Equatable {
     }
 }
 
-enum BitcoinDisplayUnit: String, CaseIterable {
+enum BitcoinDisplayUnit: String, CaseIterable, Codable {
     case modern
     case classic
 }

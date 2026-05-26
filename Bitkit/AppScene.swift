@@ -32,6 +32,7 @@ struct AppScene: View {
     @StateObject private var contactsManager = ContactsManager()
     @State private var keyboardManager = KeyboardManager()
     @State private var trezorViewModel = TrezorViewModel()
+    @State private var calculatorInputManager = CalculatorInputManager()
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -148,6 +149,7 @@ struct AppScene: View {
             .environmentObject(contactsManager)
             .environment(keyboardManager)
             .environment(trezorViewModel)
+            .environment(calculatorInputManager)
             .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     Task {

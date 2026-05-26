@@ -8,18 +8,38 @@ enum NumberPadType {
 
 struct NumberPad: View {
     let type: NumberPadType
+    let decimalSeparator: String
     let errorKey: String?
+    let onDeleteLongPress: (() -> Void)?
     let onPress: (String) -> Void
 
-    init(type: NumberPadType = .simple, errorKey: String? = nil, onPress: @escaping (String) -> Void) {
+    static var contentHeight: CGFloat {
+        buttonHeight * 4
+    }
+
+    private static var buttonHeight: CGFloat {
+        UIScreen.main.isSmall ? 65 : 44 + 34
+    }
+
+    init(
+        type: NumberPadType = .simple,
+        decimalSeparator: String = ".",
+        errorKey: String? = nil,
+        onDeleteLongPress: (() -> Void)? = nil,
+        onPress: @escaping (String) -> Void
+    ) {
         self.type = type
+        self.decimalSeparator = decimalSeparator
         self.errorKey = errorKey
+        self.onDeleteLongPress = onDeleteLongPress
         self.onPress = onPress
     }
 
-    private let buttonHeight: CGFloat = UIScreen.main.isSmall ? 65 : 44 + 34
     private let gridItems = Array(repeating: GridItem(.flexible(), spacing: 0), count: 3)
     private let numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    private var buttonHeight: CGFloat {
+        Self.buttonHeight
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,7 +79,7 @@ struct NumberPad: View {
                         }
                     case .decimal:
                         NumberPadButton(
-                            text: ".",
+                            text: decimalSeparator,
                             height: buttonHeight,
                             hasError: errorKey == ".",
                             testID: "NDecimal"
@@ -98,6 +118,13 @@ struct NumberPad: View {
                 .buttonStyle(NumberPadButtonStyle())
                 .accessibilityIdentifier("NRemove")
                 .frame(maxWidth: .infinity)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                        guard let onDeleteLongPress else { return }
+                        Haptics.play(.buttonTap)
+                        onDeleteLongPress()
+                    }
+                )
             }
         }
     }
