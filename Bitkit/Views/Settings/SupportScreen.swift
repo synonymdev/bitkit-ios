@@ -61,7 +61,7 @@ struct SupportScreen: View {
     }
 
     private var copyrightText: String {
-        let year = Calendar.current.component(.year, from: Date())
+        let year = Calendar(identifier: .gregorian).component(.year, from: Date())
         return t("settings__support__copyright", variables: ["year": "\(year)"])
     }
 
