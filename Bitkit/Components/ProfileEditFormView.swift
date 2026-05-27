@@ -109,7 +109,6 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     // MARK: - Pubky Key Section
 
-    @ViewBuilder
     private var pubkyKeySection: some View {
         VStack(spacing: 8) {
             CaptionMText(publicKeyLabel, textColor: .white64)
@@ -126,7 +125,6 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     // MARK: - Bio Section
 
-    @ViewBuilder
     private var bioSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("profile__create_bio_label"), textColor: .white64)
@@ -144,7 +142,6 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     // MARK: - Links Section
 
-    @ViewBuilder
     private var linksSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(links.indices, id: \.self) { index in
@@ -224,7 +221,6 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     // MARK: - Delete Section
 
-    @ViewBuilder
     private func deleteSection(label: String, action: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("profile__edit_delete_section"), textColor: .white64)
@@ -259,7 +255,6 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     // MARK: - Footnote Section
 
-    @ViewBuilder
     private func footnoteSection(_ note: String) -> some View {
         BodySText(note, textColor: .white64)
             .fixedSize(horizontal: false, vertical: true)
@@ -268,7 +263,6 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     // MARK: - Tags Section
 
-    @ViewBuilder
     private var tagsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !tags.isEmpty {
@@ -294,7 +288,6 @@ struct ProfileEditFormView<Avatar: View>: View {
         }
     }
 
-    @ViewBuilder
     private var footerBar: some View {
         VStack(spacing: 0) {
             LinearGradient(

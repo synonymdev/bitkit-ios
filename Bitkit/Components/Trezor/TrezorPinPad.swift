@@ -9,8 +9,8 @@ struct TrezorPinPad: View {
     /// Maximum PIN length
     var maxLength: Int = 9
 
-    // PIN pad layout (positions map to device keypad)
-    // The Trezor shows scrambled numbers, we show only position dots
+    /// PIN pad layout (positions map to device keypad)
+    /// The Trezor shows scrambled numbers, we show only position dots
     private let positions = [
         ["7", "8", "9"],
         ["4", "5", "6"],
@@ -63,13 +63,11 @@ struct TrezorPinPad: View {
     private func handleDigitTap(_ position: String) {
         guard pin.count < maxLength else { return }
         pin += position
-
     }
 
     private func handleDelete() {
         guard !pin.isEmpty else { return }
         pin.removeLast()
-
     }
 }
 

@@ -390,7 +390,7 @@ private struct SignedResultSectionView: View {
 
                     Button(action: {
                         UIPasteboard.general.string = signedTx.serializedTx
-    
+
                         copiedRawTx = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                             copiedRawTx = false

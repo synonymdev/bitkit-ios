@@ -558,11 +558,11 @@ private struct CalculatorWidePreview: View {
 
     private func hydrate() {
         let saved = CalculatorWidgetOptionsStore.load()
-        let bitcoinValue = CalculatorWidgetPreviewView.previewBitcoinValue(saved: saved, displayUnit: currency.displayUnit)
+        let bitcoinValue = Self.previewBitcoinValue(saved: saved, displayUnit: currency.displayUnit)
 
         values = CalculatorWidgetValues(
             bitcoinValue: bitcoinValue,
-            fiatValue: CalculatorWidgetPreviewView.previewFiatValue(saved: saved, recalculatedFiatValue: fiatValue(for: bitcoinValue)),
+            fiatValue: Self.previewFiatValue(saved: saved, recalculatedFiatValue: fiatValue(for: bitcoinValue)),
             displayUnit: currency.displayUnit,
             currencySymbol: currency.symbol,
             selectedCurrency: currency.selectedCurrency
@@ -575,5 +575,18 @@ private struct CalculatorWidePreview: View {
         if sats == 0 { return "0.00" }
         guard let converted = currency.convert(sats: sats) else { return "" }
         return CalculatorWidgetFormatter.fiatRawValue(from: converted.value)
+    }
+
+    private static func previewBitcoinValue(saved: CalculatorWidgetValues, displayUnit: BitcoinDisplayUnit) -> String {
+        guard !saved.bitcoinValue.isEmpty else { return "" }
+
+        let savedSats = CalculatorWidgetFormatter.bitcoinValueToSats(saved.bitcoinValue, displayUnit: saved.displayUnit)
+        return savedSats == 0
+            ? "0"
+            : CalculatorWidgetFormatter.satsToBitcoinValue(savedSats, displayUnit: displayUnit)
+    }
+
+    private static func previewFiatValue(saved: CalculatorWidgetValues, recalculatedFiatValue: String) -> String {
+        saved.shouldRefreshBitcoinFromFiat ? saved.fiatValue : recalculatedFiatValue
     }
 }

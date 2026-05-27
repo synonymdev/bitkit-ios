@@ -70,6 +70,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
 struct DrawerView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
     @State private var currentDragOffset: CGFloat = 0
@@ -96,14 +97,15 @@ struct DrawerView: View {
             .transition(.opacity)
     }
 
-    /// Route to push when selecting this drawer item (nil for Wallet = pop to root).
+    /// Route to push when selecting this drawer item (nil for Wallet = pop to root,
+    /// and also nil for `.widgets` when already onboarded — that case opens the sheet instead).
     private func route(for item: DrawerMenuItem) -> Route? {
         switch item {
         case .wallet: return nil
         case .activity: return .activityList
         case .contacts: return .contacts
         case .profile: return .profile
-        case .widgets: return app.hasSeenWidgetsIntro ? .widgetsList : .widgetsIntro
+        case .widgets: return app.hasSeenWidgetsIntro ? nil : .widgetsIntro
         case .shop: return app.hasSeenShopIntro ? .shopDiscover : .shopIntro
         case .support: return .support
         case .settings: return .settings
@@ -116,6 +118,10 @@ struct DrawerView: View {
             navigation.path = [route]
         } else {
             navigation.path = []
+        }
+        // After onboarding, the widgets drawer entry opens the widgets sheet instead of a route.
+        if item == .widgets, app.hasSeenWidgetsIntro {
+            sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .list))
         }
         closeMenu()
     }

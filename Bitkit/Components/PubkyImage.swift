@@ -31,7 +31,6 @@ struct PubkyImage: View {
         }
     }
 
-    @ViewBuilder
     private var placeholder: some View {
         Circle()
             .fill(Color.gray5)

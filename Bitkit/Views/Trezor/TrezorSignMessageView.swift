@@ -299,7 +299,6 @@ private struct SignedMessageResult: View {
                 UIPasteboard.general.string = response.signature
                 copiedSignature = true
 
-
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     copiedSignature = false
                 }

@@ -262,7 +262,6 @@ final class TrezorTransport: TrezorTransportCallback {
         return credential
     }
 
-
     // MARK: - Device Scanning Helpers
 
     /// Start scanning for BLE devices
@@ -279,7 +278,6 @@ final class TrezorTransport: TrezorTransportCallback {
     var bluetoothState: CBManagerState {
         bleManager.bluetoothState
     }
-
 }
 
 // MARK: - Transport Errors

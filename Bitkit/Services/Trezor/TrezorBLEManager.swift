@@ -137,7 +137,7 @@ class TrezorBLEManager: NSObject {
 
     // MARK: - Initialization
 
-    private override init() {
+    override private init() {
         super.init()
         // CBCentralManager is created lazily via ensureStarted() to avoid
         // triggering the BLE stack and permission dialogs at app launch.
@@ -308,7 +308,7 @@ class TrezorBLEManager: NSObject {
             }
         }
 
-        guard let peripheral = peripheral else {
+        guard let peripheral else {
             debugLog("Peripheral not found in cache or by UUID: \(path)")
             throw TrezorBLEError.deviceNotFound(path)
         }
@@ -533,7 +533,6 @@ class TrezorBLEManager: NSObject {
 
         throw lastError
     }
-
 }
 
 // MARK: - CBCentralManagerDelegate
@@ -679,7 +678,9 @@ struct DiscoveredBLEDevice: Identifiable, Equatable {
     let name: String?
     let identifier: UUID
 
-    var id: String { path }
+    var id: String {
+        path
+    }
 }
 
 /// Errors specific to BLE operations

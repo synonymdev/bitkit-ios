@@ -377,7 +377,6 @@ private struct CopyButton: View {
         UIPasteboard.general.string = address
         copied = true
 
-
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             copied = false
         }
