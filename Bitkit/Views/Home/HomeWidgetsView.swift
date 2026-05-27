@@ -22,6 +22,7 @@ struct HomeWidgetsView: View {
     @State private var focusedContentOffsetY: CGFloat = 0
     @State private var firstCalculatorTopPadding: CGFloat = 0
     @State private var numberPadFrame: CGRect?
+    @StateObject private var cellFrames = WidgetCellFrameStore()
 
     private static let focusAnimation = Animation.easeOut(duration: focusAnimationDuration)
     private static let focusAnimationDuration = 0.12
@@ -90,6 +91,10 @@ struct HomeWidgetsView: View {
                         }
                     }
                     .id(visibleWidgets.map(\.id))
+                    .onPreferenceChange(WidgetCellFramesPreferenceKey.self) { frames in
+                        cellFrames.frames = frames
+                    }
+                    .onDrop(of: [.utf8PlainText], delegate: WidgetReorderDropDelegate(host: self, cellFrames: cellFrames))
 
                     CustomButton(title: t("widgets__add"), variant: .tertiary) {
                         calculatorInput.dismiss()
@@ -362,7 +367,14 @@ struct HomeWidgetsView: View {
 
     private func cell(_ widget: Widget) -> some View {
         rowContent(widget)
-            .onDrop(of: [.utf8PlainText], delegate: WidgetReorderDropDelegate(target: widget, host: self))
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: WidgetCellFramesPreferenceKey.self,
+                        value: [WidgetCellFrame(type: widget.type, rect: proxy.frame(in: .global))]
+                    )
+                }
+            )
     }
 
     /// Reorder by resolved type. Returns `true` if anything moved.
@@ -413,11 +425,31 @@ struct HomeWidgetsView: View {
     }
 }
 
-/// Drop delegate that proposes `.move` to suppress the iOS "+" badge on the drag preview.
-/// Reads the dragged widget type from the text item provider and asks the host view to reorder.
+/// Captured frame of one widget cell in `.global` coordinates.
+struct WidgetCellFrame: Equatable {
+    let type: WidgetType
+    let rect: CGRect
+}
+
+/// PreferenceKey carrying every cell's frame up to the grid so the drop delegate can
+/// resolve which widget the drop landed nearest to (including drops that fall in the
+/// 16pt gap between cells).
+struct WidgetCellFramesPreferenceKey: PreferenceKey {
+    static var defaultValue: [WidgetCellFrame] = []
+    static func reduce(value: inout [WidgetCellFrame], nextValue: () -> [WidgetCellFrame]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
+/// Holds the latest set of cell frames so the (struct-based, value-type) `DropDelegate`
+/// can read them via reference without becoming stale.
+final class WidgetCellFrameStore: ObservableObject {
+    @Published var frames: [WidgetCellFrame] = []
+}
+
 private struct WidgetReorderDropDelegate: DropDelegate {
-    let target: Widget
     let host: HomeWidgetsView
+    let cellFrames: WidgetCellFrameStore
 
     func dropUpdated(info _: DropInfo) -> DropProposal? {
         DropProposal(operation: .move)
@@ -429,13 +461,32 @@ private struct WidgetReorderDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         guard let provider = info.itemProviders(for: [.utf8PlainText]).first else { return false }
+        let location = info.location
+        let frames = cellFrames.frames
+
         provider.loadObject(ofClass: NSString.self) { item, _ in
             guard let raw = item as? String, let sourceType = WidgetType(rawValue: raw) else { return }
+            guard let target = Self.targetType(at: location, in: frames) else { return }
             DispatchQueue.main.async {
-                host.reorder(from: sourceType, to: target.type)
+                host.reorder(from: sourceType, to: target)
             }
         }
         return true
+    }
+
+    /// Cell containing the point, or — if dropped in a gap — the cell with the smallest
+    /// distance from the drop point to the cell rect.
+    private static func targetType(at point: CGPoint, in frames: [WidgetCellFrame]) -> WidgetType? {
+        if let direct = frames.first(where: { $0.rect.contains(point) }) {
+            return direct.type
+        }
+        return frames.min(by: { distance(from: point, to: $0.rect) < distance(from: point, to: $1.rect) })?.type
+    }
+
+    private static func distance(from point: CGPoint, to rect: CGRect) -> CGFloat {
+        let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
+        let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
+        return sqrt(dx * dx + dy * dy)
     }
 }
 
