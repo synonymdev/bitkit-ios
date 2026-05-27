@@ -42,10 +42,25 @@ struct WidgetMetadata {
     }
 }
 
+// MARK: - Widget Size
+
+/// Display size for a widget on the home grid.
+/// `small` occupies a single grid column (half-width square); `wide` spans both columns.
+enum WidgetSize: String, Codable, CaseIterable {
+    case small
+    case wide
+}
+
 // MARK: - Widget Models
 
 struct Widget: Identifiable {
     let type: WidgetType
+    let size: WidgetSize
+
+    init(type: WidgetType, size: WidgetSize = .wide) {
+        self.type = type
+        self.size = size
+    }
 
     /// Use type as identifier since only one widget per type is allowed
     var id: WidgetType {
@@ -99,20 +114,36 @@ struct Widget: Identifiable {
 struct SavedWidget: Codable, Identifiable {
     let type: WidgetType
     let optionsData: Data?
+    let size: WidgetSize
 
     /// Use type as identifier since only one widget per type is allowed
     var id: WidgetType {
         type
     }
 
-    init(type: WidgetType, optionsData: Data? = nil) {
+    init(type: WidgetType, optionsData: Data? = nil, size: WidgetSize = .wide) {
         self.type = type
         self.optionsData = optionsData
+        self.size = size
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case optionsData
+        case size
+    }
+
+    /// v60 saved blobs have no `size` key — default missing values to `.wide`.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(WidgetType.self, forKey: .type)
+        optionsData = try container.decodeIfPresent(Data.self, forKey: .optionsData)
+        size = try container.decodeIfPresent(WidgetSize.self, forKey: .size) ?? .wide
     }
 
     /// Convert to Widget for UI
     func toWidget() -> Widget {
-        return Widget(type: type)
+        return Widget(type: type, size: size)
     }
 }
 
@@ -161,9 +192,11 @@ class WidgetsViewModel: ObservableObject {
 
     /// Default widgets for new installs and resets
     private static let defaultSavedWidgets: [SavedWidget] = [
-        SavedWidget(type: .suggestions),
-        SavedWidget(type: .price),
-        SavedWidget(type: .blocks),
+        SavedWidget(type: .suggestions, size: .wide),
+        SavedWidget(type: .price, size: .wide),
+        SavedWidget(type: .blocks, size: .small),
+        SavedWidget(type: .facts, size: .small),
+        SavedWidget(type: .news, size: .wide),
     ]
 
     init() {
@@ -178,15 +211,20 @@ class WidgetsViewModel: ObservableObject {
     }
 
     /// Save a new widget
-    func saveWidget(_ type: WidgetType) {
-        // Don't add duplicates
-        guard !isWidgetSaved(type) else { return }
-
-        if !savedWidgetsWithOptions.contains(where: { $0.type == type }) {
-            savedWidgetsWithOptions.append(SavedWidget(type: type))
+    func saveWidget(_ type: WidgetType, size: WidgetSize = .wide) {
+        if let index = savedWidgetsWithOptions.firstIndex(where: { $0.type == type }) {
+            let existing = savedWidgetsWithOptions[index]
+            guard existing.size != size else { return }
+            savedWidgetsWithOptions[index] = SavedWidget(type: type, optionsData: existing.optionsData, size: size)
+        } else {
+            savedWidgetsWithOptions.append(SavedWidget(type: type, size: size))
         }
         savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
         persistSavedWidgets()
+    }
+
+    func getSize(for type: WidgetType) -> WidgetSize {
+        savedWidgetsWithOptions.first(where: { $0.type == type })?.size ?? .wide
     }
 
     /// Delete a widget
@@ -238,10 +276,12 @@ class WidgetsViewModel: ObservableObject {
 
             // Find existing saved widget or create new one
             if let index = savedWidgetsWithOptions.firstIndex(where: { $0.type == type }) {
-                // Update existing widget with new options
+                // Update existing widget with new options — preserve the chosen size.
+                let existing = savedWidgetsWithOptions[index]
                 savedWidgetsWithOptions[index] = SavedWidget(
                     type: type,
-                    optionsData: optionsData
+                    optionsData: optionsData,
+                    size: existing.size
                 )
             } else {
                 // Create new saved widget with options
