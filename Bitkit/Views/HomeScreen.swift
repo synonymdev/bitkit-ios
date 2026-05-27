@@ -86,9 +86,19 @@ struct HomeScreen: View {
         .navigationBarHidden(true)
         .onAppear {
             TimedSheetManager.shared.onHomeScreenEntered()
+            consumeRequestedHomePage()
         }
         .onDisappear {
             TimedSheetManager.shared.onHomeScreenExited()
         }
+        .onChange(of: app.requestedHomePage) { _, _ in
+            consumeRequestedHomePage()
+        }
+    }
+
+    private func consumeRequestedHomePage() {
+        guard let requested = app.requestedHomePage else { return }
+        withAnimation { scrollPosition = requested }
+        app.requestedHomePage = nil
     }
 }

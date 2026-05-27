@@ -64,6 +64,10 @@ class AppViewModel: ObservableObject {
     /// Drawer menu
     @Published var showDrawer = false
 
+    /// One-shot signal asking `HomeScreen` to scroll to a specific page (0 = wallet, 1 = widgets).
+    /// `HomeScreen` consumes the value and clears it back to `nil`.
+    @Published var requestedHomePage: Int?
+
     /// Payment hashes for which we navigated to the pending screen.
     /// When payment succeeds/fails, we show toast and publish resolution so SendPendingScreen can navigate.
     private var pendingPaymentHashes: Set<String> = []
