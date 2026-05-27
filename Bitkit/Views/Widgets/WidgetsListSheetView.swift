@@ -3,27 +3,63 @@ import SwiftUI
 struct WidgetsListSheetView: View {
     @Binding var navigationPath: [WidgetsRoute]
 
-    private static let columns: [GridItem] = [
-        GridItem(.flexible(), spacing: 16),
-        GridItem(.flexible(), spacing: 16),
-    ]
-
     /// Widget types shown in the add-list, in display order. `suggestions` is system-managed and excluded.
     private static let listedTypes: [WidgetType] = [.price, .weather, .news, .blocks, .facts, .calculator]
+
+    private enum TileRow: Identifiable {
+        case wide(WidgetType)
+        case pair(WidgetType, WidgetType?)
+
+        var id: String {
+            switch self {
+            case let .wide(t): return "wide-\(t.rawValue)"
+            case let .pair(a, b): return "pair-\(a.rawValue)-\(b?.rawValue ?? "_")"
+            }
+        }
+    }
+
+    private var rows: [TileRow] {
+        var result: [TileRow] = []
+        var pending: WidgetType?
+        for type in Self.listedTypes {
+            if displaySize(for: type) == .wide {
+                if let p = pending {
+                    result.append(.pair(p, nil))
+                    pending = nil
+                }
+                result.append(.wide(type))
+            } else if let p = pending {
+                result.append(.pair(p, type))
+                pending = nil
+            } else {
+                pending = type
+            }
+        }
+        if let p = pending { result.append(.pair(p, nil)) }
+        return result
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: t("widgets__add"))
 
             ScrollView(showsIndicators: false) {
-                LazyVGrid(columns: Self.columns, spacing: 16) {
-                    ForEach(Self.listedTypes, id: \.rawValue) { type in
-                        tile(for: type)
-                            .gridCellColumns(displaySize(for: type) == .wide ? 2 : 1)
-                            .onTapGesture {
-                                navigationPath.append(.preview(type))
+                Grid(horizontalSpacing: 16, verticalSpacing: 16) {
+                    ForEach(rows) { row in
+                        GridRow {
+                            switch row {
+                            case let .wide(type):
+                                tappableTile(type)
+                                    .gridCellColumns(2)
+                            case let .pair(first, second):
+                                tappableTile(first)
+                                if let second {
+                                    tappableTile(second)
+                                } else {
+                                    Color.clear
+                                }
                             }
-                            .accessibilityIdentifier("WidgetListItem-\(type.rawValue)")
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -31,6 +67,12 @@ struct WidgetsListSheetView: View {
             }
         }
         .navigationBarHidden(true)
+    }
+
+    private func tappableTile(_ type: WidgetType) -> some View {
+        tile(for: type)
+            .onTapGesture { navigationPath.append(.preview(type)) }
+            .accessibilityIdentifier("WidgetListItem-\(type.rawValue)")
     }
 
     /// Display size each widget uses in the list grid (purely visual — not the saved size).

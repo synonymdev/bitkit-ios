@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WeatherWidget: View {
     var options: WeatherWidgetOptions = .init()
+    var size: WidgetSize = .wide
     var isEditing: Bool = false
     var onEditingEnd: (() -> Void)?
 
@@ -10,10 +11,12 @@ struct WeatherWidget: View {
 
     init(
         options: WeatherWidgetOptions = WeatherWidgetOptions(),
+        size: WidgetSize = .wide,
         isEditing: Bool = false,
         onEditingEnd: (() -> Void)? = nil
     ) {
         self.options = options
+        self.size = size
         self.isEditing = isEditing
         self.onEditingEnd = onEditingEnd
     }
@@ -21,6 +24,7 @@ struct WeatherWidget: View {
     var body: some View {
         BaseWidget(
             type: .weather,
+            size: size,
             isEditing: isEditing,
             onEditingEnd: onEditingEnd
         ) {
@@ -39,13 +43,22 @@ struct WeatherWidget: View {
         } else if viewModel.error != nil && viewModel.weatherData == nil {
             WidgetContentBuilder.errorView(t("widgets__weather__error"))
         } else if let data = viewModel.weatherData {
-            WeatherWidgetWideContent(
-                data: data,
-                metric: options.selectedMetric,
-                conditionTitle: t(data.condition.titleKey),
-                conditionDescription: t(data.condition.descriptionKey),
-                metricLabel: t(options.selectedMetric.labelKey)
-            )
+            if size == .small {
+                WeatherWidgetCompactContent(
+                    data: data,
+                    metric: options.selectedMetric,
+                    conditionTitle: t(data.condition.titleKey),
+                    metricLabel: t(options.selectedMetric.labelKey)
+                )
+            } else {
+                WeatherWidgetWideContent(
+                    data: data,
+                    metric: options.selectedMetric,
+                    conditionTitle: t(data.condition.titleKey),
+                    conditionDescription: t(data.condition.descriptionKey),
+                    metricLabel: t(options.selectedMetric.labelKey)
+                )
+            }
         }
     }
 }

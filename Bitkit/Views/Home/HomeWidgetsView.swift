@@ -6,6 +6,7 @@ struct HomeWidgetsView: View {
     @Environment(KeyboardManager.self) private var keyboard
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var widgets: WidgetsViewModel
@@ -70,16 +71,23 @@ struct HomeWidgetsView: View {
                             .frame(height: firstCalculatorTopPadding)
                     }
 
-                    DraggableList(
-                        visibleWidgets,
-                        id: \.id,
-                        enableDrag: isEditingWidgets && !calculatorInput.isPresented,
-                        itemHeight: 80,
-                        onReorder: { sourceIndex, destinationIndex in
-                            widgets.reorderWidgets(from: sourceIndex, to: destinationIndex)
+                    Grid(horizontalSpacing: 16, verticalSpacing: 16) {
+                        ForEach(gridRows) { row in
+                            GridRow {
+                                switch row {
+                                case let .wide(widget):
+                                    cell(widget)
+                                        .gridCellColumns(2)
+                                case let .pair(first, second):
+                                    cell(first)
+                                    if let second {
+                                        cell(second)
+                                    } else {
+                                        Color.clear
+                                    }
+                                }
+                            }
                         }
-                    ) { widget in
-                        rowContent(widget)
                     }
                     .id(visibleWidgets.map(\.id))
 
@@ -87,7 +95,7 @@ struct HomeWidgetsView: View {
                         calculatorInput.dismiss()
 
                         if app.hasSeenWidgetsIntro {
-                            navigation.navigate(.widgetsList)
+                            sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .list))
                         } else {
                             navigation.navigate(.widgetsIntro)
                         }
@@ -304,6 +312,71 @@ struct HomeWidgetsView: View {
         focusBottomY - (windowSafeAreaInsets.bottom > 0 ? windowSafeAreaInsets.bottom : 16)
     }
 
+    /// Resolved layout size for the grid. Calculator and suggestions are always wide
+    /// regardless of the value stored on `SavedWidget`.
+    private func displayedSize(for widget: Widget) -> WidgetSize {
+        switch widget.type {
+        case .calculator, .suggestions: return .wide
+        default: return widget.size
+        }
+    }
+
+    /// A logical row in the home grid — either a single wide widget spanning both columns,
+    /// or up to two small widgets paired side-by-side. Built by walking `visibleWidgets`
+    /// in order; the second slot of a `pair` is `nil` if a small widget has no neighbour.
+    private enum WidgetRow: Identifiable {
+        case wide(Widget)
+        case pair(Widget, Widget?)
+
+        var id: String {
+            switch self {
+            case let .wide(w): return "wide-\(w.id.rawValue)"
+            case let .pair(a, b): return "pair-\(a.id.rawValue)-\(b?.id.rawValue ?? "_")"
+            }
+        }
+    }
+
+    private var gridRows: [WidgetRow] {
+        var result: [WidgetRow] = []
+        var pendingSmall: Widget?
+
+        for widget in visibleWidgets {
+            if displayedSize(for: widget) == .wide {
+                if let pending = pendingSmall {
+                    result.append(.pair(pending, nil))
+                    pendingSmall = nil
+                }
+                result.append(.wide(widget))
+            } else if let pending = pendingSmall {
+                result.append(.pair(pending, widget))
+                pendingSmall = nil
+            } else {
+                pendingSmall = widget
+            }
+        }
+        if let pending = pendingSmall {
+            result.append(.pair(pending, nil))
+        }
+        return result
+    }
+
+    private func cell(_ widget: Widget) -> some View {
+        rowContent(widget)
+            .onDrop(of: [.utf8PlainText], delegate: WidgetReorderDropDelegate(target: widget, host: self))
+    }
+
+    /// Reorder by resolved type. Returns `true` if anything moved.
+    @discardableResult
+    fileprivate func reorder(from sourceType: WidgetType, to targetType: WidgetType) -> Bool {
+        guard sourceType != targetType,
+              let sourceIdx = widgets.savedWidgets.firstIndex(where: { $0.type == sourceType }),
+              let destIdx = widgets.savedWidgets.firstIndex(where: { $0.type == targetType })
+        else { return false }
+        widgets.reorderWidgets(from: sourceIdx, to: destIdx)
+        Haptics.notify(.success)
+        return true
+    }
+
     @ViewBuilder
     private func rowContent(_ widget: Widget) -> some View {
         if widget.type == .calculator {
@@ -337,6 +410,32 @@ struct HomeWidgetsView: View {
                 content
             }
         }
+    }
+}
+
+/// Drop delegate that proposes `.move` to suppress the iOS "+" badge on the drag preview.
+/// Reads the dragged widget type from the text item provider and asks the host view to reorder.
+private struct WidgetReorderDropDelegate: DropDelegate {
+    let target: Widget
+    let host: HomeWidgetsView
+
+    func dropUpdated(info _: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.utf8PlainText])
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let provider = info.itemProviders(for: [.utf8PlainText]).first else { return false }
+        provider.loadObject(ofClass: NSString.self) { item, _ in
+            guard let raw = item as? String, let sourceType = WidgetType(rawValue: raw) else { return }
+            DispatchQueue.main.async {
+                host.reorder(from: sourceType, to: target.type)
+            }
+        }
+        return true
     }
 }
 
