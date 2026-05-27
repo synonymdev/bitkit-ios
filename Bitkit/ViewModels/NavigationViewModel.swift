@@ -101,6 +101,7 @@ enum Route: Hashable {
     case ldkDebug
     case vssDebug
     case probingTool
+    case legacyRnRecovery
     case orders
     case logs
     case trezor

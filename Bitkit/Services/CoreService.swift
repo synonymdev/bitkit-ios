@@ -1916,6 +1916,62 @@ class UtilityService {
         self.coreService = coreService
     }
 
+    private func recoveryWalletCredentials(walletIndex: Int) throws -> (mnemonic: String, passphrase: String?) {
+        guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
+            throw AppError(message: "Mnemonic not found", debugMessage: "Unable to load mnemonic for wallet index \(walletIndex)")
+        }
+
+        let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+        return (mnemonic, passphrase)
+    }
+
+    func scanLegacyRnNativeSegwitRecoveryFunds(
+        walletIndex: Int = 0,
+        indexLimit: UInt32
+    ) async throws -> LegacyRnCloseRecoveryScanResult {
+        try await ServiceQueue.background(.core) {
+            let credentials = try self.recoveryWalletCredentials(walletIndex: walletIndex)
+            let electrumUrl = ElectrumConfigService().getCurrentServer().fullUrl
+
+            return try await scanLegacyRnNativeSegwitRecoveryFunds(
+                mnemonicPhrase: credentials.mnemonic,
+                network: Env.bitkitCoreNetwork,
+                electrumUrl: electrumUrl,
+                indexLimit: indexLimit,
+                bip39Passphrase: credentials.passphrase
+            )
+        }
+    }
+
+    func prepareLegacyRnNativeSegwitRecoverySweep(
+        destinationAddress: String,
+        feeRateSatsPerVbyte: UInt32?,
+        walletIndex: Int = 0,
+        indexLimit: UInt32
+    ) async throws -> LegacyRnCloseRecoverySweepPreview {
+        try await ServiceQueue.background(.core) {
+            let credentials = try self.recoveryWalletCredentials(walletIndex: walletIndex)
+            let electrumUrl = ElectrumConfigService().getCurrentServer().fullUrl
+
+            return try await prepareLegacyRnNativeSegwitRecoverySweep(
+                mnemonicPhrase: credentials.mnemonic,
+                network: Env.bitkitCoreNetwork,
+                electrumUrl: electrumUrl,
+                destinationAddress: destinationAddress,
+                feeRateSatsPerVbyte: feeRateSatsPerVbyte,
+                indexLimit: indexLimit,
+                bip39Passphrase: credentials.passphrase
+            )
+        }
+    }
+
+    func broadcastRawTx(txHex: String) async throws -> String {
+        try await ServiceQueue.background(.core) {
+            let electrumUrl = ElectrumConfigService().getCurrentServer().fullUrl
+            return try await onchainBroadcastRawTx(serializedTx: txHex, electrumUrl: electrumUrl)
+        }
+    }
+
     func getAccountAddresses(
         walletIndex: Int = 0,
         isChange: Bool? = nil,

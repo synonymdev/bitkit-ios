@@ -53,6 +53,14 @@ struct DevSettingsView: View {
                         SettingsRow(title: "Orders")
                     }
 
+                    SettingsSectionHeader("RECOVERY")
+                        .padding(.top, 16)
+
+                    NavigationLink(value: Route.legacyRnRecovery) {
+                        SettingsRow(title: "Legacy RN Close Recovery")
+                            .accessibilityIdentifier("LegacyRnRecovery")
+                    }
+
                     if PaykitFeatureFlags.isUIAvailable {
                         SettingsSectionHeader("PAYKIT")
                             .padding(.top, 16)
