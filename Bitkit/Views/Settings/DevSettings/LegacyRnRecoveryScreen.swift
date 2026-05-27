@@ -29,41 +29,43 @@ struct LegacyRnRecoveryScreen: View {
         parsedIndexLimit != nil && !isBusy
     }
 
+    private var hasResult: Bool {
+        scanResult != nil || sweepPreview != nil || broadcastTxid != nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: "Legacy RN Recovery")
                 .padding(.horizontal, 16)
 
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
-                    scanSection
+            if let broadcastTxid {
+                successPage(txid: broadcastTxid)
+            } else {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        scanSection
 
-                    if let errorMessage {
-                        messageSection(
-                            title: "Error",
-                            message: errorMessage,
-                            color: .redAccent
-                        )
-                    }
-
-                    if let broadcastTxid {
-                        successSection(txid: broadcastTxid)
-                    } else if let sweepPreview {
-                        previewSection(sweepPreview)
-                    } else if let scanResult {
-                        if scanResult.outputsCount == 0 {
+                        if let errorMessage {
                             messageSection(
-                                title: "No Funds Found",
-                                message: "No legacy RN native SegWit close outputs were found up to index \(indexLimit).",
-                                color: .textPrimary
+                                title: "Error",
+                                message: errorMessage,
+                                color: .redAccent
                             )
-                        } else {
-                            foundSection(scanResult)
+                        }
+
+                        if let sweepPreview {
+                            previewSection(sweepPreview)
+                        } else if let scanResult {
+                            if scanResult.outputsCount == 0 {
+                                noFundsSection
+                            } else {
+                                foundSection(scanResult)
+                            }
                         }
                     }
+                    .padding(.horizontal, 16)
+                    .bottomSafeAreaPadding()
                 }
-                .padding(.horizontal, 16)
-                .bottomSafeAreaPadding()
             }
         }
         .navigationBarHidden(true)
@@ -98,15 +100,17 @@ struct LegacyRnRecoveryScreen: View {
                 FootnoteText("Index limit")
             }
 
-            CustomButton(
-                title: "Scan",
-                isDisabled: !canScan,
-                isLoading: isScanning,
-                shouldExpand: true
-            ) {
-                await scan()
+            if !hasResult {
+                CustomButton(
+                    title: "Scan",
+                    isDisabled: !canScan,
+                    isLoading: isScanning,
+                    shouldExpand: true
+                ) {
+                    await scan()
+                }
+                .accessibilityIdentifier("LegacyRnRecoveryScan")
             }
-            .accessibilityIdentifier("LegacyRnRecoveryScan")
         }
     }
 
@@ -136,6 +140,34 @@ struct LegacyRnRecoveryScreen: View {
                 await prepareSweep()
             }
             .accessibilityIdentifier("LegacyRnRecoveryPrepare")
+
+            CustomButton(
+                title: "Scan Again",
+                variant: .secondary,
+                isDisabled: isBusy,
+                shouldExpand: true
+            ) {
+                await scan()
+            }
+        }
+    }
+
+    private var noFundsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            messageSection(
+                title: "No Funds Found",
+                message: "No legacy RN native SegWit close outputs were found up to index \(indexLimit).",
+                color: .textPrimary
+            )
+
+            CustomButton(
+                title: "Scan Again",
+                variant: .secondary,
+                isDisabled: isBusy,
+                shouldExpand: true
+            ) {
+                await scan()
+            }
         }
     }
 
@@ -192,6 +224,36 @@ struct LegacyRnRecoveryScreen: View {
         }
     }
 
+    private func successPage(txid: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+                    scanSection
+
+                    if let errorMessage {
+                        messageSection(
+                            title: "Error",
+                            message: errorMessage,
+                            color: .redAccent
+                        )
+                    }
+
+                    successSection(txid: txid)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
+            }
+
+            CustomButton(title: "Done", shouldExpand: true) {
+                dismiss()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+        }
+        .bottomSafeAreaPadding()
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
     private func successSection(txid: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             SettingsSectionHeader("SWEEP COMPLETE")
@@ -208,10 +270,6 @@ struct LegacyRnRecoveryScreen: View {
                 "The sweep transaction was broadcast. The funds will appear after the wallet syncs and the transaction confirms.",
                 textColor: .textSecondary
             )
-
-            CustomButton(title: "Done", shouldExpand: true) {
-                dismiss()
-            }
         }
     }
 
