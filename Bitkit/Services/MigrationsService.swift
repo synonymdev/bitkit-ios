@@ -1,6 +1,7 @@
 import BitkitCore
 import Foundation
 import Security
+import WidgetKit
 
 // MARK: - MMKV Parser
 
@@ -101,7 +102,6 @@ struct RNSettings: Codable {
     var enableQuickpay: Bool?
     var quickpayAmount: Int?
     var showWidgets: Bool?
-    var showWidgetTitles: Bool?
     var transactionSpeed: String?
     var customFeeRate: Int?
     var hideBalance: Bool?
@@ -270,23 +270,6 @@ private struct MigrationNewsWidgetOptions: Codable {
     var showSource: Bool
 }
 
-private struct MigrationBlocksWidgetOptions: Codable {
-    var height: Bool
-    var time: Bool
-    var date: Bool
-    var transactionCount: Bool
-    var size: Bool
-    var weight: Bool
-    var difficulty: Bool
-    var hash: Bool
-    var merkleRoot: Bool
-    var showSource: Bool
-}
-
-private struct MigrationFactsWidgetOptions: Codable {
-    var showSource: Bool
-}
-
 // MARK: - RN Migration Keys
 
 enum RNKeychainKey {
@@ -326,6 +309,29 @@ class MigrationsService: ObservableObject {
     static var shared = MigrationsService()
 
     private let fileManager = FileManager.default
+
+    private static let appGroupSuiteName = "group.bitkit"
+    private static let appGroupCurrencyKey = "home_screen_display_currency_code_v1"
+    private static let appGroupLanguageKey = "selectedLanguageCode"
+    private static let weatherWidgetKind = "BitkitWeatherWidget"
+
+    /// Mirrors the migrated display currency into the App Group and pokes the weather widget
+    /// timeline. Inlined here (rather than calling `WeatherCurrencyAppGroupStore` /
+    /// `WeatherHomeScreenWidgetOptionsStore`) because this file is also compiled into the
+    /// `BitkitTests` target, which doesn't pick up those helper files. Keys must match the
+    /// canonical helpers.
+    static func mirrorCurrencyToAppGroup(code: String) {
+        UserDefaults(suiteName: appGroupSuiteName)?.set(code, forKey: appGroupCurrencyKey)
+        WidgetCenter.shared.reloadTimelines(ofKind: weatherWidgetKind)
+    }
+
+    /// Mirrors the migrated language code into the App Group and reloads all widget timelines.
+    /// Same coupling-avoidance rationale as `mirrorCurrencyToAppGroup` above; the equivalent
+    /// canonical helper is `LanguageManager.mirrorToAppGroup(code:)`.
+    static func mirrorLanguageToAppGroup(code: String) {
+        UserDefaults(suiteName: appGroupSuiteName)?.set(code, forKey: appGroupLanguageKey)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
 
     private static let rnMigrationCompletedKey = "rnMigrationCompleted"
     private static let rnMigrationCheckedKey = "rnMigrationChecked"
@@ -1204,9 +1210,11 @@ extension MigrationsService {
 
         if let currency = settings.selectedCurrency {
             defaults.set(currency, forKey: "selectedCurrency")
+            Self.mirrorCurrencyToAppGroup(code: currency)
         }
         if let language = settings.selectedLanguage {
             defaults.set(language, forKey: "selectedLanguageCode")
+            Self.mirrorLanguageToAppGroup(code: language)
         }
         if let unit = settings.unit {
             let nativeValue = unit == "BTC" ? "Bitcoin" : "Fiat"
@@ -1238,9 +1246,6 @@ extension MigrationsService {
         }
         if let showWidgets = settings.showWidgets {
             defaults.set(showWidgets, forKey: "showWidgets")
-        }
-        if let showWidgetTitles = settings.showWidgetTitles {
-            defaults.set(showWidgetTitles, forKey: "showWidgetTitles")
         }
         if let speed = settings.transactionSpeed {
             defaults.set(speed, forKey: "defaultTransactionSpeed")
@@ -1962,31 +1967,15 @@ extension MigrationsService {
         let blocksPrefs = (widgetsDict["blocksPreferences"] as? [String: Any])
             ?? (widgetsDict["blocks"] as? [String: Any])
         if let prefs = blocksPrefs {
-            let options = MigrationBlocksWidgetOptions(
+            let options = BlocksWidgetOptions(
                 height: getBool(from: prefs, key: "height", fallbackKey: "showBlock", defaultValue: true),
                 time: getBool(from: prefs, key: "time", fallbackKey: "showTime", defaultValue: true),
                 date: getBool(from: prefs, key: "date", fallbackKey: "showDate", defaultValue: true),
-                transactionCount: getBool(from: prefs, key: "transactionCount", fallbackKey: "showTransactions", defaultValue: false),
-                size: getBool(from: prefs, key: "size", fallbackKey: "showSize", defaultValue: false),
-                weight: getBool(from: prefs, key: "weight", defaultValue: false),
-                difficulty: getBool(from: prefs, key: "difficulty", defaultValue: false),
-                hash: getBool(from: prefs, key: "hash", defaultValue: false),
-                merkleRoot: getBool(from: prefs, key: "merkleRoot", defaultValue: false),
-                showSource: getBool(from: prefs, key: "showSource", defaultValue: false)
+                transactionCount: getBool(from: prefs, key: "transactionCount", fallbackKey: "showTransactions", defaultValue: true),
+                size: getBool(from: prefs, key: "size", fallbackKey: "showSize", defaultValue: false)
             )
             if let data = try? JSONEncoder().encode(options) {
                 result["blocks"] = data
-            }
-        }
-
-        let factsPrefs = (widgetsDict["factsPreferences"] as? [String: Any])
-            ?? (widgetsDict["facts"] as? [String: Any])
-        if let prefs = factsPrefs {
-            let options = MigrationFactsWidgetOptions(
-                showSource: getBool(from: prefs, key: "showSource", defaultValue: false)
-            )
-            if let data = try? JSONEncoder().encode(options) {
-                result["facts"] = data
             }
         }
 

@@ -15,7 +15,6 @@ struct WidgetEditView: View {
 
     // View models for getting actual content
     @StateObject private var blocksViewModel = BlocksViewModel.shared
-    @StateObject private var factsViewModel = FactsViewModel.shared
     @StateObject private var newsViewModel = NewsViewModel.shared
     @StateObject private var priceViewModel = PriceViewModel.shared
     @StateObject private var weatherViewModel = WeatherViewModel.shared
@@ -34,12 +33,10 @@ struct WidgetEditView: View {
         return WidgetEditItemFactory.getItems(
             for: id,
             blocksViewModel: blocksViewModel,
-            factsViewModel: factsViewModel,
             newsViewModel: newsViewModel,
             priceDataByPeriod: priceViewModel.dataByPeriod,
             weatherViewModel: weatherViewModel,
             blocksOptions: editLogic.blocksOptions,
-            factsOptions: editLogic.factsOptions,
             newsOptions: editLogic.newsOptions,
             priceOptions: editLogic.priceOptions,
             weatherOptions: editLogic.weatherOptions
@@ -57,12 +54,9 @@ struct WidgetEditView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("widgets__widget__edit"))
-                .padding(.bottom, 16)
-
-            BodyMText(
-                t("widgets__widget__edit_description", variables: ["name": widget.name]),
-                textColor: .textSecondary
+            NavigationBar(
+                title: widget.name,
+                showMenuButton: true
             )
             .padding(.bottom, 16)
 
@@ -73,7 +67,7 @@ struct WidgetEditView: View {
                             item: item,
                             onToggle: { editLogic?.toggleOption(item) }
                         )
-                        .accessibilityIdentifier("WidgetEditField-\(item.key)")
+                        .accessibilityIdentifier("\(item.key)_setting_row")
                     }
                 }
                 .id(refreshTrigger) // Force refresh when refreshTrigger changes
@@ -107,6 +101,7 @@ struct WidgetEditView: View {
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             if editLogic == nil {
                 let logic = WidgetEditLogic(widgetType: id, widgetsViewModel: widgets)

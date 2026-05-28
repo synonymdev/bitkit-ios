@@ -24,12 +24,6 @@ struct WidgetsSettingsScreen: View {
                         testIdentifier: "ShowWidgets"
                     )
 
-                    SettingsRow(
-                        title: t("settings__widgets__showWidgetTitles"),
-                        toggle: $settings.showWidgetTitles,
-                        testIdentifier: "ShowWidgetTitles"
-                    )
-
                     SettingsSectionHeader(t("settings__widgets__section_reset"))
                         .padding(.top, 16)
 

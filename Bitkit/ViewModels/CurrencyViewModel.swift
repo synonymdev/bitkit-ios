@@ -12,7 +12,28 @@ class CurrencyViewModel: ObservableObject {
     @Published private(set) var error: Error?
     @Published private(set) var hasStaleData: Bool = false
     @Published private(set) var isRefreshing = false
-    @AppStorage("selectedCurrency") var selectedCurrency: String = "USD"
+
+    private static let selectedCurrencyKey = "selectedCurrency"
+
+    /// User's display currency. Backed by `UserDefaults.standard` (preserves existing
+    /// `@AppStorage` semantics) and mirrored into the App Group so the WidgetKit extension
+    /// can format its own fiat strings on cold-fetch fallbacks.
+    var selectedCurrency: String {
+        get {
+            UserDefaults.standard.string(forKey: Self.selectedCurrencyKey) ?? "USD"
+        }
+        set {
+            guard newValue != selectedCurrency else { return }
+            objectWillChange.send()
+            UserDefaults.standard.set(newValue, forKey: Self.selectedCurrencyKey)
+            syncDisplayCurrencyToAppGroup()
+
+            WeatherViewModel.shared.setCurrencyViewModel(self)
+            WeatherViewModel.shared.handleCurrencyChange()
+            WeatherHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+        }
+    }
+
     @AppStorage("bitcoinDisplayUnit") var displayUnit: BitcoinDisplayUnit = .modern
     @AppStorage("primaryDisplay") var primaryDisplay: PrimaryDisplay = .bitcoin
 
@@ -28,6 +49,9 @@ class CurrencyViewModel: ObservableObject {
         if let cachedRates = currencyService.loadCachedRates() {
             rates = cachedRates
         }
+
+        // Ensure the widget extension sees the current display currency on first launch.
+        syncDisplayCurrencyToAppGroup()
 
         startPolling()
     }
@@ -50,6 +74,7 @@ class CurrencyViewModel: ObservableObject {
             lastSuccessfulRefresh = Date()
             error = nil
             hasStaleData = false
+            syncDisplayCurrencyToAppGroup()
         } catch {
             self.error = error
             Logger.error(error, context: "Currency rates refresh failed")
@@ -92,6 +117,10 @@ class CurrencyViewModel: ObservableObject {
 
     func togglePrimaryDisplay() {
         primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
+    }
+
+    private func syncDisplayCurrencyToAppGroup() {
+        WeatherCurrencyAppGroupStore.save(code: selectedCurrency, symbol: symbol)
     }
 }
 

@@ -1,10 +1,28 @@
 import SwiftUI
 
+// MARK: - GraphPeriod display
+
+extension GraphPeriod {
+    /// Full-word label shown in the Price edit screen (Day / Week / Month / Year).
+    /// The widget itself uses `rawValue` ("1D"/...) per Figma v61.
+    var editScreenLabel: String {
+        switch self {
+        case .oneDay: return t("widgets__price__period_day")
+        case .oneWeek: return t("widgets__price__period_week")
+        case .oneMonth: return t("widgets__price__period_month")
+        case .oneYear: return t("widgets__price__period_year")
+        }
+    }
+}
+
 // MARK: - Widget Edit Item Models
 
 enum WidgetItemType {
     case toggleItem
+    case radioItem
     case staticItem
+    /// Non-tappable section header (uppercase caption above a group of items).
+    case sectionHeader
 }
 
 struct WidgetEditItem {
@@ -51,234 +69,43 @@ enum WidgetEditItemFactory {
     ) -> [WidgetEditItem] {
         var items: [WidgetEditItem] = []
 
-        if let data = blocksViewModel.blockData {
-            items.append(
-                WidgetEditItem(
-                    key: "height",
-                    type: .toggleItem,
-                    title: "Block",
-                    value: data.height,
-                    isChecked: blocksOptions.height
-                )
-            )
+        items.append(sectionHeaderItem(key: "blocks_data_header", title: t("widgets__blocks__data_header")))
 
-            items.append(
-                WidgetEditItem(
-                    key: "time",
-                    type: .toggleItem,
-                    title: "Time",
-                    value: data.time,
-                    isChecked: blocksOptions.time
-                )
-            )
+        let fallback: [BlocksWidgetField: String] = [
+            .height: "870,123",
+            .time: "2:45:30 PM",
+            .date: "Dec 15, 2024",
+            .transactionCount: "3,456",
+            .size: "1,234 KB",
+            .fees: "25,059,357",
+        ]
 
-            items.append(
-                WidgetEditItem(
-                    key: "date",
-                    type: .toggleItem,
-                    title: "Date",
-                    value: data.date,
-                    isChecked: blocksOptions.date
-                )
-            )
+        for field in BlocksWidgetField.allCases {
+            let value: String = {
+                if let data = blocksViewModel.blockData { return field.value(from: data) }
+                return fallback[field] ?? ""
+            }()
 
-            items.append(
-                WidgetEditItem(
-                    key: "transactionCount",
-                    type: .toggleItem,
-                    title: "Transactions",
-                    value: data.transactionCount,
-                    isChecked: blocksOptions.transactionCount
-                )
+            let titleView = AnyView(
+                HStack(spacing: 8) {
+                    Image(field.iconName)
+                        .resizable()
+                        .renderingMode(.template)
+                        .foregroundColor(.brandAccent)
+                        .frame(width: 20, height: 20)
+                    BodyMText(field.label, textColor: .white80)
+                }
             )
-
             items.append(
                 WidgetEditItem(
-                    key: "size",
+                    key: field.rawValue,
                     type: .toggleItem,
-                    title: "Size",
-                    value: data.size,
-                    isChecked: blocksOptions.size
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "weight",
-                    type: .toggleItem,
-                    title: "Weight",
-                    value: data.weight,
-                    isChecked: blocksOptions.weight
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "difficulty",
-                    type: .toggleItem,
-                    title: "Difficulty",
-                    value: data.difficulty,
-                    isChecked: blocksOptions.difficulty
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "hash",
-                    type: .toggleItem,
-                    title: "Hash",
-                    value: data.hash,
-                    isChecked: blocksOptions.hash
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "merkleRoot",
-                    type: .toggleItem,
-                    title: "Merkle Root",
-                    value: data.merkleRoot,
-                    isChecked: blocksOptions.merkleRoot
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showSource",
-                    type: .toggleItem,
-                    title: t("widgets__widget__source"),
-                    valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
-                    isChecked: blocksOptions.showSource
-                )
-            )
-        } else {
-            // Fallback when no data is available
-            items.append(
-                WidgetEditItem(
-                    key: "height",
-                    type: .toggleItem,
-                    title: "Block",
-                    value: "870,123",
-                    isChecked: blocksOptions.height
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "time",
-                    type: .toggleItem,
-                    title: "Time",
-                    value: "2:45:30 PM",
-                    isChecked: blocksOptions.time
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "date",
-                    type: .toggleItem,
-                    title: "Date",
-                    value: "Dec 15, 2024",
-                    isChecked: blocksOptions.date
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "transactionCount",
-                    type: .toggleItem,
-                    title: "Transactions",
-                    value: "3,456",
-                    isChecked: blocksOptions.transactionCount
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "size",
-                    type: .toggleItem,
-                    title: "Size",
-                    value: "1,234 KB",
-                    isChecked: blocksOptions.size
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "weight",
-                    type: .toggleItem,
-                    title: "Weight",
-                    value: "3.45 MWU",
-                    isChecked: blocksOptions.weight
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "difficulty",
-                    type: .toggleItem,
-                    title: "Difficulty",
-                    value: "102.45 T",
-                    isChecked: blocksOptions.difficulty
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "hash",
-                    type: .toggleItem,
-                    title: "Hash",
-                    value: "00000000000000000002a7c4c1e48d76c5a37902165a270156b7a8d72728a054",
-                    isChecked: blocksOptions.hash
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "merkleRoot",
-                    type: .toggleItem,
-                    title: "Merkle Root",
-                    value: "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b",
-                    isChecked: blocksOptions.merkleRoot
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showSource",
-                    type: .toggleItem,
-                    title: t("widgets__widget__source"),
-                    valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
-                    isChecked: blocksOptions.showSource
+                    titleView: titleView,
+                    valueView: AnyView(BodyMSBText(value)),
+                    isChecked: field.isEnabled(in: blocksOptions)
                 )
             )
         }
-
-        return items
-    }
-
-    @MainActor
-    static func getFactsItems(factsViewModel: FactsViewModel, factsOptions: FactsWidgetOptions) -> [WidgetEditItem] {
-        var items: [WidgetEditItem] = []
-
-        items.append(
-            WidgetEditItem(
-                key: "showTitle",
-                type: .staticItem,
-                titleView: AnyView(TitleText(factsViewModel.fact)),
-                isChecked: true
-            )
-        )
-
-        items.append(
-            WidgetEditItem(
-                key: "showSource",
-                type: .toggleItem,
-                title: t("widgets__widget__source"),
-                valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
-                isChecked: factsOptions.showSource
-            )
-        )
 
         return items
     }
@@ -290,24 +117,16 @@ enum WidgetEditItemFactory {
     ) -> [WidgetEditItem] {
         var items: [WidgetEditItem] = []
 
-        if let data = newsViewModel.widgetData {
-            items.append(
-                WidgetEditItem(
-                    key: "showDate",
-                    type: .toggleItem,
-                    titleView: AnyView(BodyMText(data.timeAgo, textColor: .textPrimary)),
-                    valueView: nil,
-                    isChecked: newsOptions.showDate
-                )
-            )
+        items.append(sectionHeaderItem(key: "news_content_header", title: t("widgets__news__content_header")))
 
+        if let data = newsViewModel.widgetData {
             items.append(
                 WidgetEditItem(
                     key: "showTitle",
                     type: .staticItem,
                     titleView: AnyView(TitleText(data.title)),
                     valueView: nil,
-                    isChecked: true // Static items are always shown
+                    isChecked: true
                 )
             )
 
@@ -315,30 +134,30 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showSource",
                     type: .toggleItem,
-                    title: t("widgets__widget__source"),
-                    valueView: AnyView(BodySSBText(data.publisher, textColor: .textSecondary)),
+                    titleView: AnyView(BodySSBText(data.publisher, textColor: .brandAccent)),
+                    valueView: nil,
                     isChecked: newsOptions.showSource
+                )
+            )
+
+            items.append(
+                WidgetEditItem(
+                    key: "showDate",
+                    type: .toggleItem,
+                    titleView: AnyView(BodySSBText(data.timeAgo, textColor: .textSecondary)),
+                    valueView: nil,
+                    isChecked: newsOptions.showDate
                 )
             )
         } else {
             // Fallback when no data is available
             items.append(
                 WidgetEditItem(
-                    key: "showDate",
-                    type: .toggleItem,
-                    titleView: AnyView(BodyMText("13 hours ago", textColor: .textPrimary)),
-                    valueView: nil,
-                    isChecked: newsOptions.showDate
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
                     key: "showTitle",
                     type: .staticItem,
-                    titleView: AnyView(TitleText("Exodus Launches XO Pay, An In-App Bitcoin And Crypto Purchase Solution")),
+                    titleView: AnyView(TitleText("How Bitcoin changed El Salvador in more ways...")),
                     valueView: nil,
-                    isChecked: true // Static items are always shown
+                    isChecked: true
                 )
             )
 
@@ -346,9 +165,19 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showSource",
                     type: .toggleItem,
-                    title: t("widgets__widget__source"),
-                    valueView: AnyView(BodySSBText("Bitcoin Magazine", textColor: .textSecondary)),
+                    titleView: AnyView(BodySSBText("bitcoinmagazine.com", textColor: .brandAccent)),
+                    valueView: nil,
                     isChecked: newsOptions.showSource
+                )
+            )
+
+            items.append(
+                WidgetEditItem(
+                    key: "showDate",
+                    type: .toggleItem,
+                    titleView: AnyView(BodySSBText("1 min ago", textColor: .textSecondary)),
+                    valueView: nil,
+                    isChecked: newsOptions.showDate
                 )
             )
         }
@@ -357,66 +186,60 @@ enum WidgetEditItemFactory {
     }
 
     @MainActor
-    static func getPriceItems(priceOptions: PriceWidgetOptions, priceDataByPeriod: [GraphPeriod: [PriceData]] = [:]) -> [WidgetEditItem] {
+    static func getPriceItems(priceOptions: PriceWidgetOptions, priceDataByPeriod _: [GraphPeriod: [PriceData]] = [:]) -> [WidgetEditItem] {
         var items: [WidgetEditItem] = []
 
-        // Trading pair options with live or fallback prices
-        let fallbackPrices = ["$ 43,250", "€ 39,850", "£ 34,120", "¥ 6,245,000"]
+        // CURRENCY section (single-select)
+        items.append(sectionHeaderItem(key: "currency_header", title: t("widgets__price__currency")))
 
-        // Use current period data for trading pair prices
-        let currentPeriodData = priceDataByPeriod[priceOptions.selectedPeriod] ?? []
-
-        for (index, pair) in tradingPairNames.enumerated() {
-            // Try to find live data for this pair
-            let livePrice = currentPeriodData.first { $0.name == pair }?.price ?? fallbackPrices[index]
-
+        let selectedPair = priceOptions.selectedPair
+        for pair in tradingPairNames {
+            let isSelected = selectedPair == pair
             items.append(
                 WidgetEditItem(
                     key: pair,
-                    type: .toggleItem,
-                    title: pair,
-                    value: livePrice,
-                    isChecked: priceOptions.selectedPairs.contains(pair)
+                    type: .radioItem,
+                    titleView: AnyView(
+                        BodySSBText(pair, textColor: isSelected ? .textPrimary : .textSecondary)
+                    ),
+                    valueView: nil,
+                    isChecked: isSelected
                 )
             )
         }
 
-        // Period selection (radio group) with charts
-        let periods: [GraphPeriod] = [.oneDay, .oneWeek, .oneMonth, .oneYear]
+        items.append(sectionHeaderItem(key: "timeframe_header", title: t("widgets__price__timeframe"), topInset: 16))
 
-        for period in periods {
-            // Get data for this specific period
-            let periodData = priceDataByPeriod[period] ?? []
-            let firstPairData = periodData.first
-
+        for period in GraphPeriod.allCases {
+            let isSelected = priceOptions.selectedPeriod == period
             items.append(
                 WidgetEditItem(
                     key: period.rawValue,
-                    type: .toggleItem,
+                    type: .radioItem,
                     titleView: AnyView(
-                        PriceChart(
-                            values: firstPairData?.pastValues ?? [],
-                            isPositive: firstPairData?.change.isPositive ?? true,
-                            period: period.rawValue
-                        )
+                        BodySSBText(period.editScreenLabel, textColor: isSelected ? .textPrimary : .textSecondary)
                     ),
                     valueView: nil,
-                    isChecked: priceOptions.selectedPeriod == period
+                    isChecked: isSelected
                 )
             )
         }
 
-        items.append(
-            WidgetEditItem(
-                key: "showSource",
-                type: .toggleItem,
-                title: t("widgets__widget__source"),
-                valueView: AnyView(BodySSBText("Bitfinex.com", textColor: .textSecondary)),
-                isChecked: priceOptions.showSource
-            )
-        )
-
         return items
+    }
+
+    private static func sectionHeaderItem(key: String, title: String, topInset: CGFloat = 0) -> WidgetEditItem {
+        WidgetEditItem(
+            key: key,
+            type: .sectionHeader,
+            titleView: AnyView(
+                CaptionMText(title, textColor: .textSecondary)
+                    .textCase(.uppercase)
+                    .padding(.top, topInset)
+            ),
+            valueView: nil,
+            isChecked: false
+        )
     }
 
     @MainActor
@@ -426,85 +249,35 @@ enum WidgetEditItemFactory {
     ) -> [WidgetEditItem] {
         var items: [WidgetEditItem] = []
 
-        if let data = weatherViewModel.weatherData {
-            items.append(
-                WidgetEditItem(
-                    key: "showStatus",
-                    type: .toggleItem,
-                    titleView: AnyView(TitleText(data.condition.title)),
-                    valueView: AnyView(Text(data.condition.icon).font(.system(size: 52))),
-                    isChecked: weatherOptions.showStatus
-                )
+        items.append(sectionHeaderItem(key: "weather_display_header", title: t("widgets__widget__display")))
+
+        let data = weatherViewModel.weatherData
+
+        for metric in WeatherDisplayMetric.allCases {
+            let isSelected = weatherOptions.selectedMetric == metric
+            let value = data.map { metric.value(from: $0) } ?? metric.fallbackPreviewValue
+            let labelText = t(metric.labelKey)
+
+            let titleView = AnyView(
+                VStack(alignment: .leading, spacing: 4) {
+                    CaptionMText(labelText, textColor: .textSecondary)
+                        .textCase(.uppercase)
+                    Text(value)
+                        .font(Fonts.bold(size: 30))
+                        .foregroundColor(.greenAccent)
+                        .kerning(-1)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
             )
 
             items.append(
                 WidgetEditItem(
-                    key: "showText",
-                    type: .toggleItem,
-                    titleView: AnyView(BodyMText(data.condition.description, textColor: .textPrimary)),
+                    key: metric.rawValue,
+                    type: .radioItem,
+                    titleView: titleView,
                     valueView: nil,
-                    isChecked: weatherOptions.showText
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showMedian",
-                    type: .toggleItem,
-                    title: t("widgets__weather__current_fee"),
-                    value: data.currentFee,
-                    isChecked: weatherOptions.showMedian
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showNextBlockFee",
-                    type: .toggleItem,
-                    title: t("widgets__weather__next_block"),
-                    value: "\(data.nextBlockFee) ₿/vByte",
-                    isChecked: weatherOptions.showNextBlockFee
-                )
-            )
-        } else {
-            // Fallback when no data is available
-            items.append(
-                WidgetEditItem(
-                    key: "showStatus",
-                    type: .toggleItem,
-                    titleView: AnyView(TitleText("Good")),
-                    valueView: AnyView(Text("☀️").font(.system(size: 30))),
-                    isChecked: weatherOptions.showStatus
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showText",
-                    type: .toggleItem,
-                    titleView: AnyView(BodyMText("Fees are low and transactions are fast", textColor: .textPrimary)),
-                    valueView: nil,
-                    isChecked: weatherOptions.showText
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showMedian",
-                    type: .toggleItem,
-                    title: t("widgets__weather__current_fee"),
-                    value: "$0.50",
-                    isChecked: weatherOptions.showMedian
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showNextBlockFee",
-                    type: .toggleItem,
-                    title: t("widgets__weather__next_block"),
-                    value: "15 ₿/vByte",
-                    isChecked: weatherOptions.showNextBlockFee
+                    isChecked: isSelected
                 )
             )
         }
@@ -516,12 +289,10 @@ enum WidgetEditItemFactory {
     static func getItems(
         for widgetType: WidgetType,
         blocksViewModel: BlocksViewModel,
-        factsViewModel: FactsViewModel,
         newsViewModel: NewsViewModel,
         priceDataByPeriod: [GraphPeriod: [PriceData]] = [:],
         weatherViewModel: WeatherViewModel,
         blocksOptions: BlocksWidgetOptions,
-        factsOptions: FactsWidgetOptions,
         newsOptions: NewsWidgetOptions,
         priceOptions: PriceWidgetOptions,
         weatherOptions: WeatherWidgetOptions
@@ -529,15 +300,13 @@ enum WidgetEditItemFactory {
         switch widgetType {
         case .blocks:
             return getBlocksItems(blocksViewModel: blocksViewModel, blocksOptions: blocksOptions)
-        case .facts:
-            return getFactsItems(factsViewModel: factsViewModel, factsOptions: factsOptions)
         case .news:
             return getNewsItems(newsViewModel: newsViewModel, newsOptions: newsOptions)
         case .price:
             return getPriceItems(priceOptions: priceOptions, priceDataByPeriod: priceDataByPeriod)
         case .weather:
             return getWeatherItems(weatherViewModel: weatherViewModel, weatherOptions: weatherOptions)
-        case .calculator, .suggestions:
+        case .calculator, .suggestions, .facts:
             return []
         }
     }

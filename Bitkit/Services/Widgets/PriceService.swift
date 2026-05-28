@@ -2,13 +2,6 @@ import Foundation
 
 // MARK: - Data Models
 
-public struct TradingPair {
-    public let name: String
-    public let base: String
-    public let quote: String
-    public let symbol: String
-}
-
 struct PriceResponse: Codable {
     let price: Double
     let timestamp: Double
@@ -38,25 +31,6 @@ struct CandleResponse: Codable {
     let volume: Double
 }
 
-struct PriceChange {
-    let isPositive: Bool
-    let formatted: String
-}
-
-struct PriceData {
-    let name: String
-    let change: PriceChange
-    let price: String
-    let pastValues: [Double]
-}
-
-enum GraphPeriod: String, CaseIterable, Codable {
-    case oneDay = "1D"
-    case oneWeek = "1W"
-    case oneMonth = "1M"
-    case oneYear = "1Y"
-}
-
 enum PriceServiceError: Error {
     case invalidURL
     case invalidPair
@@ -65,66 +39,11 @@ enum PriceServiceError: Error {
     case noPriceDataAvailable
 }
 
-// MARK: - Trading Pairs Constants
-
-public let tradingPairs: [TradingPair] = [
-    TradingPair(name: "BTC/USD", base: "BTC", quote: "USD", symbol: "$"),
-    TradingPair(name: "BTC/EUR", base: "BTC", quote: "EUR", symbol: "€"),
-    TradingPair(name: "BTC/GBP", base: "BTC", quote: "GBP", symbol: "£"),
-    TradingPair(name: "BTC/JPY", base: "BTC", quote: "JPY", symbol: "¥"),
-]
-
-/// Convenience array for just the pair names
-public let tradingPairNames: [String] = tradingPairs.map(\.name)
-
-// MARK: - Helper Models
-
-private struct CachedPriceData: Codable {
-    let name: String
-    let changeIsPositive: Bool
-    let changeFormatted: String
-    let price: String
-    let pastValues: [Double]
-}
-
-// MARK: - Caching System
-
-class PriceWidgetCache {
-    static let shared = PriceWidgetCache()
-    private let userDefaults = UserDefaults.standard
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
-
-    private init() {}
-
-    func set(_ value: some Codable, forKey key: String) {
-        do {
-            let data = try encoder.encode(value)
-            userDefaults.set(data, forKey: "price_widget_cache_\(key)")
-        } catch {
-            print("Failed to cache price data for key \(key): \(error)")
-        }
-    }
-
-    func get<T: Codable>(_ type: T.Type, forKey key: String) -> T? {
-        guard let data = userDefaults.data(forKey: "price_widget_cache_\(key)") else {
-            return nil
-        }
-
-        do {
-            return try decoder.decode(type, from: data)
-        } catch {
-            print("Failed to decode cached price data for key \(key): \(error)")
-            return nil
-        }
-    }
-}
-
 // MARK: - Price Service
 
 class PriceService {
     static let shared = PriceService()
-    private let baseURL = "https://feeds.synonym.to/price-feed/api"
+    private let baseURL = WidgetEnv.priceFeedBaseUrl
 
     private init() {}
 
@@ -190,21 +109,7 @@ class PriceService {
     }
 
     private func getCachedData(pairs: [String], period: GraphPeriod) -> [PriceData]? {
-        let cache = PriceWidgetCache.shared
-        let cachedItems = pairs.compactMap { pairName in
-            cache.get(CachedPriceData.self, forKey: "\(pairName)_\(period.rawValue)")
-        }
-
-        guard cachedItems.count == pairs.count else { return nil }
-
-        return cachedItems.map { cached in
-            PriceData(
-                name: cached.name,
-                change: PriceChange(isPositive: cached.changeIsPositive, formatted: cached.changeFormatted),
-                price: cached.price,
-                pastValues: cached.pastValues
-            )
-        }
+        PriceWidgetCache.loadAll(pairs: pairs, period: period)
     }
 
     private func fetchPairData(pairName: String, period: GraphPeriod) async throws -> PriceData {
@@ -288,15 +193,8 @@ class PriceService {
         return "\(pair.symbol) \(formatted)"
     }
 
-    private func cacheData(pairName: String, period: GraphPeriod, data: PriceData) {
-        let cacheKey = "\(pairName)_\(period.rawValue)"
-        let cachedData = CachedPriceData(
-            name: data.name,
-            changeIsPositive: data.change.isPositive,
-            changeFormatted: data.change.formatted,
-            price: data.price,
-            pastValues: data.pastValues
-        )
-        PriceWidgetCache.shared.set(cachedData, forKey: cacheKey)
+    private func cacheData(pairName _: String, period: GraphPeriod, data: PriceData) {
+        PriceWidgetCache.save(data, period: period)
+        PriceHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 }

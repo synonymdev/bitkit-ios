@@ -204,6 +204,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         quickpayAmount = 5
         enableNotifications = false
         enableNotificationsAmount = false
+        UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: "hasConfirmedPublicPaykitEndpoints")
@@ -215,7 +216,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         requirePinForPayments = false
         useBiometrics = false
         showWidgets = true
-        showWidgetTitles = false
         _coinSelectionMethod = CoinSelectionMethod.autopilot.rawValue
         _coinSelectionAlgorithm = CoinSelectionAlgorithm.branchAndBound.stringValue
         _selectedAddressType = "nativeSegwit"
@@ -260,9 +260,8 @@ class SettingsViewModel: NSObject, ObservableObject {
         return formUrl != defaultUrl
     }
 
-    // Widget Settings
+    /// Widget Settings
     @AppStorage("showWidgets") var showWidgets: Bool = true
-    @AppStorage("showWidgetTitles") var showWidgetTitles: Bool = false
 
     // Coin Selection Settings
     @AppStorage("coinSelectionMethod") private var _coinSelectionMethod: String = CoinSelectionMethod.autopilot.rawValue
@@ -779,7 +778,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         requirePinForPayments = defaults.bool(forKey: "requirePinForPayments")
         useBiometrics = defaults.bool(forKey: "useBiometrics")
         showWidgets = defaults.object(forKey: "showWidgets") as? Bool ?? true
-        showWidgetTitles = defaults.bool(forKey: "showWidgetTitles")
         _coinSelectionMethod = defaults.string(forKey: "coinSelectionMethod") ?? CoinSelectionMethod.autopilot.rawValue
         _coinSelectionAlgorithm = defaults.string(forKey: "coinSelectionAlgorithm") ?? CoinSelectionAlgorithm.branchAndBound.stringValue
         _selectedAddressType = defaults.string(forKey: "selectedAddressType") ?? "nativeSegwit"

@@ -2,11 +2,17 @@ import BitkitCore
 import SwiftUI
 
 struct ActivityList: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
 
     let viewType: ActivityViewType
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
 
     enum ActivityViewType {
         case all
@@ -31,7 +37,7 @@ struct ActivityList: View {
                             ActivityRow(
                                 item: item,
                                 feeEstimates: feeEstimatesManager.estimates,
-                                contact: item.contact(in: contactsManager.contacts)
+                                contact: isPaykitUIActive ? item.contact(in: contactsManager.contacts) : nil
                             )
                         }
                         .accessibilityIdentifier("Activity-\(index)")
