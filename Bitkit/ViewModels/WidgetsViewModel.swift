@@ -200,6 +200,8 @@ class WidgetsViewModel: ObservableObject {
         SavedWidget(type: .price, size: .wide),
         SavedWidget(type: .blocks, size: .small),
         SavedWidget(type: .facts, size: .small),
+        SavedWidget(type: .weather, size: .small),
+        SavedWidget(type: .calculator, size: .small),
         SavedWidget(type: .news, size: .wide),
     ]
 
