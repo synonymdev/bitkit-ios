@@ -3,6 +3,7 @@ import SwiftUI
 struct WidgetsIntroView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
 
     var body: some View {
@@ -63,8 +64,14 @@ struct WidgetsIntroView: View {
 
     private func onViewOrganize() {
         app.hasSeenWidgetsIntro = true
-        app.requestedHomePage = 1
         navigation.reset()
+        // When widgets are disabled the home widgets page is hidden, so there's nothing to
+        // organize — open the widgets sheet instead (matches Android `onViewOrganize`).
+        if settings.showWidgets {
+            app.requestedHomePage = 1
+        } else {
+            sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .list))
+        }
     }
 
     private func onAddWidget() {
@@ -79,6 +86,7 @@ struct WidgetsIntroView: View {
         WidgetsIntroView()
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
+            .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
     }
     .preferredColorScheme(.dark)

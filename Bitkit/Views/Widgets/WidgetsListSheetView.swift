@@ -3,8 +3,14 @@ import SwiftUI
 struct WidgetsListSheetView: View {
     @Binding var navigationPath: [WidgetsRoute]
 
+    @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
+
     /// Widget types shown in the add-list, in display order. `suggestions` is system-managed and excluded.
     private static let listedTypes: [WidgetType] = [.price, .weather, .news, .blocks, .facts, .calculator]
+
+    private static let disabledTileAlpha: CGFloat = 0.42
 
     private enum TileRow: Identifiable {
         case wide(WidgetType)
@@ -65,14 +71,41 @@ struct WidgetsListSheetView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
             }
+
+            // When widgets are disabled, tiles are dimmed/non-tappable and this CTA routes to settings.
+            if !settings.showWidgets {
+                CustomButton(
+                    title: t("widgets__list__button"),
+                    variant: .primary,
+                    size: .large,
+                    shouldExpand: true,
+                    action: enableInSettings
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .accessibilityIdentifier("WidgetEnableInSettings")
+            }
         }
         .navigationBarHidden(true)
+        .bottomSafeAreaPadding()
     }
 
+    @ViewBuilder
     private func tappableTile(_ type: WidgetType) -> some View {
+        let enabled = settings.showWidgets
         tile(for: type)
-            .onTapGesture { navigationPath.append(.preview(type)) }
+            .opacity(enabled ? 1 : Self.disabledTileAlpha)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard enabled else { return }
+                navigationPath.append(.preview(type))
+            }
             .accessibilityIdentifier("WidgetListItem-\(type.rawValue)")
+    }
+
+    private func enableInSettings() {
+        sheets.hideSheet()
+        navigation.navigate(.widgetsSettings)
     }
 
     /// Display size each widget uses in the list grid (purely visual — not the saved size).
