@@ -351,7 +351,7 @@ struct CalculatorWidgetCompactContent: View {
                 onTap: onSelectInput.map { handler in { handler(.fiat) } }
             )
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
