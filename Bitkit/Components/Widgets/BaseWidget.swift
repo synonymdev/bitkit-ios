@@ -80,6 +80,7 @@ struct BaseWidget<Content: View>: View {
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var widgets: WidgetsViewModel
+    @Environment(\.widgetDragState) private var dragState
 
     private static var smallHeight: CGFloat {
         192
@@ -191,7 +192,10 @@ struct BaseWidget<Content: View>: View {
                             .contentShape(Rectangle())
                             .trackDragHandle()
                     }
-                    .draggable(type.rawValue) {
+                    .onDrag {
+                        dragState.draggingType = type
+                        return NSItemProvider(object: type.rawValue as NSString)
+                    } preview: {
                         dragPreview
                     }
                     .accessibilityIdentifier("\(metadata.name)_WidgetActionReorder")

@@ -22,7 +22,7 @@ struct HomeWidgetsView: View {
     @State private var focusedContentOffsetY: CGFloat = 0
     @State private var firstCalculatorTopPadding: CGFloat = 0
     @State private var numberPadFrame: CGRect?
-    @StateObject private var cellFrames = WidgetCellFrameStore()
+    @State private var dragState = WidgetDragState()
 
     private static let focusAnimation = Animation.easeOut(duration: focusAnimationDuration)
     private static let focusAnimationDuration = 0.12
@@ -91,10 +91,10 @@ struct HomeWidgetsView: View {
                         }
                     }
                     .id(visibleWidgets.map(\.id))
-                    .onPreferenceChange(WidgetCellFramesPreferenceKey.self) { frames in
-                        cellFrames.frames = frames
-                    }
-                    .onDrop(of: [.utf8PlainText], delegate: WidgetReorderDropDelegate(host: self, cellFrames: cellFrames))
+                    .environment(\.widgetDragState, dragState)
+                    // Catch-all so drops that land in a gap are still accepted (the live
+                    // reorder already happened on hover); avoids the snap-back animation.
+                    .onDrop(of: [.utf8PlainText], delegate: WidgetGridDropDelegate(dragState: dragState))
 
                     CustomButton(title: t("widgets__add"), variant: .tertiary) {
                         calculatorInput.dismiss()
@@ -367,13 +367,9 @@ struct HomeWidgetsView: View {
 
     private func cell(_ widget: Widget) -> some View {
         rowContent(widget)
-            .background(
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: WidgetCellFramesPreferenceKey.self,
-                        value: [WidgetCellFrame(type: widget.type, rect: proxy.frame(in: .global))]
-                    )
-                }
+            .onDrop(
+                of: [.utf8PlainText],
+                delegate: WidgetCellDropDelegate(target: widget, dragState: dragState, reorder: reorder)
             )
     }
 
@@ -385,7 +381,6 @@ struct HomeWidgetsView: View {
               let destIdx = widgets.savedWidgets.firstIndex(where: { $0.type == targetType })
         else { return false }
         widgets.reorderWidgets(from: sourceIdx, to: destIdx)
-        Haptics.notify(.success)
         return true
     }
 
@@ -425,68 +420,61 @@ struct HomeWidgetsView: View {
     }
 }
 
-/// Captured frame of one widget cell in `.global` coordinates.
-struct WidgetCellFrame: Equatable {
-    let type: WidgetType
-    let rect: CGRect
+/// Shared drag context for the home widget grid. The dragged widget's type is recorded when
+/// the burger handle's drag starts (in `BaseWidget`) so drop delegates can reorder live on hover
+/// without having to asynchronously load the item provider.
+final class WidgetDragState {
+    var draggingType: WidgetType?
 }
 
-/// PreferenceKey carrying every cell's frame up to the grid so the drop delegate can
-/// resolve which widget the drop landed nearest to (including drops that fall in the
-/// 16pt gap between cells).
-struct WidgetCellFramesPreferenceKey: PreferenceKey {
-    static var defaultValue: [WidgetCellFrame] = []
-    static func reduce(value: inout [WidgetCellFrame], nextValue: () -> [WidgetCellFrame]) {
-        value.append(contentsOf: nextValue())
+private struct WidgetDragStateKey: EnvironmentKey {
+    static let defaultValue = WidgetDragState()
+}
+
+extension EnvironmentValues {
+    var widgetDragState: WidgetDragState {
+        get { self[WidgetDragStateKey.self] }
+        set { self[WidgetDragStateKey.self] = newValue }
     }
 }
 
-/// Holds the latest set of cell frames so the (struct-based, value-type) `DropDelegate`
-/// can read them via reference without becoming stale.
-final class WidgetCellFrameStore: ObservableObject {
-    @Published var frames: [WidgetCellFrame] = []
-}
+/// Per-cell delegate that reorders **live** as the dragged widget hovers over this cell.
+/// This makes drop position robust — you never need to release in the exact gap, because the
+/// array is already reordered by the time you let go.
+private struct WidgetCellDropDelegate: DropDelegate {
+    let target: Widget
+    let dragState: WidgetDragState
+    let reorder: (WidgetType, WidgetType) -> Bool
 
-private struct WidgetReorderDropDelegate: DropDelegate {
-    let host: HomeWidgetsView
-    let cellFrames: WidgetCellFrameStore
+    func dropEntered(info _: DropInfo) {
+        guard let source = dragState.draggingType, source != target.type else { return }
+        if reorder(source, target.type) {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.7)
+        }
+    }
 
     func dropUpdated(info _: DropInfo) -> DropProposal? {
         DropProposal(operation: .move)
     }
 
-    func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.utf8PlainText])
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        guard let provider = info.itemProviders(for: [.utf8PlainText]).first else { return false }
-        let location = info.location
-        let frames = cellFrames.frames
-
-        provider.loadObject(ofClass: NSString.self) { item, _ in
-            guard let raw = item as? String, let sourceType = WidgetType(rawValue: raw) else { return }
-            guard let target = Self.targetType(at: location, in: frames) else { return }
-            DispatchQueue.main.async {
-                host.reorder(from: sourceType, to: target)
-            }
-        }
+    func performDrop(info _: DropInfo) -> Bool {
+        dragState.draggingType = nil
         return true
     }
+}
 
-    /// Cell containing the point, or — if dropped in a gap — the cell with the smallest
-    /// distance from the drop point to the cell rect.
-    private static func targetType(at point: CGPoint, in frames: [WidgetCellFrame]) -> WidgetType? {
-        if let direct = frames.first(where: { $0.rect.contains(point) }) {
-            return direct.type
-        }
-        return frames.min(by: { distance(from: point, to: $0.rect) < distance(from: point, to: $1.rect) })?.type
+/// Catch-all delegate on the grid itself: accepts drops that land in a gap (no reorder needed —
+/// the cell delegates already moved things on hover) and clears the drag state.
+private struct WidgetGridDropDelegate: DropDelegate {
+    let dragState: WidgetDragState
+
+    func dropUpdated(info _: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
     }
 
-    private static func distance(from point: CGPoint, to rect: CGRect) -> CGFloat {
-        let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
-        let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
-        return sqrt(dx * dx + dy * dy)
+    func performDrop(info _: DropInfo) -> Bool {
+        dragState.draggingType = nil
+        return true
     }
 }
 
