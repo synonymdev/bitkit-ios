@@ -219,21 +219,31 @@ private struct FactsTile: View {
 }
 
 private struct CalculatorTile: View {
-    /// Calculator has no compact content form. Show a static representation
-    /// so the tile reads as a calculator at a glance.
+    @EnvironmentObject private var currency: CurrencyViewModel
+    @State private var values = CalculatorWidgetValues()
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            BodyMSBText("$0.00", textColor: .textPrimary)
-            BodySText("0", textColor: .textSecondary)
-            Spacer()
-            HStack(spacing: 4) {
-                ForEach(0 ..< 3) { _ in
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.white10)
-                        .frame(height: 16)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Display-only compact calculator (no `onSelectInput`) for the add-list preview.
+        CalculatorWidgetCompactContent(values: values)
+            .task { hydrate() }
+            .onChange(of: currency.selectedCurrency) { hydrate() }
+            .onChange(of: currency.displayUnit) { hydrate() }
+            .onChange(of: currency.rates) { hydrate() }
+    }
+
+    private func hydrate() {
+        let saved = CalculatorWidgetOptionsStore.load()
+        let savedSats = CalculatorWidgetFormatter.bitcoinValueToSats(saved.bitcoinValue, displayUnit: saved.displayUnit)
+        let bitcoinValue = saved.bitcoinValue.isEmpty
+            ? ""
+            : CalculatorWidgetFormatter.satsToBitcoinValue(savedSats, displayUnit: currency.displayUnit)
+
+        values = CalculatorWidgetValues(
+            bitcoinValue: bitcoinValue,
+            fiatValue: saved.fiatValue,
+            displayUnit: currency.displayUnit,
+            currencySymbol: currency.symbol,
+            selectedCurrency: currency.selectedCurrency
+        )
     }
 }

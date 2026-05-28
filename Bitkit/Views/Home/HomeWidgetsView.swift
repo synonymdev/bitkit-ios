@@ -15,20 +15,16 @@ struct HomeWidgetsView: View {
 
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
+    /// Global frame of the (single) calculator widget card, reported via preference key.
+    /// Used to compute how far to lift content so the focused calculator sits above the keypad.
     @State private var calculatorFrame: CGRect?
-    @State private var didApplyFirstCalculatorFocusPadding = false
     @State private var didStartCalculatorDismissDrag = false
-    @StateObject private var focusAdjustmentState = CalculatorFocusAdjustmentState()
     @State private var focusedContentOffsetY: CGFloat = 0
-    @State private var firstCalculatorTopPadding: CGFloat = 0
-    @State private var numberPadFrame: CGRect?
     @State private var dragState = WidgetDragState()
 
     private static let focusAnimation = Animation.easeOut(duration: focusAnimationDuration)
     private static let focusAnimationDuration = 0.12
     private static let focusDismissDragMinimumDistance: CGFloat = 8
-    private static let maxFocusAdjustmentPasses = 4
-    private static let numberPadEstimatedHeight = 8 + NumberPad.contentHeight + (windowSafeAreaInsets.bottom > 0 ? windowSafeAreaInsets.bottom : 16)
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
@@ -38,10 +34,6 @@ struct HomeWidgetsView: View {
         // Keep the calculator widget fully scrollable above the keyboard.
         let inset = keyboard.height + ScreenLayout.bottomSpacing
         return keyboard.isPresented ? inset : ScreenLayout.bottomPaddingWithSafeArea
-    }
-
-    private var isCalculatorFirst: Bool {
-        widgetsToShow.first?.type == .calculator
     }
 
     /// Widgets to display; suggestions widget is hidden when it would show no cards (unless editing).
@@ -64,14 +56,9 @@ struct HomeWidgetsView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
+        ScrollViewReader { _ in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    if isCalculatorFirst {
-                        Color.clear
-                            .frame(height: firstCalculatorTopPadding)
-                    }
-
                     Grid(horizontalSpacing: 16, verticalSpacing: 16) {
                         ForEach(gridRows) { row in
                             GridRow {
@@ -135,21 +122,22 @@ struct HomeWidgetsView: View {
             )
             // Dismiss (calculator widget) keyboard when scrolling
             .scrollDismissesKeyboard(.interactively)
+            .overlay(alignment: .bottom) {
+                if calculatorInput.isPresented {
+                    CalculatorNumberPadBar()
+                        .transition(.move(edge: .bottom))
+                }
+            }
+            .animation(.easeOut(duration: 0.14), value: calculatorInput.isPresented)
             .onChange(of: calculatorInput.isPresented) { _, isPresented in
                 if isPresented {
-                    startFocusedCalculatorTransition(proxy)
+                    focusCalculator()
                 } else {
                     setFocusedContentOffsetY(0)
-                    setFirstCalculatorTopPadding(0)
-                    finishFocusedCalculatorDismissal()
                 }
             }
             .onPreferenceChange(CalculatorWidgetFramePreferenceKey.self) { frame in
                 calculatorFrame = frame
-            }
-            .onPreferenceChange(CalculatorNumberPadFramePreferenceKey.self) { frame in
-                numberPadFrame = frame
-                settleFocusedCalculator(proxy, numberPadFrame: frame)
             }
             .onDisappear {
                 calculatorInput.dismiss()
@@ -157,147 +145,21 @@ struct HomeWidgetsView: View {
         }
     }
 
-    private func startFocusedCalculatorTransition(_ proxy: ScrollViewProxy) {
-        if focusAdjustmentState.hasStartedPresentation {
-            if isCalculatorFirst, !didApplyFirstCalculatorFocusPadding {
-                applyFirstCalculatorFocusPadding(proxy)
-            }
-
-            return
-        }
-
-        resetFocusAdjustment()
-        focusAdjustmentState.hasStartedPresentation = true
-
-        if isCalculatorFirst {
+    private func focusCalculator() {
+        guard let frame = calculatorFrame else {
             setFocusedContentOffsetY(0)
-            applyFirstCalculatorFocusPadding(proxy)
             return
         }
-
-        if firstCalculatorTopPadding > 0 {
-            setFirstCalculatorTopPadding(0)
-        }
-
-        settleFocusedCalculator(proxy)
+        let keypadTop = UIScreen.main.bounds.height - CalculatorNumberPadBar.height
+        let desiredMaxY = keypadTop - 16
+        let overlap = frame.maxY - desiredMaxY
+        setFocusedContentOffsetY(overlap > 0 ? -overlap : 0)
     }
 
     private func handleWidgetsPageDragChanged(_ value: DragGesture.Value) {
         if calculatorInput.isPresented || didStartCalculatorDismissDrag {
             didStartCalculatorDismissDrag = true
             calculatorInput.dismiss()
-        }
-    }
-
-    private func applyFirstCalculatorFocusPadding(_ proxy: ScrollViewProxy) {
-        guard let bottomGap = focusedNumberPadBottomGap(numberPadFrame: numberPadFrame) else { return }
-
-        didApplyFirstCalculatorFocusPadding = true
-        setFirstCalculatorTopPadding(max(0, bottomGap))
-    }
-
-    private func settleFocusedCalculator(
-        _ proxy: ScrollViewProxy,
-        numberPadFrame proposedNumberPadFrame: CGRect? = nil
-    ) {
-        guard calculatorInput.isPresented else { return }
-
-        let currentNumberPadFrame = proposedNumberPadFrame ?? numberPadFrame
-
-        if isCalculatorFirst {
-            if !didApplyFirstCalculatorFocusPadding {
-                startFocusedCalculatorTransition(proxy)
-                return
-            }
-
-            settleFirstCalculatorStack(numberPadFrame: currentNumberPadFrame)
-            return
-        } else if firstCalculatorTopPadding > 0 {
-            setFirstCalculatorTopPadding(0)
-        }
-
-        guard let bottomGap = focusedNumberPadBottomGap(numberPadFrame: currentNumberPadFrame),
-              !focusAdjustmentState.isAdjusting
-        else { return }
-
-        guard abs(bottomGap) > 1 else {
-            focusAdjustmentState.resetCorrection()
-            return
-        }
-
-        guard focusAdjustmentState.passes < Self.maxFocusAdjustmentPasses else { return }
-
-        adjustFocusedCalculatorByBottomGap(bottomGap, numberPadFrame: currentNumberPadFrame)
-    }
-
-    private func settleFirstCalculatorStack(numberPadFrame: CGRect?) {
-        guard let bottomGap = focusedNumberPadBottomGap(numberPadFrame: numberPadFrame) else { return }
-        guard abs(bottomGap) > 1 else { return }
-        guard shouldApplyFocusAdjustment(for: numberPadFrame) else { return }
-
-        setFirstCalculatorTopPadding(max(0, firstCalculatorTopPadding + bottomGap))
-    }
-
-    private func focusedNumberPadBottomGap(numberPadFrame: CGRect?) -> CGFloat? {
-        guard let numberPadFrame else { return nil }
-
-        if numberPadFrame.height >= Self.numberPadEstimatedHeight - 1 {
-            return focusBottomY - numberPadFrame.maxY
-        }
-
-        if numberPadFrame.height >= NumberPad.contentHeight - 1 {
-            return numberPadButtonsBottomY - numberPadFrame.maxY
-        }
-
-        return nil
-    }
-
-    private func adjustFocusedCalculatorByBottomGap(_ bottomGap: CGFloat, numberPadFrame: CGRect?) {
-        guard shouldApplyFocusAdjustment(for: numberPadFrame) else { return }
-
-        focusAdjustmentState.delta = (focusAdjustmentState.delta ?? 0) + bottomGap
-        focusAdjustmentState.passes += 1
-        focusAdjustmentState.isAdjusting = true
-        setFocusedContentOffsetY(focusedContentOffsetY + bottomGap)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.focusAnimationDuration + 0.03) {
-            guard calculatorInput.isPresented, !isCalculatorFirst else { return }
-            focusAdjustmentState.isAdjusting = false
-        }
-    }
-
-    private func shouldApplyFocusAdjustment(for numberPadFrame: CGRect?) -> Bool {
-        guard let numberPadFrame else { return true }
-
-        let maxY = numberPadFrame.maxY
-        if let lastAdjustedNumberPadMaxY = focusAdjustmentState.lastAdjustedNumberPadMaxY, abs(lastAdjustedNumberPadMaxY - maxY) <= 1 {
-            return false
-        }
-
-        focusAdjustmentState.lastAdjustedNumberPadMaxY = maxY
-        return true
-    }
-
-    private func resetFocusAdjustment() {
-        focusAdjustmentState.reset()
-    }
-
-    private func finishFocusedCalculatorDismissal() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.focusAnimationDuration + 0.05) {
-            guard !calculatorInput.isPresented else { return }
-
-            calculatorFrame = nil
-            didApplyFirstCalculatorFocusPadding = false
-            numberPadFrame = nil
-            resetFocusAdjustment()
-        }
-    }
-
-    private func setFirstCalculatorTopPadding(_ value: CGFloat) {
-        guard abs(value - firstCalculatorTopPadding) > 1 else { return }
-
-        withAnimation(Self.focusAnimation) {
-            firstCalculatorTopPadding = value
         }
     }
 
@@ -309,19 +171,11 @@ struct HomeWidgetsView: View {
         }
     }
 
-    private var focusBottomY: CGFloat {
-        UIScreen.main.bounds.height
-    }
-
-    private var numberPadButtonsBottomY: CGFloat {
-        focusBottomY - (windowSafeAreaInsets.bottom > 0 ? windowSafeAreaInsets.bottom : 16)
-    }
-
     /// Resolved layout size for the grid. Calculator and suggestions are always wide
     /// regardless of the value stored on `SavedWidget`.
     private func displayedSize(for widget: Widget) -> WidgetSize {
         switch widget.type {
-        case .calculator, .suggestions: return .wide
+        case .suggestions: return .wide
         default: return widget.size
         }
     }
@@ -475,28 +329,6 @@ private struct WidgetGridDropDelegate: DropDelegate {
     func performDrop(info _: DropInfo) -> Bool {
         dragState.draggingType = nil
         return true
-    }
-}
-
-private final class CalculatorFocusAdjustmentState: ObservableObject {
-    var delta: CGFloat?
-    var hasStartedPresentation = false
-    var isAdjusting = false
-    var lastAdjustedNumberPadMaxY: CGFloat?
-    var passes = 0
-
-    func reset() {
-        delta = nil
-        hasStartedPresentation = false
-        isAdjusting = false
-        lastAdjustedNumberPadMaxY = nil
-        passes = 0
-    }
-
-    func resetCorrection() {
-        delta = nil
-        lastAdjustedNumberPadMaxY = nil
-        passes = 0
     }
 }
 

@@ -86,8 +86,7 @@ struct Widget: Identifiable {
                 onEditingEnd: onEditingEnd
             )
         case .calculator:
-            // Calculator is wide-only — small variant is deferred to a follow-up plan.
-            CalculatorWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
+            CalculatorWidget(size: size, isEditing: isEditing, onEditingEnd: onEditingEnd)
         case .facts:
             FactsWidget(size: size, isEditing: isEditing, onEditingEnd: onEditingEnd)
         case .news:
@@ -217,10 +216,7 @@ class WidgetsViewModel: ObservableObject {
 
     /// Save a new widget
     func saveWidget(_ type: WidgetType, size: WidgetSize = .wide) {
-        // Suggestions and Calculator are wide-only on the home grid — coerce any
-        // accidental `.small` callers so the persisted size can never disagree
-        // with the layout rules in `HomeWidgetsView.displayedSize`.
-        let resolvedSize: WidgetSize = (type == .suggestions || type == .calculator) ? .wide : size
+        let resolvedSize: WidgetSize = type == .suggestions ? .wide : size
 
         if let index = savedWidgetsWithOptions.firstIndex(where: { $0.type == type }) {
             let existing = savedWidgetsWithOptions[index]

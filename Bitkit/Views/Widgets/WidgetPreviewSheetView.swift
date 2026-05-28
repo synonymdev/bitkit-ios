@@ -16,7 +16,7 @@ struct WidgetPreviewSheetView: View {
     init(type: WidgetType, navigationPath: Binding<[WidgetsRoute]>) {
         self.type = type
         _navigationPath = navigationPath
-        _carouselPage = State(initialValue: type == .calculator ? 1 : Self.initialCarouselPage(for: type, widgets: nil))
+        _carouselPage = State(initialValue: Self.initialCarouselPage(for: type, widgets: nil))
     }
 
     /// Picks the page index that matches the widget's currently-saved size (or `.small` if new).
@@ -38,7 +38,7 @@ struct WidgetPreviewSheetView: View {
     }
 
     private var supportsSmall: Bool {
-        type != .calculator
+        type != .suggestions
     }
 
     private var isWidgetSaved: Bool {
@@ -173,7 +173,8 @@ struct WidgetPreviewSheetView: View {
         case .blocks: BlocksSmallPreview()
         case .weather: WeatherSmallPreview()
         case .facts: FactsSmallPreview()
-        case .calculator, .suggestions: EmptyView()
+        case .calculator: CalculatorSmallPreview()
+        case .suggestions: EmptyView()
         }
     }
 
@@ -591,5 +592,40 @@ private struct CalculatorWidePreview: View {
 
     private static func previewFiatValue(saved: CalculatorWidgetValues, recalculatedFiatValue: String) -> String {
         saved.shouldRefreshBitcoinFromFiat ? saved.fiatValue : recalculatedFiatValue
+    }
+}
+
+private struct CalculatorSmallPreview: View {
+    @EnvironmentObject private var currency: CurrencyViewModel
+
+    @State private var values = CalculatorWidgetValues()
+
+    var body: some View {
+        // Display-only (no `onSelectInput`) — the preview carousel doesn't host the keypad.
+        CalculatorWidgetCompactContent(values: values)
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .background(Color.gray6)
+            .cornerRadius(16)
+            .task { hydrate() }
+            .onChange(of: currency.selectedCurrency) { hydrate() }
+            .onChange(of: currency.displayUnit) { hydrate() }
+            .onChange(of: currency.rates) { hydrate() }
+    }
+
+    private func hydrate() {
+        let saved = CalculatorWidgetOptionsStore.load()
+        let savedSats = CalculatorWidgetFormatter.bitcoinValueToSats(saved.bitcoinValue, displayUnit: saved.displayUnit)
+        let bitcoinValue = saved.bitcoinValue.isEmpty
+            ? ""
+            : CalculatorWidgetFormatter.satsToBitcoinValue(savedSats, displayUnit: currency.displayUnit)
+
+        values = CalculatorWidgetValues(
+            bitcoinValue: bitcoinValue,
+            fiatValue: saved.fiatValue,
+            displayUnit: currency.displayUnit,
+            currencySymbol: currency.symbol,
+            selectedCurrency: currency.selectedCurrency
+        )
     }
 }
