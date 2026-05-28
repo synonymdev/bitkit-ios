@@ -7,19 +7,18 @@ class FactsViewModel: ObservableObject {
 
     @Published var fact: String = ""
 
-    private let factsService = FactsService.shared
     private var refreshTimer: Timer?
     private let refreshInterval: TimeInterval = 2 * 60 // 2 minutes
 
     /// Private initializer for the singleton instance
     private init() {
-        fact = factsService.getRandomFact()
+        fact = randomFact()
         startRefreshTimer()
     }
 
     /// Public initializer for previews and testing
     init(preview: Bool = true) {
-        fact = factsService.getRandomFact()
+        fact = randomFact()
     }
 
     deinit {
@@ -29,8 +28,12 @@ class FactsViewModel: ObservableObject {
     private func startRefreshTimer() {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.fact = self?.factsService.getRandomFact() ?? ""
+                self?.fact = self?.randomFact() ?? ""
             }
         }
+    }
+
+    private func randomFact() -> String {
+        BitcoinFacts.all.randomElement()!
     }
 }

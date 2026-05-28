@@ -3,24 +3,22 @@ import Foundation
 /// Service for fetching and caching news articles
 class NewsService {
     static let shared = NewsService()
-    private let cache = UserDefaults.standard
-    private let cacheKey = "news_widget_cache"
-    private let baseUrl = "https://feeds.synonym.to/news-feed/api"
     private let refreshInterval: TimeInterval = 2 * 60 // 2 minutes
 
-    private init() {}
+    private init() {
+        NewsWidgetCache.legacyDropStandardSuiteCache()
+    }
 
     /// Fetches articles from the news API
     /// - Returns: Array of articles
     /// - Throws: URLError or decoding error
     func fetchArticles() async throws -> [Article] {
-        guard let url = URL(string: "\(baseUrl)/articles") else {
+        guard let url = URL(string: WidgetEnv.newsFeedArticlesUrl) else {
             throw URLError(.badURL)
         }
 
         let (data, response) = try await URLSession.shared.data(from: url)
 
-        // Validate HTTP response
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
@@ -29,39 +27,18 @@ class NewsService {
             throw URLError(.badServerResponse)
         }
 
-        do {
-            let decoder = JSONDecoder()
-            return try decoder.decode([Article].self, from: data)
-        } catch {
-            throw error
-        }
+        return try JSONDecoder().decode([Article].self, from: data)
     }
 
-    /// Caches widget data to UserDefaults
-    /// - Parameter data: Widget data to cache
-    func cacheData(_ data: WidgetData) {
-        do {
-            let encoder = JSONEncoder()
-            let encoded = try encoder.encode(data)
-            cache.set(encoded, forKey: cacheKey)
-        } catch {
-            // Handle silently
-        }
-    }
-
-    /// Retrieves cached widget data
-    /// - Returns: Widget data if available
+    /// Retrieves a cached widget data view by selecting a random article from the App Group cache.
     func getCachedData() -> WidgetData? {
-        guard let data = cache.data(forKey: cacheKey) else {
-            return nil
-        }
-
-        do {
-            let decoder = JSONDecoder()
-            return try decoder.decode(WidgetData.self, from: data)
-        } catch {
-            return nil
-        }
+        guard let article = NewsWidgetCache.loadTop().randomElement() else { return nil }
+        return WidgetData(
+            title: article.title,
+            timeAgo: timeAgo(from: article.publishedDate),
+            link: article.link,
+            publisher: article.publisher
+        )
     }
 
     /// Converts a date string to a human-readable time ago format
@@ -69,7 +46,7 @@ class NewsService {
     /// - Returns: Human-readable time difference (e.g. "5 hours ago")
     func timeAgo(from dateString: String) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale.current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
 
         guard let date = formatter.date(from: dateString) else {
@@ -83,60 +60,60 @@ class NewsService {
         return relativeFormatter.localizedString(for: date, relativeTo: Date())
     }
 
+    /// Fetches the top 10 most recent articles, persists them to the App Group cache,
+    /// and triggers a home-screen widget reload.
+    @discardableResult
+    func fetchTopArticles() async throws -> [CachedNewsArticle] {
+        let articles = try await fetchArticles()
+        let top = articles
+            .sorted { $0.published > $1.published }
+            .prefix(10)
+            .map { article in
+                CachedNewsArticle(
+                    title: article.title,
+                    publisher: article.publisher.title,
+                    link: article.comments ?? article.link,
+                    publishedDate: article.publishedDate,
+                    publishedEpoch: article.published
+                )
+            }
+
+        NewsWidgetCache.saveTop(top)
+        NewsHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+
+        return top
+    }
+
     /// Fetches widget data using stale-while-revalidate strategy
     /// - Parameter returnCachedImmediately: If true, returns cached data immediately if available
     /// - Returns: Widget data
     /// - Throws: URLError or decoding error
     @discardableResult
     func fetchWidgetData(returnCachedImmediately: Bool = true) async throws -> WidgetData {
-        // If we want cached data and it exists, return it immediately
         if returnCachedImmediately, let cachedData = getCachedData() {
-            // Start fresh fetch in background to update cache (don't await)
+            // Refresh in background; cache is updated automatically.
             Task {
                 do {
-                    try await fetchFreshData()
-                    // Cache will be updated automatically in fetchFreshData
+                    try await fetchTopArticles()
                 } catch {
-                    // Silent failure for background updates
                     print("Background news data update failed: \(error)")
                 }
             }
             return cachedData
         }
 
-        // No cache available or cache not requested - fetch fresh data
-        return try await fetchFreshData()
-    }
-
-    /// Fetches fresh data from API (always hits the network)
-    @discardableResult
-    private func fetchFreshData() async throws -> WidgetData {
-        let articles = try await fetchArticles()
-
-        // Get a random article from the last 10
-        let recentArticles =
-            articles
-                .sorted { $0.published > $1.published }
-                .prefix(10)
-
-        guard let article = recentArticles.randomElement() else {
+        let top = try await fetchTopArticles()
+        guard let article = top.randomElement() else {
             Logger.error("No articles available after filtering")
             throw URLError(.cannotParseResponse)
         }
 
-        let timeAgoString = timeAgo(from: article.publishedDate)
-
-        let widgetData = WidgetData(
+        return WidgetData(
             title: article.title,
-            timeAgo: timeAgoString,
-            link: article.comments ?? article.link,
-            publisher: article.publisher.title
+            timeAgo: timeAgo(from: article.publishedDate),
+            link: article.link,
+            publisher: article.publisher
         )
-
-        // Cache the data
-        cacheData(widgetData)
-
-        return widgetData
     }
 }
 
@@ -201,7 +178,7 @@ struct Publisher: Codable {
     let image: String?
 }
 
-/// Widget data model for caching
+/// Widget data model used by the in-app news widget UI.
 struct WidgetData: Codable {
     let title: String
     let timeAgo: String

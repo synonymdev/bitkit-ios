@@ -12,6 +12,10 @@
 		18D65E022EB964BD00252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65E012EB964BD00252335 /* VssRustClientFfi */; };
 		3D76260F4C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */; };
 		3D7626104C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */; };
+		4A319B512E8F24F2002B9AC9 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A319B502E8F24F2002B9AC9 /* WidgetKit.framework */; };
+		4A319B532E8F24F2002B9AC9 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A319B522E8F24F2002B9AC9 /* SwiftUI.framework */; };
+		4A319B622E8F24F4002B9AC9 /* BitkitWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4A319B4F2E8F24F2002B9AC9 /* BitkitWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4A319B702E8F2600002B9AC9 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4A319B712E8F2600002B9AC9 /* Localizable.strings */; };
 		4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 4AAB08C92E1FE77600BA63DF /* Lottie */; };
 		961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 9613018B2C5022D700878183 /* LDKNode */; };
@@ -25,6 +29,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		4A319B602E8F24F4002B9AC9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 96FE1F592C2DE6AA006D0C8B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4A319B4E2E8F24F2002B9AC9;
+			remoteInfo = BitkitWidgetExtension;
+		};
 		961058E12C355B5500E1F1D8 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 96FE1F592C2DE6AA006D0C8B /* Project object */;
@@ -56,6 +67,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */,
+				4A319B622E8F24F4002B9AC9 /* BitkitWidgetExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -64,6 +76,25 @@
 
 /* Begin PBXFileReference section */
 		3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
+		4A319B4F2E8F24F2002B9AC9 /* BitkitWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BitkitWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4A319B502E8F24F2002B9AC9 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		4A319B522E8F24F2002B9AC9 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		4A319B6E2E8F25F6002B9AC9 /* BitkitWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BitkitWidgetExtension.entitlements; sourceTree = "<group>"; };
+		4A319B722E8F2600002B9AC9 /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = Bitkit/Resources/Localization/ar.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B732E8F2600002B9AC9 /* ca */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ca; path = Bitkit/Resources/Localization/ca.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B742E8F2600002B9AC9 /* cs */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = cs; path = Bitkit/Resources/Localization/cs.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B752E8F2600002B9AC9 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = Bitkit/Resources/Localization/de.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B762E8F2600002B9AC9 /* el */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = el; path = Bitkit/Resources/Localization/el.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B772E8F2600002B9AC9 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = Bitkit/Resources/Localization/en.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B782E8F2600002B9AC9 /* es-419 */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "es-419"; path = "Bitkit/Resources/Localization/es-419.lproj/Localizable.strings"; sourceTree = SOURCE_ROOT; };
+		4A319B792E8F2600002B9AC9 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = Bitkit/Resources/Localization/es.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B7A2E8F2600002B9AC9 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = Bitkit/Resources/Localization/fr.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B7B2E8F2600002B9AC9 /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = Bitkit/Resources/Localization/it.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B7C2E8F2600002B9AC9 /* nl */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = nl; path = Bitkit/Resources/Localization/nl.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B7D2E8F2600002B9AC9 /* pl */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pl; path = Bitkit/Resources/Localization/pl.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B7E2E8F2600002B9AC9 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "Bitkit/Resources/Localization/pt-BR.lproj/Localizable.strings"; sourceTree = SOURCE_ROOT; };
+		4A319B7F2E8F2600002B9AC9 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pt; path = Bitkit/Resources/Localization/pt.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		4A319B802E8F2600002B9AC9 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = Bitkit/Resources/Localization/ru.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
 		961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BitkitNotification.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F722C2DE6AC006D0C8B /* BitkitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BitkitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -71,6 +102,52 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4A319B662E8F24F4002B9AC9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4A319B4E2E8F24F2002B9AC9 /* BitkitWidgetExtension */;
+		};
+		4A319B672E8F24F5002B9AC9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Components/Widgets/BlocksWidgetContent.swift,
+				Components/Widgets/FactsWidgetContent.swift,
+				Components/Widgets/NewsWidgetContent.swift,
+				Components/Widgets/PriceWidgetContent.swift,
+				Components/Widgets/WeatherWidgetContent.swift,
+				Components/Widgets/WidgetPalette.swift,
+				Constants/WidgetEnv.swift,
+				"Fonts/InterTight-Black.ttf",
+				"Fonts/InterTight-Bold.ttf",
+				"Fonts/InterTight-ExtraBold.ttf",
+				"Fonts/InterTight-Medium.ttf",
+				"Fonts/InterTight-Regular.ttf",
+				"Fonts/InterTight-SemiBold.ttf",
+				Models/BitcoinFacts.swift,
+				Models/BlocksWidgetData.swift,
+				Models/BlocksWidgetFields.swift,
+				Models/BlocksWidgetOptions.swift,
+				Models/Currency.swift,
+				Models/NewsWidgetData.swift,
+				Models/NewsWidgetOptions.swift,
+				Models/PriceWidgetData.swift,
+				Models/PriceWidgetOptions.swift,
+				Models/WeatherWidgetData.swift,
+				Models/WeatherWidgetOptions.swift,
+				Services/Widgets/BlocksHomeScreenWidgetOptionsStore.swift,
+				Services/Widgets/MempoolWeatherAPI.swift,
+				Services/Widgets/NewsHomeScreenWidgetOptionsStore.swift,
+				Services/Widgets/PriceHomeScreenWidgetOptionsStore.swift,
+				Services/Widgets/WeatherHomeScreenWidgetOptionsStore.swift,
+				Styles/Colors.swift,
+				Styles/Fonts.swift,
+				Styles/TextStyle.swift,
+				Utilities/LocalizeHelpers.swift,
+			);
+			target = 4A319B4E2E8F24F2002B9AC9 /* BitkitWidgetExtension */;
+		};
 		96A44F3D2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -85,6 +162,7 @@
 				Extensions/HexBytes.swift,
 				"Extensions/LDKNode+AddressType.swift",
 				Extensions/PaymentDetails.swift,
+				Models/BlocksWidgetOptions.swift,
 				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
 				Models/PubkyPublicKeyFormat.swift,
@@ -144,13 +222,23 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		96A44E912CEF5EA700FBACFF /* Bitkit */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (96A44F3D2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3E2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3F2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Bitkit; sourceTree = "<group>"; };
+		4A319B542E8F24F2002B9AC9 /* BitkitWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (4A319B662E8F24F4002B9AC9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BitkitWidget; sourceTree = "<group>"; };
+		96A44E912CEF5EA700FBACFF /* Bitkit */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (96A44F3D2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3E2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3F2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 4A319B672E8F24F5002B9AC9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Bitkit; sourceTree = "<group>"; };
 		96A44F4A2CEF5F4B00FBACFF /* BitkitTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = BitkitTests; sourceTree = "<group>"; };
 		96A44F562CEF5F5400FBACFF /* BitkitUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = BitkitUITests; sourceTree = "<group>"; };
 		96A44F5C2CEF5F5800FBACFF /* BitkitNotification */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (96A44F5E2CEF5F5800FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BitkitNotification; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		4A319B4C2E8F24F2002B9AC9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A319B532E8F24F2002B9AC9 /* SwiftUI.framework in Frameworks */,
+				4A319B512E8F24F2002B9AC9 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		961058D92C355B5500E1F1D8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -200,6 +288,8 @@
 			isa = PBXGroup;
 			children = (
 				3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */,
+				4A319B502E8F24F2002B9AC9 /* WidgetKit.framework */,
+				4A319B522E8F24F2002B9AC9 /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -207,10 +297,13 @@
 		96FE1F582C2DE6AA006D0C8B = {
 			isa = PBXGroup;
 			children = (
+				4A319B6E2E8F25F6002B9AC9 /* BitkitWidgetExtension.entitlements */,
 				96A44E912CEF5EA700FBACFF /* Bitkit */,
 				96A44F4A2CEF5F4B00FBACFF /* BitkitTests */,
 				96A44F562CEF5F5400FBACFF /* BitkitUITests */,
 				96A44F5C2CEF5F5800FBACFF /* BitkitNotification */,
+				4A319B542E8F24F2002B9AC9 /* BitkitWidget */,
+				4A319B712E8F2600002B9AC9 /* Localizable.strings */,
 				96FE1F622C2DE6AA006D0C8B /* Products */,
 				961058EC2C35798C00E1F1D8 /* Frameworks */,
 			);
@@ -223,6 +316,7 @@
 				96FE1F722C2DE6AC006D0C8B /* BitkitTests.xctest */,
 				96FE1F7C2C2DE6AC006D0C8B /* BitkitUITests.xctest */,
 				961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */,
+				4A319B4F2E8F24F2002B9AC9 /* BitkitWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -230,6 +324,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		4A319B4E2E8F24F2002B9AC9 /* BitkitWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4A319B652E8F24F4002B9AC9 /* Build configuration list for PBXNativeTarget "BitkitWidgetExtension" */;
+			buildPhases = (
+				4A319B4B2E8F24F2002B9AC9 /* Sources */,
+				4A319B4C2E8F24F2002B9AC9 /* Frameworks */,
+				4A319B4D2E8F24F2002B9AC9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4A319B542E8F24F2002B9AC9 /* BitkitWidget */,
+			);
+			name = BitkitWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = BitkitWidgetExtension;
+			productReference = 4A319B4F2E8F24F2002B9AC9 /* BitkitWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		961058DB2C355B5500E1F1D8 /* BitkitNotification */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 961058E42C355B5500E1F1D8 /* Build configuration list for PBXNativeTarget "BitkitNotification" */;
@@ -267,6 +383,7 @@
 			);
 			dependencies = (
 				961058E22C355B5500E1F1D8 /* PBXTargetDependency */,
+				4A319B612E8F24F4002B9AC9 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				96A44E912CEF5EA700FBACFF /* Bitkit */,
@@ -337,9 +454,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1540;
+				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 1540;
 				TargetAttributes = {
+					4A319B4E2E8F24F2002B9AC9 = {
+						CreatedOnToolsVersion = 26.0;
+					};
 					961058DB2C355B5500E1F1D8 = {
 						CreatedOnToolsVersion = 15.4;
 					};
@@ -396,11 +516,20 @@
 				96FE1F712C2DE6AC006D0C8B /* BitkitTests */,
 				96FE1F7B2C2DE6AC006D0C8B /* BitkitUITests */,
 				961058DB2C355B5500E1F1D8 /* BitkitNotification */,
+				4A319B4E2E8F24F2002B9AC9 /* BitkitWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		4A319B4D2E8F24F2002B9AC9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A319B702E8F2600002B9AC9 /* Localizable.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		961058DA2C355B5500E1F1D8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -456,6 +585,13 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		4A319B4B2E8F24F2002B9AC9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		961058D82C355B5500E1F1D8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -487,6 +623,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		4A319B612E8F24F4002B9AC9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4A319B4E2E8F24F2002B9AC9 /* BitkitWidgetExtension */;
+			targetProxy = 4A319B602E8F24F4002B9AC9 /* PBXContainerItemProxy */;
+		};
 		961058E22C355B5500E1F1D8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 961058DB2C355B5500E1F1D8 /* BitkitNotification */;
@@ -504,7 +645,99 @@
 		};
 /* End PBXTargetDependency section */
 
+/* Begin PBXVariantGroup section */
+		4A319B712E8F2600002B9AC9 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				4A319B722E8F2600002B9AC9 /* ar */,
+				4A319B732E8F2600002B9AC9 /* ca */,
+				4A319B742E8F2600002B9AC9 /* cs */,
+				4A319B752E8F2600002B9AC9 /* de */,
+				4A319B762E8F2600002B9AC9 /* el */,
+				4A319B772E8F2600002B9AC9 /* en */,
+				4A319B782E8F2600002B9AC9 /* es-419 */,
+				4A319B792E8F2600002B9AC9 /* es */,
+				4A319B7A2E8F2600002B9AC9 /* fr */,
+				4A319B7B2E8F2600002B9AC9 /* it */,
+				4A319B7C2E8F2600002B9AC9 /* nl */,
+				4A319B7D2E8F2600002B9AC9 /* pl */,
+				4A319B7E2E8F2600002B9AC9 /* pt-BR */,
+				4A319B7F2E8F2600002B9AC9 /* pt */,
+				4A319B802E8F2600002B9AC9 /* ru */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin XCBuildConfiguration section */
+		4A319B632E8F24F4002B9AC9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 187;
+				DEVELOPMENT_TEAM = KYH47R284B;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BitkitWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BitkitWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.2.1;
+				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4A319B642E8F24F4002B9AC9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 187;
+				DEVELOPMENT_TEAM = KYH47R284B;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BitkitWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BitkitWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.2.1;
+				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		961058E52C355B5500E1F1D8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -873,6 +1106,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		4A319B652E8F24F4002B9AC9 /* Build configuration list for PBXNativeTarget "BitkitWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4A319B632E8F24F4002B9AC9 /* Debug */,
+				4A319B642E8F24F4002B9AC9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		961058E42C355B5500E1F1D8 /* Build configuration list for PBXNativeTarget "BitkitNotification" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

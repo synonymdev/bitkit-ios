@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct HomeScreen: View {
+    @Environment(CalculatorInputManager.self) private var calculatorInput
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -39,6 +40,10 @@ struct HomeScreen: View {
                 .scrollTargetBehavior(.paging)
                 .scrollPosition(id: $scrollPosition)
                 .onChange(of: scrollPosition) { _, newValue in
+                    if newValue != 1 {
+                        calculatorInput.dismiss()
+                    }
+
                     // Dismiss this hint after the user has seen it and scrolls to widgets
                     if hasActivity, newValue == 1 {
                         app.hasDismissedWidgetsOnboardingHint = true

@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct Header: View {
+    @Environment(CalculatorInputManager.self) private var calculatorInput
+
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
@@ -10,6 +14,10 @@ struct Header: View {
     /// Binding to widgets edit state; used when showWidgetEditButton is true.
     @Binding var isEditingWidgets: Bool
 
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
     init(showWidgetEditButton: Bool = false, isEditingWidgets: Binding<Bool> = .constant(false)) {
         self.showWidgetEditButton = showWidgetEditButton
         _isEditingWidgets = isEditingWidgets
@@ -17,7 +25,9 @@ struct Header: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
-            profileButton
+            if isPaykitUIActive {
+                profileButton
+            }
 
             Spacer()
 
@@ -25,12 +35,14 @@ struct Header: View {
                 AppStatus(
                     testID: "HeaderAppStatus",
                     onPress: {
+                        if dismissCalculatorIfNeeded() { return }
                         navigation.navigate(.appStatus)
                     }
                 )
 
                 if showWidgetEditButton {
                     Button(action: {
+                        if dismissCalculatorIfNeeded() { return }
                         isEditingWidgets.toggle()
                     }) {
                         Image(isEditingWidgets ? "check-mark" : "pencil")
@@ -45,6 +57,8 @@ struct Header: View {
                 }
 
                 Button {
+                    if dismissCalculatorIfNeeded() { return }
+
                     withAnimation {
                         app.showDrawer = true
                     }
@@ -65,9 +79,10 @@ struct Header: View {
         .padding(.trailing, 10)
     }
 
-    @ViewBuilder
     private var profileButton: some View {
         Button {
+            if dismissCalculatorIfNeeded() { return }
+
             if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
                 navigation.navigate(.profile)
             } else if pubkyProfile.initializationErrorMessage != nil {
@@ -94,6 +109,12 @@ struct Header: View {
         }
         .accessibilityLabel(pubkyProfile.displayName ?? t("profile__nav_title"))
         .accessibilityIdentifier("ProfileButton")
+    }
+
+    private func dismissCalculatorIfNeeded() -> Bool {
+        guard calculatorInput.isPresented else { return false }
+        calculatorInput.dismiss()
+        return true
     }
 
     @ViewBuilder

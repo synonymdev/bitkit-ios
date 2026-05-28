@@ -2,6 +2,8 @@ import BitkitCore
 import SwiftUI
 
 struct ActivityLatest: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject private var activity: ActivityListViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var contactsManager: ContactsManager
@@ -9,6 +11,10 @@ struct ActivityLatest: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
 
     private var shouldShowBanner: Bool {
         wallet.balanceInTransferToSavings > 0 || wallet.balanceInTransferToSpending > 0
@@ -64,7 +70,7 @@ struct ActivityLatest: View {
                             ActivityRow(
                                 item: item,
                                 feeEstimates: feeEstimatesManager.estimates,
-                                contact: item.contact(in: contactsManager.contacts)
+                                contact: isPaykitUIActive ? item.contact(in: contactsManager.contacts) : nil
                             )
                         }
                         .accessibilityIdentifier("ActivityShort-\(index)")

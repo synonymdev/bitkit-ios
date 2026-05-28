@@ -60,6 +60,11 @@ struct SupportScreen: View {
         )
     }
 
+    private var copyrightText: String {
+        let year = Calendar(identifier: .gregorian).component(.year, from: Date())
+        return t("settings__support__copyright", variables: ["year": "\(year)"])
+    }
+
     var body: some View {
         InsetHeaderScrollView(
             header: {
@@ -132,7 +137,7 @@ struct SupportScreen: View {
                         Social()
                             .padding(.bottom, 16)
 
-                        BodyMText("Bitkit was crafted by Synonym Software, S.A. DE C.V. ©2025. All rights reserved.")
+                        BodyMText(copyrightText)
                             .padding(.bottom, 16)
 
                         HStack(alignment: .center, spacing: 10) {

@@ -4,6 +4,8 @@ import SwiftUI
 
 struct ActivityItemView: View {
     let item: Activity
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject var activityList: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
@@ -17,6 +19,10 @@ struct ActivityItemView: View {
     @StateObject private var viewModel: ActivityItemViewModel
     @State private var boostTxDoesExist: [String: Bool] = [:] // Maps boostTxId -> doesExist
     @State private var isCpfpChild: Bool = false
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
 
     init(item: Activity) {
         self.item = item
@@ -101,7 +107,8 @@ struct ActivityItemView: View {
     }
 
     private var assignedContact: PubkyContact? {
-        viewModel.activity.contact(in: contactsManager.contacts)
+        guard isPaykitUIActive else { return nil }
+        return viewModel.activity.contact(in: contactsManager.contacts)
     }
 
     private var navigationTitle: String {
@@ -508,21 +515,23 @@ struct ActivityItemView: View {
     private var buttons: some View {
         VStack(spacing: 16) {
             HStack(spacing: 16) {
-                CustomButton(
-                    title: assignedContact == nil ? t("wallet__activity_assign") : t("wallet__activity_detach"), size: .small,
-                    icon: Image(assignedContact == nil ? "user-plus" : "user-minus")
-                        .foregroundColor(accentColor),
-                    shouldExpand: true
-                ) {
-                    if assignedContact == nil {
-                        navigation.navigate(.assignActivityContact(activityId: viewModel.activityId))
-                    } else {
-                        Task {
-                            await detachContact()
+                if isPaykitUIActive {
+                    CustomButton(
+                        title: assignedContact == nil ? t("wallet__activity_assign") : t("wallet__activity_detach"), size: .small,
+                        icon: Image(assignedContact == nil ? "user-plus" : "user-minus")
+                            .foregroundColor(accentColor),
+                        shouldExpand: true
+                    ) {
+                        if assignedContact == nil {
+                            navigation.navigate(.assignActivityContact(activityId: viewModel.activityId))
+                        } else {
+                            Task {
+                                await detachContact()
+                            }
                         }
                     }
+                    .accessibilityIdentifier(assignedContact == nil ? "ActivityAssignContact" : "ActivityDetachContact")
                 }
-                .accessibilityIdentifier(assignedContact == nil ? "ActivityAssignContact" : "ActivityDetachContact")
 
                 CustomButton(
                     title: t("wallet__activity_tag"), size: .small,

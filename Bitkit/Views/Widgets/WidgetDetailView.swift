@@ -30,9 +30,9 @@ struct WidgetDetailView: View {
     /// Check if widget has customization options
     private var hasOptions: Bool {
         switch id {
-        case .blocks, .facts, .news, .price, .weather:
+        case .blocks, .news, .price, .weather:
             return true
-        case .suggestions, .calculator:
+        case .suggestions, .calculator, .facts:
             return false
         }
     }

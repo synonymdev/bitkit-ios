@@ -472,6 +472,15 @@ extension AppViewModel {
 
             handleNodeUri(url)
         case let .pubkyAuth(data: authUrl):
+            guard PaykitFeatureFlags.isUIEnabled else {
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__generic"),
+                    accessibilityIdentifier: "InvalidAddressToast"
+                )
+                return
+            }
             handlePubkyAuthApproval(authUrl)
         case let .gift(code, amount):
             sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
@@ -664,8 +673,14 @@ extension AppViewModel {
 
         if PubkyPublicKeyFormat.normalized(normalized) != nil {
             guard currentSequence == manualEntryValidationSequence else { return }
-            manualEntryValidationResult = .valid
-            isManualEntryInputValid = true
+            if PaykitFeatureFlags.isUIEnabled {
+                manualEntryValidationResult = .valid
+                isManualEntryInputValid = true
+            } else {
+                manualEntryValidationResult = .invalid
+                isManualEntryInputValid = false
+                showValidationErrorToast(for: .invalid)
+            }
             return
         }
 

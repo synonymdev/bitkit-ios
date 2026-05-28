@@ -197,7 +197,9 @@ gh pr create --base $base --title "..." --body "..." [--draft]
 ### 8b. Changelog Fragments
 
 If the PR is user-facing, verify the branch adds exactly one changelog fragment under `changelog.d/next/` or `changelog.d/hotfix/`.
-Do not edit `CHANGELOG.md` in normal PRs and do not backfill PR numbers into fragments.
+Do not edit `CHANGELOG.md` in normal PRs.
+If the PR was created (not dry run), rename any new changelog fragment whose filename does not start with the actual PR number to `<PR_NUMBER>.<category>.md`, preserving the category (`added`, `changed`, `deprecated`, `removed`, `fixed`, or `security`).
+If any fragment was renamed, create a follow-up commit with message `chore: rename changelog fragment` and push it.
 
 ### 9. Output Summary
 
