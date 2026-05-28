@@ -427,6 +427,7 @@ private struct BlocksWidePreview: View {
         Group {
             if let data = viewModel.blockData {
                 BlocksWidgetWideContent(data: data, options: options)
+                    .frame(height: BlocksWidgetWideContent.inAppContentHeight)
                     .padding(16)
                     .background(Color.gray6)
                     .cornerRadius(16)
