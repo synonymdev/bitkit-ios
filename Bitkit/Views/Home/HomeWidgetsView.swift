@@ -83,7 +83,15 @@ struct HomeWidgetsView: View {
                     // reorder already happened on hover); avoids the snap-back animation.
                     .onDrop(of: [.utf8PlainText], delegate: WidgetGridDropDelegate(dragState: dragState))
 
-                    CustomButton(title: t("widgets__add"), variant: .tertiary) {
+                    CustomButton(
+                        title: t("widgets__add"),
+                        variant: .tertiary,
+                        icon: Image("plus")
+                            .resizable()
+                            .renderingMode(.template)
+                            .frame(width: 16, height: 16)
+                            .foregroundColor(.white80)
+                    ) {
                         calculatorInput.dismiss()
 
                         if app.hasSeenWidgetsIntro {
