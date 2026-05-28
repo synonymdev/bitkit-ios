@@ -33,6 +33,10 @@ struct LegacyRnRecoveryScreen: View {
         scanResult != nil || sweepPreview != nil || broadcastTxid != nil
     }
 
+    private func currentElectrumServerUrl() -> String {
+        ElectrumConfigService().getCurrentServer().fullUrl
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: "Legacy RN Recovery")
@@ -295,7 +299,10 @@ struct LegacyRnRecoveryScreen: View {
         defer { isScanning = false }
 
         do {
-            scanResult = try await CoreService.shared.utility.scanLegacyRnNativeSegwitRecoveryFunds(indexLimit: limit)
+            scanResult = try await CoreService.shared.utility.scanLegacyRnNativeSegwitRecoveryFunds(
+                indexLimit: limit,
+                electrumUrl: currentElectrumServerUrl()
+            )
         } catch {
             Logger.error(error, context: "LegacyRnRecoveryScreen.scan")
             errorMessage = error.localizedDescription
@@ -328,7 +335,8 @@ struct LegacyRnRecoveryScreen: View {
             sweepPreview = try await CoreService.shared.utility.prepareLegacyRnNativeSegwitRecoverySweep(
                 destinationAddress: wallet.onchainAddress,
                 feeRateSatsPerVbyte: feeRate,
-                indexLimit: limit
+                indexLimit: limit,
+                electrumUrl: currentElectrumServerUrl()
             )
         } catch {
             Logger.error(error, context: "LegacyRnRecoveryScreen.prepareSweep")
@@ -345,7 +353,10 @@ struct LegacyRnRecoveryScreen: View {
         defer { isBroadcasting = false }
 
         do {
-            let txid = try await CoreService.shared.utility.broadcastRawTx(txHex: sweepPreview.txHex)
+            let txid = try await CoreService.shared.utility.broadcastRawTx(
+                txHex: sweepPreview.txHex,
+                electrumUrl: currentElectrumServerUrl()
+            )
             broadcastTxid = txid
             await wallet.syncStateAsync()
             app.toast(type: .success, title: "Sweep Broadcast", description: shortened(txid))

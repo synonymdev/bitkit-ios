@@ -1927,13 +1927,13 @@ class UtilityService {
 
     func scanLegacyRnNativeSegwitRecoveryFunds(
         walletIndex: Int = 0,
-        indexLimit: UInt32
+        indexLimit: UInt32,
+        electrumUrl: String = Env.electrumServerUrl
     ) async throws -> LegacyRnCloseRecoveryScanResult {
         try await ServiceQueue.background(.core) {
             let credentials = try self.recoveryWalletCredentials(walletIndex: walletIndex)
-            let electrumUrl = ElectrumConfigService().getCurrentServer().fullUrl
 
-            return try await scanLegacyRnNativeSegwitRecoveryFunds(
+            return try await BitkitCore.scanLegacyRnNativeSegwitRecoveryFunds(
                 mnemonicPhrase: credentials.mnemonic,
                 network: Env.bitkitCoreNetwork,
                 electrumUrl: electrumUrl,
@@ -1947,13 +1947,13 @@ class UtilityService {
         destinationAddress: String,
         feeRateSatsPerVbyte: UInt32?,
         walletIndex: Int = 0,
-        indexLimit: UInt32
+        indexLimit: UInt32,
+        electrumUrl: String = Env.electrumServerUrl
     ) async throws -> LegacyRnCloseRecoverySweepPreview {
         try await ServiceQueue.background(.core) {
             let credentials = try self.recoveryWalletCredentials(walletIndex: walletIndex)
-            let electrumUrl = ElectrumConfigService().getCurrentServer().fullUrl
 
-            return try await prepareLegacyRnNativeSegwitRecoverySweep(
+            return try await BitkitCore.prepareLegacyRnNativeSegwitRecoverySweep(
                 mnemonicPhrase: credentials.mnemonic,
                 network: Env.bitkitCoreNetwork,
                 electrumUrl: electrumUrl,
@@ -1965,9 +1965,8 @@ class UtilityService {
         }
     }
 
-    func broadcastRawTx(txHex: String) async throws -> String {
+    func broadcastRawTx(txHex: String, electrumUrl: String = Env.electrumServerUrl) async throws -> String {
         try await ServiceQueue.background(.core) {
-            let electrumUrl = ElectrumConfigService().getCurrentServer().fullUrl
             return try await onchainBroadcastRawTx(serializedTx: txHex, electrumUrl: electrumUrl)
         }
     }
