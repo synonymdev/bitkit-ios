@@ -7,8 +7,8 @@ struct WidgetsListSheetView: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
 
-    /// Widget types shown in the add-list, in display order. `suggestions` is system-managed and excluded.
-    private static let listedTypes: [WidgetType] = [.price, .weather, .news, .blocks, .facts, .calculator]
+    /// Widget types shown in the add-list, in display order.
+    private static let listedTypes: [WidgetType] = [.price, .weather, .news, .blocks, .facts, .calculator, .suggestions]
 
     private static let disabledTileAlpha: CGFloat = 0.42
 
@@ -111,7 +111,7 @@ struct WidgetsListSheetView: View {
     /// Display size each widget uses in the list grid (purely visual — not the saved size).
     private func displaySize(for type: WidgetType) -> WidgetSize {
         switch type {
-        case .news, .blocks: return .wide
+        case .news, .blocks, .suggestions: return .wide
         default: return .small
         }
     }
@@ -124,23 +124,32 @@ struct WidgetsListSheetView: View {
         }
     }
 
+    @ViewBuilder
     private func tileCard(for type: WidgetType) -> some View {
-        Group {
-            switch type {
-            case .price: PriceTile()
-            case .weather: WeatherTile()
-            case .news: NewsTile()
-            case .blocks: BlocksTile()
-            case .facts: FactsTile()
-            case .calculator: CalculatorTile()
-            case .suggestions: EmptyView()
-            }
+        // Suggestions cards carry their own backgrounds — no gray6 chrome (matches Android).
+        if type == .suggestions {
+            SuggestionsTile()
+        } else {
+            chromedTile(for: type)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: displaySize(for: type) == .small ? 160 : nil, alignment: .topLeading)
+                .background(Color.gray6)
+                .cornerRadius(16)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: displaySize(for: type) == .small ? 160 : nil, alignment: .topLeading)
-        .background(Color.gray6)
-        .cornerRadius(16)
+    }
+
+    @ViewBuilder
+    private func chromedTile(for type: WidgetType) -> some View {
+        switch type {
+        case .price: PriceTile()
+        case .weather: WeatherTile()
+        case .news: NewsTile()
+        case .blocks: BlocksTile()
+        case .facts: FactsTile()
+        case .calculator: CalculatorTile()
+        case .suggestions: EmptyView()
+        }
     }
 }
 
@@ -248,6 +257,14 @@ private struct FactsTile: View {
 
     var body: some View {
         FactsWidgetCompactContent(fact: viewModel.fact)
+    }
+}
+
+private struct SuggestionsTile: View {
+    var body: some View {
+        // Non-interactive preview grid; the suggestion cards supply their own backgrounds.
+        Suggestions(isPreview: true)
+            .frame(maxWidth: .infinity)
     }
 }
 

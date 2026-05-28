@@ -187,7 +187,7 @@ struct WidgetPreviewSheetView: View {
         case .weather: WeatherWidePreview()
         case .facts: FactsWidePreview()
         case .calculator: CalculatorWidePreview()
-        case .suggestions: EmptyView()
+        case .suggestions: SuggestionsWidePreview()
         }
     }
 
@@ -627,5 +627,12 @@ private struct CalculatorSmallPreview: View {
             currencySymbol: currency.symbol,
             selectedCurrency: currency.selectedCurrency
         )
+    }
+}
+
+private struct SuggestionsWidePreview: View {
+    var body: some View {
+        Suggestions(isPreview: true)
+            .frame(maxWidth: .infinity)
     }
 }
