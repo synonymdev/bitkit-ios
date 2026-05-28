@@ -70,6 +70,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
 struct DrawerView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
@@ -97,15 +98,15 @@ struct DrawerView: View {
             .transition(.opacity)
     }
 
-    /// Route to push when selecting this drawer item (nil for Wallet = pop to root,
-    /// and also nil for `.widgets` when already onboarded — that case opens the sheet instead).
+    /// Route to push when selecting this drawer item (nil for Wallet = pop to root).
+    /// `.widgets` is handled separately in `selectWidgets()`.
     private func route(for item: DrawerMenuItem) -> Route? {
         switch item {
         case .wallet: return nil
         case .activity: return .activityList
         case .contacts: return .contacts
         case .profile: return .profile
-        case .widgets: return app.hasSeenWidgetsIntro ? nil : .widgetsIntro
+        case .widgets: return nil
         case .shop: return app.hasSeenShopIntro ? .shopDiscover : .shopIntro
         case .support: return .support
         case .settings: return .settings
@@ -114,16 +115,32 @@ struct DrawerView: View {
     }
 
     private func selectDrawerItem(_ item: DrawerMenuItem) {
+        if item == .widgets {
+            selectWidgets()
+            closeMenu()
+            return
+        }
+
         if let route = route(for: item) {
             navigation.path = [route]
         } else {
             navigation.path = []
         }
-        // After onboarding, the widgets drawer entry opens the widgets sheet instead of a route.
-        if item == .widgets, app.hasSeenWidgetsIntro {
+        closeMenu()
+    }
+
+    private func selectWidgets() {
+        guard app.hasSeenWidgetsIntro else {
+            navigation.path = [.widgetsIntro]
+            return
+        }
+
+        navigation.path = []
+        if settings.showWidgets {
+            app.requestedHomePage = 1
+        } else {
             sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .list))
         }
-        closeMenu()
     }
 
     var body: some View {
