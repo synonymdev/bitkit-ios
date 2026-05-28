@@ -81,6 +81,9 @@ struct WidgetPreviewSheetView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Pushed navigationDestination views get an opaque system background; override it
+        // with the sheet's gray7 so preview matches the list route.
+        .background(Color.gray7)
         .task {
             if supportsSmall {
                 carouselPage = Self.initialCarouselPage(for: type, widgets: widgets)

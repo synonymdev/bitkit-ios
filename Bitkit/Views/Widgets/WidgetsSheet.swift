@@ -29,7 +29,7 @@ struct WidgetsSheet: View {
     let config: WidgetsSheetItem
 
     var body: some View {
-        Sheet(id: .widgets, data: config, backgroundColor: .gray7) {
+        Sheet(id: .widgets, data: config, backgroundColor: .gray7, applyGradient: false) {
             NavigationStack(path: $navigationPath) {
                 viewForRoute(config.initialRoute)
                     .navigationDestination(for: WidgetsRoute.self) { route in

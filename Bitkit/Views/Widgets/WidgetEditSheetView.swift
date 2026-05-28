@@ -67,6 +67,9 @@ struct WidgetEditSheetView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Pushed navigationDestination views get an opaque system background; override it
+        // with the sheet's gray7 so edit matches the list/preview routes.
+        .background(Color.gray7)
         .onAppear {
             if editLogic == nil {
                 let logic = WidgetEditLogic(widgetType: type, widgetsViewModel: widgets)
