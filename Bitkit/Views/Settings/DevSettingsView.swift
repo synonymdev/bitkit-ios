@@ -57,7 +57,7 @@ struct DevSettingsView: View {
                         .padding(.top, 16)
 
                     NavigationLink(value: Route.legacyRnRecovery) {
-                        SettingsRow(title: "Legacy RN Close Recovery")
+                        SettingsRow(title: "Legacy Close Recovery")
                             .accessibilityIdentifier("LegacyRnRecovery")
                     }
 
