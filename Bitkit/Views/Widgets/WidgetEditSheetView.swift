@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Sheet-shell wrapper around the existing `WidgetEditLogic` + `WidgetEditItemView` flow.
-/// Header swaps the full-screen `NavigationBar` for a `SheetHeader` and the "Preview"
-/// button pops back to the preview route inside the same sheet navigation stack.
 struct WidgetEditSheetView: View {
     let type: WidgetType
     @Binding var navigationPath: [WidgetsRoute]
