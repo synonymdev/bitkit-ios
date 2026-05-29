@@ -164,8 +164,8 @@ struct HomeWidgetsView: View {
         }
     }
 
-    /// Resolved layout size for the grid. Calculator and suggestions are always wide
-    /// regardless of the value stored on `SavedWidget`.
+    /// Resolved layout size for the grid. Suggestions is always wide regardless of the value
+    /// stored on `SavedWidget`
     private func displayedSize(for widget: Widget) -> WidgetSize {
         switch widget.type {
         case .suggestions: return .wide

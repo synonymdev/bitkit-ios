@@ -25,6 +25,7 @@ struct WidgetsSheetItem: SheetItem {
 }
 
 struct WidgetsSheet: View {
+    @EnvironmentObject private var widgets: WidgetsViewModel
     @State private var navigationPath: [WidgetsRoute] = []
     let config: WidgetsSheetItem
 
@@ -35,6 +36,9 @@ struct WidgetsSheet: View {
                     .navigationDestination(for: WidgetsRoute.self) { route in
                         viewForRoute(route)
                     }
+            }
+            .onDisappear {
+                widgets.clearDrafts()
             }
         }
     }

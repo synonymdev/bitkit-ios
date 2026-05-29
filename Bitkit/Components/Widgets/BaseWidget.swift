@@ -60,10 +60,6 @@ enum WidgetContentBuilder {
     }
 }
 
-/// Drop type used by the home grid drag-and-drop reorder.
-/// Drag payload is the widget's `WidgetType.rawValue`.
-let widgetReorderDragType = "to.bitkit.widget.reorder"
-
 /// Foundation container for all widgets. Owns the card chrome (gray6 bg, 16pt radius),
 /// the v61 editing overlay (dashed brand border + centred action icons), and the small/wide
 /// sizing rules used by the home grid.

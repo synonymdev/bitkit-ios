@@ -194,6 +194,8 @@ class WidgetsViewModel: ObservableObject {
     /// In-memory storage for saved widgets with options
     private var savedWidgetsWithOptions: [SavedWidget] = []
 
+    @Published private var draftOptionsData: [WidgetType: Data] = [:]
+
     /// Default widgets for new installs and resets
     private static let defaultSavedWidgets: [SavedWidget] = [
         SavedWidget(type: .suggestions, size: .wide),
@@ -216,17 +218,26 @@ class WidgetsViewModel: ObservableObject {
         return savedWidgets.contains { $0.type == type }
     }
 
-    /// Save a new widget
+    /// Commit a widget to the grid at the chosen size, folding in any staged option edits.
+    /// This is the single commit point: it persists the widget, syncs staged options to the
+    /// iOS home-screen widget, and clears the draft.
     func saveWidget(_ type: WidgetType, size: WidgetSize = .wide) {
         let resolvedSize: WidgetSize = type == .suggestions ? .wide : size
+        let draft = draftOptionsData[type]
 
         if let index = savedWidgetsWithOptions.firstIndex(where: { $0.type == type }) {
             let existing = savedWidgetsWithOptions[index]
-            guard existing.size != resolvedSize else { return }
-            savedWidgetsWithOptions[index] = SavedWidget(type: type, optionsData: existing.optionsData, size: resolvedSize)
+            let optionsData = draft ?? existing.optionsData
+            savedWidgetsWithOptions[index] = SavedWidget(type: type, optionsData: optionsData, size: resolvedSize)
         } else {
-            savedWidgetsWithOptions.append(SavedWidget(type: type, size: resolvedSize))
+            savedWidgetsWithOptions.append(SavedWidget(type: type, optionsData: draft, size: resolvedSize))
         }
+
+        if let draft {
+            syncHomeScreenWidgetOptions(for: type, optionsData: draft)
+            draftOptionsData[type] = nil
+        }
+
         savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
         persistSavedWidgets()
     }
@@ -239,7 +250,15 @@ class WidgetsViewModel: ObservableObject {
     func deleteWidget(_ type: WidgetType) {
         savedWidgetsWithOptions.removeAll { $0.type == type }
         savedWidgets.removeAll { $0.type == type }
+        draftOptionsData[type] = nil
         persistSavedWidgets()
+    }
+
+    /// Discard all uncommitted option edits. Call when the widgets sheet is dismissed so staged
+    /// edits don't leak into a later session.
+    func clearDrafts() {
+        guard !draftOptionsData.isEmpty else { return }
+        draftOptionsData = [:]
     }
 
     /// Reorder the widgets list by moving one widget to a new index.
@@ -265,6 +284,13 @@ class WidgetsViewModel: ObservableObject {
 
     /// Get options for a specific widget type
     func getOptions<T: Codable>(for type: WidgetType, as optionsType: T.Type) -> T {
+        // A staged draft (uncommitted edit) shadows the persisted value so the preview reflects it.
+        if let draft = draftOptionsData[type],
+           let options = try? JSONDecoder().decode(optionsType, from: draft)
+        {
+            return options
+        }
+
         // Find the saved widget with this type
         if let savedWidget = savedWidgetsWithOptions.first(where: { $0.type == type }),
            let optionsData = savedWidget.optionsData,
@@ -277,46 +303,39 @@ class WidgetsViewModel: ObservableObject {
         return getDefaultOptions(for: type) as! T
     }
 
-    /// Save options for a specific widget type
-    func saveOptions(_ options: some Codable, for type: WidgetType) {
+    /// Stage option edits for a widget type without committing. The edit is held in memory and
+    /// shadows the persisted value via `getOptions(...)`; it is only persisted (and synced to the
+    /// iOS home-screen widget) once the user taps "Save Widget" (`saveWidget`).
+    func stageOptions(_ options: some Codable, for type: WidgetType) {
         do {
-            let optionsData = try JSONEncoder().encode(options)
-
-            // Find existing saved widget or create new one
-            if let index = savedWidgetsWithOptions.firstIndex(where: { $0.type == type }) {
-                // Update existing widget with new options — preserve the chosen size.
-                let existing = savedWidgetsWithOptions[index]
-                savedWidgetsWithOptions[index] = SavedWidget(
-                    type: type,
-                    optionsData: optionsData,
-                    size: existing.size
-                )
-            } else {
-                // Create new saved widget with options
-                savedWidgetsWithOptions.append(SavedWidget(type: type, optionsData: optionsData))
-            }
-
-            // Keep the @Published mirror in lockstep so other callers see a consistent picture.
-            savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
-            persistSavedWidgets()
-
-            if type == .price, let priceOptions = options as? PriceWidgetOptions {
-                syncPriceOptionsToHomeScreenWidget(priceOptions)
-            }
-
-            if type == .news, let newsOptions = options as? NewsWidgetOptions {
-                syncNewsOptionsToHomeScreenWidget(newsOptions)
-            }
-
-            if type == .blocks, let blocksOptions = options as? BlocksWidgetOptions {
-                syncBlocksOptionsToHomeScreenWidget(blocksOptions)
-            }
-
-            if type == .weather, let weatherOptions = options as? WeatherWidgetOptions {
-                syncWeatherOptionsToHomeScreenWidget(weatherOptions)
-            }
+            draftOptionsData[type] = try JSONEncoder().encode(options)
         } catch {
-            print("Failed to save widget options: \(error)")
+            Logger.error("Failed to stage widget options: \(error)", context: "WidgetsViewModel")
+        }
+    }
+
+    /// Persist the given options to the shared App Group store and reload the iOS home-screen
+    /// widget timeline. Called on commit (`saveWidget`) for the types that back a home-screen widget.
+    private func syncHomeScreenWidgetOptions(for type: WidgetType, optionsData: Data) {
+        switch type {
+        case .price:
+            if let options = try? JSONDecoder().decode(PriceWidgetOptions.self, from: optionsData) {
+                syncPriceOptionsToHomeScreenWidget(options)
+            }
+        case .news:
+            if let options = try? JSONDecoder().decode(NewsWidgetOptions.self, from: optionsData) {
+                syncNewsOptionsToHomeScreenWidget(options)
+            }
+        case .blocks:
+            if let options = try? JSONDecoder().decode(BlocksWidgetOptions.self, from: optionsData) {
+                syncBlocksOptionsToHomeScreenWidget(options)
+            }
+        case .weather:
+            if let options = try? JSONDecoder().decode(WeatherWidgetOptions.self, from: optionsData) {
+                syncWeatherOptionsToHomeScreenWidget(options)
+            }
+        case .calculator, .facts, .suggestions:
+            break
         }
     }
 
@@ -391,7 +410,7 @@ class WidgetsViewModel: ObservableObject {
             let encodedData = try JSONEncoder().encode(savedWidgetsWithOptions)
             UserDefaults.standard.set(encodedData, forKey: Self.savedWidgetsKey)
         } catch {
-            print("Failed to persist widgets: \(error)")
+            Logger.error("Failed to persist widgets: \(error)", context: "WidgetsViewModel")
         }
     }
 
