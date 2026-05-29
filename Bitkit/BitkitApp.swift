@@ -96,12 +96,16 @@ struct BitkitApp: App {
 
     init() {
         UIWindow.appearance().overrideUserInterfaceStyle = .dark
+        if Env.shouldResetTrezorEmulatorState {
+            TrezorKnownDeviceStorage.removeAll()
+            TrezorCredentialStorage.deleteAll()
+        }
         _ = ToastWindowManager.shared
     }
 
     var body: some Scene {
         WindowGroup {
-            if Env.isUnitTest {
+            if Env.isUnitTest, !Env.isTrezorEmulatorTesting {
                 Text("Running tests...")
             } else {
                 ContentView()

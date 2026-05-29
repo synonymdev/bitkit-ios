@@ -118,6 +118,10 @@ class TrezorViewModel {
     /// Status text during auto-reconnect
     var autoReconnectStatus: String?
 
+    /// Prevents a user-initiated disconnect from immediately reconnecting
+    /// when the disconnected device list appears.
+    private var suppressNextAutoReconnect = false
+
     // MARK: - Address Index
 
     /// Current address index (last path component)
@@ -223,6 +227,10 @@ class TrezorViewModel {
         TrezorBLEManager.shared.bluetoothState
     }
 
+    var isBridgeModeEnabled: Bool {
+        transport.isBridgeEnabled
+    }
+
     // MARK: - Private Properties
 
     private let trezorService = TrezorService.shared
@@ -292,9 +300,11 @@ class TrezorViewModel {
     /// Called from TrezorRootView's .task to prepare the UI layer.
     func setup() {
         guard !hasSetupSubscriptions else { return }
-        // Start BLE stack early so bluetoothState is updated by the time
-        // TrezorDeviceListView renders (the delegate callback fires async).
-        TrezorBLEManager.shared.ensureStarted()
+        if !transport.isBridgeEnabled {
+            // Start BLE stack early so bluetoothState is updated by the time
+            // TrezorDeviceListView renders (the delegate callback fires async).
+            TrezorBLEManager.shared.ensureStarted()
+        }
         setupCallbackSubscriptions()
         hasSetupSubscriptions = true
     }
@@ -333,15 +343,17 @@ class TrezorViewModel {
             devices = []
         }
 
-        // Start BLE scanning
-        transport.startBLEScanning()
+        if !transport.isBridgeEnabled {
+            // Start BLE scanning
+            transport.startBLEScanning()
 
-        // Wait for BLE to discover devices (like Android's 3-second scan)
-        // This ensures devices are found before we call the FFI enumerate
-        try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+            // Wait for BLE to discover devices (like Android's 3-second scan)
+            // This ensures devices are found before we call the FFI enumerate
+            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
 
-        // Stop BLE scanning before calling FFI to prevent race conditions
-        transport.stopBLEScanning()
+            // Stop BLE scanning before calling FFI to prevent race conditions
+            transport.stopBLEScanning()
+        }
 
         do {
             // Trigger FFI scan which will use our transport callbacks
@@ -378,6 +390,7 @@ class TrezorViewModel {
     /// Connect to a device
     func connect(device: TrezorDeviceInfo) async {
         error = nil
+        suppressNextAutoReconnect = false
 
         trezorLog("=== Connecting to device: \(device.path) ===")
 
@@ -400,6 +413,7 @@ class TrezorViewModel {
     /// Disconnect from current device
     func disconnect() async {
         guard connectedDevice != nil else { return }
+        suppressNextAutoReconnect = true
 
         do {
             try await trezorService.disconnect()
@@ -632,6 +646,11 @@ class TrezorViewModel {
     func autoReconnect() async {
         guard !knownDevices.isEmpty else { return }
         guard !isAutoReconnecting else { return }
+        if suppressNextAutoReconnect {
+            suppressNextAutoReconnect = false
+            trezorLog("Auto-reconnect: skipped after manual disconnect")
+            return
+        }
 
         isAutoReconnecting = true
         autoReconnectStatus = "Scanning for known devices..."
@@ -798,10 +817,17 @@ class TrezorViewModel {
 
     /// Get the Electrum server URL for a specific network (hardcoded per-network URLs)
     static func electrumUrlForNetwork(_ network: TrezorCoinType) -> String {
+        if network == .regtest, let trezorElectrumUrl = Env.trezorElectrumUrl {
+            return trezorElectrumUrl
+        }
+
         switch network {
-        case .bitcoin: "ssl://bitkit.to:9999"
-        case .testnet, .signet: "ssl://electrum.blockstream.info:60002"
-        case .regtest: "ssl://electrs.bitkit.stag0.blocktank.to:9999"
+        case .bitcoin:
+            return "ssl://bitkit.to:9999"
+        case .testnet, .signet:
+            return "ssl://electrum.blockstream.info:60002"
+        case .regtest:
+            return "ssl://electrs.bitkit.stag0.blocktank.to:9999"
         }
     }
 
@@ -1310,5 +1336,28 @@ class TrezorViewModel {
             self.error = errorMessage(from: error)
             trezorLog("Failed to clear credentials: \(error)", level: "error")
         }
+    }
+
+    // MARK: - AI Test Hooks
+
+    func testShowPinPrompt() {
+        guard Env.isTrezorEmulatorTesting else { return }
+        showPinEntry = true
+    }
+
+    func testShowPassphrasePrompt() {
+        guard Env.isTrezorEmulatorTesting else { return }
+        showPassphraseEntry = true
+    }
+
+    func testShowPairingCodePrompt() {
+        guard Env.isTrezorEmulatorTesting else { return }
+        showPairingCode = true
+    }
+
+    func testShowConfirmOnDevicePrompt() {
+        guard Env.isTrezorEmulatorTesting else { return }
+        confirmMessage = "Confirm test action on your Trezor"
+        showConfirmOnDevice = true
     }
 }

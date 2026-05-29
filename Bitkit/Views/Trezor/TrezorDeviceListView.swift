@@ -19,7 +19,7 @@ struct TrezorDeviceListView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // Bluetooth status (don't show during initial .unknown state)
-                    if trezor.bluetoothState != .poweredOn, trezor.bluetoothState != .unknown {
+                    if !trezor.isBridgeModeEnabled, trezor.bluetoothState != .poweredOn, trezor.bluetoothState != .unknown {
                         BluetoothStatusCard(state: trezor.bluetoothState)
                     }
 
@@ -90,7 +90,7 @@ struct TrezorDeviceListView: View {
 
             // Bottom action button
             if !trezor.isScanning, !trezor.isAutoReconnecting,
-               trezor.bluetoothState == .poweredOn || trezor.bluetoothState == .unknown
+               trezor.isBridgeModeEnabled || trezor.bluetoothState == .poweredOn || trezor.bluetoothState == .unknown
             {
                 Button(action: {
                     Task {
@@ -108,12 +108,14 @@ struct TrezorDeviceListView: View {
                     .background(Color.white)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .accessibilityIdentifier("TrezorScanButton")
                 .padding(16)
             }
         }
         .background(Color.black)
         .navigationTitle("Connect Trezor")
         .navigationBarTitleDisplayMode(.inline)
+        .trezorAccessibilityAnchor("TrezorDeviceList")
         .task {
             trezor.loadKnownDevices()
 
@@ -126,7 +128,7 @@ struct TrezorDeviceListView: View {
                 }
             }
 
-            guard trezor.bluetoothState == .poweredOn else { return }
+            guard trezor.isBridgeModeEnabled || trezor.bluetoothState == .poweredOn else { return }
 
             if !trezor.knownDevices.isEmpty {
                 await trezor.autoReconnect()
@@ -184,6 +186,7 @@ private struct AutoReconnectIndicator: View {
                 .foregroundColor(.white.opacity(0.6))
         }
         .padding(16)
+        .trezorAccessibilityAnchor("TrezorAutoReconnectIndicator")
     }
 }
 
@@ -209,6 +212,7 @@ private struct BluetoothStatusCard: View {
         .frame(maxWidth: .infinity)
         .background(Color.orange.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .trezorAccessibilityAnchor("TrezorBluetoothStatus")
     }
 
     private var statusTitle: String {
@@ -255,6 +259,7 @@ private struct ScanningIndicator: View {
                 .multilineTextAlignment(.center)
         }
         .padding(32)
+        .trezorAccessibilityAnchor("TrezorScanningIndicator")
     }
 }
 
@@ -277,6 +282,7 @@ private struct TrezorEmptyStateView: View {
             }
         }
         .padding(32)
+        .trezorAccessibilityAnchor("TrezorEmptyState")
     }
 }
 
@@ -297,6 +303,7 @@ private struct ErrorCard: View {
         .padding(16)
         .background(Color.red.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .trezorAccessibilityAnchor("TrezorDeviceListError")
     }
 }
 

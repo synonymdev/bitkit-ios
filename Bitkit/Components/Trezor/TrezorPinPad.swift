@@ -54,10 +54,12 @@ struct TrezorPinPad: View {
                 }
                 .disabled(pin.isEmpty)
                 .opacity(pin.isEmpty ? 0.3 : 1.0)
+                .accessibilityIdentifier("TrezorPinDelete")
             }
             .padding(.top, 8)
         }
         .padding(16)
+        .accessibilityIdentifier("TrezorPinPad")
     }
 
     private func handleDigitTap(_ position: String) {
@@ -89,6 +91,7 @@ private struct PinButton: View {
                 )
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityIdentifier("TrezorPinPosition-\(position)")
     }
 }
 

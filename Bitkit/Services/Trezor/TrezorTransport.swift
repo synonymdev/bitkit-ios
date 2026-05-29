@@ -9,6 +9,7 @@ final class TrezorTransport: TrezorTransportCallback {
     static let shared = TrezorTransport()
 
     private let bleManager = TrezorBLEManager.shared
+    private let bridgeTransport = TrezorBridgeTransport.shared
 
     // MARK: - Pairing Code Handling
 
@@ -36,7 +37,7 @@ final class TrezorTransport: TrezorTransportCallback {
     /// Enumerate all connected/discovered Trezor devices
     func enumerateDevices() -> [NativeDeviceInfo] {
         let bleDevices = bleManager.enumerateDevices()
-        let devices = bleDevices.map { device in
+        var devices = bleDevices.map { device in
             NativeDeviceInfo(
                 path: device.path,
                 transportType: "bluetooth",
@@ -45,6 +46,7 @@ final class TrezorTransport: TrezorTransportCallback {
                 productId: nil
             )
         }
+        devices.append(contentsOf: bridgeTransport.enumerateDevices())
 
         debugLog("enumerateDevices: \(devices.count) devices")
 
@@ -56,6 +58,10 @@ final class TrezorTransport: TrezorTransportCallback {
         debugLog("openDevice: \(path)")
 
         do {
+            if bridgeTransport.isBridgeDevice(path: path) {
+                return bridgeTransport.openDevice(path: path)
+            }
+
             guard path.hasPrefix("ble:") else {
                 throw TrezorTransportError.invalidPath(path)
             }
@@ -91,6 +97,10 @@ final class TrezorTransport: TrezorTransportCallback {
     func closeDevice(path: String) -> TrezorTransportWriteResult {
         debugLog("closeDevice: \(path)")
 
+        if bridgeTransport.isBridgeDevice(path: path) {
+            return bridgeTransport.closeDevice(path: path)
+        }
+
         guard path.hasPrefix("ble:") else {
             return TrezorTransportWriteResult(success: false, error: "Invalid device path: \(path)")
         }
@@ -102,6 +112,10 @@ final class TrezorTransport: TrezorTransportCallback {
     /// Read a chunk of data from the device
     func readChunk(path: String) -> TrezorTransportReadResult {
         do {
+            if bridgeTransport.isBridgeDevice(path: path) {
+                return bridgeTransport.readChunk(path: path)
+            }
+
             guard path.hasPrefix("ble:") else {
                 throw TrezorTransportError.invalidPath(path)
             }
@@ -121,6 +135,10 @@ final class TrezorTransport: TrezorTransportCallback {
         debugLog("writeChunk: \(data.count) bytes")
 
         do {
+            if bridgeTransport.isBridgeDevice(path: path) {
+                return bridgeTransport.writeChunk(path: path, data: data)
+            }
+
             guard path.hasPrefix("ble:") else {
                 throw TrezorTransportError.invalidPath(path)
             }
@@ -153,12 +171,19 @@ final class TrezorTransport: TrezorTransportCallback {
 
     /// Get the chunk size for a device
     func getChunkSize(path: String) -> UInt32 {
+        if bridgeTransport.isBridgeDevice(path: path) {
+            return 64
+        }
         return TrezorBLEManager.chunkSize // 244 bytes for BLE
     }
 
     /// Called by rust-trezor to delegate full message call to native transport
     /// This is an optional optimization - return nil to have Rust handle it
     func callMessage(path: String, messageType: UInt16, data: Data) -> TrezorCallMessageResult? {
+        if bridgeTransport.isBridgeDevice(path: path) {
+            return bridgeTransport.callMessage(path: path, messageType: messageType, data: data)
+        }
+
         // Let Rust handle the message protocol
         // We only provide the raw transport layer
         return nil
@@ -266,6 +291,7 @@ final class TrezorTransport: TrezorTransportCallback {
 
     /// Start scanning for BLE devices
     func startBLEScanning() {
+        guard !bridgeTransport.isEnabled else { return }
         bleManager.startScanning()
     }
 
@@ -277,6 +303,10 @@ final class TrezorTransport: TrezorTransportCallback {
     /// Get Bluetooth state
     var bluetoothState: CBManagerState {
         bleManager.bluetoothState
+    }
+
+    var isBridgeEnabled: Bool {
+        bridgeTransport.isEnabled
     }
 }
 

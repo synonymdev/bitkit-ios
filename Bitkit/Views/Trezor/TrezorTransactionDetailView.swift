@@ -101,6 +101,7 @@ private struct TxDetailInputSection: View {
                     .padding(12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("TrezorTxDetailXpub")
 
                 HStack(spacing: 12) {
                     Button(action: {
@@ -115,6 +116,7 @@ private struct TxDetailInputSection: View {
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.6))
                     }
+                    .accessibilityIdentifier("TrezorTxDetailPasteXpub")
 
                     if !xpubInput.isEmpty {
                         Button(action: { xpubInput = "" }) {
@@ -125,6 +127,7 @@ private struct TxDetailInputSection: View {
                             .font(.system(size: 12))
                             .foregroundColor(.white.opacity(0.6))
                         }
+                        .accessibilityIdentifier("TrezorTxDetailClearXpub")
                     }
                 }
             }
@@ -142,6 +145,7 @@ private struct TxDetailInputSection: View {
                     .padding(12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("TrezorTxDetailTxid")
 
                 HStack(spacing: 12) {
                     Button(action: {
@@ -156,6 +160,7 @@ private struct TxDetailInputSection: View {
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.6))
                     }
+                    .accessibilityIdentifier("TrezorTxDetailPasteTxid")
 
                     if !txidInput.isEmpty {
                         Button(action: { txidInput = "" }) {
@@ -166,6 +171,7 @@ private struct TxDetailInputSection: View {
                             .font(.system(size: 12))
                             .foregroundColor(.white.opacity(0.6))
                         }
+                        .accessibilityIdentifier("TrezorTxDetailClearTxid")
                     }
                 }
             }
@@ -211,6 +217,7 @@ private struct TxDetailLookupButton: View {
         }
         .disabled(isDisabled || isLoading)
         .opacity(isDisabled ? 0.5 : 1.0)
+        .accessibilityIdentifier("TrezorTxDetailButton")
     }
 }
 
@@ -239,6 +246,7 @@ private struct TxDetailOverviewSection: View {
                         .foregroundColor(.white)
                         .textSelection(.enabled)
                         .lineLimit(2)
+                        .accessibilityIdentifier("TrezorTxDetailResultTxid")
 
                     Spacer()
 
@@ -281,6 +289,7 @@ private struct TxDetailOverviewSection: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
+        .trezorAccessibilityAnchor("TrezorTxDetailOverview")
     }
 
     private var directionLabel: String {
@@ -321,6 +330,7 @@ private struct TxDetailInputsSection: View {
                     }
                 }
             }
+            .trezorAccessibilityAnchor("TrezorTxDetailInputs")
         }
     }
 }
@@ -395,6 +405,7 @@ private struct TxInputRow: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .trezorAccessibilityAnchor("TrezorTxDetailInputRow")
     }
 
     private var truncatedTxid: String {
@@ -424,6 +435,7 @@ private struct TxDetailOutputsSection: View {
                     }
                 }
             }
+            .trezorAccessibilityAnchor("TrezorTxDetailOutputs")
         }
     }
 }
@@ -477,6 +489,7 @@ private struct TxOutputRow: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .trezorAccessibilityAnchor("TrezorTxDetailOutputRow")
     }
 }
 
