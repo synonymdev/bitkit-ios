@@ -133,7 +133,7 @@ struct WidgetsListSheetView: View {
             chromedTile(for: type)
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: displaySize(for: type) == .small ? 160 : nil, alignment: .topLeading)
+                .frame(height: displaySize(for: type) == .small ? 192 : nil, alignment: .topLeading)
                 .background(Color.gray6)
                 .cornerRadius(16)
         }
