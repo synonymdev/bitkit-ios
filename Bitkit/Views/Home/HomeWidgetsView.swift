@@ -56,100 +56,98 @@ struct HomeWidgetsView: View {
     }
 
     var body: some View {
-        ScrollViewReader { _ in
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Grid(horizontalSpacing: 16, verticalSpacing: 16) {
-                        ForEach(gridRows) { row in
-                            GridRow {
-                                switch row {
-                                case let .wide(widget):
-                                    cell(widget)
-                                        .gridCellColumns(2)
-                                case let .pair(first, second):
-                                    cell(first)
-                                    if let second {
-                                        cell(second)
-                                    } else {
-                                        Color.clear
-                                    }
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                Grid(horizontalSpacing: 16, verticalSpacing: 16) {
+                    ForEach(gridRows) { row in
+                        GridRow {
+                            switch row {
+                            case let .wide(widget):
+                                cell(widget)
+                                    .gridCellColumns(2)
+                            case let .pair(first, second):
+                                cell(first)
+                                if let second {
+                                    cell(second)
+                                } else {
+                                    Color.clear
                                 }
                             }
                         }
                     }
-                    .id(visibleWidgets.map(\.id))
-                    .environment(\.widgetDragState, dragState)
-                    // Catch-all so drops that land in a gap are still accepted (the live
-                    // reorder already happened on hover); avoids the snap-back animation.
-                    .onDrop(of: [.utf8PlainText], delegate: WidgetGridDropDelegate(dragState: dragState))
+                }
+                .id(visibleWidgets.map(\.id))
+                .environment(\.widgetDragState, dragState)
+                // Catch-all so drops that land in a gap are still accepted (the live
+                // reorder already happened on hover); avoids the snap-back animation.
+                .onDrop(of: [.utf8PlainText], delegate: WidgetGridDropDelegate(dragState: dragState))
 
-                    CustomButton(
-                        title: t("widgets__add"),
-                        variant: .tertiary,
-                        icon: Image("plus")
-                            .resizable()
-                            .renderingMode(.template)
-                            .frame(width: 16, height: 16)
-                            .foregroundColor(.white80)
-                    ) {
-                        calculatorInput.dismiss()
+                CustomButton(
+                    title: t("widgets__add"),
+                    variant: .tertiary,
+                    icon: Image("plus")
+                        .resizable()
+                        .renderingMode(.template)
+                        .frame(width: 16, height: 16)
+                        .foregroundColor(.white80)
+                ) {
+                    calculatorInput.dismiss()
 
-                        if app.hasSeenWidgetsIntro {
-                            sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .list))
-                        } else {
-                            navigation.navigate(.widgetsIntro)
-                        }
+                    if app.hasSeenWidgetsIntro {
+                        sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .list))
+                    } else {
+                        navigation.navigate(.widgetsIntro)
                     }
-                    .padding(.top, 16)
-                    .opacity(calculatorInput.isPresented ? 0 : 1)
-                    .allowsHitTesting(!calculatorInput.isPresented)
-                    .accessibilityHidden(calculatorInput.isPresented)
-                    .accessibilityIdentifier("WidgetsAdd")
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .padding(.top, ScreenLayout.topPaddingWithSafeArea)
-                .padding(.bottom, bottomPadding)
-                .padding(.horizontal)
-                .offset(y: focusedContentOffsetY)
-                .background {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            calculatorInput.dismiss()
-                        }
-                }
+                .padding(.top, 16)
+                .opacity(calculatorInput.isPresented ? 0 : 1)
+                .allowsHitTesting(!calculatorInput.isPresented)
+                .accessibilityHidden(calculatorInput.isPresented)
+                .accessibilityIdentifier("WidgetsAdd")
             }
-            .scrollDisabled(calculatorInput.isPresented)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: Self.focusDismissDragMinimumDistance)
-                    .onChanged(handleWidgetsPageDragChanged)
-                    .onEnded { _ in
-                        didStartCalculatorDismissDrag = false
-                    },
-                including: calculatorInput.isPresented || didStartCalculatorDismissDrag ? .all : .none
-            )
-            // Dismiss (calculator widget) keyboard when scrolling
-            .scrollDismissesKeyboard(.interactively)
-            .overlay(alignment: .bottom) {
-                if calculatorInput.isPresented {
-                    CalculatorNumberPadBar()
-                        .transition(.move(edge: .bottom))
-                }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.top, ScreenLayout.topPaddingWithSafeArea)
+            .padding(.bottom, bottomPadding)
+            .padding(.horizontal)
+            .offset(y: focusedContentOffsetY)
+            .background {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        calculatorInput.dismiss()
+                    }
             }
-            .animation(.easeOut(duration: 0.14), value: calculatorInput.isPresented)
-            .onChange(of: calculatorInput.isPresented) { _, isPresented in
-                if isPresented {
-                    focusCalculator()
-                } else {
-                    setFocusedContentOffsetY(0)
-                }
+        }
+        .scrollDisabled(calculatorInput.isPresented)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: Self.focusDismissDragMinimumDistance)
+                .onChanged(handleWidgetsPageDragChanged)
+                .onEnded { _ in
+                    didStartCalculatorDismissDrag = false
+                },
+            including: calculatorInput.isPresented || didStartCalculatorDismissDrag ? .all : .none
+        )
+        // Dismiss (calculator widget) keyboard when scrolling
+        .scrollDismissesKeyboard(.interactively)
+        .overlay(alignment: .bottom) {
+            if calculatorInput.isPresented {
+                CalculatorNumberPadBar()
+                    .transition(.move(edge: .bottom))
             }
-            .onPreferenceChange(CalculatorWidgetFramePreferenceKey.self) { frame in
-                calculatorFrame = frame
+        }
+        .animation(.easeOut(duration: 0.14), value: calculatorInput.isPresented)
+        .onChange(of: calculatorInput.isPresented) { _, isPresented in
+            if isPresented {
+                focusCalculator()
+            } else {
+                setFocusedContentOffsetY(0)
             }
-            .onDisappear {
-                calculatorInput.dismiss()
-            }
+        }
+        .onPreferenceChange(CalculatorWidgetFramePreferenceKey.self) { frame in
+            calculatorFrame = frame
+        }
+        .onDisappear {
+            calculatorInput.dismiss()
         }
     }
 
