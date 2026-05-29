@@ -607,7 +607,7 @@ private struct CalculatorSmallPreview: View {
 
 private struct SuggestionsWidePreview: View {
     var body: some View {
-        Suggestions(isPreview: true)
+        Suggestions(isPreview: true, previewCardIds: Suggestions.previewSheetCardIds)
             .frame(maxWidth: .infinity)
     }
 }

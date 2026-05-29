@@ -263,7 +263,7 @@ private struct FactsTile: View {
 private struct SuggestionsTile: View {
     var body: some View {
         // Non-interactive preview grid; the suggestion cards supply their own backgrounds.
-        Suggestions(isPreview: true)
+        Suggestions(isPreview: true, previewCardIds: Suggestions.previewSheetCardIds)
             .frame(maxWidth: .infinity)
     }
 }
