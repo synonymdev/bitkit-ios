@@ -58,25 +58,12 @@ struct HomeWidgetsView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                Grid(horizontalSpacing: 16, verticalSpacing: 16) {
-                    ForEach(gridRows) { row in
-                        GridRow {
-                            switch row {
-                            case let .wide(widget):
-                                cell(widget)
-                                    .gridCellColumns(2)
-                            case let .pair(first, second):
-                                cell(first)
-                                if let second {
-                                    cell(second)
-                                } else {
-                                    Color.clear
-                                }
-                            }
-                        }
+                WidgetFlowLayout(spacing: 16) {
+                    ForEach(visibleWidgets) { widget in
+                        cell(widget)
+                            .layoutValue(key: WidgetIsWideKey.self, value: displayedSize(for: widget) == .wide)
                     }
                 }
-                .id(visibleWidgets.map(\.id))
                 .environment(\.widgetDragState, dragState)
                 // Catch-all so drops that land in a gap are still accepted (the live
                 // reorder already happened on hover); avoids the snap-back animation.
@@ -186,45 +173,6 @@ struct HomeWidgetsView: View {
         }
     }
 
-    /// A logical row in the home grid — either a single wide widget spanning both columns,
-    /// or up to two small widgets paired side-by-side. Built by walking `visibleWidgets`
-    /// in order; the second slot of a `pair` is `nil` if a small widget has no neighbour.
-    private enum WidgetRow: Identifiable {
-        case wide(Widget)
-        case pair(Widget, Widget?)
-
-        var id: String {
-            switch self {
-            case let .wide(w): return "wide-\(w.id.rawValue)"
-            case let .pair(a, b): return "pair-\(a.id.rawValue)-\(b?.id.rawValue ?? "_")"
-            }
-        }
-    }
-
-    private var gridRows: [WidgetRow] {
-        var result: [WidgetRow] = []
-        var pendingSmall: Widget?
-
-        for widget in visibleWidgets {
-            if displayedSize(for: widget) == .wide {
-                if let pending = pendingSmall {
-                    result.append(.pair(pending, nil))
-                    pendingSmall = nil
-                }
-                result.append(.wide(widget))
-            } else if let pending = pendingSmall {
-                result.append(.pair(pending, widget))
-                pendingSmall = nil
-            } else {
-                pendingSmall = widget
-            }
-        }
-        if let pending = pendingSmall {
-            result.append(.pair(pending, nil))
-        }
-        return result
-    }
-
     private func cell(_ widget: Widget) -> some View {
         rowContent(widget)
             .onDrop(
@@ -240,7 +188,9 @@ struct HomeWidgetsView: View {
               let sourceIdx = widgets.savedWidgets.firstIndex(where: { $0.type == sourceType }),
               let destIdx = widgets.savedWidgets.firstIndex(where: { $0.type == targetType })
         else { return false }
-        widgets.reorderWidgets(from: sourceIdx, to: destIdx)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            widgets.reorderWidgets(from: sourceIdx, to: destIdx)
+        }
         return true
     }
 
@@ -335,6 +285,75 @@ private struct WidgetGridDropDelegate: DropDelegate {
     func performDrop(info _: DropInfo) -> Bool {
         dragState.draggingType = nil
         return true
+    }
+}
+
+private struct WidgetIsWideKey: LayoutValueKey {
+    static let defaultValue = false
+}
+
+/// Two-column flow layout for the home widget grid. Wide widgets span the full width on their own
+/// line; consecutive small widgets pair up side by side (a lone trailing small occupies the left
+/// column). Children are flat and individually identified, so reordering animates as smooth moves
+/// when the mutation is wrapped in `withAnimation`.
+private struct WidgetFlowLayout: Layout {
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        let width = proposal.width ?? UIScreen.main.bounds.width
+        let height = walk(subviews: subviews, width: width) { _, _, _ in }
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        _ = walk(subviews: subviews, width: bounds.width) { subview, origin, size in
+            subview.place(
+                at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(size)
+            )
+        }
+    }
+
+    /// Walks the subviews applying the pairing rule, invoking `place` for each placed subview and
+    /// returning the total content height.
+    private func walk(
+        subviews: Subviews,
+        width: CGFloat,
+        place: (LayoutSubview, CGPoint, CGSize) -> Void
+    ) -> CGFloat {
+        let columnWidth = (width - spacing) / 2
+        var y: CGFloat = 0
+        var index = 0
+
+        func isWide(_ i: Int) -> Bool {
+            subviews[i][WidgetIsWideKey.self]
+        }
+        func height(_ i: Int, _ w: CGFloat) -> CGFloat {
+            subviews[i].sizeThatFits(ProposedViewSize(width: w, height: nil)).height
+        }
+
+        while index < subviews.count {
+            if isWide(index) {
+                let h = height(index, width)
+                place(subviews[index], CGPoint(x: 0, y: y), CGSize(width: width, height: h))
+                y += h + spacing
+                index += 1
+            } else if index + 1 < subviews.count, !isWide(index + 1) {
+                let h = max(height(index, columnWidth), height(index + 1, columnWidth))
+                place(subviews[index], CGPoint(x: 0, y: y), CGSize(width: columnWidth, height: h))
+                place(subviews[index + 1], CGPoint(x: columnWidth + spacing, y: y), CGSize(width: columnWidth, height: h))
+                y += h + spacing
+                index += 2
+            } else {
+                let h = height(index, columnWidth)
+                place(subviews[index], CGPoint(x: 0, y: y), CGSize(width: columnWidth, height: h))
+                y += h + spacing
+                index += 1
+            }
+        }
+
+        return max(0, y - spacing)
     }
 }
 
