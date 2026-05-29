@@ -283,9 +283,7 @@ private struct PriceSmallPreview: View {
         Group {
             if let data = primary {
                 PriceWidgetCompactContent(data: data, period: options.selectedPeriod)
-                    .padding(16)
-                    .background(Color.gray6)
-                    .cornerRadius(16)
+                    .widgetCardChrome()
             } else {
                 Color.gray6
                     .cornerRadius(16)
@@ -315,9 +313,7 @@ private struct PriceWidePreview: View {
         Group {
             if let data = primary {
                 PriceWidgetWideContent(data: data, period: options.selectedPeriod)
-                    .padding(16)
-                    .background(Color.gray6)
-                    .cornerRadius(16)
+                    .widgetCardChrome()
             } else {
                 Color.gray6
                     .cornerRadius(16)
@@ -348,9 +344,7 @@ private struct NewsSmallPreview: View {
         Group {
             if let data = viewModel.widgetData {
                 NewsWidgetCompactContent(title: data.title, timeAgo: data.timeAgo, options: options)
-                    .padding(16)
-                    .background(Color.gray6)
-                    .cornerRadius(16)
+                    .widgetCardChrome()
             } else {
                 Color.gray6
                     .cornerRadius(16)
@@ -374,16 +368,12 @@ private struct NewsWidePreview: View {
             if let data = viewModel.widgetData {
                 NewsWidgetWideContent(title: data.title, publisher: data.publisher, timeAgo: data.timeAgo, options: options)
                     .frame(height: NewsWidgetWideContent.inAppContentHeight)
-                    .padding(16)
-                    .background(Color.gray6)
-                    .cornerRadius(16)
+                    .widgetCardChrome()
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .frame(height: NewsWidgetWideContent.inAppContentHeight)
-                    .padding(16)
-                    .background(Color.gray6)
-                    .cornerRadius(16)
+                    .widgetCardChrome()
             }
         }
         .task { viewModel.startUpdates() }
@@ -402,9 +392,7 @@ private struct BlocksSmallPreview: View {
         Group {
             if let data = viewModel.blockData {
                 BlocksWidgetCompactContent(data: data, options: options)
-                    .padding(16)
-                    .background(Color.gray6)
-                    .cornerRadius(16)
+                    .widgetCardChrome()
             } else {
                 Color.gray6
                     .cornerRadius(16)
@@ -428,16 +416,12 @@ private struct BlocksWidePreview: View {
             if let data = viewModel.blockData {
                 BlocksWidgetWideContent(data: data, options: options)
                     .frame(height: BlocksWidgetWideContent.inAppContentHeight)
-                    .padding(16)
-                    .background(Color.gray6)
-                    .cornerRadius(16)
+                    .widgetCardChrome()
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .frame(height: BlocksWidgetWideContent.inAppContentHeight)
-                    .padding(16)
-                    .background(Color.gray6)
-                    .cornerRadius(16)
+                    .widgetCardChrome()
             }
         }
         .task { viewModel.startUpdates() }
@@ -462,9 +446,7 @@ private struct WeatherSmallPreview: View {
                     conditionTitle: t(data.condition.titleKey),
                     metricLabel: t(options.selectedMetric.labelKey)
                 )
-                .padding(16)
-                .background(Color.gray6)
-                .cornerRadius(16)
+                .widgetCardChrome()
             } else {
                 Color.gray6
                     .cornerRadius(16)
@@ -497,15 +479,11 @@ private struct WeatherWidePreview: View {
                     conditionDescription: t(data.condition.descriptionKey),
                     metricLabel: t(options.selectedMetric.labelKey)
                 )
-                .padding(16)
-                .background(Color.gray6)
-                .cornerRadius(16)
+                .widgetCardChrome()
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 120)
-                    .padding(16)
-                    .background(Color.gray6)
-                    .cornerRadius(16)
+                    .widgetCardChrome()
             }
         }
         .task {
@@ -520,9 +498,7 @@ private struct FactsSmallPreview: View {
 
     var body: some View {
         FactsWidgetCompactContent(fact: viewModel.fact)
-            .padding(16)
-            .background(Color.gray6)
-            .cornerRadius(16)
+            .widgetCardChrome()
     }
 }
 
@@ -531,9 +507,7 @@ private struct FactsWidePreview: View {
 
     var body: some View {
         FactsWidgetWideContent(fact: viewModel.fact)
-            .padding(16)
-            .background(Color.gray6)
-            .cornerRadius(16)
+            .widgetCardChrome()
             .frame(maxWidth: .infinity)
     }
 }
@@ -550,9 +524,7 @@ private struct CalculatorWidePreview: View {
             activeInput: previewActiveInput,
             onSelectInput: { input in previewActiveInput = input }
         )
-        .padding(16)
-        .background(Color.gray6)
-        .cornerRadius(16)
+        .widgetCardChrome()
         .frame(maxWidth: .infinity)
         .task { hydrate() }
         .onChange(of: currency.selectedCurrency) { hydrate() }
@@ -635,5 +607,13 @@ private struct SuggestionsWidePreview: View {
     var body: some View {
         Suggestions(isPreview: true)
             .frame(maxWidth: .infinity)
+    }
+}
+
+private extension View {
+    func widgetCardChrome() -> some View {
+        padding(16)
+            .background(Color.gray6)
+            .cornerRadius(16)
     }
 }
