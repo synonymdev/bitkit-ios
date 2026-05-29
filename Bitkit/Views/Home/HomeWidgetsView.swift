@@ -316,45 +316,62 @@ private struct WidgetFlowLayout: Layout {
     }
 
     /// Walks the subviews applying the pairing rule, invoking `place` for each placed subview and
-    /// returning the total content height.
+    /// returning the total content height. Delegates the geometry to the pure `widgetGridSlots`
+    /// helper so the pairing rule can be unit-tested without SwiftUI's opaque `Subviews`.
     private func walk(
         subviews: Subviews,
         width: CGFloat,
         place: (LayoutSubview, CGPoint, CGSize) -> Void
     ) -> CGFloat {
-        let columnWidth = (width - spacing) / 2
-        var y: CGFloat = 0
-        var index = 0
-
-        func isWide(_ i: Int) -> Bool {
-            subviews[i][WidgetIsWideKey.self]
+        let isWide = (0 ..< subviews.count).map { subviews[$0][WidgetIsWideKey.self] }
+        let result = widgetGridSlots(isWide: isWide, width: width, spacing: spacing) { index, proposedWidth in
+            subviews[index].sizeThatFits(ProposedViewSize(width: proposedWidth, height: nil)).height
         }
-        func height(_ i: Int, _ w: CGFloat) -> CGFloat {
-            subviews[i].sizeThatFits(ProposedViewSize(width: w, height: nil)).height
+        for slot in result.slots {
+            place(subviews[slot.index], slot.frame.origin, slot.frame.size)
         }
-
-        while index < subviews.count {
-            if isWide(index) {
-                let h = height(index, width)
-                place(subviews[index], CGPoint(x: 0, y: y), CGSize(width: width, height: h))
-                y += h + spacing
-                index += 1
-            } else if index + 1 < subviews.count, !isWide(index + 1) {
-                let h = max(height(index, columnWidth), height(index + 1, columnWidth))
-                place(subviews[index], CGPoint(x: 0, y: y), CGSize(width: columnWidth, height: h))
-                place(subviews[index + 1], CGPoint(x: columnWidth + spacing, y: y), CGSize(width: columnWidth, height: h))
-                y += h + spacing
-                index += 2
-            } else {
-                let h = height(index, columnWidth)
-                place(subviews[index], CGPoint(x: 0, y: y), CGSize(width: columnWidth, height: h))
-                y += h + spacing
-                index += 1
-            }
-        }
-
-        return max(0, y - spacing)
+        return result.totalHeight
     }
+}
+
+/// A placed widget in the home grid: the subview's index and its frame within the grid's bounds.
+struct WidgetGridSlot: Equatable {
+    let index: Int
+    let frame: CGRect
+}
+
+func widgetGridSlots(
+    isWide: [Bool],
+    width: CGFloat,
+    spacing: CGFloat,
+    height: (_ index: Int, _ proposedWidth: CGFloat) -> CGFloat
+) -> (slots: [WidgetGridSlot], totalHeight: CGFloat) {
+    let columnWidth = (width - spacing) / 2
+    var slots: [WidgetGridSlot] = []
+    var y: CGFloat = 0
+    var index = 0
+
+    while index < isWide.count {
+        if isWide[index] {
+            let h = height(index, width)
+            slots.append(WidgetGridSlot(index: index, frame: CGRect(x: 0, y: y, width: width, height: h)))
+            y += h + spacing
+            index += 1
+        } else if index + 1 < isWide.count, !isWide[index + 1] {
+            let h = max(height(index, columnWidth), height(index + 1, columnWidth))
+            slots.append(WidgetGridSlot(index: index, frame: CGRect(x: 0, y: y, width: columnWidth, height: h)))
+            slots.append(WidgetGridSlot(index: index + 1, frame: CGRect(x: columnWidth + spacing, y: y, width: columnWidth, height: h)))
+            y += h + spacing
+            index += 2
+        } else {
+            let h = height(index, columnWidth)
+            slots.append(WidgetGridSlot(index: index, frame: CGRect(x: 0, y: y, width: columnWidth, height: h)))
+            y += h + spacing
+            index += 1
+        }
+    }
+
+    return (slots, max(0, y - spacing))
 }
 
 private struct CalculatorWidgetFramePreferenceKey: PreferenceKey {

@@ -535,11 +535,11 @@ private struct CalculatorWidePreview: View {
 
     private func hydrate() {
         let saved = CalculatorWidgetOptionsStore.load()
-        let bitcoinValue = Self.previewBitcoinValue(saved: saved, displayUnit: currency.displayUnit)
+        let bitcoinValue = CalculatorWidgetPreviewLogic.previewBitcoinValue(saved: saved, displayUnit: currency.displayUnit)
 
         values = CalculatorWidgetValues(
             bitcoinValue: bitcoinValue,
-            fiatValue: Self.previewFiatValue(saved: saved, recalculatedFiatValue: fiatValue(for: bitcoinValue)),
+            fiatValue: CalculatorWidgetPreviewLogic.previewFiatValue(saved: saved, recalculatedFiatValue: fiatValue(for: bitcoinValue)),
             displayUnit: currency.displayUnit,
             currencySymbol: currency.symbol,
             selectedCurrency: currency.selectedCurrency
@@ -553,8 +553,10 @@ private struct CalculatorWidePreview: View {
         guard let converted = currency.convert(sats: sats) else { return "" }
         return CalculatorWidgetFormatter.fiatRawValue(from: converted.value)
     }
+}
 
-    private static func previewBitcoinValue(saved: CalculatorWidgetValues, displayUnit: BitcoinDisplayUnit) -> String {
+enum CalculatorWidgetPreviewLogic {
+    static func previewBitcoinValue(saved: CalculatorWidgetValues, displayUnit: BitcoinDisplayUnit) -> String {
         guard !saved.bitcoinValue.isEmpty else { return "" }
 
         let savedSats = CalculatorWidgetFormatter.bitcoinValueToSats(saved.bitcoinValue, displayUnit: saved.displayUnit)
@@ -563,7 +565,7 @@ private struct CalculatorWidePreview: View {
             : CalculatorWidgetFormatter.satsToBitcoinValue(savedSats, displayUnit: displayUnit)
     }
 
-    private static func previewFiatValue(saved: CalculatorWidgetValues, recalculatedFiatValue: String) -> String {
+    static func previewFiatValue(saved: CalculatorWidgetValues, recalculatedFiatValue: String) -> String {
         saved.shouldRefreshBitcoinFromFiat ? saved.fiatValue : recalculatedFiatValue
     }
 }
