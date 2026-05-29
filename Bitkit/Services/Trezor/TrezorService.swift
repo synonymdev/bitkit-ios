@@ -71,7 +71,7 @@ class TrezorService {
     func connect(deviceId: String) async throws -> TrezorFeatures {
         try await ServiceQueue.background(.core) { [self] in
             ensureCallbacksRegistered()
-            return try await trezorConnect(deviceId: deviceId)
+            return try await trezorConnect(deviceId: deviceId, selection: .standard)
         }
     }
 
