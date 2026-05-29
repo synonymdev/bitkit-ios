@@ -49,6 +49,14 @@ struct WidgetMetadata {
 enum WidgetSize: String, Codable, CaseIterable {
     case small
     case wide
+
+    /// Default grid size for a freshly added widget of this type.
+    static func `default`(for type: WidgetType) -> WidgetSize {
+        switch type {
+        case .price, .news, .suggestions: return .wide
+        default: return .small
+        }
+    }
 }
 
 // MARK: - Widget Models
@@ -198,14 +206,8 @@ class WidgetsViewModel: ObservableObject {
 
     /// Default widgets for new installs and resets
     private static let defaultSavedWidgets: [SavedWidget] = [
-        SavedWidget(type: .suggestions, size: .wide),
-        SavedWidget(type: .price, size: .wide),
-        SavedWidget(type: .blocks, size: .small),
-        SavedWidget(type: .facts, size: .small),
-        SavedWidget(type: .weather, size: .small),
-        SavedWidget(type: .calculator, size: .small),
-        SavedWidget(type: .news, size: .wide),
-    ]
+        .suggestions, .price, .blocks, .facts, .weather, .calculator, .news,
+    ].map { SavedWidget(type: $0, size: .default(for: $0)) }
 
     init() {
         loadSavedWidgets()
