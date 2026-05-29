@@ -24,6 +24,7 @@ final class TrezorUiHandler: TrezorUiCallback {
     let needsPassphrasePublisher = PassthroughSubject<Bool, Never>()
 
     private var submittedPassphrase: String = ""
+    private var didCancelPassphrase = false
     private let passphraseLock = NSLock()
     private let passphraseSemaphore = DispatchSemaphore(value: 0)
 
@@ -75,11 +76,12 @@ final class TrezorUiHandler: TrezorUiCallback {
         return pin
     }
 
-    func onPassphraseRequest(onDevice: Bool) -> String {
+    func onPassphraseRequest(onDevice: Bool) -> PassphraseResponse {
         debugLog("onPassphraseRequest: onDevice=\(onDevice), waiting for user input...")
 
         passphraseLock.lock()
         submittedPassphrase = ""
+        didCancelPassphrase = false
         passphraseLock.unlock()
 
         awaitingLock.lock()
@@ -101,21 +103,26 @@ final class TrezorUiHandler: TrezorUiCallback {
 
         if result == .timedOut {
             debugLog("onPassphraseRequest: timed out")
-            return ""
+            return .cancel
         }
 
         if onDevice {
-            // For on-device entry, return any non-empty string to acknowledge
             debugLog("onPassphraseRequest(onDevice): acknowledged")
-            return "ok"
+            return .onDevice
         }
 
         passphraseLock.lock()
         let passphrase = submittedPassphrase
+        let wasCancelled = didCancelPassphrase
         passphraseLock.unlock()
 
-        debugLog("onPassphraseRequest: \(passphrase.isEmpty ? "cancelled" : "received")")
-        return passphrase
+        if wasCancelled {
+            debugLog("onPassphraseRequest: cancelled")
+            return .cancel
+        }
+
+        debugLog("onPassphraseRequest: \(passphrase.isEmpty ? "standard wallet" : "received")")
+        return passphrase.isEmpty ? .standard : .hidden(value: passphrase)
     }
 
     // MARK: - UI Submit/Cancel Methods
@@ -152,6 +159,7 @@ final class TrezorUiHandler: TrezorUiCallback {
         debugLog("cancelPassphrase")
         passphraseLock.lock()
         submittedPassphrase = ""
+        didCancelPassphrase = true
         passphraseLock.unlock()
         passphraseSemaphore.signal()
     }
