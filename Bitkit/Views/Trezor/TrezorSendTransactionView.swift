@@ -74,6 +74,7 @@ struct SendTransactionSection: View {
                 TrezorErrorBanner(message: sendError)
             }
         }
+        .trezorAccessibilityAnchor("TrezorSendSection")
     }
 }
 
@@ -113,6 +114,7 @@ private struct ComposeFormView: View {
                     .padding(12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("TrezorSendAddress")
             }
 
             // Amount + MAX toggle
@@ -131,6 +133,7 @@ private struct ComposeFormView: View {
                         .padding(12)
                         .background(Color.white.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .accessibilityIdentifier("TrezorSendAmount")
 
                     Button(action: onToggleSendMax) {
                         Text("MAX")
@@ -141,6 +144,7 @@ private struct ComposeFormView: View {
                             .background((isSendMax ? Color.blue : Color.white.opacity(0.3)).opacity(0.15))
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
+                    .accessibilityIdentifier("TrezorSendMax")
                 }
             }
 
@@ -158,6 +162,7 @@ private struct ComposeFormView: View {
                     .padding(12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("TrezorSendFeeRate")
             }
 
             // Coin selection strategy
@@ -193,6 +198,7 @@ private struct ComposeFormView: View {
             }
             .disabled(isDisabled || isComposing)
             .opacity(isDisabled || isComposing ? 0.5 : 1.0)
+            .accessibilityIdentifier("TrezorComposeButton")
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -232,6 +238,7 @@ private struct CoinSelectionPicker: View {
                         .background(color.opacity(0.15))
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
+                .accessibilityIdentifier("TrezorCoinSelection-\(label.replacingOccurrences(of: " ", with: ""))")
             }
         }
     }
@@ -277,6 +284,7 @@ private struct ReviewSectionView: View {
                             .background(Color.white.opacity(0.1))
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
+                    .accessibilityIdentifier("TrezorComposeBack")
 
                     Button(action: onSign) {
                         HStack(spacing: 6) {
@@ -295,6 +303,7 @@ private struct ReviewSectionView: View {
                     }
                     .disabled(isSigning || !isDeviceConnected)
                     .opacity(isSigning || !isDeviceConnected ? 0.5 : 1.0)
+                    .accessibilityIdentifier("TrezorSignTxButton")
                 }
 
                 if !isDeviceConnected {
@@ -303,6 +312,7 @@ private struct ReviewSectionView: View {
                         .foregroundColor(.white.opacity(0.4))
                 }
             }
+            .trezorAccessibilityAnchor("TrezorComposeReview")
         }
     }
 }
@@ -345,6 +355,7 @@ private struct PSBTPreview: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .trezorAccessibilityAnchor("TrezorPsbtPreview")
     }
 }
 
@@ -390,7 +401,7 @@ private struct SignedResultSectionView: View {
 
                     Button(action: {
                         UIPasteboard.general.string = signedTx.serializedTx
-    
+
                         copiedRawTx = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                             copiedRawTx = false
@@ -427,6 +438,7 @@ private struct SignedResultSectionView: View {
                 }
                 .disabled(isBroadcasting)
                 .opacity(isBroadcasting ? 0.5 : 1.0)
+                .accessibilityIdentifier("TrezorBroadcastButton")
             }
 
             // New transaction button
@@ -439,7 +451,9 @@ private struct SignedResultSectionView: View {
                     .background(Color.white.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
+            .accessibilityIdentifier("TrezorNewTransaction")
         }
+        .trezorAccessibilityAnchor("TrezorSignedTxResult")
     }
 }
 
@@ -475,10 +489,12 @@ private struct BroadcastResultCard: View {
                 .foregroundColor(.blue)
                 .textSelection(.enabled)
                 .lineSpacing(2)
+                .accessibilityIdentifier("TrezorBroadcastTxid")
         }
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .trezorAccessibilityAnchor("TrezorBroadcastResult")
     }
 }
 

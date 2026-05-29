@@ -55,6 +55,7 @@ struct TrezorDeviceRow: View {
         }
         .buttonStyle(.plain)
         .disabled(isConnecting)
+        .accessibilityIdentifier(device.path.hasPrefix("bridge:") ? "TrezorDevice-bridge" : "TrezorDevice-\(device.path)")
     }
 
     private var displayName: String {
@@ -137,6 +138,7 @@ struct KnownDeviceRow: View {
             }
             .buttonStyle(.plain)
             .disabled(isConnecting)
+            .accessibilityIdentifier("TrezorKnownDeviceConnect-\(accessibilitySuffix)")
 
             // Forget button
             Button(action: onForget) {
@@ -146,10 +148,16 @@ struct KnownDeviceRow: View {
                     .padding(10)
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("TrezorForgetDevice-\(accessibilitySuffix)")
         }
         .padding(16)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .trezorAccessibilityAnchor("TrezorKnownDevice-\(accessibilitySuffix)")
+    }
+
+    private var accessibilitySuffix: String {
+        device.path.hasPrefix("bridge:") ? "bridge" : device.id
     }
 }
 

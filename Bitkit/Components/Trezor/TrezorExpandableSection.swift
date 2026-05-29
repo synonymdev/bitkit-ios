@@ -6,6 +6,7 @@ struct TrezorExpandableSection<Content: View>: View {
     let title: String
     let icon: String
     let description: String
+    var accessibilityIdentifier: String?
     @Binding var isExpanded: Bool
     @ViewBuilder let content: () -> Content
 
@@ -44,6 +45,7 @@ struct TrezorExpandableSection<Content: View>: View {
                         .animation(.easeInOut(duration: 0.25), value: isExpanded)
                 }
             }
+            .accessibilityIdentifier(accessibilityIdentifier ?? "TrezorSection-\(title.replacingOccurrences(of: " ", with: ""))")
 
             // Expandable content
             if isExpanded {

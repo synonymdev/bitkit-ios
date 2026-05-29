@@ -1,0 +1,135 @@
+name: ai-device-tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "AI device test suite to run"
+        required: true
+        default: "trezor-emu"
+        type: choice
+        options:
+          - trezor-emu
+      simulator_name:
+        description: "iOS Simulator name"
+        required: false
+        default: "iPhone 17"
+      simulator_os:
+        description: "iOS Simulator OS version"
+        required: false
+        default: "26.2"
+
+env:
+  TERM: xterm-256color
+  FORCE_COLOR: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.suite }}
+  cancel-in-progress: true
+
+jobs:
+  trezor-emu:
+    if: inputs.suite == 'trezor-emu'
+    name: Trezor emulator dashboard
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout Bitkit iOS
+        uses: actions/checkout@v6
+
+      - name: Checkout bitkit-docker
+        uses: actions/checkout@v6
+        with:
+          repository: synonymdev/bitkit-docker
+          ref: main
+          path: bitkit-docker
+
+      - name: Install xcbeautify
+        run: |
+          if ! command -v xcbeautify >/dev/null 2>&1; then
+            brew install xcbeautify
+          fi
+
+      - name: System information
+        run: |
+          sw_vers
+          xcodebuild -version
+          docker version
+          docker compose version
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
+
+      - name: Start regtest and Trezor emulator
+        working-directory: bitkit-docker
+        run: |
+          docker compose up -d
+          ./scripts/trezor-emulator start
+          ./scripts/trezor-emulator status
+
+      - name: Boot simulator
+        env:
+          SIMULATOR_NAME: ${{ inputs.simulator_name }}
+        run: |
+          xcrun simctl boot "$SIMULATOR_NAME" || true
+
+      - name: Run Trezor emulator UI tests
+        env:
+          TEST_TREZOR_EMU: "1"
+          TEST_TREZOR_RESET_STATE: "1"
+          TREZOR_BRIDGE: "true"
+          TREZOR_BRIDGE_URL: "http://127.0.0.1:21325"
+          TREZOR_ELECTRUM_URL: "tcp://127.0.0.1:60001"
+          E2E: "true"
+          E2E_BACKEND: "local"
+          E2E_NETWORK: "regtest"
+          GEO: "false"
+          SIMULATOR_NAME: ${{ inputs.simulator_name }}
+          SIMULATOR_OS: ${{ inputs.simulator_os }}
+        run: |
+          mkdir -p TestResults
+          set -o pipefail
+          xcodebuild test \
+            -workspace Bitkit.xcodeproj/project.xcworkspace \
+            -scheme BitkitAITests \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$SIMULATOR_OS" \
+            -derivedDataPath DerivedData \
+            -resultBundlePath TestResults/TrezorBridgeDashboardUITests.xcresult \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD TEST_TREZOR_EMU' \
+            -only-testing:BitkitUITests/TrezorBridgeDashboardUITests \
+            -parallel-testing-enabled NO \
+            | xcbeautify
+
+      - name: Collect diagnostics
+        if: always()
+        run: |
+          mkdir -p ai-device-artifacts/trezor
+          xcrun simctl io booted screenshot ai-device-artifacts/trezor/simulator.png || true
+          if [ -d TestResults ]; then
+            cp -R TestResults ai-device-artifacts/trezor/ || true
+          fi
+          (
+            cd bitkit-docker
+            ./scripts/trezor-emulator status > ../ai-device-artifacts/trezor/trezor-status.json 2>&1 || true
+            docker compose logs --no-color --tail=500 trezor-user-env-mac > ../ai-device-artifacts/trezor/trezor-user-env.log 2>&1 || true
+            docker compose logs --no-color > ../ai-device-artifacts/trezor/docker-compose.log 2>&1 || true
+            curl --silent --show-error -X POST http://127.0.0.1:21325/enumerate > ../ai-device-artifacts/trezor/bridge-enumerate.json 2>&1 || true
+          )
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ai-device-tests-trezor-${{ github.run_number }}
+          path: ai-device-artifacts/trezor
+          if-no-files-found: warn
+
+      - name: Stop emulator services
+        if: always()
+        working-directory: bitkit-docker
+        run: |
+          ./scripts/trezor-emulator stop || true
+          docker compose down || true

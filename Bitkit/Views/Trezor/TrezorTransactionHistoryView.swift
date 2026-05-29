@@ -85,6 +85,7 @@ private struct TxHistoryInputSection: View {
                 .padding(12)
                 .background(Color.white.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityIdentifier("TrezorTxHistoryInput")
                 .toolbar {
                     ToolbarItemGroup(placement: .keyboard) {
                         Spacer()
@@ -107,6 +108,7 @@ private struct TxHistoryInputSection: View {
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.6))
                 }
+                .accessibilityIdentifier("TrezorTxHistoryPaste")
 
                 if !input.isEmpty {
                     Button(action: { input = "" }) {
@@ -117,6 +119,7 @@ private struct TxHistoryInputSection: View {
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.6))
                     }
+                    .accessibilityIdentifier("TrezorTxHistoryClear")
                 }
             }
         }
@@ -153,6 +156,7 @@ private struct TxHistoryLookupButton: View {
         }
         .disabled(isDisabled || isLoading)
         .opacity(isDisabled ? 0.5 : 1.0)
+        .accessibilityIdentifier("TrezorTxHistoryButton")
     }
 }
 
@@ -185,6 +189,7 @@ private struct TxHistorySummarySection: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
+        .trezorAccessibilityAnchor("TrezorTxHistorySummary")
     }
 
     private func accountTypeLabel(_ type: AccountType) -> String {
@@ -215,6 +220,7 @@ private struct TxHistoryListSection: View {
                     }
                 }
             }
+            .trezorAccessibilityAnchor("TrezorTxHistoryList")
         }
     }
 }
@@ -314,6 +320,8 @@ private struct TxHistoryRow: View {
         .padding(12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .trezorAccessibilityAnchor("TrezorTxHistoryRow")
+        .accessibilityValue(tx.txid)
     }
 
     private var directionIcon: String {
