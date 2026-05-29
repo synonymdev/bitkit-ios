@@ -19,7 +19,7 @@ struct TrezorDeviceListView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // Bluetooth status (don't show during initial .unknown state)
-                    if trezor.bluetoothState != .poweredOn, trezor.bluetoothState != .unknown {
+                    if !trezor.isBridgeModeEnabled, trezor.bluetoothState != .poweredOn, trezor.bluetoothState != .unknown {
                         BluetoothStatusCard(state: trezor.bluetoothState)
                     }
 
@@ -90,7 +90,7 @@ struct TrezorDeviceListView: View {
 
             // Bottom action button
             if !trezor.isScanning, !trezor.isAutoReconnecting,
-               trezor.bluetoothState == .poweredOn || trezor.bluetoothState == .unknown
+               trezor.isBridgeModeEnabled || trezor.bluetoothState == .poweredOn || trezor.bluetoothState == .unknown
             {
                 Button(action: {
                     Task {
@@ -126,7 +126,7 @@ struct TrezorDeviceListView: View {
                 }
             }
 
-            guard trezor.bluetoothState == .poweredOn else { return }
+            guard trezor.isBridgeModeEnabled || trezor.bluetoothState == .poweredOn else { return }
 
             if !trezor.knownDevices.isEmpty {
                 await trezor.autoReconnect()
