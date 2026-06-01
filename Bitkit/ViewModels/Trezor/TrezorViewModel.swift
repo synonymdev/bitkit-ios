@@ -476,7 +476,10 @@ class TrezorViewModel {
         guard connectedDevice != nil else { return }
         suppressNextAutoReconnect = true
 
-        stopWatcher()
+        // NOTE: the event watcher is intentionally NOT stopped here. It subscribes to
+        // Electrum directly and does not require a connected device, so it survives a
+        // disconnect and remains controllable from the device-list screen. It is only
+        // torn down on a network switch (different Electrum server) or via stopWatcher().
 
         do {
             try await trezorService.disconnect()
