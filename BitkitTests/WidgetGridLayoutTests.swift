@@ -83,4 +83,40 @@ final class WidgetGridLayoutTests: XCTestCase {
         XCTAssertEqual(result.slots[1].frame.height, columnWidth) // paired small → column width
         XCTAssertEqual(result.slots[2].frame.height, columnWidth)
     }
+
+    // MARK: - nearestWidgetSlot (drag targeting)
+
+    /// Two smalls paired on the top row, a wide widget below — the layout from the bug report.
+    /// Small row: y 0...192. Inter-row gap: 192...208. Wide row: y 208...328.
+    private let dragFrames: [WidgetType: CGRect] = [
+        .price: CGRect(x: 0, y: 0, width: 163.5, height: 192), // top-left small
+        .news: CGRect(x: 179.5, y: 0, width: 163.5, height: 192), // top-right small
+        .blocks: CGRect(x: 0, y: 208, width: 343, height: 120), // wide below
+    ]
+
+    func testNearestSlot_EmptyFrames_ReturnsNil() {
+        XCTAssertNil(nearestWidgetSlot(at: CGPoint(x: 100, y: 100), frames: [:]))
+    }
+
+    func testNearestSlot_InsideLeftSmall_ReturnsLeftSmall() {
+        XCTAssertEqual(nearestWidgetSlot(at: CGPoint(x: 80, y: 96), frames: dragFrames), .price)
+    }
+
+    func testNearestSlot_InsideRightSmall_ReturnsRightSmall() {
+        XCTAssertEqual(nearestWidgetSlot(at: CGPoint(x: 260, y: 96), frames: dragFrames), .news)
+    }
+
+    /// The regression case: a point at the centre of the inter-row gap targets the wide row below,
+    /// so dragging a top small straight down only needs to reach the gap centre — not a pixel-spot.
+    func testNearestSlot_InGapCentre_TargetsWideBelow() {
+        XCTAssertEqual(nearestWidgetSlot(at: CGPoint(x: 80, y: 200), frames: dragFrames), .blocks)
+    }
+
+    func testNearestSlot_AboveFirstRow_TargetsTopSlot() {
+        XCTAssertEqual(nearestWidgetSlot(at: CGPoint(x: 80, y: -40), frames: dragFrames), .price)
+    }
+
+    func testNearestSlot_FarBelowLastRow_TargetsWide() {
+        XCTAssertEqual(nearestWidgetSlot(at: CGPoint(x: 170, y: 500), frames: dragFrames), .blocks)
+    }
 }

@@ -190,6 +190,7 @@ struct BaseWidget<Content: View>: View {
                     }
                     .onDrag {
                         dragState.draggingType = type
+                        dragState.lastTarget = nil
                         return NSItemProvider(object: type.rawValue as NSString)
                     } preview: {
                         dragPreview

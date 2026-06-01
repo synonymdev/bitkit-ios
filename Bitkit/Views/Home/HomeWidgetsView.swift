@@ -21,6 +21,9 @@ struct HomeWidgetsView: View {
     @State private var didStartCalculatorDismissDrag = false
     @State private var focusedContentOffsetY: CGFloat = 0
     @State private var dragState = WidgetDragState()
+    /// Frame of each visible widget cell in the grid's coordinate space, used by the drop delegate
+    /// to resolve which slot a drag point targets.
+    @State private var slotFrames: [WidgetType: CGRect] = [:]
 
     private static let focusAnimation = Animation.easeOut(duration: focusAnimationDuration)
     private static let focusAnimationDuration = 0.12
@@ -65,9 +68,15 @@ struct HomeWidgetsView: View {
                     }
                 }
                 .environment(\.widgetDragState, dragState)
-                // Catch-all so drops that land in a gap are still accepted (the live
-                // reorder already happened on hover); avoids the snap-back animation.
-                .onDrop(of: [.utf8PlainText], delegate: WidgetGridDropDelegate(dragState: dragState))
+                .coordinateSpace(name: widgetGridCoordinateSpace)
+                // Single grid-level drop target: it owns reorder targeting based on the finger's
+                // absolute position over the grid (covering inter-row gaps), and accepts drops
+                // anywhere so there's no snap-back.
+                .onDrop(
+                    of: [.utf8PlainText],
+                    delegate: WidgetGridDropDelegate(dragState: dragState, frames: slotFrames, reorder: reorder)
+                )
+                .onPreferenceChange(WidgetSlotFramesKey.self) { slotFrames = $0 }
 
                 CustomButton(
                     title: t("widgets__add"),
@@ -175,10 +184,7 @@ struct HomeWidgetsView: View {
 
     private func cell(_ widget: Widget) -> some View {
         rowContent(widget)
-            .onDrop(
-                of: [.utf8PlainText],
-                delegate: WidgetCellDropDelegate(target: widget, dragState: dragState, reorder: reorder)
-            )
+            .trackWidgetSlotFrame(widget.type)
     }
 
     /// Reorder by resolved type. Returns `true` if anything moved.
@@ -235,6 +241,8 @@ struct HomeWidgetsView: View {
 /// without having to asynchronously load the item provider.
 final class WidgetDragState {
     var draggingType: WidgetType?
+    /// The last slot type the drag reordered onto, so repeated drop updates only act on a change.
+    var lastTarget: WidgetType?
 }
 
 private struct WidgetDragStateKey: EnvironmentKey {
@@ -248,42 +256,33 @@ extension EnvironmentValues {
     }
 }
 
-/// Per-cell delegate that reorders **live** as the dragged widget hovers over this cell.
-/// This makes drop position robust — you never need to release in the exact gap, because the
-/// array is already reordered by the time you let go.
-private struct WidgetCellDropDelegate: DropDelegate {
-    let target: Widget
-    let dragState: WidgetDragState
-    let reorder: (WidgetType, WidgetType) -> Bool
-
-    func dropEntered(info _: DropInfo) {
-        guard let source = dragState.draggingType, source != target.type else { return }
-        if reorder(source, target.type) {
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.7)
-        }
-    }
-
-    func dropUpdated(info _: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info _: DropInfo) -> Bool {
-        dragState.draggingType = nil
-        return true
-    }
-}
-
-/// Catch-all delegate on the grid itself: accepts drops that land in a gap (no reorder needed —
-/// the cell delegates already moved things on hover) and clears the drag state.
+/// The single grid-level drop delegate. Reorder targeting is **location-based**: on every drop
+/// update it resolves which slot the finger is over (or nearest to, covering inter-row gaps) from
+/// the published cell `frames`, and reorders the dragged widget onto that slot. Because targeting
+/// is by absolute position and `reorder` is idempotent (a no-op when source == target), repeated
+/// updates self-correct instead of oscillating the way per-cell `dropEntered` did.
 private struct WidgetGridDropDelegate: DropDelegate {
     let dragState: WidgetDragState
+    let frames: [WidgetType: CGRect]
+    let reorder: (WidgetType, WidgetType) -> Bool
 
-    func dropUpdated(info _: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard let source = dragState.draggingType,
+              let target = nearestWidgetSlot(at: info.location, frames: frames),
+              target != source,
+              target != dragState.lastTarget
+        else { return DropProposal(operation: .move) }
+
+        if reorder(source, target) {
+            dragState.lastTarget = target
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.7)
+        }
+        return DropProposal(operation: .move)
     }
 
     func performDrop(info _: DropInfo) -> Bool {
         dragState.draggingType = nil
+        dragState.lastTarget = nil
         return true
     }
 }
@@ -372,6 +371,61 @@ func widgetGridSlots(
     }
 
     return (slots, max(0, y - spacing))
+}
+
+/// Resolves which widget slot a drag point targets, given each visible widget's frame in the grid's
+/// coordinate space. Picks the nearest slot by rectangle distance — zero when the point is inside a
+/// frame — breaking ties on horizontal distance and then biasing toward the lower slot, so a point
+/// at the centre of an inter-row gap targets the row below (this is what makes dragging a small from
+/// the top row down past a wide widget easy). Returns nil only when there are no frames.
+func nearestWidgetSlot(at point: CGPoint, frames: [WidgetType: CGRect]) -> WidgetType? {
+    frames.min { lhs, rhs in
+        slotDistanceKey(point, lhs.value) < slotDistanceKey(point, rhs.value)
+    }?.key
+}
+
+/// Sort key for `nearestWidgetSlot`: vertical band distance, then horizontal band distance, then
+/// `-minY` so a lower slot (larger minY) wins on an exact tie — biasing gap drops downward.
+private func slotDistanceKey(_ point: CGPoint, _ rect: CGRect) -> (CGFloat, CGFloat, CGFloat) {
+    (
+        axisDistance(point.y, rect.minY, rect.maxY),
+        axisDistance(point.x, rect.minX, rect.maxX),
+        -rect.minY
+    )
+}
+
+/// Distance from `value` to the closed interval `[min, max]`; zero when inside.
+private func axisDistance(_ value: CGFloat, _ min: CGFloat, _ max: CGFloat) -> CGFloat {
+    if value < min { return min - value }
+    if value > max { return value - max }
+    return 0
+}
+
+/// Coordinate space shared by the grid's `.onDrop` (so `DropInfo.location` is grid-relative) and the
+/// per-cell frame preferences, so both share one origin.
+private let widgetGridCoordinateSpace = "widgetGrid"
+
+/// Collects each visible widget cell's frame, keyed by type, for the drop delegate's hit-testing.
+private struct WidgetSlotFramesKey: PreferenceKey {
+    static let defaultValue: [WidgetType: CGRect] = [:]
+
+    static func reduce(value: inout [WidgetType: CGRect], nextValue: () -> [WidgetType: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+private extension View {
+    /// Reports this cell's frame in the grid coordinate space, keyed by widget type.
+    func trackWidgetSlotFrame(_ type: WidgetType) -> some View {
+        background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: WidgetSlotFramesKey.self,
+                    value: [type: proxy.frame(in: .named(widgetGridCoordinateSpace))]
+                )
+            }
+        }
+    }
 }
 
 private struct CalculatorWidgetFramePreferenceKey: PreferenceKey {
