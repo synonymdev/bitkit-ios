@@ -99,7 +99,7 @@ struct DrawerView: View {
     }
 
     /// Route to push when selecting this drawer item (nil for Wallet = pop to root).
-    /// `.widgets` is handled separately in `selectWidgets()`.
+    /// `.wallet` and `.widgets` are handled separately in `selectWallet()` / `selectWidgets()`.
     private func route(for item: DrawerMenuItem) -> Route? {
         switch item {
         case .wallet: return nil
@@ -121,12 +121,23 @@ struct DrawerView: View {
             return
         }
 
+        if item == .wallet {
+            selectWallet()
+            closeMenu()
+            return
+        }
+
         if let route = route(for: item) {
             navigation.path = [route]
         } else {
             navigation.path = []
         }
         closeMenu()
+    }
+
+    private func selectWallet() {
+        navigation.path = []
+        app.requestedHomePage = 0
     }
 
     private func selectWidgets() {
