@@ -17,6 +17,7 @@ enum SheetID: String, CaseIterable {
     case quickpay
     case receive
     case receivedTx
+    case btcpayConnection
     case scanner
     case security
     case send
@@ -303,6 +304,20 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .scanner else { return nil }
             return ScannerSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var btcpayConnectionSheetItem: BTCPayConnectionSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .btcpayConnection else { return nil }
+            let btcpayConfig = config.data as? BTCPayConnectionConfig
+            guard let setup = btcpayConfig?.setup else { return nil }
+            return BTCPayConnectionSheetItem(setup: setup)
         }
         set {
             if newValue == nil {
