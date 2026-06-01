@@ -118,7 +118,7 @@ struct WidgetsListSheetView: View {
 
     private func tile(for type: WidgetType) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            BodySSBText(t("widgets__\(type.rawValue)__name"), textColor: .textPrimary)
+            BodySText(t("widgets__\(type.rawValue)__name"))
 
             tileCard(for: type)
         }
