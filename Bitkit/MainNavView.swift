@@ -527,6 +527,7 @@ struct MainNavView: View {
                 case .ldkDebug: LdkDebugScreen()
                 case .vssDebug: VssDebugScreen()
                 case .probingTool: ProbingToolScreen()
+                case .legacyRnRecovery: LegacyRnRecoveryScreen()
                 case .orders: ChannelOrders()
                 case .logs: LogView()
                 case .trezor: TrezorRootView()
