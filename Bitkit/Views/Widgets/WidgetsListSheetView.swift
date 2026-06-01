@@ -283,17 +283,22 @@ private struct CalculatorTile: View {
 
     private func hydrate() {
         let saved = CalculatorWidgetOptionsStore.load()
-        let savedSats = CalculatorWidgetFormatter.bitcoinValueToSats(saved.bitcoinValue, displayUnit: saved.displayUnit)
-        let bitcoinValue = saved.bitcoinValue.isEmpty
-            ? ""
-            : CalculatorWidgetFormatter.satsToBitcoinValue(savedSats, displayUnit: currency.displayUnit)
+        let bitcoinValue = CalculatorWidgetPreviewLogic.previewBitcoinValue(saved: saved, displayUnit: currency.displayUnit)
 
         values = CalculatorWidgetValues(
             bitcoinValue: bitcoinValue,
-            fiatValue: saved.fiatValue,
+            fiatValue: CalculatorWidgetPreviewLogic.previewFiatValue(saved: saved, recalculatedFiatValue: fiatValue(for: bitcoinValue)),
             displayUnit: currency.displayUnit,
             currencySymbol: currency.symbol,
             selectedCurrency: currency.selectedCurrency
         )
+    }
+
+    private func fiatValue(for bitcoinValue: String) -> String {
+        guard !bitcoinValue.isEmpty else { return "" }
+        let sats = CalculatorWidgetFormatter.bitcoinValueToSats(bitcoinValue, displayUnit: currency.displayUnit)
+        if sats == 0 { return "0.00" }
+        guard let converted = currency.convert(sats: sats) else { return "" }
+        return CalculatorWidgetFormatter.fiatRawValue(from: converted.value)
     }
 }
