@@ -59,6 +59,7 @@ struct WidgetsIntroView: View {
             .bottomSafeAreaPadding()
         }
         .navigationBarHidden(true)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("WidgetsOnboarding")
     }
 
