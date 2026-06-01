@@ -268,10 +268,17 @@ private struct WidgetGridDropDelegate: DropDelegate {
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         guard let source = dragState.draggingType,
-              let target = nearestWidgetSlot(at: info.location, frames: frames),
-              target != source,
-              target != dragState.lastTarget
+              let target = nearestWidgetSlot(at: info.location, frames: frames)
         else { return DropProposal(operation: .move) }
+
+        if target == source {
+            // Finger is back over the dragged widget — allow the next move to re-target a slot we
+            // already visited, so you can drag away and back without releasing.
+            dragState.lastTarget = nil
+            return DropProposal(operation: .move)
+        }
+
+        guard target != dragState.lastTarget else { return DropProposal(operation: .move) }
 
         if reorder(source, target) {
             dragState.lastTarget = target
