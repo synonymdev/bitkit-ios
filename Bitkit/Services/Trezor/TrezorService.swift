@@ -65,13 +65,17 @@ class TrezorService {
 
     // MARK: - Connection Management
 
-    /// Connect to a Trezor device by its ID
-    /// - Parameter deviceId: The device identifier (path)
+    /// Connect to a Trezor device by its ID, opening the wallet given by `selection`.
+    /// On THP devices (Safe 5/7) the passphrase is bound to the session at creation, so
+    /// it is supplied per-connect rather than cached between calls.
+    /// - Parameters:
+    ///   - deviceId: The device identifier (path)
+    ///   - selection: Which wallet to open (standard / hidden / on-device passphrase)
     /// - Returns: Device features after successful connection
-    func connect(deviceId: String) async throws -> TrezorFeatures {
+    func connect(deviceId: String, selection: WalletSelection) async throws -> TrezorFeatures {
         try await ServiceQueue.background(.core) { [self] in
             ensureCallbacksRegistered()
-            return try await trezorConnect(deviceId: deviceId, selection: .standard)
+            return try await trezorConnect(deviceId: deviceId, selection: selection)
         }
     }
 
@@ -266,6 +270,27 @@ class TrezorService {
         try await ServiceQueue.background(.core) {
             try await onchainBroadcastRawTx(serializedTx: serializedTx, electrumUrl: electrumUrl)
         }
+    }
+
+    // MARK: - Event Watcher (No Device Required)
+
+    /// Start watching an extended public key for on-chain transaction activity.
+    /// Events are delivered to `listener` until the watcher is stopped.
+    /// Does NOT require a connected Trezor device — it subscribes to Electrum directly.
+    func startWatcher(params: WatcherParams, listener: EventListener) async throws {
+        try await ServiceQueue.background(.core) {
+            try await onchainStartWatcher(params: params, listener: listener)
+        }
+    }
+
+    /// Stop a specific watcher by its id.
+    func stopWatcher(watcherId: String) throws {
+        try onchainStopWatcher(watcherId: watcherId)
+    }
+
+    /// Stop all active watchers.
+    func stopAllWatchers() {
+        onchainStopAllWatchers()
     }
 
     // MARK: - Helpers

@@ -11,6 +11,7 @@ struct TrezorConnectedView: View {
     @State private var isBalanceLookupExpanded = false
     @State private var isTxHistoryExpanded = false
     @State private var isTxDetailExpanded = false
+    @State private var isWatcherExpanded = false
     @State private var isDeviceInfoExpanded = false
 
     var body: some View {
@@ -21,6 +22,9 @@ struct TrezorConnectedView: View {
                     device: trezor.connectedDevice,
                     features: trezor.deviceFeatures
                 )
+
+                // Wallet mode selector (standard vs hidden/passphrase wallet)
+                WalletModeSelectorRow()
 
                 // Expandable sections
                 VStack(spacing: 12) {
@@ -85,6 +89,16 @@ struct TrezorConnectedView: View {
                     }
 
                     TrezorExpandableSection(
+                        title: "Event Watcher",
+                        icon: "dot.radiowaves.left.and.right",
+                        description: "Watch an xpub for live on-chain activity",
+                        accessibilityIdentifier: "TrezorSection-Watcher",
+                        isExpanded: $isWatcherExpanded
+                    ) {
+                        TrezorWatcherContent()
+                    }
+
+                    TrezorExpandableSection(
                         title: "Device Info",
                         icon: "info.circle",
                         description: "View device details and features",
@@ -133,6 +147,52 @@ struct TrezorConnectedView: View {
                 )
                 .allowsHitTesting(false)
             }
+        }
+    }
+}
+
+// MARK: - Wallet Mode Selector
+
+/// Lets the user switch between the standard wallet and a hidden (passphrase) wallet.
+/// Switching resets the device session (handled by the ViewModel).
+private struct WalletModeSelectorRow: View {
+    @Environment(TrezorViewModel.self) private var trezor
+
+    private var isPassphraseMode: Bool {
+        trezor.walletMode == .passphraseHost || trezor.walletMode == .passphraseDevice
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Wallet")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.4))
+
+            HStack(spacing: 8) {
+                modeButton(title: "Standard", selected: trezor.walletMode == .standard) {
+                    Task { await trezor.selectStandardWallet() }
+                }
+                .accessibilityIdentifier("TrezorWalletModeStandard")
+
+                modeButton(title: "Passphrase", selected: isPassphraseMode) {
+                    trezor.requestPassphraseWallet()
+                }
+                .accessibilityIdentifier("TrezorWalletModePassphrase")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .disabled(trezor.isOperating)
+    }
+
+    private func modeButton(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(selected ? .white : .white.opacity(0.5))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(selected ? Color.white.opacity(0.2) : Color.white.opacity(0.05))
+                .clipShape(Capsule())
         }
     }
 }

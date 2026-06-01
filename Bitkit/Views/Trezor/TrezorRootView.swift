@@ -106,6 +106,27 @@ private struct TrezorDialogsModifier: ViewModifier {
             .sheet(isPresented: $trezor.showPassphraseEntry) {
                 TrezorPassphraseSheet()
             }
+            .confirmationDialog(
+                "Passphrase Entry",
+                isPresented: $trezor.showWalletModeChooser,
+                titleVisibility: .visible
+            ) {
+                Button("On this phone") {
+                    trezor.choosePhonePassphraseEntry()
+                }
+                .accessibilityIdentifier("TrezorWalletModeOnPhone")
+
+                Button("On the Trezor") {
+                    Task { await trezor.chooseDevicePassphraseEntry() }
+                }
+                .accessibilityIdentifier("TrezorWalletModeOnTrezor")
+
+                Button("Cancel", role: .cancel) {
+                    trezor.showWalletModeChooser = false
+                }
+            } message: {
+                Text("Where do you want to enter the passphrase for your hidden wallet?")
+            }
             .overlay {
                 if trezor.showConfirmOnDevice {
                     TrezorConfirmOnDeviceOverlay(
@@ -381,6 +402,20 @@ struct TrezorPassphraseSheet: View {
                         .font(.system(size: 14))
                         .foregroundColor(.red)
                 }
+
+                // Offer on-device entry when the connected Trezor supports it
+                if trezor.passphraseEntryCapable {
+                    Button(action: {
+                        dismiss()
+                        Task { await trezor.chooseDevicePassphraseEntry() }
+                    }) {
+                        Text("Enter on Trezor instead")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("TrezorPassphraseUseDevice")
+                }
             }
             .padding(.horizontal, 16)
 
@@ -403,8 +438,9 @@ struct TrezorPassphraseSheet: View {
                 .accessibilityIdentifier("TrezorPassphraseCancel")
 
                 Button(action: {
-                    trezor.submitPassphrase(passphrase)
+                    let entered = passphrase
                     dismiss()
+                    Task { await trezor.submitPassphrase(entered) }
                 }) {
                     Text("Confirm")
                         .font(.system(size: 16, weight: .semibold))
