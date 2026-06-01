@@ -129,6 +129,9 @@ struct BaseWidget<Content: View>: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .opacity(isEditing ? 0.2 : 1)
+                // Editing only responds to the overlay controls; keep the dimmed content from
+                // reacting to taps underneath (e.g. opening the calculator keypad or navigating).
+                .allowsHitTesting(!isEditing)
                 .accessibilityHidden(isEditing)
 
             if isEditing {
