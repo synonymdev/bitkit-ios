@@ -126,9 +126,10 @@ struct WidgetsListSheetView: View {
 
     @ViewBuilder
     private func tileCard(for type: WidgetType) -> some View {
-        // Suggestions cards carry their own backgrounds — no gray6 chrome (matches Android).
         if type == .suggestions {
             SuggestionsTile()
+                .background(Color.black)
+                .cornerRadius(16)
         } else {
             chromedTile(for: type)
                 .padding(16)
