@@ -79,7 +79,6 @@ struct WidgetsIntroView: View {
 
     private func onAddWidget() {
         app.hasSeenWidgetsIntro = true
-        navigation.reset()
         sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .list))
     }
 }

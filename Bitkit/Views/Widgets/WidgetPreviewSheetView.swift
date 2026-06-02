@@ -6,7 +6,9 @@ struct WidgetPreviewSheetView: View {
     let type: WidgetType
     @Binding var navigationPath: [WidgetsRoute]
 
+    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var widgets: WidgetsViewModel
 
@@ -261,6 +263,8 @@ struct WidgetPreviewSheetView: View {
     private func onSave() {
         widgets.saveWidget(type, size: chosenSize)
         sheets.hideSheet()
+        navigation.reset()
+        app.requestedHomePage = 1
     }
 
     private func onDelete() {
