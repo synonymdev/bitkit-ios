@@ -50,19 +50,22 @@ struct WidgetsListSheetView: View {
             SheetHeader(title: t("widgets__add"))
 
             ScrollView(showsIndicators: false) {
-                Grid(horizontalSpacing: 16, verticalSpacing: 16) {
+                VStack(spacing: 16) {
                     ForEach(rows) { row in
-                        GridRow {
-                            switch row {
-                            case let .wide(type):
-                                tappableTile(type)
-                                    .gridCellColumns(2)
-                            case let .pair(first, second):
+                        switch row {
+                        case let .wide(type):
+                            tappableTile(type)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        case let .pair(first, second):
+                            HStack(alignment: .top, spacing: 16) {
                                 tappableTile(first)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                 if let second {
                                     tappableTile(second)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                 } else {
                                     Color.clear
+                                        .frame(maxWidth: .infinity)
                                 }
                             }
                         }
