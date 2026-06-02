@@ -221,6 +221,7 @@ private struct NewsTile: View {
                     timeAgo: data.timeAgo,
                     options: options
                 )
+                .frame(height: NewsWidgetWideContent.inAppContentHeight)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 60)
@@ -241,6 +242,7 @@ private struct BlocksTile: View {
         Group {
             if let data = viewModel.blockData {
                 BlocksWidgetWideContent(data: data, options: options)
+                    .frame(height: BlocksWidgetWideContent.inAppContentHeight)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 60)
