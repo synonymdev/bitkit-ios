@@ -144,6 +144,7 @@ struct WidgetPreviewSheetView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(maxHeight: .infinity)
+        .padding(.horizontal, -16)
     }
 
     private var smallPage: some View {
@@ -154,6 +155,7 @@ struct WidgetPreviewSheetView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
     }
 
     private var widePage: some View {
@@ -163,6 +165,7 @@ struct WidgetPreviewSheetView: View {
                 .frame(maxWidth: .infinity)
             Spacer(minLength: 0)
         }
+        .padding(.horizontal, 16)
     }
 
     @ViewBuilder
