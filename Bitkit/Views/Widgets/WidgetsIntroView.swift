@@ -9,6 +9,7 @@ struct WidgetsIntroView: View {
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("widgets__nav_title"))
+                .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
                 VStack {
@@ -24,7 +25,7 @@ struct WidgetsIntroView: View {
                 .frame(maxHeight: .infinity)
                 .layoutPriority(1)
 
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
                     DisplayText(t("widgets__onboarding__title"), accentColor: .brandAccent)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
@@ -33,6 +34,7 @@ struct WidgetsIntroView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                .padding(.horizontal, 16)
 
                 HStack(spacing: 16) {
                     CustomButton(
