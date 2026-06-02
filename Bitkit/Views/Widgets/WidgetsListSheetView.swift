@@ -49,30 +49,34 @@ struct WidgetsListSheetView: View {
         VStack(spacing: 0) {
             SheetHeader(title: t("widgets__add"))
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) {
-                    ForEach(rows) { row in
-                        switch row {
-                        case let .wide(type):
-                            tappableTile(type)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        case let .pair(first, second):
-                            HStack(alignment: .top, spacing: 16) {
-                                tappableTile(first)
+            // Pin the content to the viewport width so it can't scroll horizontally.
+            GeometryReader { geo in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        ForEach(rows) { row in
+                            switch row {
+                            case let .wide(type):
+                                tappableTile(type)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                if let second {
-                                    tappableTile(second)
+                            case let .pair(first, second):
+                                HStack(alignment: .top, spacing: 16) {
+                                    tappableTile(first)
                                         .frame(maxWidth: .infinity, alignment: .leading)
-                                } else {
-                                    Color.clear
-                                        .frame(maxWidth: .infinity)
+                                    if let second {
+                                        tappableTile(second)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    } else {
+                                        Color.clear
+                                            .frame(maxWidth: .infinity)
+                                    }
                                 }
                             }
                         }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                    .frame(width: geo.size.width)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
             }
 
             // When widgets are disabled, tiles are dimmed/non-tappable and this CTA routes to settings.
