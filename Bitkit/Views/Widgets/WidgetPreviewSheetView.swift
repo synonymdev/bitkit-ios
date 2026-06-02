@@ -140,7 +140,7 @@ struct WidgetPreviewSheetView: View {
             if supportsSmall {
                 smallPage.tag(0)
             }
-            widePage.tag(1)
+            widePage.tag(supportsSmall ? 1 : 0)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(maxHeight: .infinity)
