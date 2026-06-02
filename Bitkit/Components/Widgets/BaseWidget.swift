@@ -128,13 +128,18 @@ struct BaseWidget<Content: View>: View {
         ZStack {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .opacity(isEditing ? 0.2 : 1)
-                // Editing only responds to the overlay controls; keep the dimmed content from
+                .blur(radius: isEditing ? 4 : 0)
+                // Contain the blur's soft halo so it doesn't bleed past the rounded corners and
+                // muddy the dashed border. cornerRadius 0 (non-editing) just clips to bounds.
+                .clipShape(RoundedRectangle(cornerRadius: isEditing ? 16 : 0))
+                // Editing only responds to the overlay controls; keep the blurred content from
                 // reacting to taps underneath (e.g. opening the calculator keypad or navigating).
                 .allowsHitTesting(!isEditing)
                 .accessibilityHidden(isEditing)
 
             if isEditing {
+                Color.gray6.opacity(0.8)
+
                 editingOverlay
             }
         }
