@@ -136,9 +136,7 @@ struct WidgetsListSheetView: View {
     @ViewBuilder
     private func tileCard(for type: WidgetType) -> some View {
         if type == .suggestions {
-            SuggestionsTile()
-                .background(Color.black)
-                .cornerRadius(16)
+            SuggestionsPreviewTile()
         } else {
             chromedTile(for: type)
                 .padding(16)
@@ -269,14 +267,6 @@ private struct FactsTile: View {
 
     var body: some View {
         FactsWidgetCompactContent(fact: viewModel.fact)
-    }
-}
-
-private struct SuggestionsTile: View {
-    var body: some View {
-        // Non-interactive preview grid; the suggestion cards supply their own backgrounds.
-        Suggestions(isPreview: true, previewCardIds: Suggestions.previewSheetCardIds)
-            .frame(maxWidth: .infinity)
     }
 }
 

@@ -190,7 +190,7 @@ struct WidgetPreviewSheetView: View {
         case .weather: WeatherWidePreview()
         case .facts: FactsWidePreview()
         case .calculator: CalculatorWidePreview()
-        case .suggestions: SuggestionsWidePreview()
+        case .suggestions: SuggestionsPreviewTile()
         }
     }
 
@@ -611,15 +611,6 @@ private struct CalculatorSmallPreview: View {
         if sats == 0 { return "0.00" }
         guard let converted = currency.convert(sats: sats) else { return "" }
         return CalculatorWidgetFormatter.fiatRawValue(from: converted.value)
-    }
-}
-
-private struct SuggestionsWidePreview: View {
-    var body: some View {
-        Suggestions(isPreview: true, previewCardIds: Suggestions.previewSheetCardIds)
-            .frame(maxWidth: .infinity)
-            .background(Color.black)
-            .cornerRadius(16)
     }
 }
 

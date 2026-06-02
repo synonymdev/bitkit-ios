@@ -270,6 +270,11 @@ struct Suggestions: View {
                         onTap: { if !isPreview { onItemTap(card) } },
                         onDismiss: { dismissCard(card) }
                     )
+                    .background {
+                        if isPreview {
+                            RoundedRectangle(cornerRadius: 16).fill(Color.black)
+                        }
+                    }
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
                 }
@@ -343,6 +348,16 @@ struct Suggestions: View {
 private extension SuggestionCardData {
     var isPaykitCard: Bool {
         action == .profile
+    }
+}
+
+/// Static, non-interactive suggestions grid shown in the widget add-list and preview sheets.
+/// In preview mode each card is backed with black (see `Suggestions`) so the translucent
+/// card gradients read correctly against the gray sheet background.
+struct SuggestionsPreviewTile: View {
+    var body: some View {
+        Suggestions(isPreview: true, previewCardIds: Suggestions.previewSheetCardIds)
+            .frame(maxWidth: .infinity)
     }
 }
 
