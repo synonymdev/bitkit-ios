@@ -170,7 +170,7 @@ struct BaseWidget<Content: View>: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 
-            HStack(spacing: 16) {
+            HStack(spacing: 8) {
                 Button(action: { showDeleteDialog = true }) {
                     Image("trash")
                         .resizable()
@@ -222,24 +222,27 @@ struct BaseWidget<Content: View>: View {
     /// gray6 fill. Used as the floating preview while the user drags the burger handle so
     /// the dashed component "follows" the finger instead of just the icon.
     private var dragPreview: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             BodyMSBText(metadata.name)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 
-            HStack(spacing: 16) {
+            HStack(spacing: 8) {
                 Image("trash")
                     .resizable()
                     .foregroundColor(.textPrimary)
                     .frame(width: 24, height: 24)
+                    .frame(width: 32, height: 32)
                 Image("gear-six")
                     .resizable()
                     .foregroundColor(.textPrimary)
                     .frame(width: 24, height: 24)
+                    .frame(width: 32, height: 32)
                 Image("burger")
                     .resizable()
                     .foregroundColor(.textPrimary)
                     .frame(width: 24, height: 24)
+                    .frame(width: 32, height: 32)
             }
         }
         .frame(
