@@ -86,6 +86,13 @@ struct BaseWidget<Content: View>: View {
         WidgetMetadata(type: type, fiatSymbol: currency.symbol)
     }
 
+    private var isSettingsDisabled: Bool {
+        switch type {
+        case .suggestions, .facts, .calculator: return true
+        default: return false
+        }
+    }
+
     init(
         type: WidgetType,
         size: WidgetSize = .wide,
@@ -179,9 +186,11 @@ struct BaseWidget<Content: View>: View {
                         .resizable()
                         .foregroundColor(.textPrimary)
                         .frame(width: 24, height: 24)
+                        .opacity(isSettingsDisabled ? 0.3 : 1)
                 }
                 .frame(width: 32, height: 32)
                 .contentShape(Rectangle())
+                .disabled(isSettingsDisabled)
                 .accessibilityIdentifier("\(metadata.name)_WidgetActionEdit")
 
                 Image("burger")
