@@ -62,12 +62,8 @@ struct BlocksWidgetCompactContent: View {
     var body: some View {
         let palette = WidgetPalette(renderingMode: renderingMode)
         let fields = options.enabledFields
-        let topAligned = fields.count <= 2
-        VStack(alignment: .leading, spacing: topAligned ? 8 : 0) {
-            ForEach(Array(fields.enumerated()), id: \.element) { index, field in
-                if index > 0, !topAligned {
-                    Spacer(minLength: 8)
-                }
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(fields.enumerated()), id: \.element) { _, field in
                 HStack(alignment: .center, spacing: 8) {
                     BlocksWidgetIcon(field: field, palette: palette)
 
