@@ -326,6 +326,16 @@ extension AppViewModel {
         // Reset send state before handling new data
         resetSendState()
 
+        if let samRockSetup = SamRockSetupRequest.parse(uri) {
+            handleBTCPayConnection(samRockSetup)
+            return
+        }
+
+        if SamRockSetupRequest.isProtocolURL(uri) {
+            handleInvalidBTCPayConnection(uri)
+            return
+        }
+
         // Workaround for duplicated BIP21 URIs (bitkit-core#63)
         if Bip21Utils.isDuplicatedBip21(uri) {
             toast(
@@ -490,6 +500,27 @@ extension AppViewModel {
             Logger.warn("Unhandled invoice type: \(data)")
             toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")
         }
+    }
+
+    private func handleBTCPayConnection(_ setup: SamRockSetupRequest) {
+        guard setup.requestsBitcoinOnchain else {
+            toast(
+                type: .warning,
+                title: t("btcpay__unsupported_title"),
+                description: t("btcpay__unsupported_text")
+            )
+            return
+        }
+
+        sheetViewModel.showSheet(.btcpayConnection, data: BTCPayConnectionConfig(setup: setup))
+    }
+
+    private func handleInvalidBTCPayConnection(_ uri: String) {
+        toast(
+            type: .warning,
+            title: t("btcpay__unsupported_title"),
+            description: SamRockSetupRequest.isPublicHTTPProtocolURL(uri) ? t("btcpay__unsupported_http_text") : t("btcpay__invalid_link_text")
+        )
     }
 
     private func handleScannedLightningInvoice(_ invoice: LightningInvoice, bolt11: String, onchainInvoice: OnChainInvoice? = nil) {
