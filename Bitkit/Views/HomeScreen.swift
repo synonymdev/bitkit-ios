@@ -79,9 +79,11 @@ struct HomeScreen: View {
                     endPoint: .bottom
                 )
                 .frame(height: ScreenLayout.bottomPaddingWithSafeArea)
+                .opacity(calculatorInput.isPresented ? 0 : 1)
             }
             .ignoresSafeArea()
             .allowsHitTesting(false)
+            .animation(.easeOut(duration: 0.14), value: calculatorInput.isPresented)
         }
         .navigationBarHidden(true)
         .onAppear {
