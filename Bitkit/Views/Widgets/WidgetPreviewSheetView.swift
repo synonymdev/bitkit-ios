@@ -618,6 +618,8 @@ private struct SuggestionsWidePreview: View {
     var body: some View {
         Suggestions(isPreview: true, previewCardIds: Suggestions.previewSheetCardIds)
             .frame(maxWidth: .infinity)
+            .background(Color.black)
+            .cornerRadius(16)
     }
 }
 
