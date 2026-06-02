@@ -225,6 +225,7 @@ struct WidgetPreviewSheetView: View {
                 }
                 Spacer()
             }
+            .padding(.vertical, 6)
         }
     }
 
