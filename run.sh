@@ -9,6 +9,7 @@ BUNDLE_ID="to.bitkit"
 
 DEVICE_LIST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/bitkit-devices.XXXXXX")"
 DEVICE_LIST_JSON="$DEVICE_LIST_DIR/devices.json"
+LAUNCH_LOG="$DEVICE_LIST_DIR/launch.log"
 trap 'rm -rf "$DEVICE_LIST_DIR"' EXIT
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -132,4 +133,11 @@ echo "Installing $APP_PATH..."
 xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH"
 
 echo "Launching $BUNDLE_ID..."
-xcrun devicectl device process launch --device "$DEVICE_ID" "$BUNDLE_ID" --terminate-existing --console
+if ! xcrun devicectl device process launch --device "$DEVICE_ID" "$BUNDLE_ID" --terminate-existing --console 2>&1 | tee "$LAUNCH_LOG"; then
+  if grep -qiE "BSErrorCodeDescription = Locked|device was not, or could not be, unlocked|Unable to launch .* because .* unlocked" "$LAUNCH_LOG"; then
+    echo "Installed successfully, but launch failed because $DEVICE_NAME is locked." >&2
+    echo "Unlock the iPhone and rerun ./run.sh, or launch Bitkit manually." >&2
+  fi
+
+  exit 1
+fi
