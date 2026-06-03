@@ -133,20 +133,20 @@ final class CalculatorWidgetTests: XCTestCase {
     func testPreviewPreservesPersistedFiatOnlyValue() {
         let values = CalculatorWidgetValues(bitcoinValue: "", fiatValue: "12.34")
 
-        XCTAssertEqual(CalculatorWidgetPreviewView.previewFiatValue(saved: values, recalculatedFiatValue: ""), "12.34")
+        XCTAssertEqual(CalculatorWidgetPreviewLogic.previewFiatValue(saved: values, recalculatedFiatValue: ""), "12.34")
     }
 
     func testPreviewUsesRecalculatedFiatWhenBitcoinValueExists() {
         let values = CalculatorWidgetValues(bitcoinValue: "10000", fiatValue: "12.34")
 
-        XCTAssertEqual(CalculatorWidgetPreviewView.previewFiatValue(saved: values, recalculatedFiatValue: "10.00"), "10.00")
+        XCTAssertEqual(CalculatorWidgetPreviewLogic.previewFiatValue(saved: values, recalculatedFiatValue: "10.00"), "10.00")
     }
 
     func testPreviewKeepsPersistedZeroBitcoinValueVisible() {
         let values = CalculatorWidgetValues(bitcoinValue: "0", fiatValue: "0.00")
 
-        XCTAssertEqual(CalculatorWidgetPreviewView.previewBitcoinValue(saved: values, displayUnit: .modern), "0")
-        XCTAssertEqual(CalculatorWidgetPreviewView.previewBitcoinValue(saved: values, displayUnit: .classic), "0")
+        XCTAssertEqual(CalculatorWidgetPreviewLogic.previewBitcoinValue(saved: values, displayUnit: .modern), "0")
+        XCTAssertEqual(CalculatorWidgetPreviewLogic.previewBitcoinValue(saved: values, displayUnit: .classic), "0")
     }
 
     func testCurrencySymbolFallsBackToFirstCharacterForLongSymbols() {

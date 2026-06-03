@@ -70,6 +70,8 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
 struct DrawerView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
     @State private var currentDragOffset: CGFloat = 0
@@ -97,13 +99,14 @@ struct DrawerView: View {
     }
 
     /// Route to push when selecting this drawer item (nil for Wallet = pop to root).
+    /// `.wallet` and `.widgets` are handled separately in `selectWallet()` / `selectWidgets()`.
     private func route(for item: DrawerMenuItem) -> Route? {
         switch item {
         case .wallet: return nil
         case .activity: return .activityList
         case .contacts: return .contacts
         case .profile: return .profile
-        case .widgets: return app.hasSeenWidgetsIntro ? .widgetsList : .widgetsIntro
+        case .widgets: return nil
         case .shop: return app.hasSeenShopIntro ? .shopDiscover : .shopIntro
         case .support: return .support
         case .settings: return .settings
@@ -112,12 +115,43 @@ struct DrawerView: View {
     }
 
     private func selectDrawerItem(_ item: DrawerMenuItem) {
+        if item == .widgets {
+            selectWidgets()
+            closeMenu()
+            return
+        }
+
+        if item == .wallet {
+            selectWallet()
+            closeMenu()
+            return
+        }
+
         if let route = route(for: item) {
             navigation.path = [route]
         } else {
             navigation.path = []
         }
         closeMenu()
+    }
+
+    private func selectWallet() {
+        navigation.path = []
+        app.requestedHomePage = 0
+    }
+
+    private func selectWidgets() {
+        guard app.hasSeenWidgetsIntro else {
+            navigation.path = [.widgetsIntro]
+            return
+        }
+
+        navigation.path = []
+        if settings.showWidgets {
+            app.requestedHomePage = 1
+        } else {
+            sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .list))
+        }
     }
 
     var body: some View {

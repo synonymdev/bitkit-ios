@@ -79,7 +79,7 @@ struct PubkyProfileData: Codable {
 
 // MARK: - PubkyProfileLink
 
-struct PubkyProfileLink: Identifiable, Sendable {
+struct PubkyProfileLink: Identifiable {
     let id = UUID()
     let label: String
     let url: String
@@ -87,7 +87,7 @@ struct PubkyProfileLink: Identifiable, Sendable {
 
 // MARK: - PubkyProfile
 
-struct PubkyProfile: Sendable {
+struct PubkyProfile {
     let publicKey: String
     let name: String
     let bio: String

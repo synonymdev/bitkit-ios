@@ -19,7 +19,7 @@ final class WidgetsViewModelTests: XCTestCase {
         widgets.deleteWidget(.price)
         widgets.deleteWidget(.blocks)
 
-        widgets.saveOptions(PriceWidgetOptions(selectedPair: "BTC/EUR", selectedPeriod: .oneWeek), for: .price)
+        widgets.stageOptions(PriceWidgetOptions(selectedPair: "BTC/EUR", selectedPeriod: .oneWeek), for: .price)
         widgets.saveWidget(.price)
 
         let reloadedWidgets = WidgetsViewModel()

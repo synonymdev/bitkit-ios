@@ -187,6 +187,14 @@ struct MainNavView: View {
         ) {
             config in ForceTransferSheet(config: config)
         }
+        .sheet(
+            item: $sheets.widgetsSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in WidgetsSheet(config: config)
+        }
         .accentColor(.white)
         .overlay {
             TabBar()
@@ -481,25 +489,6 @@ struct MainNavView: View {
 
                 // Widgets
                 case .widgetsIntro: WidgetsIntroView()
-                case .widgetsList: WidgetsListView()
-                case let .widgetDetail(widgetType):
-                    switch widgetType {
-                    case .price:
-                        PriceWidgetPreviewView()
-                    case .news:
-                        NewsWidgetPreviewView()
-                    case .blocks:
-                        BlocksWidgetPreviewView()
-                    case .facts:
-                        FactsWidgetPreviewView()
-                    case .weather:
-                        WeatherWidgetPreviewView()
-                    case .calculator:
-                        CalculatorWidgetPreviewView()
-                    default:
-                        WidgetDetailView(id: widgetType)
-                    }
-                case let .widgetEdit(widgetType): WidgetEditView(id: widgetType)
 
                 // Settings
                 case .settings: MainSettingsScreen()

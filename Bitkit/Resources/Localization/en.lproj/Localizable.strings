@@ -1401,6 +1401,7 @@
 "widgets__onboarding__swipe" = "Swipe down\nto find your\n<accent>widgets</accent>";
 "widgets__onboarding__title" = "Hello,\n<accent>Widgets</accent>";
 "widgets__onboarding__description" = "Enjoy decentralized feeds from your favorite web services, by adding fun and useful widgets to your Bitkit wallet.";
+"widgets__onboarding__view_organize" = "View & Organize";
 "widgets__nav_title" = "Widgets";
 "widgets__widget__nav_title" = "Widget";
 "widgets__widget__edit" = "Widget Feed";

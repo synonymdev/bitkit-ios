@@ -23,6 +23,7 @@ enum SheetID: String, CaseIterable {
     case send
     case tagFilter
     case dateRangeSelector
+    case widgets
 }
 
 struct SheetConfiguration {
@@ -358,6 +359,20 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .forceTransfer else { return nil }
             return ForceTransferSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var widgetsSheetItem: WidgetsSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .widgets else { return nil }
+            let widgetsConfig = config.data as? WidgetsConfig
+            let initialRoute = widgetsConfig?.initialRoute ?? .list
+            return WidgetsSheetItem(initialRoute: initialRoute)
         }
         set {
             if newValue == nil {

@@ -3,6 +3,7 @@ import SwiftUI
 /// A widget that displays a news article.
 struct NewsWidget: View {
     var options: NewsWidgetOptions = .init()
+    var size: WidgetSize = .wide
     var isEditing: Bool = false
     var onEditingEnd: (() -> Void)?
 
@@ -10,10 +11,12 @@ struct NewsWidget: View {
 
     init(
         options: NewsWidgetOptions = NewsWidgetOptions(),
+        size: WidgetSize = .wide,
         isEditing: Bool = false,
         onEditingEnd: (() -> Void)? = nil
     ) {
         self.options = options
+        self.size = size
         self.isEditing = isEditing
         self.onEditingEnd = onEditingEnd
     }
@@ -21,6 +24,7 @@ struct NewsWidget: View {
     var body: some View {
         BaseWidget(
             type: .news,
+            size: size,
             isEditing: isEditing,
             onEditingEnd: onEditingEnd
         ) {
@@ -44,13 +48,21 @@ struct NewsWidget: View {
         } else if viewModel.error != nil {
             WidgetContentBuilder.errorView(t("widgets__news__error"))
         } else if let data = viewModel.widgetData {
-            NewsWidgetWideContent(
-                title: data.title,
-                publisher: data.publisher,
-                timeAgo: data.timeAgo,
-                options: options
-            )
-            .frame(height: NewsWidgetWideContent.inAppContentHeight)
+            if size == .small {
+                NewsWidgetCompactContent(
+                    title: data.title,
+                    timeAgo: data.timeAgo,
+                    options: options
+                )
+            } else {
+                NewsWidgetWideContent(
+                    title: data.title,
+                    publisher: data.publisher,
+                    timeAgo: data.timeAgo,
+                    options: options
+                )
+                .frame(height: NewsWidgetWideContent.inAppContentHeight)
+            }
         }
     }
 }

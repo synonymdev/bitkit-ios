@@ -100,10 +100,20 @@ protocol SheetItem: Identifiable {
 struct Sheet<Content: View>: View {
     @EnvironmentObject private var sheets: SheetViewModel
     let configuration: SheetConfiguration
+    let backgroundColor: Color
+    let applyGradient: Bool
     let content: () -> Content
 
-    init(id: SheetID, data: (any SheetItem)? = nil, @ViewBuilder content: @escaping () -> Content) {
+    init(
+        id: SheetID,
+        data: (any SheetItem)? = nil,
+        backgroundColor: Color = .black,
+        applyGradient: Bool = true,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
         configuration = SheetConfiguration(id: id, data: data)
+        self.backgroundColor = backgroundColor
+        self.applyGradient = applyGradient
         self.content = content
     }
 
@@ -117,7 +127,7 @@ struct Sheet<Content: View>: View {
     var body: some View {
         ZStack(alignment: .top) {
             content()
-                .sheetBackground()
+                .modifier(SheetBackgroundModifier(base: backgroundColor, applyGradient: applyGradient))
                 .bottomSafeAreaPadding()
 
             // Custom drag indicator - always on top
@@ -130,6 +140,6 @@ struct Sheet<Content: View>: View {
         .presentationDetents([.height(sheetSize.height)])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(32)
-        .presentationBackground { Color.black }
+        .presentationBackground { backgroundColor }
     }
 }

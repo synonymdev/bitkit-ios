@@ -60,195 +60,216 @@ enum WidgetContentBuilder {
     }
 }
 
-/// BaseWidget component that forms the foundation for all widget types in the app
+/// Foundation container for all widgets. Owns the card chrome (gray6 bg, 16pt radius),
+/// the v61 editing overlay (dashed brand border + centred action icons), and the small/wide
+/// sizing rules used by the home grid.
 struct BaseWidget<Content: View>: View {
-    // MARK: - Properties
-
-    /// Widget type identifier
     let type: WidgetType
-
-    /// Content to display within the widget
     let content: Content
-
-    /// Flag indicating if the widget is in editing mode
+    var size: WidgetSize = .wide
     var isEditing: Bool = false
-
-    /// When false, the widget content has no gray background (e.g. suggestions).
     var hasBackground: Bool = true
-
-    /// Callback to signal when editing should end
     var onEditingEnd: (() -> Void)?
 
-    /// State for showing the delete confirmation dialog
     @State private var showDeleteDialog = false
 
-    @EnvironmentObject private var navigation: NavigationViewModel
-    @EnvironmentObject private var widgets: WidgetsViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var widgets: WidgetsViewModel
+    @Environment(\.widgetDragState) private var dragState
 
-    /// Widget metadata computed from type
-    private var metadata: WidgetMetadata {
-        let fiatSymbol = currency.symbol
-        return WidgetMetadata(type: type, fiatSymbol: fiatSymbol)
+    private static var smallHeight: CGFloat {
+        192
     }
 
-    // MARK: - Initialization
+    private var metadata: WidgetMetadata {
+        WidgetMetadata(type: type, fiatSymbol: currency.symbol)
+    }
 
-    /// Initialize a new widget with required and optional parameters
-    /// - Parameters:
-    ///   - type: Widget type identifier
-    ///   - isEditing: Flag indicating if the widget is in editing mode
-    ///   - onEditingEnd: Callback to signal when editing should end
-    ///   - content: Content view builder for the widget
+    private var isSettingsDisabled: Bool {
+        switch type {
+        case .suggestions, .facts, .calculator: return true
+        default: return false
+        }
+    }
+
     init(
         type: WidgetType,
+        size: WidgetSize = .wide,
         isEditing: Bool = false,
         hasBackground: Bool = true,
         onEditingEnd: (() -> Void)? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.type = type
+        self.size = size
         self.isEditing = isEditing
         self.hasBackground = hasBackground
         self.onEditingEnd = onEditingEnd
         self.content = content()
     }
 
-    private func onEdit() {
-        navigation.navigate(.widgetDetail(type))
-        onEditingEnd?()
-    }
-
-    private func onDelete() {
-        showDeleteDialog = true
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            if isEditing {
-                HStack {
-                    HStack(spacing: 16) {
-                        Image(metadata.icon)
-                            .resizable()
-                            .frame(width: 32, height: 32)
-
-                        BodyMSBText(truncate(metadata.name, 18))
-                            .lineLimit(1)
+        cardBody
+            .frame(maxWidth: .infinity)
+            .frame(height: size == .small ? Self.smallHeight : nil, alignment: .topLeading)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifierIfPresent(isEditing ? nil : "\(type.rawValue.capitalized)Widget")
+            .alert(
+                t("widgets__delete__title"),
+                isPresented: $showDeleteDialog,
+                actions: {
+                    Button(t("common__cancel"), role: .cancel) { showDeleteDialog = false }
+                    Button(t("common__delete_yes"), role: .destructive) {
+                        widgets.deleteWidget(type)
+                        showDeleteDialog = false
                     }
-
-                    Spacer()
-
-                    // Action buttons when in edit mode
-                    if isEditing {
-                        HStack(spacing: 8) {
-                            // Delete button
-                            Button {
-                                onDelete()
-                            } label: {
-                                Image("trash")
-                                    .resizable()
-                                    .foregroundColor(.textPrimary)
-                                    .frame(width: 24, height: 24)
-                            }
-                            .frame(width: 32, height: 32)
-                            .contentShape(Rectangle())
-                            .accessibilityIdentifier("\(metadata.name)_WidgetActionDelete")
-
-                            // Edit button
-                            Button {
-                                onEdit()
-                            } label: {
-                                Image("gear-six")
-                                    .resizable()
-                                    .foregroundColor(.textPrimary)
-                                    .frame(width: 24, height: 24)
-                            }
-                            .frame(width: 32, height: 32)
-                            .contentShape(Rectangle())
-                            .accessibilityIdentifier("\(metadata.name)_WidgetActionEdit")
-
-                            Image("burger")
-                                .resizable()
-                                .foregroundColor(.textPrimary)
-                                .frame(width: 24, height: 24)
-                                .frame(width: 32, height: 32)
-                                .contentShape(Rectangle())
-                                .overlay {
-                                    Color.clear
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                        .trackDragHandle()
-                                }
-                                .accessibilityIdentifier("\(metadata.name)_WidgetActionReorder")
-                        }
-                    }
+                },
+                message: {
+                    Text(t("widgets__delete__description", variables: ["name": metadata.name]))
                 }
-            }
+            )
+    }
 
-            // Widget content (only shown when not editing)
-            if !isEditing {
-                content
+    private var cardBody: some View {
+        ZStack {
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .blur(radius: isEditing ? 4 : 0)
+                // Contain the blur's soft halo so it doesn't bleed past the rounded corners and
+                // muddy the dashed border. cornerRadius 0 (non-editing) just clips to bounds.
+                .clipShape(RoundedRectangle(cornerRadius: isEditing ? 16 : 0))
+                // Editing only responds to the overlay controls; keep the blurred content from
+                // reacting to taps underneath (e.g. opening the calculator keypad or navigating).
+                .allowsHitTesting(!isEditing)
+                .accessibilityHidden(isEditing)
+
+            if isEditing {
+                Color.gray6.opacity(0.8)
+
+                editingOverlay
             }
         }
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifierIfPresent(isEditing ? nil : "\(type.rawValue.capitalized)Widget")
-        .frame(maxWidth: .infinity)
-        .padding((hasBackground || isEditing) ? 16 : 0)
+        .padding(hasBackground ? 16 : 0)
         .background((hasBackground || isEditing) ? Color.gray6 : Color.clear)
         .cornerRadius(hasBackground || isEditing ? 16 : 0)
-        .alert(
-            t("widgets__delete__title"),
-            isPresented: $showDeleteDialog,
-            actions: {
-                Button(t("common__cancel"), role: .cancel) {
-                    showDeleteDialog = false
-                }
-
-                Button(t("common__delete_yes"), role: .destructive) {
-                    widgets.deleteWidget(type)
-                    showDeleteDialog = false
-                }
-            },
-            message: {
-                Text(t("widgets__delete__description", variables: ["name": metadata.name]))
+        .overlay {
+            if isEditing {
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(
+                        Color.brandAccent,
+                        style: StrokeStyle(lineWidth: 1, dash: [6, 4])
+                    )
             }
-        )
+        }
     }
 
-    /// Truncate a string to a maximum length
-    private func truncate(_ text: String, _ maxLength: Int) -> String {
-        if text.count <= maxLength {
-            return text
-        }
+    private var editingOverlay: some View {
+        VStack(spacing: 12) {
+            BodyMSBText(metadata.name)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
-        let index = text.index(text.startIndex, offsetBy: maxLength - 3)
-        return String(text[..<index]) + "..."
+            HStack(spacing: 8) {
+                Button(action: { showDeleteDialog = true }) {
+                    Image("trash")
+                        .resizable()
+                        .foregroundColor(.textPrimary)
+                        .frame(width: 24, height: 24)
+                }
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+                .accessibilityIdentifier("\(metadata.name)_WidgetActionDelete")
+
+                Button(action: onEdit) {
+                    Image("gear-six")
+                        .resizable()
+                        .foregroundColor(.textPrimary)
+                        .frame(width: 24, height: 24)
+                        .opacity(isSettingsDisabled ? 0.3 : 1)
+                }
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+                .disabled(isSettingsDisabled)
+                .accessibilityIdentifier("\(metadata.name)_WidgetActionEdit")
+
+                Image("arrows-out-cardinal")
+                    .resizable()
+                    .foregroundColor(.textPrimary)
+                    .frame(width: 24, height: 24)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+                    .onDrag {
+                        dragState.draggingType = type
+                        dragState.lastTarget = nil
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        return NSItemProvider(object: type.rawValue as NSString)
+                    } preview: {
+                        dragPreview
+                    }
+                    .accessibilityIdentifier("\(metadata.name)_WidgetActionReorder")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Snapshot of the card in its editing state — dashed brand border, centred name,
+    /// gray6 fill. Used as the floating preview while the user drags the burger handle so
+    /// the dashed component "follows" the finger instead of just the icon.
+    private var dragPreview: some View {
+        VStack(spacing: 8) {
+            BodyMSBText(metadata.name)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            HStack(spacing: 8) {
+                Image("trash")
+                    .resizable()
+                    .foregroundColor(.textPrimary)
+                    .frame(width: 24, height: 24)
+                    .frame(width: 32, height: 32)
+                Image("gear-six")
+                    .resizable()
+                    .foregroundColor(.textPrimary)
+                    .frame(width: 24, height: 24)
+                    .frame(width: 32, height: 32)
+                Image("arrows-out-cardinal")
+                    .resizable()
+                    .foregroundColor(.textPrimary)
+                    .frame(width: 24, height: 24)
+                    .frame(width: 32, height: 32)
+            }
+        }
+        .frame(
+            width: size == .small ? 172 : 343,
+            height: size == .small ? Self.smallHeight : 120
+        )
+        .background(Color.gray6)
+        .cornerRadius(16)
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(
+                    Color.brandAccent,
+                    style: StrokeStyle(lineWidth: 1, dash: [6, 4])
+                )
+        }
+    }
+
+    private func onEdit() {
+        sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .edit(type)))
+        onEditingEnd?()
     }
 }
 
-// Preview for the BaseWidget
 #Preview {
     VStack {
-        BaseWidget(
-            type: .facts,
-            isEditing: false,
-            onEditingEnd: {
-                print("Editing ended")
-            }
-        ) {
+        BaseWidget(type: .facts, isEditing: false) {
             Text("Widget Content Goes Here")
                 .frame(height: 100)
                 .frame(maxWidth: .infinity)
         }
 
-        BaseWidget(
-            type: .news,
-            isEditing: true,
-            onEditingEnd: {
-                print("Editing ended")
-            }
-        ) {
+        BaseWidget(type: .news, isEditing: true) {
             Text("Widget Content Goes Here")
                 .frame(height: 100)
                 .frame(maxWidth: .infinity)
@@ -256,9 +277,9 @@ struct BaseWidget<Content: View>: View {
     }
     .padding()
     .background(Color.black)
-    .environmentObject(WidgetsViewModel())
-    .environmentObject(NavigationViewModel())
     .environmentObject(CurrencyViewModel())
     .environmentObject(SettingsViewModel.shared)
+    .environmentObject(SheetViewModel())
+    .environmentObject(WidgetsViewModel())
     .preferredColorScheme(.dark)
 }

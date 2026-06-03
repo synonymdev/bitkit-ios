@@ -30,10 +30,11 @@ final class NewsWidgetTitleTests: XCTestCase {
     /// back on so the widget always renders a headline.
     func testLoadCurrentOptions_ForcesShowTitleEnabled_EvenWhenPersistedFalse() {
         let widgets = WidgetsViewModel()
-        widgets.saveOptions(
+        widgets.stageOptions(
             NewsWidgetOptions(showDate: true, showTitle: false, showSource: false),
             for: .news
         )
+        widgets.saveWidget(.news)
 
         let logic = WidgetEditLogic(widgetType: .news, widgetsViewModel: widgets)
         logic.loadCurrentOptions()

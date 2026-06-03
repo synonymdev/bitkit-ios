@@ -19,6 +19,7 @@ enum WidgetsBackupConverter {
             widgetsArray.append([
                 "type": androidType,
                 "position": index,
+                "size": widget.size.rawValue,
             ])
 
             if let optionsData = widget.optionsData {
@@ -157,7 +158,10 @@ enum WidgetsBackupConverter {
                 break
             }
 
-            return (position: position, widget: SavedWidget(type: widgetType, optionsData: optionsData))
+            let size: WidgetSize = (widgetDict["size"] as? String)
+                .flatMap(WidgetSize.init(rawValue:)) ?? WidgetSize.default(for: widgetType)
+
+            return (position: position, widget: SavedWidget(type: widgetType, optionsData: optionsData, size: size))
         }
 
         let sortedWidgets = widgetsWithPosition.sorted { $0.position < $1.position }

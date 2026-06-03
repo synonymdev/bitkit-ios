@@ -79,16 +79,28 @@ struct HomeScreen: View {
                     endPoint: .bottom
                 )
                 .frame(height: ScreenLayout.bottomPaddingWithSafeArea)
+                .opacity(calculatorInput.isPresented ? 0 : 1)
             }
             .ignoresSafeArea()
             .allowsHitTesting(false)
+            .animation(.easeOut(duration: 0.14), value: calculatorInput.isPresented)
         }
         .navigationBarHidden(true)
         .onAppear {
             TimedSheetManager.shared.onHomeScreenEntered()
+            consumeRequestedHomePage()
         }
         .onDisappear {
             TimedSheetManager.shared.onHomeScreenExited()
         }
+        .onChange(of: app.requestedHomePage) { _, _ in
+            consumeRequestedHomePage()
+        }
+    }
+
+    private func consumeRequestedHomePage() {
+        guard let requested = app.requestedHomePage else { return }
+        withAnimation { scrollPosition = requested }
+        app.requestedHomePage = nil
     }
 }

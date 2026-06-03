@@ -35,7 +35,7 @@ struct SuggestionCard: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 96, height: 96)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                     Text(title)
                         .font(.custom(Fonts.black, size: 20))
