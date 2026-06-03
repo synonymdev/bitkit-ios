@@ -98,7 +98,9 @@ struct WidgetEditSheetView: View {
 
     private func onPreview() {
         editLogic?.saveOptions()
-        if !navigationPath.isEmpty {
+        if navigationPath.isEmpty {
+            navigationPath.append(.preview(type))
+        } else {
             navigationPath.removeLast()
         }
     }

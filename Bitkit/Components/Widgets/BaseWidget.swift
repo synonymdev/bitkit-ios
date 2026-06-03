@@ -150,7 +150,7 @@ struct BaseWidget<Content: View>: View {
                 editingOverlay
             }
         }
-        .padding((hasBackground || isEditing) ? 16 : 0)
+        .padding(hasBackground ? 16 : 0)
         .background((hasBackground || isEditing) ? Color.gray6 : Color.clear)
         .cornerRadius(hasBackground || isEditing ? 16 : 0)
         .overlay {
@@ -158,7 +158,7 @@ struct BaseWidget<Content: View>: View {
                 RoundedRectangle(cornerRadius: 16)
                     .strokeBorder(
                         Color.brandAccent,
-                        style: StrokeStyle(lineWidth: 2, dash: [6, 4])
+                        style: StrokeStyle(lineWidth: 1, dash: [6, 4])
                     )
             }
         }
@@ -199,15 +199,10 @@ struct BaseWidget<Content: View>: View {
                     .frame(width: 24, height: 24)
                     .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
-                    .overlay {
-                        Color.clear
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                            .trackDragHandle()
-                    }
                     .onDrag {
                         dragState.draggingType = type
                         dragState.lastTarget = nil
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         return NSItemProvider(object: type.rawValue as NSString)
                     } preview: {
                         dragPreview
@@ -255,13 +250,13 @@ struct BaseWidget<Content: View>: View {
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(
                     Color.brandAccent,
-                    style: StrokeStyle(lineWidth: 2, dash: [6, 4])
+                    style: StrokeStyle(lineWidth: 1, dash: [6, 4])
                 )
         }
     }
 
     private func onEdit() {
-        sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .preview(type)))
+        sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .edit(type)))
         onEditingEnd?()
     }
 }
