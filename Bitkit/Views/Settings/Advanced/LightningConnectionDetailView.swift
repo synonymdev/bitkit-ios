@@ -94,7 +94,7 @@ struct LightningConnectionDetailView: View {
                                     VStack(alignment: .leading, spacing: 0) {
                                         SettingsSectionHeader(t("lightning__order_details"))
 
-                                        DetailRow(label: t("lightning__order"), value: order.id)
+                                        DetailRow(label: t("lightning__order"), value: order.id, copyable: true)
 
                                         if let formattedDate = formatDate(order.createdAt) {
                                             DetailRow(label: t("lightning__created_on"), value: formattedDate)
@@ -107,7 +107,7 @@ struct LightningConnectionDetailView: View {
                                         }
 
                                         if channelStatus(for: channel) != .pending, let txid = channel.displayedFundingTxoTxid {
-                                            DetailRow(label: t("lightning__transaction"), value: txid)
+                                            DetailRow(label: t("lightning__transaction"), value: txid, copyable: true)
                                         }
 
                                         DetailRowWithAmount(label: t("lightning__order_fee"), amount: order.feeSat - order.clientBalanceSat)
@@ -332,7 +332,23 @@ struct LightningConnectionDetailView: View {
     }
 
     /// Helper Views
+    @ViewBuilder
     private func DetailRow(label: String, value: String, valueTestId: String? = nil, copyable: Bool = false) -> some View {
+        if copyable {
+            Button {
+                UIPasteboard.general.string = value
+                Haptics.play(.copiedToClipboard)
+                app.toast(type: .success, title: t("common__copied"), description: value)
+            } label: {
+                detailRowContent(label: label, value: value, valueTestId: valueTestId)
+            }
+            .buttonStyle(PressableRowButtonStyle())
+        } else {
+            detailRowContent(label: label, value: value, valueTestId: valueTestId)
+        }
+    }
+
+    private func detailRowContent(label: String, value: String, valueTestId: String?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             GeometryReader { geometry in
                 HStack(alignment: .center, spacing: 0) {
@@ -346,14 +362,6 @@ struct LightningConnectionDetailView: View {
                         .accessibilityIdentifierIfPresent(valueTestId)
                 }
                 .frame(height: 50)
-                .contentShape(.rect)
-                .accessibilityAddTraits(copyable ? .isButton : [])
-                .onTapGesture {
-                    guard copyable else { return }
-                    UIPasteboard.general.string = value
-                    Haptics.play(.copiedToClipboard)
-                    app.toast(type: .success, title: t("common__copied"), description: value)
-                }
             }
 
             CustomDivider()
@@ -403,5 +411,14 @@ struct LightningConnectionDetailView: View {
 
         // Return nil if parsing fails
         return nil
+    }
+}
+
+/// Dims a tappable detail row while it is pressed, giving copy actions a responsive feel.
+private struct PressableRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(.rect)
+            .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
