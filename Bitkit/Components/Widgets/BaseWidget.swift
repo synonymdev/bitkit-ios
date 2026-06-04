@@ -87,10 +87,7 @@ struct BaseWidget<Content: View>: View {
     }
 
     private var isSettingsDisabled: Bool {
-        switch type {
-        case .suggestions, .facts, .calculator: return true
-        default: return false
-        }
+        type == .suggestions
     }
 
     init(
@@ -256,7 +253,9 @@ struct BaseWidget<Content: View>: View {
     }
 
     private func onEdit() {
-        sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: .edit(type)))
+        // Widgets without configurable options have nothing to edit, so jump straight to the preview.
+        let route: WidgetsRoute = type.hasOptions ? .edit(type) : .preview(type)
+        sheets.showSheet(.widgets, data: WidgetsConfig(initialRoute: route))
         onEditingEnd?()
     }
 }
