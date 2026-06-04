@@ -165,15 +165,16 @@ struct LightningConnectionDetailView: View {
                                         }
                                     }
 
-                                    DetailRow(label: t("lightning__channel_id"), value: channel.channelIdString)
+                                    DetailRow(label: t("lightning__channel_id"), value: channel.channelIdString, copyable: true)
 
                                     if let txid = channel.displayedFundingTxoTxid, let vout = channel.fundingTxoVout {
-                                        DetailRow(label: t("lightning__channel_point"), value: "\(txid):\(vout)")
+                                        DetailRow(label: t("lightning__channel_point"), value: "\(txid):\(vout)", copyable: true)
                                     }
 
                                     DetailRow(
                                         label: t("lightning__channel_node_id"),
-                                        value: channel.counterpartyNodeIdString
+                                        value: channel.counterpartyNodeIdString,
+                                        copyable: true
                                     )
 
                                     if let reason = channel.closureReason {
@@ -331,7 +332,7 @@ struct LightningConnectionDetailView: View {
     }
 
     /// Helper Views
-    private func DetailRow(label: String, value: String, valueTestId: String? = nil) -> some View {
+    private func DetailRow(label: String, value: String, valueTestId: String? = nil, copyable: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             GeometryReader { geometry in
                 HStack(alignment: .center, spacing: 0) {
@@ -345,6 +346,14 @@ struct LightningConnectionDetailView: View {
                         .accessibilityIdentifierIfPresent(valueTestId)
                 }
                 .frame(height: 50)
+                .contentShape(.rect)
+                .accessibilityAddTraits(copyable ? .isButton : [])
+                .onTapGesture {
+                    guard copyable else { return }
+                    UIPasteboard.general.string = value
+                    Haptics.play(.copiedToClipboard)
+                    app.toast(type: .success, title: t("common__copied"), description: value)
+                }
             }
 
             CustomDivider()
