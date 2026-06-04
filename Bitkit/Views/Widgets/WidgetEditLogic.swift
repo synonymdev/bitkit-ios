@@ -22,12 +22,7 @@ class WidgetEditLogic: ObservableObject {
     // MARK: - Computed Properties
 
     var hasOptions: Bool {
-        switch widgetType {
-        case .blocks, .news, .price, .weather:
-            return true
-        case .calculator, .suggestions, .facts:
-            return false
-        }
+        widgetType.hasOptions
     }
 
     var hasEnabledOption: Bool {
