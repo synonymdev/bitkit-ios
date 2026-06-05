@@ -163,6 +163,8 @@ struct SendAmountView: View {
                     await calculateRoutingFee()
                 }
             }
+
+            updateInputCap()
         }
         .onChange(of: app.selectedWalletToPayFrom) { _, newValue in
             // Recalculate max sendable amount when switching wallet types
@@ -185,6 +187,9 @@ struct SendAmountView: View {
                     await calculateMaxSendableAmount()
                 }
             }
+        }
+        .onChange(of: availableAmount) { _, _ in
+            updateInputCap()
         }
     }
 
@@ -250,6 +255,11 @@ struct SendAmountView: View {
             Logger.error(error, context: "Failed to set fee rate or send amount")
             app.toast(type: .error, title: "Send Error", description: error.localizedDescription)
         }
+    }
+
+    private func updateInputCap() {
+        // Don't cap when nothing is sendable, so the pad stays usable (Continue stays disabled instead).
+        amountViewModel.maxAmountOverride = availableAmount > 0 ? availableAmount : nil
     }
 
     private func calculateMaxSendableAmount() async {

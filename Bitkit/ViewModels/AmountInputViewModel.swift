@@ -7,6 +7,10 @@ class AmountInputViewModel: ObservableObject {
     @Published var displayText: String = ""
     @Published var errorKey: String?
 
+    /// Optional per-screen cap (e.g. the max sendable balance in the send flow).
+    /// When set, input is additionally blocked above this value, on top of `maxAmount`.
+    var maxAmountOverride: UInt64?
+
     // MARK: - Constants
 
     private let maxAmount: UInt64 = 999_999_999
@@ -14,6 +18,12 @@ class AmountInputViewModel: ObservableObject {
     private let maxDecimalInputLength = 20
     private let classicBitcoinDecimals = 8
     private let fiatDecimals = 2
+
+    /// The active upper bound for input: the global `maxAmount`, further restricted by `maxAmountOverride` when set.
+    private var effectiveMaxAmount: UInt64 {
+        guard let maxAmountOverride else { return maxAmount }
+        return Swift.min(maxAmount, maxAmountOverride)
+    }
 
     // MARK: - Private Properties
 
@@ -43,7 +53,7 @@ class AmountInputViewModel: ObservableObject {
         if currency.primaryDisplay == .bitcoin && currency.displayUnit == .modern {
             let newAmount = convertToSats(newText, currency: currency)
 
-            if newAmount <= maxAmount {
+            if newAmount <= effectiveMaxAmount {
                 rawInputText = newText
                 displayText = formatDisplayTextFromAmount(newAmount, currency: currency)
                 amountSats = newAmount
@@ -59,7 +69,7 @@ class AmountInputViewModel: ObservableObject {
             // For decimal input, check limits before updating state
             if !newText.isEmpty {
                 let newAmount = convertToSats(newText, currency: currency)
-                if newAmount <= maxAmount {
+                if newAmount <= effectiveMaxAmount {
                     // Update both raw input and display text
                     rawInputText = newText
                     // Format with grouping separators but not decimal formatting

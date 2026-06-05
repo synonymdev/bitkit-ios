@@ -53,6 +53,40 @@ final class NumberPadTests: XCTestCase {
         XCTAssertNotNil(viewModel.errorKey)
     }
 
+    func testMaxAmountOverrideBlocksInputAboveBalance() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+        viewModel.maxAmountOverride = 50000
+
+        // Up to the cap is allowed
+        for digit in "50000" {
+            viewModel.handleNumberPadInput(String(digit), currency: currency)
+        }
+        XCTAssertEqual(viewModel.amountSats, 50000)
+
+        // Next keystroke would make 500_000 > 50_000 and is blocked
+        viewModel.handleNumberPadInput("0", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 50000) // Should not change
+        XCTAssertNotNil(viewModel.errorKey)
+    }
+
+    func testClearingMaxAmountOverrideRestoresGlobalCap() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+
+        // With a low override, input is blocked above it
+        viewModel.maxAmountOverride = 100
+        viewModel.handleNumberPadInput("9", currency: currency)
+        viewModel.handleNumberPadInput("9", currency: currency)
+        viewModel.handleNumberPadInput("9", currency: currency) // 999 > 100 -> blocked
+        XCTAssertEqual(viewModel.amountSats, 99)
+
+        // Clearing the override lets input grow again, up to the global cap
+        viewModel.maxAmountOverride = nil
+        viewModel.handleNumberPadInput("9", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 999)
+    }
+
     // MARK: - Classic Bitcoin Tests
 
     func testClassicBitcoinDecimalInput() {
