@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use middle-ellipsis truncation for addresses on the receive screen #517
 
 ### Fixed
+- LNURL withdraw and other prefixed LNURL QR codes scan correctly on iOS. #581
+- You can now tap to copy the channel ID, channel point, node ID, order ID, and transaction ID from a Lightning connection's details. #578
 - In widget edit mode, the settings button is now disabled only for the suggestions widget, and opening settings for widgets without options goes straight to the preview. #579
 - Replaced the third-party Zip dependency with a native ZipService built on NSFileCoordinator for log archive creation. #526
 - Fixed on-chain sends so dust change can no longer turn a partial payment into a max-balance send. #536
