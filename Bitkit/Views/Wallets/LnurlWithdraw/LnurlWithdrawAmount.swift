@@ -77,7 +77,14 @@ struct LnurlWithdrawAmount: View {
             if amountViewModel.amountSats == 0 {
                 amountViewModel.updateFromSats(UInt64(minAmount), currency: currency)
             }
+            updateInputCap()
         }
+        .onChange(of: maxAmount) { updateInputCap() }
+    }
+
+    private func updateInputCap() {
+        let cap = max(minAmount, maxAmount)
+        amountViewModel.maxAmountOverride = cap > 0 ? UInt64(cap) : nil
     }
 
     private func handleContinue() {

@@ -81,6 +81,14 @@ struct LnurlPayAmount: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
+        .onAppear {
+            updateInputCap()
+        }
+        .onChange(of: maxAmount) { updateInputCap() }
+    }
+
+    private func updateInputCap() {
+        amountViewModel.maxAmountOverride = maxAmount > 0 ? maxAmount : nil
     }
 
     private func onContinue() {

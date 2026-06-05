@@ -15,6 +15,14 @@ struct FundManualAmountView: View {
         amountViewModel.amountSats
     }
 
+    private var fundableBalanceSats: UInt64 {
+        UInt64(max(0, wallet.channelFundableBalanceSats))
+    }
+
+    private var isValidAmount: Bool {
+        amountSats > 0 && amountSats <= fundableBalanceSats
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("lightning__external__nav_title"))
@@ -58,7 +66,7 @@ struct FundManualAmountView: View {
                     amountViewModel.handleNumberPadInput(key, currency: currency)
                 }
 
-                CustomButton(title: t("common__continue"), isDisabled: amountSats == 0) {
+                CustomButton(title: t("common__continue"), isDisabled: !isValidAmount) {
                     navigation.navigate(.fundManualConfirm(lnPeer: lnPeer, amountSats: amountSats))
                 }
                 .accessibilityIdentifier("ExternalAmountContinue")
@@ -70,6 +78,14 @@ struct FundManualAmountView: View {
         .task {
             await connectToPeerIfNeeded()
         }
+        .onAppear {
+            updateInputCap()
+        }
+        .onChange(of: wallet.channelFundableBalanceSats) { updateInputCap() }
+    }
+
+    private func updateInputCap() {
+        amountViewModel.maxAmountOverride = fundableBalanceSats > 0 ? fundableBalanceSats : nil
     }
 
     private var numberPadButtons: some View {

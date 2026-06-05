@@ -87,6 +87,11 @@ struct SpendingAmount: View {
                 await calculateMaxTransferAmount()
             }
         }
+        .onChange(of: maxTransferAmount) { updateInputCap() }
+    }
+
+    private func updateInputCap() {
+        amountViewModel.maxAmountOverride = (maxTransferAmount ?? 0) > 0 ? maxTransferAmount : nil
     }
 
     private var actionButtons: some View {

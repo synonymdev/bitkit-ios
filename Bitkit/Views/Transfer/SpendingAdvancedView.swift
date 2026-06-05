@@ -108,6 +108,7 @@ struct SpendingAdvancedView: View {
             )
 
             updateFeeEstimate()
+            updateInputCap()
         }
         .onChange(of: lspBalance) {
             if isValid {
@@ -116,6 +117,12 @@ struct SpendingAdvancedView: View {
                 feeEstimate = nil
             }
         }
+        .onChange(of: transfer.transferValues.maxLspBalance) { updateInputCap() }
+    }
+
+    private func updateInputCap() {
+        let maxLspBalance = transfer.transferValues.maxLspBalance
+        amountViewModel.maxAmountOverride = maxLspBalance > 0 ? maxLspBalance : nil
     }
 
     private var actionButtons: some View {
