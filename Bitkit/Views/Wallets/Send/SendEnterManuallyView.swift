@@ -77,7 +77,7 @@ struct SendEnterManuallyView: View {
     }
 
     func handleContinue() async {
-        let uri = app.normalizeManualEntry(app.manualEntryInput)
+        let uri = app.normalizeManualEntry(app.manualEntryInput).removingLightningSchemes()
 
         guard !uri.isEmpty, app.isManualEntryInputValid else { return }
 

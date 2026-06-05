@@ -326,6 +326,8 @@ extension AppViewModel {
         // Reset send state before handling new data
         resetSendState()
 
+        let uri = uri.removingLightningSchemes()
+
         if let samRockSetup = SamRockSetupRequest.parse(uri) {
             handleBTCPayConnection(samRockSetup)
             return
@@ -687,7 +689,7 @@ extension AppViewModel {
     private func performValidation(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) async {
         let currentSequence = manualEntryValidationSequence
 
-        let normalized = normalizeManualEntry(rawValue)
+        let normalized = normalizeManualEntry(rawValue).removingLightningSchemes()
 
         guard !normalized.isEmpty else {
             manualEntryValidationResult = .empty
