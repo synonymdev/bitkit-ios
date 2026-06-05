@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use middle-ellipsis truncation for addresses on the receive screen #517
 
 ### Fixed
+- In widget edit mode, the settings button is now disabled only for the suggestions widget, and opening settings for widgets without options goes straight to the preview. #579
 - Replaced the third-party Zip dependency with a native ZipService built on NSFileCoordinator for log archive creation. #526
 - Fixed on-chain sends so dust change can no longer turn a partial payment into a max-balance send. #536
 - Improved public contact payment flows for manual Pubky entry, RBF activity display, and newly opened Lightning channels. #539
