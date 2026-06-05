@@ -189,6 +189,16 @@ enum WidgetType: String, CaseIterable, Codable {
     case weather
     case calculator
     case suggestions
+
+    /// Whether the widget exposes configurable options in the edit sheet.
+    var hasOptions: Bool {
+        switch self {
+        case .blocks, .news, .price, .weather:
+            return true
+        case .calculator, .suggestions, .facts:
+            return false
+        }
+    }
 }
 
 // MARK: - WidgetsViewModel
