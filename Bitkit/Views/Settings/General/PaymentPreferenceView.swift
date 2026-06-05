@@ -15,6 +15,7 @@ struct PaymentPreferenceView: View {
     @State private var isUpdatingPaymentOptions = false
     @State private var isUpdatingPrivate = false
     @State private var isUpdatingPublic = false
+    @State private var pendingPrivateSharingValue: Bool?
 
     private var lightningOptionToggle: Binding<Bool> {
         Binding(
@@ -36,7 +37,7 @@ struct PaymentPreferenceView: View {
 
     private var privateToggle: Binding<Bool> {
         Binding(
-            get: { sharesPrivatePaykitEndpoints },
+            get: { pendingPrivateSharingValue ?? sharesPrivatePaykitEndpoints },
             set: { value in
                 Task { await updatePrivateSharing(value) }
             }
@@ -139,23 +140,44 @@ struct PaymentPreferenceView: View {
             return
         }
         isUpdatingPrivate = true
-        sharesPrivatePaykitEndpoints = enabled
-        hasConfirmedPublicPaykitEndpoints = true
-        defer { isUpdatingPrivate = false }
+        let previousValue = sharesPrivatePaykitEndpoints
+        pendingPrivateSharingValue = previousValue
+        defer {
+            isUpdatingPrivate = false
+            pendingPrivateSharingValue = nil
+        }
 
         if enabled {
+            sharesPrivatePaykitEndpoints = true
             PrivatePaykitService.setContactSharingCleanupPending(false)
-            await PrivatePaykitService.shared.prepareSavedContacts(
+            if let privatePublishError = await PrivatePaykitService.shared.prepareSavedContacts(
                 contactsManager.contacts.map(\.publicKey),
-                wallet: wallet
-            )
+                wallet: wallet,
+                requireImmediatePublication: true
+            ) {
+                sharesPrivatePaykitEndpoints = previousValue
+                Logger.error("Failed to enable private contact payments: \(privatePublishError)", context: "PaymentPreferenceView")
+                app.toast(type: .error, title: t("common__error"), description: privatePublishError.localizedDescription)
+                return
+            }
+
+            hasConfirmedPublicPaykitEndpoints = true
         } else {
             do {
                 try await PrivatePaykitService.shared.removePublishedEndpoints()
+                sharesPrivatePaykitEndpoints = false
+                hasConfirmedPublicPaykitEndpoints = true
                 PrivatePaykitService.setContactSharingCleanupPending(false)
             } catch {
-                PrivatePaykitService.setContactSharingCleanupPending(true)
-                Logger.warn("Deferred private contact payment cleanup after disable failed: \(error)", context: "PaymentPreferenceView")
+                sharesPrivatePaykitEndpoints = previousValue
+                if previousValue {
+                    await PrivatePaykitService.shared.prepareSavedContacts(
+                        contactsManager.contacts.map(\.publicKey),
+                        wallet: wallet
+                    )
+                }
+                Logger.error("Failed to disable private contact payments: \(error)", context: "PaymentPreferenceView")
+                app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
             }
         }
     }
