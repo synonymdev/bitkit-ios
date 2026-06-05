@@ -8,7 +8,7 @@ struct FundManualAmountView: View {
 
     let lnPeer: LnPeer
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
     @State private var didAttemptPeerConnection = false
 
     var amountSats: UInt64 {

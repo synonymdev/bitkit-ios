@@ -8,7 +8,7 @@ struct SendAmountView: View {
 
     @Binding var navigationPath: [SendRoute]
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
     @State private var maxSendableAmount: UInt64?
     @State private var routingFee: UInt64 = 0
 
