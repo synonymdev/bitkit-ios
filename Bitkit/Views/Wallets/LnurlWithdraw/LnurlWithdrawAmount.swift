@@ -6,7 +6,7 @@ struct LnurlWithdrawAmount: View {
     @EnvironmentObject var wallet: WalletViewModel
     let onContinue: () -> Void
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
 
     var minAmount: Int {
         Int(max(1, app.lnurlWithdrawData!.minWithdrawableSat))

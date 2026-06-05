@@ -10,7 +10,7 @@ struct SpendingAdvancedView: View {
     @EnvironmentObject var transfer: TransferViewModel
     @Environment(\.dismiss) var dismiss
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
     @State private var feeEstimate: UInt64?
     @State private var isLoading = false
     @State private var feeEstimateTask: Task<Void, Never>?

@@ -12,7 +12,7 @@ struct ReceiveEdit: View {
 
     @Binding var navigationPath: [ReceiveRoute]
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
     @State private var note = ""
     @State private var isAmountInputFocused: Bool = false
     @FocusState private var isNoteEditorFocused: Bool

@@ -10,7 +10,7 @@ struct SpendingAmount: View {
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
     @State private var isLoading = false
     @State private var availableAmount: UInt64?
     @State private var maxTransferAmount: UInt64?

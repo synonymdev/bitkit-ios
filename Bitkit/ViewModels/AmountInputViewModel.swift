@@ -1,11 +1,12 @@
 import Foundation
 import SwiftUI
 
+@Observable
 @MainActor
-class AmountInputViewModel: ObservableObject {
-    @Published var amountSats: UInt64 = 0
-    @Published var displayText: String = ""
-    @Published var errorKey: String?
+final class AmountInputViewModel {
+    var amountSats: UInt64 = 0
+    var displayText: String = ""
+    var errorKey: String?
 
     /// Optional per-screen cap (e.g. the max sendable balance in the send flow).
     /// When set, input is additionally blocked above this value, on top of `maxAmount`.
