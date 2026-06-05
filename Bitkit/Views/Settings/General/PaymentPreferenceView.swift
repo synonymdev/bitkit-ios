@@ -141,6 +141,7 @@ struct PaymentPreferenceView: View {
         }
         isUpdatingPrivate = true
         let previousValue = sharesPrivatePaykitEndpoints
+        let previousCleanupPending = UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
         pendingPrivateSharingValue = previousValue
         defer {
             isUpdatingPrivate = false
@@ -149,18 +150,20 @@ struct PaymentPreferenceView: View {
 
         if enabled {
             sharesPrivatePaykitEndpoints = true
-            PrivatePaykitService.setContactSharingCleanupPending(false)
             if let privatePublishError = await PrivatePaykitService.shared.prepareSavedContacts(
                 contactsManager.contacts.map(\.publicKey),
                 wallet: wallet,
                 requireImmediatePublication: true
             ) {
-                sharesPrivatePaykitEndpoints = previousValue
+                await rollbackFailedPrivateSharingEnable(previousValue: previousValue, previousCleanupPending: previousCleanupPending)
                 Logger.error("Failed to enable private contact payments: \(privatePublishError)", context: "PaymentPreferenceView")
                 app.toast(type: .error, title: t("common__error"), description: privatePublishError.localizedDescription)
                 return
             }
 
+            if !previousCleanupPending {
+                PrivatePaykitService.setContactSharingCleanupPending(false)
+            }
             hasConfirmedPublicPaykitEndpoints = true
         } else {
             do {
@@ -179,6 +182,21 @@ struct PaymentPreferenceView: View {
                 Logger.error("Failed to disable private contact payments: \(error)", context: "PaymentPreferenceView")
                 app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
             }
+        }
+    }
+
+    private func rollbackFailedPrivateSharingEnable(previousValue: Bool, previousCleanupPending: Bool) async {
+        sharesPrivatePaykitEndpoints = previousValue
+        guard !previousValue else { return }
+
+        do {
+            try await PrivatePaykitService.shared.removePublishedEndpoints()
+            if !previousCleanupPending {
+                PrivatePaykitService.setContactSharingCleanupPending(false)
+            }
+        } catch {
+            PrivatePaykitService.setContactSharingCleanupPending(true)
+            Logger.warn("Failed to clean up private contact payments after enable rollback: \(error)", context: "PaymentPreferenceView")
         }
     }
 
