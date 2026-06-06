@@ -240,6 +240,35 @@ final class NumberPadTests: XCTestCase {
         XCTAssertEqual(viewModel.amountSats, 100_000)
     }
 
+    func testDeleteAllowedWhenAmountAboveCap() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+
+        // A prefilled amount lands above a low cap (e.g. an invoice that exceeds the
+        // available balance, set via updateFromSats which does not enforce the cap).
+        viewModel.maxAmountOverride = 1000
+        viewModel.updateFromSats(123_456, currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 123_456)
+
+        // Adding a digit is still blocked: it would grow the amount further above the cap.
+        viewModel.handleNumberPadInput("7", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 123_456) // unchanged
+        XCTAssertNotNil(viewModel.errorKey)
+
+        // Deleting is allowed even though the result is still above the cap, so the user
+        // can reduce an over-cap amount instead of being stuck.
+        viewModel.handleNumberPadInput("delete", currency: currency)
+        XCTAssertEqual(viewModel.displayText, "12 345")
+        XCTAssertEqual(viewModel.amountSats, 12345)
+        XCTAssertNil(viewModel.errorKey)
+
+        // Keep deleting down below the cap.
+        viewModel.handleNumberPadInput("delete", currency: currency) // 1 234
+        viewModel.handleNumberPadInput("delete", currency: currency) // 123
+        XCTAssertEqual(viewModel.amountSats, 123)
+        XCTAssertNil(viewModel.errorKey)
+    }
+
     // MARK: - Leading Zero Tests
 
     func testLeadingZeroBehavior() {

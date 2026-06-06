@@ -48,12 +48,19 @@ class AmountInputViewModel: ObservableObject {
             maxDecimals: maxDecimals
         )
 
+        // Deletions must always apply, even when the amount is above the cap (e.g. a
+        // prefilled invoice amount over the available balance, or a cap that dropped
+        // after input). The cap only blocks growing the amount; without this, each
+        // delete still leaves the amount over the cap and gets rejected, trapping the
+        // user with an invalid amount they can't reduce.
+        let isDeletion = key == "delete"
+
         // For decimal input (classic Bitcoin and fiat), preserve the text as-is
         // For integer input (modern Bitcoin), format the final amount
         if currency.primaryDisplay == .bitcoin && currency.displayUnit == .modern {
             let newAmount = convertToSats(newText, currency: currency)
 
-            if newAmount <= effectiveMaxAmount {
+            if isDeletion || newAmount <= effectiveMaxAmount {
                 rawInputText = newText
                 displayText = formatDisplayTextFromAmount(newAmount, currency: currency)
                 amountSats = newAmount
@@ -69,7 +76,7 @@ class AmountInputViewModel: ObservableObject {
             // For decimal input, check limits before updating state
             if !newText.isEmpty {
                 let newAmount = convertToSats(newText, currency: currency)
-                if newAmount <= effectiveMaxAmount {
+                if isDeletion || newAmount <= effectiveMaxAmount {
                     // Update both raw input and display text
                     rawInputText = newText
                     // Format with grouping separators but not decimal formatting
