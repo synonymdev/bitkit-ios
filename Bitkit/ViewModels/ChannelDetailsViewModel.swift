@@ -22,6 +22,45 @@ class ChannelDetailsViewModel: ObservableObject {
         self.transferStorage = transferStorage
     }
 
+    // MARK: - Display values
+
+    /// Short channel id for display, formatted as `block x tx x output`.
+    /// Prefers the channel's own scid (open channels) and falls back to the linked
+    /// Blocktank order's scid (closed channels, which are not stored with one).
+    var displayShortChannelId: String? {
+        if let scid = foundChannel?.shortChannelIdValue {
+            return scid.formattedAsShortChannelId
+        }
+        if let scidString = linkedOrder?.channel?.shortChannelId, let scid = UInt64(scidString) {
+            return scid.formattedAsShortChannelId
+        }
+        return nil
+    }
+
+    /// Funding outpoint for display, preferring the linked Blocktank order's funding
+    /// transaction (authoritative, matches LND/Blocktank) and falling back to the channel's
+    /// own funding outpoint. A single source so the funding txid and channel point agree.
+    private var fundingOutpoint: (txid: String, vout: UInt64)? {
+        if let fundingTx = linkedOrder?.channel?.fundingTx, !fundingTx.id.isEmpty {
+            return (fundingTx.id, fundingTx.vout)
+        }
+        if let txid = foundChannel?.displayedFundingTxoTxid, !txid.isEmpty, let vout = foundChannel?.fundingTxoVout {
+            return (txid, UInt64(vout))
+        }
+        return nil
+    }
+
+    /// Funding transaction id (`funding_txid`) for display.
+    var displayFundingTxid: String? {
+        fundingOutpoint?.txid
+    }
+
+    /// Funding outpoint (`funding_txid:vout`) for display.
+    var displayChannelPoint: String? {
+        guard let outpoint = fundingOutpoint else { return nil }
+        return "\(outpoint.txid):\(outpoint.vout)"
+    }
+
     /// Find a channel by ID, checking open channels, pending channels, pending orders, then closed channels
     func findChannel(channelId: String, wallet: WalletViewModel) async {
         // Clear any previously found channel and order to avoid returning stale data
