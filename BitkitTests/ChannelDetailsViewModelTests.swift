@@ -35,10 +35,12 @@ final class ChannelDetailsViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testDisplayShortChannelIdFallsBackToLinkedOrderForClosedChannel() {
+    func testDisplayShortChannelIdUsesConfidentlyLinkedOrderForClosedChannel() {
         let vm = ChannelDetailsViewModel.shared
-        vm.foundChannel = makeClosedChannel(fundingTxoTxid: "commitmenttxid")
+        // Closed channels are not stored with a scid; an order matched by funding tx supplies it.
+        vm.foundChannel = makeClosedChannel(fundingTxoTxid: "fundingtxid")
         var channel = IBtChannel.mock()
+        channel.fundingTx = FundingTx(id: "fundingtxid", vout: 0)
         channel.shortChannelId = "854845001888432128"
         vm.linkedOrder = IBtOrder.mock(channel: channel)
         defer { resetDisplayState(vm) }
@@ -47,29 +49,33 @@ final class ChannelDetailsViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testDisplayChannelPointPrefersLinkedOrderFundingTx() {
+    func testDisplayIgnoresWeaklyLinkedOrder() {
         let vm = ChannelDetailsViewModel.shared
-        // Reproduce the reported bug: the stored funding txid is actually the commitment tx.
-        vm.foundChannel = makeClosedChannel(fundingTxoTxid: "commitmenttxid")
+        // Funding txids differ, so the order is only a loose counterparty match and could belong to
+        // another channel with the same LSP: its scid and funding tx must not be shown.
+        vm.foundChannel = makeClosedChannel(fundingTxoTxid: "commitmenttxid", fundingTxoIndex: 0)
         var channel = IBtChannel.mock()
-        channel.fundingTx = FundingTx(id: "fundingtxid", vout: 2)
+        channel.fundingTx = FundingTx(id: "otherchannelfundingtxid", vout: 9)
+        channel.shortChannelId = "854845001888432128"
         vm.linkedOrder = IBtOrder.mock(channel: channel)
         defer { resetDisplayState(vm) }
 
-        XCTAssertEqual(vm.displayChannelPoint, "fundingtxid:2")
+        XCTAssertNil(vm.displayShortChannelId)
+        XCTAssertEqual(vm.displayChannelPoint, "commitmenttxid:0")
+        XCTAssertEqual(vm.displayFundingTxid, "commitmenttxid")
     }
 
     @MainActor
-    func testDisplayFundingTxidPrefersLinkedOrderAndMatchesChannelPoint() {
+    func testDisplayChannelPointUsesChannelOwnFundingOutpoint() {
         let vm = ChannelDetailsViewModel.shared
-        vm.foundChannel = makeClosedChannel(fundingTxoTxid: "commitmenttxid")
+        vm.foundChannel = makeClosedChannel(fundingTxoTxid: "fundingtxid", fundingTxoIndex: 2)
         var channel = IBtChannel.mock()
-        channel.fundingTx = FundingTx(id: "fundingtxid", vout: 2)
+        channel.fundingTx = FundingTx(id: "differenttxid", vout: 9)
         vm.linkedOrder = IBtOrder.mock(channel: channel)
         defer { resetDisplayState(vm) }
 
-        XCTAssertEqual(vm.displayFundingTxid, "fundingtxid")
         XCTAssertEqual(vm.displayChannelPoint, "fundingtxid:2")
+        XCTAssertEqual(vm.displayFundingTxid, "fundingtxid")
     }
 
     @MainActor
@@ -90,12 +96,12 @@ final class ChannelDetailsViewModelTests: XCTestCase {
         vm.linkedOrder = nil
     }
 
-    private func makeClosedChannel(fundingTxoTxid: String) -> ClosedChannelDetails {
+    private func makeClosedChannel(fundingTxoTxid: String, fundingTxoIndex: UInt32 = 0) -> ClosedChannelDetails {
         ClosedChannelDetails(
             channelId: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
             counterpartyNodeId: "03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad",
             fundingTxoTxid: fundingTxoTxid,
-            fundingTxoIndex: 0,
+            fundingTxoIndex: fundingTxoIndex,
             channelValueSats: 100_000,
             closedAt: 0,
             outboundCapacityMsat: 0,

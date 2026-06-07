@@ -24,30 +24,41 @@ class ChannelDetailsViewModel: ObservableObject {
 
     // MARK: - Display values
 
-    /// Short channel id for display, formatted as `block x tx x output`.
-    /// Prefers the channel's own scid (open channels) and falls back to the linked
-    /// Blocktank order's scid (closed channels, which are not stored with one).
-    var displayShortChannelId: String? {
-        if let scid = foundChannel?.shortChannelIdValue {
-            return scid.formattedAsShortChannelId
+    /// Whether `linkedOrder` confidently belongs to `foundChannel`, i.e. it was matched by a
+    /// channel-unique key (funding transaction, user channel id, or short channel id) rather than
+    /// the loose counterparty-pubkey fallback in `findLinkedOrder`. Only then is it safe to borrow
+    /// the order's short channel id, which could otherwise belong to another channel the user has
+    /// open with the same LSP.
+    private var isLinkedOrderConfident: Bool {
+        guard let order = linkedOrder, let channel = foundChannel else { return false }
+
+        if let fundingTxid = channel.displayedFundingTxoTxid, !fundingTxid.isEmpty,
+           order.channel?.fundingTx.id == fundingTxid
+        {
+            return true
         }
-        if let scidString = linkedOrder?.channel?.shortChannelId, let scid = UInt64(scidString) {
-            return scid.formattedAsShortChannelId
+
+        if let openChannel = channel as? ChannelDetails {
+            if order.id == openChannel.userChannelId {
+                return true
+            }
+            if let scid = openChannel.shortChannelId, order.channel?.shortChannelId == String(scid) {
+                return true
+            }
         }
-        return nil
+
+        return false
     }
 
-    /// Funding outpoint for display, preferring the linked Blocktank order's funding
-    /// transaction (authoritative, matches LND/Blocktank) and falling back to the channel's
-    /// own funding outpoint. A single source so the funding txid and channel point agree.
+    /// Funding outpoint for display, taken from the channel's own LDK or stored values.
+    /// A single source so the funding txid and channel point always agree.
     private var fundingOutpoint: (txid: String, vout: UInt64)? {
-        if let fundingTx = linkedOrder?.channel?.fundingTx, !fundingTx.id.isEmpty {
-            return (fundingTx.id, fundingTx.vout)
+        guard let txid = foundChannel?.displayedFundingTxoTxid, !txid.isEmpty,
+              let vout = foundChannel?.fundingTxoVout
+        else {
+            return nil
         }
-        if let txid = foundChannel?.displayedFundingTxoTxid, !txid.isEmpty, let vout = foundChannel?.fundingTxoVout {
-            return (txid, UInt64(vout))
-        }
-        return nil
+        return (txid, UInt64(vout))
     }
 
     /// Funding transaction id (`funding_txid`) for display.
@@ -59,6 +70,19 @@ class ChannelDetailsViewModel: ObservableObject {
     var displayChannelPoint: String? {
         guard let outpoint = fundingOutpoint else { return nil }
         return "\(outpoint.txid):\(outpoint.vout)"
+    }
+
+    /// Short channel id for display, formatted as `block x tx x output`. Uses the channel's own
+    /// scid (open channels) and, for closed channels (which are not stored with one), the scid from
+    /// a confidently linked Blocktank order. Hidden otherwise rather than showing a guessed value.
+    var displayShortChannelId: String? {
+        if let scid = foundChannel?.shortChannelIdValue {
+            return scid.formattedAsShortChannelId
+        }
+        if isLinkedOrderConfident, let scidString = linkedOrder?.channel?.shortChannelId, let scid = UInt64(scidString) {
+            return scid.formattedAsShortChannelId
+        }
+        return nil
     }
 
     /// Find a channel by ID, checking open channels, pending channels, pending orders, then closed channels
