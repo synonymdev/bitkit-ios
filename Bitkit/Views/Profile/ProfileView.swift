@@ -46,7 +46,6 @@ struct ProfileView: View {
 
     // MARK: - Profile Content
 
-    @ViewBuilder
     private func profileContent(_ profile: PubkyProfile) -> some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -86,7 +85,6 @@ struct ProfileView: View {
 
     // MARK: - Actions (edit, copy, share)
 
-    @ViewBuilder
     private var profileActions: some View {
         HStack(spacing: 16) {
             GradientCircleButton(icon: "pencil", accessibilityLabel: t("profile__edit")) {
@@ -111,7 +109,6 @@ struct ProfileView: View {
 
     // MARK: - QR Code
 
-    @ViewBuilder
     private func profileQRCode(_ profile: PubkyProfile) -> some View {
         Button {
             UIPasteboard.general.string = profile.publicKey
@@ -141,7 +138,6 @@ struct ProfileView: View {
 
     // MARK: - Links / Metadata
 
-    @ViewBuilder
     private func profileLinks(_ profile: PubkyProfile) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(profile.links.enumerated()), id: \.element.id) { index, link in
@@ -152,7 +148,6 @@ struct ProfileView: View {
 
     // MARK: - Tags
 
-    @ViewBuilder
     private func profileTags(_ profile: PubkyProfile) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("profile__create_tags_label"), textColor: .white64)
@@ -168,7 +163,6 @@ struct ProfileView: View {
 
     // MARK: - Loading / Empty States
 
-    @ViewBuilder
     private var loadingContent: some View {
         VStack {
             Spacer()
@@ -178,7 +172,6 @@ struct ProfileView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
     private var emptyContent: some View {
         VStack(spacing: 16) {
             Spacer()

@@ -20,16 +20,16 @@ class TrezorDebugLog {
     /// Minimum interval between flushes to @Published
     private static let flushInterval: TimeInterval = 0.25
 
-    nonisolated(unsafe) private let formatter: DateFormatter = {
+    private nonisolated(unsafe) let formatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss.SSS"
         return f
     }()
 
     /// Thread-safe buffer for incoming log messages
-    nonisolated(unsafe) private let bufferLock = NSLock()
-    nonisolated(unsafe) private var buffer: [String] = []
-    nonisolated(unsafe) private var flushScheduled = false
+    private nonisolated(unsafe) let bufferLock = NSLock()
+    private nonisolated(unsafe) var buffer: [String] = []
+    private nonisolated(unsafe) var flushScheduled = false
 
     private init() {}
 

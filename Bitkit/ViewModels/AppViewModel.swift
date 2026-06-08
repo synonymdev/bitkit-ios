@@ -64,6 +64,8 @@ class AppViewModel: ObservableObject {
     /// Drawer menu
     @Published var showDrawer = false
 
+    @Published var requestedHomePage: Int?
+
     /// Payment hashes for which we navigated to the pending screen.
     /// When payment succeeds/fails, we show toast and publish resolution so SendPendingScreen can navigate.
     private var pendingPaymentHashes: Set<String> = []
@@ -324,6 +326,18 @@ extension AppViewModel {
         // Reset send state before handling new data
         resetSendState()
 
+        let uri = uri.removingLightningSchemes()
+
+        if let samRockSetup = SamRockSetupRequest.parse(uri) {
+            handleBTCPayConnection(samRockSetup)
+            return
+        }
+
+        if SamRockSetupRequest.isProtocolURL(uri) {
+            handleInvalidBTCPayConnection(uri)
+            return
+        }
+
         // Workaround for duplicated BIP21 URIs (bitkit-core#63)
         if Bip21Utils.isDuplicatedBip21(uri) {
             toast(
@@ -490,6 +504,27 @@ extension AppViewModel {
         }
     }
 
+    private func handleBTCPayConnection(_ setup: SamRockSetupRequest) {
+        guard setup.requestsBitcoinOnchain else {
+            toast(
+                type: .warning,
+                title: t("btcpay__unsupported_title"),
+                description: t("btcpay__unsupported_text")
+            )
+            return
+        }
+
+        sheetViewModel.showSheet(.btcpayConnection, data: BTCPayConnectionConfig(setup: setup))
+    }
+
+    private func handleInvalidBTCPayConnection(_ uri: String) {
+        toast(
+            type: .warning,
+            title: t("btcpay__unsupported_title"),
+            description: SamRockSetupRequest.isPublicHTTPProtocolURL(uri) ? t("btcpay__unsupported_http_text") : t("btcpay__invalid_link_text")
+        )
+    }
+
     private func handleScannedLightningInvoice(_ invoice: LightningInvoice, bolt11: String, onchainInvoice: OnChainInvoice? = nil) {
         scannedLightningInvoice = invoice
         scannedOnchainInvoice = onchainInvoice // Keep onchain invoice if provided
@@ -654,7 +689,7 @@ extension AppViewModel {
     private func performValidation(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) async {
         let currentSequence = manualEntryValidationSequence
 
-        let normalized = normalizeManualEntry(rawValue)
+        let normalized = normalizeManualEntry(rawValue).removingLightningSchemes()
 
         guard !normalized.isEmpty else {
             manualEntryValidationResult = .empty

@@ -3,6 +3,7 @@ import SwiftUI
 /// Displays Bitcoin price for the user's selected trading pair and timeframe.
 struct PriceWidget: View {
     var options: PriceWidgetOptions = .init()
+    var size: WidgetSize = .wide
     var isEditing: Bool = false
     var onEditingEnd: (() -> Void)?
 
@@ -10,10 +11,12 @@ struct PriceWidget: View {
 
     init(
         options: PriceWidgetOptions = PriceWidgetOptions(),
+        size: WidgetSize = .wide,
         isEditing: Bool = false,
         onEditingEnd: (() -> Void)? = nil
     ) {
         self.options = options
+        self.size = size
         self.isEditing = isEditing
         self.onEditingEnd = onEditingEnd
     }
@@ -21,6 +24,7 @@ struct PriceWidget: View {
     var body: some View {
         BaseWidget(
             type: .price,
+            size: size,
             isEditing: isEditing,
             onEditingEnd: onEditingEnd
         ) {
@@ -36,7 +40,11 @@ struct PriceWidget: View {
         } else if viewModel.error != nil {
             WidgetContentBuilder.errorView(t("widgets__price__error"))
         } else if let primary = primaryPrice {
-            PriceWidgetWideContent(data: primary, period: options.selectedPeriod)
+            if size == .small {
+                PriceWidgetCompactContent(data: primary, period: options.selectedPeriod)
+            } else {
+                PriceWidgetWideContent(data: primary, period: options.selectedPeriod)
+            }
         }
     }
 

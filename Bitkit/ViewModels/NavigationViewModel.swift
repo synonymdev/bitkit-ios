@@ -51,11 +51,8 @@ enum Route: Hashable {
     case shopDiscover
     case shopMain(page: String)
 
-    // Widgets
+    /// Widgets
     case widgetsIntro
-    case widgetsList
-    case widgetDetail(WidgetType)
-    case widgetEdit(WidgetType)
 
     // Support
     case reportIssue

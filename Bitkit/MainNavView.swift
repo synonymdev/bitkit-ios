@@ -139,6 +139,14 @@ struct MainNavView: View {
             config in ReceivedTx(config: config)
         }
         .sheet(
+            item: $sheets.btcpayConnectionSheetItem,
+            onDismiss: {
+                sheets.hideSheetIfActive(.btcpayConnection, reason: "BTCPay connection sheet dismissed")
+            }
+        ) {
+            config in BTCPayConnectionSheet(config: config)
+        }
+        .sheet(
             item: $sheets.scannerSheetItem,
             onDismiss: {
                 sheets.hideSheetIfActive(.scanner, reason: "Scanner sheet dismissed")
@@ -178,6 +186,14 @@ struct MainNavView: View {
             }
         ) {
             config in ForceTransferSheet(config: config)
+        }
+        .sheet(
+            item: $sheets.widgetsSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in WidgetsSheet(config: config)
         }
         .accentColor(.white)
         .overlay {
@@ -250,7 +266,7 @@ struct MainNavView: View {
         }
         .onOpenURL { url in
             Task {
-                Logger.info("Received deeplink: \(url.absoluteString)")
+                Logger.info("Received deeplink: \(sanitizedDeeplinkDescription(url))")
 
                 // Web URLs from widgets (e.g. news article tap) bypass payment handling
                 if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
@@ -291,12 +307,14 @@ struct MainNavView: View {
 
                 do {
                     try await app.handleScannedData(url.absoluteString)
-                    PaymentNavigationHelper.openPaymentSheet(
-                        app: app,
-                        currency: currency,
-                        settings: settings,
-                        sheetViewModel: sheets
-                    )
+                    if shouldOpenPaymentSheet(for: url.absoluteString) {
+                        PaymentNavigationHelper.openPaymentSheet(
+                            app: app,
+                            currency: currency,
+                            settings: settings,
+                            sheetViewModel: sheets
+                        )
+                    }
                 } catch {
                     Logger.error(error, context: "Failed to handle deeplink")
                     app.toast(
@@ -471,25 +489,6 @@ struct MainNavView: View {
 
                 // Widgets
                 case .widgetsIntro: WidgetsIntroView()
-                case .widgetsList: WidgetsListView()
-                case let .widgetDetail(widgetType):
-                    switch widgetType {
-                    case .price:
-                        PriceWidgetPreviewView()
-                    case .news:
-                        NewsWidgetPreviewView()
-                    case .blocks:
-                        BlocksWidgetPreviewView()
-                    case .facts:
-                        FactsWidgetPreviewView()
-                    case .weather:
-                        WeatherWidgetPreviewView()
-                    case .calculator:
-                        CalculatorWidgetPreviewView()
-                    default:
-                        WidgetDetailView(id: widgetType)
-                    }
-                case let .widgetEdit(widgetType): WidgetEditView(id: widgetType)
 
                 // Settings
                 case .settings: MainSettingsScreen()
@@ -596,12 +595,14 @@ struct MainNavView: View {
                 try await app.handleScannedData(uri)
 
                 try await Task.sleep(nanoseconds: Self.statePropagationDelayNanoseconds)
-                PaymentNavigationHelper.openPaymentSheet(
-                    app: app,
-                    currency: currency,
-                    settings: settings,
-                    sheetViewModel: sheets
-                )
+                if shouldOpenPaymentSheet(for: uri) {
+                    PaymentNavigationHelper.openPaymentSheet(
+                        app: app,
+                        currency: currency,
+                        settings: settings,
+                        sheetViewModel: sheets
+                    )
+                }
             } catch {
                 Logger.error(error, context: "Failed to read data from clipboard")
                 app.toast(
@@ -614,5 +615,30 @@ struct MainNavView: View {
             // Clear stored URI after processing
             clipboardUri = nil
         }
+    }
+
+    private func shouldOpenPaymentSheet(for uri: String) -> Bool {
+        !SamRockSetupRequest.isProtocolURL(uri)
+    }
+
+    private func sanitizedDeeplinkDescription(_ url: URL) -> String {
+        if let description = SamRockSetupRequest.sanitizedDescription(url.absoluteString) {
+            return description
+        }
+
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url.scheme ?? "unknown"
+        }
+
+        guard components.host != nil else {
+            return components.scheme ?? "unknown"
+        }
+
+        components.user = nil
+        components.password = nil
+        components.query = nil
+        components.fragment = nil
+
+        return components.string ?? (url.scheme ?? "unknown")
     }
 }

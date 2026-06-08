@@ -72,7 +72,7 @@ struct PriceWidgetCompactContent: View {
                     CaptionMText(period.rawValue, textColor: palette.secondary)
                         .textCase(.uppercase)
                 }
-                .accessibilityIdentifier("price_card_small_pair_row_\(data.name)")
+                .accessibilityIdentifier("PriceWidgetRow-\(data.name)")
 
                 Text(data.price)
                     .font(Fonts.bold(size: 22))

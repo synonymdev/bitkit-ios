@@ -161,8 +161,12 @@ extension SuggestionCardData {
 }
 
 struct Suggestions: View {
-    /// When true, show only two static cards and ignore taps (e.g. widget detail preview).
+    /// When true, show a fixed set of static cards and ignore taps (e.g. widget preview).
     var isPreview: Bool = false
+
+    var previewCardIds: [String]?
+
+    static let previewSheetCardIds = ["backupSeedPhrase", "pin", "transferToSpending", "support"]
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
@@ -189,9 +193,13 @@ struct Suggestions: View {
         suggestionsManager: SuggestionsManager,
         pubkyProfile: PubkyProfileManager? = nil,
         isPaykitUIEnabled: Bool = PaykitFeatureFlags.isUIEnabled,
-        isPreview: Bool = false
+        isPreview: Bool = false,
+        previewCardIds: [String]? = nil
     ) -> [SuggestionCardData] {
         if isPreview {
+            if let previewCardIds {
+                return previewCardIds.compactMap { cardsById[$0] }
+            }
             return Array(cards.prefix(2))
         }
         let state: WalletSuggestionState = if wallet.totalBalanceSats == 0 {
@@ -237,7 +245,8 @@ struct Suggestions: View {
             suggestionsManager: suggestionsManager,
             pubkyProfile: pubkyProfile,
             isPaykitUIEnabled: isPaykitUIActive,
-            isPreview: isPreview
+            isPreview: isPreview,
+            previewCardIds: previewCardIds
         )
     }
 
@@ -261,6 +270,11 @@ struct Suggestions: View {
                         onTap: { if !isPreview { onItemTap(card) } },
                         onDismiss: { dismissCard(card) }
                     )
+                    .background {
+                        if isPreview {
+                            RoundedRectangle(cornerRadius: 16).fill(Color.black)
+                        }
+                    }
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
                 }
@@ -334,6 +348,16 @@ struct Suggestions: View {
 private extension SuggestionCardData {
     var isPaykitCard: Bool {
         action == .profile
+    }
+}
+
+/// Static, non-interactive suggestions grid shown in the widget add-list and preview sheets.
+/// In preview mode each card is backed with black (see `Suggestions`) so the translucent
+/// card gradients read correctly against the gray sheet background.
+struct SuggestionsPreviewTile: View {
+    var body: some View {
+        Suggestions(isPreview: true, previewCardIds: Suggestions.previewSheetCardIds)
+            .frame(maxWidth: .infinity)
     }
 }
 

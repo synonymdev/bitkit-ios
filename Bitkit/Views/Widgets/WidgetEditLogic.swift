@@ -22,12 +22,7 @@ class WidgetEditLogic: ObservableObject {
     // MARK: - Computed Properties
 
     var hasOptions: Bool {
-        switch widgetType {
-        case .blocks, .news, .price, .weather:
-            return true
-        case .calculator, .suggestions, .facts:
-            return false
-        }
+        widgetType.hasOptions
     }
 
     var hasEnabledOption: Bool {
@@ -186,13 +181,13 @@ class WidgetEditLogic: ObservableObject {
     func saveOptions() {
         switch widgetType {
         case .blocks:
-            widgetsViewModel.saveOptions(blocksOptions, for: widgetType)
+            widgetsViewModel.stageOptions(blocksOptions, for: widgetType)
         case .news:
-            widgetsViewModel.saveOptions(newsOptions, for: widgetType)
+            widgetsViewModel.stageOptions(newsOptions, for: widgetType)
         case .weather:
-            widgetsViewModel.saveOptions(weatherOptions, for: widgetType)
+            widgetsViewModel.stageOptions(weatherOptions, for: widgetType)
         case .price:
-            widgetsViewModel.saveOptions(priceOptions, for: widgetType)
+            widgetsViewModel.stageOptions(priceOptions, for: widgetType)
         case .calculator, .suggestions, .facts:
             break
         }

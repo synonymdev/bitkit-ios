@@ -2,6 +2,7 @@ import SwiftUI
 
 /// A widget that provides Bitcoin to fiat currency conversion.
 struct CalculatorWidget: View {
+    var size: WidgetSize = .wide
     var isEditing: Bool = false
     var onEditingEnd: (() -> Void)?
 
@@ -10,54 +11,26 @@ struct CalculatorWidget: View {
 
     @State private var values = CalculatorWidgetValues()
     @State private var hasHydrated = false
-    @State private var isNumberPadMounted = false
-    @State private var numberPadHeight: CGFloat = Self.collapsedNumberPadHeight
     @State private var previousDisplayUnit: BitcoinDisplayUnit = .modern
 
-    private static let numberPadDismissAnimation = Animation.easeOut(duration: numberPadDismissAnimationDuration)
-    private static let numberPadDismissAnimationDuration = 0.14
-    private static let collapsedNumberPadHeight = 1 / UIScreen.main.scale
-    private static var fullNumberPadHeight: CGFloat {
-        8 + NumberPad.contentHeight + (windowSafeAreaInsets.bottom > 0 ? windowSafeAreaInsets.bottom : 16)
-    }
-
     init(
+        size: WidgetSize = .wide,
         isEditing: Bool = false,
         onEditingEnd: (() -> Void)? = nil
     ) {
+        self.size = size
         self.isEditing = isEditing
         self.onEditingEnd = onEditingEnd
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            BaseWidget(
-                type: .calculator,
-                isEditing: isEditing,
-                onEditingEnd: onEditingEnd
-            ) {
-                CalculatorWidgetWideContent(
-                    values: currentValues,
-                    activeInput: calculatorInput.activeInput,
-                    onSelectInput: selectInput
-                )
-            }
-
-            if isNumberPadMounted {
-                numberPad
-                    .frame(height: numberPadHeight, alignment: .top)
-                    .clipped()
-                    .allowsHitTesting(calculatorInput.isPresented)
-                    .trackCalculatorNumberPadFrame()
-                    .transition(.identity)
-            }
-        }
-        .animation(.easeOut(duration: 0.14), value: calculatorInput.isPresented)
-        .onAppear {
-            updateNumberPadPresentation(isPresented: calculatorInput.isPresented, animated: false)
-        }
-        .onChange(of: calculatorInput.isPresented) { _, isPresented in
-            updateNumberPadPresentation(isPresented: isPresented, animated: true)
+        BaseWidget(
+            type: .calculator,
+            size: size,
+            isEditing: isEditing,
+            onEditingEnd: onEditingEnd
+        ) {
+            content
         }
         .task {
             hydrateValuesIfNeeded()
@@ -89,26 +62,20 @@ struct CalculatorWidget: View {
         }
     }
 
-    private var numberPad: some View {
-        VStack(spacing: 0) {
-            Spacer()
-                .frame(height: 8)
-
-            VStack(spacing: 0) {
-                NumberPad(
-                    type: calculatorInput.numberPadType,
-                    decimalSeparator: calculatorInput.decimalSeparator,
-                    errorKey: calculatorInput.errorKey,
-                    onDeleteLongPress: {
-                        calculatorInput.clear()
-                    }
-                ) { key in
-                    calculatorInput.submit(key)
-                }
-                .padding(.horizontal, 16)
-            }
-            .padding(.bottom, windowSafeAreaInsets.bottom > 0 ? windowSafeAreaInsets.bottom : 16)
-            .background(Color.black.ignoresSafeArea(edges: .bottom))
+    @ViewBuilder
+    private var content: some View {
+        if size == .small {
+            CalculatorWidgetCompactContent(
+                values: currentValues,
+                activeInput: calculatorInput.activeInput,
+                onSelectInput: selectInput
+            )
+        } else {
+            CalculatorWidgetWideContent(
+                values: currentValues,
+                activeInput: calculatorInput.activeInput,
+                onSelectInput: selectInput
+            )
         }
     }
 
@@ -120,34 +87,6 @@ struct CalculatorWidget: View {
             currencySymbol: currency.symbol,
             selectedCurrency: currency.selectedCurrency
         )
-    }
-
-    private func updateNumberPadPresentation(isPresented: Bool, animated: Bool) {
-        if isPresented {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-
-            withTransaction(transaction) {
-                isNumberPadMounted = true
-                numberPadHeight = Self.fullNumberPadHeight
-            }
-            return
-        }
-
-        let collapse = {
-            numberPadHeight = Self.collapsedNumberPadHeight
-        }
-
-        if animated {
-            withAnimation(Self.numberPadDismissAnimation, collapse)
-        } else {
-            collapse()
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.numberPadDismissAnimationDuration) {
-            guard !calculatorInput.isPresented else { return }
-            isNumberPadMounted = false
-        }
     }
 
     private func hydrateValuesIfNeeded() {
@@ -381,10 +320,12 @@ struct CalculatorWidgetWideContent: View {
     }
 }
 
-// MARK: - Compact layout (small carousel page)
+// MARK: - Compact layout (small home grid + carousel page)
 
 struct CalculatorWidgetCompactContent: View {
     let values: CalculatorWidgetValues
+    var activeInput: CalculatorMoneyType?
+    var onSelectInput: ((CalculatorMoneyType) -> Void)?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -394,7 +335,9 @@ struct CalculatorWidgetCompactContent: View {
                 iconSize: 24,
                 rowPadding: 12,
                 showsLabel: false,
-                isActive: false
+                isActive: activeInput == .bitcoin,
+                accessibilityIdentifier: "CalculatorBtcInput",
+                onTap: onSelectInput.map { handler in { handler(.bitcoin) } }
             )
 
             CalculatorWidgetRow(
@@ -403,13 +346,12 @@ struct CalculatorWidgetCompactContent: View {
                 iconSize: 24,
                 rowPadding: 12,
                 showsLabel: false,
-                isActive: false
+                isActive: activeInput == .fiat,
+                accessibilityIdentifier: "CalculatorFiatInput",
+                onTap: onSelectInput.map { handler in { handler(.fiat) } }
             )
         }
-        .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.gray6)
-        .cornerRadius(16)
     }
 }
 
@@ -507,23 +449,38 @@ private struct CalculatorCursor: View {
     }
 }
 
-struct CalculatorNumberPadFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect?
+// MARK: - Number pad bar (screen-level overlay)
 
-    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
-        value = nextValue() ?? value
+/// Full-width number pad pinned to the bottom of the screen by `HomeWidgetsView` while a
+/// calculator field is focused. Routes key presses through the shared `CalculatorInputManager`,
+/// so it works for both the wide and compact calculator without living inside the widget cell.
+struct CalculatorNumberPadBar: View {
+    @Environment(CalculatorInputManager.self) private var calculatorInput
+
+    static var height: CGFloat {
+        8 + NumberPad.contentHeight + (windowSafeAreaInsets.bottom > 0 ? windowSafeAreaInsets.bottom : 16)
     }
-}
 
-private extension View {
-    func trackCalculatorNumberPadFrame() -> some View {
-        background {
-            GeometryReader { proxy in
-                Color.clear.preference(
-                    key: CalculatorNumberPadFramePreferenceKey.self,
-                    value: proxy.frame(in: .global)
-                )
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: 8)
+
+            VStack(spacing: 0) {
+                NumberPad(
+                    type: calculatorInput.numberPadType,
+                    decimalSeparator: calculatorInput.decimalSeparator,
+                    errorKey: calculatorInput.errorKey,
+                    onDeleteLongPress: {
+                        calculatorInput.clear()
+                    }
+                ) { key in
+                    calculatorInput.submit(key)
+                }
+                .padding(.horizontal, 16)
             }
+            .padding(.bottom, windowSafeAreaInsets.bottom > 0 ? windowSafeAreaInsets.bottom : 16)
+            .background(Color.black.ignoresSafeArea(edges: .bottom))
         }
     }
 }

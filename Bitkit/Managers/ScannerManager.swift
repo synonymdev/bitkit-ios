@@ -74,6 +74,7 @@ class ScannerManager: ObservableObject {
             }
 
             try await app.handleScannedData(uri)
+            guard shouldOpenPaymentFlow(for: uri) else { return }
 
             if let currency, let settings, let sheets {
                 PaymentNavigationHelper.openPaymentSheet(
@@ -126,6 +127,10 @@ class ScannerManager: ObservableObject {
             }
 
             try await app.handleScannedData(uri)
+            guard shouldOpenPaymentFlow(for: uri) else {
+                completion(nil)
+                return
+            }
 
             let route = PaymentNavigationHelper.appropriateSendRoute(
                 app: app,
@@ -143,6 +148,10 @@ class ScannerManager: ObservableObject {
             )
             completion(nil)
         }
+    }
+
+    private func shouldOpenPaymentFlow(for uri: String) -> Bool {
+        !SamRockSetupRequest.isProtocolURL(uri)
     }
 
     private func handleElectrumScan(_ uri: String) async {

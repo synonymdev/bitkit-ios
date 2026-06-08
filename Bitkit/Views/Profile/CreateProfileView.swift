@@ -77,7 +77,6 @@ struct CreateProfileView: View {
 
     // MARK: - Avatar Section
 
-    @ViewBuilder
     private var avatarSection: some View {
         PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
             avatarContent
@@ -112,7 +111,6 @@ struct CreateProfileView: View {
 
     // MARK: - Name Input
 
-    @ViewBuilder
     private var nameInput: some View {
         SwiftUI.TextField(
             t("profile__create_name_placeholder"),
@@ -129,7 +127,6 @@ struct CreateProfileView: View {
 
     // MARK: - Pubky Key Section
 
-    @ViewBuilder
     private var pubkyKeySection: some View {
         VStack(spacing: 8) {
             CaptionMText(t("profile__create_pubky_display_label"), textColor: .white64)
@@ -147,7 +144,6 @@ struct CreateProfileView: View {
 
     // MARK: - Loading
 
-    @ViewBuilder
     private var loadingView: some View {
         VStack(spacing: 12) {
             Spacer()
