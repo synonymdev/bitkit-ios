@@ -71,6 +71,12 @@ class AppViewModel: ObservableObject {
     private var pendingPaymentHashes: Set<String> = []
     private var pendingContactPaymentContexts: [String: ContactPaymentContext] = [:]
 
+    /// Txids for which a received-sheet presentation has already been started this session.
+    /// The received and confirmed LDK events for the same tx each call the presenter, so this
+    /// reserves the txid synchronously on the MainActor (before any await) to guarantee the sheet
+    /// is presented at most once and avoid a double-notification race. See issue #455.
+    private var receivedSheetInFlightTxids: Set<String> = []
+
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
     @Published var sendSheetPendingResolution: SendSheetPendingResolution?
@@ -817,6 +823,13 @@ extension AppViewModel {
     /// tx that skips the mempool still notifies the user. See issue #455.
     private func presentReceivedSheetForOnchainTransaction(txid: String, amountSats: Int64) {
         guard amountSats > 0 else { return }
+
+        // Reserve the txid synchronously on the MainActor (no await between check and insert) so the
+        // received and confirmed events for the same tx can't both pass the seen-check and present the
+        // sheet twice. The persisted seenAt still handles cross-launch dedup; this closes the in-session
+        // concurrency race.
+        guard receivedSheetInFlightTxids.insert(txid).inserted else { return }
+
         let sats = UInt64(amountSats)
 
         Task {
