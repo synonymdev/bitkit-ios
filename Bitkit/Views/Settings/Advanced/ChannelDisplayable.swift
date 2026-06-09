@@ -12,6 +12,7 @@ protocol ChannelDisplayable {
     var forwardingFeeBaseMsat: UInt32 { get }
     var forwardingFeeProportionalMillionths: UInt32 { get }
     var channelIdString: String { get }
+    var shortChannelIdValue: UInt64? { get }
     var counterpartyNodeIdString: String { get }
     var displayedFundingTxoTxid: String? { get }
     var fundingTxoVout: UInt32? { get }
@@ -25,6 +26,10 @@ protocol ChannelDisplayable {
 extension ChannelDetails: ChannelDisplayable {
     var channelIdString: String {
         channelId.description
+    }
+
+    var shortChannelIdValue: UInt64? {
+        shortChannelId
     }
 
     var counterpartyNodeIdString: String {
@@ -67,6 +72,12 @@ extension ChannelDetails: ChannelDisplayable {
 extension ClosedChannelDetails: ChannelDisplayable {
     var channelIdString: String {
         channelId
+    }
+
+    /// Closed channels are not stored with a short channel id; the view falls back
+    /// to the linked Blocktank order's scid when available.
+    var shortChannelIdValue: UInt64? {
+        nil
     }
 
     var counterpartyNodeIdString: String {
