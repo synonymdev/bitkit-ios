@@ -8,6 +8,8 @@ struct TrezorWatcherContent: View {
 
     var body: some View {
         @Bindable var trezor = trezor
+        let isStartDisabled = trezor.isStartingWatcher || trezor.watcherExtendedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
         VStack(spacing: 20) {
             // Extended key input
             VStack(alignment: .leading, spacing: 8) {
@@ -40,6 +42,8 @@ struct TrezorWatcherContent: View {
                 }
                 .accessibilityIdentifier("TrezorWatcherUseXpub")
             }
+
+            TrezorAccountTypeSelector(selection: $trezor.onchainAccountTypeSelection)
 
             // Gap limit
             VStack(alignment: .leading, spacing: 8) {
@@ -89,13 +93,17 @@ struct TrezorWatcherContent: View {
                     .background(Color.white)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
-                .disabled(trezor.isStartingWatcher || trezor.watcherExtendedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .opacity(trezor.watcherExtendedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1.0)
+                .disabled(isStartDisabled)
+                .opacity(isStartDisabled ? 0.5 : 1.0)
                 .accessibilityIdentifier("TrezorWatcherStart")
             }
 
+            if let error = trezor.watcherError {
+                TrezorErrorBanner(message: error)
+            }
+
             // Live status
-            if trezor.activeWatcherId != nil {
+            if trezor.hasVisibleWatcherStatus {
                 WatcherStatusView(trezor: trezor)
             }
         }

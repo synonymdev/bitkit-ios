@@ -10,6 +10,50 @@ enum SendStep {
     case signed
 }
 
+/// Account-type override for on-chain xpub tools. `automatic` preserves the
+/// bitkit-core prefix detector; explicit values cover ambiguous xpub/tpub keys.
+enum TrezorAccountTypeSelection: String, CaseIterable, Identifiable {
+    case automatic
+    case legacy
+    case wrappedSegwit
+    case nativeSegwit
+    case taproot
+
+    var id: String {
+        rawValue
+    }
+
+    var accountType: AccountType? {
+        switch self {
+        case .automatic: nil
+        case .legacy: .legacy
+        case .wrappedSegwit: .wrappedSegwit
+        case .nativeSegwit: .nativeSegwit
+        case .taproot: .taproot
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .automatic: "Auto"
+        case .legacy: "Legacy"
+        case .wrappedSegwit: "Wrapped"
+        case .nativeSegwit: "Native"
+        case .taproot: "Taproot"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .automatic: "Prefix"
+        case .legacy: "BIP44"
+        case .wrappedSegwit: "BIP49"
+        case .nativeSegwit: "BIP84"
+        case .taproot: "BIP86"
+        }
+    }
+}
+
 /// ViewModel for Trezor hardware wallet integration
 @Observable
 @MainActor
@@ -253,6 +297,9 @@ class TrezorViewModel {
     /// Gap limit input (string for the text field)
     var watcherGapLimit: String = "20"
 
+    /// Optional account-type override shared by the on-chain xpub tools.
+    var onchainAccountTypeSelection: TrezorAccountTypeSelection = .automatic
+
     /// Identifier of the active watcher, nil when not watching
     var activeWatcherId: String?
 
@@ -277,11 +324,29 @@ class TrezorViewModel {
     /// Rolling event log (most recent last, capped)
     var watcherEvents: [String] = []
 
+    /// Error scoped to the watcher section.
+    var watcherError: String?
+
     /// Whether a watcher is in the process of starting
     var isStartingWatcher: Bool = false
 
+    /// Identifier of a watcher whose native start call is still in flight.
+    private var startingWatcherId: String?
+
+    /// Set when cleanup is requested before native watcher startup completes.
+    private var shouldStopStartingWatcher = false
+
     /// Strong reference to the active listener so it stays alive while watching
     private var watcherListener: TrezorEventListener?
+
+    /// Whether the watcher section has status or output worth keeping visible.
+    var hasVisibleWatcherStatus: Bool {
+        activeWatcherId != nil ||
+            isStartingWatcher ||
+            watcherConnectionStatus == .error ||
+            watcherBalance != nil ||
+            !watcherEvents.isEmpty
+    }
 
     // MARK: - Bluetooth State
 
@@ -1067,7 +1132,8 @@ class TrezorViewModel {
                 accountResult = try await trezorService.getAccountInfo(
                     extendedKey: trimmedInput,
                     electrumUrl: electrumUrl,
-                    network: selectedNetwork
+                    network: selectedNetwork,
+                    scriptType: onchainAccountTypeSelection.accountType
                 )
             case .address:
                 addressResult = try await trezorService.getAddressInfo(
@@ -1136,7 +1202,8 @@ class TrezorViewModel {
             txHistoryResult = try await trezorService.getTransactionHistory(
                 extendedKey: trimmedKey,
                 electrumUrl: electrumUrl,
-                network: selectedNetwork
+                network: selectedNetwork,
+                scriptType: onchainAccountTypeSelection.accountType
             )
         } catch {
             txHistoryError = formatLookupError(error)
@@ -1164,7 +1231,8 @@ class TrezorViewModel {
                 extendedKey: trimmedKey,
                 electrumUrl: electrumUrl,
                 txid: trimmedTxid,
-                network: selectedNetwork
+                network: selectedNetwork,
+                scriptType: onchainAccountTypeSelection.accountType
             )
         } catch {
             txDetailError = formatLookupError(error)
@@ -1509,20 +1577,26 @@ class TrezorViewModel {
     func startWatcher() async {
         let key = watcherExtendedKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else {
-            error = "Enter an extended public key to watch"
+            watcherError = "Enter an extended public key to watch"
             return
         }
-        guard activeWatcherId == nil else { return }
+        guard !isStartingWatcher, activeWatcherId == nil else { return }
 
-        let gapLimit = UInt32(watcherGapLimit.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard let gapLimit = UInt32(watcherGapLimit.trimmingCharacters(in: .whitespacesAndNewlines)), gapLimit > 0 else {
+            watcherError = "Gap limit must be a positive integer"
+            return
+        }
+
         let watcherId = UUID().uuidString
+        let network = selectedNetwork
+        let accountType = onchainAccountTypeSelection.accountType
 
         let params = WatcherParams(
             watcherId: watcherId,
             extendedKey: key,
-            electrumUrl: Self.electrumUrlForNetwork(selectedNetwork),
-            network: toNetwork(selectedNetwork),
-            accountType: nil,
+            electrumUrl: Self.electrumUrlForNetwork(network),
+            network: toNetwork(network),
+            accountType: accountType,
             gapLimit: gapLimit
         )
 
@@ -1532,32 +1606,57 @@ class TrezorViewModel {
         watcherListener = listener
 
         isStartingWatcher = true
-        activeWatcherId = watcherId
+        startingWatcherId = watcherId
+        shouldStopStartingWatcher = false
         watcherConnectionStatus = .starting
         watcherTransactions = []
-        watcherEvents = []
+        watcherEvents = ["starting: \(watcherId)"]
         watcherBalance = nil
         watcherTransactionCount = 0
         watcherBlockHeight = 0
         watcherAccountType = nil
+        watcherError = nil
         trezorLog("Starting watcher \(watcherId) for \(key.prefix(12))...")
 
         do {
             try await trezorService.startWatcher(params: params, listener: listener)
+            guard startingWatcherId == watcherId else {
+                try? trezorService.stopWatcher(watcherId: watcherId)
+                trezorLog("Stopped stale watcher start: \(watcherId)", level: "warn")
+                return
+            }
+
+            if shouldStopStartingWatcher || selectedNetwork != network {
+                try? trezorService.stopWatcher(watcherId: watcherId)
+                finishStoppedWatcherStartup(watcherId: watcherId)
+                return
+            }
+
+            activeWatcherId = watcherId
+            startingWatcherId = nil
+            isStartingWatcher = false
+            appendWatcherEvent("started")
             trezorLog("Watcher started: \(watcherId)")
         } catch {
-            self.error = errorMessage(from: error)
+            let message = errorMessage(from: error)
+            watcherError = message
             watcherConnectionStatus = .error
             activeWatcherId = nil
+            startingWatcherId = nil
             watcherListener = nil
+            shouldStopStartingWatcher = false
+            appendWatcherEvent("start failed: \(message)")
             trezorLog("Watcher start failed: \(error)", level: "error")
+            isStartingWatcher = false
         }
-
-        isStartingWatcher = false
     }
 
     /// Stop the active watcher, if any.
     func stopWatcher() {
+        if startingWatcherId != nil {
+            shouldStopStartingWatcher = true
+        }
+
         guard let watcherId = activeWatcherId else { return }
         do {
             try trezorService.stopWatcher(watcherId: watcherId)
@@ -1567,16 +1666,24 @@ class TrezorViewModel {
         activeWatcherId = nil
         watcherConnectionStatus = .idle
         watcherListener = nil
+        watcherBalance = nil
+        watcherTransactions = []
+        watcherTransactionCount = 0
+        watcherBlockHeight = 0
+        watcherAccountType = nil
+        watcherEvents = []
+        watcherError = nil
         trezorLog("Watcher stopped: \(watcherId)")
     }
 
     /// Handle a watcher event on the main actor. Filters out events from stale watchers.
     private func handleWatcherEvent(watcherId: String, event: WatcherEvent) {
-        guard watcherId == activeWatcherId else { return }
+        guard watcherId == activeWatcherId || watcherId == startingWatcherId else { return }
 
         switch event {
         case let .transactionsChanged(transactions, balance, txCount, blockHeight, accountType):
             watcherConnectionStatus = .connected
+            watcherError = nil
             watcherTransactions = transactions
             watcherBalance = balance
             watcherTransactionCount = txCount
@@ -1585,6 +1692,7 @@ class TrezorViewModel {
             appendWatcherEvent("transactionsChanged: \(txCount) txs, balance \(balance.total) sats")
         case let .error(message):
             watcherConnectionStatus = .error
+            watcherError = message
             appendWatcherEvent("error: \(message)")
         case let .disconnected(message):
             watcherConnectionStatus = .disconnected
@@ -1601,6 +1709,24 @@ class TrezorViewModel {
         if watcherEvents.count > 50 {
             watcherEvents.removeFirst(watcherEvents.count - 50)
         }
+    }
+
+    private func finishStoppedWatcherStartup(watcherId: String) {
+        guard startingWatcherId == watcherId else { return }
+        activeWatcherId = nil
+        startingWatcherId = nil
+        isStartingWatcher = false
+        shouldStopStartingWatcher = false
+        watcherConnectionStatus = .idle
+        watcherListener = nil
+        watcherBalance = nil
+        watcherTransactions = []
+        watcherTransactionCount = 0
+        watcherBlockHeight = 0
+        watcherAccountType = nil
+        watcherEvents = []
+        watcherError = nil
+        trezorLog("Watcher startup stopped before activation: \(watcherId)")
     }
 
     // MARK: - AI Test Hooks
