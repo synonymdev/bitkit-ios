@@ -67,7 +67,7 @@ xcrun devicectl device process launch --device $DEVICE_ID to.bitkit --console
 2. Select your device from the destination dropdown
 3. Press Cmd+R to build and run
 
-**Note:** The project includes a "Remove Static Framework Stubs" build phase that removes empty LDKNodeFFI.framework from the app bundle. This is needed because LDKNodeFFI is a static library (linked at compile time), not a dynamic framework.
+**Note:** The project includes a "Remove Static Framework Stubs" build phase that removes empty `LDKNodeFFI.framework` and `vss_rust_client_ffiFFI.framework` from the app bundle. These are static UniFFI libraries (linked at compile time), not dynamic frameworks; leaving the stubs breaks install and TestFlight validation.
 
 ### Code Formatting
 ```bash

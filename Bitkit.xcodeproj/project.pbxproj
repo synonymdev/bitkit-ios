@@ -571,16 +571,17 @@
 			);
 			inputPaths = (
 				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/LDKNodeFFI.framework/_CodeSignature/CodeResources",
+				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/vss_rust_client_ffiFFI.framework/_CodeSignature/CodeResources",
 			);
 			name = "Remove Static Framework Stubs";
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/.ldk-stubs-removed",
+				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/.static-ffi-stubs-removed",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Remove static framework stubs from app bundle\n# LDKNodeFFI is a static library - its code is linked into the main executable.\n# The empty framework structure causes iOS install errors.\nFRAMEWORK_PATH=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/LDKNodeFFI.framework\"\nOUTPUT_SENTINEL=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/.ldk-stubs-removed\"\n\nif [ -d \"$FRAMEWORK_PATH\" ]; then\n    echo \"Removing LDKNodeFFI static framework stub...\"\n    rm -rf \"$FRAMEWORK_PATH\"\n    if [ -d \"$FRAMEWORK_PATH\" ]; then\n        echo \"error: Failed to remove LDKNodeFFI static framework stub\" >&2\n        exit 1\n    fi\n    echo \"Done.\"\nfi\ntouch \"$OUTPUT_SENTINEL\"\n";
+			shellScript = "# Remove static UniFFI framework stubs from the app bundle.\n# Code is linked into the main executable; empty frameworks break install and App Store validation.\nFRAMEWORKS_DIR=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks\"\nOUTPUT_SENTINEL=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/.static-ffi-stubs-removed\"\n\nfor FRAMEWORK_NAME in LDKNodeFFI.framework vss_rust_client_ffiFFI.framework; do\n    FRAMEWORK_PATH=\"${FRAMEWORKS_DIR}/${FRAMEWORK_NAME}\"\n    if [ ! -d \"$FRAMEWORK_PATH\" ]; then\n        continue\n    fi\n    echo \"Removing ${FRAMEWORK_NAME} static framework stub...\"\n    rm -rf \"$FRAMEWORK_PATH\"\n    if [ -d \"$FRAMEWORK_PATH\" ]; then\n        echo \"error: Failed to remove ${FRAMEWORK_NAME} static framework stub\" >&2\n        exit 1\n    fi\n    echo \"Removed ${FRAMEWORK_NAME}.\"\ndone\n\ntouch \"$OUTPUT_SENTINEL\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -678,7 +679,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 187;
+				CURRENT_PROJECT_VERSION = 190;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -690,7 +691,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.1;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -711,7 +712,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 187;
+				CURRENT_PROJECT_VERSION = 190;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -723,7 +724,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.1;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -743,7 +744,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 187;
+				CURRENT_PROJECT_VERSION = 190;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -755,7 +756,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.1;
+				MARKETING_VERSION = 2.3.0;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -775,7 +776,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 187;
+				CURRENT_PROJECT_VERSION = 190;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -787,7 +788,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.1;
+				MARKETING_VERSION = 2.3.0;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -925,7 +926,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 187;
+				CURRENT_PROJECT_VERSION = 190;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -952,7 +953,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.2.1;
+				MARKETING_VERSION = 2.3.0;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -974,7 +975,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 187;
+				CURRENT_PROJECT_VERSION = 190;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1001,7 +1002,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.2.1;
+				MARKETING_VERSION = 2.3.0;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
