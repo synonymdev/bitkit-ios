@@ -78,7 +78,7 @@ struct ToastView: View {
                         }
                     } else {
                         // Snap back to original position
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        withAnimation(ToastMotion.entrance) {
                             dragOffset = 0
                         }
                     }

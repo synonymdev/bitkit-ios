@@ -1,6 +1,15 @@
 import SwiftUI
 import UIKit
 
+/// Motion for toast show/hide. Arrival is physical (a gentle spring settle); departure just
+/// gets out of the way (a quick fade), mirroring Apple's system banner pattern.
+enum ToastMotion {
+    static let entrance: Animation = .snappy(duration: 0.4)
+    static let exit: Animation = .easeOut(duration: 0.2)
+    /// Hit-test frame cleanup waits for the exit to finish.
+    static let exitSettleTime: Double = 0.3
+}
+
 @MainActor
 class ToastWindowManager: ObservableObject {
     static let shared = ToastWindowManager()
@@ -53,7 +62,7 @@ class ToastWindowManager: ObservableObject {
         window.hasToast = true
 
         // Show the toast with animation
-        withAnimation(.easeInOut(duration: 0.4)) {
+        withAnimation(ToastMotion.entrance) {
             currentToast = toast
         }
 
@@ -66,12 +75,12 @@ class ToastWindowManager: ObservableObject {
     func hideToast() {
         cancelAutoHide()
         toastWindow?.hasToast = false
-        withAnimation(.easeInOut(duration: 0.4)) {
+        withAnimation(ToastMotion.exit) {
             currentToast = nil
         }
         // Clear frame after animation completes to avoid race conditions during animation
         Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(0.4 * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(ToastMotion.exitSettleTime * 1_000_000_000))
             self?.toastWindow?.toastFrame = .zero
         }
     }
@@ -112,12 +121,12 @@ class ToastWindowManager: ObservableObject {
             // Atomically update both hasToast and toastFrame
             toastWindow?.hasToast = false
 
-            withAnimation(.easeInOut(duration: 0.4)) {
+            withAnimation(ToastMotion.exit) {
                 self.currentToast = nil
             }
 
             // Clear frame after animation completes to avoid race conditions during animation
-            try? await Task.sleep(nanoseconds: UInt64(0.4 * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(ToastMotion.exitSettleTime * 1_000_000_000))
             guard !Task.isCancelled else { return }
             toastWindow?.toastFrame = .zero
 
@@ -244,7 +253,15 @@ struct ToastWindowView: View {
                         .allowsHitTesting(false) // Spacer doesn't intercept touches
                 }
                 .id(toast.id)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                // Materialize in place: a short rise with a fade and a slight scale-up reads as
+                // "arriving" without sweeping the whole banner across the screen. Departure is a
+                // plain fade; the toast has been read by then, so any exit motion is just noise.
+                .transition(
+                    .asymmetric(
+                        insertion: .offset(y: -12).combined(with: .opacity).combined(with: .scale(scale: 0.98)),
+                        removal: .opacity
+                    )
+                )
             }
         }
         .onPreferenceChange(ToastFramePreferenceKey.self) { frame in
@@ -252,7 +269,9 @@ struct ToastWindowView: View {
             guard !frame.isEmpty else { return }
             toastManager.updateToastFrame(globalFrame: frame)
         }
-        .animation(.easeInOut(duration: 0.4), value: toastManager.currentToast)
+        // No .animation(_:value:) here: it would override the withAnimation transactions in
+        // ToastWindowManager and force both directions onto one curve. Show and hide set their
+        // own (asymmetric) animations.
         .preferredColorScheme(.dark) // Force dark color scheme
     }
 }
