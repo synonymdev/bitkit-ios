@@ -76,13 +76,8 @@ class ChannelDetailsViewModel: ObservableObject {
     /// scid (open channels) and, for closed channels (which are not stored with one), the scid from
     /// a confidently linked Blocktank order. Hidden otherwise rather than showing a guessed value.
     var displayShortChannelId: String? {
-        if let scid = foundChannel?.shortChannelIdValue {
-            return scid.formattedAsShortChannelId
-        }
-        if isLinkedOrderConfident, let scidString = linkedOrder?.channel?.shortChannelId, let scid = UInt64(scidString) {
-            return scid.formattedAsShortChannelId
-        }
-        return nil
+        let linkedOrderScid = isLinkedOrderConfident ? linkedOrder?.channel?.shortChannelId : nil
+        return resolveDisplayShortChannelId(channelScid: foundChannel?.shortChannelIdValue, linkedOrderScid: linkedOrderScid)
     }
 
     /// Find a channel by ID, checking open channels, pending channels, pending orders, then closed channels

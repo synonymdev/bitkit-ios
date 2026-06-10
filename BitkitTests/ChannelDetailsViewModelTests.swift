@@ -49,6 +49,20 @@ final class ChannelDetailsViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testDisplayShortChannelIdKeepsClnFormLinkedOrderScidForClosedChannel() {
+        let vm = ChannelDetailsViewModel.shared
+        // Blocktank delivers the order scid already in `block x tx x output` form; it is kept as-is.
+        vm.foundChannel = makeClosedChannel(fundingTxoTxid: "fundingtxid")
+        var channel = IBtChannel.mock()
+        channel.fundingTx = FundingTx(id: "fundingtxid", vout: 0)
+        channel.shortChannelId = "792906x599x1"
+        vm.linkedOrder = IBtOrder.mock(channel: channel)
+        defer { resetDisplayState(vm) }
+
+        XCTAssertEqual(vm.displayShortChannelId, "792906x599x1")
+    }
+
+    @MainActor
     func testDisplayIgnoresWeaklyLinkedOrder() {
         let vm = ChannelDetailsViewModel.shared
         // Funding txids differ, so the order is only a loose counterparty match and could belong to

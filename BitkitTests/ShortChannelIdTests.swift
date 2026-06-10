@@ -21,4 +21,30 @@ final class ShortChannelIdTests: XCTestCase {
         let scid = (UInt64(0xFFFFFF) << 40) | (UInt64(0xFFFFFF) << 16) | UInt64(0xFFFF)
         XCTAssertEqual(scid.formattedAsShortChannelId, "16777215x16777215x65535")
     }
+
+    func testResolveDisplayShortChannelIdDecodesOpenChannelScid() {
+        XCTAssertEqual(resolveDisplayShortChannelId(channelScid: 854_845_001_888_432_128, linkedOrderScid: nil), "777477x916x0")
+    }
+
+    func testResolveDisplayShortChannelIdKeepsClnFormLinkedOrderScidForClosedChannel() {
+        // Blocktank delivers the order scid already in `block x tx x output` form.
+        XCTAssertEqual(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: "792906x599x1"), "792906x599x1")
+    }
+
+    func testResolveDisplayShortChannelIdDecodesNumericLinkedOrderScid() {
+        XCTAssertEqual(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: "854845001888432128"), "777477x916x0")
+    }
+
+    func testResolveDisplayShortChannelIdReturnsNilWhenBothUnavailable() {
+        XCTAssertNil(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: nil))
+        XCTAssertNil(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: ""))
+    }
+
+    func testResolveDisplayShortChannelIdReturnsNilForMalformedOrderScid() {
+        XCTAssertNil(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: "not-a-scid"))
+        XCTAssertNil(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: "792906x599"))
+        XCTAssertNil(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: "792906xx1"))
+        // Non-ASCII numeric glyphs (e.g. superscripts) are not valid scid digits.
+        XCTAssertNil(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: "²x³x¹"))
+    }
 }
