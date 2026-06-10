@@ -44,5 +44,7 @@ final class ShortChannelIdTests: XCTestCase {
         XCTAssertNil(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: "not-a-scid"))
         XCTAssertNil(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: "792906x599"))
         XCTAssertNil(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: "792906xx1"))
+        // Non-ASCII numeric glyphs (e.g. superscripts) are not valid scid digits.
+        XCTAssertNil(resolveDisplayShortChannelId(channelScid: nil, linkedOrderScid: "²x³x¹"))
     }
 }

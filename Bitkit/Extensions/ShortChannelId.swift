@@ -16,7 +16,7 @@ extension UInt64 {
 /// exactly three non-empty, all-digit components separated by `x`.
 private func isClnShortChannelId(_ value: String) -> Bool {
     let parts = value.split(separator: "x", omittingEmptySubsequences: false)
-    return parts.count == 3 && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) }
+    return parts.count == 3 && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy { $0.isASCII && $0.isNumber } }
 }
 
 /// Resolves the short channel id to display, formatted as `block x tx x output`. Uses the channel's
