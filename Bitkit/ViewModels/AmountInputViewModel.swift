@@ -12,6 +12,11 @@ final class AmountInputViewModel {
     /// When set, input is additionally blocked above this value, on top of `maxAmount`.
     var maxAmountOverride: UInt64?
 
+    /// Incremented each time input is blocked by the screen-specific cap (`maxAmountOverride`),
+    /// so views can react (e.g. show a toast). Not bumped when only the global
+    /// `maxAmount` blocks input.
+    private(set) var maxExceededCount = 0
+
     // MARK: - Constants
 
     private let maxAmount: UInt64 = 999_999_999
@@ -67,6 +72,7 @@ final class AmountInputViewModel {
                 amountSats = newAmount
                 errorKey = nil
             } else {
+                notifyMaxExceededIfCapped()
                 Haptics.notify(.warning)
                 errorKey = key
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -90,6 +96,7 @@ final class AmountInputViewModel {
                     errorKey = nil
                 } else {
                     // Block input when limit exceeded
+                    notifyMaxExceededIfCapped()
                     Haptics.notify(.warning)
                     errorKey = key
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -235,6 +242,14 @@ final class AmountInputViewModel {
     }
 
     // MARK: - Private Methods
+
+    /// Signals blocked input to observers, but only when the screen-specific cap is the
+    /// limiting bound. Hitting the global `maxAmount` stays silent.
+    private func notifyMaxExceededIfCapped() {
+        if effectiveMaxAmount < maxAmount {
+            maxExceededCount += 1
+        }
+    }
 
     private func formatDisplayTextFromAmount(_ amountSats: UInt64, currency: CurrencyViewModel) -> String {
         if amountSats == 0 {

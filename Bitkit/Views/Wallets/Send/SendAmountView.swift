@@ -163,8 +163,6 @@ struct SendAmountView: View {
                     await calculateRoutingFee()
                 }
             }
-
-            updateInputCap()
         }
         .onChange(of: app.selectedWalletToPayFrom) { _, newValue in
             // Recalculate max sendable amount when switching wallet types
@@ -188,9 +186,8 @@ struct SendAmountView: View {
                 }
             }
         }
-        .onChange(of: availableAmount) { _, _ in
-            updateInputCap()
-        }
+        .onChange(of: availableAmount, initial: true) { updateInputCap() }
+        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
 
     private func onContinue() async {
@@ -260,6 +257,16 @@ struct SendAmountView: View {
     private func updateInputCap() {
         // Don't cap when nothing is sendable, so the pad stays usable (Continue stays disabled instead).
         amountViewModel.maxAmountOverride = availableAmount > 0 ? availableAmount : nil
+    }
+
+    private func showMaxExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("wallet__send_amount_exceeded__title"),
+            description: t("wallet__send_amount_exceeded__description"),
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "SendAmountExceededToast"
+        )
     }
 
     private func calculateMaxSendableAmount() async {

@@ -77,14 +77,24 @@ struct LnurlWithdrawAmount: View {
             if amountViewModel.amountSats == 0 {
                 amountViewModel.updateFromSats(UInt64(minAmount), currency: currency)
             }
-            updateInputCap()
         }
-        .onChange(of: maxAmount) { updateInputCap() }
+        .onChange(of: maxAmount, initial: true) { updateInputCap() }
+        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
 
     private func updateInputCap() {
         let cap = max(minAmount, maxAmount)
         amountViewModel.maxAmountOverride = cap > 0 ? UInt64(cap) : nil
+    }
+
+    private func showMaxExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("wallet__lnurl_w_error_max__title"),
+            description: t("wallet__lnurl_w_error_max__description"),
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "SendAmountExceededToast"
+        )
     }
 
     private func handleContinue() {

@@ -78,14 +78,24 @@ struct FundManualAmountView: View {
         .task {
             await connectToPeerIfNeeded()
         }
-        .onAppear {
-            updateInputCap()
-        }
-        .onChange(of: wallet.channelFundableBalanceSats) { updateInputCap() }
+        .onChange(of: wallet.channelFundableBalanceSats, initial: true) { updateInputCap() }
+        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
 
     private func updateInputCap() {
         amountViewModel.maxAmountOverride = fundableBalanceSats > 0 ? fundableBalanceSats : nil
+    }
+
+    private func showMaxExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("lightning__spending_amount__error_max__title"),
+            description: t(
+                "lightning__spending_amount__error_max__description",
+                variables: ["amount": CurrencyFormatter.formatSats(fundableBalanceSats)]
+            ),
+            visibilityTime: Toast.visibilityTimeShort
+        )
     }
 
     private var numberPadButtons: some View {

@@ -88,10 +88,23 @@ struct SpendingAmount: View {
             }
         }
         .onChange(of: maxTransferAmount) { updateInputCap() }
+        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
 
     private func updateInputCap() {
         amountViewModel.maxAmountOverride = (maxTransferAmount ?? 0) > 0 ? maxTransferAmount : nil
+    }
+
+    private func showMaxExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("lightning__spending_amount__error_max__title"),
+            description: t(
+                "lightning__spending_amount__error_max__description",
+                variables: ["amount": CurrencyFormatter.formatSats(maxTransferAmount ?? 0)]
+            ),
+            visibilityTime: Toast.visibilityTimeShort
+        )
     }
 
     private var actionButtons: some View {

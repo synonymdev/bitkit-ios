@@ -87,6 +87,48 @@ final class NumberPadTests: XCTestCase {
         XCTAssertEqual(viewModel.amountSats, 999)
     }
 
+    func testMaxExceededCountIncrementsWhenBlockedByOverride() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+        viewModel.maxAmountOverride = 100
+
+        viewModel.handleNumberPadInput("9", currency: currency)
+        viewModel.handleNumberPadInput("9", currency: currency)
+        XCTAssertEqual(viewModel.maxExceededCount, 0) // 99 is within the cap
+
+        viewModel.handleNumberPadInput("9", currency: currency) // 999 > 100 -> blocked
+        XCTAssertEqual(viewModel.maxExceededCount, 1)
+
+        viewModel.handleNumberPadInput("9", currency: currency) // blocked again
+        XCTAssertEqual(viewModel.maxExceededCount, 2)
+    }
+
+    func testMaxExceededCountNotIncrementedByGlobalCap() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+
+        // No override: exceeding the global max blocks input but stays silent
+        for digit in "999999999" {
+            viewModel.handleNumberPadInput(String(digit), currency: currency)
+        }
+        viewModel.handleNumberPadInput("0", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 999_999_999) // blocked
+        XCTAssertEqual(viewModel.maxExceededCount, 0)
+    }
+
+    func testMaxExceededCountNotIncrementedByDelete() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+
+        // Prefilled amount above a low cap (e.g. an invoice over the available balance)
+        viewModel.maxAmountOverride = 1000
+        viewModel.updateFromSats(123_456, currency: currency)
+
+        viewModel.handleNumberPadInput("delete", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 12345) // delete applies
+        XCTAssertEqual(viewModel.maxExceededCount, 0)
+    }
+
     // MARK: - Classic Bitcoin Tests
 
     func testClassicBitcoinDecimalInput() {
