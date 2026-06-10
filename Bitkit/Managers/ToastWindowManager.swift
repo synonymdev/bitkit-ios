@@ -5,9 +5,11 @@ import UIKit
 /// gets out of the way (a quick fade), mirroring Apple's system banner pattern.
 enum ToastMotion {
     static let entrance: Animation = .snappy(duration: 0.4)
-    static let exit: Animation = .easeOut(duration: 0.2)
-    /// Hit-test frame cleanup waits for the exit to finish.
-    static let exitSettleTime: Double = 0.3
+    static let exit: Animation = .easeOut(duration: exitDuration)
+    /// Hit-test frame cleanup waits for the exit to finish, with a small buffer.
+    static let exitSettleTime: Double = exitDuration + 0.1
+
+    private static let exitDuration: Double = 0.2
 }
 
 @MainActor
@@ -253,9 +255,10 @@ struct ToastWindowView: View {
                         .allowsHitTesting(false) // Spacer doesn't intercept touches
                 }
                 .id(toast.id)
-                // Materialize in place: a short rise with a fade and a slight scale-up reads as
-                // "arriving" without sweeping the whole banner across the screen. Departure is a
-                // plain fade; the toast has been read by then, so any exit motion is just noise.
+                // Materialize in place: the toast settles down from 12pt above its resting
+                // position with a fade and a slight scale-up, reading as "arriving" without
+                // sweeping the whole banner across the screen. Departure is a plain fade; the
+                // toast has been read by then, so any exit motion is just noise.
                 .transition(
                     .asymmetric(
                         insertion: .offset(y: -12).combined(with: .opacity).combined(with: .scale(scale: 0.98)),
