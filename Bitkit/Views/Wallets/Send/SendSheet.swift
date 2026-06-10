@@ -88,10 +88,20 @@ struct SendSheet: View {
         return false
     }
 
-    /// The sync timeout only counts down while the overlay is visible and the device is online.
-    /// While offline, `offlineSheetOverlay` covers the sheet and a timeout would act on stale state.
-    private var isSyncTimeoutActive: Bool {
-        shouldShowSyncOverlay && network.isConnected
+    /// Identity for the sync timeout task. The timer only counts down while the overlay is visible
+    /// and the device is online (while offline, `offlineSheetOverlay` covers the sheet and a timeout
+    /// would act on stale state). Node readiness is part of the identity so the window restarts when
+    /// the node reaches `.running` mid-wait and the timeout can still fall back with fresh balances.
+    private struct SyncTimeoutPhase: Equatable {
+        let isActive: Bool
+        let isNodeRunning: Bool
+    }
+
+    private var syncTimeoutPhase: SyncTimeoutPhase {
+        SyncTimeoutPhase(
+            isActive: shouldShowSyncOverlay && network.isConnected,
+            isNodeRunning: wallet.nodeLifecycleState == .running
+        )
     }
 
     var body: some View {
@@ -157,16 +167,20 @@ struct SendSheet: View {
                 validatePaymentAfterSync()
             }
         }
-        .task(id: isSyncTimeoutActive) {
+        .task(id: syncTimeoutPhase) {
             // Bound the sync overlay wait so a peer that never connects can't leave the user
             // waiting indefinitely (the onChange above only fires if channels become usable).
-            guard isSyncTimeoutActive else {
-                syncTimedOut = false
+            guard syncTimeoutPhase.isActive else {
+                // Reset the long-wait copy only once the overlay actually resolves; going
+                // offline merely pauses the timer and keeps the "connection issues" state.
+                if !shouldShowSyncOverlay {
+                    syncTimedOut = false
+                }
                 return
             }
 
             try? await Task.sleep(for: .seconds(Self.syncTimeoutSeconds))
-            guard !Task.isCancelled, isSyncTimeoutActive, !hasValidatedAfterSync else { return }
+            guard !Task.isCancelled, syncTimeoutPhase.isActive, !hasValidatedAfterSync else { return }
 
             handleSyncTimeout()
         }
