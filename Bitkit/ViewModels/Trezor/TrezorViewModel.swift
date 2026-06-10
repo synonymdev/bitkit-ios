@@ -367,6 +367,7 @@ class TrezorViewModel {
     // MARK: - Private Properties
 
     private let trezorService = TrezorService.shared
+    private let watcherService: TrezorWatcherServicing
     private let transport = TrezorTransport.shared
     private let uiHandler = TrezorUiHandler.shared
     private var cancellables = Set<AnyCancellable>()
@@ -374,7 +375,8 @@ class TrezorViewModel {
 
     // MARK: - Initialization
 
-    init() {
+    init(watcherService: TrezorWatcherServicing = TrezorService.shared) {
+        self.watcherService = watcherService
         selectedNetwork = Self.appDefaultCoinType
         // Callback subscriptions are deferred to initialize() to avoid
         // triggering BLE stack and Combine overhead at app launch.
@@ -1624,15 +1626,15 @@ class TrezorViewModel {
         trezorLog("Starting watcher \(watcherId) for \(key.prefix(12))...")
 
         do {
-            try await trezorService.startWatcher(params: params, listener: listener)
+            try await watcherService.startWatcher(params: params, listener: listener)
             guard startingWatcherId == watcherId else {
-                try? trezorService.stopWatcher(watcherId: watcherId)
+                try? watcherService.stopWatcher(watcherId: watcherId)
                 trezorLog("Stopped stale watcher start: \(watcherId)", level: "warn")
                 return
             }
 
             if shouldStopStartingWatcher || selectedNetwork != network {
-                try? trezorService.stopWatcher(watcherId: watcherId)
+                try? watcherService.stopWatcher(watcherId: watcherId)
                 finishStoppedWatcherStartup(watcherId: watcherId)
                 return
             }
@@ -1664,7 +1666,7 @@ class TrezorViewModel {
 
         guard let watcherId = activeWatcherId else { return }
         do {
-            try trezorService.stopWatcher(watcherId: watcherId)
+            try watcherService.stopWatcher(watcherId: watcherId)
         } catch {
             trezorLog("Watcher stop failed: \(error)", level: "warn")
         }
@@ -1679,6 +1681,14 @@ class TrezorViewModel {
         watcherEvents = []
         watcherError = nil
         trezorLog("Watcher stopped: \(watcherId)")
+    }
+
+    /// Tear down all watchers when the Trezor dashboard is dismissed. On Android this
+    /// happens in the ViewModel's onCleared, but this ViewModel is app-lifetime, so the
+    /// root view calls it from onDisappear.
+    func stopAllWatchers() {
+        stopWatcher()
+        watcherService.stopAllWatchers()
     }
 
     /// Handle a watcher event on the main actor. Filters out events from stale watchers.

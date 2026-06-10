@@ -1,6 +1,16 @@
 import BitkitCore
 import Foundation
 
+/// Watcher-related service calls, extracted as a protocol so unit tests can
+/// substitute a mock (mirrors bitkit-android's mocked TrezorRepo in TrezorViewModelTest).
+protocol TrezorWatcherServicing {
+    func startWatcher(params: WatcherParams, listener: EventListener) async throws
+    func stopWatcher(watcherId: String) throws
+    func stopAllWatchers()
+}
+
+extension TrezorService: TrezorWatcherServicing {}
+
 /// Service layer wrapper for Trezor FFI functions
 /// All operations run on ServiceQueue.background(.core) to ensure thread safety
 class TrezorService {

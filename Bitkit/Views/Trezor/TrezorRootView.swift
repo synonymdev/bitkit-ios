@@ -70,6 +70,12 @@ private struct TrezorContentSwitcher: View {
         .task {
             trezor.setup()
         }
+        .onDisappear {
+            // The ViewModel outlives this screen (app-lifetime), so watchers are
+            // torn down when the dashboard is dismissed — the iOS counterpart of
+            // Android's onCleared.
+            trezor.stopAllWatchers()
+        }
     }
 }
 

@@ -143,7 +143,7 @@ private struct WatcherStatusView: View {
                 CaptionMText("Transactions (\(trezor.watcherTransactions.count))")
 
                 VStack(spacing: 4) {
-                    ForEach(Array(trezor.watcherTransactions.enumerated()), id: \.offset) { _, tx in
+                    ForEach(trezor.watcherTransactions, id: \.txid) { tx in
                         WatcherTransactionRow(tx: tx)
                     }
                 }
