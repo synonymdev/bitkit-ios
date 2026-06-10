@@ -106,7 +106,7 @@ struct LightningConnectionDetailView: View {
                                             }
                                         }
 
-                                        if channelStatus(for: channel) != .pending, let txid = channel.displayedFundingTxoTxid {
+                                        if channelStatus(for: channel) != .pending, let txid = channelDetails.displayFundingTxid {
                                             DetailRow(label: t("lightning__transaction"), value: txid, copyable: true)
                                         }
 
@@ -165,10 +165,12 @@ struct LightningConnectionDetailView: View {
                                         }
                                     }
 
-                                    DetailRow(label: t("lightning__channel_id"), value: channel.channelIdString, copyable: true)
+                                    if let shortChannelId = channelDetails.displayShortChannelId {
+                                        DetailRow(label: t("lightning__channel_id"), value: shortChannelId, copyable: true)
+                                    }
 
-                                    if let txid = channel.displayedFundingTxoTxid, let vout = channel.fundingTxoVout {
-                                        DetailRow(label: t("lightning__channel_point"), value: "\(txid):\(vout)", copyable: true)
+                                    if let channelPoint = channelDetails.displayChannelPoint {
+                                        DetailRow(label: t("lightning__channel_point"), value: channelPoint, copyable: true)
                                     }
 
                                     DetailRow(
