@@ -158,42 +158,43 @@ struct TrezorConnectedView: View {
 private struct WalletModeSelectorRow: View {
     @Environment(TrezorViewModel.self) private var trezor
 
-    private var isPassphraseMode: Bool {
-        trezor.walletMode == .passphraseHost || trezor.walletMode == .passphraseDevice
+    private enum WalletModeTab: CaseIterable, CustomStringConvertible {
+        case standard
+        case passphrase
+
+        var description: String {
+            switch self {
+            case .standard: "Standard"
+            case .passphrase: "Passphrase"
+            }
+        }
+    }
+
+    /// Selecting a tab kicks off the wallet switch; the underline only moves
+    /// once the ViewModel actually changes `walletMode` (e.g. after the
+    /// passphrase flow completes).
+    private var selectedTab: Binding<WalletModeTab> {
+        Binding(
+            get: { trezor.walletMode == .standard ? .standard : .passphrase },
+            set: { newValue in
+                switch newValue {
+                case .standard:
+                    Task { await trezor.selectStandardWallet() }
+                case .passphrase:
+                    trezor.requestPassphraseWallet()
+                }
+            }
+        )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Wallet")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+            CaptionMText("Wallet")
 
-            HStack(spacing: 8) {
-                modeButton(title: "Standard", selected: trezor.walletMode == .standard) {
-                    Task { await trezor.selectStandardWallet() }
-                }
-                .accessibilityIdentifier("TrezorWalletModeStandard")
-
-                modeButton(title: "Passphrase", selected: isPassphraseMode) {
-                    trezor.requestPassphraseWallet()
-                }
-                .accessibilityIdentifier("TrezorWalletModePassphrase")
-            }
+            SegmentedControl(selectedTab: selectedTab, tabs: WalletModeTab.allCases)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .disabled(trezor.isOperating)
-    }
-
-    private func modeButton(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(selected ? .white : .white.opacity(0.5))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(selected ? Color.white.opacity(0.2) : Color.white.opacity(0.05))
-                .clipShape(Capsule())
-        }
     }
 }
 

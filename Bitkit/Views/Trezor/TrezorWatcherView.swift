@@ -13,32 +13,25 @@ struct TrezorWatcherContent: View {
         VStack(spacing: 20) {
             // Extended key input
             VStack(alignment: .leading, spacing: 8) {
-                Text("Extended Key (xpub/tpub/...)")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
+                CaptionMText("Extended Key (xpub/tpub/...)")
 
-                SwiftUI.TextField("xpub...", text: $trezor.watcherExtendedKey, axis: .vertical)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(.white)
-                    .lineLimit(1 ... 3)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .padding(12)
-                    .background(Color.white.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .accessibilityIdentifier("TrezorWatcherExtendedKey")
+                TextField(
+                    "xpub...",
+                    text: $trezor.watcherExtendedKey,
+                    font: .system(size: 13, design: .monospaced),
+                    axis: .vertical,
+                    testIdentifier: "TrezorWatcherExtendedKey"
+                )
+                .lineLimit(1 ... 3)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // Use xpub from device shortcut
             if trezor.xpub != nil {
-                Button(action: { trezor.populateWatcherFromXpub() }) {
-                    Text("Use xpub from device")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                CustomButton(title: "Use xpub from device", variant: .secondary, size: .small) {
+                    trezor.populateWatcherFromXpub()
                 }
                 .accessibilityIdentifier("TrezorWatcherUseXpub")
             }
@@ -47,54 +40,38 @@ struct TrezorWatcherContent: View {
 
             // Gap limit
             VStack(alignment: .leading, spacing: 8) {
-                Text("Gap Limit")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
+                CaptionMText("Gap Limit")
 
-                SwiftUI.TextField("20", text: $trezor.watcherGapLimit)
-                    .font(.system(size: 14, design: .monospaced))
-                    .foregroundColor(.white)
-                    .keyboardType(.numberPad)
-                    .padding(12)
-                    .background(Color.white.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .accessibilityIdentifier("TrezorWatcherGapLimit")
+                TextField(
+                    "20",
+                    text: $trezor.watcherGapLimit,
+                    font: .system(size: 14, design: .monospaced),
+                    testIdentifier: "TrezorWatcherGapLimit"
+                )
+                .keyboardType(.numberPad)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // Start / Stop button
             if trezor.activeWatcherId != nil {
-                Button(action: { trezor.stopWatcher() }) {
-                    Text("Stop Watching")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.red)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.red.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                CustomButton(
+                    title: "Stop Watching",
+                    variant: .secondary,
+                    isDisabled: trezor.isStartingWatcher
+                ) {
+                    trezor.stopWatcher()
                 }
-                .disabled(trezor.isStartingWatcher)
-                .opacity(trezor.isStartingWatcher ? 0.5 : 1.0)
                 .accessibilityIdentifier("TrezorWatcherStop")
             } else {
-                Button(action: { Task { await trezor.startWatcher() } }) {
-                    HStack(spacing: 8) {
-                        if trezor.isStartingWatcher {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                        } else {
-                            Image(systemName: "dot.radiowaves.left.and.right")
-                        }
-                        Text(trezor.isStartingWatcher ? "Starting..." : "Start Watching")
-                    }
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                CustomButton(
+                    title: "Start Watching",
+                    icon: Image(systemName: "dot.radiowaves.left.and.right")
+                        .foregroundColor(.textPrimary),
+                    isDisabled: isStartDisabled,
+                    isLoading: trezor.isStartingWatcher
+                ) {
+                    await trezor.startWatcher()
                 }
-                .disabled(isStartDisabled)
-                .opacity(isStartDisabled ? 0.5 : 1.0)
                 .accessibilityIdentifier("TrezorWatcherStart")
             }
 
@@ -127,11 +104,11 @@ private struct WatcherStatusView: View {
 
     private var statusColor: Color {
         switch trezor.watcherConnectionStatus {
-        case .idle: return .white.opacity(0.5)
-        case .starting: return .yellow
-        case .connected: return .green
-        case .disconnected: return .yellow
-        case .error: return .red
+        case .idle: return .white64
+        case .starting: return .yellowAccent
+        case .connected: return .greenAccent
+        case .disconnected: return .yellowAccent
+        case .error: return .redAccent
         }
     }
 
@@ -142,9 +119,7 @@ private struct WatcherStatusView: View {
                 Circle()
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
-                Text(statusLabel)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(statusColor)
+                CaptionBText(statusLabel, textColor: statusColor)
             }
             .accessibilityIdentifier("TrezorWatcherStatus")
 
@@ -165,9 +140,7 @@ private struct WatcherStatusView: View {
 
             // Transactions
             if !trezor.watcherTransactions.isEmpty {
-                Text("Transactions (\(trezor.watcherTransactions.count))")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
+                CaptionMText("Transactions (\(trezor.watcherTransactions.count))")
 
                 VStack(spacing: 4) {
                     ForEach(Array(trezor.watcherTransactions.enumerated()), id: \.offset) { _, tx in
@@ -178,15 +151,13 @@ private struct WatcherStatusView: View {
 
             // Event log
             if !trezor.watcherEvents.isEmpty {
-                Text("Event Log")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
+                CaptionMText("Event Log")
 
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(Array(trezor.watcherEvents.enumerated()), id: \.offset) { _, event in
                         Text(event)
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(.white80)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -223,9 +194,9 @@ private struct WatcherTransactionRow: View {
 
     private var directionColor: Color {
         switch tx.direction {
-        case .sent: return .red
-        case .received: return .green
-        case .selfTransfer: return .white.opacity(0.6)
+        case .sent: return .redAccent
+        case .received: return .greenAccent
+        case .selfTransfer: return .white64
         }
     }
 
@@ -236,13 +207,11 @@ private struct WatcherTransactionRow: View {
 
     var body: some View {
         HStack {
-            Text("\(directionLabel) \(tx.amount) sats")
-                .font(.system(size: 12))
-                .foregroundColor(directionColor)
+            CaptionText("\(directionLabel) \(tx.amount) sats", textColor: directionColor)
             Spacer()
             Text(shortTxid)
                 .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.white50)
         }
         .padding(.vertical, 2)
     }
@@ -254,13 +223,9 @@ private struct InfoRow: View {
 
     var body: some View {
         HStack {
-            Text(label)
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.6))
+            CaptionText(label)
             Spacer()
-            Text(value)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white)
+            CaptionBText(value, textColor: .textPrimary)
         }
     }
 }

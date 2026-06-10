@@ -405,13 +405,9 @@ struct TrezorPassphraseSheet: View {
 
                 // Offer on-device entry when the connected Trezor supports it
                 if trezor.passphraseEntryCapable {
-                    Button(action: {
+                    CustomButton(title: "Enter on Trezor instead", variant: .tertiary) {
                         dismiss()
-                        Task { await trezor.chooseDevicePassphraseEntry() }
-                    }) {
-                        Text("Enter on Trezor instead")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white.opacity(0.7))
+                        await trezor.chooseDevicePassphraseEntry()
                     }
                     .padding(.top, 4)
                     .accessibilityIdentifier("TrezorPassphraseUseDevice")

@@ -12,7 +12,7 @@ enum SendStep {
 
 /// Account-type override for on-chain xpub tools. `automatic` preserves the
 /// bitkit-core prefix detector; explicit values cover ambiguous xpub/tpub keys.
-enum TrezorAccountTypeSelection: String, CaseIterable, Identifiable {
+enum TrezorAccountTypeSelection: String, CaseIterable, Identifiable, CustomStringConvertible {
     case automatic
     case legacy
     case wrappedSegwit
@@ -21,6 +21,11 @@ enum TrezorAccountTypeSelection: String, CaseIterable, Identifiable {
 
     var id: String {
         rawValue
+    }
+
+    /// Segment label when rendered by `SegmentedControl`
+    var description: String {
+        title
     }
 
     var accountType: AccountType? {
