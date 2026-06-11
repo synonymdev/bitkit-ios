@@ -262,4 +262,104 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         XCTAssertNil(viewModel.activeWatcherId)
         XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
     }
+
+    /// iOS-specific: dashboard dismissal also resets the watcher input fields.
+    @MainActor
+    func testHandleDashboardDismissStopsWatchersAndClearsInputState() async throws {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+        viewModel.watcherGapLimit = "30"
+        viewModel.onchainAccountTypeSelection = .legacy
+
+        await viewModel.startWatcher()
+        let watcherId = try XCTUnwrap(viewModel.activeWatcherId)
+
+        viewModel.handleDashboardDismiss()
+
+        XCTAssertEqual(service.stoppedWatcherIds, [watcherId])
+        XCTAssertEqual(service.stopAllWatchersCallCount, 1)
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertEqual(viewModel.watcherExtendedKey, "")
+        XCTAssertEqual(viewModel.watcherGapLimit, "20")
+        XCTAssertEqual(viewModel.onchainAccountTypeSelection, .automatic)
+    }
+
+    /// iOS-specific: changing the account-type override restarts a running watcher
+    /// so the Electrum subscription reflects the new type.
+    @MainActor
+    func testAccountTypeChangeRestartsRunningWatcher() async throws {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+
+        await viewModel.startWatcher()
+        let firstWatcherId = try XCTUnwrap(viewModel.activeWatcherId)
+
+        viewModel.onchainAccountTypeSelection = .taproot
+        await waitUntil { service.startedParams.count == 2 && viewModel.activeWatcherId != nil }
+
+        XCTAssertEqual(service.stoppedWatcherIds, [firstWatcherId])
+        XCTAssertEqual(service.startedParams.count, 2)
+        XCTAssertEqual(service.startedParams.last?.accountType, .taproot)
+        let secondWatcherId = try XCTUnwrap(viewModel.activeWatcherId)
+        XCTAssertNotEqual(secondWatcherId, firstWatcherId)
+    }
+
+    /// iOS-specific: an account-type change that lands while the start call is still
+    /// in flight is picked up once the call returns — the stale watcher is stopped
+    /// and a replacement starts with the new type.
+    @MainActor
+    func testAccountTypeChangeDuringStartRestartsWithNewType() async throws {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await waitUntil { service.startedParams.count == 1 }
+        let firstWatcherId = try XCTUnwrap(service.startedParams.first?.watcherId)
+
+        viewModel.onchainAccountTypeSelection = .taproot
+        service.holdStart = false
+        service.completeStart()
+        await startTask.value
+        await waitUntil { service.startedParams.count == 2 && viewModel.activeWatcherId != nil }
+
+        XCTAssertEqual(service.stoppedWatcherIds, [firstWatcherId])
+        XCTAssertEqual(service.startedParams.count, 2)
+        XCTAssertEqual(service.startedParams.last?.accountType, .taproot)
+        XCTAssertEqual(viewModel.activeWatcherId, service.startedParams.last?.watcherId)
+    }
+
+    /// iOS-specific: dismissing the dashboard right after an account-type change
+    /// cancels the pending restart instead of reviving a watcher or surfacing a
+    /// validation error for the cleared key.
+    @MainActor
+    func testDismissAfterAccountTypeChangeCancelsPendingRestart() async throws {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+
+        await viewModel.startWatcher()
+        let firstWatcherId = try XCTUnwrap(viewModel.activeWatcherId)
+
+        viewModel.onchainAccountTypeSelection = .taproot
+        viewModel.handleDashboardDismiss()
+        await waitUntil(timeout: 0.2) { service.startedParams.count > 1 }
+
+        XCTAssertEqual(service.startedParams.count, 1)
+        XCTAssertEqual(service.stoppedWatcherIds, [firstWatcherId])
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertNil(viewModel.watcherError)
+    }
+
+    /// iOS-specific: changing the account type while no watcher runs starts nothing.
+    @MainActor
+    func testAccountTypeChangeDoesNotStartWatcherWhenIdle() async {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+
+        viewModel.onchainAccountTypeSelection = .taproot
+        await waitUntil(timeout: 0.2) { !service.startedParams.isEmpty }
+
+        XCTAssertTrue(service.startedParams.isEmpty)
+        XCTAssertNil(viewModel.activeWatcherId)
+    }
 }

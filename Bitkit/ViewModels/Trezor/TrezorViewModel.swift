@@ -303,7 +303,13 @@ class TrezorViewModel {
     var watcherGapLimit: String = "20"
 
     /// Optional account-type override shared by the on-chain xpub tools.
-    var onchainAccountTypeSelection: TrezorAccountTypeSelection = .automatic
+    /// Changing it restarts a running (or starting) watcher so the subscription uses the new type.
+    var onchainAccountTypeSelection: TrezorAccountTypeSelection = .automatic {
+        didSet {
+            guard oldValue != onchainAccountTypeSelection else { return }
+            restartWatcherIfRunning()
+        }
+    }
 
     /// Identifier of the active watcher, nil when not watching
     var activeWatcherId: String?
@@ -1639,6 +1645,14 @@ class TrezorViewModel {
                 return
             }
 
+            if onchainAccountTypeSelection.accountType != accountType {
+                try? watcherService.stopWatcher(watcherId: watcherId)
+                finishStoppedWatcherStartup(watcherId: watcherId)
+                trezorLog("Account type changed during watcher startup, restarting: \(watcherId)")
+                scheduleWatcherRestart()
+                return
+            }
+
             activeWatcherId = watcherId
             startingWatcherId = nil
             isStartingWatcher = false
@@ -1689,6 +1703,35 @@ class TrezorViewModel {
     func stopAllWatchers() {
         stopWatcher()
         watcherService.stopAllWatchers()
+    }
+
+    /// Full teardown when the Trezor dashboard is dismissed: stop all watchers and
+    /// reset the watcher input state so the next visit starts fresh.
+    func handleDashboardDismiss() {
+        stopAllWatchers()
+        watcherExtendedKey = ""
+        watcherGapLimit = "20"
+        onchainAccountTypeSelection = .automatic
+    }
+
+    /// Restart a running watcher (e.g. after the account-type override changes)
+    /// so the Electrum subscription reflects the new settings. A change that lands
+    /// while a start is still in flight is handled by startWatcher itself, which
+    /// re-checks the selection once the native call returns.
+    private func restartWatcherIfRunning() {
+        guard activeWatcherId != nil else { return }
+        stopWatcher()
+        scheduleWatcherRestart()
+    }
+
+    /// Start a replacement watcher on the next main-actor turn. Bails if the input
+    /// state was cleared in the meantime (dashboard dismissed) so an unsolicited
+    /// restart never revives a watcher or surfaces a validation error.
+    private func scheduleWatcherRestart() {
+        Task {
+            guard !watcherExtendedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            await startWatcher()
+        }
     }
 
     /// Handle a watcher event on the main actor. Filters out events from stale watchers.
