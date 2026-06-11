@@ -8,7 +8,7 @@ struct SendAmountView: View {
 
     @Binding var navigationPath: [SendRoute]
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
     @State private var maxSendableAmount: UInt64?
     @State private var routingFee: UInt64 = 0
 
@@ -186,6 +186,8 @@ struct SendAmountView: View {
                 }
             }
         }
+        .onChange(of: availableAmount, initial: true) { updateInputCap() }
+        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
 
     private func onContinue() async {
@@ -250,6 +252,21 @@ struct SendAmountView: View {
             Logger.error(error, context: "Failed to set fee rate or send amount")
             app.toast(type: .error, title: "Send Error", description: error.localizedDescription)
         }
+    }
+
+    private func updateInputCap() {
+        // Don't cap when nothing is sendable, so the pad stays usable (Continue stays disabled instead).
+        amountViewModel.maxAmountOverride = availableAmount > 0 ? availableAmount : nil
+    }
+
+    private func showMaxExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("wallet__send_amount_exceeded__title"),
+            description: t("wallet__send_amount_exceeded__description"),
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "SendAmountExceededToast"
+        )
     }
 
     private func calculateMaxSendableAmount() async {

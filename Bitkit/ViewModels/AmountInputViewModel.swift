@@ -1,11 +1,21 @@
 import Foundation
 import SwiftUI
 
+@Observable
 @MainActor
-class AmountInputViewModel: ObservableObject {
-    @Published var amountSats: UInt64 = 0
-    @Published var displayText: String = ""
-    @Published var errorKey: String?
+final class AmountInputViewModel {
+    var amountSats: UInt64 = 0
+    var displayText: String = ""
+    var errorKey: String?
+
+    /// Optional per-screen cap (e.g. the max sendable balance in the send flow).
+    /// When set, input is additionally blocked above this value, on top of `maxAmount`.
+    var maxAmountOverride: UInt64?
+
+    /// Incremented each time input is blocked by the screen-specific cap (`maxAmountOverride`),
+    /// so views can react (e.g. show a toast). Not bumped when only the global
+    /// `maxAmount` blocks input.
+    private(set) var maxExceededCount = 0
 
     // MARK: - Constants
 
@@ -14,6 +24,12 @@ class AmountInputViewModel: ObservableObject {
     private let maxDecimalInputLength = 20
     private let classicBitcoinDecimals = 8
     private let fiatDecimals = 2
+
+    /// The active upper bound for input: the global `maxAmount`, further restricted by `maxAmountOverride` when set.
+    private var effectiveMaxAmount: UInt64 {
+        guard let maxAmountOverride else { return maxAmount }
+        return Swift.min(maxAmount, maxAmountOverride)
+    }
 
     // MARK: - Private Properties
 
@@ -38,17 +54,25 @@ class AmountInputViewModel: ObservableObject {
             maxDecimals: maxDecimals
         )
 
+        // Deletions must always apply, even when the amount is above the cap (e.g. a
+        // prefilled invoice amount over the available balance, or a cap that dropped
+        // after input). The cap only blocks growing the amount; without this, each
+        // delete still leaves the amount over the cap and gets rejected, trapping the
+        // user with an invalid amount they can't reduce.
+        let isDeletion = key == "delete"
+
         // For decimal input (classic Bitcoin and fiat), preserve the text as-is
         // For integer input (modern Bitcoin), format the final amount
         if currency.primaryDisplay == .bitcoin && currency.displayUnit == .modern {
             let newAmount = convertToSats(newText, currency: currency)
 
-            if newAmount <= maxAmount {
+            if isDeletion || newAmount <= effectiveMaxAmount {
                 rawInputText = newText
                 displayText = formatDisplayTextFromAmount(newAmount, currency: currency)
                 amountSats = newAmount
                 errorKey = nil
             } else {
+                notifyMaxExceededIfCapped()
                 Haptics.notify(.warning)
                 errorKey = key
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -59,7 +83,7 @@ class AmountInputViewModel: ObservableObject {
             // For decimal input, check limits before updating state
             if !newText.isEmpty {
                 let newAmount = convertToSats(newText, currency: currency)
-                if newAmount <= maxAmount {
+                if isDeletion || newAmount <= effectiveMaxAmount {
                     // Update both raw input and display text
                     rawInputText = newText
                     // Format with grouping separators but not decimal formatting
@@ -72,6 +96,7 @@ class AmountInputViewModel: ObservableObject {
                     errorKey = nil
                 } else {
                     // Block input when limit exceeded
+                    notifyMaxExceededIfCapped()
                     Haptics.notify(.warning)
                     errorKey = key
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -217,6 +242,14 @@ class AmountInputViewModel: ObservableObject {
     }
 
     // MARK: - Private Methods
+
+    /// Signals blocked input to observers, but only when the screen-specific cap is the
+    /// limiting bound. Hitting the global `maxAmount` stays silent.
+    private func notifyMaxExceededIfCapped() {
+        if effectiveMaxAmount < maxAmount {
+            maxExceededCount += 1
+        }
+    }
 
     private func formatDisplayTextFromAmount(_ amountSats: UInt64, currency: CurrencyViewModel) -> String {
         if amountSats == 0 {

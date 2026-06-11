@@ -5,6 +5,9 @@ struct Toast: Equatable {
         case success, info, lightning, warning, error
     }
 
+    /// Brief visibility for transient feedback (e.g. blocked number pad input).
+    static let visibilityTimeShort = 1.5
+
     let id: UUID
     let type: ToastType
     let title: String
