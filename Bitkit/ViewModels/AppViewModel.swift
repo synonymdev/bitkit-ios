@@ -824,6 +824,11 @@ extension AppViewModel {
     private func presentReceivedSheetForOnchainTransaction(txid: String, amountSats: Int64) {
         guard amountSats > 0 else { return }
 
+        // During a restore replay, LDK re-fires confirmed events for historical (already-received) txs.
+        // Suppress the sheet for the whole restore window; the first post-restore on-chain sync marks
+        // those activities seen and clears this flag, after which genuinely-new receives notify again. #588
+        guard !SettingsViewModel.shared.pendingRestoreActivitySeen else { return }
+
         // Reserve the txid synchronously on the MainActor (no await between check and insert) so the
         // received and confirmed events for the same tx can't both pass the seen-check and present the
         // sheet twice. The persisted seenAt still handles cross-launch dedup; this closes the in-session
@@ -1036,6 +1041,15 @@ extension AppViewModel {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 30 * 1_000_000_000) // 30s delay after sync
                     await SettingsViewModel.shared.pruneEmptyAddressTypesAfterRestore()
+                }
+            }
+
+            // After a seed restore, the first on-chain sync has now discovered the historical txs.
+            // Mark them seen so they don't pop a "Received" sheet, and lift the restore suppression. #588
+            if SettingsViewModel.shared.pendingRestoreActivitySeen, syncType == .onchainWallet {
+                SettingsViewModel.shared.pendingRestoreActivitySeen = false
+                Task { @MainActor in
+                    await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
                 }
             }
 
