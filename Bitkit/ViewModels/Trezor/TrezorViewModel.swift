@@ -1659,6 +1659,20 @@ class TrezorViewModel {
             appendWatcherEvent("started")
             trezorLog("Watcher started: \(watcherId)")
         } catch {
+            guard startingWatcherId == watcherId else {
+                trezorLog("Superseded watcher start failed: \(watcherId)", level: "warn")
+                return
+            }
+
+            // A stop that lands while the native call is in flight (dashboard dismissed,
+            // stop button, network switch) aborts the Rust-side startup, which surfaces
+            // here as a thrown error rather than a return. Treat it like the cooperative
+            // cancellation paths above instead of reporting a failure the user didn't cause.
+            if shouldStopStartingWatcher || Self.isWatcherStartupCancellation(error) {
+                finishStoppedWatcherStartup(watcherId: watcherId)
+                return
+            }
+
             let message = errorMessage(from: error)
             watcherError = message
             watcherConnectionStatus = .error
@@ -1767,6 +1781,25 @@ class TrezorViewModel {
         if watcherEvents.count > 50 {
             watcherEvents.removeFirst(watcherEvents.count - 50)
         }
+    }
+
+    /// Message the Rust core throws when a stop aborts a watcher whose startup is
+    /// still in flight — a cancellation, not a genuine failure.
+    private static let watcherStartupCancelledMessage = "Watcher stopped during startup"
+
+    /// True when a thrown startup error is the Rust core reporting that the watcher
+    /// was deliberately stopped mid-startup. ServiceQueue wraps core errors in
+    /// AppError, so check the wrapped debug message as well as the typed error.
+    private static func isWatcherStartupCancellation(_ error: Error) -> Bool {
+        if let accountInfoError = error as? AccountInfoError,
+           case let .WatcherError(errorDetails) = accountInfoError
+        {
+            return errorDetails.contains(watcherStartupCancelledMessage)
+        }
+        if let appError = error as? AppError, let debugMessage = appError.debugMessage {
+            return debugMessage.contains(watcherStartupCancelledMessage)
+        }
+        return false
     }
 
     private func finishStoppedWatcherStartup(watcherId: String) {

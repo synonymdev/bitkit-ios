@@ -350,6 +350,73 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         XCTAssertNil(viewModel.watcherError)
     }
 
+    /// iOS-specific: dismissing the dashboard while the native start call is in flight
+    /// aborts the Rust-side startup, which surfaces as a thrown
+    /// "Watcher stopped during startup" (wrapped in AppError by ServiceQueue).
+    /// That is a cancellation, not a failure — no error is shown to the user.
+    @MainActor
+    func testDismissDuringInFlightStartTreatsAbortedStartupAsCancellation() async {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await waitUntil { service.startedParams.count == 1 }
+
+        viewModel.handleDashboardDismiss()
+        let nativeError = AccountInfoError.WatcherError(errorDetails: "Watcher stopped during startup")
+        service.completeStart(with: .failure(AppError(error: nativeError)))
+        await startTask.value
+
+        XCTAssertNil(viewModel.watcherError)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertEqual(viewModel.watcherExtendedKey, "")
+    }
+
+    /// iOS-specific: the native cancellation error is treated as graceful even when
+    /// no stop was requested on the Swift side (e.g. the core stopped the watcher
+    /// directly), based on the typed error alone.
+    @MainActor
+    func testNativeStartupCancellationWithoutStopRequestFinishesGracefully() async {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await waitUntil { service.startedParams.count == 1 }
+
+        service.completeStart(with: .failure(AccountInfoError.WatcherError(errorDetails: "Watcher stopped during startup")))
+        await startTask.value
+
+        XCTAssertNil(viewModel.watcherError)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertNil(viewModel.activeWatcherId)
+    }
+
+    /// iOS-specific: a genuine native failure (not a cancellation) still surfaces
+    /// to the user as a watcher error.
+    @MainActor
+    func testGenuineStartFailureStillSurfacesError() async {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await waitUntil { service.startedParams.count == 1 }
+
+        let nativeError = AccountInfoError.ElectrumError(errorDetails: "connection refused")
+        service.completeStart(with: .failure(AppError(error: nativeError)))
+        await startTask.value
+
+        XCTAssertNotNil(viewModel.watcherError)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .error)
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertNil(viewModel.activeWatcherId)
+    }
+
     /// iOS-specific: changing the account type while no watcher runs starts nothing.
     @MainActor
     func testAccountTypeChangeDoesNotStartWatcherWhenIdle() async {
