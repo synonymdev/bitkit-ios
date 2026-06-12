@@ -13,7 +13,7 @@ struct SpendingAmount: View {
 
     @State private var amountViewModel = AmountInputViewModel()
     @State private var isLoading = false
-    @State private var activeCalculations = 0
+    @State private var isCalculatingMax = true
     @State private var availableAmount: UInt64?
     @State private var maxTransferAmount: UInt64?
 
@@ -21,11 +21,19 @@ struct SpendingAmount: View {
         amountViewModel.amountSats
     }
 
-    /// Disabled while the max is still loading or any (re)calculation is in flight. Using a counter
-    /// instead of a flag avoids overlapping calculations prematurely re-enabling the pad: the pad
-    /// only re-enables once every in-flight calculation has finished.
-    private var isCalculatingMax: Bool {
-        activeCalculations > 0 || maxTransferAmount == nil
+    /// Inputs the max calculation depends on. A single `.task(id:)` keyed on this restarts the
+    /// calculation (with structured cancellation) whenever either input changes, so concurrent
+    /// reloads can neither overlap nor leak the loading flag.
+    private struct MaxCalcInputs: Equatable {
+        let maxChannelSizeSat: UInt64?
+        let spendableOnchainBalanceSats: Int
+    }
+
+    private var maxCalcInputs: MaxCalcInputs {
+        MaxCalcInputs(
+            maxChannelSizeSat: blocktank.info?.options.maxChannelSizeSat,
+            spendableOnchainBalanceSats: wallet.spendableOnchainBalanceSats
+        )
     }
 
     private var isValidAmount: Bool {
@@ -89,12 +97,11 @@ struct SpendingAmount: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .offlineOverlay(title: t("lightning__transfer__nav_title"))
-        .task(id: blocktank.info?.options.maxChannelSizeSat) {
-            await reloadMaxTransferAmount()
-        }
-        .onChange(of: wallet.spendableOnchainBalanceSats) {
-            Task {
-                await reloadMaxTransferAmount()
+        .task(id: maxCalcInputs) {
+            await MainActor.run { isCalculatingMax = true }
+            await calculateMaxTransferAmount()
+            if !Task.isCancelled {
+                await MainActor.run { isCalculatingMax = false }
             }
         }
         .onChange(of: maxTransferAmount) { updateInputCap() }
@@ -177,14 +184,6 @@ struct SpendingAmount: View {
             let appError = AppError(error: error)
             app.toast(type: .error, title: appError.message, description: appError.debugMessage)
         }
-    }
-
-    /// Tracks an in-flight calculation (which disables the number pad) around the max calculation.
-    /// The counter ensures overlapping reloads keep the pad disabled until all of them complete.
-    private func reloadMaxTransferAmount() async {
-        await MainActor.run { activeCalculations += 1 }
-        await calculateMaxTransferAmount()
-        await MainActor.run { activeCalculations -= 1 }
     }
 
     private func calculateMaxTransferAmount() async {
