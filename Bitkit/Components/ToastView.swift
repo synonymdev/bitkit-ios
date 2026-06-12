@@ -92,7 +92,7 @@ struct ToastView: View {
         case .info: return .blueAccent
         case .lightning: return .purpleAccent
         case .warning: return .brandAccent
-        case .error: return .redAccent
+        case .error: return .brandAccent
         }
     }
 }
