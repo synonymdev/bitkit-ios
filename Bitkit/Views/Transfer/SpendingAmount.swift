@@ -13,12 +13,19 @@ struct SpendingAmount: View {
 
     @State private var amountViewModel = AmountInputViewModel()
     @State private var isLoading = false
-    @State private var isCalculatingMax = true
+    @State private var activeCalculations = 0
     @State private var availableAmount: UInt64?
     @State private var maxTransferAmount: UInt64?
 
     private var amountSats: UInt64 {
         amountViewModel.amountSats
+    }
+
+    /// Disabled while the max is still loading or any (re)calculation is in flight. Using a counter
+    /// instead of a flag avoids overlapping calculations prematurely re-enabling the pad: the pad
+    /// only re-enables once every in-flight calculation has finished.
+    private var isCalculatingMax: Bool {
+        activeCalculations > 0 || maxTransferAmount == nil
     }
 
     private var isValidAmount: Bool {
@@ -172,11 +179,12 @@ struct SpendingAmount: View {
         }
     }
 
-    /// Toggles the loading flag (which disables the number pad) around the max calculation.
+    /// Tracks an in-flight calculation (which disables the number pad) around the max calculation.
+    /// The counter ensures overlapping reloads keep the pad disabled until all of them complete.
     private func reloadMaxTransferAmount() async {
-        await MainActor.run { isCalculatingMax = true }
+        await MainActor.run { activeCalculations += 1 }
         await calculateMaxTransferAmount()
-        await MainActor.run { isCalculatingMax = false }
+        await MainActor.run { activeCalculations -= 1 }
     }
 
     private func calculateMaxTransferAmount() async {
