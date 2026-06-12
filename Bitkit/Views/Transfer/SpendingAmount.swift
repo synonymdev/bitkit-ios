@@ -226,7 +226,6 @@ struct SpendingAmount: View {
             )
 
             await MainActor.run {
-                // "Available" intentionally equals the transferable max so it matches the MAX button.
                 availableAmount = available
                 maxTransferAmount = maxAmount
             }
