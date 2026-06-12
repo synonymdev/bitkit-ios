@@ -1,3 +1,4 @@
+import BitkitCore
 import LDKNode
 import SwiftUI
 
@@ -178,10 +179,9 @@ struct SpendingAmount: View {
 
             guard let feeEstimates = await feeEstimatesManager.getEstimates(refresh: true) else {
                 await MainActor.run {
-                    let balance = UInt64(wallet.spendableOnchainBalanceSats)
-                    availableAmount = balance
-                    let values = transfer.calculateTransferValues(clientBalanceSat: balance, blocktankInfo: info)
-                    maxTransferAmount = min(values.maxClientBalance, balance)
+                    let fallback = fallbackMaxTransferAmount(info: info)
+                    availableAmount = fallback
+                    maxTransferAmount = fallback
                 }
                 return
             }
@@ -193,40 +193,38 @@ struct SpendingAmount: View {
                 satsPerVByte: fastFeeRate
             )
 
-            // First pass: estimate with calculatedAvailableAmount to get approximate clientBalance
-            let values1 = transfer.calculateTransferValues(clientBalanceSat: calculatedAvailableAmount, blocktankInfo: info)
-            let lspBalance1 = max(values1.defaultLspBalance, values1.minLspBalance)
-            let feeEstimate1 = try await blocktank.estimateOrderFee(
-                clientBalance: calculatedAvailableAmount,
-                lspBalance: lspBalance1
+            let (available, maxAmount) = try await transfer.calculateSpendingLimits(
+                onchainAvailable: calculatedAvailableAmount,
+                lspMaxClientBalance: info.options.maxClientBalanceSat,
+                transferValues: { transfer.calculateTransferValues(clientBalanceSat: $0, blocktankInfo: info) },
+                estimateOrderFee: { clientBalance, lspBalance in
+                    let estimate = try await blocktank.estimateOrderFee(clientBalance: clientBalance, lspBalance: lspBalance)
+                    return (estimate.networkFeeSat, estimate.serviceFeeSat)
+                }
             )
-            let lspFees1 = feeEstimate1.networkFeeSat + feeEstimate1.serviceFeeSat
-            let approxClientBalance = UInt64(max(0, Int64(calculatedAvailableAmount) - Int64(lspFees1)))
-
-            // Second pass: recalculate lspBalance with actual clientBalance (same as onContinue will use)
-            // This ensures fee estimation matches the actual order creation
-            let values2 = transfer.calculateTransferValues(clientBalanceSat: approxClientBalance, blocktankInfo: info)
-            let lspBalance2 = max(values2.defaultLspBalance, values2.minLspBalance)
-            let feeEstimate2 = try await blocktank.estimateOrderFee(
-                clientBalance: approxClientBalance,
-                lspBalance: lspBalance2
-            )
-            let lspFees = feeEstimate2.networkFeeSat + feeEstimate2.serviceFeeSat
-            let maxClientBalance = UInt64(max(0, Int64(calculatedAvailableAmount) - Int64(lspFees)))
-            let result = min(values2.maxClientBalance, maxClientBalance)
 
             await MainActor.run {
-                availableAmount = calculatedAvailableAmount
-                maxTransferAmount = result
+                // "Available" intentionally equals the transferable max so it matches the MAX button.
+                availableAmount = available
+                maxTransferAmount = maxAmount
             }
         } catch {
             Logger.error("Failed to calculate max transfer amount: \(error)")
             await MainActor.run {
-                let balance = UInt64(wallet.spendableOnchainBalanceSats)
-                availableAmount = balance
-                let values = transfer.calculateTransferValues(clientBalanceSat: balance, blocktankInfo: info)
-                maxTransferAmount = min(values.maxClientBalance, balance)
+                let fallback = fallbackMaxTransferAmount(info: info)
+                availableAmount = fallback
+                maxTransferAmount = fallback
             }
         }
+    }
+
+    /// Fallback max when fee estimates are unavailable: clamp the client balance to the LSP's max
+    /// client balance so the liquidity calculation doesn't collapse to zero on a saturating balance.
+    private func fallbackMaxTransferAmount(info: IBtInfo) -> UInt64 {
+        let balance = UInt64(wallet.spendableOnchainBalanceSats)
+        let lspMaxClientBalance = info.options.maxClientBalanceSat
+        let clientBalance = lspMaxClientBalance > 0 ? min(balance, lspMaxClientBalance) : balance
+        let values = transfer.calculateTransferValues(clientBalanceSat: clientBalance, blocktankInfo: info)
+        return min(values.maxClientBalance, balance)
     }
 }
