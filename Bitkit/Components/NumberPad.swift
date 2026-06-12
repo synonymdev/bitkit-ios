@@ -130,7 +130,6 @@ struct NumberPad: View {
                 )
             }
         }
-        // Dim and block input while a contextual max is still being calculated.
         .opacity(isDisabled ? 0.5 : 1)
         .disabled(isDisabled)
     }
