@@ -297,9 +297,20 @@ struct SendAmountView: View {
         guard app.selectedWalletToPayFrom == .lightning else { return }
         guard let bolt11 = app.scannedLightningInvoice?.bolt11 else { return }
 
+        let buffer: UInt64 = 2 // TODO: find out why this is needed
+
+        // Without usable outbound capacity (e.g. peer offline) there is nothing to estimate,
+        // and subtracting the buffer below would underflow `UInt64`.
+        let maxSendable = UInt64(max(0, wallet.maxSendLightningSats))
+        guard maxSendable > buffer else {
+            await MainActor.run {
+                routingFee = 0
+            }
+            return
+        }
+
         do {
-            let buffer: UInt64 = 2 // TODO: find out why this is needed
-            let fee = try await wallet.estimateRoutingFees(bolt11: bolt11, amountSats: UInt64(wallet.maxSendLightningSats) - buffer)
+            let fee = try await wallet.estimateRoutingFees(bolt11: bolt11, amountSats: maxSendable - buffer)
             await MainActor.run {
                 routingFee = fee + buffer
             }
