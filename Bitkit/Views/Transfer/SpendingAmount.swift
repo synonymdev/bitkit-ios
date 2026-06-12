@@ -13,6 +13,7 @@ struct SpendingAmount: View {
 
     @State private var amountViewModel = AmountInputViewModel()
     @State private var isLoading = false
+    @State private var isCalculatingMax = true
     @State private var availableAmount: UInt64?
     @State private var maxTransferAmount: UInt64?
 
@@ -62,7 +63,8 @@ struct SpendingAmount: View {
 
             NumberPad(
                 type: amountViewModel.getNumberPadType(currency: currency),
-                errorKey: amountViewModel.errorKey
+                errorKey: amountViewModel.errorKey,
+                isDisabled: isCalculatingMax
             ) { key in
                 amountViewModel.handleNumberPadInput(key, currency: currency)
             }
@@ -81,11 +83,11 @@ struct SpendingAmount: View {
         .bottomSafeAreaPadding()
         .offlineOverlay(title: t("lightning__transfer__nav_title"))
         .task(id: blocktank.info?.options.maxChannelSizeSat) {
-            await calculateMaxTransferAmount()
+            await reloadMaxTransferAmount()
         }
         .onChange(of: wallet.spendableOnchainBalanceSats) {
             Task {
-                await calculateMaxTransferAmount()
+                await reloadMaxTransferAmount()
             }
         }
         .onChange(of: maxTransferAmount) { updateInputCap() }
@@ -162,6 +164,13 @@ struct SpendingAmount: View {
             let appError = AppError(error: error)
             app.toast(type: .error, title: appError.message, description: appError.debugMessage)
         }
+    }
+
+    /// Toggles the loading flag (which disables the number pad) around the max calculation.
+    private func reloadMaxTransferAmount() async {
+        await MainActor.run { isCalculatingMax = true }
+        await calculateMaxTransferAmount()
+        await MainActor.run { isCalculatingMax = false }
     }
 
     private func calculateMaxTransferAmount() async {

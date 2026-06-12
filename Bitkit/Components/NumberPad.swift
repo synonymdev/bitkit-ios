@@ -10,6 +10,7 @@ struct NumberPad: View {
     let type: NumberPadType
     let decimalSeparator: String
     let errorKey: String?
+    let isDisabled: Bool
     let onDeleteLongPress: (() -> Void)?
     let onPress: (String) -> Void
 
@@ -25,12 +26,14 @@ struct NumberPad: View {
         type: NumberPadType = .simple,
         decimalSeparator: String = ".",
         errorKey: String? = nil,
+        isDisabled: Bool = false,
         onDeleteLongPress: (() -> Void)? = nil,
         onPress: @escaping (String) -> Void
     ) {
         self.type = type
         self.decimalSeparator = decimalSeparator
         self.errorKey = errorKey
+        self.isDisabled = isDisabled
         self.onDeleteLongPress = onDeleteLongPress
         self.onPress = onPress
     }
@@ -127,6 +130,9 @@ struct NumberPad: View {
                 )
             }
         }
+        // Dim and block input while a contextual max is still being calculated.
+        .opacity(isDisabled ? 0.5 : 1)
+        .disabled(isDisabled)
     }
 }
 
