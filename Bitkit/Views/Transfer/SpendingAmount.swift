@@ -99,7 +99,6 @@ struct SpendingAmount: View {
     }
 
     private func onMaxExceeded() {
-        // Snap the input to the max so the user lands on the highest allowed amount.
         if let max = maxTransferAmount {
             amountViewModel.updateFromSats(max, currency: currency)
         }
