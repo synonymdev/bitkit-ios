@@ -21,7 +21,7 @@ struct ToastView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(accentColor.opacity(0.32))
-        .background(.ultraThinMaterial)
+        .background(BlurView())
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 25)
         .accessibilityIdentifierIfPresent(toast.accessibilityIdentifier)
