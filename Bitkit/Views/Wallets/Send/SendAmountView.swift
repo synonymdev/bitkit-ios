@@ -301,7 +301,7 @@ struct SendAmountView: View {
 
         // Without usable outbound capacity (e.g. peer offline) there is nothing to estimate,
         // and subtracting the buffer below would underflow `UInt64`.
-        let maxSendable = UInt64(max(0, wallet.maxSendLightningSats))
+        let maxSendable = UInt64(clamping: wallet.maxSendLightningSats)
         guard maxSendable > buffer else {
             await MainActor.run {
                 routingFee = 0

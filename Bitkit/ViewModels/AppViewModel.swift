@@ -391,10 +391,7 @@ extension AppViewModel {
                             // lightning. The send sheet shows the sync overlay and either proceeds
                             // over lightning when the peer reconnects or falls back to onchain
                             // after its timeout.
-                            let channels = lightningService.channels
-                            let hasAnyChannels = channels?.isEmpty == false
-                            let hasUsableChannels = channels?.contains(where: \.isUsable) ?? false
-                            if hasAnyChannels, !hasUsableChannels {
+                            if let channels = lightningService.channels, !channels.isEmpty, !channels.contains(where: \.isUsable) {
                                 handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                                 return
                             }
