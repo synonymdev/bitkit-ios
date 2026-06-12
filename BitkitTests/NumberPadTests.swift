@@ -53,6 +53,82 @@ final class NumberPadTests: XCTestCase {
         XCTAssertNotNil(viewModel.errorKey)
     }
 
+    func testMaxAmountOverrideBlocksInputAboveBalance() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+        viewModel.maxAmountOverride = 50000
+
+        // Up to the cap is allowed
+        for digit in "50000" {
+            viewModel.handleNumberPadInput(String(digit), currency: currency)
+        }
+        XCTAssertEqual(viewModel.amountSats, 50000)
+
+        // Next keystroke would make 500_000 > 50_000 and is blocked
+        viewModel.handleNumberPadInput("0", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 50000) // Should not change
+        XCTAssertNotNil(viewModel.errorKey)
+    }
+
+    func testClearingMaxAmountOverrideRestoresGlobalCap() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+
+        // With a low override, input is blocked above it
+        viewModel.maxAmountOverride = 100
+        viewModel.handleNumberPadInput("9", currency: currency)
+        viewModel.handleNumberPadInput("9", currency: currency)
+        viewModel.handleNumberPadInput("9", currency: currency) // 999 > 100 -> blocked
+        XCTAssertEqual(viewModel.amountSats, 99)
+
+        // Clearing the override lets input grow again, up to the global cap
+        viewModel.maxAmountOverride = nil
+        viewModel.handleNumberPadInput("9", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 999)
+    }
+
+    func testMaxExceededCountIncrementsWhenBlockedByOverride() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+        viewModel.maxAmountOverride = 100
+
+        viewModel.handleNumberPadInput("9", currency: currency)
+        viewModel.handleNumberPadInput("9", currency: currency)
+        XCTAssertEqual(viewModel.maxExceededCount, 0) // 99 is within the cap
+
+        viewModel.handleNumberPadInput("9", currency: currency) // 999 > 100 -> blocked
+        XCTAssertEqual(viewModel.maxExceededCount, 1)
+
+        viewModel.handleNumberPadInput("9", currency: currency) // blocked again
+        XCTAssertEqual(viewModel.maxExceededCount, 2)
+    }
+
+    func testMaxExceededCountNotIncrementedByGlobalCap() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+
+        // No override: exceeding the global max blocks input but stays silent
+        for digit in "999999999" {
+            viewModel.handleNumberPadInput(String(digit), currency: currency)
+        }
+        viewModel.handleNumberPadInput("0", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 999_999_999) // blocked
+        XCTAssertEqual(viewModel.maxExceededCount, 0)
+    }
+
+    func testMaxExceededCountNotIncrementedByDelete() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+
+        // Prefilled amount above a low cap (e.g. an invoice over the available balance)
+        viewModel.maxAmountOverride = 1000
+        viewModel.updateFromSats(123_456, currency: currency)
+
+        viewModel.handleNumberPadInput("delete", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 12345) // delete applies
+        XCTAssertEqual(viewModel.maxExceededCount, 0)
+    }
+
     // MARK: - Classic Bitcoin Tests
 
     func testClassicBitcoinDecimalInput() {
@@ -204,6 +280,35 @@ final class NumberPadTests: XCTestCase {
         viewModel.handleNumberPadInput("delete", currency: currency)
         XCTAssertEqual(viewModel.displayText, "100 000")
         XCTAssertEqual(viewModel.amountSats, 100_000)
+    }
+
+    func testDeleteAllowedWhenAmountAboveCap() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+
+        // A prefilled amount lands above a low cap (e.g. an invoice that exceeds the
+        // available balance, set via updateFromSats which does not enforce the cap).
+        viewModel.maxAmountOverride = 1000
+        viewModel.updateFromSats(123_456, currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 123_456)
+
+        // Adding a digit is still blocked: it would grow the amount further above the cap.
+        viewModel.handleNumberPadInput("7", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 123_456) // unchanged
+        XCTAssertNotNil(viewModel.errorKey)
+
+        // Deleting is allowed even though the result is still above the cap, so the user
+        // can reduce an over-cap amount instead of being stuck.
+        viewModel.handleNumberPadInput("delete", currency: currency)
+        XCTAssertEqual(viewModel.displayText, "12 345")
+        XCTAssertEqual(viewModel.amountSats, 12345)
+        XCTAssertNil(viewModel.errorKey)
+
+        // Keep deleting down below the cap.
+        viewModel.handleNumberPadInput("delete", currency: currency) // 1 234
+        viewModel.handleNumberPadInput("delete", currency: currency) // 123
+        XCTAssertEqual(viewModel.amountSats, 123)
+        XCTAssertNil(viewModel.errorKey)
     }
 
     // MARK: - Leading Zero Tests

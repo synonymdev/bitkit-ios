@@ -7,7 +7,7 @@ struct LnurlPayAmount: View {
 
     @Binding var navigationPath: [SendRoute]
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
 
     var maxAmount: UInt64 {
         // TODO: subtract fee
@@ -81,6 +81,25 @@ struct LnurlPayAmount: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
+        .onChange(of: maxAmount, initial: true) { updateInputCap() }
+        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
+    }
+
+    private func updateInputCap() {
+        amountViewModel.maxAmountOverride = maxAmount > 0 ? maxAmount : nil
+    }
+
+    private func showMaxExceededToast() {
+        // The cap is min(invoice max, spending balance); word the message for whichever bound is hit.
+        let isInvoiceCapped = app.lnurlPayData!.maxSendableSat < UInt64(wallet.totalLightningSats)
+
+        app.toast(
+            type: .warning,
+            title: t(isInvoiceCapped ? "wallet__lnurl_pay__error_max__title" : "wallet__send_amount_exceeded__title"),
+            description: t(isInvoiceCapped ? "wallet__lnurl_pay__error_max__description" : "wallet__send_amount_exceeded__description"),
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "SendAmountExceededToast"
+        )
     }
 
     private func onContinue() {

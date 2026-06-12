@@ -8,11 +8,19 @@ struct FundManualAmountView: View {
 
     let lnPeer: LnPeer
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
     @State private var didAttemptPeerConnection = false
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
+    }
+
+    private var fundableBalanceSats: UInt64 {
+        UInt64(max(0, wallet.channelFundableBalanceSats))
+    }
+
+    private var isValidAmount: Bool {
+        amountSats > 0 && amountSats <= fundableBalanceSats
     }
 
     var body: some View {
@@ -58,7 +66,7 @@ struct FundManualAmountView: View {
                     amountViewModel.handleNumberPadInput(key, currency: currency)
                 }
 
-                CustomButton(title: t("common__continue"), isDisabled: amountSats == 0) {
+                CustomButton(title: t("common__continue"), isDisabled: !isValidAmount) {
                     navigation.navigate(.fundManualConfirm(lnPeer: lnPeer, amountSats: amountSats))
                 }
                 .accessibilityIdentifier("ExternalAmountContinue")
@@ -70,6 +78,24 @@ struct FundManualAmountView: View {
         .task {
             await connectToPeerIfNeeded()
         }
+        .onChange(of: wallet.channelFundableBalanceSats, initial: true) { updateInputCap() }
+        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
+    }
+
+    private func updateInputCap() {
+        amountViewModel.maxAmountOverride = fundableBalanceSats > 0 ? fundableBalanceSats : nil
+    }
+
+    private func showMaxExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("lightning__spending_amount__error_max__title"),
+            description: t(
+                "lightning__spending_amount__error_max__description",
+                variables: ["amount": CurrencyFormatter.formatSats(fundableBalanceSats)]
+            ),
+            visibilityTime: Toast.visibilityTimeShort
+        )
     }
 
     private var numberPadButtons: some View {
