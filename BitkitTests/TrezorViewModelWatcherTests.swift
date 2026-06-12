@@ -245,6 +245,43 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         XCTAssertTrue(viewModel.watcherTransactions.isEmpty)
     }
 
+    /// iOS-specific: stopping while the native start call is still in flight
+    /// quarantines the starting watcher — its events are dropped immediately
+    /// instead of repopulating balance/transaction state until the call returns.
+    @MainActor
+    func testStopWatcherDuringInFlightStartQuarantinesStartingWatcher() async throws {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await waitUntil { service.startedParams.count == 1 }
+        let watcherId = try XCTUnwrap(service.startedParams.first?.watcherId)
+        let listener = try XCTUnwrap(service.startedListeners.first)
+
+        viewModel.stopWatcher()
+
+        XCTAssertEqual(service.stoppedWatcherIds, [watcherId])
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+
+        // Events from the canceled startup must not repopulate watcher state.
+        listener.onEvent(watcherId: watcherId, event: Self.sampleTransactionsChangedEvent())
+        await waitUntil(timeout: 0.2) { viewModel.watcherBalance != nil }
+
+        XCTAssertNil(viewModel.watcherBalance)
+        XCTAssertTrue(viewModel.watcherTransactions.isEmpty)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+
+        // The held native call returning success must not activate the watcher.
+        service.completeStart()
+        await startTask.value
+
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+    }
+
     /// iOS-specific: the root view calls stopAllWatchers from onDisappear since the
     /// ViewModel is app-lifetime (no onCleared equivalent).
     @MainActor

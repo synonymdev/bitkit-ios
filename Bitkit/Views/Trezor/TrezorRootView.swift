@@ -28,6 +28,7 @@ struct TrezorRootView: View {
                 }
             }
         }
+        .modifier(TrezorLifecycleModifier())
         .modifier(TrezorDialogsModifier())
     }
 }
@@ -67,15 +68,31 @@ private struct TrezorContentSwitcher: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: trezor.isConnected)
-        .task {
-            trezor.setup()
-        }
-        .onDisappear {
-            // The ViewModel outlives this screen (app-lifetime), so watchers and
-            // their input state are torn down when the dashboard is dismissed —
-            // the iOS counterpart of Android's onCleared.
-            trezor.handleDashboardDismiss()
-        }
+    }
+}
+
+// MARK: - Lifecycle Modifier
+
+/// Setup/teardown tied to the whole dashboard's lifetime. This must live on
+/// TrezorRootView's stable root: Group distributes modifiers to the active
+/// branch of TrezorContentSwitcher's conditional, so an onDisappear there fires
+/// on every connect/disconnect and would tear down watchers mid-session.
+/// The ViewModel is only accessed inside closures, so the root body still
+/// establishes no observation dependencies.
+private struct TrezorLifecycleModifier: ViewModifier {
+    @Environment(TrezorViewModel.self) private var trezor
+
+    func body(content: Content) -> some View {
+        content
+            .task {
+                trezor.setup()
+            }
+            .onDisappear {
+                // The ViewModel outlives this screen (app-lifetime), so watchers and
+                // their input state are torn down when the dashboard is dismissed —
+                // the iOS counterpart of Android's onCleared.
+                trezor.handleDashboardDismiss()
+            }
     }
 }
 

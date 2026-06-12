@@ -344,9 +344,6 @@ class TrezorViewModel {
     /// Identifier of a watcher whose native start call is still in flight.
     private var startingWatcherId: String?
 
-    /// Set when cleanup is requested before native watcher startup completes.
-    private var shouldStopStartingWatcher = false
-
     /// Strong reference to the active listener so it stays alive while watching
     private var watcherListener: TrezorEventListener?
 
@@ -1620,7 +1617,6 @@ class TrezorViewModel {
 
         isStartingWatcher = true
         startingWatcherId = watcherId
-        shouldStopStartingWatcher = false
         watcherConnectionStatus = .starting
         watcherTransactions = []
         watcherEvents = ["starting: \(watcherId)"]
@@ -1639,7 +1635,7 @@ class TrezorViewModel {
                 return
             }
 
-            if shouldStopStartingWatcher || selectedNetwork != network {
+            if selectedNetwork != network {
                 try? watcherService.stopWatcher(watcherId: watcherId)
                 finishStoppedWatcherStartup(watcherId: watcherId)
                 return
@@ -1664,11 +1660,12 @@ class TrezorViewModel {
                 return
             }
 
-            // A stop that lands while the native call is in flight (dashboard dismissed,
-            // stop button, network switch) aborts the Rust-side startup, which surfaces
-            // here as a thrown error rather than a return. Treat it like the cooperative
-            // cancellation paths above instead of reporting a failure the user didn't cause.
-            if shouldStopStartingWatcher || Self.isWatcherStartupCancellation(error) {
+            // A native-side stop that aborts the Rust startup surfaces here as a
+            // thrown error rather than a return. A Swift-side stop is already handled
+            // by the quarantine in stopWatcher() and the stale guard above; this covers
+            // the core stopping the watcher directly. It's a cancellation, not a
+            // failure the user caused.
+            if Self.isWatcherStartupCancellation(error) {
                 finishStoppedWatcherStartup(watcherId: watcherId)
                 return
             }
@@ -1679,17 +1676,22 @@ class TrezorViewModel {
             activeWatcherId = nil
             startingWatcherId = nil
             watcherListener = nil
-            shouldStopStartingWatcher = false
             appendWatcherEvent("start failed: \(message)")
             trezorLog("Watcher start failed: \(error)", level: "error")
             isStartingWatcher = false
         }
     }
 
-    /// Stop the active watcher, if any.
+    /// Stop the active watcher, if any. A watcher whose native start call is still
+    /// in flight is stopped too: its id is quarantined so handleWatcherEvent drops
+    /// any events that arrive before the native call returns.
     func stopWatcher() {
-        if startingWatcherId != nil {
-            shouldStopStartingWatcher = true
+        if let startingId = startingWatcherId {
+            // Abort the in-flight native startup and quarantine the id; if the
+            // native call still returns success, startWatcher's stale-start check
+            // stops the watcher then.
+            try? watcherService.stopWatcher(watcherId: startingId)
+            finishStoppedWatcherStartup(watcherId: startingId)
         }
 
         guard let watcherId = activeWatcherId else { return }
@@ -1807,7 +1809,6 @@ class TrezorViewModel {
         activeWatcherId = nil
         startingWatcherId = nil
         isStartingWatcher = false
-        shouldStopStartingWatcher = false
         watcherConnectionStatus = .idle
         watcherListener = nil
         watcherBalance = nil
