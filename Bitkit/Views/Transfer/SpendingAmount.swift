@@ -26,12 +26,14 @@ struct SpendingAmount: View {
     /// reloads can neither overlap nor leak the loading flag.
     private struct MaxCalcInputs: Equatable {
         let maxChannelSizeSat: UInt64?
+        let maxClientBalanceSat: UInt64?
         let spendableOnchainBalanceSats: Int
     }
 
     private var maxCalcInputs: MaxCalcInputs {
         MaxCalcInputs(
             maxChannelSizeSat: blocktank.info?.options.maxChannelSizeSat,
+            maxClientBalanceSat: blocktank.info?.options.maxClientBalanceSat,
             spendableOnchainBalanceSats: wallet.spendableOnchainBalanceSats
         )
     }
