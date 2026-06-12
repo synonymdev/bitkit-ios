@@ -107,7 +107,7 @@ struct SendSheet: View {
     var body: some View {
         Sheet(id: .send, data: config) {
             if shouldShowSyncOverlay {
-                SendSyncScreen(showLongWait: syncTimedOut)
+                SendSyncScreen()
                     .transition(.opacity)
             } else {
                 NavigationStack(path: $navigationPath) {
@@ -120,12 +120,18 @@ struct SendSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
-        .offlineSheetOverlay(title: t("wallet__send_bitcoin"))
+        .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut)
         .onAppear {
             tagManager.clearSelectedTags()
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
             hasValidatedAfterSync = false
             syncTimedOut = false
+
+            // A plain Send open (TabBar) must not inherit invoice state from an earlier scan,
+            // e.g. one abandoned behind the sync overlay. Invoice-carrying opens use other routes.
+            if config.initialRoute == .options {
+                app.resetSendState()
+            }
 
             Task {
                 do {
@@ -171,8 +177,8 @@ struct SendSheet: View {
             // Bound the sync overlay wait so a peer that never connects can't leave the user
             // waiting indefinitely (the onChange above only fires if channels become usable).
             guard syncTimeoutPhase.isActive else {
-                // Reset the long-wait copy only once the overlay actually resolves; going
-                // offline merely pauses the timer and keeps the "connection issues" state.
+                // Reset the connection-issues overlay only once the sync wait actually resolves;
+                // going offline merely pauses the timer and keeps the timed-out state.
                 if !shouldShowSyncOverlay {
                     syncTimedOut = false
                 }
@@ -187,8 +193,8 @@ struct SendSheet: View {
     }
 
     /// Called when the sync overlay has been visible for `syncTimeoutSeconds` without channels becoming usable.
-    /// Unified invoices fall back to onchain (the same decision `AppViewModel` makes at scan time when
-    /// lightning can't pay); everything else switches the overlay to the "connection issues" copy and keeps waiting.
+    /// Unified invoices fall back to onchain; everything else shows the connection-issues screen
+    /// (via the forced `offlineSheetOverlay`) and keeps waiting for the peer.
     private func handleSyncTimeout() {
         let canFallBackToOnchain = wallet.nodeLifecycleState == .running
             && app.scannedLightningInvoice != nil
