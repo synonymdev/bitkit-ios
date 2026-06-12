@@ -91,11 +91,19 @@ struct SpendingAmount: View {
             }
         }
         .onChange(of: maxTransferAmount) { updateInputCap() }
-        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
+        .onChange(of: amountViewModel.maxExceededCount) { onMaxExceeded() }
     }
 
     private func updateInputCap() {
         amountViewModel.maxAmountOverride = (maxTransferAmount ?? 0) > 0 ? maxTransferAmount : nil
+    }
+
+    private func onMaxExceeded() {
+        // Snap the input to the max so the user lands on the highest allowed amount.
+        if let max = maxTransferAmount {
+            amountViewModel.updateFromSats(max, currency: currency)
+        }
+        showMaxExceededToast()
     }
 
     private func showMaxExceededToast() {
