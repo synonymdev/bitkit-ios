@@ -387,7 +387,20 @@ extension AppViewModel {
                                 return
                             }
 
-                            // Lightning insufficient for any reason (no channels, no capacity, etc).
+                            // Channels exist but none are usable (e.g. peer offline): still prefer
+                            // lightning. The send sheet shows the sync overlay and either proceeds
+                            // over lightning when the peer reconnects or falls back to onchain
+                            // after its timeout.
+                            let channels = lightningService.channels
+                            let hasAnyChannels = channels?.isEmpty == false
+                            let hasUsableChannels = channels?.contains(where: \.isUsable) ?? false
+                            if hasAnyChannels, !hasUsableChannels {
+                                handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
+                                return
+                            }
+
+                            // Lightning insufficient for any other reason (no channels at all, or
+                            // usable channels without capacity).
                             // Fall back to onchain and validate onchain balance immediately.
                             let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
                             guard validateOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance) else {
