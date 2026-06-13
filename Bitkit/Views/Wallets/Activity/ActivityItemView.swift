@@ -577,20 +577,30 @@ struct ActivityItemView: View {
                     }
                     .accessibilityIdentifier("ChannelButton")
                 } else {
-                    CustomButton(
-                        title: t("wallet__activity_explore"), size: .small,
-                        icon: Image("branch")
-                            .foregroundColor(accentColor),
-                        shouldExpand: true
-                    ) {
-                        navigation.navigate(.activityExplorer(viewModel.activity))
-                    }
-                    .accessibilityIdentifier("ActivityTxDetails")
+                    exploreButton
                 }
             }
             .frame(maxWidth: .infinity)
+
+            // Transfers replace the Explore button above with Connection, so give them their own
+            // Explore row to reach the on-chain details (tx id, block explorer) of the channel transaction.
+            if isTransfer, transferChannelId != nil {
+                exploreButton
+            }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var exploreButton: some View {
+        CustomButton(
+            title: t("wallet__activity_explore"), size: .small,
+            icon: Image("branch")
+                .foregroundColor(accentColor),
+            shouldExpand: true
+        ) {
+            navigation.navigate(.activityExplorer(viewModel.activity))
+        }
+        .accessibilityIdentifier("ActivityTxDetails")
     }
 
     private func detachContact() async {
