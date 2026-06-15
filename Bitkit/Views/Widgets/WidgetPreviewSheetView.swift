@@ -9,6 +9,7 @@ struct WidgetPreviewSheetView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var suggestionsManager: SuggestionsManager
@@ -64,13 +65,15 @@ struct WidgetPreviewSheetView: View {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
     }
 
-    /// Whether the Suggestions widget would currently show no cards (mirrors `HomeWidgetsView`'s filter).
+    /// Whether the Suggestions widget would currently show no cards (mirrors what the live
+    /// `Suggestions` view renders, including the `pubkyProfile` completion check).
     private var suggestionsAreEmpty: Bool {
         Suggestions.visibleCards(
             wallet: wallet,
             app: app,
             settings: settings,
             suggestionsManager: suggestionsManager,
+            pubkyProfile: pubkyProfile,
             isPaykitUIEnabled: isPaykitUIActive
         ).isEmpty
     }
