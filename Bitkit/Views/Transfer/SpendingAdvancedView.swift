@@ -10,7 +10,7 @@ struct SpendingAdvancedView: View {
     @EnvironmentObject var transfer: TransferViewModel
     @Environment(\.dismiss) var dismiss
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
     @State private var feeEstimate: UInt64?
     @State private var isLoading = false
     @State private var feeEstimateTask: Task<Void, Never>?
@@ -116,6 +116,25 @@ struct SpendingAdvancedView: View {
                 feeEstimate = nil
             }
         }
+        .onChange(of: transfer.transferValues.maxLspBalance, initial: true) { updateInputCap() }
+        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
+    }
+
+    private func updateInputCap() {
+        let maxLspBalance = transfer.transferValues.maxLspBalance
+        amountViewModel.maxAmountOverride = maxLspBalance > 0 ? maxLspBalance : nil
+    }
+
+    private func showMaxExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("lightning__spending_advanced__error_max__title"),
+            description: t(
+                "lightning__spending_advanced__error_max__description",
+                variables: ["amount": CurrencyFormatter.formatSats(transfer.transferValues.maxLspBalance)]
+            ),
+            visibilityTime: Toast.visibilityTimeShort
+        )
     }
 
     private var actionButtons: some View {
