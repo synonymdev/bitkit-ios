@@ -43,6 +43,7 @@ struct SendSheetItem: SheetItem {
 
 struct SendSheet: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var network: NetworkMonitor
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var tagManager: TagManager
@@ -52,15 +53,17 @@ struct SendSheet: View {
 
     @State private var navigationPath: [SendRoute] = []
     @State private var hasValidatedAfterSync = false
+    @State private var syncTimedOut = false
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
+
+    /// How long the sync overlay may wait for channels to become usable before falling back
+    private static let syncTimeoutSeconds: TimeInterval = 20
 
     /// Show sync overlay when node is not ready for payments
     /// For lightning: need node running AND at least one usable channel (peer connected).
     /// If there are no channels at all, we should NOT wait behind the sync UI – that's a capacity issue, not a sync issue.
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
-        Logger.debug("shouldShowSyncOverlay: \(wallet.nodeLifecycleState)", context: "SendSheet")
-
         // Node must be running
         guard wallet.nodeLifecycleState == .running else { return true }
 
@@ -83,6 +86,22 @@ struct SendSheet: View {
         return false
     }
 
+    /// Identity for the sync timeout task. The timer only counts down while the overlay is visible
+    /// and the device is online (while offline, `offlineSheetOverlay` covers the sheet and a timeout
+    /// would act on stale state). Node readiness is part of the identity so the window restarts when
+    /// the node reaches `.running` mid-wait and the timeout can still fall back with fresh balances.
+    private struct SyncTimeoutPhase: Equatable {
+        let isActive: Bool
+        let isNodeRunning: Bool
+    }
+
+    private var syncTimeoutPhase: SyncTimeoutPhase {
+        SyncTimeoutPhase(
+            isActive: shouldShowSyncOverlay && network.isConnected,
+            isNodeRunning: wallet.nodeLifecycleState == .running
+        )
+    }
+
     var body: some View {
         Sheet(id: .send, data: config) {
             if shouldShowSyncOverlay {
@@ -99,11 +118,21 @@ struct SendSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
-        .offlineSheetOverlay(title: t("wallet__send_bitcoin"))
+        .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut)
+        .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
+            Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
+        }
         .onAppear {
             tagManager.clearSelectedTags()
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
             hasValidatedAfterSync = false
+            syncTimedOut = false
+
+            // A plain Send open (TabBar) must not inherit invoice state from an earlier scan,
+            // e.g. one abandoned behind the sync overlay. Invoice-carrying opens use other routes.
+            if config.initialRoute == .options {
+                app.resetSendState()
+            }
 
             Task {
                 do {
@@ -144,6 +173,38 @@ struct SendSheet: View {
             if isLightningPayment, hasUsable, wallet.nodeLifecycleState == .running, !hasValidatedAfterSync {
                 validatePaymentAfterSync()
             }
+        }
+        .task(id: syncTimeoutPhase) {
+            // Bound the sync overlay wait so a peer that never connects can't leave the user
+            // waiting indefinitely (the onChange above only fires if channels become usable).
+            guard syncTimeoutPhase.isActive else {
+                // Reset the connection-issues overlay only once the sync wait actually resolves;
+                // going offline merely pauses the timer and keeps the timed-out state.
+                if !shouldShowSyncOverlay {
+                    syncTimedOut = false
+                }
+                return
+            }
+
+            try? await Task.sleep(for: .seconds(Self.syncTimeoutSeconds))
+            guard !Task.isCancelled, syncTimeoutPhase.isActive, !hasValidatedAfterSync else { return }
+
+            handleSyncTimeout()
+        }
+    }
+
+    /// Called when the sync overlay has been visible for `syncTimeoutSeconds` without channels becoming usable.
+    /// Unified invoices fall back to onchain; everything else shows the connection-issues screen
+    /// (via the forced `offlineSheetOverlay`) and keeps waiting for the peer.
+    private func handleSyncTimeout() {
+        let canFallBackToOnchain = wallet.nodeLifecycleState == .running
+            && app.scannedLightningInvoice != nil
+            && app.scannedOnchainInvoice != nil
+
+        if canFallBackToOnchain {
+            validatePaymentAfterSync(ignoreChannelWait: true)
+        } else {
+            syncTimedOut = true
         }
     }
 
@@ -198,7 +259,8 @@ struct SendSheet: View {
     /// Validates payment affordability after sync completes
     /// For lightning: falls back to onchain for unified invoices, shows error for pure lightning invoices
     /// For onchain: validates balance and shows error if insufficient
-    private func validatePaymentAfterSync() {
+    /// Pass `ignoreChannelWait: true` to validate even while channels are unusable (sync timeout).
+    private func validatePaymentAfterSync(ignoreChannelWait: Bool = false) {
         // Validate lightning payment if present
         if let lightningInvoice = app.scannedLightningInvoice {
             // For lightning, if we have channels but none are usable yet, wait for them
@@ -206,7 +268,7 @@ struct SendSheet: View {
             // usable, proceed with validation/fallback.
             // Use channelCount as fallback in case channels array is nil but count is cached
             let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
-            if hasAnyChannels, !wallet.hasUsableChannels {
+            if hasAnyChannels, !wallet.hasUsableChannels, !ignoreChannelWait {
                 // We have channels but none usable yet → wait
                 return
             }
