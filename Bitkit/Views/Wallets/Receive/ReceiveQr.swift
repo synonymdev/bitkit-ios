@@ -114,11 +114,15 @@ struct ReceiveQr: View {
                 .padding(.horizontal, 16)
             }
             .onAppear {
-                // Default to the unified ("Auto") tab the first time a Lightning invoice is available.
-                // Guarded so it does not override the tab the user picked (e.g. after returning from Edit).
-                if !hasAppliedDefaultTab && tab == nil && !wallet.bolt11.isEmpty {
-                    selectedTab = .unified
+                // Apply the default-tab choice at most once, on the first appearance. The flag is set
+                // unconditionally here (even before bolt11 is ready) so a later reappearance — e.g.
+                // returning from Edit once the invoice has loaded — can never override the tab the user picked.
+                if !hasAppliedDefaultTab {
                     hasAppliedDefaultTab = true
+                    // Default to the unified ("Auto") tab when a Lightning invoice is already available.
+                    if tab == nil && !wallet.bolt11.isEmpty {
+                        selectedTab = .unified
+                    }
                 }
             }
         }
