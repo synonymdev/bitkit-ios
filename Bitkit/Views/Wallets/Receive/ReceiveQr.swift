@@ -11,6 +11,7 @@ struct ReceiveQr: View {
 
     @State private var selectedTab: ReceiveTab
     @State private var showDetails = false
+    @State private var hasAppliedDefaultTab = false
 
     init(navigationPath: Binding<[ReceiveRoute]>, cjitInvoice: String? = nil, tab: ReceiveTab? = nil) {
         _navigationPath = navigationPath
@@ -113,9 +114,11 @@ struct ReceiveQr: View {
                 .padding(.horizontal, 16)
             }
             .onAppear {
-                // Set default tab to unified if we have a Lightning invoice and no tab was provided
-                if tab == nil && !wallet.bolt11.isEmpty {
+                // Default to the unified ("Auto") tab the first time a Lightning invoice is available.
+                // Guarded so it does not override the tab the user picked (e.g. after returning from Edit).
+                if !hasAppliedDefaultTab && tab == nil && !wallet.bolt11.isEmpty {
                     selectedTab = .unified
+                    hasAppliedDefaultTab = true
                 }
             }
         }
