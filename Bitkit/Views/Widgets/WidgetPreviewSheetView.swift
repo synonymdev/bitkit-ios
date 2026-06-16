@@ -9,8 +9,14 @@ struct WidgetPreviewSheetView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var suggestionsManager: SuggestionsManager
+    @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var widgets: WidgetsViewModel
+
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @State private var carouselPage: Int
     @State private var showDeleteAlert = false
@@ -53,6 +59,23 @@ struct WidgetPreviewSheetView: View {
 
     private var chosenSize: WidgetSize {
         carouselPage == 0 && supportsSmall ? .small : .wide
+    }
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    /// Whether the Suggestions widget would currently show no cards (mirrors what the live
+    /// `Suggestions` view renders, including the `pubkyProfile` completion check).
+    private var suggestionsAreEmpty: Bool {
+        Suggestions.visibleCards(
+            wallet: wallet,
+            app: app,
+            settings: settings,
+            suggestionsManager: suggestionsManager,
+            pubkyProfile: pubkyProfile,
+            isPaykitUIEnabled: isPaykitUIActive
+        ).isEmpty
     }
 
     var body: some View {
@@ -261,6 +284,9 @@ struct WidgetPreviewSheetView: View {
     // MARK: - Actions
 
     private func onSave() {
+        if type == .suggestions, suggestionsAreEmpty {
+            suggestionsManager.resetDismissed()
+        }
         widgets.saveWidget(type, size: chosenSize)
         sheets.hideSheet()
         navigation.reset()

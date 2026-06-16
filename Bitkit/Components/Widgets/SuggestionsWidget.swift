@@ -13,7 +13,7 @@ struct SuggestionsWidget: View {
             hasBackground: false,
             onEditingEnd: onEditingEnd
         ) {
-            Suggestions(isPreview: isPreview)
+            Suggestions(isPreview: isPreview, isEditing: isEditing)
         }
     }
 }
