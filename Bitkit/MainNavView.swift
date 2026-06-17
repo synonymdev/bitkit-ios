@@ -47,15 +47,6 @@ struct MainNavView: View {
             config in BoostSheet(config: config)
         }
         .sheet(
-            item: $sheets.appUpdateSheetItem,
-            onDismiss: {
-                sheets.hideSheet()
-                app.ignoreAppUpdate()
-            }
-        ) {
-            config in AppUpdateSheet(config: config)
-        }
-        .sheet(
             item: $sheets.backupSheetItem,
             onDismiss: {
                 sheets.hideSheet()

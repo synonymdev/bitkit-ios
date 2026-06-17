@@ -11,7 +11,7 @@ struct AppUpdateTimedSheet: TimedSheetItem {
     private let appUpdateService = AppUpdateService.shared
 
     /// App update constants
-    private static let ASK_INTERVAL: TimeInterval = 12 * 60 * 60 // 12 hours - how long this prompt will not show after user dismisses
+    static let ASK_INTERVAL: TimeInterval = 12 * 60 * 60 // 12 hours - how long this prompt will not show after user dismisses
 
     init(appViewModel: AppViewModel) {
         self.appViewModel = appViewModel
@@ -19,31 +19,33 @@ struct AppUpdateTimedSheet: TimedSheetItem {
 
     @MainActor
     func shouldShow() async -> Bool {
+        Self.shouldShow(
+            update: appUpdateService.availableUpdate,
+            ignoreTimestamp: appViewModel.appUpdateIgnoreTimestamp,
+            now: Date().timeIntervalSince1970,
+            isE2E: Env.isE2E
+        )
+    }
+
+    /// Pure eligibility check, extracted so it can be unit-tested without an `AppViewModel` or the shared service.
+    static func shouldShow(update: AppUpdateInfo?, ignoreTimestamp: TimeInterval, now: TimeInterval, isE2E: Bool) -> Bool {
         // Don't show in e2e test environment
-        guard !Env.isE2E else {
+        guard !isE2E else {
             return false
         }
 
-        // Check if enough time has passed since last ignore
-        let currentTime = Date().timeIntervalSince1970
-        let isTimeoutOver = currentTime - appViewModel.appUpdateIgnoreTimestamp > Self.ASK_INTERVAL
-
-        // Don't show if timeout hasn't passed
-        guard isTimeoutOver else {
+        // Don't show until enough time has passed since the user last ignored the prompt
+        guard now - ignoreTimestamp > ASK_INTERVAL else {
             return false
         }
 
         // Don't show if no update is available
-        guard let update = appUpdateService.availableUpdate else {
+        guard let update else {
             return false
         }
 
-        // Don't show critical updates through timed sheets (they should be handled differently)
-        guard !update.critical else {
-            return false
-        }
-
-        return true
+        // Don't show critical updates through timed sheets; they're handled at the top level in AppScene
+        return !update.critical
     }
 
     func onShown() {
