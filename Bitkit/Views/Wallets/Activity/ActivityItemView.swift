@@ -566,26 +566,22 @@ struct ActivityItemView: View {
                 }
                 .accessibilityIdentifier(boostButtonIdentifier)
 
-                if isTransfer, let channelId = transferChannelId {
-                    CustomButton(
-                        title: t("lightning__connection"), size: .small,
-                        icon: Image("bolt-hollow")
-                            .foregroundColor(accentColor),
-                        shouldExpand: true
-                    ) {
-                        navigation.navigate(.connectionDetail(channelId: channelId))
-                    }
-                    .accessibilityIdentifier("ChannelButton")
-                } else {
-                    exploreButton
-                }
+                exploreButton
             }
             .frame(maxWidth: .infinity)
 
-            // Transfers replace the Explore button above with Connection, so give them their own
-            // Explore row to reach the on-chain details (tx id, block explorer) of the channel transaction.
-            if isTransfer, transferChannelId != nil {
-                exploreButton
+            // Transfers get a dedicated full-width Connection row to their channel, keeping the Explore
+            // button in the same slot as every other on-chain activity (tx id, block explorer) for consistency.
+            if isTransfer, let channelId = transferChannelId {
+                CustomButton(
+                    title: t("lightning__connection"), size: .small,
+                    icon: Image("bolt-hollow")
+                        .foregroundColor(accentColor),
+                    shouldExpand: true
+                ) {
+                    navigation.navigate(.connectionDetail(channelId: channelId))
+                }
+                .accessibilityIdentifier("ChannelButton")
             }
         }
         .frame(maxWidth: .infinity)
