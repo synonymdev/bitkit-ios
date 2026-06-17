@@ -10,7 +10,12 @@ struct RecoveryScreen: View {
     @State private var locked = true
     @State private var showPinCheck = false
     @State private var showWipeAlert = false
+    @State private var showResetGraphAlert = false
+    @State private var isResettingGraph = false
     @State private var pendingAction: PendingAction?
+
+    /// Delay before restarting so the success toast is visible.
+    private let resetGraphRestartDelay: Duration = .seconds(3)
 
     enum PendingAction {
         case showSeed
@@ -21,6 +26,14 @@ struct RecoveryScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("security__recovery"), showBackButton: false, showMenuButton: false)
                 .padding(.bottom, 16)
+                .alert(t("security__reset_graph_dialog_title"), isPresented: $showResetGraphAlert) {
+                    Button(t("common__cancel"), role: .cancel) {}
+                    Button(t("security__reset_graph_confirm"), role: .destructive) {
+                        onResetGraphConfirmed()
+                    }
+                } message: {
+                    Text(t("security__reset_graph_dialog_desc"))
+                }
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -50,6 +63,15 @@ struct RecoveryScreen: View {
                             isDisabled: locked
                         ) {
                             onContactSupport()
+                        }
+
+                        CustomButton(
+                            title: t("security__reset_graph_button"),
+                            variant: .secondary,
+                            isDisabled: locked || wallet.walletExists != true,
+                            isLoading: isResettingGraph
+                        ) {
+                            showResetGraphAlert = true
                         }
 
                         CustomButton(
@@ -222,5 +244,34 @@ struct RecoveryScreen: View {
         }
 
         showWipeAlert = false
+    }
+
+    private func onResetGraphConfirmed() {
+        isResettingGraph = true
+
+        Task {
+            do {
+                try await wallet.resetNetworkGraph()
+
+                app.toast(
+                    type: .success,
+                    title: t("security__reset_graph_success_title"),
+                    description: t("security__reset_graph_success_description")
+                )
+
+                // Keep the loading state and restart so the graph is re-downloaded on next launch.
+                try? await Task.sleep(for: resetGraphRestartDelay)
+                session.skipSplashOnce = true
+                session.bump()
+            } catch {
+                Logger.error("Failed to reset network graph: \(error)", context: "RecoveryScreen")
+                app.toast(
+                    type: .error,
+                    title: t("common__error"),
+                    description: t("security__reset_graph_error")
+                )
+                isResettingGraph = false
+            }
+        }
     }
 }
