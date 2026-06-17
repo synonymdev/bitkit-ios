@@ -885,7 +885,8 @@ class WalletViewModel: ObservableObject {
     /// since a reset that leaves the graph in VSS is ineffective. Caller should restart afterwards.
     func resetNetworkGraph() async throws {
         Logger.warn("Resetting network graph (manual)", context: "WalletViewModel")
-        if nodeLifecycleState == .starting || nodeLifecycleState == .running {
+        await waitForNodeToRun(timeoutSeconds: 5.0)
+        if lightningService.hasNode {
             try await stopLightningNode()
         }
         try await clearNetworkGraph()
