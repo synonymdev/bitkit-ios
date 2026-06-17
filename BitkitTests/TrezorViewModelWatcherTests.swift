@@ -183,6 +183,43 @@ final class TrezorViewModelWatcherTests: XCTestCase {
     }
 
     @MainActor
+    func testDisconnectedStateResetClearsSensitiveWalletState() {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+
+        TrezorUiHandler.shared.setWalletMode(.passphraseHost, hostPassphrase: "secret")
+        viewModel.walletMode = .passphraseHost
+        viewModel.deviceFingerprint = "73c5da0a"
+        viewModel.generatedAddress = "bcrt1qexample"
+        viewModel.xpub = "xpub6previous"
+        viewModel.publicKeyHex = "02abcdef"
+        viewModel.showPinEntry = true
+        viewModel.showPassphraseEntry = true
+        viewModel.showConfirmOnDevice = true
+        viewModel.showWalletModeChooser = true
+
+        viewModel.clearDisconnectedDeviceState(errorMessage: "disconnect failed")
+
+        XCTAssertNil(viewModel.deviceFingerprint)
+        XCTAssertNil(viewModel.generatedAddress)
+        XCTAssertNil(viewModel.xpub)
+        XCTAssertNil(viewModel.publicKeyHex)
+        XCTAssertEqual(viewModel.error, "disconnect failed")
+        XCTAssertFalse(viewModel.showPinEntry)
+        XCTAssertFalse(viewModel.showPassphraseEntry)
+        XCTAssertFalse(viewModel.showConfirmOnDevice)
+        XCTAssertFalse(viewModel.showWalletModeChooser)
+        XCTAssertEqual(viewModel.walletMode, .standard)
+
+        switch TrezorUiHandler.shared.currentSelection() {
+        case .standard:
+            break
+        default:
+            XCTFail("Expected cached Trezor wallet selection to reset to standard")
+        }
+    }
+
+    @MainActor
     func testWatcherTransactionEventMarksWatcherConnected() async throws {
         let service = MockWatcherService()
         let viewModel = makeViewModel(service: service)

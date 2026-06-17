@@ -424,6 +424,29 @@ class TrezorViewModel {
         TrezorDebugLog.shared.log(message)
     }
 
+    // MARK: - State Reset Helpers
+
+    func clearWalletDerivedState() {
+        deviceFingerprint = nil
+        generatedAddress = nil
+        signedMessage = nil
+        xpub = nil
+        publicKeyHex = nil
+    }
+
+    func clearDisconnectedDeviceState(errorMessage: String? = nil) {
+        connectedDevice = nil
+        deviceFeatures = nil
+        clearWalletDerivedState()
+        error = errorMessage
+        showPinEntry = false
+        showPassphraseEntry = false
+        showConfirmOnDevice = false
+        showWalletModeChooser = false
+        uiHandler.setWalletMode(.standard)
+        walletMode = .standard
+    }
+
     // MARK: - Manager Setup
 
     /// Set up subscriptions and start BLE stack (synchronous, non-blocking).
@@ -559,27 +582,12 @@ class TrezorViewModel {
         do {
             try await trezorService.disconnect()
             // Clear connection state but preserve device list for quick reconnection
-            connectedDevice = nil
-            deviceFeatures = nil
-            deviceFingerprint = nil
-            generatedAddress = nil
-            signedMessage = nil
-            xpub = nil
-            publicKeyHex = nil
-            error = nil
-            showPinEntry = false
-            showPassphraseEntry = false
-            showConfirmOnDevice = false
-            showWalletModeChooser = false
-            uiHandler.setWalletMode(.standard)
-            walletMode = .standard
+            clearDisconnectedDeviceState()
 
             trezorLog("Disconnected from Trezor")
         } catch {
             // Even if disconnect fails, clear local state
-            connectedDevice = nil
-            deviceFeatures = nil
-            self.error = errorMessage(from: error)
+            clearDisconnectedDeviceState(errorMessage: errorMessage(from: error))
             trezorLog("Disconnect failed: \(error)", level: "error")
         }
     }
@@ -777,6 +785,10 @@ class TrezorViewModel {
             trezorLog("Disconnect before wallet-mode switch failed: \(error)", level: "warn")
         }
 
+        // Results derived from the previous wallet are no longer valid once the
+        // session has been reset for a different wallet mode.
+        clearWalletDerivedState()
+
         // Brief settle delay before reconnecting (matches Android's reconnect delay).
         try? await Task.sleep(nanoseconds: 300_000_000)
 
@@ -791,19 +803,9 @@ class TrezorViewModel {
             connectedDevice = device
             deviceFeatures = features
             showConfirmOnDevice = false
-            // Results derived from the previous wallet are no longer valid.
-            deviceFingerprint = nil
-            generatedAddress = nil
-            xpub = nil
-            publicKeyHex = nil
-            signedMessage = nil
             trezorLog("Reconnected with wallet mode \(mode)")
         } catch {
-            self.error = errorMessage(from: error)
-            connectedDevice = nil
-            deviceFeatures = nil
-            walletMode = .standard
-            uiHandler.setWalletMode(.standard)
+            clearDisconnectedDeviceState(errorMessage: errorMessage(from: error))
             trezorLog("Reconnect after wallet-mode switch failed: \(error)", level: "error")
         }
 
