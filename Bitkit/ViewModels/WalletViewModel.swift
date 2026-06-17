@@ -885,7 +885,11 @@ class WalletViewModel: ObservableObject {
     /// since a reset that leaves the graph in VSS is ineffective. Caller should restart afterwards.
     func resetNetworkGraph() async throws {
         Logger.warn("Resetting network graph (manual)", context: "WalletViewModel")
-        await waitForNodeToRun(timeoutSeconds: 5.0)
+        // Let any in-progress startup settle so a node assigned mid-setup isn't missed.
+        let settled = await waitForNodeToRun(timeoutSeconds: 5.0)
+        if !settled, nodeLifecycleState == .starting {
+            throw AppError(message: "Node still starting", debugMessage: "resetNetworkGraph aborted: startup in flight")
+        }
         if lightningService.hasNode {
             try await stopLightningNode()
         }
