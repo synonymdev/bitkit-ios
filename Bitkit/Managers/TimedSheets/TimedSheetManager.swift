@@ -112,9 +112,9 @@ class TimedSheetManager: ObservableObject {
 
     /// Re-check the timed-sheet queue after async state changes that may have made a sheet newly
     /// eligible (for example, the app-update info arriving after the initial settle check). No-ops
-    /// unless currently on a primary screen.
+    /// unless on a primary screen with no sheet already open.
     func reevaluate() {
-        guard isOnPrimaryScreen else { return }
+        guard isOnPrimaryScreen, !(sheetViewModel?.isAnySheetOpen ?? false) else { return }
         Logger.debug("Re-evaluating timed sheets after external state change")
         scheduleSettleCheck()
     }
