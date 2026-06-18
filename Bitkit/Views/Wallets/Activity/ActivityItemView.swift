@@ -570,8 +570,6 @@ struct ActivityItemView: View {
             }
             .frame(maxWidth: .infinity)
 
-            // Transfers get a dedicated full-width Connection row to their channel, keeping the Explore
-            // button in the same slot as every other on-chain activity (tx id, block explorer) for consistency.
             if isTransfer, let channelId = transferChannelId {
                 CustomButton(
                     title: t("lightning__connection"), size: .small,
