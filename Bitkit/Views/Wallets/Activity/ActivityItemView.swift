@@ -566,31 +566,35 @@ struct ActivityItemView: View {
                 }
                 .accessibilityIdentifier(boostButtonIdentifier)
 
-                if isTransfer, let channelId = transferChannelId {
-                    CustomButton(
-                        title: t("lightning__connection"), size: .small,
-                        icon: Image("bolt-hollow")
-                            .foregroundColor(accentColor),
-                        shouldExpand: true
-                    ) {
-                        navigation.navigate(.connectionDetail(channelId: channelId))
-                    }
-                    .accessibilityIdentifier("ChannelButton")
-                } else {
-                    CustomButton(
-                        title: t("wallet__activity_explore"), size: .small,
-                        icon: Image("branch")
-                            .foregroundColor(accentColor),
-                        shouldExpand: true
-                    ) {
-                        navigation.navigate(.activityExplorer(viewModel.activity))
-                    }
-                    .accessibilityIdentifier("ActivityTxDetails")
-                }
+                exploreButton
             }
             .frame(maxWidth: .infinity)
+
+            if isTransfer, let channelId = transferChannelId {
+                CustomButton(
+                    title: t("lightning__connection"), size: .small,
+                    icon: Image("bolt-hollow")
+                        .foregroundColor(accentColor),
+                    shouldExpand: true
+                ) {
+                    navigation.navigate(.connectionDetail(channelId: channelId))
+                }
+                .accessibilityIdentifier("ChannelButton")
+            }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var exploreButton: some View {
+        CustomButton(
+            title: t("wallet__activity_explore"), size: .small,
+            icon: Image("branch")
+                .foregroundColor(accentColor),
+            shouldExpand: true
+        ) {
+            navigation.navigate(.activityExplorer(viewModel.activity))
+        }
+        .accessibilityIdentifier("ActivityTxDetails")
     }
 
     private func detachContact() async {
