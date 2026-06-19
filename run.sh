@@ -36,7 +36,10 @@ if [[ -z "$DERIVED_DATA_PATH" || "$DERIVED_DATA_PATH" == "/" ]]; then
 fi
 
 bool_enabled() {
-  case "${1,,}" in
+  local value
+  value="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+
+  case "$value" in
     1 | true | yes | y | on)
       return 0
       ;;

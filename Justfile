@@ -112,15 +112,6 @@ clean *targets:
     fi
 
     if [ "$clean_spm" = "true" ]; then
-        if command -v swift >/dev/null 2>&1; then
-            if [ -n "${BITKIT_SWIFTPM_CACHE_PATH:-}" ]; then
-                mkdir -p "$BITKIT_SWIFTPM_CACHE_PATH"
-                swift package --cache-path "$BITKIT_SWIFTPM_CACHE_PATH" purge-cache
-            else
-                swift package purge-cache
-            fi
-        fi
-
         remove_path "${BITKIT_DERIVED_DATA_PATH:-build}/SourcePackages"
         xcode_derived_data_root="${BITKIT_XCODE_DERIVED_DATA_ROOT:-$HOME/Library/Developer/Xcode/DerivedData}"
         for path in "$xcode_derived_data_root"/Bitkit-*/SourcePackages; do
