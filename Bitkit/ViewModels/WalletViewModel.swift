@@ -897,8 +897,8 @@ class WalletViewModel: ObservableObject {
     }
 
     /// Clears the cached Lightning network graph: the local cache file and the VSS backup copy.
-    /// Shared by the legacy one-time startup cleanup and the manual recovery reset.
-    private func clearNetworkGraph() async throws {
+    /// Shared by the legacy one-time startup cleanup, the manual recovery reset, and the LDK debug screen.
+    func clearNetworkGraph() async throws {
         try await lightningService.deleteNetworkGraph()
         _ = try await VssBackupClient.shared.deleteKey("network_graph")
         Logger.info("Cleared network graph from VSS", context: "WalletViewModel")
