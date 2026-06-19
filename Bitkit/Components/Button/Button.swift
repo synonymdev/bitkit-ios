@@ -166,7 +166,8 @@ struct CustomButton: View {
                 size: size,
                 icon: icon,
                 isDisabled: effectiveIsDisabled,
-                isPressed: isPressed
+                isPressed: isPressed,
+                isLoading: isLoading
             ))
         case .tertiary:
             AnyView(TertiaryButtonView(

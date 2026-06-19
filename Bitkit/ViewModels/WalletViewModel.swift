@@ -873,16 +873,35 @@ class WalletViewModel: ObservableObject {
         guard !legacyNetworkGraphCleanupDone else { return }
         Logger.info("Running legacy network graph cleanup", context: "WalletViewModel")
         do {
-            _ = try await VssBackupClient.shared.deleteKey("network_graph")
+            try await clearNetworkGraph()
         } catch {
-            Logger.debug("VSS deleteKey(network_graph): \(error)", context: "WalletViewModel")
-        }
-        do {
-            try await lightningService.deleteNetworkGraph()
-        } catch {
-            Logger.debug("Local network graph cache cleanup: \(error)", context: "WalletViewModel")
+            Logger.debug("Legacy network graph cleanup: \(error)", context: "WalletViewModel")
         }
         legacyNetworkGraphCleanupDone = true
+    }
+
+    /// Manual recovery action: stop the node and clear the cached network graph so a fresh full
+    /// snapshot is downloaded on the next startup. Non-destructive to funds. Propagates failures
+    /// since a reset that leaves the graph in VSS is ineffective. Caller should restart afterwards.
+    func resetNetworkGraph() async throws {
+        Logger.warn("Resetting network graph (manual)", context: "WalletViewModel")
+        // Let any in-progress startup settle so a node assigned mid-setup isn't missed.
+        let settled = await waitForNodeToRun(timeoutSeconds: 5.0)
+        if !settled, nodeLifecycleState == .starting {
+            throw AppError(message: "Node still starting", debugMessage: "resetNetworkGraph aborted: startup in flight")
+        }
+        if lightningService.hasNode {
+            try await stopLightningNode()
+        }
+        try await clearNetworkGraph()
+    }
+
+    /// Clears the cached Lightning network graph: the local cache file and the VSS backup copy.
+    /// Shared by the legacy one-time startup cleanup, the manual recovery reset, and the LDK debug screen.
+    func clearNetworkGraph() async throws {
+        try await lightningService.deleteNetworkGraph()
+        _ = try await VssBackupClient.shared.deleteKey("network_graph")
+        Logger.info("Cleared network graph from VSS", context: "WalletViewModel")
     }
 
     /// Refreshes cache and syncs all UI state including balance

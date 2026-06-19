@@ -569,6 +569,13 @@
 "security__reset_dialog_title" = "Reset Bitkit?";
 "security__reset_dialog_desc" = "Are you sure you want to reset your Bitkit Wallet? Do you have a backup of your recovery phrase and wallet data?";
 "security__reset_confirm" = "Yes, Reset";
+"security__reset_graph_button" = "Reset Network Graph";
+"security__reset_graph_confirm" = "Yes, Reset";
+"security__reset_graph_dialog_desc" = "This clears the cached Lightning network graph so it is downloaded again from scratch. It can fix \"route not found\" errors. Bitkit will restart automatically.";
+"security__reset_graph_dialog_title" = "Reset Network Graph?";
+"security__reset_graph_error" = "Could not reset the network graph. Please try again.";
+"security__reset_graph_success_description" = "Bitkit will restart in a few seconds to download a fresh network graph.";
+"security__reset_graph_success_title" = "Network Graph Reset";
 "security__recovery" = "Recovery";
 "security__recovery_text" = "You\'ve entered Bitkit\'s recovery mode. Here are some actions to perform when running into issues that prevent the app from fully functioning. Restart the app for a normal startup.";
 "security__display_seed" = "Show Seed Phrase";

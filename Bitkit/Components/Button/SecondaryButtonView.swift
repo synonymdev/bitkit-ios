@@ -6,14 +6,19 @@ struct SecondaryButtonView: View {
     let icon: AnyView?
     let isDisabled: Bool
     let isPressed: Bool
+    var isLoading: Bool = false
 
     var body: some View {
         HStack(spacing: 8) {
-            if let icon {
+            if let icon, !isLoading {
                 icon
             }
 
-            if size == .small {
+            if isLoading {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: textColor))
+                    .frame(width: 20, height: 20)
+            } else if size == .small {
                 CaptionBText(title, textColor: textColor)
             } else {
                 BodySSBText(title, textColor: textColor)
