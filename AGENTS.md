@@ -279,6 +279,7 @@ Ensure accessibility modifiers and labels are added to custom components.
 - Swift version: 5.10
 - Use descriptive names: `isLoadingUsers` not `loading`
 - Follow Apple's SwiftUI best practices
+- AVOID code comments on private functions, types, etc — PREFER self-documenting names that make intent obvious without explanation; only add a comment when the rationale is genuinely non-obvious (e.g. a workaround, an edge case, or a "why" the code itself can't convey)
 
 ### Changelog
 
