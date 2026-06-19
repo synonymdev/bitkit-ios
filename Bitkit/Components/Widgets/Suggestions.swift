@@ -164,6 +164,10 @@ struct Suggestions: View {
     /// When true, show a fixed set of static cards and ignore taps (e.g. widget preview).
     var isPreview: Bool = false
 
+    /// When editing the home grid, keep the widget visible (and reorderable/removable) by falling
+    /// back to the static preview set when there are no live cards to show.
+    var isEditing: Bool = false
+
     var previewCardIds: [String]?
 
     static let previewSheetCardIds = ["backupSeedPhrase", "pin", "transferToSpending", "support"]
@@ -250,8 +254,30 @@ struct Suggestions: View {
         )
     }
 
+    private var isEditingFallback: Bool {
+        isEditing && !isPreview && visibleCards.isEmpty
+    }
+
+    private var cardsToShow: [SuggestionCardData] {
+        guard isEditingFallback else { return visibleCards }
+        return Self.visibleCards(
+            wallet: wallet,
+            app: app,
+            settings: settings,
+            suggestionsManager: suggestionsManager,
+            pubkyProfile: pubkyProfile,
+            isPaykitUIEnabled: isPaykitUIActive,
+            isPreview: true,
+            previewCardIds: Self.previewSheetCardIds
+        )
+    }
+
+    private var renderStatic: Bool {
+        isPreview || isEditingFallback
+    }
+
     var body: some View {
-        if visibleCards.isEmpty {
+        if cardsToShow.isEmpty {
             EmptyView()
         } else {
             LazyVGrid(
@@ -261,17 +287,17 @@ struct Suggestions: View {
                 ],
                 spacing: 16
             ) {
-                ForEach(visibleCards) { card in
+                ForEach(cardsToShow) { card in
                     SuggestionCard(
                         title: card.title,
                         description: card.description,
                         imageName: card.imageName,
                         accentColor: card.color,
-                        onTap: { if !isPreview { onItemTap(card) } },
+                        onTap: { if !renderStatic { onItemTap(card) } },
                         onDismiss: { dismissCard(card) }
                     )
                     .background {
-                        if isPreview {
+                        if renderStatic {
                             RoundedRectangle(cornerRadius: 16).fill(Color.black)
                         }
                     }
@@ -279,7 +305,7 @@ struct Suggestions: View {
                     .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
                 }
             }
-            .allowsHitTesting(!isPreview)
+            .allowsHitTesting(!renderStatic)
             .sheet(isPresented: $showShareSheet) {
                 ShareSheet(activityItems: [
                     t(
