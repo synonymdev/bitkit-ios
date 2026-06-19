@@ -146,7 +146,8 @@ struct SpendingAmount: View {
 
             NumberPadActionButton(text: t("lightning__spending_amount__quarter")) {
                 guard let max = maxTransferAmount else { return }
-                amountViewModel.updateFromSats(max / 4, currency: currency)
+                let quarter = UInt64(wallet.spendableOnchainBalanceSats) / 4
+                amountViewModel.updateFromSats(min(quarter, max), currency: currency)
             }
             .accessibilityIdentifier("SpendingAmountQuarter")
 
