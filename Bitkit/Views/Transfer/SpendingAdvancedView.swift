@@ -117,12 +117,21 @@ struct SpendingAdvancedView: View {
             }
         }
         .onChange(of: transfer.transferValues.maxLspBalance, initial: true) { updateInputCap() }
-        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
+        .onChange(of: amountViewModel.maxExceededCount) { onMaxExceeded() }
     }
 
     private func updateInputCap() {
         let maxLspBalance = transfer.transferValues.maxLspBalance
         amountViewModel.maxAmountOverride = maxLspBalance > 0 ? maxLspBalance : nil
+    }
+
+    private func onMaxExceeded() {
+        // Snap the input to the max so the user lands on the highest allowed amount.
+        let maxLspBalance = transfer.transferValues.maxLspBalance
+        if maxLspBalance > 0 {
+            amountViewModel.updateFromSats(maxLspBalance, currency: currency)
+        }
+        showMaxExceededToast()
     }
 
     private func showMaxExceededToast() {

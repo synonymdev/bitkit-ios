@@ -19,6 +19,92 @@ final class TransferViewModelTests: XCTestCase {
         XCTAssertEqual(result.clientBalanceSat, updatedOrder.clientBalanceSat)
     }
 
+    // MARK: - calculateSpendingLimits (Transfer → Spending max)
+
+    @MainActor
+    func testSpendingLimitsCapsAtLspMaxClientBalanceWhenOnchainExceedsIt() async throws {
+        let viewModel = TransferViewModel()
+        var feeCallBalances: [UInt64] = []
+        // The liquidity calc reports no receiving room (maxLspBalance = 0) because the client
+        // balance saturates the channel — the regression this guards against.
+        let values = TransferValues(
+            defaultLspBalance: Self.lspBalance,
+            minLspBalance: Self.lspBalance,
+            maxLspBalance: 0,
+            maxClientBalance: Self.optionMaxClientBalance
+        )
+
+        let result = try await viewModel.calculateSpendingLimits(
+            onchainAvailable: Self.onChainBalance,
+            lspMaxClientBalance: Self.lspMaxClientBalance,
+            transferValues: { _ in values },
+            estimateOrderFee: { clientBalance, _ in
+                feeCallBalances.append(clientBalance)
+                return (Self.networkFee, Self.serviceFee)
+            }
+        )
+
+        XCTAssertEqual(result.max, Self.optionMaxClientBalance)
+        XCTAssertEqual(result.available, result.max)
+        // The order fee must be estimated against the clamped client balance, not the full balance.
+        XCTAssertEqual(feeCallBalances.last, Self.lspMaxClientBalance)
+    }
+
+    @MainActor
+    func testSpendingLimitsUsesFullBalanceWhenLspInfoUnavailable() async throws {
+        let viewModel = TransferViewModel()
+        var feeCallBalances: [UInt64] = []
+        let values = TransferValues(
+            defaultLspBalance: Self.lspBalance,
+            minLspBalance: Self.lspBalance,
+            maxLspBalance: 0,
+            maxClientBalance: Self.optionMaxClientBalance
+        )
+
+        let result = try await viewModel.calculateSpendingLimits(
+            onchainAvailable: Self.onChainBalance,
+            lspMaxClientBalance: nil,
+            transferValues: { _ in values },
+            estimateOrderFee: { clientBalance, _ in
+                feeCallBalances.append(clientBalance)
+                return (Self.networkFee, Self.serviceFee)
+            }
+        )
+
+        XCTAssertEqual(result.max, Self.optionMaxClientBalance)
+        // Without an LSP cap the order fee is estimated against the balance after the LSP fee.
+        XCTAssertEqual(feeCallBalances.last, Self.onChainBalance - Self.lspFee)
+    }
+
+    @MainActor
+    func testSpendingLimitsIsZeroWhenLiquidityReportsZeroClientBalance() async throws {
+        let viewModel = TransferViewModel()
+        let values = TransferValues(
+            defaultLspBalance: Self.lspBalance,
+            minLspBalance: Self.lspBalance,
+            maxLspBalance: 0,
+            maxClientBalance: 0
+        )
+
+        let result = try await viewModel.calculateSpendingLimits(
+            onchainAvailable: Self.onChainBalance,
+            lspMaxClientBalance: Self.lspMaxClientBalance,
+            transferValues: { _ in values },
+            estimateOrderFee: { _, _ in (Self.networkFee, Self.serviceFee) }
+        )
+
+        XCTAssertEqual(result.max, 0)
+        XCTAssertEqual(result.available, 0)
+    }
+
+    private static let onChainBalance: UInt64 = 10_000_000
+    private static let lspMaxClientBalance: UInt64 = 1_766_193
+    private static let optionMaxClientBalance: UInt64 = 1_687_598
+    private static let lspBalance: UInt64 = 252_368
+    private static let networkFee: UInt64 = 2112
+    private static let serviceFee: UInt64 = 286
+    private static let lspFee: UInt64 = 2398 // networkFee + serviceFee
+
     private func makeOrder(id: String, clientBalanceSat: UInt64, lspBalanceSat: UInt64) -> IBtOrder {
         IBtOrder(
             id: id,

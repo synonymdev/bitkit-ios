@@ -360,6 +360,45 @@ class TransferViewModel: ObservableObject {
         transferValues = calculateTransferValues(clientBalanceSat: clientBalanceSat, blocktankInfo: blocktankInfo)
     }
 
+    /// Calculates the max amount transferable to spending and the value to display as "Available".
+    ///
+    /// The prospective client balance is clamped to the LSP's `maxClientBalanceSat` before
+    /// computing liquidity options: an on-chain balance larger than the LSP's max channel size
+    /// otherwise makes the liquidity calculation report `maxClientBalanceSat = 0` (the balance
+    /// already saturates the channel), collapsing the spendable amount to zero and stranding the
+    /// funds on-chain.
+    ///
+    /// - `transferValues`: liquidity options for a given client balance (prod: `calculateTransferValues`)
+    /// - `estimateOrderFee`: Blocktank order fee for a given client/LSP balance
+    func calculateSpendingLimits(
+        onchainAvailable: UInt64,
+        lspMaxClientBalance: UInt64?,
+        transferValues: (_ clientBalance: UInt64) -> TransferValues,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async rethrows -> (available: UInt64, max: UInt64) {
+        // First pass: estimate the LSP fee against the full on-chain balance.
+        let values1 = transferValues(onchainAvailable)
+        let lspBalance1 = max(values1.defaultLspBalance, values1.minLspBalance)
+        let fee1 = try await estimateOrderFee(onchainAvailable, lspBalance1)
+        let initialFees = fee1.networkFeeSat + fee1.serviceFeeSat
+        let balanceAfterLspFee = onchainAvailable > initialFees ? onchainAvailable - initialFees : 0
+
+        let cappedClientBalance: UInt64 = {
+            guard let cap = lspMaxClientBalance, cap > 0 else { return balanceAfterLspFee }
+            return min(balanceAfterLspFee, cap)
+        }()
+
+        // Second pass with the clamped balance.
+        let values2 = transferValues(cappedClientBalance)
+        guard values2.maxClientBalance > 0 else { return (0, 0) }
+        let lspBalance2 = max(values2.defaultLspBalance, values2.minLspBalance)
+        let fee2 = try await estimateOrderFee(cappedClientBalance, lspBalance2)
+        let finalFees = fee2.networkFeeSat + fee2.serviceFeeSat
+        let afterFee = onchainAvailable > finalFees ? onchainAvailable - finalFees : 0
+        let result = min(values2.maxClientBalance, afterFee)
+        return (result, result)
+    }
+
     /// Calculates max client balance accounting for LDK reserve requirement
     func getMaxClientBalance(maxChannelSize: UInt64) -> UInt64 {
         let minRemoteBalance = UInt64(Double(maxChannelSize) * 0.025)
