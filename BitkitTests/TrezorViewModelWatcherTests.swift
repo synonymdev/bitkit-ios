@@ -130,7 +130,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
 
     @MainActor
     private func makeViewModel(service: MockWatcherService) -> TrezorViewModel {
-        let viewModel = TrezorViewModel(watcherService: service)
+        let viewModel = TrezorViewModel(connection: TrezorManager(), watcherService: service)
         viewModel.watcherExtendedKey = "xpub6test123"
         return viewModel
     }
@@ -184,32 +184,27 @@ final class TrezorViewModelWatcherTests: XCTestCase {
 
     @MainActor
     func testDisconnectedStateResetClearsSensitiveWalletState() {
-        let service = MockWatcherService()
-        let viewModel = makeViewModel(service: service)
+        let connection = TrezorManager()
 
         TrezorUiHandler.shared.setWalletMode(.passphraseHost, hostPassphrase: "secret")
-        viewModel.walletMode = .passphraseHost
-        viewModel.deviceFingerprint = "73c5da0a"
-        viewModel.generatedAddress = "bcrt1qexample"
-        viewModel.xpub = "xpub6previous"
-        viewModel.publicKeyHex = "02abcdef"
-        viewModel.showPinEntry = true
-        viewModel.showPassphraseEntry = true
-        viewModel.showConfirmOnDevice = true
-        viewModel.showWalletModeChooser = true
+        connection.walletMode = .passphraseHost
+        connection.deviceFingerprint = "73c5da0a"
+        connection.showPinEntry = true
+        connection.showPassphraseEntry = true
+        connection.showConfirmOnDevice = true
+        connection.showWalletModeChooser = true
 
-        viewModel.clearDisconnectedDeviceState(errorMessage: "disconnect failed")
+        connection.clearDisconnectedDeviceState(errorMessage: "disconnect failed")
 
-        XCTAssertNil(viewModel.deviceFingerprint)
-        XCTAssertNil(viewModel.generatedAddress)
-        XCTAssertNil(viewModel.xpub)
-        XCTAssertNil(viewModel.publicKeyHex)
-        XCTAssertEqual(viewModel.error, "disconnect failed")
-        XCTAssertFalse(viewModel.showPinEntry)
-        XCTAssertFalse(viewModel.showPassphraseEntry)
-        XCTAssertFalse(viewModel.showConfirmOnDevice)
-        XCTAssertFalse(viewModel.showWalletModeChooser)
-        XCTAssertEqual(viewModel.walletMode, .standard)
+        XCTAssertNil(connection.deviceFingerprint)
+        XCTAssertNil(connection.connectedDevice)
+        XCTAssertNil(connection.deviceFeatures)
+        XCTAssertEqual(connection.error, "disconnect failed")
+        XCTAssertFalse(connection.showPinEntry)
+        XCTAssertFalse(connection.showPassphraseEntry)
+        XCTAssertFalse(connection.showConfirmOnDevice)
+        XCTAssertFalse(connection.showWalletModeChooser)
+        XCTAssertEqual(connection.walletMode, .standard)
 
         switch TrezorUiHandler.shared.currentSelection() {
         case .standard:

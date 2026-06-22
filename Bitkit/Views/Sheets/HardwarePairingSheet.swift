@@ -9,7 +9,7 @@ struct HardwarePairingSheetItem: SheetItem {
 /// Mirrors bitkit-android's `HwPairCodeSheet`: 6 fixed-width cells + an on-screen number pad.
 /// Dismissing without entering the full code cancels the pending pairing request.
 struct HardwarePairingSheet: View {
-    @Environment(HwWalletRepo.self) private var hwWalletRepo
+    @Environment(TrezorManager.self) private var trezorManager
     let config: HardwarePairingSheetItem
 
     private let codeLength = 6
@@ -49,7 +49,7 @@ struct HardwarePairingSheet: View {
             .accessibilityIdentifier("HwPairSheet")
         }
         .onDisappear {
-            if !submitted { hwWalletRepo.cancelPairingCode() }
+            if !submitted { trezorManager.cancelPairingCode() }
         }
     }
 
@@ -65,7 +65,7 @@ struct HardwarePairingSheet: View {
             code += key
             if code.count == codeLength {
                 submitted = true
-                hwWalletRepo.submitPairingCode(code)
+                trezorManager.submitPairingCode(code)
             }
         }
     }

@@ -179,7 +179,7 @@ struct Suggestions: View {
     @EnvironmentObject var suggestionsManager: SuggestionsManager
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
-    @Environment(HwWalletRepo.self) private var hwWalletRepo
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
     @State private var showShareSheet = false
@@ -251,7 +251,7 @@ struct Suggestions: View {
             settings: settings,
             suggestionsManager: suggestionsManager,
             pubkyProfile: pubkyProfile,
-            hasHardwareWallet: isPreview ? false : !hwWalletRepo.wallets.isEmpty,
+            hasHardwareWallet: isPreview ? false : !hwWalletManager.wallets.isEmpty,
             isPaykitUIEnabled: isPaykitUIActive,
             isPreview: isPreview,
             previewCardIds: previewCardIds
@@ -402,6 +402,6 @@ struct SuggestionsPreviewTile: View {
     .environmentObject(SuggestionsManager())
     .environmentObject(WalletViewModel())
     .environmentObject(PubkyProfileManager())
-    .environment(HwWalletRepo())
+    .environment(HwWalletManager())
     .preferredColorScheme(.dark)
 }

@@ -57,17 +57,17 @@ extension View {
 /// Isolates the connected/disconnected toggle so only this view
 /// re-renders when connection state changes.
 private struct TrezorContentSwitcher: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
 
     var body: some View {
         Group {
-            if trezor.isConnected {
+            if trezorManager.isConnected {
                 TrezorConnectedView()
             } else {
                 TrezorDeviceListView()
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: trezor.isConnected)
+        .animation(.easeInOut(duration: 0.25), value: trezorManager.isConnected)
     }
 }
 
@@ -80,12 +80,13 @@ private struct TrezorContentSwitcher: View {
 /// The ViewModel is only accessed inside closures, so the root body still
 /// establishes no observation dependencies.
 private struct TrezorLifecycleModifier: ViewModifier {
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(TrezorViewModel.self) private var trezor
 
     func body(content: Content) -> some View {
         content
             .task {
-                trezor.setup()
+                trezorManager.setup()
             }
             .onDisappear {
                 // The ViewModel outlives this screen (app-lifetime), so watchers and
@@ -115,46 +116,46 @@ private struct TrezorDebugLogWrapper: View {
 /// Groups all sheet and overlay presentations that depend on ViewModel state,
 /// keeping TrezorRootView's body free of @Environment access.
 private struct TrezorDialogsModifier: ViewModifier {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
 
     func body(content: Content) -> some View {
-        @Bindable var trezor = trezor
+        @Bindable var trezorManager = trezorManager
         content
-            .sheet(isPresented: $trezor.showPinEntry) {
+            .sheet(isPresented: $trezorManager.showPinEntry) {
                 TrezorPinEntrySheet()
             }
             // Pairing code is presented app-wide via the SheetViewModel system (see MainNavView),
             // so the home hardware feature shows it regardless of being on this dev screen.
-            .sheet(isPresented: $trezor.showPassphraseEntry) {
+            .sheet(isPresented: $trezorManager.showPassphraseEntry) {
                 TrezorPassphraseSheet()
             }
             .confirmationDialog(
                 "Passphrase Entry",
-                isPresented: $trezor.showWalletModeChooser,
+                isPresented: $trezorManager.showWalletModeChooser,
                 titleVisibility: .visible
             ) {
                 Button("On this phone") {
-                    trezor.choosePhonePassphraseEntry()
+                    trezorManager.choosePhonePassphraseEntry()
                 }
                 .accessibilityIdentifier("TrezorWalletModeOnPhone")
 
                 Button("On the Trezor") {
-                    Task { await trezor.chooseDevicePassphraseEntry() }
+                    Task { await trezorManager.chooseDevicePassphraseEntry() }
                 }
                 .accessibilityIdentifier("TrezorWalletModeOnTrezor")
 
                 Button("Cancel", role: .cancel) {
-                    trezor.showWalletModeChooser = false
+                    trezorManager.showWalletModeChooser = false
                 }
             } message: {
                 Text("Where do you want to enter the passphrase for your hidden wallet?")
             }
             .overlay {
-                if trezor.showConfirmOnDevice {
+                if trezorManager.showConfirmOnDevice {
                     TrezorConfirmOnDeviceOverlay(
-                        message: trezor.confirmMessage,
+                        message: trezorManager.confirmMessage,
                         onCancel: {
-                            trezor.dismissConfirmOnDevice()
+                            trezorManager.dismissConfirmOnDevice()
                         }
                     )
                 }
@@ -165,6 +166,7 @@ private struct TrezorDialogsModifier: ViewModifier {
 // MARK: - Network Selector
 
 private struct NetworkSelectorRow: View {
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(TrezorViewModel.self) private var trezor
 
     private let networks: [(TrezorCoinType, String)] = [
@@ -182,13 +184,13 @@ private struct NetworkSelectorRow: View {
             HStack(spacing: 8) {
                 ForEach(Array(networks.enumerated()), id: \.offset) { _, item in
                     let (network, label) = item
-                    Button(action: { trezor.setSelectedNetwork(network) }) {
+                    Button(action: { selectNetwork(network) }) {
                         Text(label)
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(trezor.selectedNetwork == network ? .white : .white.opacity(0.5))
+                            .foregroundColor(trezorManager.selectedNetwork == network ? .white : .white.opacity(0.5))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 6)
-                            .background(trezor.selectedNetwork == network ? Color.white.opacity(0.2) : Color.white.opacity(0.05))
+                            .background(trezorManager.selectedNetwork == network ? Color.white.opacity(0.2) : Color.white.opacity(0.05))
                             .clipShape(Capsule())
                     }
                     .accessibilityIdentifier("TrezorNetwork-\(label)")
@@ -199,12 +201,18 @@ private struct NetworkSelectorRow: View {
         .frame(maxWidth: .infinity)
         .background(Color.white.opacity(0.02))
     }
+
+    private func selectNetwork(_ network: TrezorCoinType) {
+        guard network != trezorManager.selectedNetwork else { return }
+        trezorManager.setSelectedNetwork(network)
+        trezor.handleNetworkChange()
+    }
 }
 
 // MARK: - PIN Entry Sheet
 
 struct TrezorPinEntrySheet: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(\.dismiss) private var dismiss
     @State private var pin: String = ""
 
@@ -233,7 +241,7 @@ struct TrezorPinEntrySheet: View {
             // Buttons
             HStack(spacing: 16) {
                 Button(action: {
-                    trezor.cancelPin()
+                    trezorManager.cancelPin()
                     dismiss()
                 }) {
                     Text("Cancel")
@@ -247,7 +255,7 @@ struct TrezorPinEntrySheet: View {
                 .accessibilityIdentifier("TrezorPinCancel")
 
                 Button(action: {
-                    trezor.submitPin(pin)
+                    trezorManager.submitPin(pin)
                     dismiss()
                 }) {
                     Text("Confirm")
@@ -275,7 +283,7 @@ struct TrezorPinEntrySheet: View {
 // MARK: - Pairing Code Sheet
 
 struct TrezorPairingCodeSheet: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(\.dismiss) private var dismiss
     @State private var code: String = ""
     @State private var hasSubmitted = false
@@ -307,7 +315,7 @@ struct TrezorPairingCodeSheet: View {
             // Buttons
             HStack(spacing: 16) {
                 Button(action: {
-                    trezor.cancelPairingCode()
+                    trezorManager.cancelPairingCode()
                     dismiss()
                 }) {
                     Text("Cancel")
@@ -323,7 +331,7 @@ struct TrezorPairingCodeSheet: View {
                 Button(action: {
                     guard !hasSubmitted else { return }
                     hasSubmitted = true
-                    trezor.submitPairingCode(code)
+                    trezorManager.submitPairingCode(code)
                     dismiss()
                 }) {
                     Text("Confirm")
@@ -349,7 +357,7 @@ struct TrezorPairingCodeSheet: View {
             if newValue.count == digitCount {
                 guard !hasSubmitted else { return }
                 hasSubmitted = true
-                trezor.submitPairingCode(newValue)
+                trezorManager.submitPairingCode(newValue)
                 dismiss()
             }
         }
@@ -359,7 +367,7 @@ struct TrezorPairingCodeSheet: View {
 // MARK: - Passphrase Sheet
 
 struct TrezorPassphraseSheet: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(\.dismiss) private var dismiss
     @State private var passphrase: String = ""
     @State private var confirmPassphrase: String = ""
@@ -426,10 +434,10 @@ struct TrezorPassphraseSheet: View {
                 }
 
                 // Offer on-device entry when the connected Trezor supports it
-                if trezor.passphraseEntryCapable {
+                if trezorManager.passphraseEntryCapable {
                     CustomButton(title: "Enter on Trezor instead", variant: .tertiary) {
                         dismiss()
-                        await trezor.chooseDevicePassphraseEntry()
+                        await trezorManager.chooseDevicePassphraseEntry()
                     }
                     .padding(.top, 4)
                     .accessibilityIdentifier("TrezorPassphraseUseDevice")
@@ -442,7 +450,7 @@ struct TrezorPassphraseSheet: View {
             // Buttons
             HStack(spacing: 16) {
                 Button(action: {
-                    trezor.cancelPassphrase()
+                    trezorManager.cancelPassphrase()
                     dismiss()
                 }) {
                     Text("Cancel")
@@ -458,7 +466,7 @@ struct TrezorPassphraseSheet: View {
                 Button(action: {
                     let entered = passphrase
                     dismiss()
-                    Task { await trezor.submitPassphrase(entered) }
+                    Task { await trezorManager.submitPassphrase(entered) }
                 }) {
                     Text("Confirm")
                         .font(.system(size: 16, weight: .semibold))
@@ -652,7 +660,8 @@ struct TrezorDebugLogPanel: View {
     struct TrezorRootView_Previews: PreviewProvider {
         static var previews: some View {
             TrezorRootView()
-                .environment(TrezorViewModel())
+                .environment(TrezorManager())
+                .environment(TrezorViewModel(connection: TrezorManager()))
         }
     }
 #endif

@@ -3,11 +3,11 @@ import BitkitCore
 import Combine
 import XCTest
 
-/// Engine tests for `HwWalletRepo`, adapting bitkit-android's `HwWalletRepoTest`.
+/// Engine tests for `HwWalletManager`, adapting bitkit-android's `HwWalletRepoTest`.
 /// The engine is driven directly (no live `TrezorViewModel`) via `updateDevices` and
 /// `handleWatcherEvent`, with spies for the bitkit-core persistence side.
 @MainActor
-final class HwWalletRepoTests: XCTestCase {
+final class HwWalletManagerTests: XCTestCase {
     // MARK: - Mocks & spies
 
     private final class MockWatcherService: TrezorWatcherServicing, @unchecked Sendable {
@@ -43,9 +43,8 @@ final class HwWalletRepoTests: XCTestCase {
     private func makeViewModel(
         watcherService: TrezorWatcherServicing = MockWatcherService(),
         monitored: Set<String> = ["legacy", "nestedSegwit", "nativeSegwit", "taproot"]
-    ) -> HwWalletRepo {
-        let vm = HwWalletRepo(
-            trezor: nil,
+    ) -> HwWalletManager {
+        let vm = HwWalletManager(
             watcherService: watcherService,
             monitoredTypes: { monitored },
             electrumUrl: { "ssl://test:1" },

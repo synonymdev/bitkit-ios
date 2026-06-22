@@ -13,8 +13,8 @@ struct MainNavView: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
-    @Environment(TrezorViewModel.self) private var trezor
-    @Environment(HwWalletRepo.self) private var hwWalletRepo
+    @Environment(TrezorManager.self) private var trezorManager
+    @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(\.scenePhase) var scenePhase
 
     @State private var showClipboardAlert = false
@@ -213,7 +213,7 @@ struct MainNavView: View {
         ) {
             config in HardwarePairingSheet(config: config)
         }
-        .onChange(of: trezor.showPairingCode) { _, needsCode in
+        .onChange(of: trezorManager.showPairingCode) { _, needsCode in
             // A hardware device asked for its one-time pairing code (e.g. during reconnect);
             // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
             if needsCode {
@@ -222,7 +222,7 @@ struct MainNavView: View {
                 sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")
             }
         }
-        .onReceive(hwWalletRepo.receivedTxPublisher) { tx in
+        .onReceive(hwWalletManager.receivedTxPublisher) { tx in
             // New inbound transaction to a watched hardware wallet — show the received celebration.
             sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: tx.sats))
         }

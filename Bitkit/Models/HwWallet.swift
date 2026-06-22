@@ -4,7 +4,7 @@ import Foundation
 /// A paired hardware wallet tracked as a watch-only balance.
 ///
 /// Activities are NOT held here — they are persisted in bitkit-core scoped by `walletId`
-/// and read back through the normal activity pipeline (see `HwWalletRepo`).
+/// and read back through the normal activity pipeline (see `HwWalletManager`).
 struct HwWallet: Identifiable {
     let id: String
     /// bitkit-core wallet id scoping this device's activities (see `HwWalletId`).

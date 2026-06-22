@@ -25,7 +25,7 @@ enum AppReset {
 
         // Stop any running watch-only hardware-wallet watchers. Their persisted xpubs/known
         // devices and activities are cleared below by the UserDefaults/keychain/core-DB wipes;
-        // the app-lifetime HwWalletRepo is rebuilt by session.bump() at the end of this wipe.
+        // the app-lifetime HwWalletManager is rebuilt by session.bump() at the end of this wipe.
         TrezorService.shared.stopAllWatchers()
 
         // Stop node and wipe LDK persistence via the wallet API.

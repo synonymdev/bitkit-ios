@@ -4,7 +4,7 @@ import SwiftUI
 /// View displayed when connected to a Trezor device.
 /// Uses expandable sections instead of navigation to separate screens.
 struct TrezorConnectedView: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
     @State private var isAddressExpanded = false
     @State private var isSignMessageExpanded = false
     @State private var isPublicKeyExpanded = false
@@ -19,8 +19,8 @@ struct TrezorConnectedView: View {
             VStack(spacing: 24) {
                 // Device card
                 DeviceInfoCard(
-                    device: trezor.connectedDevice,
-                    features: trezor.deviceFeatures
+                    device: trezorManager.connectedDevice,
+                    features: trezorManager.deviceFeatures
                 )
 
                 // Wallet mode selector (standard vs hidden/passphrase wallet)
@@ -112,7 +112,7 @@ struct TrezorConnectedView: View {
                 // Disconnect button
                 Button(action: {
                     Task {
-                        await trezor.disconnect()
+                        await trezorManager.disconnect()
                     }
                 }) {
                     HStack(spacing: 8) {
@@ -142,8 +142,8 @@ struct TrezorConnectedView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 TrezorStatusBadge(
-                    isConnected: trezor.isConnected,
-                    deviceName: trezor.deviceFeatures?.label
+                    isConnected: trezorManager.isConnected,
+                    deviceName: trezorManager.deviceFeatures?.label
                 )
                 .allowsHitTesting(false)
             }
@@ -156,6 +156,7 @@ struct TrezorConnectedView: View {
 /// Lets the user switch between the standard wallet and a hidden (passphrase) wallet.
 /// Switching resets the device session (handled by the ViewModel).
 private struct WalletModeSelectorRow: View {
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(TrezorViewModel.self) private var trezor
 
     private enum WalletModeTab: CaseIterable, CustomStringConvertible {
@@ -175,13 +176,13 @@ private struct WalletModeSelectorRow: View {
     /// passphrase flow completes).
     private var selectedTab: Binding<WalletModeTab> {
         Binding(
-            get: { trezor.walletMode == .standard ? .standard : .passphrase },
+            get: { trezorManager.walletMode == .standard ? .standard : .passphrase },
             set: { newValue in
                 switch newValue {
                 case .standard:
-                    Task { await trezor.selectStandardWallet() }
+                    Task { await trezorManager.selectStandardWallet() }
                 case .passphrase:
-                    trezor.requestPassphraseWallet()
+                    trezorManager.requestPassphraseWallet()
                 }
             }
         )
@@ -253,7 +254,7 @@ private struct DeviceInfoCard: View {
             NavigationStack {
                 TrezorConnectedView()
             }
-            .environment(TrezorViewModel())
+            .environment(TrezorManager())
         }
     }
 #endif

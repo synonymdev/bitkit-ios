@@ -327,3 +327,46 @@ class TrezorService {
         Logger.info("Cleared credentials for device: \(deviceId)", context: "TrezorService")
     }
 }
+
+// MARK: - Network / Electrum helpers
+
+/// Network- and Electrum-derivation helpers shared by all Trezor consumers (`TrezorManager`,
+/// `TrezorViewModel`, `HwWalletManager`). They live on the service layer so feature managers
+/// don't reference each other for plain network/electrum configuration.
+extension TrezorService {
+    /// The app's global network mapped to a `TrezorCoinType`.
+    static var appDefaultCoinType: TrezorCoinType {
+        switch Env.network {
+        case .bitcoin: .bitcoin
+        case .testnet: .testnet
+        case .signet: .signet
+        case .regtest: .regtest
+        }
+    }
+
+    /// BIP44 coin-type component for the app's global network: "0'" mainnet, "1'" test networks.
+    static var defaultCoinTypeComponent: String {
+        Env.network == .bitcoin ? "0'" : "1'"
+    }
+
+    /// Hardcoded Electrum server URL per network (with the regtest dev override).
+    static func electrumUrlForNetwork(_ network: TrezorCoinType) -> String {
+        if network == .regtest, let trezorElectrumUrl = Env.trezorElectrumUrl {
+            return trezorElectrumUrl
+        }
+        switch network {
+        case .bitcoin:
+            return "ssl://bitkit.to:9999"
+        case .testnet, .signet:
+            return "ssl://electrum.blockstream.info:60002"
+        case .regtest:
+            return "ssl://electrs.bitkit.stag0.blocktank.to:9999"
+        }
+    }
+
+    /// The app's configured Electrum server (falls back to the default).
+    static func getElectrumUrl() -> String {
+        let server = ElectrumConfigService().getCurrentServer()
+        return server.fullUrl.isEmpty ? Env.electrumServerUrl : server.fullUrl
+    }
+}

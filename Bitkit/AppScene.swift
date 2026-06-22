@@ -31,8 +31,9 @@ struct AppScene: View {
     @StateObject private var pubkyProfile = PubkyProfileManager()
     @StateObject private var contactsManager = ContactsManager()
     @State private var keyboardManager = KeyboardManager()
+    @State private var trezorManager: TrezorManager
     @State private var trezorViewModel: TrezorViewModel
-    @State private var hwWalletRepo: HwWalletRepo
+    @State private var hwWalletManager: HwWalletManager
     @State private var calculatorInputManager = CalculatorInputManager()
 
     @State private var hideSplash = false
@@ -83,9 +84,11 @@ struct AppScene: View {
 
         _transferTracking = StateObject(wrappedValue: TransferTrackingManager(service: transferService))
 
-        let trezor = TrezorViewModel()
-        _trezorViewModel = State(initialValue: trezor)
-        _hwWalletRepo = State(initialValue: HwWalletRepo(trezor: trezor))
+        let trezorManager = TrezorManager()
+        let trezorViewModel = TrezorViewModel(connection: trezorManager)
+        _trezorManager = State(initialValue: trezorManager)
+        _trezorViewModel = State(initialValue: trezorViewModel)
+        _hwWalletManager = State(initialValue: HwWalletManager())
 
         CoreService.shared.activity.setPrivatePaykitContactResolvers(
             invoice: { paymentHash in
@@ -111,6 +114,9 @@ struct AppScene: View {
             .onChange(of: wallet.nodeLifecycleState) { _, newValue in handleNodeLifecycleChange(newValue) }
             .onChange(of: scenePhase, initial: true) { _, newValue in handleScenePhaseChange(newValue) }
             .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
+            // Bridge Trezor device state into the watch-only manager without coupling the two:
+            // TrezorManager bumps devicesRevision on any device/connection change.
+            .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
             .onChange(of: migrations.isShowingMigrationLoading) { _, isLoading in
                 if !isLoading {
                     SettingsViewModel.shared.updatePinEnabledState()
@@ -153,8 +159,9 @@ struct AppScene: View {
             .environmentObject(pubkyProfile)
             .environmentObject(contactsManager)
             .environment(keyboardManager)
+            .environment(trezorManager)
             .environment(trezorViewModel)
-            .environment(hwWalletRepo)
+            .environment(hwWalletManager)
             .environment(calculatorInputManager)
             .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
@@ -476,8 +483,11 @@ struct AppScene: View {
             await checkAndPerformRNMigration()
             try wallet.setWalletExistsState()
 
-            // Start watch-only hardware-wallet watchers (no-op until a device is paired).
-            hwWalletRepo.start()
+            // Load any paired hardware devices from storage and feed the watch-only manager so its
+            // watchers start at launch (no-op until a device is paired). loadKnownDevices() also
+            // bumps devicesRevision, but push explicitly so the initial state is delivered.
+            trezorManager.loadKnownDevices()
+            pushHardwareDevices()
 
             // Setup TimedSheetManager with all timed sheets
             TimedSheetManager.shared.setup(
@@ -610,7 +620,9 @@ struct AppScene: View {
         }
 
         if newPhase == .active {
-            hwWalletRepo.onAppForegrounded()
+            // Reconnect a known hardware device so its connection indicator turns green again;
+            // watch-only balances stay live regardless.
+            Task { await trezorManager.autoReconnect() }
             if wallet.walletExists == true {
                 Task {
                     await clearDeliveredNotifications()
@@ -642,6 +654,15 @@ struct AppScene: View {
         let deliveredNotifications = await center.deliveredNotifications()
         guard !deliveredNotifications.isEmpty else { return }
         center.removeDeliveredNotifications(withIdentifiers: deliveredNotifications.map(\.request.identifier))
+    }
+
+    /// Feed the current Trezor device snapshot into the watch-only manager. This is the only link
+    /// between the two managers, kept in the composition root so neither type references the other.
+    private func pushHardwareDevices() {
+        hwWalletManager.updateDevices(
+            knownDevices: trezorManager.knownDevices,
+            connectedDeviceId: trezorManager.connectedDevice?.id
+        )
     }
 
     private func handleNetworkChange(_ isConnected: Bool) {

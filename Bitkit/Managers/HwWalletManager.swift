@@ -7,13 +7,13 @@ import Foundation
 /// per-device balance in memory, and persisting each device's on-chain activity into
 /// bitkit-core scoped by a derived `walletId` (core 0.3.x wallet-scoped storage).
 ///
-/// Built on top of `TrezorViewModel`, which owns the device list, connect orchestration and the
-/// underlying watcher transport. Adapts bitkit-android's `HwWalletRepo`. iOS supports Bluetooth
-/// only, so the cross-transport (BLE+USB) dedup is reduced to a plain xpub-based identity and
-/// USB-specific reconnect handling is omitted.
+/// Fully decoupled from `TrezorManager`: it receives the paired-device snapshot through
+/// `updateDevices(...)`, fed by the composition root (`AppScene`). Adapts bitkit-android's
+/// `HwWalletRepo`. iOS supports Bluetooth only, so the cross-transport (BLE+USB) dedup is reduced
+/// to a plain xpub-based identity and USB-specific reconnect handling is omitted.
 @Observable
 @MainActor
-final class HwWalletRepo {
+final class HwWalletManager {
     private enum Constants {
         static let watcherIdSeparator = "|"
         static let watcherStartRetryDelay: Duration = .seconds(30)
@@ -39,7 +39,6 @@ final class HwWalletRepo {
 
     // MARK: - Dependencies
 
-    private weak var trezor: TrezorViewModel?
     private let watcherService: TrezorWatcherServicing
     private let monitoredTypesProvider: () -> Set<String>
     private let electrumUrlProvider: () -> String
@@ -59,7 +58,6 @@ final class HwWalletRepo {
     private var listeners: [String: TrezorEventListener] = [:]
 
     init(
-        trezor: TrezorViewModel? = nil,
         watcherService: TrezorWatcherServicing = TrezorService.shared,
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
@@ -67,13 +65,12 @@ final class HwWalletRepo {
         persistActivities: (([Activity]) -> Void)? = nil,
         deleteActivities: ((String) -> Void)? = nil
     ) {
-        self.trezor = trezor
         self.watcherService = watcherService
-        networkProvider = network ?? { TrezorViewModel.appDefaultCoinType }
+        networkProvider = network ?? { TrezorService.appDefaultCoinType }
         monitoredTypesProvider = monitoredTypes ?? {
             Set(SettingsViewModel.shared.addressTypesToMonitor.map(\.stringValue))
         }
-        electrumUrlProvider = electrumUrl ?? { TrezorViewModel.getElectrumUrl() }
+        electrumUrlProvider = electrumUrl ?? { TrezorService.getElectrumUrl() }
         self.persistActivities = persistActivities ?? { activities in
             guard !activities.isEmpty else { return }
             Task {
@@ -91,71 +88,17 @@ final class HwWalletRepo {
         }
     }
 
-    // MARK: - Lifecycle
+    // MARK: - Device input
 
-    /// Begin observing the Trezor device state and start the initial watcher sync.
-    func start() {
-        observeTrezorState()
-        refreshFromTrezor()
-    }
-
-    /// Re-read device state and monitored settings, then reconcile watchers.
-    func refresh() {
-        refreshFromTrezor()
-    }
-
-    /// On app foreground, ask the Trezor layer to reconnect a known device so the connection
-    /// indicator turns green again; watch-only balances stay live regardless.
-    func onAppForegrounded() {
-        guard let trezor else { return }
-        Task { await trezor.autoReconnect() }
-    }
-
-    private func refreshFromTrezor() {
-        guard let trezor else {
-            syncWatchers()
-            recomputeDerivedState()
-            return
-        }
-        updateDevices(knownDevices: trezor.knownDevices, connectedDeviceId: trezor.connectedDevice?.id)
-    }
-
-    private func observeTrezorState() {
-        guard let trezor else { return }
-        withObservationTracking {
-            _ = trezor.knownDevices.map { "\($0.id):\($0.xpubs.count)" }
-            _ = trezor.connectedDevice?.id
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.refreshFromTrezor()
-                self.observeTrezorState()
-            }
-        }
-    }
-
-    /// Update the device snapshot and reconcile watchers. Exposed for tests so the engine can be
-    /// exercised without a live `TrezorViewModel`.
+    /// Update the device snapshot and reconcile watchers. This is the manager's sole input: the
+    /// composition root (`AppScene`) feeds it the current Trezor device list, so this type stays
+    /// fully decoupled from `TrezorManager`. Also the test seam — tests drive it directly.
     func updateDevices(knownDevices: [TrezorKnownDevice], connectedDeviceId: String?) {
         self.knownDevices = knownDevices
         self.connectedDeviceId = connectedDeviceId
         walletsLoaded = true
         syncWatchers()
         recomputeDerivedState()
-    }
-
-    // MARK: - Pairing passthroughs
-
-    var needsPairingCode: Bool {
-        trezor?.showPairingCode ?? false
-    }
-
-    func submitPairingCode(_ code: String) {
-        trezor?.submitPairingCode(code)
-    }
-
-    func cancelPairingCode() {
-        trezor?.cancelPairingCode()
     }
 
     // MARK: - Control
@@ -176,22 +119,17 @@ final class HwWalletRepo {
         recomputeDerivedState()
     }
 
-    /// Remove a paired hardware wallet: stop its watchers, delete its stored activities, and
-    /// forget every device entry that shares the same xpub-derived identity, so the tile doesn't
-    /// reappear through another entry.
-    func removeDevice(id deviceId: String) async {
+    /// Stop watching a paired hardware wallet and delete its stored activities. The caller is
+    /// responsible for forgetting the device entries (via `TrezorManager.forgetDevice`); the next
+    /// `updateDevices(...)` push then drops it from the tile list.
+    func removeDevice(id deviceId: String) {
         let group = deviceGroups().first { $0.ids.contains(deviceId) }
         let ids = group?.ids ?? [deviceId]
         for watcherId in activeWatchers where ids.contains(self.deviceId(fromWatcherId: watcherId)) {
             _ = stopActiveWatcher(watcherId)
         }
         if let group { deleteActivities(group.walletId) }
-        if let trezor {
-            for id in ids {
-                await trezor.forgetDevice(id: id)
-            }
-        }
-        refreshFromTrezor()
+        recomputeDerivedState()
     }
 
     // MARK: - Watcher orchestration
