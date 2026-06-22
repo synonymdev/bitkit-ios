@@ -55,7 +55,7 @@ class ActivityItemViewModel: ObservableObject {
 
     func refreshActivity() async {
         do {
-            if let updatedActivity = try await coreService.activity.getActivity(id: activityId) {
+            if let updatedActivity = try await coreService.activity.getActivity(id: activityId, walletId: activity.walletId) {
                 activity = updatedActivity
             } else {
                 // Activity not found by ID - it might have been replaced by RBF

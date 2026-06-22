@@ -138,8 +138,9 @@ class ActivityListViewModel: ObservableObject {
         do {
             // Get latest activities first as that's displayed on the home view
             let limitLatest = UInt32(ActivityDisplayConstants.maxHomeActivityItems)
-            // Fetch extra to account for potential filtering of replaced transactions
-            let latest = try await coreService.activity.get(filter: .all, limit: limitLatest * 3)
+            // Fetch extra to account for potential filtering of replaced transactions.
+            // walletId nil → global: merges the Bitkit wallet with watch-only hardware wallets.
+            let latest = try await coreService.activity.get(filter: .all, limit: limitLatest * 3, walletId: nil)
             let filtered = await filterOutReplacedSentTransactions(latest)
             latestActivities = Array(filtered.prefix(Int(limitLatest)))
 
@@ -188,13 +189,16 @@ class ActivityListViewModel: ObservableObject {
                 return UInt64(nextDay.timeIntervalSince1970 - 1)
             }
 
-            // Apply base filtering
+            // Apply base filtering. walletId nil → global so the All Activity list merges the
+            // Bitkit wallet with watch-only hardware wallets (tag filters exclude hw items, which
+            // carry no tags, matching bitkit-android).
             let baseFilteredActivities = try await coreService.activity.get(
                 filter: .all,
                 tags: selectedTags.isEmpty ? nil : Array(selectedTags),
                 search: searchText.isEmpty ? nil : searchText,
                 minDate: minDate,
-                maxDate: maxDate
+                maxDate: maxDate,
+                walletId: nil
             )
 
             // Filter out replaced sent transactions that appear in another transaction's boostTxIds

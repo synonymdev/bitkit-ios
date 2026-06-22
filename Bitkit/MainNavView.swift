@@ -222,6 +222,10 @@ struct MainNavView: View {
                 sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")
             }
         }
+        .onReceive(hwWalletRepo.receivedTxPublisher) { tx in
+            // New inbound transaction to a watched hardware wallet — show the received celebration.
+            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: tx.sats))
+        }
         .accentColor(.white)
         .overlay {
             TabBar()

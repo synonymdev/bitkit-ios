@@ -990,9 +990,9 @@ class ActivityService {
         return details.outputs.first?.scriptpubkeyAddress
     }
 
-    func getActivity(id: String) async throws -> Activity? {
+    func getActivity(id: String, walletId: String = WalletScope.default) async throws -> Activity? {
         try await ServiceQueue.background(.core) {
-            try getActivityById(walletId: WalletScope.default, activityId: id)
+            try getActivityById(walletId: walletId, activityId: id)
         }
     }
 
@@ -1020,6 +1020,9 @@ class ActivityService {
         }
     }
 
+    /// Fetch activities. `walletId` defaults to the normal Bitkit wallet; pass `nil` to query
+    /// every wallet globally (Bitkit + watch-only hardware wallets) for the merged Home / All
+    /// Activity lists.
     func get(
         filter: ActivityFilter? = nil,
         txType: PaymentType? = nil,
@@ -1028,11 +1031,12 @@ class ActivityService {
         minDate: UInt64? = nil,
         maxDate: UInt64? = nil,
         limit: UInt32? = nil,
-        sortDirection: SortDirection? = nil
+        sortDirection: SortDirection? = nil,
+        walletId: String? = WalletScope.default
     ) async throws -> [Activity] {
         try await ServiceQueue.background(.core) {
             try getActivities(
-                walletId: WalletScope.default,
+                walletId: walletId,
                 filter: filter,
                 txType: txType,
                 tags: tags,
