@@ -644,6 +644,7 @@ struct ActivityItemView_Previews: PreviewProvider {
             ActivityItemView(
                 item: .lightning(
                     LightningActivity(
+                        walletId: WalletScope.default,
                         id: "test-lightning-1",
                         txType: .sent,
                         status: .succeeded,
@@ -668,6 +669,7 @@ struct ActivityItemView_Previews: PreviewProvider {
             ActivityItemView(
                 item: .onchain(
                     OnchainActivity(
+                        walletId: WalletScope.default,
                         id: "test-onchain-1",
                         txType: .received,
                         txId: "abc123",

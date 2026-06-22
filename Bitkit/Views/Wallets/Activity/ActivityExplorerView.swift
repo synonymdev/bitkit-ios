@@ -273,6 +273,7 @@ struct ActivityExplorer_Previews: PreviewProvider {
             ActivityExplorerView(
                 item: .lightning(
                     LightningActivity(
+                        walletId: WalletScope.default,
                         id: "test-lightning-1",
                         txType: .received,
                         status: .succeeded,
@@ -295,6 +296,7 @@ struct ActivityExplorer_Previews: PreviewProvider {
             ActivityExplorerView(
                 item: .onchain(
                     OnchainActivity(
+                        walletId: WalletScope.default,
                         id: "test-onchain-1",
                         txType: .received,
                         txId: "9c60a69005cbdb7323f8f0551d5c6f79a8c9c27c32475e4a0ad4a47d305c629d",
