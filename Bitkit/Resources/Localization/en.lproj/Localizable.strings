@@ -31,6 +31,11 @@
 "cards__support__description" = "Get assistance";
 "cards__hardware__title" = "Hardware";
 "cards__hardware__description" = "Connect device";
+"hardware__intro_title" = "Hardware Wallet";
+"hardware__intro_header" = "Add your <accent>hardware wallet</accent>";
+"hardware__intro_text" = "Connect your hardware device to watch or manage your long-term funds.";
+"hardware__pairing_title" = "Pair Device";
+"hardware__pairing_text" = "Enter the 6-digit code shown on your hardware device.";
 "cards__buyBitcoin__title" = "Buy";
 "cards__buyBitcoin__description" = "Buy some bitcoin";
 "cards__btFailed__title" = "Failed";

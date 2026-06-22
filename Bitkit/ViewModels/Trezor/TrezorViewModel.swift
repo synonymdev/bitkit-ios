@@ -559,7 +559,7 @@ class TrezorViewModel {
             deviceFeatures = features
             showConfirmOnDevice = false
 
-            saveCurrentDeviceAsKnown()
+            await saveCurrentDeviceAsKnown()
             trezorLog("Connected to Trezor: \(device.path)")
         } catch {
             let errorMsg = errorMessage(from: error)
@@ -837,9 +837,13 @@ class TrezorViewModel {
         knownDevices = TrezorKnownDeviceStorage.loadAll()
     }
 
-    /// Save the currently connected device as a known device
-    func saveCurrentDeviceAsKnown() {
+    /// Save the currently connected device as a known device, capturing its account
+    /// xpubs so watch-only balances/activity stay available while disconnected.
+    func saveCurrentDeviceAsKnown() async {
         guard let device = connectedDevice else { return }
+        let previous = TrezorKnownDeviceStorage.loadAll().first { $0.id == device.id }
+        let fetched = await fetchAccountXpubs()
+        let mergedXpubs = (previous?.xpubs ?? [:]).merging(fetched) { _, new in new }
         let known = TrezorKnownDevice(
             id: device.id,
             name: device.name ?? "Trezor",
@@ -847,11 +851,32 @@ class TrezorViewModel {
             transportType: device.transportType == .bluetooth ? "bluetooth" : "usb",
             label: device.label ?? deviceFeatures?.label,
             model: device.model ?? deviceFeatures?.model,
-            lastConnectedAt: Date()
+            lastConnectedAt: Date(),
+            xpubs: mergedXpubs
         )
         TrezorKnownDeviceStorage.save(known)
         loadKnownDevices()
-        trezorLog("Saved known device: \(known.name)")
+        trezorLog("Saved known device: \(known.name) with \(mergedXpubs.count) xpubs")
+    }
+
+    /// Read the account-level xpub for every address type from the connected device.
+    /// Per-type failures are swallowed so a single missing type doesn't block the rest.
+    func fetchAccountXpubs() async -> [String: String] {
+        var result: [String: String] = [:]
+        for addressType in HwAddressType.allCases {
+            do {
+                let params = TrezorGetPublicKeyParams(
+                    path: addressType.accountDerivationPath(network: selectedNetwork),
+                    coin: selectedNetwork,
+                    showOnTrezor: false
+                )
+                let response = try await trezorService.getPublicKey(params: params)
+                result[addressType.settingsString] = response.xpub
+            } catch {
+                trezorLog("Could not read xpub for '\(addressType.settingsString)': \(error)", level: "warn")
+            }
+        }
+        return result
     }
 
     /// Forget a known device — removes from storage and clears credentials
