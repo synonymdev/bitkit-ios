@@ -13,6 +13,8 @@ struct MainNavView: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(HwWalletRepo.self) private var hwWalletRepo
     @Environment(\.scenePhase) var scenePhase
 
     @State private var showClipboardAlert = false
@@ -194,6 +196,31 @@ struct MainNavView: View {
             }
         ) {
             config in WidgetsSheet(config: config)
+        }
+        .sheet(
+            item: $sheets.hardwareIntroSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in HardwareIntroSheet(config: config)
+        }
+        .sheet(
+            item: $sheets.hardwarePairingSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in HardwarePairingSheet(config: config)
+        }
+        .onChange(of: trezor.showPairingCode) { _, needsCode in
+            // A hardware device asked for its one-time pairing code (e.g. during reconnect);
+            // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
+            if needsCode {
+                sheets.showSheet(.hardwarePairing)
+            } else {
+                sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")
+            }
         }
         .accentColor(.white)
         .overlay {

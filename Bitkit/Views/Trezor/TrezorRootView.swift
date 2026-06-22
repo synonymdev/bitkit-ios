@@ -123,9 +123,8 @@ private struct TrezorDialogsModifier: ViewModifier {
             .sheet(isPresented: $trezor.showPinEntry) {
                 TrezorPinEntrySheet()
             }
-            .sheet(isPresented: $trezor.showPairingCode) {
-                TrezorPairingCodeSheet()
-            }
+            // Pairing code is presented app-wide via the SheetViewModel system (see MainNavView),
+            // so the home hardware feature shows it regardless of being on this dev screen.
             .sheet(isPresented: $trezor.showPassphraseEntry) {
                 TrezorPassphraseSheet()
             }
