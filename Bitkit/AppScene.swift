@@ -31,7 +31,8 @@ struct AppScene: View {
     @StateObject private var pubkyProfile = PubkyProfileManager()
     @StateObject private var contactsManager = ContactsManager()
     @State private var keyboardManager = KeyboardManager()
-    @State private var trezorViewModel = TrezorViewModel()
+    @State private var trezorViewModel: TrezorViewModel
+    @State private var hwWalletRepo: HwWalletRepo
     @State private var calculatorInputManager = CalculatorInputManager()
 
     @State private var hideSplash = false
@@ -81,6 +82,10 @@ struct AppScene: View {
         _settings = StateObject(wrappedValue: SettingsViewModel.shared)
 
         _transferTracking = StateObject(wrappedValue: TransferTrackingManager(service: transferService))
+
+        let trezor = TrezorViewModel()
+        _trezorViewModel = State(initialValue: trezor)
+        _hwWalletRepo = State(initialValue: HwWalletRepo(trezor: trezor))
 
         CoreService.shared.activity.setPrivatePaykitContactResolvers(
             invoice: { paymentHash in
@@ -149,6 +154,7 @@ struct AppScene: View {
             .environmentObject(contactsManager)
             .environment(keyboardManager)
             .environment(trezorViewModel)
+            .environment(hwWalletRepo)
             .environment(calculatorInputManager)
             .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
@@ -470,6 +476,9 @@ struct AppScene: View {
             await checkAndPerformRNMigration()
             try wallet.setWalletExistsState()
 
+            // Start watch-only hardware-wallet watchers (no-op until a device is paired).
+            hwWalletRepo.start()
+
             // Setup TimedSheetManager with all timed sheets
             TimedSheetManager.shared.setup(
                 sheetViewModel: sheets,
@@ -601,6 +610,7 @@ struct AppScene: View {
         }
 
         if newPhase == .active {
+            hwWalletRepo.onAppForegrounded()
             if wallet.walletExists == true {
                 Task {
                     await clearDeliveredNotifications()
