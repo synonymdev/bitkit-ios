@@ -6,6 +6,7 @@ import SwiftUI
 struct TrezorDeviceListView: View {
     @Environment(TrezorViewModel.self) private var trezor
     @State private var connectingDevicePath: String?
+    @State private var isWatcherExpanded = false
 
     /// Scanned devices that are NOT already in the known devices list
     private var nearbyDevices: [TrezorDeviceInfo] {
@@ -83,6 +84,19 @@ struct TrezorDeviceListView: View {
                     // Error display
                     if let error = trezor.error {
                         ErrorCard(message: error)
+                    }
+
+                    // Event watcher — works without a connected device (subscribes to
+                    // Electrum directly), so it is available from the device-list screen
+                    // and keeps running across connects/disconnects.
+                    TrezorExpandableSection(
+                        title: "Event Watcher",
+                        icon: "dot.radiowaves.left.and.right",
+                        description: "Watch an xpub for live on-chain activity (no device required)",
+                        accessibilityIdentifier: "TrezorSection-Watcher",
+                        isExpanded: $isWatcherExpanded
+                    ) {
+                        TrezorWatcherContent()
                     }
                 }
                 .padding(16)

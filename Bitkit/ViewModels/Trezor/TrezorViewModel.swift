@@ -10,6 +10,55 @@ enum SendStep {
     case signed
 }
 
+/// Account-type override for on-chain xpub tools. `automatic` preserves the
+/// bitkit-core prefix detector; explicit values cover ambiguous xpub/tpub keys.
+enum TrezorAccountTypeSelection: String, CaseIterable, Identifiable, CustomStringConvertible {
+    case automatic
+    case legacy
+    case wrappedSegwit
+    case nativeSegwit
+    case taproot
+
+    var id: String {
+        rawValue
+    }
+
+    /// Segment label when rendered by `SegmentedControl`
+    var description: String {
+        title
+    }
+
+    var accountType: AccountType? {
+        switch self {
+        case .automatic: nil
+        case .legacy: .legacy
+        case .wrappedSegwit: .wrappedSegwit
+        case .nativeSegwit: .nativeSegwit
+        case .taproot: .taproot
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .automatic: "Auto"
+        case .legacy: "Legacy"
+        case .wrappedSegwit: "Wrapped"
+        case .nativeSegwit: "Native"
+        case .taproot: "Taproot"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .automatic: "Prefix"
+        case .legacy: "BIP44"
+        case .wrappedSegwit: "BIP49"
+        case .nativeSegwit: "BIP84"
+        case .taproot: "BIP86"
+        }
+    }
+}
+
 /// ViewModel for Trezor hardware wallet integration
 @Observable
 @MainActor
@@ -81,6 +130,22 @@ class TrezorViewModel {
 
     /// Message for confirm on device overlay
     var confirmMessage: String = ""
+
+    /// Show the "where to enter the passphrase" chooser (phone vs Trezor).
+    /// Only presented for devices that report on-device passphrase entry capability.
+    var showWalletModeChooser: Bool = false
+
+    // MARK: - Wallet Mode State
+
+    /// The currently selected wallet mode (standard / hidden-on-phone / hidden-on-device).
+    /// Drives the wallet-mode selector UI; the binding to the device session is applied
+    /// via setWalletMode (disconnect/reconnect).
+    var walletMode: TrezorWalletMode = .standard
+
+    /// Whether the connected device supports entering the passphrase on the Trezor itself.
+    var passphraseEntryCapable: Bool {
+        deviceFeatures?.passphraseEntryCapable == true
+    }
 
     // MARK: - Address Generation State
 
@@ -220,6 +285,77 @@ class TrezorViewModel {
     /// Error specific to the send flow
     var sendError: String?
 
+    // MARK: - Event Watcher State
+
+    /// Connection status of the active watcher
+    enum WatcherConnectionStatus {
+        case idle
+        case starting
+        case connected
+        case disconnected
+        case error
+    }
+
+    /// Extended public key to watch
+    var watcherExtendedKey: String = ""
+
+    /// Gap limit input (string for the text field)
+    var watcherGapLimit: String = "20"
+
+    /// Optional account-type override shared by the on-chain xpub tools.
+    /// Changing it restarts a running (or starting) watcher so the subscription uses the new type.
+    var onchainAccountTypeSelection: TrezorAccountTypeSelection = .automatic {
+        didSet {
+            guard oldValue != onchainAccountTypeSelection else { return }
+            restartWatcherIfRunning()
+        }
+    }
+
+    /// Identifier of the active watcher, nil when not watching
+    var activeWatcherId: String?
+
+    /// Current connection status of the active watcher
+    var watcherConnectionStatus: WatcherConnectionStatus = .idle
+
+    /// Latest balance reported by the watcher
+    var watcherBalance: WalletBalance?
+
+    /// Latest block height reported by the watcher
+    var watcherBlockHeight: UInt32 = 0
+
+    /// Account type reported by the watcher
+    var watcherAccountType: AccountType?
+
+    /// Transaction count reported by the watcher
+    var watcherTransactionCount: UInt32 = 0
+
+    /// Latest transactions reported by the watcher
+    var watcherTransactions: [HistoryTransaction] = []
+
+    /// Rolling event log (most recent last, capped)
+    var watcherEvents: [String] = []
+
+    /// Error scoped to the watcher section.
+    var watcherError: String?
+
+    /// Whether a watcher is in the process of starting
+    var isStartingWatcher: Bool = false
+
+    /// Identifier of a watcher whose native start call is still in flight.
+    private var startingWatcherId: String?
+
+    /// Strong reference to the active listener so it stays alive while watching
+    private var watcherListener: TrezorEventListener?
+
+    /// Whether the watcher section has status or output worth keeping visible.
+    var hasVisibleWatcherStatus: Bool {
+        activeWatcherId != nil ||
+            isStartingWatcher ||
+            watcherConnectionStatus == .error ||
+            watcherBalance != nil ||
+            !watcherEvents.isEmpty
+    }
+
     // MARK: - Bluetooth State
 
     /// Current Bluetooth state — reads directly from BLEManager (@Observable chaining)
@@ -234,6 +370,7 @@ class TrezorViewModel {
     // MARK: - Private Properties
 
     private let trezorService = TrezorService.shared
+    private let watcherService: TrezorWatcherServicing
     private let transport = TrezorTransport.shared
     private let uiHandler = TrezorUiHandler.shared
     private var cancellables = Set<AnyCancellable>()
@@ -241,7 +378,8 @@ class TrezorViewModel {
 
     // MARK: - Initialization
 
-    init() {
+    init(watcherService: TrezorWatcherServicing = TrezorService.shared) {
+        self.watcherService = watcherService
         selectedNetwork = Self.appDefaultCoinType
         // Callback subscriptions are deferred to initialize() to avoid
         // triggering BLE stack and Combine overhead at app launch.
@@ -265,18 +403,10 @@ class TrezorViewModel {
             }
             .store(in: &cancellables)
 
-        // Passphrase request from device
-        uiHandler.needsPassphrasePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] onDevice in
-                if onDevice {
-                    self?.showConfirmOnDevice = true
-                    self?.confirmMessage = "Enter passphrase on your Trezor"
-                } else {
-                    self?.showPassphraseEntry = true
-                }
-            }
-            .store(in: &cancellables)
+        // Passphrase entry is now driven proactively by the wallet-mode selector
+        // (see setWalletMode / requestPassphraseWallet). The device callback
+        // `onPassphraseRequest` is answered silently from the selected mode, so there
+        // is no reactive passphrase prompt to subscribe to here.
     }
 
     // MARK: - Debug Log Helper
@@ -292,6 +422,29 @@ class TrezorViewModel {
             Logger.info(message, context: "TrezorViewModel")
         }
         TrezorDebugLog.shared.log(message)
+    }
+
+    // MARK: - State Reset Helpers
+
+    func clearWalletDerivedState() {
+        deviceFingerprint = nil
+        generatedAddress = nil
+        signedMessage = nil
+        xpub = nil
+        publicKeyHex = nil
+    }
+
+    func clearDisconnectedDeviceState(errorMessage: String? = nil) {
+        connectedDevice = nil
+        deviceFeatures = nil
+        clearWalletDerivedState()
+        error = errorMessage
+        showPinEntry = false
+        showPassphraseEntry = false
+        showConfirmOnDevice = false
+        showWalletModeChooser = false
+        uiHandler.setWalletMode(.standard)
+        walletMode = .standard
     }
 
     // MARK: - Manager Setup
@@ -392,10 +545,16 @@ class TrezorViewModel {
         error = nil
         suppressNextAutoReconnect = false
 
+        // Explicit user-initiated connect always opens the standard wallet — a
+        // passphrase/on-device selection left over from a previously connected device
+        // must not silently apply to a newly selected one.
+        uiHandler.setWalletMode(.standard)
+        walletMode = .standard
+
         trezorLog("=== Connecting to device: \(device.path) ===")
 
         do {
-            let features = try await trezorService.connect(deviceId: device.path)
+            let features = try await trezorService.connect(deviceId: device.path, selection: uiHandler.currentSelection())
             connectedDevice = device
             deviceFeatures = features
             showConfirmOnDevice = false
@@ -415,27 +574,20 @@ class TrezorViewModel {
         guard connectedDevice != nil else { return }
         suppressNextAutoReconnect = true
 
+        // NOTE: the event watcher is intentionally NOT stopped here. It subscribes to
+        // Electrum directly and does not require a connected device, so it survives a
+        // disconnect and remains controllable from the device-list screen. It is only
+        // torn down on a network switch (different Electrum server) or via stopWatcher().
+
         do {
             try await trezorService.disconnect()
             // Clear connection state but preserve device list for quick reconnection
-            connectedDevice = nil
-            deviceFeatures = nil
-            deviceFingerprint = nil
-            generatedAddress = nil
-            signedMessage = nil
-            xpub = nil
-            publicKeyHex = nil
-            error = nil
-            showPinEntry = false
-            showPassphraseEntry = false
-            showConfirmOnDevice = false
+            clearDisconnectedDeviceState()
 
             trezorLog("Disconnected from Trezor")
         } catch {
             // Even if disconnect fails, clear local state
-            connectedDevice = nil
-            deviceFeatures = nil
-            self.error = errorMessage(from: error)
+            clearDisconnectedDeviceState(errorMessage: errorMessage(from: error))
             trezorLog("Disconnect failed: \(error)", level: "error")
         }
     }
@@ -567,18 +719,97 @@ class TrezorViewModel {
         uiHandler.cancelPin()
     }
 
-    /// Submit passphrase from UI
-    func submitPassphrase(_ passphrase: String) {
+    /// Submit a host-entered passphrase from the UI — opens the corresponding hidden
+    /// wallet (or the standard wallet when empty) by resetting the session.
+    func submitPassphrase(_ passphrase: String) async {
         showPassphraseEntry = false
         showConfirmOnDevice = false
-        uiHandler.submitPassphrase(passphrase)
+        await setWalletMode(passphrase.isEmpty ? .standard : .passphraseHost, passphrase: passphrase)
     }
 
     /// Cancel passphrase entry
     func cancelPassphrase() {
         showPassphraseEntry = false
         showConfirmOnDevice = false
-        uiHandler.cancelPassphrase()
+        showWalletModeChooser = false
+    }
+
+    // MARK: - Wallet Mode Selection
+
+    /// User tapped the "Standard" wallet option in the selector.
+    func selectStandardWallet() async {
+        guard walletMode != .standard else { return }
+        await setWalletMode(.standard)
+    }
+
+    /// User tapped the "Passphrase" wallet option. On a capable device this offers a
+    /// choice of where to enter the passphrase; otherwise it goes straight to host entry.
+    func requestPassphraseWallet() {
+        if passphraseEntryCapable {
+            showWalletModeChooser = true
+        } else {
+            showPassphraseEntry = true
+        }
+    }
+
+    /// Wallet-mode chooser: user chose to enter the passphrase on this phone.
+    func choosePhonePassphraseEntry() {
+        showWalletModeChooser = false
+        showPassphraseEntry = true
+    }
+
+    /// Wallet-mode chooser: user chose to enter the passphrase on the Trezor.
+    func chooseDevicePassphraseEntry() async {
+        showWalletModeChooser = false
+        await setWalletMode(.passphraseDevice)
+    }
+
+    /// Switch between wallet modes. The Trezor caches the passphrase for the whole
+    /// session, so switching requires a fresh session: this records the desired mode,
+    /// then disconnects and reconnects by path. Mirrors bitkit-android's setWalletMode.
+    func setWalletMode(_ mode: TrezorWalletMode, passphrase: String = "") async {
+        guard let device = connectedDevice else {
+            error = "Not connected to a Trezor"
+            return
+        }
+
+        isOperating = true
+        error = nil
+        trezorLog("=== Switching wallet mode to \(mode); resetting session ===")
+
+        // Reset the session. We call the service directly (not the VM's disconnect())
+        // so connectedDevice/deviceFeatures stay populated for the reconnect.
+        do {
+            try await trezorService.disconnect()
+        } catch {
+            trezorLog("Disconnect before wallet-mode switch failed: \(error)", level: "warn")
+        }
+
+        // Results derived from the previous wallet are no longer valid once the
+        // session has been reset for a different wallet mode.
+        clearWalletDerivedState()
+
+        // Brief settle delay before reconnecting (matches Android's reconnect delay).
+        try? await Task.sleep(nanoseconds: 300_000_000)
+
+        // Record the selection AFTER the disconnect so it survives into the new session.
+        // THP reads it via currentSelection() to bind the passphrase at session creation;
+        // non-THP devices re-request it mid-operation and are answered from the same value.
+        uiHandler.setWalletMode(mode, hostPassphrase: passphrase)
+        walletMode = mode
+
+        do {
+            let features = try await trezorService.connect(deviceId: device.path, selection: uiHandler.currentSelection())
+            connectedDevice = device
+            deviceFeatures = features
+            showConfirmOnDevice = false
+            trezorLog("Reconnected with wallet mode \(mode)")
+        } catch {
+            clearDisconnectedDeviceState(errorMessage: errorMessage(from: error))
+            trezorLog("Reconnect after wallet-mode switch failed: \(error)", level: "error")
+        }
+
+        isOperating = false
     }
 
     /// Submit pairing code from UI
@@ -597,7 +828,6 @@ class TrezorViewModel {
     func dismissConfirmOnDevice() {
         showConfirmOnDevice = false
         confirmMessage = ""
-        uiHandler.acknowledgeOnDevicePassphrase()
     }
 
     // MARK: - Known Devices
@@ -845,6 +1075,9 @@ class TrezorViewModel {
         guard network != selectedNetwork else { return }
         selectedNetwork = network
 
+        // A running watcher is bound to the previous network's Electrum server.
+        stopWatcher()
+
         // Reset derivation paths with the new coin type
         derivationPath = "m/84'/\(coinTypeComponent)/0'/0/0"
         publicKeyPath = "m/84'/\(coinTypeComponent)/0'"
@@ -911,7 +1144,8 @@ class TrezorViewModel {
                 accountResult = try await trezorService.getAccountInfo(
                     extendedKey: trimmedInput,
                     electrumUrl: electrumUrl,
-                    network: selectedNetwork
+                    network: selectedNetwork,
+                    scriptType: onchainAccountTypeSelection.accountType
                 )
             case .address:
                 addressResult = try await trezorService.getAddressInfo(
@@ -951,6 +1185,8 @@ class TrezorViewModel {
                 return "Invalid transaction ID: \(errorDetails)"
             case let .TransactionNotFound(errorDetails):
                 return "Transaction not found: \(errorDetails)"
+            case let .WatcherError(errorDetails):
+                return "Watcher error: \(errorDetails)"
             }
         }
         if let appError = error as? AppError,
@@ -978,7 +1214,8 @@ class TrezorViewModel {
             txHistoryResult = try await trezorService.getTransactionHistory(
                 extendedKey: trimmedKey,
                 electrumUrl: electrumUrl,
-                network: selectedNetwork
+                network: selectedNetwork,
+                scriptType: onchainAccountTypeSelection.accountType
             )
         } catch {
             txHistoryError = formatLookupError(error)
@@ -1006,7 +1243,8 @@ class TrezorViewModel {
                 extendedKey: trimmedKey,
                 electrumUrl: electrumUrl,
                 txid: trimmedTxid,
-                network: selectedNetwork
+                network: selectedNetwork,
+                scriptType: onchainAccountTypeSelection.accountType
             )
         } catch {
             txDetailError = formatLookupError(error)
@@ -1336,6 +1574,253 @@ class TrezorViewModel {
             self.error = errorMessage(from: error)
             trezorLog("Failed to clear credentials: \(error)", level: "error")
         }
+    }
+
+    // MARK: - Event Watcher Operations
+
+    /// Copy the most recently retrieved xpub into the watcher's extended-key field.
+    func populateWatcherFromXpub() {
+        if let xpub {
+            watcherExtendedKey = xpub
+        }
+    }
+
+    /// Start watching the entered extended key for on-chain activity.
+    func startWatcher() async {
+        let key = watcherExtendedKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            watcherError = "Enter an extended public key to watch"
+            return
+        }
+        guard !isStartingWatcher, activeWatcherId == nil else { return }
+
+        guard let gapLimit = UInt32(watcherGapLimit.trimmingCharacters(in: .whitespacesAndNewlines)), gapLimit > 0 else {
+            watcherError = "Gap limit must be a positive integer"
+            return
+        }
+
+        let watcherId = UUID().uuidString
+        let network = selectedNetwork
+        let accountType = onchainAccountTypeSelection.accountType
+
+        let params = WatcherParams(
+            watcherId: watcherId,
+            extendedKey: key,
+            electrumUrl: Self.electrumUrlForNetwork(network),
+            network: toNetwork(network),
+            accountType: accountType,
+            gapLimit: gapLimit
+        )
+
+        let listener = TrezorEventListener { [weak self] id, event in
+            self?.handleWatcherEvent(watcherId: id, event: event)
+        }
+        watcherListener = listener
+
+        isStartingWatcher = true
+        startingWatcherId = watcherId
+        watcherConnectionStatus = .starting
+        watcherTransactions = []
+        watcherEvents = ["starting: \(watcherId)"]
+        watcherBalance = nil
+        watcherTransactionCount = 0
+        watcherBlockHeight = 0
+        watcherAccountType = nil
+        watcherError = nil
+        trezorLog("Starting watcher \(watcherId) for \(key.prefix(12))...")
+
+        do {
+            try await watcherService.startWatcher(params: params, listener: listener)
+            guard startingWatcherId == watcherId else {
+                try? watcherService.stopWatcher(watcherId: watcherId)
+                trezorLog("Stopped stale watcher start: \(watcherId)", level: "warn")
+                return
+            }
+
+            if selectedNetwork != network {
+                try? watcherService.stopWatcher(watcherId: watcherId)
+                finishStoppedWatcherStartup(watcherId: watcherId)
+                return
+            }
+
+            if onchainAccountTypeSelection.accountType != accountType {
+                try? watcherService.stopWatcher(watcherId: watcherId)
+                finishStoppedWatcherStartup(watcherId: watcherId)
+                trezorLog("Account type changed during watcher startup, restarting: \(watcherId)")
+                scheduleWatcherRestart()
+                return
+            }
+
+            activeWatcherId = watcherId
+            startingWatcherId = nil
+            isStartingWatcher = false
+            appendWatcherEvent("started")
+            trezorLog("Watcher started: \(watcherId)")
+        } catch {
+            guard startingWatcherId == watcherId else {
+                trezorLog("Superseded watcher start failed: \(watcherId)", level: "warn")
+                return
+            }
+
+            // A native-side stop that aborts the Rust startup surfaces here as a
+            // thrown error rather than a return. A Swift-side stop is already handled
+            // by the quarantine in stopWatcher() and the stale guard above; this covers
+            // the core stopping the watcher directly. It's a cancellation, not a
+            // failure the user caused.
+            if Self.isWatcherStartupCancellation(error) {
+                finishStoppedWatcherStartup(watcherId: watcherId)
+                return
+            }
+
+            let message = errorMessage(from: error)
+            watcherError = message
+            watcherConnectionStatus = .error
+            activeWatcherId = nil
+            startingWatcherId = nil
+            watcherListener = nil
+            appendWatcherEvent("start failed: \(message)")
+            trezorLog("Watcher start failed: \(error)", level: "error")
+            isStartingWatcher = false
+        }
+    }
+
+    /// Stop the active watcher, if any. A watcher whose native start call is still
+    /// in flight is stopped too: its id is quarantined so handleWatcherEvent drops
+    /// any events that arrive before the native call returns.
+    func stopWatcher() {
+        if let startingId = startingWatcherId {
+            // Abort the in-flight native startup and quarantine the id; if the
+            // native call still returns success, startWatcher's stale-start check
+            // stops the watcher then.
+            try? watcherService.stopWatcher(watcherId: startingId)
+            finishStoppedWatcherStartup(watcherId: startingId)
+        }
+
+        guard let watcherId = activeWatcherId else { return }
+        do {
+            try watcherService.stopWatcher(watcherId: watcherId)
+        } catch {
+            trezorLog("Watcher stop failed: \(error)", level: "warn")
+        }
+        activeWatcherId = nil
+        watcherConnectionStatus = .idle
+        watcherListener = nil
+        watcherBalance = nil
+        watcherTransactions = []
+        watcherTransactionCount = 0
+        watcherBlockHeight = 0
+        watcherAccountType = nil
+        watcherEvents = []
+        watcherError = nil
+        trezorLog("Watcher stopped: \(watcherId)")
+    }
+
+    /// Tear down all watchers when the Trezor dashboard is dismissed. On Android this
+    /// happens in the ViewModel's onCleared, but this ViewModel is app-lifetime, so the
+    /// root view calls it from onDisappear.
+    func stopAllWatchers() {
+        stopWatcher()
+        watcherService.stopAllWatchers()
+    }
+
+    /// Full teardown when the Trezor dashboard is dismissed: stop all watchers and
+    /// reset the watcher input state so the next visit starts fresh.
+    func handleDashboardDismiss() {
+        stopAllWatchers()
+        watcherExtendedKey = ""
+        watcherGapLimit = "20"
+        onchainAccountTypeSelection = .automatic
+    }
+
+    /// Restart a running watcher (e.g. after the account-type override changes)
+    /// so the Electrum subscription reflects the new settings. A change that lands
+    /// while a start is still in flight is handled by startWatcher itself, which
+    /// re-checks the selection once the native call returns.
+    private func restartWatcherIfRunning() {
+        guard activeWatcherId != nil else { return }
+        stopWatcher()
+        scheduleWatcherRestart()
+    }
+
+    /// Start a replacement watcher on the next main-actor turn. Bails if the input
+    /// state was cleared in the meantime (dashboard dismissed) so an unsolicited
+    /// restart never revives a watcher or surfaces a validation error.
+    private func scheduleWatcherRestart() {
+        Task {
+            guard !watcherExtendedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            await startWatcher()
+        }
+    }
+
+    /// Handle a watcher event on the main actor. Filters out events from stale watchers.
+    private func handleWatcherEvent(watcherId: String, event: WatcherEvent) {
+        guard watcherId == activeWatcherId || watcherId == startingWatcherId else { return }
+
+        switch event {
+        case let .transactionsChanged(transactions, balance, txCount, blockHeight, accountType):
+            watcherConnectionStatus = .connected
+            watcherError = nil
+            watcherTransactions = transactions
+            watcherBalance = balance
+            watcherTransactionCount = txCount
+            watcherBlockHeight = blockHeight
+            watcherAccountType = accountType
+            appendWatcherEvent("transactionsChanged: \(txCount) txs, balance \(balance.total) sats")
+        case let .error(message):
+            watcherConnectionStatus = .error
+            watcherError = message
+            appendWatcherEvent("error: \(message)")
+        case let .disconnected(message):
+            watcherConnectionStatus = .disconnected
+            appendWatcherEvent("disconnected: \(message)")
+        case .reconnected:
+            watcherConnectionStatus = .connected
+            appendWatcherEvent("reconnected")
+        }
+    }
+
+    /// Append to the rolling event log, capping at the most recent 50 entries.
+    private func appendWatcherEvent(_ message: String) {
+        watcherEvents.append(message)
+        if watcherEvents.count > 50 {
+            watcherEvents.removeFirst(watcherEvents.count - 50)
+        }
+    }
+
+    /// Message the Rust core throws when a stop aborts a watcher whose startup is
+    /// still in flight — a cancellation, not a genuine failure.
+    private static let watcherStartupCancelledMessage = "Watcher stopped during startup"
+
+    /// True when a thrown startup error is the Rust core reporting that the watcher
+    /// was deliberately stopped mid-startup. ServiceQueue wraps core errors in
+    /// AppError, so check the wrapped debug message as well as the typed error.
+    private static func isWatcherStartupCancellation(_ error: Error) -> Bool {
+        if let accountInfoError = error as? AccountInfoError,
+           case let .WatcherError(errorDetails) = accountInfoError
+        {
+            return errorDetails.contains(watcherStartupCancelledMessage)
+        }
+        if let appError = error as? AppError, let debugMessage = appError.debugMessage {
+            return debugMessage.contains(watcherStartupCancelledMessage)
+        }
+        return false
+    }
+
+    private func finishStoppedWatcherStartup(watcherId: String) {
+        guard startingWatcherId == watcherId else { return }
+        activeWatcherId = nil
+        startingWatcherId = nil
+        isStartingWatcher = false
+        watcherConnectionStatus = .idle
+        watcherListener = nil
+        watcherBalance = nil
+        watcherTransactions = []
+        watcherTransactionCount = 0
+        watcherBlockHeight = 0
+        watcherAccountType = nil
+        watcherEvents = []
+        watcherError = nil
+        trezorLog("Watcher startup stopped before activation: \(watcherId)")
     }
 
     // MARK: - AI Test Hooks

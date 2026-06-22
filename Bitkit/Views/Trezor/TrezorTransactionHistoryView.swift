@@ -4,10 +4,14 @@ import SwiftUI
 /// Inline content for transaction history lookup, used by expandable section.
 struct TrezorTransactionHistoryContent: View {
     @State private var input: String = ""
+    @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
+        @Bindable var trezor = trezor
         VStack(spacing: 24) {
             TxHistoryInputSection(input: $input)
+
+            TrezorAccountTypeSelector(selection: $trezor.onchainAccountTypeSelection)
 
             TxHistoryButtonWrapper(input: input)
 

@@ -4,10 +4,14 @@ import SwiftUI
 /// Inline content for balance lookup, used by expandable section.
 struct TrezorBalanceLookupContent: View {
     @State private var input: String = ""
+    @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
+        @Bindable var trezor = trezor
         VStack(spacing: 24) {
             InputSection(input: $input)
+
+            TrezorAccountTypeSelector(selection: $trezor.onchainAccountTypeSelection)
 
             LookupButtonWrapper(input: input)
 

@@ -28,6 +28,7 @@ struct TrezorRootView: View {
                 }
             }
         }
+        .modifier(TrezorLifecycleModifier())
         .modifier(TrezorDialogsModifier())
     }
 }
@@ -67,9 +68,31 @@ private struct TrezorContentSwitcher: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: trezor.isConnected)
-        .task {
-            trezor.setup()
-        }
+    }
+}
+
+// MARK: - Lifecycle Modifier
+
+/// Setup/teardown tied to the whole dashboard's lifetime. This must live on
+/// TrezorRootView's stable root: Group distributes modifiers to the active
+/// branch of TrezorContentSwitcher's conditional, so an onDisappear there fires
+/// on every connect/disconnect and would tear down watchers mid-session.
+/// The ViewModel is only accessed inside closures, so the root body still
+/// establishes no observation dependencies.
+private struct TrezorLifecycleModifier: ViewModifier {
+    @Environment(TrezorViewModel.self) private var trezor
+
+    func body(content: Content) -> some View {
+        content
+            .task {
+                trezor.setup()
+            }
+            .onDisappear {
+                // The ViewModel outlives this screen (app-lifetime), so watchers and
+                // their input state are torn down when the dashboard is dismissed —
+                // the iOS counterpart of Android's onCleared.
+                trezor.handleDashboardDismiss()
+            }
     }
 }
 
@@ -105,6 +128,27 @@ private struct TrezorDialogsModifier: ViewModifier {
             }
             .sheet(isPresented: $trezor.showPassphraseEntry) {
                 TrezorPassphraseSheet()
+            }
+            .confirmationDialog(
+                "Passphrase Entry",
+                isPresented: $trezor.showWalletModeChooser,
+                titleVisibility: .visible
+            ) {
+                Button("On this phone") {
+                    trezor.choosePhonePassphraseEntry()
+                }
+                .accessibilityIdentifier("TrezorWalletModeOnPhone")
+
+                Button("On the Trezor") {
+                    Task { await trezor.chooseDevicePassphraseEntry() }
+                }
+                .accessibilityIdentifier("TrezorWalletModeOnTrezor")
+
+                Button("Cancel", role: .cancel) {
+                    trezor.showWalletModeChooser = false
+                }
+            } message: {
+                Text("Where do you want to enter the passphrase for your hidden wallet?")
             }
             .overlay {
                 if trezor.showConfirmOnDevice {
@@ -381,6 +425,16 @@ struct TrezorPassphraseSheet: View {
                         .font(.system(size: 14))
                         .foregroundColor(.red)
                 }
+
+                // Offer on-device entry when the connected Trezor supports it
+                if trezor.passphraseEntryCapable {
+                    CustomButton(title: "Enter on Trezor instead", variant: .tertiary) {
+                        dismiss()
+                        await trezor.chooseDevicePassphraseEntry()
+                    }
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("TrezorPassphraseUseDevice")
+                }
             }
             .padding(.horizontal, 16)
 
@@ -403,8 +457,9 @@ struct TrezorPassphraseSheet: View {
                 .accessibilityIdentifier("TrezorPassphraseCancel")
 
                 Button(action: {
-                    trezor.submitPassphrase(passphrase)
+                    let entered = passphrase
                     dismiss()
+                    Task { await trezor.submitPassphrase(entered) }
                 }) {
                     Text("Confirm")
                         .font(.system(size: 16, weight: .semibold))
