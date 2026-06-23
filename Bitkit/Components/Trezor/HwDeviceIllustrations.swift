@@ -1,38 +1,42 @@
 import SwiftUI
 
-/// Staggered hardware-device hero used by the hardware intro sheet: a Trezor bleeding off the
-/// left and a blurred Ledger bleeding off the right. Ports bitkit-android's `HwDeviceIllustrations`.
+/// Staggered hardware-device hero used by the hardware intro sheet: a Trezor on the left and a
+/// blurred Ledger bleeding off the right. Ports bitkit-android's `HwDeviceIllustrations`.
 struct HwDeviceIllustrations: View {
-    /// Ratios of the 375pt-wide Figma frame. Each device is positioned by its exact top-leading
-    /// x and rendered at its natural (non-square) aspect ratio so it bleeds off the correct edge.
-    private enum Ratio {
-        static let imageHeight: CGFloat = 256.0 / 375.0
-        static let trezorWidth: CGFloat = 172.0 / 375.0
-        static let ledgerWidth: CGFloat = 203.0 / 375.0
-        static let ledgerX: CGFloat = 172.0 / 375.0
-        static let stagger: CGFloat = 11.6 / 375.0
+    /// All measurements are expressed as fractions of the Figma design frame's width, so the hero
+    /// scales proportionally to whatever width it's given. Each device is rendered at its natural
+    /// (non-square) aspect ratio; the Trezor's left bleed is baked into the exported asset, while
+    /// the Ledger is offset to bleed off the right edge.
+    private enum Layout {
+        static let referenceWidth: CGFloat = 375
+
+        static let proportionalHeight: CGFloat = 256 / referenceWidth
+        static let trezorProportionalWidth: CGFloat = 172 / referenceWidth
+        static let ledgerProportionalWidth: CGFloat = 203 / referenceWidth
+        static let ledgerProportionalX: CGFloat = 172 / referenceWidth
+        static let proportionalStagger: CGFloat = 11.6 / referenceWidth
     }
 
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
-            let imageHeight = width * Ratio.imageHeight
-            let staggerY = width * Ratio.stagger
+            let imageHeight = width * Layout.proportionalHeight
+            let staggerY = width * Layout.proportionalStagger
 
             ZStack {
                 Image("trezor")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: width * Ratio.trezorWidth, height: imageHeight)
+                    .frame(width: width * Layout.trezorProportionalWidth, height: imageHeight)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                     .offset(y: staggerY)
 
                 Image("ledger")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: width * Ratio.ledgerWidth, height: imageHeight)
+                    .frame(width: width * Layout.ledgerProportionalWidth, height: imageHeight)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    .offset(x: width * Ratio.ledgerX, y: -staggerY)
+                    .offset(x: width * Layout.ledgerProportionalX, y: -staggerY)
             }
         }
         .accessibilityHidden(true)
