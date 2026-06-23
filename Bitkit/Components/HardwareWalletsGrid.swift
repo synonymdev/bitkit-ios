@@ -7,7 +7,14 @@ struct HardwareWalletsGrid: View {
     let onTap: (HwWallet) -> Void
 
     private var rows: [[HwWallet]] {
-        stride(from: 0, to: wallets.count, by: 2).map { Array(wallets[$0 ..< min($0 + 2, wallets.count)]) }
+        chunked(wallets, into: 2)
+    }
+
+    private func chunked(_ wallets: [HwWallet], into size: Int) -> [[HwWallet]] {
+        stride(from: 0, to: wallets.count, by: size).map { start in
+            let end = min(start + size, wallets.count)
+            return Array(wallets[start ..< end])
+        }
     }
 
     var body: some View {
