@@ -9,7 +9,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
     /// Mock watcher service, standing in for Android's mocked `TrezorRepo`.
     /// `holdStart` mirrors the `CompletableDeferred`-backed mock used to keep
     /// the native start call in flight until the test resolves it.
-    private final class MockWatcherService: TrezorWatcherServicing, @unchecked Sendable {
+    private final class MockWatcherService: OnChainWatcherServicing, @unchecked Sendable {
         private let lock = NSLock()
 
         private(set) var startedParams: [WatcherParams] = []

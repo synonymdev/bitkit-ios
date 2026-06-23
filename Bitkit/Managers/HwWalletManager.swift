@@ -39,7 +39,7 @@ final class HwWalletManager {
 
     // MARK: - Dependencies
 
-    private let watcherService: TrezorWatcherServicing
+    private let watcherService: OnChainWatcherServicing
     private let monitoredTypesProvider: () -> Set<String>
     private let electrumUrlProvider: () -> String
     private let networkProvider: () -> TrezorCoinType
@@ -58,7 +58,7 @@ final class HwWalletManager {
     private var listeners: [String: TrezorEventListener] = [:]
 
     init(
-        watcherService: TrezorWatcherServicing = TrezorService.shared,
+        watcherService: OnChainWatcherServicing = OnChainHwService.shared,
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
@@ -66,11 +66,11 @@ final class HwWalletManager {
         deleteActivities: ((String) -> Void)? = nil
     ) {
         self.watcherService = watcherService
-        networkProvider = network ?? { TrezorService.appDefaultCoinType }
+        networkProvider = network ?? { OnChainHwService.appDefaultCoinType }
         monitoredTypesProvider = monitoredTypes ?? {
             Set(SettingsViewModel.shared.addressTypesToMonitor.map(\.stringValue))
         }
-        electrumUrlProvider = electrumUrl ?? { TrezorService.getElectrumUrl() }
+        electrumUrlProvider = electrumUrl ?? { OnChainHwService.getElectrumUrl() }
         self.persistActivities = persistActivities ?? { activities in
             guard !activities.isEmpty else { return }
             Task {

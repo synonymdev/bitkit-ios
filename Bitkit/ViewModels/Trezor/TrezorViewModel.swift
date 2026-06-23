@@ -81,7 +81,7 @@ class TrezorViewModel {
     // MARK: - Address Generation State
 
     /// Current derivation path
-    var derivationPath: String = "m/84'/\(TrezorService.defaultCoinTypeComponent)/0'/0/0"
+    var derivationPath: String = "m/84'/\(OnChainHwService.defaultCoinTypeComponent)/0'/0/0"
 
     /// Current script type for address generation
     var selectedScriptType: TrezorScriptType = .spendWitness
@@ -98,7 +98,7 @@ class TrezorViewModel {
     var messageToSign: String = "Hello, Trezor!"
 
     /// Path for message signing
-    var messageSigningPath: String = "m/84'/\(TrezorService.defaultCoinTypeComponent)/0'/0/0"
+    var messageSigningPath: String = "m/84'/\(OnChainHwService.defaultCoinTypeComponent)/0'/0/0"
 
     /// Signed message result
     var signedMessage: TrezorSignedMessageResponse?
@@ -111,7 +111,7 @@ class TrezorViewModel {
     // MARK: - Public Key State
 
     /// Account-level derivation path for public key
-    var publicKeyPath: String = "m/84'/\(TrezorService.defaultCoinTypeComponent)/0'"
+    var publicKeyPath: String = "m/84'/\(OnChainHwService.defaultCoinTypeComponent)/0'"
 
     /// Retrieved xpub string
     var xpub: String?
@@ -275,11 +275,12 @@ class TrezorViewModel {
     // MARK: - Private Properties
 
     private let trezorService = TrezorService.shared
-    private let watcherService: TrezorWatcherServicing
+    private let onChainService = OnChainHwService.shared
+    private let watcherService: OnChainWatcherServicing
 
     // MARK: - Initialization
 
-    init(connection: TrezorManager, watcherService: TrezorWatcherServicing = TrezorService.shared) {
+    init(connection: TrezorManager, watcherService: OnChainWatcherServicing = OnChainHwService.shared) {
         self.connection = connection
         self.watcherService = watcherService
     }
@@ -611,19 +612,19 @@ class TrezorViewModel {
         addressResult = nil
         resetSendFlow()
 
-        let electrumUrl = TrezorService.electrumUrlForNetwork(connection.selectedNetwork)
+        let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
 
         do {
             switch Self.detectInputType(trimmedInput) {
             case .extendedKey:
-                accountResult = try await trezorService.getAccountInfo(
+                accountResult = try await onChainService.getAccountInfo(
                     extendedKey: trimmedInput,
                     electrumUrl: electrumUrl,
                     network: connection.selectedNetwork,
                     scriptType: onchainAccountTypeSelection.accountType
                 )
             case .address:
-                addressResult = try await trezorService.getAddressInfo(
+                addressResult = try await onChainService.getAddressInfo(
                     address: trimmedInput,
                     electrumUrl: electrumUrl,
                     network: connection.selectedNetwork
@@ -683,10 +684,10 @@ class TrezorViewModel {
         txHistoryError = nil
         txHistoryResult = nil
 
-        let electrumUrl = TrezorService.electrumUrlForNetwork(connection.selectedNetwork)
+        let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
 
         do {
-            txHistoryResult = try await trezorService.getTransactionHistory(
+            txHistoryResult = try await onChainService.getTransactionHistory(
                 extendedKey: trimmedKey,
                 electrumUrl: electrumUrl,
                 network: connection.selectedNetwork,
@@ -711,10 +712,10 @@ class TrezorViewModel {
         txDetailError = nil
         txDetailResult = nil
 
-        let electrumUrl = TrezorService.electrumUrlForNetwork(connection.selectedNetwork)
+        let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
 
         do {
-            txDetailResult = try await trezorService.getTransactionDetail(
+            txDetailResult = try await onChainService.getTransactionDetail(
                 extendedKey: trimmedKey,
                 electrumUrl: electrumUrl,
                 txid: trimmedTxid,
@@ -788,7 +789,7 @@ class TrezorViewModel {
             ? .sendMax(address: address)
             : .payment(address: address, amountSats: UInt64(sendAmountSats) ?? 0)
 
-        let electrumUrl = TrezorService.electrumUrlForNetwork(connection.selectedNetwork)
+        let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
         let network = toNetwork(connection.selectedNetwork)
 
         let wallet = WalletParams(
@@ -807,7 +808,7 @@ class TrezorViewModel {
         )
 
         do {
-            let results = try await trezorService.composeTransaction(params: params)
+            let results = try await onChainService.composeTransaction(params: params)
             handleComposeResults(results)
         } catch {
             trezorLog("composeTx FAILED: \(error)", level: "error")
@@ -904,10 +905,10 @@ class TrezorViewModel {
         isBroadcasting = true
         sendError = nil
 
-        let electrumUrl = TrezorService.electrumUrlForNetwork(connection.selectedNetwork)
+        let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
 
         do {
-            let txid = try await trezorService.broadcastRawTx(serializedTx: rawTx, electrumUrl: electrumUrl)
+            let txid = try await onChainService.broadcastRawTx(serializedTx: rawTx, electrumUrl: electrumUrl)
             trezorLog("BROADCAST SUCCESS txid=\(txid)")
             broadcastTxid = txid
         } catch {
@@ -1063,7 +1064,7 @@ class TrezorViewModel {
         let params = WatcherParams(
             watcherId: watcherId,
             extendedKey: key,
-            electrumUrl: TrezorService.electrumUrlForNetwork(network),
+            electrumUrl: OnChainHwService.electrumUrlForNetwork(network),
             network: toNetwork(network),
             accountType: accountType,
             gapLimit: gapLimit

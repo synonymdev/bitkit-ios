@@ -123,7 +123,7 @@ final class TrezorManager {
     // MARK: - Initialization
 
     init() {
-        selectedNetwork = TrezorService.appDefaultCoinType
+        selectedNetwork = OnChainHwService.appDefaultCoinType
         // Callback subscriptions are deferred to setup() to avoid
         // triggering BLE stack and Combine overhead at app launch.
     }

@@ -10,7 +10,7 @@ import XCTest
 final class HwWalletManagerTests: XCTestCase {
     // MARK: - Mocks & spies
 
-    private final class MockWatcherService: TrezorWatcherServicing, @unchecked Sendable {
+    private final class MockWatcherService: OnChainWatcherServicing, @unchecked Sendable {
         private(set) var startedParams: [WatcherParams] = []
         private(set) var stoppedWatcherIds: [String] = []
         var stopShouldFail = false
@@ -45,7 +45,7 @@ final class HwWalletManagerTests: XCTestCase {
     // MARK: - Factories
 
     private func makeViewModel(
-        watcherService: TrezorWatcherServicing = MockWatcherService(),
+        watcherService: OnChainWatcherServicing = MockWatcherService(),
         monitored: Set<String> = ["legacy", "nestedSegwit", "nativeSegwit", "taproot"]
     ) -> HwWalletManager {
         let vm = HwWalletManager(
