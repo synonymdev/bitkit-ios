@@ -1,8 +1,18 @@
 {
   "images" : [
     {
-      "filename" : "trezor.webp",
-      "idiom" : "universal"
+      "filename" : "trezor.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "trezor@2x.png",
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "3x"
     }
   ],
   "info" : {
