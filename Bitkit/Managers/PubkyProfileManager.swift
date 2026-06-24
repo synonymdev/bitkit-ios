@@ -347,6 +347,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func deleteProfile() async throws {
+        try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.deleteProfile")
         do {
             try await Task.detached {
                 try await PubkyService.deletePaykitProfile()
@@ -359,7 +360,7 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Bitkit profile storage already missing, continuing sign out", context: "PubkyProfileManager")
         }
 
-        try await signOut()
+        try await signOut(cleanPrivatePaykitEndpoints: false)
     }
 
     private func writeProfile(
@@ -670,20 +671,33 @@ class PubkyProfileManager: ObservableObject {
     static func removePrivatePaykitEndpoints(context: String) async throws {
         do {
             try await PrivatePaykitService.shared.removePublishedEndpoints()
+            PrivatePaykitService.setContactSharingCleanupPending(false)
         } catch {
+            PrivatePaykitService.setContactSharingCleanupPending(true)
             Logger.warn("Failed to remove private Paykit endpoints before clearing session: \(error)", context: context)
             throw error
         }
     }
 
     static func removePrivatePaykitEndpointsBestEffort(context: String) async {
-        try? await removePrivatePaykitEndpoints(context: context)
+        do {
+            try await removePrivatePaykitEndpoints(context: context)
+            PrivatePaykitService.setContactSharingCleanupPending(false)
+        } catch {
+            PrivatePaykitService.setContactSharingCleanupPending(true)
+        }
     }
 
     func signOut() async throws {
+        try await signOut(cleanPrivatePaykitEndpoints: true)
+    }
+
+    private func signOut(cleanPrivatePaykitEndpoints: Bool) async throws {
         try await Task.detached {
+            if cleanPrivatePaykitEndpoints {
+                try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
+            }
             await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
-            try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
             do {
                 try await PubkyService.signOut()
             } catch {

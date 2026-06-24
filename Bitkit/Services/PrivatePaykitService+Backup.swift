@@ -20,6 +20,8 @@ extension PrivatePaykitService {
         } else {
             await PaykitSdkService.shared.clearState()
         }
+        Self.setContactSharingCleanupPending(false)
+        Self.clearDeletedContactCleanupPending()
         persistState(markWalletBackup: true)
     }
 }

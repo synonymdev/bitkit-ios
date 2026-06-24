@@ -81,7 +81,7 @@ extension PrivatePaykitService {
                 "Failed to resolve Paykit contact payment for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
                 context: "PrivatePaykit"
             )
-            return .noEndpoint
+            return try await PublicPaykitService.beginPayment(to: publicKey)
         }
     }
 

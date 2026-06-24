@@ -436,6 +436,17 @@ class ContactsManager: ObservableObject {
         Logger.info("Deleted all contacts", context: "ContactsManager")
     }
 
+    func deleteAllContactsBestEffort() async {
+        do {
+            try await deleteAllContacts()
+        } catch {
+            Logger.warn("Continuing after contact cleanup failed: \(error)", context: "ContactsManager")
+            Self.clearContactProfileOverrides()
+            await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
+            contacts.removeAll()
+        }
+    }
+
     // MARK: - Remote Contact Discovery
 
     @discardableResult

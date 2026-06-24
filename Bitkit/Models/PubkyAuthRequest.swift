@@ -1,5 +1,5 @@
-import BitkitCore
 import Foundation
+import Paykit
 
 // MARK: - PubkyAuth Permission
 
@@ -19,28 +19,24 @@ struct PubkyAuthPermission {
 
 struct PubkyAuthRequest {
     let rawUrl: String
-    let kind: PubkyAuthKind
+    let kind: Paykit.PubkyAuthRequestKind
     let relay: String
     let permissions: [PubkyAuthPermission]
     let serviceNames: [String]
 
-    /// Parse a `pubkyauth://` URL into a display-ready request.
-    /// Uses BitkitCore FFI `parsePubkyAuthUrl` for URL parsing, then extracts permissions from caps.
     static func parse(url: String) throws -> PubkyAuthRequest {
-        let details = try parsePubkyAuthUrl(authUrl: url)
-        let permissions = parseCapabilities(details.capabilities)
+        let details = try Paykit.parsePubkyAuthUrl(authUrl: url)
+        let permissions = parseCapabilities(details.capabilities ?? "")
         let serviceNames = permissions.compactMap { extractServiceName($0.path) }
         return PubkyAuthRequest(
             rawUrl: url,
             kind: details.kind,
-            relay: details.relay,
+            relay: details.relayUrl ?? "",
             permissions: permissions,
             serviceNames: serviceNames
         )
     }
 
-    /// Parse a capabilities string like `/pub/pubky.app/:rw,/pub/paykit/v0/:rw`
-    /// into individual permission entries.
     static func parseCapabilities(_ caps: String) -> [PubkyAuthPermission] {
         caps
             .split(separator: ",")
@@ -48,8 +44,6 @@ struct PubkyAuthRequest {
                 let trimmed = segment.trimmingCharacters(in: .whitespaces)
                 guard !trimmed.isEmpty else { return nil }
 
-                // Find the last `:` that separates path from access flags
-                // e.g., "/pub/pubky.app/:rw" → path="/pub/pubky.app/", access="rw"
                 guard let lastColon = trimmed.lastIndex(of: ":") else { return nil }
 
                 let path = String(trimmed[trimmed.startIndex ..< lastColon])
@@ -61,8 +55,6 @@ struct PubkyAuthRequest {
             }
     }
 
-    /// Extract a human-readable service name from a permission path.
-    /// e.g., "/pub/pubky.app/" → "pubky.app", "/pub/paykit/v0/" → "paykit"
     static func extractServiceName(_ path: String) -> String? {
         let components = path
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))

@@ -188,6 +188,7 @@ actor PaykitSdkService {
     private let operationLock = PaykitSdkOperationLock()
     private var sdk: PaykitSdk?
     private var activeAuthRequest: Paykit.PubkyAuthRequest?
+    private var activeAuthRequestID: UUID?
 
     func initialize() async throws {
         try await operationLock.withLock {
@@ -257,7 +258,9 @@ actor PaykitSdkService {
     func startAuth() async throws -> String {
         try await operationLock.withLock {
             let request = try bootstrap().startSignInAuth(capabilities: Self.requiredCapabilities())
+            let requestID = UUID()
             activeAuthRequest = request
+            activeAuthRequestID = requestID
             return try await request.authorizationUrl()
         }
     }
@@ -267,9 +270,15 @@ actor PaykitSdkService {
             guard let request = activeAuthRequest else {
                 throw PubkyServiceError.invalidAuthUrl
             }
+            guard let requestID = activeAuthRequestID else {
+                throw PubkyServiceError.invalidAuthUrl
+            }
 
             defer {
-                activeAuthRequest = nil
+                if activeAuthRequestID == requestID {
+                    activeAuthRequest = nil
+                    activeAuthRequestID = nil
+                }
             }
 
             let previousPublicKey = await currentSdkStatePublicKey()
@@ -277,6 +286,9 @@ actor PaykitSdkService {
                 localSecretKey: nil,
                 requiredCapabilities: Self.requiredCapabilities()
             )
+            guard activeAuthRequestID == requestID, activeAuthRequest != nil else {
+                throw CancellationError()
+            }
             try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: false)
             markWalletBackupDataChanged()
             return result.sessionAccess.exportSessionSecret()
@@ -285,6 +297,7 @@ actor PaykitSdkService {
 
     func cancelAuth() {
         activeAuthRequest = nil
+        activeAuthRequestID = nil
     }
 
     func approveAuth(authUrl: String, secretKeyHex: String) async throws {
@@ -449,6 +462,7 @@ actor PaykitSdkService {
             try? Keychain.delete(key: .paykitSession)
             try? Keychain.delete(key: .pubkySecretKey)
             activeAuthRequest = nil
+            activeAuthRequestID = nil
             resetRuntime()
             markWalletBackupDataChanged()
         }
@@ -463,6 +477,7 @@ actor PaykitSdkService {
     private func clearStateLocked() {
         try? Keychain.delete(key: .paykitSdkState)
         activeAuthRequest = nil
+        activeAuthRequestID = nil
         resetRuntime()
         markWalletBackupDataChanged()
     }
