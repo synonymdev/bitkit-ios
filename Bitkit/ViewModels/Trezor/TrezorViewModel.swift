@@ -562,7 +562,13 @@ class TrezorViewModel {
         messageSigningPath = "m/84'/\(connection.coinTypeComponent)/0'/0/0"
         addressIndex = 0
 
-        // Clear results from previous network
+        clearWalletResults()
+    }
+
+    /// Clear dev-tool results derived from the connected wallet (generated address, xpub, public
+    /// key, signed message and lookup results). Called on network switch, disconnect and
+    /// wallet-mode change so a previous wallet's data is never shown for a different/absent wallet.
+    func clearWalletResults() {
         generatedAddress = nil
         xpub = nil
         publicKeyHex = nil

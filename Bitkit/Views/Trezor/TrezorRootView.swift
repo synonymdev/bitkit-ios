@@ -58,6 +58,7 @@ extension View {
 /// re-renders when connection state changes.
 private struct TrezorContentSwitcher: View {
     @Environment(TrezorManager.self) private var trezorManager
+    @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
         Group {
@@ -68,6 +69,18 @@ private struct TrezorContentSwitcher: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: trezorManager.isConnected)
+        .onChange(of: trezorManager.isConnected) { _, isConnected in
+            // Drop the previous wallet's dev-tool results on disconnect so a different/absent
+            // wallet never shows stale xpub/address/public-key data.
+            if !isConnected {
+                trezor.clearWalletResults()
+            }
+        }
+        .onChange(of: trezorManager.walletMode) { _, _ in
+            // A wallet-mode switch rebinds the session to a different wallet but keeps the device
+            // connected, so the disconnect path above doesn't fire — clear results here too.
+            trezor.clearWalletResults()
+        }
     }
 }
 
