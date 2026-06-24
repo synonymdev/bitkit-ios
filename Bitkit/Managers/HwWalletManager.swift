@@ -45,6 +45,7 @@ final class HwWalletManager {
     private let networkProvider: () -> TrezorCoinType
     private let persistActivities: ([Activity]) -> Void
     private let deleteActivities: (String) -> Void
+    private let nowProvider: () -> UInt64
 
     // MARK: - Internal state
 
@@ -57,13 +58,18 @@ final class HwWalletManager {
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
 
+    /// First-seen wall-clock timestamp per unconfirmed txid, kept so a mempool tx stays at a
+    /// stable position in the (timestamp-sorted) activity list across watcher events.
+    private var assignedTimestamps: [String: UInt64] = [:]
+
     init(
         watcherService: OnChainWatcherServicing = OnChainHwService.shared,
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
         persistActivities: (([Activity]) -> Void)? = nil,
-        deleteActivities: ((String) -> Void)? = nil
+        deleteActivities: ((String) -> Void)? = nil,
+        now: (() -> UInt64)? = nil
     ) {
         self.watcherService = watcherService
         networkProvider = network ?? { OnChainHwService.appDefaultCoinType }
@@ -86,6 +92,7 @@ final class HwWalletManager {
                 }
             }
         }
+        nowProvider = now ?? { UInt64(Date().timeIntervalSince1970) }
     }
 
     // MARK: - Device input
@@ -116,6 +123,7 @@ final class HwWalletManager {
         emittedReceivedTxIds.removeAll()
         listeners.removeAll()
         watcherData.removeAll()
+        assignedTimestamps.removeAll()
         recomputeDerivedState()
     }
 
@@ -252,10 +260,26 @@ final class HwWalletManager {
     private func mergedActivities(for group: DeviceGroup) -> [Activity] {
         let watchers = watcherData.values.filter { group.ids.contains($0.deviceId) }
         let grouped = Dictionary(grouping: watchers.flatMap(\.transactions), by: \.txid)
-        return grouped.values.map { transactions in
-            let timestamp = transactions.compactMap(\.timestamp).min() ?? 0
+        return grouped.map { txid, transactions in
+            let timestamp = resolveTimestamp(txid: txid, transactions: transactions)
             return onchainActivity(walletId: group.walletId, from: transactions, timestamp: timestamp)
         }
+    }
+
+    /// Confirmed txs carry a block timestamp; mempool txs report `nil`. Falling back to `0`
+    /// would bury a fresh receive at the bottom of the timestamp-sorted activity list, so use
+    /// the first-seen wall-clock time instead and remember it per txid until the tx confirms.
+    private func resolveTimestamp(txid: String, transactions: [HistoryTransaction]) -> UInt64 {
+        if let confirmed = transactions.compactMap(\.timestamp).min() {
+            assignedTimestamps[txid] = nil
+            return confirmed
+        }
+        if let assigned = assignedTimestamps[txid] {
+            return assigned
+        }
+        let now = nowProvider()
+        assignedTimestamps[txid] = now
+        return now
     }
 
     // MARK: - Aggregation
