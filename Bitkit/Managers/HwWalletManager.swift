@@ -101,11 +101,20 @@ final class HwWalletManager {
     /// composition root (`AppScene`) feeds it the current Trezor device list, so this type stays
     /// fully decoupled from `TrezorManager`. Also the test seam — tests drive it directly.
     func updateDevices(knownDevices: [TrezorKnownDevice], connectedDeviceId: String?) {
+        let previousWalletIds = hwWalletIds
         self.knownDevices = knownDevices
         self.connectedDeviceId = connectedDeviceId
         walletsLoaded = true
         syncWatchers()
         recomputeDerivedState()
+
+        // A device that dropped out of the snapshot (e.g. the user forgot it) would otherwise
+        // leave its watch-only activities orphaned in the merged activity list, which queries
+        // every wallet id. syncWatchers already stopped its watcher above; delete its persisted
+        // activities too. Cleans up on any removal path, keeping us decoupled from TrezorManager.
+        for walletId in previousWalletIds.subtracting(hwWalletIds) {
+            deleteActivities(walletId)
+        }
     }
 
     // MARK: - Control
