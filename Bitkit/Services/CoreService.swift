@@ -139,9 +139,9 @@ class ActivityService {
         }
     }
 
-    func getTransactionDetails(txid: String) async throws -> BitkitCore.TransactionDetails? {
+    func getTransactionDetails(txid: String, walletId: String = WalletScope.default) async throws -> BitkitCore.TransactionDetails? {
         try await ServiceQueue.background(.core) {
-            try BitkitCore.getTransactionDetails(walletId: WalletScope.default, txId: txid)
+            try BitkitCore.getTransactionDetails(walletId: walletId, txId: txid)
         }
     }
 

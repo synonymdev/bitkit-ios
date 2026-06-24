@@ -48,7 +48,10 @@ struct ActivityExplorerView: View {
         guard let onchain else { return }
 
         do {
-            let details = try await CoreService.shared.activity.getTransactionDetails(txid: onchain.txId)
+            let details = try await CoreService.shared.activity.getTransactionDetails(
+                txid: onchain.txId,
+                walletId: item.walletId
+            )
             await MainActor.run {
                 txDetails = details
             }
@@ -68,7 +71,10 @@ struct ActivityExplorerView: View {
 
     private func refreshActivity() async {
         do {
-            if let updatedActivity = try await CoreService.shared.activity.getActivity(id: activityId) {
+            if let updatedActivity = try await CoreService.shared.activity.getActivity(
+                id: activityId,
+                walletId: item.walletId
+            ) {
                 await MainActor.run {
                     item = updatedActivity
                 }
