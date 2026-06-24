@@ -807,6 +807,12 @@ class PubkyProfileManager: ObservableObject {
         loadKeychainString: (KeychainEntryType) throws -> String? = {
             try Keychain.loadString(key: $0)
         },
+        persistKeychainString: (KeychainEntryType, String) throws -> Void = { key, value in
+            guard let data = value.data(using: .utf8) else {
+                throw KeychainError.failedToSave
+            }
+            try Keychain.upsert(key: key, data: data)
+        },
         deleteKeychainValue: (KeychainEntryType) throws -> Void = {
             try Keychain.delete(key: $0)
         },
@@ -829,6 +835,8 @@ class PubkyProfileManager: ObservableObject {
             try? deleteKeychainValue(.pubkySecretKey)
         case .localSeed:
             let secretKeyHex = try deriveLocalSecretKeyFromWalletSeed(loadKeychainString: loadKeychainString)
+            try persistKeychainString(.pubkySecretKey, secretKeyHex)
+            try? deleteKeychainValue(.paykitSession)
             _ = try await signInWithSecretKey(secretKeyHex)
         case .externalSession:
             guard let sessionSecret = backup?.sessionSecret,

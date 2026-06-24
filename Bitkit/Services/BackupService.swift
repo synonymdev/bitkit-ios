@@ -247,16 +247,11 @@ class BackupService {
             }
 
             if didRestoreWalletBackup {
-                if pendingPaykitSdkBackupState != nil {
+                do {
                     try await PrivatePaykitService.shared.restoreBackup(pendingPaykitSdkBackupState)
                     await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
-                } else {
-                    do {
-                        try await PrivatePaykitService.shared.restoreBackup(nil)
-                        await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
-                    } catch {
-                        Logger.warn("Failed to clear missing Paykit SDK backup state: \(error)", context: "BackupService")
-                    }
+                } catch {
+                    Logger.warn("Failed to restore Paykit SDK backup state: \(error)", context: "BackupService")
                 }
             }
 

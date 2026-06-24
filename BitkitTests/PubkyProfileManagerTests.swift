@@ -400,6 +400,9 @@ final class PubkyProfileManagerTests: XCTestCase {
             loadKeychainString: { key in
                 store[key.storageKey]
             },
+            persistKeychainString: { key, value in
+                store[key.storageKey] = value
+            },
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
             },
@@ -434,6 +437,9 @@ final class PubkyProfileManagerTests: XCTestCase {
             loadKeychainString: { key in
                 store[key.storageKey]
             },
+            persistKeychainString: { key, value in
+                store[key.storageKey] = value
+            },
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
             },
@@ -463,6 +469,9 @@ final class PubkyProfileManagerTests: XCTestCase {
             loadKeychainString: { key in
                 store[key.storageKey]
             },
+            persistKeychainString: { key, value in
+                store[key.storageKey] = value
+            },
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
             },
@@ -477,6 +486,36 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         XCTAssertEqual(store[KeychainEntryType.paykitSession.storageKey], "fresh-session")
         XCTAssertFalse(store[KeychainEntryType.pubkySecretKey.storageKey, default: ""].isEmpty)
+    }
+
+    func testRestoreSessionBackupStateForLocalSeedKeepsSecretWhenSignInFails() async throws {
+        var store = makeKeychainStore(
+            mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            paykitSession: "stale-session"
+        )
+
+        do {
+            try await PubkyProfileManager.restoreSessionBackupState(
+                PubkySessionBackupV1(kind: .localSeed, sessionSecret: nil),
+                loadKeychainString: { key in
+                    store[key.storageKey]
+                },
+                persistKeychainString: { key, value in
+                    store[key.storageKey] = value
+                },
+                deleteKeychainValue: { key in
+                    store.removeValue(forKey: key.storageKey)
+                },
+                clearSessionAccess: {},
+                signInWithSecretKey: { _ in
+                    throw PubkyServiceError.authFailed("offline")
+                }
+            )
+            XCTFail("Expected sign-in failure")
+        } catch {
+            XCTAssertNil(store[KeychainEntryType.paykitSession.storageKey])
+            XCTAssertFalse(store[KeychainEntryType.pubkySecretKey.storageKey, default: ""].isEmpty)
+        }
     }
 
     // MARK: - Metadata backup payload
