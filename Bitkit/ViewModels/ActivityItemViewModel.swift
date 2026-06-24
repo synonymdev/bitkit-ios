@@ -37,7 +37,7 @@ class ActivityItemViewModel: ObservableObject {
 
     func loadTags() async {
         do {
-            tags = try await coreService.activity.tags(forActivity: activityId)
+            tags = try await coreService.activity.tags(forActivity: activityId, walletId: activity.walletId)
         } catch {
             Logger.error(error, context: "Failed to load tags for activity \(activityId)")
             tags = []
@@ -46,7 +46,7 @@ class ActivityItemViewModel: ObservableObject {
 
     func removeTag(_ tag: String) async {
         do {
-            try await coreService.activity.dropTags(fromActivity: activityId, [tag])
+            try await coreService.activity.dropTags(fromActivity: activityId, [tag], walletId: activity.walletId)
             await loadTags() // Reload tags after removal
         } catch {
             Logger.error(error, context: "Failed to remove tag \(tag) from activity \(activityId)")

@@ -1213,23 +1213,23 @@ class ActivityService {
 
     // MARK: - Tag Methods
 
-    func appendTags(toActivity id: String, _ tags: [String]) async throws {
+    func appendTags(toActivity id: String, _ tags: [String], walletId: String = WalletScope.default) async throws {
         try await ServiceQueue.background(.core) {
-            try addTags(walletId: WalletScope.default, activityId: id, tags: tags)
+            try addTags(walletId: walletId, activityId: id, tags: tags)
             self.activitiesChangedSubject.send()
         }
     }
 
-    func dropTags(fromActivity id: String, _ tags: [String]) async throws {
+    func dropTags(fromActivity id: String, _ tags: [String], walletId: String = WalletScope.default) async throws {
         try await ServiceQueue.background(.core) {
-            try removeTags(walletId: WalletScope.default, activityId: id, tags: tags)
+            try removeTags(walletId: walletId, activityId: id, tags: tags)
             self.activitiesChangedSubject.send()
         }
     }
 
-    func tags(forActivity id: String) async throws -> [String] {
+    func tags(forActivity id: String, walletId: String = WalletScope.default) async throws -> [String] {
         try await ServiceQueue.background(.core) {
-            try getTags(walletId: WalletScope.default, activityId: id)
+            try getTags(walletId: walletId, activityId: id)
         }
     }
 
