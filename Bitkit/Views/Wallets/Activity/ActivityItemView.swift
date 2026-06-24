@@ -135,7 +135,15 @@ struct ActivityItemView: View {
         return DateFormatterHelpers.formatActivityDetail(activity.timestamp)
     }
 
+    private var isHardwareActivity: Bool {
+        viewModel.activity.isHardwareWallet
+    }
+
     private var shouldDisableBoostButton: Bool {
+        // Watch-only hardware wallets have no signing keys, so RBF is impossible.
+        if isHardwareActivity {
+            return true
+        }
         switch viewModel.activity {
         case .lightning:
             return true
@@ -514,42 +522,45 @@ struct ActivityItemView: View {
 
     private var buttons: some View {
         VStack(spacing: 16) {
-            HStack(spacing: 16) {
-                if isPaykitUIActive {
+            // Contact and tag actions are hidden for watch-only hardware wallets.
+            if !isHardwareActivity {
+                HStack(spacing: 16) {
+                    if isPaykitUIActive {
+                        CustomButton(
+                            title: assignedContact == nil ? t("wallet__activity_assign") : t("wallet__activity_detach"), size: .small,
+                            icon: Image(assignedContact == nil ? "user-plus" : "user-minus")
+                                .foregroundColor(accentColor),
+                            shouldExpand: true
+                        ) {
+                            if assignedContact == nil {
+                                navigation.navigate(.assignActivityContact(activityId: viewModel.activityId))
+                            } else {
+                                Task {
+                                    await detachContact()
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier(assignedContact == nil ? "ActivityAssignContact" : "ActivityDetachContact")
+                    }
+
                     CustomButton(
-                        title: assignedContact == nil ? t("wallet__activity_assign") : t("wallet__activity_detach"), size: .small,
-                        icon: Image(assignedContact == nil ? "user-plus" : "user-minus")
+                        title: t("wallet__activity_tag"), size: .small,
+                        icon: Image("tag")
                             .foregroundColor(accentColor),
                         shouldExpand: true
                     ) {
-                        if assignedContact == nil {
-                            navigation.navigate(.assignActivityContact(activityId: viewModel.activityId))
-                        } else {
-                            Task {
-                                await detachContact()
-                            }
+                        let activityId: String = switch viewModel.activity {
+                        case let .lightning(activity):
+                            activity.id
+                        case let .onchain(activity):
+                            activity.id
                         }
+                        sheets.showSheet(.addTag, data: AddTagConfig(activityId: activityId))
                     }
-                    .accessibilityIdentifier(assignedContact == nil ? "ActivityAssignContact" : "ActivityDetachContact")
+                    .accessibilityIdentifier("ActivityTag")
                 }
-
-                CustomButton(
-                    title: t("wallet__activity_tag"), size: .small,
-                    icon: Image("tag")
-                        .foregroundColor(accentColor),
-                    shouldExpand: true
-                ) {
-                    let activityId: String = switch viewModel.activity {
-                    case let .lightning(activity):
-                        activity.id
-                    case let .onchain(activity):
-                        activity.id
-                    }
-                    sheets.showSheet(.addTag, data: AddTagConfig(activityId: activityId))
-                }
-                .accessibilityIdentifier("ActivityTag")
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
 
             HStack(spacing: 16) {
                 CustomButton(
