@@ -55,6 +55,11 @@ final class HwWalletManager {
     private var activeWatchers: Set<String> = []
     private var activeWatcherElectrumUrls: [String: String] = [:]
     private var retryingWatcherStarts: Set<String> = []
+
+    /// Watchers whose async start is dispatched but not yet confirmed in `activeWatchers`.
+    /// Guards against a second `syncWatchers()` double-starting the same watcher in that window.
+    private var pendingWatcherStarts: Set<String> = []
+
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
 
@@ -129,6 +134,7 @@ final class HwWalletManager {
         activeWatchers.removeAll()
         activeWatcherElectrumUrls.removeAll()
         retryingWatcherStarts.removeAll()
+        pendingWatcherStarts.removeAll()
         emittedReceivedTxIds.removeAll()
         listeners.removeAll()
         watcherData.removeAll()
@@ -166,6 +172,9 @@ final class HwWalletManager {
         let desiredIds = Set(specs.map(\.watcherId))
 
         for spec in specs {
+            // A start is already in flight for this watcher; skip so we don't launch a duplicate.
+            // The next sync after it completes reconciles any electrum-url change.
+            if pendingWatcherStarts.contains(spec.watcherId) { continue }
             let isActive = activeWatchers.contains(spec.watcherId)
             if isActive, activeWatcherElectrumUrls[spec.watcherId] == spec.electrumUrl { continue }
             if isActive, !stopActiveWatcher(spec.watcherId) { continue }
@@ -194,14 +203,17 @@ final class HwWalletManager {
             self?.handleWatcherEvent(watcherId: id, event: event)
         }
         listeners[spec.watcherId] = listener
+        pendingWatcherStarts.insert(spec.watcherId)
 
         Task { @MainActor in
             do {
                 try await watcherService.startWatcher(params: params, listener: listener)
+                pendingWatcherStarts.remove(spec.watcherId)
                 activeWatchers.insert(spec.watcherId)
                 activeWatcherElectrumUrls[spec.watcherId] = spec.electrumUrl
                 retryingWatcherStarts.remove(spec.watcherId)
             } catch {
+                pendingWatcherStarts.remove(spec.watcherId)
                 listeners[spec.watcherId] = nil
                 Logger.warn("Retrying hardware watcher '\(spec.watcherId)' after start failure: \(error)")
                 scheduleWatcherStartRetry(spec.watcherId)
