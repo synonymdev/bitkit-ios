@@ -195,7 +195,7 @@ final class HwWalletManager {
             watcherId: spec.watcherId,
             extendedKey: spec.xpub,
             electrumUrl: spec.electrumUrl,
-            network: toNetwork(network),
+            network: network.coreNetwork,
             accountType: addressType.accountType,
             gapLimit: Constants.defaultGapLimit
         )
@@ -409,15 +409,6 @@ final class HwWalletManager {
     private func deviceId(fromWatcherId watcherId: String) -> String {
         guard let range = watcherId.range(of: Constants.watcherIdSeparator) else { return watcherId }
         return String(watcherId[..<range.lowerBound])
-    }
-
-    private func toNetwork(_ coin: TrezorCoinType) -> BitkitCore.Network {
-        switch coin {
-        case .bitcoin: .bitcoin
-        case .testnet: .testnet
-        case .signet: .signet
-        case .regtest: .regtest
-        }
     }
 
     private func saturatingAdd(_ a: UInt64, _ b: UInt64) -> UInt64 {

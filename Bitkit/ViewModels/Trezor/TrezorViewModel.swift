@@ -796,7 +796,7 @@ class TrezorViewModel {
             : .payment(address: address, amountSats: UInt64(sendAmountSats) ?? 0)
 
         let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
-        let network = toNetwork(connection.selectedNetwork)
+        let network = connection.selectedNetwork.coreNetwork
 
         let wallet = WalletParams(
             extendedKey: extendedKey,
@@ -951,15 +951,7 @@ class TrezorViewModel {
 
     // MARK: - Helpers
 
-    /// Convert TrezorCoinType to the Network enum used by onchain FFI functions
-    private func toNetwork(_ coin: TrezorCoinType) -> Network? {
-        switch coin {
-        case .bitcoin: return .bitcoin
-        case .testnet: return .testnet
-        case .signet: return .signet
-        case .regtest: return .regtest
-        }
-    }
+    // Convert TrezorCoinType to the Network enum used by onchain FFI functions
 
     // MARK: - Error Handling
 
@@ -1071,7 +1063,7 @@ class TrezorViewModel {
             watcherId: watcherId,
             extendedKey: key,
             electrumUrl: OnChainHwService.electrumUrlForNetwork(network),
-            network: toNetwork(network),
+            network: network.coreNetwork,
             accountType: accountType,
             gapLimit: gapLimit
         )

@@ -33,7 +33,7 @@ class OnChainHwService {
         gapLimit: UInt32? = nil,
         scriptType: AccountType? = nil
     ) async throws -> AccountInfoResult {
-        let networkParam = toNetwork(network)
+        let networkParam = network?.coreNetwork
         return try await ServiceQueue.background(.core) {
             try await onchainGetAccountInfo(
                 extendedKey: extendedKey,
@@ -52,7 +52,7 @@ class OnChainHwService {
         electrumUrl: String,
         network: TrezorCoinType? = nil
     ) async throws -> SingleAddressInfoResult {
-        let networkParam = toNetwork(network)
+        let networkParam = network?.coreNetwork
         return try await ServiceQueue.background(.core) {
             try await onchainGetAddressInfo(
                 address: address,
@@ -72,7 +72,7 @@ class OnChainHwService {
         network: TrezorCoinType? = nil,
         scriptType: AccountType? = nil
     ) async throws -> TransactionHistoryResult {
-        let networkParam = toNetwork(network)
+        let networkParam = network?.coreNetwork
         return try await ServiceQueue.background(.core) {
             try await onchainGetTransactionHistory(
                 extendedKey: extendedKey,
@@ -92,7 +92,7 @@ class OnChainHwService {
         network: TrezorCoinType? = nil,
         scriptType: AccountType? = nil
     ) async throws -> TransactionDetail {
-        let networkParam = toNetwork(network)
+        let networkParam = network?.coreNetwork
         return try await ServiceQueue.background(.core) {
             try await onchainGetTransactionDetail(
                 extendedKey: extendedKey,
@@ -142,19 +142,6 @@ class OnChainHwService {
     func stopAllWatchers() {
         onchainStopAllWatchers()
     }
-
-    // MARK: - Helpers
-
-    /// Convert TrezorCoinType to the Network enum used by onchain FFI functions
-    private func toNetwork(_ coin: TrezorCoinType?) -> Network? {
-        guard let coin else { return nil }
-        switch coin {
-        case .bitcoin: return .bitcoin
-        case .testnet: return .testnet
-        case .signet: return .signet
-        case .regtest: return .regtest
-        }
-    }
 }
 
 // MARK: - Network / Electrum helpers
@@ -197,5 +184,17 @@ extension OnChainHwService {
     static func getElectrumUrl() -> String {
         let server = ElectrumConfigService().getCurrentServer()
         return server.fullUrl.isEmpty ? Env.electrumServerUrl : server.fullUrl
+    }
+}
+
+extension TrezorCoinType {
+    /// The BitkitCore `Network` this coin type maps to, used by the onchain FFI functions.
+    var coreNetwork: BitkitCore.Network {
+        switch self {
+        case .bitcoin: .bitcoin
+        case .testnet: .testnet
+        case .signet: .signet
+        case .regtest: .regtest
+        }
     }
 }
