@@ -6,7 +6,6 @@ struct HardwarePairingSheetItem: SheetItem {
 }
 
 /// App-wide sheet for the one-time pairing code a hardware device shows during connect/reconnect.
-/// Mirrors bitkit-android's `HwPairCodeSheet`: 6 fixed-width cells + an on-screen number pad.
 /// Dismissing without entering the full code cancels the pending pairing request.
 struct HardwarePairingSheet: View {
     @Environment(TrezorManager.self) private var trezorManager
@@ -69,4 +68,11 @@ struct HardwarePairingSheet: View {
             }
         }
     }
+}
+
+#Preview {
+    HardwarePairingSheet(config: HardwarePairingSheetItem())
+        .environmentObject(SheetViewModel())
+        .environment(TrezorManager())
+        .preferredColorScheme(.dark)
 }
