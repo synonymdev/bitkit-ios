@@ -327,14 +327,24 @@ final class HwWalletManager {
         let received = transactions.reduce(UInt64(0)) { saturatingAdd($0, $1.received) }
         let sent = transactions.reduce(UInt64(0)) { saturatingAdd($0, $1.sent) }
         let fee = transactions.compactMap(\.fee).max() ?? 0
-        let txType: PaymentType = received > sent ? .received : .sent
+
+        // Classify by core's TxDirection (core 0.3.x): received-vs-sent arithmetic alone cannot
+        // tell a self-transfer/consolidation apart from a normal send (both have sent > received,
+        // since sent == received + fee), so without this a consolidation would show value 0
+        // instead of the fee paid.
+        let txType: PaymentType
         let value: UInt64
-        switch txType {
+        switch first.direction {
         case .received:
+            txType = .received
             value = received >= sent ? received - sent : 0
         case .sent:
+            txType = .sent
             let net = sent >= received ? sent - received : 0
             value = net >= fee ? net - fee : 0
+        case .selfTransfer:
+            txType = .sent
+            value = fee
         }
         let confirmations = transactions.map(\.confirmations).max() ?? 0
         let confirmed = confirmations > 0
