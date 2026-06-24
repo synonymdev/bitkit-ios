@@ -194,7 +194,7 @@ struct DevSettingsView: View {
                 }
             }
         } message: {
-            Text("Paykit features are still experimental and may not work reliably until supporting homeserver changes are deployed.")
+            Text("Paykit features are experimental and may not work reliably.")
         }
     }
 

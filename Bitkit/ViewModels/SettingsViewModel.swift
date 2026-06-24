@@ -207,6 +207,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.cleanupPendingKey)
         UserDefaults.standard.set(false, forKey: "hasConfirmedPublicPaykitEndpoints")
         UserDefaults.standard.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
         UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)

@@ -185,46 +185,6 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
-    // MARK: - Remote Profile Resolution
-
-    func testResolveRemoteProfilePrefersBitkitProfile() async throws {
-        let bitkitProfile = makeProfile(publicKey: "pubky_test", name: "Bitkit")
-        let pubkyFallback = makeProfile(publicKey: "pubky_test", name: "Pubky")
-
-        let resolved = try await PubkyProfileManager.resolveRemoteProfile(
-            publicKey: "pubky_test",
-            fetchBitkitProfile: { _ in bitkitProfile },
-            fetchPubkyProfile: { _ in
-                XCTFail("Expected bitkit profile to win before pubky fallback")
-                return pubkyFallback
-            }
-        )
-
-        XCTAssertEqual(resolved.name, "Bitkit")
-    }
-
-    func testResolveRemoteProfileFallsBackToPubkyProfile() async throws {
-        let fallbackProfile = makeProfile(publicKey: "pubky_test", name: "Pubky")
-
-        let resolved = try await PubkyProfileManager.resolveRemoteProfile(
-            publicKey: "pubky_test",
-            fetchBitkitProfile: { _ in nil },
-            fetchPubkyProfile: { _ in fallbackProfile }
-        )
-
-        XCTAssertEqual(resolved.name, "Pubky")
-    }
-
-    func testResolveRemoteProfileThrowsWhenNoRemoteProfileExists() async {
-        await XCTAssertThrowsErrorAsync {
-            try await PubkyProfileManager.resolveRemoteProfile(
-                publicKey: "pubky_missing",
-                fetchBitkitProfile: { _ in nil },
-                fetchPubkyProfile: { _ in throw PubkyServiceError.profileNotFound }
-            )
-        }
-    }
-
     func testIsMissingBitkitProfileStorageErrorRecognizes404DeleteFailure() {
         let error = AppError(
             message: "App Error",
@@ -257,8 +217,6 @@ final class PubkyProfileManagerTests: XCTestCase {
             message: "App Error",
             debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error: error sending request for url (https://example.com/session)")"#
         )
-        var persistedSession: String?
-
         let refreshed = await PubkyProfileManager.refreshSessionIfPossible(
             after: error,
             loadKeychainString: { key in
@@ -273,11 +231,13 @@ final class PubkyProfileManagerTests: XCTestCase {
                 XCTAssertEqual(secretKey, "local-secret")
                 return "fresh-session"
             },
-            persistSessionSecret: { persistedSession = $0 }
+            publicKeyFromSecretKey: { secretKey in
+                XCTAssertEqual(secretKey, "local-secret")
+                return "pubky_fresh"
+            }
         )
 
         XCTAssertTrue(refreshed)
-        XCTAssertEqual(persistedSession, "fresh-session")
     }
 
     func testRefreshSessionIfPossibleReturnsFalseWithoutLocalSecret() async {
@@ -293,8 +253,9 @@ final class PubkyProfileManagerTests: XCTestCase {
                 XCTFail("Expected refresh to stop when no local secret key exists")
                 return "fresh-session"
             },
-            persistSessionSecret: { _ in
-                XCTFail("No refreshed session should be persisted")
+            publicKeyFromSecretKey: { _ in
+                XCTFail("No public key should be derived without a local secret")
+                return "pubky_unused"
             }
         )
 
@@ -333,8 +294,6 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     func testResolveSessionInitializationRestoresSavedSessionWithoutReSigningIn() async {
-        var persistedSession: String?
-
         let result = await PubkyProfileManager.resolveSessionInitialization(
             savedSessionSecret: "saved-session",
             storedSecretKeyHex: "local-secret",
@@ -346,38 +305,40 @@ final class PubkyProfileManagerTests: XCTestCase {
                 XCTFail("Expected saved session import to succeed without re-sign-in")
                 return "new-session"
             },
-            persistSessionSecret: { persistedSession = $0 },
+            publicKeyFromSecretKey: { _ in
+                XCTFail("Public key should not be derived after successful saved-session import")
+                return "pubky_unused"
+            },
             deleteSessionSecret: {
                 XCTFail("Session should not be deleted after successful import")
             }
         )
 
         XCTAssertEqual(result, .restored(publicKey: "pubky_saved"))
-        XCTAssertNil(persistedSession)
     }
 
     func testResolveSessionInitializationSignsInWhenOnlySecretKeyExists() async {
-        var persistedSession: String?
-
         let result = await PubkyProfileManager.resolveSessionInitialization(
             savedSessionSecret: nil,
             storedSecretKeyHex: "local-secret",
             importSession: { secret in
-                XCTAssertEqual(secret, "new-session")
-                return "pubky_test"
+                XCTFail("Re-signed local sessions should not be re-imported")
+                return "pubky_unused"
             },
             signInWithSecretKey: { secretKey in
                 XCTAssertEqual(secretKey, "local-secret")
                 return "new-session"
             },
-            persistSessionSecret: { persistedSession = $0 },
+            publicKeyFromSecretKey: { secretKey in
+                XCTAssertEqual(secretKey, "local-secret")
+                return "pubky_test"
+            },
             deleteSessionSecret: {
                 XCTFail("Session should not be deleted after successful re-sign-in")
             }
         )
 
         XCTAssertEqual(result, .restored(publicKey: "pubky_test"))
-        XCTAssertEqual(persistedSession, "new-session")
     }
 
     func testResolveSessionInitializationDeletesSavedSessionWhenReSignInFails() async {
@@ -392,8 +353,9 @@ final class PubkyProfileManagerTests: XCTestCase {
             signInWithSecretKey: { _ in
                 throw PubkyServiceError.authFailed("sign in failed")
             },
-            persistSessionSecret: { _ in
-                XCTFail("No session should be persisted when re-sign-in fails")
+            publicKeyFromSecretKey: { _ in
+                XCTFail("No public key should be derived when re-sign-in fails")
+                return "pubky_unused"
             }, deleteSessionSecret: {
                 deletedSavedSession = true
             }
@@ -415,8 +377,9 @@ final class PubkyProfileManagerTests: XCTestCase {
                 XCTFail("No sign-in should occur without credentials")
                 return "unused-session"
             },
-            persistSessionSecret: { _ in
-                XCTFail("No session should be persisted without credentials")
+            publicKeyFromSecretKey: { _ in
+                XCTFail("No public key should be derived without credentials")
+                return "pubky_unused"
             }, deleteSessionSecret: {
                 XCTFail("No saved session exists to delete")
             }
@@ -430,25 +393,32 @@ final class PubkyProfileManagerTests: XCTestCase {
             paykitSession: "stale-session",
             pubkySecretKey: "local-secret"
         )
-        var didForceSignOut = false
+        var didClearSessionAccess = false
 
         try await PubkyProfileManager.restoreSessionBackupState(
             PubkySessionBackupV1(kind: .externalSession, sessionSecret: "external-session"),
             loadKeychainString: { key in
                 store[key.storageKey]
             },
-            persistKeychainString: { key, value in
-                store[key.storageKey] = value
-            },
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
             },
-            forceSignOut: {
-                didForceSignOut = true
+            clearSessionAccess: {
+                didClearSessionAccess = true
+            },
+            signInWithSecretKey: { _ in
+                XCTFail("External session restore should not sign in with a local secret")
+                return "unused-session"
+            },
+            importExternalSession: { session in
+                XCTAssertEqual(session, "external-session")
+                store[KeychainEntryType.paykitSession.storageKey] = session
+                store.removeValue(forKey: KeychainEntryType.pubkySecretKey.storageKey)
+                return "pubky_external"
             }
         )
 
-        XCTAssertTrue(didForceSignOut)
+        XCTAssertTrue(didClearSessionAccess)
         XCTAssertEqual(store[KeychainEntryType.paykitSession.storageKey], "external-session")
         XCTAssertNil(store[KeychainEntryType.pubkySecretKey.storageKey])
     }
@@ -464,13 +434,18 @@ final class PubkyProfileManagerTests: XCTestCase {
             loadKeychainString: { key in
                 store[key.storageKey]
             },
-            persistKeychainString: { key, value in
-                store[key.storageKey] = value
-            },
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
             },
-            forceSignOut: {}
+            clearSessionAccess: {},
+            signInWithSecretKey: { _ in
+                XCTFail("Missing pubky state should not sign in")
+                return "unused-session"
+            },
+            importExternalSession: { _ in
+                XCTFail("Missing pubky state should not import a session")
+                return "pubky_unused"
+            }
         )
 
         XCTAssertNil(store[KeychainEntryType.paykitSession.storageKey])
@@ -488,16 +463,19 @@ final class PubkyProfileManagerTests: XCTestCase {
             loadKeychainString: { key in
                 store[key.storageKey]
             },
-            persistKeychainString: { key, value in
-                store[key.storageKey] = value
-            },
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
             },
-            forceSignOut: {}
+            clearSessionAccess: {},
+            signInWithSecretKey: { secretKey in
+                XCTAssertFalse(secretKey.isEmpty)
+                store[KeychainEntryType.pubkySecretKey.storageKey] = secretKey
+                store[KeychainEntryType.paykitSession.storageKey] = "fresh-session"
+                return "fresh-session"
+            }
         )
 
-        XCTAssertNil(store[KeychainEntryType.paykitSession.storageKey])
+        XCTAssertEqual(store[KeychainEntryType.paykitSession.storageKey], "fresh-session")
         XCTAssertFalse(store[KeychainEntryType.pubkySecretKey.storageKey, default: ""].isEmpty)
     }
 
@@ -509,7 +487,8 @@ final class PubkyProfileManagerTests: XCTestCase {
             createdAt: 123,
             tagMetadata: [],
             cache: makeAppCacheData(),
-            pubkySession: PubkySessionBackupV1(kind: .externalSession, sessionSecret: "session-secret")
+            pubkySession: PubkySessionBackupV1(kind: .externalSession, sessionSecret: "session-secret"),
+            pubkyContactProfileOverrides: nil
         )
 
         let encoded = try JSONEncoder().encode(payload)
@@ -527,7 +506,8 @@ final class PubkyProfileManagerTests: XCTestCase {
             createdAt: 123,
             tagMetadata: [],
             cache: makeAppCacheData(),
-            pubkySession: nil
+            pubkySession: nil,
+            pubkyContactProfileOverrides: nil
         )
 
         let encoded = try JSONEncoder().encode(payload)

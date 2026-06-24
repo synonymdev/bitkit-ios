@@ -94,8 +94,10 @@ struct PayContactsView: View {
                 hasConfirmedPublicPaykitEndpoints = true
                 do {
                     try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
+                    PublicPaykitService.setCleanupPending(false)
                 } catch {
                     cleanupError = error
+                    PublicPaykitService.setCleanupPending(true)
                     Logger.warn("Failed to remove public Paykit endpoints while disabling contact payments: \(error)", context: "PayContactsView")
                 }
                 do {

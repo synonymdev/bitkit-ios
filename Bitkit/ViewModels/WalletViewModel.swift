@@ -1063,10 +1063,7 @@ class WalletViewModel: ObservableObject {
                     guard case .routeHintsUnavailable = error else {
                         throw error
                     }
-                    Logger.warn(
-                        "Public Paykit Lightning invoice has no route hints yet; publishing without Lightning for now",
-                        context: "WalletViewModel"
-                    )
+                    Logger.warn("Public Paykit Lightning invoice has no route hints; publishing on-chain endpoint only", context: "WalletViewModel")
                 }
             }
         } else if includeLightning {
