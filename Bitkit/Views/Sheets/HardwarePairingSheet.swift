@@ -9,6 +9,7 @@ struct HardwarePairingSheetItem: SheetItem {
 /// Dismissing without entering the full code cancels the pending pairing request.
 struct HardwarePairingSheet: View {
     @Environment(TrezorManager.self) private var trezorManager
+    @Environment(\.scenePhase) private var scenePhase
     let config: HardwarePairingSheetItem
 
     private let codeLength = 6
@@ -48,7 +49,11 @@ struct HardwarePairingSheet: View {
             .accessibilityIdentifier("HwPairSheet")
         }
         .onDisappear {
-            if !submitted { trezorManager.cancelPairingCode() }
+            // Treat this as a user cancel only when it's a genuine foreground dismissal with the
+            // request still pending. Backgrounding (scenePhase != .active) or the request already
+            // being resolved/submitted (showPairingCode == false) must not abort the pairing.
+            guard !submitted, scenePhase == .active, trezorManager.showPairingCode else { return }
+            trezorManager.cancelPairingCode()
         }
     }
 
