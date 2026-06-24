@@ -46,7 +46,8 @@ final class HwWalletManagerTests: XCTestCase {
 
     private func makeViewModel(
         watcherService: OnChainWatcherServicing = MockWatcherService(),
-        monitored: Set<String> = ["legacy", "nestedSegwit", "nativeSegwit", "taproot"]
+        monitored: Set<String> = ["legacy", "nestedSegwit", "nativeSegwit", "taproot"],
+        now: @escaping () -> UInt64 = { 1_700_000_000 }
     ) -> HwWalletManager {
         let vm = HwWalletManager(
             watcherService: watcherService,
@@ -54,7 +55,8 @@ final class HwWalletManagerTests: XCTestCase {
             electrumUrl: { "ssl://test:1" },
             network: { .regtest },
             persistActivities: { [weak self] in self?.persisted.append($0) },
-            deleteActivities: { [weak self] in self?.deleted.append($0) }
+            deleteActivities: { [weak self] in self?.deleted.append($0) },
+            now: now
         )
         vm.receivedTxPublisher
             .sink { [weak self] in self?.receivedTxs.append($0) }
@@ -448,6 +450,130 @@ final class HwWalletManagerTests: XCTestCase {
 
         XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId("dev1", "nativeSegwit")))
         XCTAssertEqual(deleted, [HwWalletId.derive(xpubs: xpubs, fallbackId: "dev1")])
+    }
+
+    // MARK: - Fix 4: unconfirmed timestamp
+
+    func testUnconfirmedTxUsesNowTimestampNotZero() {
+        let fixedNow: UInt64 = 1_650_000_000
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
+        let vm = makeViewModel(now: { fixedNow })
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeTx(txid: "mempool", received: 5000, sent: 0, direction: .received, confirmations: 0, timestamp: nil)], total: 5000
+        ))
+
+        guard case let .onchain(onchain) = (persisted.last ?? [])[0] else { return XCTFail("expected onchain") }
+        XCTAssertEqual(onchain.timestamp, fixedNow)
+        XCTAssertEqual(onchain.createdAt, fixedNow)
+        XCTAssertFalse(onchain.confirmed)
+    }
+
+    func testUnconfirmedTxTimestampStableAcrossEvents() {
+        var nowValue: UInt64 = 1_650_000_000
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
+        let vm = makeViewModel(now: { nowValue })
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        let wid = watcherId("dev1", "nativeSegwit")
+
+        vm.handleWatcherEvent(watcherId: wid, event: makeEvent(
+            [makeTx(txid: "mempool", received: 5000, sent: 0, direction: .received, confirmations: 0, timestamp: nil)], total: 5000
+        ))
+
+        // Clock advances, but a later event for the still-unconfirmed tx must keep the first timestamp.
+        nowValue = 1_650_009_999
+        vm.handleWatcherEvent(watcherId: wid, event: makeEvent(
+            [makeTx(txid: "mempool", received: 5000, sent: 0, direction: .received, confirmations: 0, timestamp: nil)], total: 5000
+        ))
+
+        guard case let .onchain(onchain) = (persisted.last ?? [])[0] else { return XCTFail("expected onchain") }
+        XCTAssertEqual(onchain.timestamp, 1_650_000_000)
+    }
+
+    func testConfirmedTxUsesBlockTimestamp() {
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
+        let vm = makeViewModel(now: { 1_650_000_000 })
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeTx(txid: "confirmed", received: 5000, sent: 0, direction: .received, confirmations: 3, timestamp: 1_699_999_000)], total: 5000
+        ))
+
+        guard case let .onchain(onchain) = (persisted.last ?? [])[0] else { return XCTFail("expected onchain") }
+        XCTAssertEqual(onchain.timestamp, 1_699_999_000)
+        XCTAssertTrue(onchain.confirmed)
+    }
+
+    // MARK: - Fix 5: self-transfer value
+
+    func testSelfTransferValueIsFee() {
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
+        let vm = makeViewModel()
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+
+        // Consolidation: everything comes back to the wallet minus the fee (sent == received + fee).
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeTx(txid: "consolidate", received: 19500, sent: 20000, fee: 500, direction: .selfTransfer)], total: 19500
+        ))
+
+        guard case let .onchain(onchain) = (persisted.last ?? [])[0] else { return XCTFail("expected onchain") }
+        XCTAssertEqual(onchain.txType, .sent)
+        XCTAssertEqual(onchain.value, 500) // the fee paid, not 0
+        XCTAssertEqual(onchain.fee, 500)
+    }
+
+    // MARK: - Fix 6: forget device deletes activities
+
+    func testForgettingDeviceViaUpdateDeletesActivities() async {
+        let mock = MockWatcherService()
+        let xpubs = ["nativeSegwit": "z"]
+        let device = makeDevice(id: "dev1", xpubs: xpubs)
+        let vm = makeViewModel(watcherService: mock, monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 1 }
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeTx(txid: "t1", received: 1000, sent: 0, direction: .received)], total: 1000
+        ))
+        let walletId = HwWalletId.derive(xpubs: xpubs, fallbackId: "dev1")
+
+        // Device forgotten → the next snapshot no longer includes it.
+        vm.updateDevices(knownDevices: [], connectedDeviceId: nil)
+
+        XCTAssertEqual(deleted, [walletId])
+        XCTAssertTrue(vm.wallets.isEmpty)
+        XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId("dev1", "nativeSegwit")))
+    }
+
+    func testUpdateKeepingDeviceDoesNotDeleteActivities() async {
+        let mock = MockWatcherService()
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
+        let vm = makeViewModel(watcherService: mock, monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 1 }
+
+        // Same device pushed again (e.g. connection toggled) → no deletion.
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
+
+        XCTAssertTrue(deleted.isEmpty)
+        XCTAssertEqual(vm.wallets.count, 1)
+    }
+
+    // MARK: - Fix 7: watcher start-race guard
+
+    func testDoubleSyncDoesNotDoubleStartWatcher() async {
+        let mock = MockWatcherService()
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
+        let vm = makeViewModel(watcherService: mock, monitored: ["nativeSegwit"])
+
+        // Two pushes back-to-back, before the first start's async Task can complete.
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+
+        await waitUntil { mock.startedParams.count >= 1 }
+        // Give any erroneous second start a chance to land before asserting.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(mock.startedParams.count, 1)
     }
 
     // MARK: - Helpers
