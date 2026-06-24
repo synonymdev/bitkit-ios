@@ -33,8 +33,4 @@ extension PrivatePaykitService {
             markWalletBackupDataChanged()
         }
     }
-
-    func markWalletBackupDataChanged() {
-        Self.walletBackupDataChangedSubject.send()
-    }
 }

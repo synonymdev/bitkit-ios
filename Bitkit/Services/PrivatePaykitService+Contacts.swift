@@ -209,7 +209,7 @@ extension PrivatePaykitService {
         requireImmediatePublication: Bool
     ) async -> Error? {
         do {
-            return try await publicationLock.withLock {
+            return try await withPublicationLock {
                 await syncLocalEndpointPublicationLocked(
                     for: publicKeys,
                     wallet: wallet,

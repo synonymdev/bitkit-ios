@@ -1,5 +1,4 @@
 import Foundation
-import Paykit
 import SwiftUI
 
 enum PubkyAuthState: Equatable {
@@ -825,7 +824,7 @@ class PubkyProfileManager: ObservableObject {
 
         switch backup?.kind {
         case .none:
-            // Missing pubky backup state clears restored pubky credentials, including legacy backups without this field.
+            // Backups without pubky state do not carry recoverable pubky credentials.
             try? deleteKeychainValue(.paykitSession)
             try? deleteKeychainValue(.pubkySecretKey)
         case .localSeed:

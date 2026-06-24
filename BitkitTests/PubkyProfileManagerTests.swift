@@ -321,7 +321,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         let result = await PubkyProfileManager.resolveSessionInitialization(
             savedSessionSecret: nil,
             storedSecretKeyHex: "local-secret",
-            importSession: { secret in
+            importSession: { _ in
                 XCTFail("Re-signed local sessions should not be re-imported")
                 return "pubky_unused"
             },
@@ -512,9 +512,9 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         let encoded = try JSONEncoder().encode(payload)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        let legacyJson = json.filter { $0.key != "pubkySession" }
-        let legacyData = try JSONSerialization.data(withJSONObject: legacyJson)
-        let decoded = try JSONDecoder().decode(MetadataBackupV1.self, from: legacyData)
+        let jsonWithoutPubkySession = json.filter { $0.key != "pubkySession" }
+        let dataWithoutPubkySession = try JSONSerialization.data(withJSONObject: jsonWithoutPubkySession)
+        let decoded = try JSONDecoder().decode(MetadataBackupV1.self, from: dataWithoutPubkySession)
 
         XCTAssertNil(decoded.pubkySession)
         XCTAssertEqual(decoded.cache.dismissedSuggestions, [])

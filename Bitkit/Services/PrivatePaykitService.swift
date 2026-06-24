@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-actor PrivatePaykitPublicationLock {
+private actor PrivatePaykitPublicationLock {
     private var isLocked = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
@@ -37,7 +37,7 @@ actor PrivatePaykitPublicationLock {
 actor PrivatePaykitService {
     static let shared = PrivatePaykitService()
 
-    static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
+    private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
 
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
         walletBackupDataChangedSubject.eraseToAnyPublisher()
@@ -49,7 +49,7 @@ actor PrivatePaykitService {
     static let cleanupPendingKey = "paykitContactSharingCleanupPending"
     static let deletedContactCleanupKeysKey = "privatePaykitDeletedContactCleanupKeys"
     static let cacheStateKey = "privatePaykitCacheState"
-    // Private links can finish after a contact is added on the other device; keep draining long enough for staggered mutual adds.
+    /// Private links can finish after a contact is added on the other device; keep draining long enough for staggered mutual adds.
     static let privateMessageDrainRetryDelays: [UInt64] = [
         1_000_000_000,
         3_000_000_000,
@@ -62,11 +62,19 @@ actor PrivatePaykitService {
     var state: PrivatePaykitState
     var knownSavedContactKeys: Set<String> = []
     var pendingMessageDrainRetryTask: Task<Void, Never>?
-    let publicationLock = PrivatePaykitPublicationLock()
+    private let publicationLock = PrivatePaykitPublicationLock()
 
     init() {
         state = UserDefaults.standard.data(forKey: Self.cacheStateKey)
             .flatMap { try? JSONDecoder().decode(PrivatePaykitState.self, from: $0) } ?? PrivatePaykitState(contacts: [:])
+    }
+
+    func withPublicationLock<T>(_ operation: () async throws -> T) async throws -> T {
+        try await publicationLock.withLock(operation)
+    }
+
+    func markWalletBackupDataChanged() {
+        Self.walletBackupDataChangedSubject.send()
     }
 
     static func setContactSharingCleanupPending(_ isPending: Bool) {

@@ -71,7 +71,7 @@ final class PublicPaykitServiceTests: XCTestCase {
         )
     }
 
-    func testParseEndpointRejectsNonSpecLegacyLnurlMethodId() {
+    func testParseEndpointRejectsUnsupportedLnurlMethodId() {
         let endpoint = PublicPaykitService.parseEndpoint(
             methodId: "btc-lightning-lnurl-pay",
             endpointData: #"{"value":"lnurl1example"}"#

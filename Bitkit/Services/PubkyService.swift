@@ -176,7 +176,7 @@ enum PubkyService {
 actor PaykitSdkService {
     static let shared = PaykitSdkService()
     nonisolated static let pubkyDerivationRuntimeLabel = "bitkit"
-    static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
+    private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
 
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
         walletBackupDataChangedSubject.eraseToAnyPublisher()
@@ -751,7 +751,7 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
     }
 }
 
-final class PaykitSdkPaymentAdapter: SdkPaymentAdapter, @unchecked Sendable {
+private final class PaykitSdkPaymentAdapter: SdkPaymentAdapter, @unchecked Sendable {
     func currentReceivingDetails(scope: ReceivingDetailScope) throws -> [ReceivingDetail] {
         []
     }
