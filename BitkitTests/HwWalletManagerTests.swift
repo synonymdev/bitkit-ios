@@ -465,6 +465,29 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(params?.accountType, .nativeSegwit)
     }
 
+    func testWatcherRestartsWhenXpubChangesForSameDeviceAndType() async {
+        let mock = MockWatcherService()
+        let vm = makeViewModel(watcherService: mock, monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 1 }
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeActivity(txId: "t1", value: 40000, txType: .received)], total: 40000
+        ))
+        let originalWalletId = vm.wallets.first?.walletId
+
+        // Same device id + address type, new xpub (e.g. a passphrase/hidden wallet, or re-fetched
+        // accounts): the watcher id is unchanged but the watched key — and the derived wallet id —
+        // differ, so the old watcher must be torn down and a new one started on the new xpub
+        // instead of feeding the old wallet's balance under the new wallet id.
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z2"])], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 2 }
+
+        XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId("dev1", "nativeSegwit")))
+        XCTAssertEqual(mock.startedParams.last?.extendedKey, "z2")
+        XCTAssertNotEqual(vm.wallets.first?.walletId, originalWalletId)
+        XCTAssertEqual(vm.wallets.first?.balanceSats, 0, "stale old-xpub balance is dropped until the new watcher reports")
+    }
+
     func testReconcileForSettingsChangeSkipsUnchangedAndActsOnChange() async {
         let mock = MockWatcherService()
         var monitored: Set = ["nativeSegwit"]

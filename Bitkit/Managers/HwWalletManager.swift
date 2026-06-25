@@ -53,6 +53,13 @@ final class HwWalletManager {
     private var watcherData: [String: HwWatcherData] = [:]
     private var activeWatchers: Set<String> = []
     private var activeWatcherElectrumUrls: [String: String] = [:]
+
+    /// Xpub each active watcher was started with. The watcher id is only `deviceId|addressType`, so
+    /// the same physical device re-saved with a different xpub for that type (e.g. a passphrase/
+    /// hidden wallet, or re-fetched accounts) keeps the same watcher id and derives a new wallet id.
+    /// Tracked here so `syncWatchers()` restarts the watcher on the new xpub instead of leaving the
+    /// old one feeding the old wallet's balance/activity under the new wallet id.
+    private var activeWatcherXpubs: [String: String] = [:]
     private var retryingWatcherStarts: Set<String> = []
 
     /// Watchers whose async start is dispatched but not yet confirmed in `activeWatchers`.
@@ -176,7 +183,9 @@ final class HwWalletManager {
             // The next sync after it completes reconciles any electrum-url change.
             if pendingWatcherStarts.contains(spec.watcherId) { continue }
             let isActive = activeWatchers.contains(spec.watcherId)
-            if isActive, activeWatcherElectrumUrls[spec.watcherId] == spec.electrumUrl { continue }
+            if isActive,
+               activeWatcherElectrumUrls[spec.watcherId] == spec.electrumUrl,
+               activeWatcherXpubs[spec.watcherId] == spec.xpub { continue }
             if isActive, !stopActiveWatcher(spec.watcherId) { continue }
             startWatcher(spec)
         }
@@ -278,6 +287,7 @@ final class HwWalletManager {
                 }
                 activeWatchers.insert(spec.watcherId)
                 activeWatcherElectrumUrls[spec.watcherId] = spec.electrumUrl
+                activeWatcherXpubs[spec.watcherId] = spec.xpub
                 retryingWatcherStarts.remove(spec.watcherId)
             } catch {
                 pendingWatcherStarts.remove(spec.watcherId)
@@ -294,6 +304,7 @@ final class HwWalletManager {
             try watcherService.stopWatcher(watcherId: watcherId)
             activeWatchers.remove(watcherId)
             activeWatcherElectrumUrls[watcherId] = nil
+            activeWatcherXpubs[watcherId] = nil
             watcherData[watcherId] = nil
             listeners[watcherId] = nil
             return true
