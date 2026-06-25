@@ -33,7 +33,7 @@ enum WalletSuggestionState {
 /// Ordered suggestion card IDs per wallet state (priority: first = highest).
 /// Max 4 cards are shown; when one is dismissed or completed, the next in this list is shown.
 private let suggestionOrderByState: [WalletSuggestionState: [String]] = [
-    .empty: ["buyBitcoin", "transferToSpending", "support", "backupSeedPhrase", "pin", "profile", "invite"],
+    .empty: ["buyBitcoin", "transferToSpending", "hardware", "support", "backupSeedPhrase", "pin", "profile", "invite"],
     .onchain: ["backupSeedPhrase", "pin", "transferToSpending", "hardware", "support", "profile", "invite", "buyBitcoin"],
     .spending: ["quickpay", "notifications", "shop", "hardware", "profile", "support", "invite", "buyBitcoin"],
 ]
