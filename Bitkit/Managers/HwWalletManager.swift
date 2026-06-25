@@ -296,15 +296,21 @@ final class HwWalletManager {
 
     /// Aggregate the activities core emitted across a device-group's watchers, scoping each to the
     /// group's wallet id and deduping by activity id (so the same tx seen by two address-type
-    /// watchers persists once).
+    /// watchers persists once). Watchers are walked in sorted `watcherId` order and the result is
+    /// sorted by activity id, so a tx observed by multiple address-type watchers (which can carry
+    /// different wallet-perspective directions) resolves to a deterministic winner — the
+    /// highest-ordered watcherId — rather than depending on dictionary iteration order.
     private func mergedActivities(for group: DeviceGroup) -> [Activity] {
-        let watchers = watcherData.values.filter { group.ids.contains($0.deviceId) }
+        let watchers = watcherData
+            .filter { group.ids.contains($0.value.deviceId) }
+            .sorted { $0.key < $1.key }
+            .map(\.value)
         var byId: [String: Activity] = [:]
         for activity in watchers.flatMap(\.activities) {
             let scoped = scopedToWallet(activity, walletId: group.walletId)
             byId[activityId(of: scoped)] = scoped
         }
-        return Array(byId.values)
+        return byId.values.sorted { activityId(of: $0) < activityId(of: $1) }
     }
 
     private func scopedToWallet(_ activity: Activity, walletId: String) -> Activity {

@@ -393,6 +393,41 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(onchain.txId, "shared")
     }
 
+    func testMixedDirectionDuplicateResolvesDeterministically() {
+        /// The same txid seen by two address-type watchers can carry different wallet-perspective
+        /// directions; the merge must resolve to the same winner regardless of arrival order.
+        func mergedTxType(nativeSegwitFirst: Bool) -> PaymentType? {
+            persisted = []
+            let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+            let vm = makeViewModel()
+            vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+            let ns = watcherId("dev1", "nativeSegwit")
+            let tr = watcherId("dev1", "taproot")
+            let nsEvent = makeEvent([makeActivity(txId: "shared", value: 5000, txType: .sent)], total: 5000)
+            let trEvent = makeEvent([makeActivity(txId: "shared", value: 30000, txType: .received)], total: 30000)
+            if nativeSegwitFirst {
+                vm.handleWatcherEvent(watcherId: ns, event: nsEvent)
+                vm.handleWatcherEvent(watcherId: tr, event: trEvent)
+            } else {
+                vm.handleWatcherEvent(watcherId: tr, event: trEvent)
+                vm.handleWatcherEvent(watcherId: ns, event: nsEvent)
+            }
+            let shared = (persisted.last ?? []).first {
+                if case let .onchain(onchain) = $0 { return onchain.txId == "shared" }
+                return false
+            }
+            guard case let .onchain(onchain) = shared else { return nil }
+            return onchain.txType
+        }
+
+        let nsFirst = mergedTxType(nativeSegwitFirst: true)
+        let trFirst = mergedTxType(nativeSegwitFirst: false)
+
+        XCTAssertEqual(nsFirst, trFirst)
+        // 'dev1|taproot' sorts after 'dev1|nativeSegwit', so the taproot perspective wins.
+        XCTAssertEqual(nsFirst, .received)
+    }
+
     func testWatcherStartedOnConfiguredElectrumAndNetwork() async {
         let mock = MockWatcherService()
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
