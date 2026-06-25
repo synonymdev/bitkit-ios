@@ -267,8 +267,12 @@ final class TrezorManager {
             deviceFeatures = features
             showConfirmOnDevice = false
 
-            await saveCurrentDeviceAsKnown()
-            trezorLog("Connected to Trezor: \(device.path)")
+            let savedComplete = await saveCurrentDeviceAsKnown()
+            if savedComplete {
+                trezorLog("Connected to Trezor: \(device.path)")
+            } else {
+                trezorLog("Connected to Trezor: \(device.path) with incomplete account-key capture", level: "warn")
+            }
         } catch {
             let errorMsg = errorMessage(from: error)
             self.error = errorMsg
@@ -421,13 +425,35 @@ final class TrezorManager {
         knownDevices = TrezorKnownDeviceStorage.loadAll()
     }
 
-    /// Captures the connected device's account xpubs so watch-only balances/activity
-    /// stay available while disconnected.
-    func saveCurrentDeviceAsKnown() async {
-        guard let device = connectedDevice else { return }
+    /// Captures the connected device's account xpubs so watch-only balances/activity stay available
+    /// while disconnected. The watch-only wallet id is derived from the captured xpub set, so a save
+    /// is blocked only when an address type failed *transiently* (a retryable transport error) and
+    /// isn't already covered by a previous capture — saving then would start a watcher under an id
+    /// that changes once that type is read on a later connect. A type the device genuinely lacks
+    /// (e.g. unsupported taproot) is accepted: its absence is stable across reconnects, so it neither
+    /// blocks the device nor churns the id. Merging keeps previously-captured xpubs.
+    /// Returns whether the device was saved.
+    @discardableResult
+    func saveCurrentDeviceAsKnown() async -> Bool {
+        guard let device = connectedDevice else { return false }
         let previous = TrezorKnownDeviceStorage.loadAll().first { $0.id == device.id }
-        let fetched = await fetchAccountXpubs()
+        let (fetched, transientFailures) = await fetchAccountXpubs()
         let mergedXpubs = (previous?.xpubs ?? [:]).merging(fetched) { _, new in new }
+
+        guard !mergedXpubs.isEmpty else {
+            trezorLog("No account xpubs could be read from device; not saving", level: "warn")
+            error = "Couldn't read any account keys from your Trezor. Please reconnect to try again."
+            return false
+        }
+
+        let retryableGaps = transientFailures.filter { mergedXpubs[$0.stringValue] == nil }
+        guard retryableGaps.isEmpty else {
+            let names = retryableGaps.map(\.localizedTitle).sorted().joined(separator: ", ")
+            trezorLog("Incomplete xpub capture (transient failures: \(names)); not saving partial device", level: "warn")
+            error = "Couldn't read all account keys from your Trezor (\(names)). Please reconnect to try again."
+            return false
+        }
+
         let known = TrezorKnownDevice(
             id: device.id,
             name: device.name ?? "Trezor",
@@ -441,26 +467,62 @@ final class TrezorManager {
         TrezorKnownDeviceStorage.save(known)
         loadKnownDevices()
         trezorLog("Saved known device: \(known.name) with \(mergedXpubs.count) xpubs")
+        return true
     }
 
-    /// Per-type failures are swallowed so a single missing type doesn't block the rest.
-    func fetchAccountXpubs() async -> [String: String] {
+    private static let maxXpubFetchAttempts = 3
+    private static let xpubFetchRetryDelayNanos: UInt64 = 300_000_000
+
+    /// Markers (matched against the underlying `TrezorError` carried in the wrapped error's text)
+    /// for transient transport problems worth retrying. Anything else is treated as the address
+    /// type being genuinely unavailable on this device — e.g. taproot on firmware without BIP86 —
+    /// which must not block the device, since that absence is stable across reconnects.
+    private static let transientFailureMarkers = [
+        "TransportError", "ConnectionError", "DeviceDisconnected", "DeviceBusy", "Timeout", "IoError", "SessionError",
+    ]
+
+    private static func isTransientTransportFailure(_ error: Error) -> Bool {
+        let text = (error as? AppError)?.debugMessage ?? "\(error)"
+        return transientFailureMarkers.contains { text.contains($0) }
+    }
+
+    /// Reads one account xpub per address type. Transient transport failures (e.g. a BLE timeout
+    /// under load) are retried; a permanent rejection (an unsupported address type) is not. Returns
+    /// the captured xpubs and the address types that still failed *transiently* after all retries,
+    /// so the caller can block a save on those while accepting a device that merely lacks a type.
+    func fetchAccountXpubs() async -> (xpubs: [String: String], transientFailures: Set<AddressScriptType>) {
         let coinType = selectedNetwork == .bitcoin ? "0" : "1"
         var result: [String: String] = [:]
+        var transientFailures: Set<AddressScriptType> = []
         for addressType in AddressScriptType.allAddressTypes {
-            do {
-                let params = TrezorGetPublicKeyParams(
-                    path: addressType.accountDerivationPath(coinType: coinType),
-                    coin: selectedNetwork,
-                    showOnTrezor: false
-                )
-                let response = try await trezorService.getPublicKey(params: params)
-                result[addressType.stringValue] = response.xpub
-            } catch {
-                trezorLog("Could not read xpub for '\(addressType.stringValue)': \(error)", level: "warn")
+            let params = TrezorGetPublicKeyParams(
+                path: addressType.accountDerivationPath(coinType: coinType),
+                coin: selectedNetwork,
+                showOnTrezor: false
+            )
+            var lastError: Error?
+            for attempt in 1 ... Self.maxXpubFetchAttempts {
+                do {
+                    result[addressType.stringValue] = try await trezorService.getPublicKey(params: params).xpub
+                    lastError = nil
+                    break
+                } catch {
+                    lastError = error
+                    trezorLog(
+                        "Could not read xpub for '\(addressType.stringValue)' (attempt \(attempt)/\(Self.maxXpubFetchAttempts)): \(error)",
+                        level: "warn"
+                    )
+                    guard Self.isTransientTransportFailure(error) else { break }
+                    if attempt < Self.maxXpubFetchAttempts {
+                        try? await Task.sleep(nanoseconds: Self.xpubFetchRetryDelayNanos)
+                    }
+                }
+            }
+            if let lastError, Self.isTransientTransportFailure(lastError) {
+                transientFailures.insert(addressType)
             }
         }
-        return result
+        return (result, transientFailures)
     }
 
     func forgetDevice(id: String) async {
