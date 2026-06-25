@@ -15,8 +15,7 @@ struct HomeWalletView: View {
     /// semantics unchanged for send/transfer logic; only the headline folds hardware in).
     private var headlineSats: Int {
         let hw = Int(clamping: hwWalletManager.totalSats)
-        let (result, overflow) = wallet.totalBalanceSats.addingReportingOverflow(hw)
-        return overflow ? .max : result
+        return wallet.totalBalanceSats.saturatingAdd(hw)
     }
 
     var body: some View {

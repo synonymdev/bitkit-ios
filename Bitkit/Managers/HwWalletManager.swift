@@ -414,12 +414,12 @@ final class HwWalletManager {
                 name: displayName(of: device),
                 model: device.model,
                 isConnected: connectedDevice != nil,
-                balanceSats: deviceWatchers.reduce(UInt64(0)) { saturatingAdd($0, $1.balanceSats) },
+                balanceSats: deviceWatchers.reduce(UInt64(0)) { $0.saturatingAdd($1.balanceSats) },
                 deviceIds: group.ids
             )
         }
 
-        totalSats = wallets.reduce(UInt64(0)) { saturatingAdd($0, $1.balanceSats) }
+        totalSats = wallets.reduce(UInt64(0)) { $0.saturatingAdd($1.balanceSats) }
         hwWalletIds = Set(groups.map(\.walletId))
     }
 
@@ -452,11 +452,6 @@ final class HwWalletManager {
     private func deviceId(fromWatcherId watcherId: String) -> String {
         guard let range = watcherId.range(of: Constants.watcherIdSeparator) else { return watcherId }
         return String(watcherId[..<range.lowerBound])
-    }
-
-    private func saturatingAdd(_ a: UInt64, _ b: UInt64) -> UInt64 {
-        let (sum, overflow) = a.addingReportingOverflow(b)
-        return overflow ? .max : sum
     }
 
     // MARK: - Supporting types
