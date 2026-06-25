@@ -258,22 +258,6 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(mock.startedParams.first?.watcherId, watcherId("dev1", "nativeSegwit"))
     }
 
-    func testResetStateDeletesStoredActivitiesAndClears() throws {
-        let xpubs = ["nativeSegwit": "zpubNS"]
-        let device = makeDevice(id: "dev1", xpubs: xpubs)
-        let vm = makeViewModel()
-        vm.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
-        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeActivity(txId: "tx1", value: 40000, txType: .received)], total: 40000
-        ))
-
-        let walletId = try HwWalletId.derive(xpubs: xpubs)
-        vm.resetState()
-
-        XCTAssertEqual(deleted, [walletId])
-        XCTAssertEqual(vm.totalSats, 0)
-    }
-
     func testZeroBalanceBeforeAnyWatcherEvent() {
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
         let vm = makeViewModel()

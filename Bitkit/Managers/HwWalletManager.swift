@@ -119,23 +119,6 @@ final class HwWalletManager {
 
     // MARK: - Control
 
-    func resetState() {
-        for watcherId in activeWatchers {
-            try? watcherService.stopWatcher(watcherId: watcherId)
-        }
-        for walletId in hwWalletIds {
-            deleteActivities(walletId)
-        }
-        activeWatchers.removeAll()
-        activeWatcherElectrumUrls.removeAll()
-        retryingWatcherStarts.removeAll()
-        pendingWatcherStarts.removeAll()
-        emittedReceivedTxIds.removeAll()
-        listeners.removeAll()
-        watcherData.removeAll()
-        recomputeDerivedState()
-    }
-
     /// Stop watching a paired hardware wallet and delete its stored activities. The caller is
     /// responsible for forgetting the device entries (via `TrezorManager.forgetDevice`); the next
     /// `updateDevices(...)` push then drops it from the tile list.
