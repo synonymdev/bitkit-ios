@@ -11,17 +11,53 @@ final class HwWalletManagerTests: XCTestCase {
     // MARK: - Mocks & spies
 
     private final class MockWatcherService: OnChainWatcherServicing, @unchecked Sendable {
+        private let lock = NSLock()
+
         private(set) var startedParams: [WatcherParams] = []
         private(set) var stoppedWatcherIds: [String] = []
         var stopShouldFail = false
 
+        /// When set, keeps the native start call in flight until `completeStart()` resolves it,
+        /// mirroring the gate used in `TrezorViewModelWatcherTests`.
+        var holdStart = false
+        private var startContinuation: CheckedContinuation<Void, Error>?
+        private var pendingStartResult: Result<Void, Error>?
+
         struct StopError: Error {}
 
         func startWatcher(params: WatcherParams, listener _: EventListener) async throws {
+            lock.lock()
             startedParams.append(params)
+            let shouldHold = holdStart
+            lock.unlock()
+
+            guard shouldHold else { return }
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+                defer { lock.unlock() }
+                if let result = pendingStartResult {
+                    pendingStartResult = nil
+                    continuation.resume(with: result)
+                } else {
+                    startContinuation = continuation
+                }
+            }
+        }
+
+        func completeStart(with result: Result<Void, Error> = .success(())) {
+            lock.lock()
+            defer { lock.unlock() }
+            if let continuation = startContinuation {
+                startContinuation = nil
+                continuation.resume(with: result)
+            } else {
+                pendingStartResult = result
+            }
         }
 
         func stopWatcher(watcherId: String) throws {
+            lock.lock()
+            defer { lock.unlock() }
             stoppedWatcherIds.append(watcherId)
             if stopShouldFail { throw StopError() }
         }
@@ -256,6 +292,28 @@ final class HwWalletManagerTests: XCTestCase {
         await waitUntil { mock.startedParams.count == 1 }
         XCTAssertEqual(mock.startedParams.count, 1)
         XCTAssertEqual(mock.startedParams.first?.watcherId, watcherId("dev1", "nativeSegwit"))
+    }
+
+    func testForgottenDeviceDuringInFlightStartIsTornDownNotActivated() async {
+        let mock = MockWatcherService()
+        mock.holdStart = true
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
+        let vm = makeViewModel(watcherService: mock, monitored: ["nativeSegwit"])
+        let wid = watcherId("dev1", "nativeSegwit")
+
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
+        await waitUntil { mock.startedParams.count == 1 }
+
+        // Forget the device while its watcher start is still in flight.
+        vm.updateDevices(knownDevices: [], connectedDeviceId: nil)
+
+        // Resolving the now-undesired start must tear the watcher down, not activate it.
+        mock.completeStart()
+        await waitUntil { mock.stoppedWatcherIds.contains(wid) }
+
+        XCTAssertTrue(mock.stoppedWatcherIds.contains(wid))
+        XCTAssertTrue(vm.wallets.isEmpty)
+        XCTAssertEqual(vm.totalSats, 0)
     }
 
     func testZeroBalanceBeforeAnyWatcherEvent() {

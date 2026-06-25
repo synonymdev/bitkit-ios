@@ -135,19 +135,7 @@ final class HwWalletManager {
     // MARK: - Watcher orchestration
 
     func syncWatchers() {
-        let monitored = monitoredTypesProvider()
-        let electrumUrl = electrumUrlProvider()
-
-        var seen = Set<String>()
-        var specs: [WatcherSpec] = []
-        for device in knownDevices {
-            // Scope a device's watchers under its derived wallet id (skips devices without xpubs).
-            guard let walletId = try? HwWalletId.derive(xpubs: device.xpubs) else { continue }
-            for (addressType, xpub) in device.xpubs where monitored.contains(addressType) {
-                guard seen.insert("\(addressType)\u{1}\(xpub)").inserted else { continue }
-                specs.append(WatcherSpec(deviceId: device.id, walletId: walletId, addressType: addressType, xpub: xpub, electrumUrl: electrumUrl))
-            }
-        }
+        let specs = desiredWatcherSpecs()
         let desiredIds = Set(specs.map(\.watcherId))
 
         for spec in specs {
@@ -165,6 +153,35 @@ final class HwWalletManager {
         for staleId in activeWatchers.subtracting(desiredIds) {
             _ = stopActiveWatcher(staleId)
         }
+    }
+
+    /// Build the watcher specs the current device/settings snapshot wants running: one per
+    /// (device, monitored address type), deduped by (addressType, xpub) and scoped to the
+    /// device's derived wallet id (devices without xpubs are skipped).
+    private func desiredWatcherSpecs() -> [WatcherSpec] {
+        let monitored = monitoredTypesProvider()
+        let electrumUrl = electrumUrlProvider()
+
+        var seen = Set<String>()
+        var specs: [WatcherSpec] = []
+        for device in knownDevices {
+            guard let walletId = try? HwWalletId.derive(xpubs: device.xpubs) else { continue }
+            for (addressType, xpub) in device.xpubs where monitored.contains(addressType) {
+                guard seen.insert(dedupKey(addressType: addressType, xpub: xpub)).inserted else { continue }
+                specs.append(WatcherSpec(deviceId: device.id, walletId: walletId, addressType: addressType, xpub: xpub, electrumUrl: electrumUrl))
+            }
+        }
+        return specs
+    }
+
+    /// Identity for deduping watchers across devices that share an (addressType, xpub). Uses a
+    /// control-character separator that can't appear in either component.
+    private func dedupKey(addressType: String, xpub: String) -> String {
+        "\(addressType)\u{1}\(xpub)"
+    }
+
+    private func desiredWatcherIds() -> Set<String> {
+        Set(desiredWatcherSpecs().map(\.watcherId))
     }
 
     private func startWatcher(_ spec: WatcherSpec) {
@@ -189,6 +206,15 @@ final class HwWalletManager {
             do {
                 try await watcherService.startWatcher(params: params, listener: listener)
                 pendingWatcherStarts.remove(spec.watcherId)
+                // The device may have been forgotten or its address type disabled while the start
+                // was in flight; if this watcher is no longer desired, tear it down instead of
+                // resurrecting a forgotten wallet or a stale address type.
+                guard desiredWatcherIds().contains(spec.watcherId) else {
+                    try? watcherService.stopWatcher(watcherId: spec.watcherId)
+                    listeners[spec.watcherId] = nil
+                    retryingWatcherStarts.remove(spec.watcherId)
+                    return
+                }
                 activeWatchers.insert(spec.watcherId)
                 activeWatcherElectrumUrls[spec.watcherId] = spec.electrumUrl
                 retryingWatcherStarts.remove(spec.watcherId)
