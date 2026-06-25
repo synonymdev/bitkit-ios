@@ -308,27 +308,11 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
     }
 
-    /// iOS-specific: the root view calls stopAllWatchers from onDisappear since the
-    /// ViewModel is app-lifetime (no onCleared equivalent).
+    /// iOS-specific: dashboard dismissal stops only this dashboard's dev watcher and resets
+    /// the watcher input fields. It must NOT call the global stop, since production hardware
+    /// watchers owned by HwWalletManager share the same service and have to stay live.
     @MainActor
-    func testStopAllWatchersStopsActiveWatcherAndService() async throws {
-        let service = MockWatcherService()
-        let viewModel = makeViewModel(service: service)
-
-        await viewModel.startWatcher()
-        let watcherId = try XCTUnwrap(viewModel.activeWatcherId)
-
-        viewModel.stopAllWatchers()
-
-        XCTAssertEqual(service.stoppedWatcherIds, [watcherId])
-        XCTAssertEqual(service.stopAllWatchersCallCount, 1)
-        XCTAssertNil(viewModel.activeWatcherId)
-        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
-    }
-
-    /// iOS-specific: dashboard dismissal also resets the watcher input fields.
-    @MainActor
-    func testHandleDashboardDismissStopsWatchersAndClearsInputState() async throws {
+    func testHandleDashboardDismissStopsDevWatcherAndClearsInputState() async throws {
         let service = MockWatcherService()
         let viewModel = makeViewModel(service: service)
         viewModel.watcherGapLimit = "30"
@@ -340,7 +324,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         viewModel.handleDashboardDismiss()
 
         XCTAssertEqual(service.stoppedWatcherIds, [watcherId])
-        XCTAssertEqual(service.stopAllWatchersCallCount, 1)
+        XCTAssertEqual(service.stopAllWatchersCallCount, 0)
         XCTAssertNil(viewModel.activeWatcherId)
         XCTAssertEqual(viewModel.watcherExtendedKey, "")
         XCTAssertEqual(viewModel.watcherGapLimit, "20")

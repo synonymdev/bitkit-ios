@@ -1174,18 +1174,13 @@ class TrezorViewModel {
         trezorLog("Watcher stopped: \(watcherId)")
     }
 
-    /// Tear down all watchers when the Trezor dashboard is dismissed. On Android this
-    /// happens in the ViewModel's onCleared, but this ViewModel is app-lifetime, so the
-    /// root view calls it from onDisappear.
-    func stopAllWatchers() {
-        stopWatcher()
-        watcherService.stopAllWatchers()
-    }
-
-    /// Full teardown when the Trezor dashboard is dismissed: stop all watchers and
-    /// reset the watcher input state so the next visit starts fresh.
+    /// Full teardown when the Trezor dashboard is dismissed: stop only this dashboard's dev
+    /// watcher and reset the watcher input state so the next visit starts fresh. The global
+    /// `watcherService.stopAllWatchers()` is intentionally NOT called here — production
+    /// hardware watchers owned by `HwWalletManager` share the same service and must stay live;
+    /// the global stop is reserved for app reset/wipe (`AppReset`).
     func handleDashboardDismiss() {
-        stopAllWatchers()
+        stopWatcher()
         watcherExtendedKey = ""
         watcherGapLimit = "20"
         onchainAccountTypeSelection = .automatic
