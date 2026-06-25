@@ -14,7 +14,9 @@ struct HomeWalletView: View {
     /// Headline total including watch-only hardware-wallet balances (keeps `totalBalanceSats`
     /// semantics unchanged for send/transfer logic; only the headline folds hardware in).
     private var headlineSats: Int {
-        wallet.totalBalanceSats + Int(clamping: hwWalletManager.totalSats)
+        let hw = Int(clamping: hwWalletManager.totalSats)
+        let (result, overflow) = wallet.totalBalanceSats.addingReportingOverflow(hw)
+        return overflow ? .max : result
     }
 
     var body: some View {
