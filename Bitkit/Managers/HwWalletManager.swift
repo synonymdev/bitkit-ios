@@ -81,6 +81,7 @@ final class HwWalletManager {
             Task {
                 try? await ServiceQueue.background(.core) {
                     try BitkitCore.upsertActivities(activities: activities)
+                    CoreService.shared.activity.notifyActivitiesChanged()
                 }
             }
         }
@@ -88,6 +89,7 @@ final class HwWalletManager {
             Task {
                 try? await ServiceQueue.background(.core) {
                     _ = try BitkitCore.deleteActivitiesByWalletId(walletId: walletId)
+                    CoreService.shared.activity.notifyActivitiesChanged()
                 }
             }
         }

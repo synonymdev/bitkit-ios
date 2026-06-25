@@ -42,6 +42,12 @@ class ActivityService {
         activitiesChangedSubject.eraseToAnyPublisher()
     }
 
+    /// Notify observers that activities changed after a write made directly through BitkitCore
+    /// (bypassing this service), e.g. hardware-wallet watcher persistence.
+    func notifyActivitiesChanged() {
+        activitiesChangedSubject.send()
+    }
+
     private let metadataChangedSubject = PassthroughSubject<Void, Never>()
 
     var metadataChangedPublisher: AnyPublisher<Void, Never> {
@@ -370,6 +376,7 @@ class ActivityService {
         try await ServiceQueue.background(.core) {
             try upsertActivities(activities: activities)
             await self.refreshBoostTxIdsCache()
+            self.activitiesChangedSubject.send()
         }
     }
 
