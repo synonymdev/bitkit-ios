@@ -442,6 +442,40 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(params?.accountType, .nativeSegwit)
     }
 
+    func testReconcileForSettingsChangeSkipsUnchangedAndActsOnChange() async {
+        let mock = MockWatcherService()
+        var monitored: Set = ["nativeSegwit"]
+        let electrum = "ssl://a:1"
+        var electrumCalls = 0
+        let vm = HwWalletManager(
+            watcherService: mock,
+            monitoredTypes: { monitored },
+            electrumUrl: { electrumCalls += 1; return electrum },
+            network: { .regtest },
+            persistActivities: { _ in },
+            deleteActivities: { _ in }
+        )
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 1 }
+
+        // Prime the last-synced snapshot.
+        vm.reconcileForSettingsChange()
+
+        // Unchanged settings: the guard short-circuits before syncWatchers, so the Electrum
+        // provider is read exactly once (the guard) and no watcher work happens.
+        electrumCalls = 0
+        vm.reconcileForSettingsChange()
+        XCTAssertEqual(electrumCalls, 1)
+        XCTAssertEqual(mock.startedParams.count, 1)
+
+        // A monitored-types change does reconcile: the taproot watcher starts.
+        monitored = ["nativeSegwit", "taproot"]
+        vm.reconcileForSettingsChange()
+        await waitUntil { mock.startedParams.count == 2 }
+        XCTAssertEqual(mock.startedParams.count, 2)
+    }
+
     func testReceivedTxEmittedOnceAcrossMultipleWatchers() {
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
         let vm = makeViewModel()

@@ -59,6 +59,11 @@ final class HwWalletManager {
     /// Guards against a second `syncWatchers()` double-starting the same watcher in that window.
     private var pendingWatcherStarts: Set<String> = []
 
+    /// Last watcher-relevant settings seen by `reconcileForSettingsChange()`, so an unrelated
+    /// settings change (theme, currency, …) doesn't trigger a needless watcher reconcile.
+    private var lastSyncedMonitored: Set<String>?
+    private var lastSyncedElectrumUrl: String?
+
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
 
@@ -133,6 +138,19 @@ final class HwWalletManager {
     }
 
     // MARK: - Watcher orchestration
+
+    /// Reconcile watchers in response to a settings change, but only when the monitored address
+    /// types or the Electrum URL actually changed — `settingsPublisher` fires for every setting
+    /// (theme, currency, …), and a full `syncWatchers()` re-derives each device's wallet id over
+    /// the FFI, so we skip the work when nothing watcher-relevant moved.
+    func reconcileForSettingsChange() {
+        let monitored = monitoredTypesProvider()
+        let electrumUrl = electrumUrlProvider()
+        guard monitored != lastSyncedMonitored || electrumUrl != lastSyncedElectrumUrl else { return }
+        lastSyncedMonitored = monitored
+        lastSyncedElectrumUrl = electrumUrl
+        syncWatchers()
+    }
 
     func syncWatchers() {
         let specs = desiredWatcherSpecs()
