@@ -45,7 +45,6 @@ final class HwWalletManager {
     private let networkProvider: () -> TrezorCoinType
     private let persistActivities: ([Activity]) -> Void
     private let deleteActivities: (String) -> Void
-    private let nowProvider: () -> UInt64
 
     // MARK: - Internal state
 
@@ -63,18 +62,13 @@ final class HwWalletManager {
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
 
-    /// First-seen wall-clock timestamp per unconfirmed txid, kept so a mempool tx stays at a
-    /// stable position in the (timestamp-sorted) activity list across watcher events.
-    private var assignedTimestamps: [String: UInt64] = [:]
-
     init(
         watcherService: OnChainWatcherServicing = OnChainHwService.shared,
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
         persistActivities: (([Activity]) -> Void)? = nil,
-        deleteActivities: ((String) -> Void)? = nil,
-        now: (() -> UInt64)? = nil
+        deleteActivities: ((String) -> Void)? = nil
     ) {
         self.watcherService = watcherService
         networkProvider = network ?? { OnChainHwService.appDefaultCoinType }
@@ -97,7 +91,6 @@ final class HwWalletManager {
                 }
             }
         }
-        nowProvider = now ?? { UInt64(Date().timeIntervalSince1970) }
     }
 
     // MARK: - Device input
@@ -138,7 +131,6 @@ final class HwWalletManager {
         emittedReceivedTxIds.removeAll()
         listeners.removeAll()
         watcherData.removeAll()
-        assignedTimestamps.removeAll()
         recomputeDerivedState()
     }
 
@@ -164,9 +156,11 @@ final class HwWalletManager {
         var seen = Set<String>()
         var specs: [WatcherSpec] = []
         for device in knownDevices {
+            // Scope a device's watchers under its derived wallet id (skips devices without xpubs).
+            guard let walletId = try? HwWalletId.derive(xpubs: device.xpubs) else { continue }
             for (addressType, xpub) in device.xpubs where monitored.contains(addressType) {
                 guard seen.insert("\(addressType)\u{1}\(xpub)").inserted else { continue }
-                specs.append(WatcherSpec(deviceId: device.id, addressType: addressType, xpub: xpub, electrumUrl: electrumUrl))
+                specs.append(WatcherSpec(deviceId: device.id, walletId: walletId, addressType: addressType, xpub: xpub, electrumUrl: electrumUrl))
             }
         }
         let desiredIds = Set(specs.map(\.watcherId))
@@ -193,6 +187,7 @@ final class HwWalletManager {
         let network = networkProvider()
         let params = WatcherParams(
             watcherId: spec.watcherId,
+            walletId: spec.walletId,
             extendedKey: spec.xpub,
             electrumUrl: spec.electrumUrl,
             network: network.coreNetwork,
@@ -248,27 +243,37 @@ final class HwWalletManager {
 
     /// Update aggregated state from a watcher event. The first event after a watcher starts
     /// delivers the full history (baseline); only later inbound txs are surfaced as received.
+    /// Core builds the persistence-ready activities (core 0.3.4 watch-only watcher); the manager
+    /// stores, aggregates, and scopes them to the device.
     func handleWatcherEvent(watcherId: String, event: WatcherEvent) {
-        guard case let .transactionsChanged(transactions, balance, _, _, _) = event else { return }
+        guard case let .transactionsChanged(activities, _, balance, _, _, _) = event else { return }
         let previous = watcherData[watcherId]
         watcherData[watcherId] = HwWatcherData(
             deviceId: deviceId(fromWatcherId: watcherId),
             balanceSats: balance.total,
-            transactions: transactions
+            activities: activities
         )
         recomputeDerivedState()
         persistGroupActivities(forDevice: deviceId(fromWatcherId: watcherId))
-        emitReceivedTxs(previous: previous, transactions: transactions)
+        emitReceivedTxs(previous: previous, activities: activities)
     }
 
-    private func emitReceivedTxs(previous: HwWatcherData?, transactions: [HistoryTransaction]) {
+    private func emitReceivedTxs(previous: HwWatcherData?, activities: [Activity]) {
         guard let previous else { return }
-        let knownTxIds = Set(previous.transactions.map(\.txid))
-        for tx in transactions where tx.direction == .received {
-            guard !knownTxIds.contains(tx.txid) else { continue }
-            guard emittedReceivedTxIds.insert(tx.txid).inserted else { continue }
-            receivedTxPublisher.send(HwWalletReceivedTx(txid: tx.txid, sats: tx.amount))
+        let knownTxIds = onchainTxIds(in: previous.activities)
+        for activity in activities {
+            guard case let .onchain(onchain) = activity, onchain.txType == .received else { continue }
+            guard !knownTxIds.contains(onchain.txId) else { continue }
+            guard emittedReceivedTxIds.insert(onchain.txId).inserted else { continue }
+            receivedTxPublisher.send(HwWalletReceivedTx(txid: onchain.txId, sats: onchain.value))
         }
+    }
+
+    private func onchainTxIds(in activities: [Activity]) -> Set<String> {
+        Set(activities.compactMap { activity in
+            guard case let .onchain(onchain) = activity else { return nil }
+            return onchain.txId
+        })
     }
 
     // MARK: - Persistence
@@ -278,29 +283,35 @@ final class HwWalletManager {
         persistActivities(mergedActivities(for: group))
     }
 
+    /// Aggregate the activities core emitted across a device-group's watchers, scoping each to the
+    /// group's wallet id and deduping by activity id (so the same tx seen by two address-type
+    /// watchers persists once).
     private func mergedActivities(for group: DeviceGroup) -> [Activity] {
         let watchers = watcherData.values.filter { group.ids.contains($0.deviceId) }
-        let grouped = Dictionary(grouping: watchers.flatMap(\.transactions), by: \.txid)
-        return grouped.map { txid, transactions in
-            let timestamp = resolveTimestamp(txid: txid, transactions: transactions)
-            return onchainActivity(walletId: group.walletId, from: transactions, timestamp: timestamp)
+        var byId: [String: Activity] = [:]
+        for activity in watchers.flatMap(\.activities) {
+            let scoped = scopedToWallet(activity, walletId: group.walletId)
+            byId[activityId(of: scoped)] = scoped
+        }
+        return Array(byId.values)
+    }
+
+    private func scopedToWallet(_ activity: Activity, walletId: String) -> Activity {
+        switch activity {
+        case var .onchain(onchain):
+            onchain.walletId = walletId
+            return .onchain(onchain)
+        case var .lightning(lightning):
+            lightning.walletId = walletId
+            return .lightning(lightning)
         }
     }
 
-    /// Confirmed txs carry a block timestamp; mempool txs report `nil`. Falling back to `0`
-    /// would bury a fresh receive at the bottom of the timestamp-sorted activity list, so use
-    /// the first-seen wall-clock time instead and remember it per txid until the tx confirms.
-    private func resolveTimestamp(txid: String, transactions: [HistoryTransaction]) -> UInt64 {
-        if let confirmed = transactions.compactMap(\.timestamp).min() {
-            assignedTimestamps[txid] = nil
-            return confirmed
+    private func activityId(of activity: Activity) -> String {
+        switch activity {
+        case let .onchain(onchain): return onchain.id
+        case let .lightning(lightning): return lightning.id
         }
-        if let assigned = assignedTimestamps[txid] {
-            return assigned
-        }
-        let now = nowProvider()
-        assignedTimestamps[txid] = now
-        return now
     }
 
     // MARK: - Aggregation
@@ -333,7 +344,7 @@ final class HwWalletManager {
         var order: [String] = []
         var grouped: [String: [TrezorKnownDevice]] = [:]
         for device in knownDevices where !device.xpubs.isEmpty {
-            let walletId = HwWalletId.derive(xpubs: device.xpubs, fallbackId: device.id)
+            guard let walletId = try? HwWalletId.derive(xpubs: device.xpubs) else { continue }
             if grouped[walletId] == nil { order.append(walletId) }
             grouped[walletId, default: []].append(device)
         }
@@ -341,59 +352,6 @@ final class HwWalletManager {
             guard let devices = grouped[walletId] else { return nil }
             return DeviceGroup(walletId: walletId, devices: devices)
         }
-    }
-
-    private func onchainActivity(walletId: String, from transactions: [HistoryTransaction], timestamp: UInt64) -> Activity {
-        let first = transactions[0]
-        let received = transactions.reduce(UInt64(0)) { saturatingAdd($0, $1.received) }
-        let sent = transactions.reduce(UInt64(0)) { saturatingAdd($0, $1.sent) }
-        let fee = transactions.compactMap(\.fee).max() ?? 0
-
-        // Classify by core's TxDirection (core 0.3.x): received-vs-sent arithmetic alone cannot
-        // tell a self-transfer/consolidation apart from a normal send (both have sent > received,
-        // since sent == received + fee), so without this a consolidation would show value 0
-        // instead of the fee paid.
-        let txType: PaymentType
-        let value: UInt64
-        switch first.direction {
-        case .received:
-            txType = .received
-            value = received >= sent ? received - sent : 0
-        case .sent:
-            txType = .sent
-            let net = sent >= received ? sent - received : 0
-            value = net >= fee ? net - fee : 0
-        case .selfTransfer:
-            txType = .sent
-            value = fee
-        }
-        let confirmations = transactions.map(\.confirmations).max() ?? 0
-        let confirmed = confirmations > 0
-        return .onchain(
-            OnchainActivity(
-                walletId: walletId,
-                id: first.txid,
-                txType: txType,
-                txId: first.txid,
-                value: value,
-                fee: fee,
-                feeRate: 1,
-                address: "",
-                confirmed: confirmed,
-                timestamp: timestamp,
-                isBoosted: false,
-                boostTxIds: [],
-                isTransfer: false,
-                doesExist: true,
-                confirmTimestamp: confirmed ? timestamp : nil,
-                channelId: nil,
-                transferTxId: nil,
-                contact: nil,
-                createdAt: timestamp,
-                updatedAt: timestamp,
-                seenAt: nil
-            )
-        )
     }
 
     // MARK: - Helpers
@@ -420,6 +378,7 @@ final class HwWalletManager {
 
     private struct WatcherSpec {
         let deviceId: String
+        let walletId: String
         let addressType: String
         let xpub: String
         let electrumUrl: String
@@ -445,6 +404,6 @@ final class HwWalletManager {
     private struct HwWatcherData {
         let deviceId: String
         let balanceSats: UInt64
-        let transactions: [HistoryTransaction]
+        let activities: [Activity]
     }
 }

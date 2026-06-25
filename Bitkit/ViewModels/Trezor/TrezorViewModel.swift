@@ -245,8 +245,8 @@ class TrezorViewModel {
     /// Transaction count reported by the watcher
     var watcherTransactionCount: UInt32 = 0
 
-    /// Latest transactions reported by the watcher
-    var watcherTransactions: [HistoryTransaction] = []
+    /// Latest activities reported by the watcher (core builds these in 0.3.4).
+    var watcherActivities: [Activity] = []
 
     /// Rolling event log (most recent last, capped)
     var watcherEvents: [String] = []
@@ -1059,8 +1059,11 @@ class TrezorViewModel {
         let network = connection.selectedNetwork
         let accountType = onchainAccountTypeSelection.accountType
 
+        // Dev watcher: scope its emitted activities under an id derived from the watched key.
+        let walletId = (try? HwWalletId.derive(xpubs: ["watcher": key])) ?? "trezor:watcher"
         let params = WatcherParams(
             watcherId: watcherId,
+            walletId: walletId,
             extendedKey: key,
             electrumUrl: OnChainHwService.electrumUrlForNetwork(network),
             network: network.coreNetwork,
@@ -1076,7 +1079,7 @@ class TrezorViewModel {
         isStartingWatcher = true
         startingWatcherId = watcherId
         watcherConnectionStatus = .starting
-        watcherTransactions = []
+        watcherActivities = []
         watcherEvents = ["starting: \(watcherId)"]
         watcherBalance = nil
         watcherTransactionCount = 0
@@ -1162,7 +1165,7 @@ class TrezorViewModel {
         watcherConnectionStatus = .idle
         watcherListener = nil
         watcherBalance = nil
-        watcherTransactions = []
+        watcherActivities = []
         watcherTransactionCount = 0
         watcherBlockHeight = 0
         watcherAccountType = nil
@@ -1213,10 +1216,10 @@ class TrezorViewModel {
         guard watcherId == activeWatcherId || watcherId == startingWatcherId else { return }
 
         switch event {
-        case let .transactionsChanged(transactions, balance, txCount, blockHeight, accountType):
+        case let .transactionsChanged(activities, _, balance, txCount, blockHeight, accountType):
             watcherConnectionStatus = .connected
             watcherError = nil
-            watcherTransactions = transactions
+            watcherActivities = activities
             watcherBalance = balance
             watcherTransactionCount = txCount
             watcherBlockHeight = blockHeight
@@ -1270,7 +1273,7 @@ class TrezorViewModel {
         watcherConnectionStatus = .idle
         watcherListener = nil
         watcherBalance = nil
-        watcherTransactions = []
+        watcherActivities = []
         watcherTransactionCount = 0
         watcherBlockHeight = 0
         watcherAccountType = nil

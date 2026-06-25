@@ -2,29 +2,29 @@
 import XCTest
 
 final class HwWalletIdTests: XCTestCase {
-    func testDeterministicForSameXpubs() {
-        let a = HwWalletId.derive(xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"], fallbackId: "x")
-        let b = HwWalletId.derive(xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"], fallbackId: "y")
-        XCTAssertEqual(a, b, "id derives from xpubs, independent of the fallback id")
+    func testDeterministicForSameXpubs() throws {
+        let a = try HwWalletId.derive(xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+        let b = try HwWalletId.derive(xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+        XCTAssertEqual(a, b, "id derives deterministically from xpubs")
     }
 
-    func testOrderIndependent() {
-        let a = HwWalletId.derive(xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"], fallbackId: "x")
-        let b = HwWalletId.derive(xpubs: ["taproot": "zTR", "nativeSegwit": "zNS"], fallbackId: "x")
+    func testOrderIndependent() throws {
+        let a = try HwWalletId.derive(xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+        let b = try HwWalletId.derive(xpubs: ["taproot": "zTR", "nativeSegwit": "zNS"])
         XCTAssertEqual(a, b, "values are sorted before hashing")
     }
 
-    func testDifferentXpubsProduceDifferentIds() {
-        let a = HwWalletId.derive(xpubs: ["nativeSegwit": "zNS"], fallbackId: "x")
-        let b = HwWalletId.derive(xpubs: ["nativeSegwit": "DIFFERENT"], fallbackId: "x")
+    func testDifferentXpubsProduceDifferentIds() throws {
+        let a = try HwWalletId.derive(xpubs: ["nativeSegwit": "zNS"])
+        let b = try HwWalletId.derive(xpubs: ["nativeSegwit": "DIFFERENT"])
         XCTAssertNotEqual(a, b)
     }
 
-    func testPrefix() {
-        XCTAssertTrue(HwWalletId.derive(xpubs: ["nativeSegwit": "z"], fallbackId: "x").hasPrefix("trezor:"))
+    func testPrefix() throws {
+        XCTAssertTrue(try HwWalletId.derive(xpubs: ["nativeSegwit": "z"]).hasPrefix("trezor:"))
     }
 
-    func testFallsBackToDeviceIdWhenNoXpubs() {
-        XCTAssertEqual(HwWalletId.derive(xpubs: [:], fallbackId: "device-123"), "trezor:device-123")
+    func testThrowsWhenNoXpubs() {
+        XCTAssertThrowsError(try HwWalletId.derive(xpubs: [:]))
     }
 }

@@ -77,48 +77,42 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         total: 156_000
     )
 
-    private static let sampleTransactions: [HistoryTransaction] = [
-        HistoryTransaction(
-            txid: "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16",
-            received: 50000,
-            sent: 0,
-            net: 50000,
-            fee: nil,
-            amount: 50000,
-            direction: .received,
-            blockHeight: 849_990,
+    private static func onchainActivity(txId: String, value: UInt64, txType: PaymentType) -> Activity {
+        .onchain(OnchainActivity(
+            walletId: "trezor:watcher",
+            id: txId,
+            txType: txType,
+            txId: txId,
+            value: value,
+            fee: 0,
+            feeRate: 1,
+            address: "",
+            confirmed: true,
             timestamp: 1_700_000_000,
-            confirmations: 11
-        ),
-        HistoryTransaction(
-            txid: "a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d",
-            received: 0,
-            sent: 20000,
-            net: -20000,
-            fee: 500,
-            amount: 19500,
-            direction: .sent,
-            blockHeight: 849_995,
-            timestamp: 1_700_001_000,
-            confirmations: 6
-        ),
-        HistoryTransaction(
-            txid: "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516",
-            received: 10000,
-            sent: 10500,
-            net: -500,
-            fee: 500,
-            amount: 500,
-            direction: .selfTransfer,
-            blockHeight: nil,
-            timestamp: nil,
-            confirmations: 0
-        ),
+            isBoosted: false,
+            boostTxIds: [],
+            isTransfer: false,
+            doesExist: true,
+            confirmTimestamp: 1_700_000_000,
+            channelId: nil,
+            transferTxId: nil,
+            contact: nil,
+            createdAt: 1_700_000_000,
+            updatedAt: 1_700_000_000,
+            seenAt: nil
+        ))
+    }
+
+    private static let sampleActivities: [Activity] = [
+        onchainActivity(txId: "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16", value: 50000, txType: .received),
+        onchainActivity(txId: "a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d", value: 19500, txType: .sent),
+        onchainActivity(txId: "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516", value: 500, txType: .sent),
     ]
 
     private static func sampleTransactionsChangedEvent() -> WatcherEvent {
         .transactionsChanged(
-            transactions: sampleTransactions,
+            activities: sampleActivities,
+            transactionDetails: [],
             balance: sampleBalance,
             txCount: 3,
             blockHeight: 850_000,
@@ -274,7 +268,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         XCTAssertNil(viewModel.activeWatcherId)
         XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
         XCTAssertNil(viewModel.watcherBalance)
-        XCTAssertTrue(viewModel.watcherTransactions.isEmpty)
+        XCTAssertTrue(viewModel.watcherActivities.isEmpty)
     }
 
     /// iOS-specific: stopping while the native start call is still in flight
@@ -302,7 +296,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         await waitUntil(timeout: 0.2) { viewModel.watcherBalance != nil }
 
         XCTAssertNil(viewModel.watcherBalance)
-        XCTAssertTrue(viewModel.watcherTransactions.isEmpty)
+        XCTAssertTrue(viewModel.watcherActivities.isEmpty)
         XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
 
         // The held native call returning success must not activate the watcher.

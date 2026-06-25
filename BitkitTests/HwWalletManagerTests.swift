@@ -46,8 +46,7 @@ final class HwWalletManagerTests: XCTestCase {
 
     private func makeViewModel(
         watcherService: OnChainWatcherServicing = MockWatcherService(),
-        monitored: Set<String> = ["legacy", "nestedSegwit", "nativeSegwit", "taproot"],
-        now: @escaping () -> UInt64 = { 1_700_000_000 }
+        monitored: Set<String> = ["legacy", "nestedSegwit", "nativeSegwit", "taproot"]
     ) -> HwWalletManager {
         let vm = HwWalletManager(
             watcherService: watcherService,
@@ -55,8 +54,7 @@ final class HwWalletManagerTests: XCTestCase {
             electrumUrl: { "ssl://test:1" },
             network: { .regtest },
             persistActivities: { [weak self] in self?.persisted.append($0) },
-            deleteActivities: { [weak self] in self?.deleted.append($0) },
-            now: now
+            deleteActivities: { [weak self] in self?.deleted.append($0) }
         )
         vm.receivedTxPublisher
             .sink { [weak self] in self?.receivedTxs.append($0) }
@@ -83,36 +81,51 @@ final class HwWalletManagerTests: XCTestCase {
         )
     }
 
-    private func makeTx(
-        txid: String,
-        received: UInt64,
-        sent: UInt64,
-        fee: UInt64? = nil,
-        direction: TxDirection,
-        confirmations: UInt32 = 1,
-        timestamp: UInt64? = 1_700_000_000
-    ) -> HistoryTransaction {
-        let amount: UInt64 = direction == .received ? received : (sent >= received ? sent - received : 0)
-        return HistoryTransaction(
-            txid: txid,
-            received: received,
-            sent: sent,
-            net: Int64(received) - Int64(sent),
-            fee: fee,
-            amount: amount,
-            direction: direction,
-            blockHeight: confirmations > 0 ? 100 : nil,
-            timestamp: timestamp,
-            confirmations: confirmations
-        )
+    /// Build a persistence-ready onchain activity, mirroring what core's watch-only watcher
+    /// emits in 0.3.4. `walletId` defaults to empty because the manager re-scopes activities to
+    /// the device's derived wallet id before persisting.
+    private func makeActivity(
+        txId: String,
+        value: UInt64,
+        txType: PaymentType,
+        walletId: String = ""
+    ) -> Activity {
+        .onchain(OnchainActivity(
+            walletId: walletId,
+            id: txId,
+            txType: txType,
+            txId: txId,
+            value: value,
+            fee: 0,
+            feeRate: 1,
+            address: "",
+            confirmed: true,
+            timestamp: 1_700_000_000,
+            isBoosted: false,
+            boostTxIds: [],
+            isTransfer: false,
+            doesExist: true,
+            confirmTimestamp: 1_700_000_000,
+            channelId: nil,
+            transferTxId: nil,
+            contact: nil,
+            createdAt: 1_700_000_000,
+            updatedAt: 1_700_000_000,
+            seenAt: nil
+        ))
     }
 
-    private func makeEvent(_ transactions: [HistoryTransaction], total: UInt64) -> WatcherEvent {
+    private func makeEvent(_ activities: [Activity], total: UInt64) -> WatcherEvent {
         let balance = WalletBalance(
             confirmed: total, immature: 0, trustedPending: 0, untrustedPending: 0, spendable: total, total: total
         )
         return .transactionsChanged(
-            transactions: transactions, balance: balance, txCount: UInt32(transactions.count), blockHeight: 100, accountType: .nativeSegwit
+            activities: activities,
+            transactionDetails: [],
+            balance: balance,
+            txCount: UInt32(activities.count),
+            blockHeight: 100,
+            accountType: .nativeSegwit
         )
     }
 
@@ -122,14 +135,14 @@ final class HwWalletManagerTests: XCTestCase {
 
     // MARK: - Tests
 
-    func testPairedDeviceProducesWalletWithBalanceAndWalletId() {
+    func testPairedDeviceProducesWalletWithBalanceAndWalletId() throws {
         let xpubs = ["nativeSegwit": "zpubNS"]
         let device = makeDevice(id: "dev1", xpubs: xpubs, model: "Safe 5")
         let vm = makeViewModel()
         vm.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
 
         vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "tx1", received: 50000, sent: 0, direction: .received)], total: 50000
+            [makeActivity(txId: "tx1", value: 50000, txType: .received)], total: 50000
         ))
 
         XCTAssertEqual(vm.wallets.count, 1)
@@ -139,7 +152,7 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(wallet.name, "Trezor Safe 5")
         XCTAssertTrue(wallet.isConnected)
         XCTAssertEqual(vm.totalSats, 50000)
-        XCTAssertEqual(wallet.walletId, HwWalletId.derive(xpubs: xpubs, fallbackId: "dev1"))
+        XCTAssertEqual(wallet.walletId, try HwWalletId.derive(xpubs: xpubs))
         XCTAssertEqual(vm.hwWalletIds, [wallet.walletId])
     }
 
@@ -149,10 +162,10 @@ final class HwWalletManagerTests: XCTestCase {
         vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
 
         vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "txNS", received: 30000, sent: 0, direction: .received)], total: 30000
+            [makeActivity(txId: "txNS", value: 30000, txType: .received)], total: 30000
         ))
         vm.handleWatcherEvent(watcherId: watcherId("dev1", "taproot"), event: makeEvent(
-            [makeTx(txid: "txTR", received: 20000, sent: 0, direction: .received)], total: 20000
+            [makeActivity(txId: "txTR", value: 20000, txType: .received)], total: 20000
         ))
 
         XCTAssertEqual(vm.wallets.count, 1)
@@ -169,7 +182,7 @@ final class HwWalletManagerTests: XCTestCase {
         vm.updateDevices(knownDevices: [ble, usb], connectedDeviceId: nil)
 
         vm.handleWatcherEvent(watcherId: watcherId("ble1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "tx1", received: 70000, sent: 0, direction: .received)], total: 70000
+            [makeActivity(txId: "tx1", value: 70000, txType: .received)], total: 70000
         ))
 
         XCTAssertEqual(vm.wallets.count, 1)
@@ -179,17 +192,18 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(vm.hwWalletIds.count, 1)
     }
 
-    func testActivityPersistedWithDeviceWalletId() {
+    func testActivityPersistedWithDeviceWalletId() throws {
         let xpubs = ["nativeSegwit": "zpubNS"]
         let device = makeDevice(id: "dev1", xpubs: xpubs)
         let vm = makeViewModel()
         vm.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
 
         vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "txABC", received: 40000, sent: 0, direction: .received)], total: 40000
+            [makeActivity(txId: "txABC", value: 40000, txType: .received)], total: 40000
         ))
 
-        let expectedWalletId = HwWalletId.derive(xpubs: xpubs, fallbackId: "dev1")
+        // The manager re-scopes core's emitted activity to the device's derived wallet id.
+        let expectedWalletId = try HwWalletId.derive(xpubs: xpubs)
         XCTAssertEqual(persisted.count, 1)
         let activities = persisted[0]
         XCTAssertEqual(activities.count, 1)
@@ -208,15 +222,15 @@ final class HwWalletManagerTests: XCTestCase {
 
         // Baseline (first event) — must NOT emit, even for received txs.
         vm.handleWatcherEvent(watcherId: wid, event: makeEvent(
-            [makeTx(txid: "old", received: 10000, sent: 0, direction: .received)], total: 10000
+            [makeActivity(txId: "old", value: 10000, txType: .received)], total: 10000
         ))
         XCTAssertTrue(receivedTxs.isEmpty)
 
         // New inbound tx after baseline — emits once.
         vm.handleWatcherEvent(watcherId: wid, event: makeEvent(
             [
-                makeTx(txid: "old", received: 10000, sent: 0, direction: .received),
-                makeTx(txid: "new", received: 25000, sent: 0, direction: .received),
+                makeActivity(txId: "old", value: 10000, txType: .received),
+                makeActivity(txId: "new", value: 25000, txType: .received),
             ], total: 35000
         ))
         XCTAssertEqual(receivedTxs.map(\.txid), ["new"])
@@ -225,9 +239,9 @@ final class HwWalletManagerTests: XCTestCase {
         // Outbound tx is ignored, and the same inbound is not re-emitted.
         vm.handleWatcherEvent(watcherId: wid, event: makeEvent(
             [
-                makeTx(txid: "old", received: 10000, sent: 0, direction: .received),
-                makeTx(txid: "new", received: 25000, sent: 0, direction: .received),
-                makeTx(txid: "spend", received: 0, sent: 5000, fee: 200, direction: .sent),
+                makeActivity(txId: "old", value: 10000, txType: .received),
+                makeActivity(txId: "new", value: 25000, txType: .received),
+                makeActivity(txId: "spend", value: 5000, txType: .sent),
             ], total: 30000
         ))
         XCTAssertEqual(receivedTxs.map(\.txid), ["new"])
@@ -244,16 +258,16 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(mock.startedParams.first?.watcherId, watcherId("dev1", "nativeSegwit"))
     }
 
-    func testResetStateDeletesStoredActivitiesAndClears() {
+    func testResetStateDeletesStoredActivitiesAndClears() throws {
         let xpubs = ["nativeSegwit": "zpubNS"]
         let device = makeDevice(id: "dev1", xpubs: xpubs)
         let vm = makeViewModel()
         vm.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
         vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "tx1", received: 40000, sent: 0, direction: .received)], total: 40000
+            [makeActivity(txId: "tx1", value: 40000, txType: .received)], total: 40000
         ))
 
-        let walletId = HwWalletId.derive(xpubs: xpubs, fallbackId: "dev1")
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
         vm.resetState()
 
         XCTAssertEqual(deleted, [walletId])
@@ -316,37 +330,25 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(vm.wallets.first?.name, "Trezor")
     }
 
-    func testMergesDuplicateTxAcrossAddressTypes() {
+    /// The same tx seen by two address-type watchers persists once (deduped by activity id).
+    /// Value composition is core's job now (core 0.3.4 watch-only watcher), so this only checks
+    /// dedup, not summing.
+    func testDuplicateTxAcrossAddressTypesPersistsOnce() {
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
         let vm = makeViewModel()
         vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
 
-        // Same txid reported by two address-type watchers — merged into one activity, amounts summed.
         vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "shared", received: 30000, sent: 0, direction: .received)], total: 30000
+            [makeActivity(txId: "shared", value: 30000, txType: .received)], total: 30000
         ))
         vm.handleWatcherEvent(watcherId: watcherId("dev1", "taproot"), event: makeEvent(
-            [makeTx(txid: "shared", received: 20000, sent: 0, direction: .received)], total: 20000
+            [makeActivity(txId: "shared", value: 30000, txType: .received)], total: 30000
         ))
 
         let lastPersisted = persisted.last ?? []
         XCTAssertEqual(lastPersisted.count, 1)
         guard case let .onchain(onchain) = lastPersisted[0] else { return XCTFail("expected onchain") }
         XCTAssertEqual(onchain.txId, "shared")
-        XCTAssertEqual(onchain.value, 50000)
-    }
-
-    func testSentTxValueExcludesFee() {
-        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
-        let vm = makeViewModel()
-        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
-        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "spend", received: 0, sent: 20000, fee: 500, direction: .sent)], total: 0
-        ))
-        guard case let .onchain(onchain) = (persisted.last ?? [])[0] else { return XCTFail("expected onchain") }
-        XCTAssertEqual(onchain.txType, .sent)
-        XCTAssertEqual(onchain.value, 19500) // sent - received - fee
-        XCTAssertEqual(onchain.fee, 500)
     }
 
     func testWatcherStartedOnConfiguredElectrumAndNetwork() async {
@@ -375,7 +377,7 @@ final class HwWalletManagerTests: XCTestCase {
         vm.handleWatcherEvent(watcherId: tr, event: makeEvent([], total: 0))
 
         // Both watchers report the same new inbound tx — emit only once.
-        let tx = makeTx(txid: "new", received: 10000, sent: 0, direction: .received)
+        let tx = makeActivity(txId: "new", value: 10000, txType: .received)
         vm.handleWatcherEvent(watcherId: ns, event: makeEvent([tx], total: 10000))
         vm.handleWatcherEvent(watcherId: tr, event: makeEvent([tx], total: 10000))
 
@@ -403,10 +405,10 @@ final class HwWalletManagerTests: XCTestCase {
 
         // Per-device balance comes from the watcher's reported total; d1 maxes it out.
         vm.handleWatcherEvent(watcherId: watcherId("d1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "t1", received: 1000, sent: 0, direction: .received)], total: .max
+            [makeActivity(txId: "t1", value: 1000, txType: .received)], total: .max
         ))
         vm.handleWatcherEvent(watcherId: watcherId("d2", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "t2", received: 1000, sent: 0, direction: .received)], total: 1000
+            [makeActivity(txId: "t2", value: 1000, txType: .received)], total: 1000
         ))
 
         XCTAssertEqual(vm.totalSats, .max)
@@ -420,7 +422,7 @@ final class HwWalletManagerTests: XCTestCase {
         await waitUntil { mock.startedParams.count == 1 }
 
         vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "t1", received: 40000, sent: 0, direction: .received)], total: 40000
+            [makeActivity(txId: "t1", value: 40000, txType: .received)], total: 40000
         ))
         XCTAssertEqual(vm.wallets.first?.balanceSats, 40000)
 
@@ -435,7 +437,7 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertTrue(vm.wallets.isEmpty)
     }
 
-    func testRemoveDeviceStopsWatchersAndDeletesActivities() async {
+    func testRemoveDeviceStopsWatchersAndDeletesActivities() async throws {
         let mock = MockWatcherService()
         let xpubs = ["nativeSegwit": "z"]
         let device = makeDevice(id: "dev1", xpubs: xpubs)
@@ -443,89 +445,18 @@ final class HwWalletManagerTests: XCTestCase {
         vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
         await waitUntil { mock.startedParams.count == 1 }
         vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "t1", received: 1000, sent: 0, direction: .received)], total: 1000
+            [makeActivity(txId: "t1", value: 1000, txType: .received)], total: 1000
         ))
 
         vm.removeDevice(id: "dev1")
 
         XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId("dev1", "nativeSegwit")))
-        XCTAssertEqual(deleted, [HwWalletId.derive(xpubs: xpubs, fallbackId: "dev1")])
+        XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])
     }
 
-    // MARK: - Fix 4: unconfirmed timestamp
+    // MARK: - Forget device deletes activities
 
-    func testUnconfirmedTxUsesNowTimestampNotZero() {
-        let fixedNow: UInt64 = 1_650_000_000
-        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
-        let vm = makeViewModel(now: { fixedNow })
-        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
-
-        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "mempool", received: 5000, sent: 0, direction: .received, confirmations: 0, timestamp: nil)], total: 5000
-        ))
-
-        guard case let .onchain(onchain) = (persisted.last ?? [])[0] else { return XCTFail("expected onchain") }
-        XCTAssertEqual(onchain.timestamp, fixedNow)
-        XCTAssertEqual(onchain.createdAt, fixedNow)
-        XCTAssertFalse(onchain.confirmed)
-    }
-
-    func testUnconfirmedTxTimestampStableAcrossEvents() {
-        var nowValue: UInt64 = 1_650_000_000
-        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
-        let vm = makeViewModel(now: { nowValue })
-        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
-        let wid = watcherId("dev1", "nativeSegwit")
-
-        vm.handleWatcherEvent(watcherId: wid, event: makeEvent(
-            [makeTx(txid: "mempool", received: 5000, sent: 0, direction: .received, confirmations: 0, timestamp: nil)], total: 5000
-        ))
-
-        // Clock advances, but a later event for the still-unconfirmed tx must keep the first timestamp.
-        nowValue = 1_650_009_999
-        vm.handleWatcherEvent(watcherId: wid, event: makeEvent(
-            [makeTx(txid: "mempool", received: 5000, sent: 0, direction: .received, confirmations: 0, timestamp: nil)], total: 5000
-        ))
-
-        guard case let .onchain(onchain) = (persisted.last ?? [])[0] else { return XCTFail("expected onchain") }
-        XCTAssertEqual(onchain.timestamp, 1_650_000_000)
-    }
-
-    func testConfirmedTxUsesBlockTimestamp() {
-        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
-        let vm = makeViewModel(now: { 1_650_000_000 })
-        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
-
-        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "confirmed", received: 5000, sent: 0, direction: .received, confirmations: 3, timestamp: 1_699_999_000)], total: 5000
-        ))
-
-        guard case let .onchain(onchain) = (persisted.last ?? [])[0] else { return XCTFail("expected onchain") }
-        XCTAssertEqual(onchain.timestamp, 1_699_999_000)
-        XCTAssertTrue(onchain.confirmed)
-    }
-
-    // MARK: - Fix 5: self-transfer value
-
-    func testSelfTransferValueIsFee() {
-        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
-        let vm = makeViewModel()
-        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
-
-        // Consolidation: everything comes back to the wallet minus the fee (sent == received + fee).
-        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "consolidate", received: 19500, sent: 20000, fee: 500, direction: .selfTransfer)], total: 19500
-        ))
-
-        guard case let .onchain(onchain) = (persisted.last ?? [])[0] else { return XCTFail("expected onchain") }
-        XCTAssertEqual(onchain.txType, .sent)
-        XCTAssertEqual(onchain.value, 500) // the fee paid, not 0
-        XCTAssertEqual(onchain.fee, 500)
-    }
-
-    // MARK: - Fix 6: forget device deletes activities
-
-    func testForgettingDeviceViaUpdateDeletesActivities() async {
+    func testForgettingDeviceViaUpdateDeletesActivities() async throws {
         let mock = MockWatcherService()
         let xpubs = ["nativeSegwit": "z"]
         let device = makeDevice(id: "dev1", xpubs: xpubs)
@@ -533,9 +464,9 @@ final class HwWalletManagerTests: XCTestCase {
         vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
         await waitUntil { mock.startedParams.count == 1 }
         vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
-            [makeTx(txid: "t1", received: 1000, sent: 0, direction: .received)], total: 1000
+            [makeActivity(txId: "t1", value: 1000, txType: .received)], total: 1000
         ))
-        let walletId = HwWalletId.derive(xpubs: xpubs, fallbackId: "dev1")
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
 
         // Device forgotten → the next snapshot no longer includes it.
         vm.updateDevices(knownDevices: [], connectedDeviceId: nil)
