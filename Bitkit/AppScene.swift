@@ -117,6 +117,7 @@ struct AppScene: View {
             // Bridge Trezor device state into the watch-only manager without coupling the two:
             // TrezorManager bumps devicesRevision on any device/connection change.
             .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
+            .onReceive(settings.settingsPublisher) { _ in hwWalletManager.syncWatchers() }
             .onChange(of: migrations.isShowingMigrationLoading) { _, isLoading in
                 if !isLoading {
                     SettingsViewModel.shared.updatePinEnabledState()
