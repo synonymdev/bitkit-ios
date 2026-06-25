@@ -64,6 +64,15 @@ final class HwWalletManager {
     private var lastSyncedMonitored: Set<String>?
     private var lastSyncedElectrumUrl: String?
 
+    /// Memoized `HwWalletId.derive` results keyed by an xpubs signature. The mapping is
+    /// deterministic and immutable, so caching avoids repeated FFI derivations on every watcher
+    /// event and sync. Pruned to the live device set on `updateDevices`/`removeDevice`.
+    private var walletIdCache: [String: String] = [:]
+
+    /// Last activity set persisted per group wallet id, so an unchanged watcher event doesn't
+    /// re-upsert the whole history to core and fire a redundant activity-list reload.
+    private var lastPersisted: [String: [Activity]] = [:]
+
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
 
@@ -120,6 +129,7 @@ final class HwWalletManager {
         for walletId in previousWalletIds.subtracting(hwWalletIds) {
             deleteActivities(walletId)
         }
+        pruneCaches()
     }
 
     // MARK: - Control
@@ -133,7 +143,13 @@ final class HwWalletManager {
         for watcherId in activeWatchers where ids.contains(self.deviceId(fromWatcherId: watcherId)) {
             _ = stopActiveWatcher(watcherId)
         }
-        if let group { deleteActivities(group.walletId) }
+        if let group {
+            deleteActivities(group.walletId)
+            lastPersisted[group.walletId] = nil
+        }
+        if let device = knownDevices.first(where: { $0.id == deviceId }) {
+            walletIdCache[xpubsSignature(device.xpubs)] = nil
+        }
         recomputeDerivedState()
     }
 
@@ -183,7 +199,7 @@ final class HwWalletManager {
         var seen = Set<String>()
         var specs: [WatcherSpec] = []
         for device in knownDevices {
-            guard let walletId = try? HwWalletId.derive(xpubs: device.xpubs) else { continue }
+            guard let walletId = walletId(for: device.xpubs) else { continue }
             for (addressType, xpub) in device.xpubs where monitored.contains(addressType) {
                 guard seen.insert(dedupKey(addressType: addressType, xpub: xpub)).inserted else { continue }
                 specs.append(WatcherSpec(deviceId: device.id, walletId: walletId, addressType: addressType, xpub: xpub, electrumUrl: electrumUrl))
@@ -196,6 +212,30 @@ final class HwWalletManager {
     /// control-character separator that can't appear in either component.
     private func dedupKey(addressType: String, xpub: String) -> String {
         "\(addressType)\u{1}\(xpub)"
+    }
+
+    /// Derive (and memoize) the wallet id for a device's xpubs. Returns nil when derivation fails
+    /// (e.g. no captured xpubs — `HwWalletId.derive` throws on empty), so callers skip the device.
+    private func walletId(for xpubs: [String: String]) -> String? {
+        let signature = xpubsSignature(xpubs)
+        if let cached = walletIdCache[signature] { return cached }
+        guard let derived = try? HwWalletId.derive(xpubs: xpubs) else { return nil }
+        walletIdCache[signature] = derived
+        return derived
+    }
+
+    private func xpubsSignature(_ xpubs: [String: String]) -> String {
+        xpubs.sorted { $0.key < $1.key }
+            .map { dedupKey(addressType: $0.key, xpub: $0.value) }
+            .joined(separator: "\u{1f}")
+    }
+
+    /// Drop cache entries for devices no longer in the snapshot, so the caches stay bounded to
+    /// live devices.
+    private func pruneCaches() {
+        let liveSignatures = Set(knownDevices.filter { !$0.xpubs.isEmpty }.map { xpubsSignature($0.xpubs) })
+        walletIdCache = walletIdCache.filter { liveSignatures.contains($0.key) }
+        lastPersisted = lastPersisted.filter { hwWalletIds.contains($0.key) }
     }
 
     private func desiredWatcherIds() -> Set<String> {
@@ -276,14 +316,16 @@ final class HwWalletManager {
     /// stores, aggregates, and scopes them to the device.
     func handleWatcherEvent(watcherId: String, event: WatcherEvent) {
         guard case let .transactionsChanged(activities, _, balance, _, _, _) = event else { return }
+        let deviceId = deviceId(fromWatcherId: watcherId)
         let previous = watcherData[watcherId]
         watcherData[watcherId] = HwWatcherData(
-            deviceId: deviceId(fromWatcherId: watcherId),
+            deviceId: deviceId,
             balanceSats: balance.total,
             activities: activities
         )
-        recomputeDerivedState()
-        persistGroupActivities(forDevice: deviceId(fromWatcherId: watcherId))
+        let groups = deviceGroups()
+        recomputeDerivedState(groups: groups)
+        persistGroupActivities(forDevice: deviceId, groups: groups)
         emitReceivedTxs(previous: previous, activities: activities)
     }
 
@@ -307,9 +349,14 @@ final class HwWalletManager {
 
     // MARK: - Persistence
 
-    private func persistGroupActivities(forDevice deviceId: String) {
-        guard let group = deviceGroups().first(where: { $0.ids.contains(deviceId) }) else { return }
-        persistActivities(mergedActivities(for: group))
+    private func persistGroupActivities(forDevice deviceId: String, groups: [DeviceGroup]? = nil) {
+        let groups = groups ?? deviceGroups()
+        guard let group = groups.first(where: { $0.ids.contains(deviceId) }) else { return }
+        let merged = mergedActivities(for: group)
+        // Skip the core upsert + activity-list reload when nothing changed for this group.
+        guard lastPersisted[group.walletId] != merged else { return }
+        lastPersisted[group.walletId] = merged
+        persistActivities(merged)
     }
 
     /// Aggregate the activities core emitted across a device-group's watchers, scoping each to the
@@ -351,8 +398,8 @@ final class HwWalletManager {
 
     // MARK: - Aggregation
 
-    private func recomputeDerivedState() {
-        let groups = deviceGroups()
+    private func recomputeDerivedState(groups: [DeviceGroup]? = nil) {
+        let groups = groups ?? deviceGroups()
 
         wallets = groups.map { group in
             let connectedDevice = group.devices.first { $0.id == connectedDeviceId }
@@ -379,7 +426,7 @@ final class HwWalletManager {
         var order: [String] = []
         var grouped: [String: [TrezorKnownDevice]] = [:]
         for device in knownDevices where !device.xpubs.isEmpty {
-            guard let walletId = try? HwWalletId.derive(xpubs: device.xpubs) else { continue }
+            guard let walletId = walletId(for: device.xpubs) else { continue }
             if grouped[walletId] == nil { order.append(walletId) }
             grouped[walletId, default: []].append(device)
         }

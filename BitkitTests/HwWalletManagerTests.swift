@@ -250,6 +250,29 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(onchain.value, 40000)
     }
 
+    func testUnchangedWatcherEventDoesNotRepersist() {
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
+        let vm = makeViewModel()
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        let wid = watcherId("dev1", "nativeSegwit")
+        let event = makeEvent([makeActivity(txId: "tx1", value: 40000, txType: .received)], total: 40000)
+
+        vm.handleWatcherEvent(watcherId: wid, event: event)
+        XCTAssertEqual(persisted.count, 1)
+
+        // Identical event again → no re-upsert / no redundant activity-list reload.
+        vm.handleWatcherEvent(watcherId: wid, event: event)
+        XCTAssertEqual(persisted.count, 1)
+
+        // A changed event (new tx) → persists again.
+        let changed = makeEvent([
+            makeActivity(txId: "tx1", value: 40000, txType: .received),
+            makeActivity(txId: "tx2", value: 10000, txType: .received),
+        ], total: 50000)
+        vm.handleWatcherEvent(watcherId: wid, event: changed)
+        XCTAssertEqual(persisted.count, 2)
+    }
+
     func testReceivedTxDetection() {
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
         let vm = makeViewModel()
