@@ -341,18 +341,10 @@ final class SamRockService {
     }
 
     static func accountType(forSelectedAddressType selectedAddressType: String?) -> AccountType {
-        switch selectedAddressType {
-        case "legacy":
-            return .legacy
-        case "nestedSegwit":
-            return .wrappedSegwit
-        case "taproot":
-            return .taproot
-        case "nativeSegwit":
-            return .nativeSegwit
-        default:
+        guard let selectedAddressType, let addressType = AddressScriptType.from(string: selectedAddressType) else {
             return .nativeSegwit
         }
+        return addressType.accountType
     }
 
     private static func formEncode(_ value: String) -> String {

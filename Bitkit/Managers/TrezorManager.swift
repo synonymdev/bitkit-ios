@@ -445,18 +445,19 @@ final class TrezorManager {
 
     /// Per-type failures are swallowed so a single missing type doesn't block the rest.
     func fetchAccountXpubs() async -> [String: String] {
+        let coinType = selectedNetwork == .bitcoin ? "0" : "1"
         var result: [String: String] = [:]
-        for addressType in HwAddressType.allCases {
+        for addressType in AddressScriptType.allAddressTypes {
             do {
                 let params = TrezorGetPublicKeyParams(
-                    path: addressType.accountDerivationPath(network: selectedNetwork),
+                    path: addressType.accountDerivationPath(coinType: coinType),
                     coin: selectedNetwork,
                     showOnTrezor: false
                 )
                 let response = try await trezorService.getPublicKey(params: params)
-                result[addressType.settingsString] = response.xpub
+                result[addressType.stringValue] = response.xpub
             } catch {
-                trezorLog("Could not read xpub for '\(addressType.settingsString)': \(error)", level: "warn")
+                trezorLog("Could not read xpub for '\(addressType.stringValue)': \(error)", level: "warn")
             }
         }
         return result

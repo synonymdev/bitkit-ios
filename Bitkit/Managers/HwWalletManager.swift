@@ -243,7 +243,7 @@ final class HwWalletManager {
     }
 
     private func startWatcher(_ spec: WatcherSpec) {
-        guard let addressType = HwAddressType(settingsString: spec.addressType) else { return }
+        guard let addressType = AddressScriptType.from(string: spec.addressType) else { return }
         let network = networkProvider()
         let params = WatcherParams(
             watcherId: spec.watcherId,

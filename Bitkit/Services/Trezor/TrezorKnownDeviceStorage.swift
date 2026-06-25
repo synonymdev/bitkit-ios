@@ -9,7 +9,7 @@ struct TrezorKnownDevice: Codable, Identifiable {
     var label: String?
     var model: String?
     var lastConnectedAt: Date
-    /// Account-level extended public keys keyed by `HwAddressType.settingsString`.
+    /// Account-level extended public keys keyed by `AddressScriptType.stringValue`.
     /// Persisted so watch-only balances/activity stay available while disconnected.
     var xpubs: [String: String]
 
