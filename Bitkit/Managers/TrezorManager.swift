@@ -580,7 +580,8 @@ final class TrezorManager {
             .replacingOccurrences(of: "IO error: ", with: "")
 
         if message.contains("Stale Bluetooth pairing") || message.contains("Peer removed pairing") {
-            return "Stale Bluetooth pairing detected. Go to iOS Settings → Bluetooth, forget your Trezor device, then put it back in pairing mode and try again."
+            return "Stale Bluetooth pairing detected. Go to iOS Settings → Bluetooth, forget your Trezor device, "
+                + "then put it back in pairing mode and try again."
         }
         if message.contains("Unable to open device") || message.contains("Failed to connect") {
             return "Failed to connect to Trezor. Please ensure it's in pairing mode and try again."
