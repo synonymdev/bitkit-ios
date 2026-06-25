@@ -13,6 +13,9 @@ extension Activity {
     }
 
     /// Whether this activity belongs to a watch-only hardware wallet (not the normal Bitkit wallet).
+    // TODO: Used as an interim feature gate (see ActivityItemView.isHardwareActivity). The
+    // wallet-id shorthand holds only while CoreService activity mutations are default-scoped;
+    // replace with a real capability check when wallet_id mutation support lands.
     var isHardwareWallet: Bool {
         walletId != WalletScope.default
     }

@@ -135,6 +135,11 @@ struct ActivityItemView: View {
         return DateFormatterHelpers.formatActivityDetail(activity.timestamp)
     }
 
+    // TODO: Interim feature-gating. Tag/contact/boost are hidden for hardware activities
+    // because CoreService's activity-mutation methods (markActivityAsSeen, setContact, delete,
+    // tag, boost) still hardcode WalletScope.default and can't address a non-default wallet id.
+    // Revisit once those methods are wallet_id-scoped (and wallet_id / hardware activities ship
+    // to production) so this becomes a real capability check rather than a wallet-id shorthand.
     private var isHardwareActivity: Bool {
         viewModel.activity.isHardwareWallet
     }
