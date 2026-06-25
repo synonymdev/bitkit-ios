@@ -120,7 +120,6 @@ final class HwWalletManager {
         self.connectedDeviceId = connectedDeviceId
         walletsLoaded = true
         syncWatchers()
-        recomputeDerivedState()
 
         // A device that dropped out of the snapshot (e.g. the user forgot it) would otherwise
         // leave its watch-only activities orphaned in the merged activity list, which queries
@@ -187,6 +186,10 @@ final class HwWalletManager {
         for staleId in activeWatchers.subtracting(desiredIds) {
             _ = stopActiveWatcher(staleId)
         }
+
+        // Stopping a stale watcher clears its cached balance/activities; recompute so the published
+        // totals reflect it immediately (a started watcher recomputes again on its first event).
+        recomputeDerivedState()
     }
 
     /// Build the watcher specs the current device/settings snapshot wants running: one per

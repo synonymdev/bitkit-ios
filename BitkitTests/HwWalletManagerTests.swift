@@ -499,6 +499,35 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(mock.startedParams.count, 2)
     }
 
+    func testDisablingAddressTypeClearsBalanceImmediately() async {
+        let mock = MockWatcherService()
+        var monitored: Set = ["nativeSegwit"]
+        let vm = HwWalletManager(
+            watcherService: mock,
+            monitoredTypes: { monitored },
+            electrumUrl: { "ssl://test:1" },
+            network: { .regtest },
+            persistActivities: { _ in },
+            deleteActivities: { _ in }
+        )
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS"])
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 1 }
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeActivity(txId: "tx1", value: 50000, txType: .received)], total: 50000
+        ))
+        XCTAssertEqual(vm.totalSats, 50000)
+
+        // Disabling the only monitored address type stops the watcher; the published totals must
+        // drop immediately, without waiting for any further watcher event.
+        monitored = []
+        vm.reconcileForSettingsChange()
+
+        XCTAssertEqual(vm.totalSats, 0)
+        XCTAssertEqual(vm.wallets.first?.balanceSats, 0)
+    }
+
     func testReceivedTxEmittedOnceAcrossMultipleWatchers() {
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
         let vm = makeViewModel()
