@@ -481,6 +481,10 @@ final class TrezorManager {
     func autoReconnect() async {
         guard !knownDevices.isEmpty else { return }
         guard !isAutoReconnecting else { return }
+        guard connectedDevice == nil else {
+            trezorLog("Auto-reconnect: skipped, device already connected")
+            return
+        }
         if suppressNextAutoReconnect {
             suppressNextAutoReconnect = false
             trezorLog("Auto-reconnect: skipped after manual disconnect")
