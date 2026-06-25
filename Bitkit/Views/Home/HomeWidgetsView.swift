@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeWidgetsView: View {
     @Environment(CalculatorInputManager.self) private var calculatorInput
+    @Environment(HwWalletManager.self) private var hwWalletManager
     @EnvironmentObject var app: AppViewModel
     @Environment(KeyboardManager.self) private var keyboard
     @EnvironmentObject var navigation: NavigationViewModel
@@ -49,6 +50,7 @@ struct HomeWidgetsView: View {
                 app: app,
                 settings: settings,
                 suggestionsManager: suggestionsManager,
+                hasHardwareWallet: !hwWalletManager.wallets.isEmpty,
                 isPaykitUIEnabled: isPaykitUIActive
             ).isEmpty
         }
