@@ -410,7 +410,7 @@ final class HwWalletManager {
             return HwWallet(
                 id: device.id,
                 walletId: group.walletId,
-                name: displayName(of: device),
+                name: device.displayName,
                 model: device.model,
                 isConnected: connectedDevice != nil,
                 balanceSats: deviceWatchers.reduce(UInt64(0)) { $0.saturatingAdd($1.balanceSats) },
@@ -439,14 +439,6 @@ final class HwWalletManager {
     }
 
     // MARK: - Helpers
-
-    /// The label is the user-set name stored on the device; without one (or with the factory
-    /// default that mirrors the model), fall back to the vendor-prefixed model.
-    private func displayName(of device: TrezorKnownDevice) -> String {
-        if let label = device.label, label != device.model { return label }
-        guard let model = device.model else { return "Trezor" }
-        return model.hasPrefix("Trezor") ? model : "Trezor \(model)"
-    }
 
     private func deviceId(fromWatcherId watcherId: String) -> String {
         guard let range = watcherId.range(of: Constants.watcherIdSeparator) else { return watcherId }
