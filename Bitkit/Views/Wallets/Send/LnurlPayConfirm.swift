@@ -194,7 +194,7 @@ struct LnurlPayConfirm: View {
 
         // Fetch the Lightning invoice from LNURL
         let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
-            callbackUrl: lnurlPayData.callback,
+            data: lnurlPayData,
             amountMsats: amountMsats,
             comment: comment.isEmpty ? nil : comment
         )
