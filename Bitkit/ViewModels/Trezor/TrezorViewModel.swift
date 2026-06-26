@@ -951,6 +951,8 @@ class TrezorViewModel {
                 return "Invalid transaction ID: \(errorDetails)"
             case let .TransactionNotFound(errorDetails):
                 return "Transaction not found: \(errorDetails)"
+            case let .WatcherError(errorDetails):
+                return "Watcher error: \(errorDetails)"
             }
         }
         if let appError = error as? AppError,

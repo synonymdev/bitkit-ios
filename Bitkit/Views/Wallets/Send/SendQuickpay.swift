@@ -48,7 +48,7 @@ struct SendQuickpay: View {
             wallet.sendAmountSats = lnurlPayData.minSendableSat
 
             bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
-                callbackUrl: lnurlPayData.callback,
+                data: lnurlPayData,
                 amountMsats: lnurlPayData.callbackAmountMsats()
             )
         } else if let scannedInvoice = app.scannedLightningInvoice {

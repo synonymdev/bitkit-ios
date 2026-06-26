@@ -1,12 +1,13 @@
 import BitkitCore
 import Foundation
 
-// MARK: - Response Models
-
-private struct LnurlPayResponse: Codable {
-    let pr: String
-    let routes: [String]
+struct LnurlPayInvoiceMismatchError: LocalizedError {
+    var errorDescription: String? {
+        return "The invoice did not match the requested payment. Payment cancelled."
+    }
 }
+
+// MARK: - Response Models
 
 private struct LnurlWithdrawResponse: Codable {
     let status: String
@@ -116,37 +117,42 @@ private extension LnurlHelper {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMessage])
         }
     }
+
+    static func mapLnurlPayInvoiceError(_ error: Error) -> Error {
+        if let lnurlError = error as? LnurlError {
+            switch lnurlError {
+            case .InvalidAmount, .AmountMismatch, .MetadataMismatch:
+                return LnurlPayInvoiceMismatchError()
+            default:
+                break
+            }
+        }
+
+        return error
+    }
 }
 
 @MainActor
 struct LnurlHelper {
-    /// Fetches a Lightning invoice from an LNURL pay callback
+    /// Fetches a Lightning invoice for an LNURL pay request
     /// - Parameters:
-    ///   - callbackUrl: The LNURL callback URL
+    ///   - data: The LNURL pay data
     ///   - amountMsats: The amount in millisatoshis to pay
     ///   - comment: Optional comment to include with the payment
     /// - Returns: The bolt11 invoice string
     /// - Throws: Network or parsing errors
     static func fetchLnurlInvoice(
-        callbackUrl: String,
+        data: LnurlPayData,
         amountMsats: UInt64,
         comment: String? = nil
     ) async throws -> String {
-        var queryItems = [
-            URLQueryItem(name: "amount", value: String(amountMsats)),
-        ]
-
-        // Add comment if provided
-        if let comment, !comment.isEmpty {
-            queryItems.append(URLQueryItem(name: "comment", value: comment))
+        do {
+            let invoice = try await getLnurlInvoiceForPayData(data: data, amountMsats: amountMsats, comment: comment)
+            Logger.debug("Fetched LNURL pay invoice")
+            return invoice
+        } catch {
+            throw mapLnurlPayInvoiceError(error)
         }
-
-        let callbackURL = try buildUrl(baseUrl: callbackUrl, queryItems: queryItems)
-        let responseString = try await makeHttpGetRequest(url: callbackURL)
-        let lnurlResponse = try parseJsonResponse(responseString, as: LnurlPayResponse.self)
-
-        Logger.debug("Extracted bolt11 invoice: \(lnurlResponse.pr)")
-        return lnurlResponse.pr
     }
 
     /// Handles LNURL Withdraw Requests
