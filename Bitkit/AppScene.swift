@@ -117,6 +117,9 @@ struct AppScene: View {
             // Bridge Trezor device state into the watch-only manager without coupling the two:
             // TrezorManager bumps devicesRevision on any device/connection change.
             .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
+            .onChange(of: isPinVerified) { _, verified in
+                if verified { Task { await trezorManager.autoReconnect() } }
+            }
             .onReceive(settings.settingsPublisher) { _ in hwWalletManager.reconcileForSettingsChange() }
             .onChange(of: migrations.isShowingMigrationLoading) { _, isLoading in
                 if !isLoading {
@@ -622,8 +625,9 @@ struct AppScene: View {
 
         if newPhase == .active {
             // Reconnect a known hardware device so its connection indicator turns green again;
-            // watch-only balances stay live regardless.
-            Task { await trezorManager.autoReconnect() }
+            if isPinVerified || !settings.pinEnabled {
+                Task { await trezorManager.autoReconnect() }
+            }
             if wallet.walletExists == true {
                 Task {
                     await clearDeliveredNotifications()
