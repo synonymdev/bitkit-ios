@@ -1,5 +1,6 @@
 import BitkitCore
 import Foundation
+import LDKNode
 
 /// Watcher-related service calls, extracted as a protocol so unit tests can
 /// substitute a mock.
@@ -165,19 +166,12 @@ extension OnChainHwService {
         Env.network == .bitcoin ? "0'" : "1'"
     }
 
-    /// Hardcoded Electrum server URL per network (with the regtest dev override).
+    /// Electrum server URL per network (with the regtest dev override), delegating to `Env`.
     static func electrumUrlForNetwork(_ network: TrezorCoinType) -> String {
         if network == .regtest, let trezorElectrumUrl = Env.trezorElectrumUrl {
             return trezorElectrumUrl
         }
-        switch network {
-        case .bitcoin:
-            return "ssl://bitkit.to:9999"
-        case .testnet, .signet:
-            return "ssl://electrum.blockstream.info:60002"
-        case .regtest:
-            return "ssl://electrs.bitkit.stag0.blocktank.to:9999"
-        }
+        return Env.electrumServerUrl(for: network.ldkNetwork)
     }
 
     /// The app's configured Electrum server (falls back to the default).
@@ -190,6 +184,16 @@ extension OnChainHwService {
 extension TrezorCoinType {
     /// The BitkitCore `Network` this coin type maps to, used by the onchain FFI functions.
     var coreNetwork: BitkitCore.Network {
+        switch self {
+        case .bitcoin: .bitcoin
+        case .testnet: .testnet
+        case .signet: .signet
+        case .regtest: .regtest
+        }
+    }
+
+    /// The `LDKNode.Network` this coin type maps to, used to resolve the Electrum URL from `Env`.
+    var ldkNetwork: LDKNode.Network {
         switch self {
         case .bitcoin: .bitcoin
         case .testnet: .testnet
