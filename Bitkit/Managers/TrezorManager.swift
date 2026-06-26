@@ -398,6 +398,8 @@ final class TrezorManager {
             deviceFeatures = features
             showConfirmOnDevice = false
             trezorLog("Reconnected with wallet mode \(mode)")
+
+            await saveCurrentDeviceAsKnown()
         } catch {
             clearDisconnectedDeviceState(errorMessage: errorMessage(from: error))
             trezorLog("Reconnect after wallet-mode switch failed: \(error)", level: "error")
