@@ -250,10 +250,6 @@ final class HwWalletManager {
         lastPersisted = lastPersisted.filter { hwWalletIds.contains($0.key) }
     }
 
-    private func desiredWatcherIds() -> Set<String> {
-        Set(desiredWatcherSpecs().map(\.watcherId))
-    }
-
     private func startWatcher(_ spec: WatcherSpec) {
         guard let addressType = AddressScriptType.from(string: spec.addressType) else { return }
         let network = networkProvider()
@@ -276,19 +272,11 @@ final class HwWalletManager {
             do {
                 try await watcherService.startWatcher(params: params, listener: listener)
                 pendingWatcherStarts.remove(spec.watcherId)
-                // The device may have been forgotten or its address type disabled while the start
-                // was in flight; if this watcher is no longer desired, tear it down instead of
-                // resurrecting a forgotten wallet or a stale address type.
-                guard desiredWatcherIds().contains(spec.watcherId) else {
-                    try? watcherService.stopWatcher(watcherId: spec.watcherId)
-                    listeners[spec.watcherId] = nil
-                    retryingWatcherStarts.remove(spec.watcherId)
-                    return
-                }
                 activeWatchers.insert(spec.watcherId)
                 activeWatcherElectrumUrls[spec.watcherId] = spec.electrumUrl
                 activeWatcherXpubs[spec.watcherId] = spec.xpub
                 retryingWatcherStarts.remove(spec.watcherId)
+                syncWatchers()
             } catch {
                 pendingWatcherStarts.remove(spec.watcherId)
                 listeners[spec.watcherId] = nil
