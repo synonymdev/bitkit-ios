@@ -76,6 +76,7 @@ enum Route: Hashable {
     case notifications
     case notificationsIntro
     case paymentPreference
+    case hardwareWalletsSettings
 
     // Security
     case dataBackups

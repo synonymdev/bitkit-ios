@@ -540,6 +540,7 @@ struct MainNavView: View {
                 case .notificationsIntro: NotificationsIntro()
                 case .paymentPreference:
                     if isPaykitUIActive { PaymentPreferenceView() } else { paykitDisabledRedirectView }
+                case .hardwareWalletsSettings: HardwareWalletsSettingsScreen()
 
                 // Security settings
                 case .changePin: ChangePinScreen()
