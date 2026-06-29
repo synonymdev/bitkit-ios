@@ -3,7 +3,7 @@ import SwiftUI
 /// NumberPadTextField - Amount view to be used with number pad
 struct NumberPadTextField: View {
     @EnvironmentObject var currency: CurrencyViewModel
-    @ObservedObject var viewModel: AmountInputViewModel
+    var viewModel: AmountInputViewModel
 
     var showConversion: Bool = true
     var showEditButton: Bool = false

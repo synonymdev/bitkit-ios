@@ -975,6 +975,10 @@ extension LightningService {
         node?.nodeId()
     }
 
+    var hasNode: Bool {
+        node != nil
+    }
+
     /// Use cached values to avoid blocking LDK calls on main thread
     @MainActor var balances: BalanceDetails? {
         cachedBalances

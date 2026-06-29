@@ -164,6 +164,8 @@
 "lightning__spending_confirm__default" = "Use Defaults";
 "lightning__spending_advanced__title" = "Receiving\n<accent>capacity</accent>";
 "lightning__spending_advanced__fee" = "Liquidity fee";
+"lightning__spending_advanced__error_max__title" = "Receiving Capacity Maximum";
+"lightning__spending_advanced__error_max__description" = "The receiving capacity is currently limited to ₿ {amount}.";
 "lightning__liquidity__title" = "Liquidity\n<accent>& routing</accent>";
 "lightning__liquidity__text" = "Your Spending Balance uses the Lightning Network to make your payments cheaper, faster, and more private.\n\nThis works like internet access, but you pay for liquidity & routing instead of bandwidth.\n\nThis setup includes some one-time costs.";
 "lightning__liquidity__label" = "Spending Balance Liquidity";
@@ -567,6 +569,13 @@
 "security__reset_dialog_title" = "Reset Bitkit?";
 "security__reset_dialog_desc" = "Are you sure you want to reset your Bitkit Wallet? Do you have a backup of your recovery phrase and wallet data?";
 "security__reset_confirm" = "Yes, Reset";
+"security__reset_graph_button" = "Reset Network Graph";
+"security__reset_graph_confirm" = "Yes, Reset";
+"security__reset_graph_dialog_desc" = "This clears the cached Lightning network graph so it is downloaded again from scratch. It can fix \"route not found\" errors. Bitkit will restart automatically.";
+"security__reset_graph_dialog_title" = "Reset Network Graph?";
+"security__reset_graph_error" = "Could not reset the network graph. Please try again.";
+"security__reset_graph_success_description" = "Bitkit will restart in a few seconds to download a fresh network graph.";
+"security__reset_graph_success_title" = "Network Graph Reset";
 "security__recovery" = "Recovery";
 "security__recovery_text" = "You\'ve entered Bitkit\'s recovery mode. Here are some actions to perform when running into issues that prevent the app from fully functioning. Restart the app for a normal startup.";
 "security__display_seed" = "Show Seed Phrase";
@@ -1145,6 +1154,8 @@
 "wallet__send_available_savings" = "Available (savings)";
 "wallet__send_max_spending__title" = "Reserve Balance";
 "wallet__send_max_spending__description" = "The maximum spendable amount is a bit lower due to a required reserve balance.";
+"wallet__send_amount_exceeded__title" = "Insufficient balance";
+"wallet__send_amount_exceeded__description" = "The amount exceeds your available balance.";
 "wallet__send_review" = "Confirm";
 "wallet__send_confirming_in" = "Confirming in";
 "wallet__send_invoice_expiration" = "Invoice expiration";
@@ -1357,9 +1368,13 @@
 "wallet__lnurl_w_max" = "AvailablE TO WITHDRAW";
 "wallet__lnurl_w_text" = "The funds you withdraw will be deposited into your Bitkit spending balance.";
 "wallet__lnurl_w_button" = "Withdraw";
+"wallet__lnurl_w_error_max__title" = "Amount Too High";
+"wallet__lnurl_w_error_max__description" = "The amount exceeds the maximum you can withdraw.";
 "wallet__lnurl_p_title" = "Pay Bitcoin";
 "wallet__lnurl_pay__error_min__title" = "Amount Too Low";
 "wallet__lnurl_pay__error_min__description" = "The minimum amount for this invoice is ₿ {amount}.";
+"wallet__lnurl_pay__error_max__title" = "Amount Too High";
+"wallet__lnurl_pay__error_max__description" = "The amount exceeds this invoice's maximum.";
 "wallet__lnurl_p_max" = "Maximum amount";
 "wallet__balance_hidden_title" = "Wallet Balance Hidden";
 "wallet__balance_hidden_message" = "Swipe your wallet balance to reveal it again.";

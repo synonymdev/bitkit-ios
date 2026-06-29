@@ -9,7 +9,7 @@ struct ReceiveCjitAmount: View {
 
     @Binding var navigationPath: [ReceiveRoute]
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
 
     var minimumAmount: UInt64 {
         blocktank.minCjitSats ?? 0

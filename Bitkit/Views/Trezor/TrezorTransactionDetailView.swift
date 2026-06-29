@@ -5,10 +5,14 @@ import SwiftUI
 struct TrezorTransactionDetailContent: View {
     @State private var xpubInput: String = ""
     @State private var txidInput: String = ""
+    @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
+        @Bindable var trezor = trezor
         VStack(spacing: 24) {
             TxDetailInputSection(xpubInput: $xpubInput, txidInput: $txidInput)
+
+            TrezorAccountTypeSelector(selection: $trezor.onchainAccountTypeSelection)
 
             TxDetailButtonWrapper(xpubInput: xpubInput, txidInput: txidInput)
 

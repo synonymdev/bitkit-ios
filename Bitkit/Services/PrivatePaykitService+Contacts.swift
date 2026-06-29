@@ -10,7 +10,9 @@ extension PrivatePaykitService {
         requireImmediatePublication: Bool = false
     ) async -> Error? {
         let publicKeys = rememberSavedContacts(publicKeys, replacing: true)
-        guard await canPublishPrivateEndpoints(wallet: wallet) else { return nil }
+        guard await canPublishPrivateEndpoints(wallet: wallet) else {
+            return requireImmediatePublication && !publicKeys.isEmpty ? PrivatePaykitError.privateUnavailable : nil
+        }
         if Self.isProfileRecoveryPending, !publicKeys.isEmpty {
             return await recoverSavedContactsAfterProfileRecreation(
                 publicKeys,
@@ -242,7 +244,7 @@ extension PrivatePaykitService {
                     if scheduleRetries {
                         schedulePendingPublicationRetry(for: normalizedKey, wallet: wallet)
                     }
-                    if requireImmediatePublication, shouldRequirePrivateEndpointRemoval(publicKey: normalizedKey), firstError == nil {
+                    if requireImmediatePublication, firstError == nil {
                         firstError = PrivatePaykitError.privateUnavailable
                     }
                     continue
@@ -290,6 +292,9 @@ extension PrivatePaykitService {
                         await shouldPublishLocalEndpoints(publicKey: normalizedKey, fetchedRemoteCount: fetchedCount)
                     }
                     guard shouldPublish else {
+                        if requireImmediatePublication, firstError == nil {
+                            firstError = PrivatePaykitError.privateUnavailable
+                        }
                         if scheduleRetries {
                             schedulePendingPublicationRetry(for: normalizedKey, wallet: wallet)
                         }
@@ -333,6 +338,9 @@ extension PrivatePaykitService {
                 }
 
                 guard await shouldPublishLocalEndpoints(publicKey: normalizedKey, fetchedRemoteCount: fetchedCount) else {
+                    if requireImmediatePublication, firstError == nil {
+                        firstError = PrivatePaykitError.privateUnavailable
+                    }
                     if scheduleRetries {
                         schedulePendingPublicationRetry(for: normalizedKey, wallet: wallet)
                     }

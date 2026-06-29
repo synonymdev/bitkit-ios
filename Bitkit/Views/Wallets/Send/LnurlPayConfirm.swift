@@ -191,19 +191,19 @@ struct LnurlPayConfirm: View {
         }
 
         let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
-
-        // Fetch the Lightning invoice from LNURL
-        let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
-            data: lnurlPayData,
-            amountMsats: amountMsats,
-            comment: comment.isEmpty ? nil : comment
-        )
-
-        let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
-        let paymentHash = String(describing: parsedInvoice.paymentHash())
         let contactPublicKey = app.contactPaymentContext?.publicKey
 
         do {
+            // Fetch the Lightning invoice from LNURL
+            let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
+                data: lnurlPayData,
+                amountMsats: amountMsats,
+                comment: comment.isEmpty ? nil : comment
+            )
+
+            let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
+            let paymentHash = String(describing: parsedInvoice.paymentHash())
+
             // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
             // LNURL server returns invoices with the amount baked in, so pass sats: nil
             // to let LDK use the invoice's native millisatoshi precision.

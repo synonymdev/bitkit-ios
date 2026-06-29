@@ -8,7 +8,7 @@ struct SendAmountView: View {
 
     @Binding var navigationPath: [SendRoute]
 
-    @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel = AmountInputViewModel()
     @State private var maxSendableAmount: UInt64?
     @State private var routingFee: UInt64 = 0
 
@@ -186,6 +186,8 @@ struct SendAmountView: View {
                 }
             }
         }
+        .onChange(of: availableAmount, initial: true) { updateInputCap() }
+        .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
 
     private func onContinue() async {
@@ -252,6 +254,21 @@ struct SendAmountView: View {
         }
     }
 
+    private func updateInputCap() {
+        // Don't cap when nothing is sendable, so the pad stays usable (Continue stays disabled instead).
+        amountViewModel.maxAmountOverride = availableAmount > 0 ? availableAmount : nil
+    }
+
+    private func showMaxExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("wallet__send_amount_exceeded__title"),
+            description: t("wallet__send_amount_exceeded__description"),
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "SendAmountExceededToast"
+        )
+    }
+
     private func calculateMaxSendableAmount() async {
         // Make sure we have everything we need to calculate the max sendable amount
         guard app.selectedWalletToPayFrom == .onchain else { return }
@@ -280,9 +297,20 @@ struct SendAmountView: View {
         guard app.selectedWalletToPayFrom == .lightning else { return }
         guard let bolt11 = app.scannedLightningInvoice?.bolt11 else { return }
 
+        let buffer: UInt64 = 2 // TODO: find out why this is needed
+
+        // Without usable outbound capacity (e.g. peer offline) there is nothing to estimate,
+        // and subtracting the buffer below would underflow `UInt64`.
+        let maxSendable = UInt64(clamping: wallet.maxSendLightningSats)
+        guard maxSendable > buffer else {
+            await MainActor.run {
+                routingFee = 0
+            }
+            return
+        }
+
         do {
-            let buffer: UInt64 = 2 // TODO: find out why this is needed
-            let fee = try await wallet.estimateRoutingFees(bolt11: bolt11, amountSats: UInt64(wallet.maxSendLightningSats) - buffer)
+            let fee = try await wallet.estimateRoutingFees(bolt11: bolt11, amountSats: maxSendable - buffer)
             await MainActor.run {
                 routingFee = fee + buffer
             }
