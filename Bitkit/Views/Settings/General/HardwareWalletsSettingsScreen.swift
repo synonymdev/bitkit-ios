@@ -86,16 +86,11 @@ struct HardwareWalletsSettingsScreen: View {
         .background(alignment: .bottom) {
             HwDeviceIllustrations()
                 .frame(height: 256)
-                // Figma keeps a 59.77pt gap between the illustration and the Add button.
                 .padding(.bottom, 59.77)
                 .allowsHitTesting(false)
         }
     }
 
-    /// Stop watching and forget every entry for the device (it may be paired over multiple
-    /// transports). Mirrors `HardwareWalletScreen.removeWallet()`: `removeDevice` stops the watchers
-    /// and deletes the persisted activities, then `forgetDevice` clears credentials and drops the
-    /// known-device entry, which re-pushes the snapshot and removes it from the list.
     private func remove(_ wallet: HwWallet) async {
         pendingRemoval = nil
         hwWalletManager.removeDevice(id: wallet.id)
