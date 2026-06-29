@@ -7,7 +7,6 @@ import SwiftUI
 struct HardwareWalletsSettingsScreen: View {
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(TrezorManager.self) private var trezorManager
-    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
 
     @State private var pendingRemoval: HwWallet?
@@ -74,7 +73,12 @@ struct HardwareWalletsSettingsScreen: View {
                 ForEach(wallets) { wallet in
                     HwWalletRow(
                         wallet: wallet,
-                        onTap: { navigation.navigate(.hardwareWallet(deviceId: wallet.id)) },
+                        onRename: {
+                            sheets.showSheet(
+                                .renameHardwareWallet,
+                                data: RenameHardwareWalletConfig(deviceId: wallet.id, currentName: wallet.name)
+                            )
+                        },
                         onRemove: { pendingRemoval = wallet }
                     )
                     CustomDivider()
@@ -101,34 +105,33 @@ struct HardwareWalletsSettingsScreen: View {
     }
 }
 
-/// A paired hardware wallet row: connection badge, name, balance and a trailing delete. The badge,
-/// name and balance navigate to the device's detail screen; the trash button removes it.
+/// A paired hardware wallet row: connection badge, name, balance and a trailing delete. Tapping the
+/// name opens the rename sheet; the trash button removes the device.
 private struct HwWalletRow: View {
     let wallet: HwWallet
-    let onTap: () -> Void
+    let onRename: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 0) {
-            Button(action: onTap) {
-                HStack(spacing: 12) {
-                    HwConnectionBadge(isConnected: wallet.isConnected)
+        HStack(spacing: 12) {
+            HwConnectionBadge(isConnected: wallet.isConnected)
 
-                    BodyMText(wallet.name, textColor: .textPrimary)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    MoneyText(
-                        sats: Int(clamping: wallet.balanceSats),
-                        size: .bodyMSB,
-                        symbol: true,
-                        color: .white64,
-                        symbolColor: .white64
-                    )
-                }
-                .contentShape(Rectangle())
+            Button(action: onRename) {
+                BodyMText(wallet.name, textColor: .textPrimary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("HardwareWalletRowName_\(wallet.id)")
+
+            MoneyText(
+                sats: Int(clamping: wallet.balanceSats),
+                size: .bodyMSB,
+                symbol: true,
+                color: .white64,
+                symbolColor: .white64
+            )
 
             Button(action: onRemove) {
                 Image("trash")
@@ -137,7 +140,6 @@ private struct HwWalletRow: View {
                     .scaledToFit()
                     .frame(width: 24, height: 24)
                     .foregroundColor(.white)
-                    .padding(.leading, 12)
                     .padding(.vertical, 8)
                     .contentShape(Rectangle())
             }

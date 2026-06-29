@@ -427,6 +427,29 @@ final class TrezorManager {
         knownDevices = TrezorKnownDeviceStorage.loadAll()
     }
 
+    /// Set the Bitkit-side custom name for a paired device. The name is trimmed and capped; an empty
+    /// result clears the custom name (falling back to the device label/model). Applies to every stored
+    /// entry sharing the target's xpub set so the same device renamed over either transport stays
+    /// consistent, then reloads so the snapshot re-pushes and `HwWallet.name` updates.
+    func renameDevice(id: String, newName: String) {
+        let devices = TrezorKnownDeviceStorage.loadAll()
+        guard let target = devices.first(where: { $0.id == id }) else { return }
+
+        let trimmed = String(newName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.deviceLabelMaxLength))
+        let customLabel = trimmed.isEmpty ? nil : trimmed
+
+        let updated = devices.map { device -> TrezorKnownDevice in
+            let sameGroup = device.id == id || (!target.xpubs.isEmpty && device.xpubs == target.xpubs)
+            guard sameGroup else { return device }
+            var copy = device
+            copy.customLabel = customLabel
+            return copy
+        }
+        TrezorKnownDeviceStorage.saveAll(updated)
+        loadKnownDevices()
+        trezorLog("Renamed device \(id) to \(customLabel ?? "<default>")")
+    }
+
     /// Captures the connected device's account xpubs so watch-only balances/activity stay available
     /// while disconnected. The watch-only wallet id is derived from the captured xpub set, so a save
     /// is blocked only when an address type failed *transiently* (a retryable transport error) and
@@ -474,6 +497,7 @@ final class TrezorManager {
 
     private static let maxXpubFetchAttempts = 3
     private static let xpubFetchRetryDelayNanos: UInt64 = 300_000_000
+    private static let deviceLabelMaxLength = 50
 
     /// Markers (matched against the underlying `TrezorError` carried in the wrapped error's text)
     /// for transient transport problems worth retrying. Anything else is treated as the address

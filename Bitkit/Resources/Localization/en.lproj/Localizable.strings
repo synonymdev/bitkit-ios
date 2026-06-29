@@ -688,6 +688,8 @@
 "settings__general__section_payments" = "Payments";
 "settings__hardware_wallets__nav_title" = "Hardware Wallets";
 "settings__hardware_wallets__add_button" = "Add Hardware Wallet";
+"settings__hardware_wallets__rename_title" = "Rename Hardware Wallet";
+"settings__hardware_wallets__name_label" = "Name";
 "settings__widgets__nav_title" = "Widgets";
 "settings__widgets__section_display" = "Display";
 "settings__widgets__section_reset" = "Reset To Defaults";
