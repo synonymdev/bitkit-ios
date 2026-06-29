@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Manages all paired hardware wallets, reachable from Settings ▸ General ▸ Payments. Lists each
-/// paired device with a connection badge, name, balance and a per-row delete; an empty state when
-/// none are paired; and an "Add Hardware Wallet" button that opens the existing intro flow. Tapping
-/// a row opens the device's `HardwareWalletScreen`. Ports bitkit-android's `HardwareWalletsSettingsScreen`.
+/// paired device with a connection badge, name, balance and a per-row delete; an intro-style empty
+/// state when none are paired; and an "Add Hardware Wallet" button that opens the existing intro
+/// flow. Tapping a row opens the device's `HardwareWalletScreen`.
 struct HardwareWalletsSettingsScreen: View {
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(TrezorManager.self) private var trezorManager
@@ -17,37 +17,25 @@ struct HardwareWalletsSettingsScreen: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             NavigationBar(title: t("settings__hardware_wallets__nav_title"))
                 .padding(.horizontal, 16)
 
-            ZStack(alignment: .bottom) {
-                HwDeviceIllustrations()
-                    .frame(maxWidth: .infinity)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
-                    .allowsHitTesting(false)
-
-                VStack(spacing: 0) {
-                    if wallets.isEmpty {
-                        emptyState
-                            .frame(maxHeight: .infinity, alignment: .center)
-                    } else {
-                        deviceList
-                    }
-
-                    CustomButton(
-                        title: t("settings__hardware_wallets__add_button"),
-                        variant: .secondary,
-                        shouldExpand: true
-                    ) {
-                        sheets.showSheet(.hardwareIntro)
-                    }
-                    .accessibilityIdentifier("AddHardwareWallet")
-                    .padding(.bottom, 16)
-                }
-                .padding(.horizontal, 16)
+            if wallets.isEmpty {
+                emptyState
+            } else {
+                deviceList
             }
+
+            CustomButton(
+                title: t("settings__hardware_wallets__add_button"),
+                shouldExpand: true
+            ) {
+                sheets.showSheet(.hardwareIntro)
+            }
+            .accessibilityIdentifier("AddHardwareWallet")
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
         .navigationBarHidden(true)
         .accessibilityIdentifier("HardwareWalletsScreen")
@@ -65,12 +53,21 @@ struct HardwareWalletsSettingsScreen: View {
         }
     }
 
+    /// Mirrors the hardware intro sheet: staggered device hero filling the top, then an accent title
+    /// and copy above the Add button.
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            DisplayText(t("settings__hardware_wallets__nav_title"))
-            BodyMText(t("settings__hardware_wallets__empty_text"), textColor: .white80)
+        VStack(spacing: 0) {
+            HwDeviceIllustrations()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            VStack(alignment: .leading, spacing: 8) {
+                DisplayText(t("hardware__intro_header"), accentColor: .blueAccent)
+                BodyMText(t("hardware__intro_text"))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 32)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var deviceList: some View {
@@ -85,8 +82,16 @@ struct HardwareWalletsSettingsScreen: View {
                     CustomDivider()
                 }
             }
+            .padding(.horizontal, 16)
         }
-        .frame(maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(alignment: .bottom) {
+            HwDeviceIllustrations()
+                .frame(height: 256)
+                // Figma keeps a 59.77pt gap between the illustration and the Add button.
+                .padding(.bottom, 59.77)
+                .allowsHitTesting(false)
+        }
     }
 
     /// Stop watching and forget every entry for the device (it may be paired over multiple
@@ -115,13 +120,13 @@ private struct HwWalletRow: View {
                 HStack(spacing: 12) {
                     HwConnectionBadge(isConnected: wallet.isConnected)
 
-                    BodyMText(wallet.name)
+                    BodyMText(wallet.name, textColor: .textPrimary)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     MoneyText(
                         sats: Int(clamping: wallet.balanceSats),
-                        size: .bodySSB,
+                        size: .bodyMSB,
                         symbol: true,
                         color: .white64,
                         symbolColor: .white64
@@ -145,7 +150,7 @@ private struct HwWalletRow: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("HardwareWalletRowDelete_\(wallet.id)")
         }
-        .frame(height: 52)
+        .frame(height: 50)
         .accessibilityIdentifier("HardwareWalletRow_\(wallet.id)")
     }
 }
