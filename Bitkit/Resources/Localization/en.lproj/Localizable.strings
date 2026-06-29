@@ -38,6 +38,10 @@
 "hardware__intro_text" = "Connect your hardware device to watch or manage your long-term funds.";
 "hardware__pairing_title" = "Pair Device";
 "hardware__pairing_text" = "Enter the 6-digit code shown on your hardware device.";
+"hardware__remove_button" = "Remove {name}";
+"hardware__remove_dialog_title" = "Remove {name}";
+"hardware__remove_dialog_text" = "Don't worry, your funds are safe and your coins won't be deleted. Bitkit will simply stop displaying the amounts in the wallet.";
+"hardware__transfer_not_implemented" = "Transfer to spending not yet implemented.";
 "cards__buyBitcoin__title" = "Buy";
 "cards__buyBitcoin__description" = "Buy some bitcoin";
 "cards__btFailed__title" = "Failed";
@@ -55,6 +59,7 @@
 "common__yes_proceed" = "Yes, Proceed";
 "common__try_again" = "Try Again";
 "common__dialog_cancel" = "Cancel";
+"common__remove" = "Remove";
 "common__sat_vbyte" = "₿ / vbyte";
 "common__sat_vbyte_compact" = "₿/vbyte";
 "common__copy" = "Copy";

@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeWalletView: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @Environment(HwWalletManager.self) private var hwWalletManager
@@ -52,8 +53,8 @@ struct HomeWalletView: View {
             .padding(.bottom, 32)
 
             if !hwWalletManager.wallets.isEmpty {
-                HardwareWalletsGrid(wallets: hwWalletManager.wallets) { _ in
-                    app.toast(type: .info, title: t("coming_soon__nav_title"))
+                HardwareWalletsGrid(wallets: hwWalletManager.wallets) { hwWallet in
+                    navigation.navigate(.hardwareWallet(deviceId: hwWallet.id))
                 }
                 .padding(.bottom, 32)
             }
