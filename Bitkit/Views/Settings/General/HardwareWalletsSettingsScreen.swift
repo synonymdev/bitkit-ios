@@ -53,8 +53,6 @@ struct HardwareWalletsSettingsScreen: View {
         }
     }
 
-    /// Mirrors the hardware intro sheet: staggered device hero filling the top, then an accent title
-    /// and copy above the Add button.
     private var emptyState: some View {
         VStack(spacing: 0) {
             HwDeviceIllustrations()
