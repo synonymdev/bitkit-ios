@@ -80,6 +80,7 @@ struct HardwareWalletsSettingsScreen: View {
                     CustomDivider()
                 }
             }
+            .padding(.top, 14)
             .padding(.horizontal, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -135,7 +136,7 @@ private struct HwWalletRow: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: 24, height: 24)
-                    .foregroundColor(.white64)
+                    .foregroundColor(.white)
                     .padding(.leading, 12)
                     .padding(.vertical, 8)
                     .contentShape(Rectangle())
