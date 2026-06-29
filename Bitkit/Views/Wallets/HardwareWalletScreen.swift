@@ -91,11 +91,26 @@ struct HardwareWalletScreen: View {
         }
         .padding(.horizontal)
         .background(alignment: .topTrailing) {
-            Image("trezor-wallet-overview")
-                .resizable()
-                .frame(width: 256, height: 256)
-                .offset(x: 118)
+            trezorIllustration
+                // Align the device's top with the balance header and bleed off the trailing edge.
+                .offset(x: 118, y: ScreenLayout.topPaddingWithoutSafeArea)
         }
+    }
+
+    /// The shared upright Trezor device, transformed to match the Figma "Wallet Overview" visual:
+    /// cover-filled into a square, rotated -15°, and clipped to a 256pt box that bleeds off the
+    /// screen's trailing edge. Reuses the generic `trezor-device` asset — no screen-specific crop is
+    /// baked in, so the same image can be adapted elsewhere with SwiftUI.
+    private var trezorIllustration: some View {
+        Image("trezor-device")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: 268, height: 268)
+            .clipped()
+            .rotationEffect(.degrees(-15))
+            .offset(x: 9, y: 13)
+            .frame(width: 256, height: 256)
+            .clipped()
     }
 
     private var transferButton: some View {
