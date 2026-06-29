@@ -91,7 +91,7 @@ struct HardwareWalletScreen: View {
         }
         .padding(.horizontal)
         .background(alignment: .topTrailing) {
-            Image("trezor")
+            Image("trezor-wallet-overview")
                 .resizable()
                 .frame(width: 256, height: 256)
                 .offset(x: 118)
