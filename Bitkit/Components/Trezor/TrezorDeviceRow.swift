@@ -24,7 +24,7 @@ struct TrezorDeviceRow: View {
 
                 // Device info
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(displayName)
+                    Text(device.displayName)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
 
@@ -56,20 +56,6 @@ struct TrezorDeviceRow: View {
         .buttonStyle(.plain)
         .disabled(isConnecting)
         .accessibilityIdentifier(device.path.hasPrefix("bridge:") ? "TrezorDevice-bridge" : "TrezorDevice-\(device.path)")
-    }
-
-    private var displayName: String {
-        if let label = device.label, !label.isEmpty {
-            return label
-        }
-        return modelName
-    }
-
-    private var modelName: String {
-        if let model = device.model {
-            return "Trezor \(model)"
-        }
-        return "Trezor"
     }
 
     private var transportIcon: String {
@@ -119,7 +105,7 @@ struct KnownDeviceRow: View {
 
                     // Device info
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(device.label ?? device.name)
+                        Text(device.displayName)
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
 

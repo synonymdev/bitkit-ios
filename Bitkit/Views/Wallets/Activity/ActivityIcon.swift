@@ -17,11 +17,13 @@ struct ActivityIcon: View {
     let doesExist: Bool
     let isCpfpChild: Bool
     let context: Context
+    let isHwWallet: Bool
 
     init(activity: Activity, size: CGFloat = 32, isCpfpChild: Bool = false, context: Context = .detail) {
         self.size = size
         self.isCpfpChild = isCpfpChild
         self.context = context
+        isHwWallet = activity.isHardwareWallet
 
         switch activity {
         case let .lightning(ln):
@@ -70,7 +72,10 @@ struct ActivityIcon: View {
                 )
             } else {
                 let paymentIcon = txType == .sent ? "arrow-up" : "arrow-down"
-                let (iconColor, backgroundColor): (Color, Color) = if isTransfer {
+                let (iconColor, backgroundColor): (Color, Color) = if isHwWallet {
+                    // Watch-only hardware-wallet activity reads blue.
+                    (.blueAccent, .blue16)
+                } else if isTransfer {
                     // From savings (to spending) = sent = orange, From spending (to savings) = received = purple
                     txType == .sent ? (.brandAccent, .brand16) : (.purpleAccent, .purple16)
                 } else {

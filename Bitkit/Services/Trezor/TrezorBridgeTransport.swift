@@ -78,10 +78,10 @@ final class TrezorBridgeTransport {
             sessionLock.unlock()
 
             debugLog("openDevice: \(path)")
-            return TrezorTransportWriteResult(success: true, error: "")
+            return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
         } catch {
             debugLog("openDevice FAILED: \(error.localizedDescription)")
-            return TrezorTransportWriteResult(success: false, error: error.localizedDescription)
+            return TrezorTransportWriteResult(success: false, error: error.localizedDescription, errorCode: nil)
         }
     }
 
@@ -91,25 +91,29 @@ final class TrezorBridgeTransport {
         sessionLock.unlock()
 
         guard let session else {
-            return TrezorTransportWriteResult(success: true, error: "")
+            return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
         }
 
         do {
             _ = try post(path: "/release/\(Self.encode(session))")
             debugLog("closeDevice: \(path)")
-            return TrezorTransportWriteResult(success: true, error: "")
+            return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
         } catch {
             debugLog("closeDevice FAILED: \(error.localizedDescription)")
-            return TrezorTransportWriteResult(success: false, error: error.localizedDescription)
+            return TrezorTransportWriteResult(success: false, error: error.localizedDescription, errorCode: nil)
         }
     }
 
     func readChunk(path: String) -> TrezorTransportReadResult {
-        TrezorTransportReadResult(success: false, data: Data(), error: "Trezor Bridge uses callMessage for \(path)")
+        TrezorTransportReadResult(success: false, data: Data(), error: "Trezor Bridge uses callMessage for \(path)", errorCode: nil)
     }
 
     func writeChunk(path: String, data: Data) -> TrezorTransportWriteResult {
-        TrezorTransportWriteResult(success: false, error: "Trezor Bridge uses callMessage for \(path) and ignored \(data.count) bytes")
+        TrezorTransportWriteResult(
+            success: false,
+            error: "Trezor Bridge uses callMessage for \(path) and ignored \(data.count) bytes",
+            errorCode: nil
+        )
     }
 
     func callMessage(path: String, messageType: UInt16, data: Data) -> TrezorCallMessageResult {
@@ -118,7 +122,13 @@ final class TrezorBridgeTransport {
         sessionLock.unlock()
 
         guard let session else {
-            return TrezorCallMessageResult(success: false, messageType: 0, data: Data(), error: "Trezor Bridge device not open: \(path)")
+            return TrezorCallMessageResult(
+                success: false,
+                messageType: 0,
+                data: Data(),
+                error: "Trezor Bridge device not open: \(path)",
+                errorCode: nil
+            )
         }
 
         do {
@@ -127,7 +137,7 @@ final class TrezorBridgeTransport {
             return try Self.decodeFrame(response)
         } catch {
             debugLog("callMessage FAILED: \(error.localizedDescription)")
-            return TrezorCallMessageResult(success: false, messageType: 0, data: Data(), error: error.localizedDescription)
+            return TrezorCallMessageResult(success: false, messageType: 0, data: Data(), error: error.localizedDescription, errorCode: nil)
         }
     }
 
@@ -199,7 +209,7 @@ final class TrezorBridgeTransport {
         }
 
         let payload = bytes.subdata(in: headerSize ..< headerSize + Int(length))
-        return TrezorCallMessageResult(success: true, messageType: messageType, data: payload, error: "")
+        return TrezorCallMessageResult(success: true, messageType: messageType, data: payload, error: "", errorCode: nil)
     }
 
     private static func toBridgePath(_ path: String) -> String {

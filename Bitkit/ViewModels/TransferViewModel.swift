@@ -159,6 +159,7 @@ class TransferViewModel: ObservableObject {
             // Create pre-activity metadata for the transfer transaction
             let currentTime = UInt64(Date().timeIntervalSince1970)
             let preActivityMetadata = BitkitCore.PreActivityMetadata(
+                walletId: WalletScope.default,
                 paymentId: txid,
                 tags: [],
                 paymentHash: nil,

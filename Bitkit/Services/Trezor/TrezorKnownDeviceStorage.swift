@@ -9,6 +9,41 @@ struct TrezorKnownDevice: Codable, Identifiable {
     var label: String?
     var model: String?
     var lastConnectedAt: Date
+    /// Account-level extended public keys keyed by `AddressScriptType.stringValue`.
+    /// Persisted so watch-only balances/activity stay available while disconnected.
+    var xpubs: [String: String]
+
+    init(
+        id: String,
+        name: String,
+        path: String,
+        transportType: String,
+        label: String? = nil,
+        model: String? = nil,
+        lastConnectedAt: Date,
+        xpubs: [String: String] = [:]
+    ) {
+        self.id = id
+        self.name = name
+        self.path = path
+        self.transportType = transportType
+        self.label = label
+        self.model = model
+        self.lastConnectedAt = lastConnectedAt
+        self.xpubs = xpubs
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        path = try container.decode(String.self, forKey: .path)
+        transportType = try container.decode(String.self, forKey: .transportType)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        lastConnectedAt = try container.decode(Date.self, forKey: .lastConnectedAt)
+        xpubs = try container.decodeIfPresent([String: String].self, forKey: .xpubs) ?? [:]
+    }
 }
 
 /// Persists known Trezor device metadata in UserDefaults

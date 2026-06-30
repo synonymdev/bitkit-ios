@@ -1400,6 +1400,7 @@ extension MigrationsService {
             let invoice = (item.address?.isEmpty == false) ? item.address! : "migrated:\(item.id)"
 
             let lightning = BitkitCore.LightningActivity(
+                walletId: WalletScope.default,
                 id: item.id,
                 txType: txType,
                 status: status,
@@ -1752,7 +1753,7 @@ extension MigrationsService {
                 // Try to find on-chain activity by txId first
                 if let onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: activityId) {
                     try await CoreService.shared.activity.upsertTags([
-                        ActivityTags(activityId: onchain.id, tags: tagList),
+                        ActivityTags(walletId: WalletScope.default, activityId: onchain.id, tags: tagList),
                     ])
                     applied += 1
                 } else if let activity = try? await CoreService.shared.activity.getActivity(id: activityId) {
@@ -1760,12 +1761,12 @@ extension MigrationsService {
                     switch activity {
                     case .lightning:
                         try await CoreService.shared.activity.upsertTags([
-                            ActivityTags(activityId: activityId, tags: tagList),
+                            ActivityTags(walletId: WalletScope.default, activityId: activityId, tags: tagList),
                         ])
                         applied += 1
                     case let .onchain(onchain):
                         try await CoreService.shared.activity.upsertTags([
-                            ActivityTags(activityId: onchain.id, tags: tagList),
+                            ActivityTags(walletId: WalletScope.default, activityId: onchain.id, tags: tagList),
                         ])
                         applied += 1
                     }
@@ -1843,6 +1844,7 @@ extension MigrationsService {
                 let activityTimestamp = timestampSecs > 0 ? timestampSecs : now
 
                 let onchain = BitkitCore.OnchainActivity(
+                    walletId: WalletScope.default,
                     id: item.id,
                     txType: item.txType == "sent" ? .sent : .received,
                     txId: txId,

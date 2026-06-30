@@ -3,14 +3,14 @@ import SwiftUI
 
 /// Inline content for device features, used by expandable section.
 struct TrezorDeviceFeaturesContent: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
 
     var body: some View {
         VStack(spacing: 24) {
-            if let features = trezor.deviceFeatures {
+            if let features = trezorManager.deviceFeatures {
                 FirmwareSection(features: features)
                 SecuritySection(features: features)
-                IdentifiersSection(features: features, device: trezor.connectedDevice)
+                IdentifiersSection(features: features, device: trezorManager.connectedDevice)
                 ActionsSection()
             } else {
                 NoFeaturesView()
@@ -140,13 +140,13 @@ private struct IdentifiersSection: View {
 // MARK: - Actions Section
 
 private struct ActionsSection: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
 
     var body: some View {
         VStack(spacing: 12) {
             Button(action: {
                 Task {
-                    await trezor.clearCredentials()
+                    await trezorManager.clearCredentials()
                 }
             }) {
                 HStack(spacing: 8) {
@@ -272,7 +272,7 @@ private struct TrezorStatusRow: View {
             NavigationStack {
                 TrezorDeviceFeaturesView()
             }
-            .environment(TrezorViewModel())
+            .environment(TrezorManager())
         }
     }
 #endif

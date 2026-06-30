@@ -1,3 +1,4 @@
+import BitkitCore
 import LDKNode
 
 extension LDKNode.AddressType {
@@ -65,6 +66,30 @@ extension LDKNode.AddressType {
         case .nestedSegwit: return "m/49'/\(coinType)'/0'/0" // BIP 49
         case .nativeSegwit: return "m/84'/\(coinType)'/0'/0" // BIP 84
         case .taproot: return "m/86'/\(coinType)'/0'/0" // BIP 86
+        }
+    }
+
+    /// Account-level BIP path (no chain/index suffix), e.g. `m/84'/0'/0'` — used to request a
+    /// device's account xpub. Distinct from `derivationPath`, which is the chain-level path.
+    func accountDerivationPath(coinType: String) -> String {
+        switch self {
+        case .legacy: return "m/44'/\(coinType)'/0'" // BIP 44
+        case .nestedSegwit: return "m/49'/\(coinType)'/0'" // BIP 49
+        case .nativeSegwit: return "m/84'/\(coinType)'/0'" // BIP 84
+        case .taproot: return "m/86'/\(coinType)'/0'" // BIP 86
+        }
+    }
+
+    // MARK: - BitkitCore account type
+
+    /// bitkit-core `AccountType` for this address type (used when deriving descriptors and
+    /// starting watch-only watchers).
+    var accountType: AccountType {
+        switch self {
+        case .legacy: return .legacy
+        case .nestedSegwit: return .wrappedSegwit
+        case .nativeSegwit: return .nativeSegwit
+        case .taproot: return .taproot
         }
     }
 

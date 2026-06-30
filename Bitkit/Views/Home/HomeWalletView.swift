@@ -5,15 +5,23 @@ struct HomeWalletView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     var hasActivity: Bool {
         return activity.latestActivities?.isEmpty == false
     }
 
+    /// Headline total including watch-only hardware-wallet balances (keeps `totalBalanceSats`
+    /// semantics unchanged for send/transfer logic; only the headline folds hardware in).
+    private var headlineSats: Int {
+        let hw = Int(clamping: hwWalletManager.totalSats)
+        return wallet.totalBalanceSats.saturatingAdd(hw)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             MoneyStack(
-                sats: wallet.totalBalanceSats,
+                sats: headlineSats,
                 showSymbol: true,
                 showEyeIcon: true,
                 enableSwipeGesture: settings.swipeBalanceToHide,
@@ -42,6 +50,13 @@ struct HomeWalletView: View {
             }
             .frame(height: 50)
             .padding(.bottom, 32)
+
+            if !hwWalletManager.wallets.isEmpty {
+                HardwareWalletsGrid(wallets: hwWalletManager.wallets) { _ in
+                    app.toast(type: .info, title: t("coming_soon__nav_title"))
+                }
+                .padding(.bottom, 32)
+            }
 
             if hasActivity {
                 ActivityLatest()

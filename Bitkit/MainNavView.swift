@@ -13,6 +13,8 @@ struct MainNavView: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(TrezorManager.self) private var trezorManager
+    @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(\.scenePhase) var scenePhase
 
     @State private var showClipboardAlert = false
@@ -194,6 +196,35 @@ struct MainNavView: View {
             }
         ) {
             config in WidgetsSheet(config: config)
+        }
+        .sheet(
+            item: $sheets.hardwareIntroSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in HardwareIntroSheet(config: config)
+        }
+        .sheet(
+            item: $sheets.hardwarePairingSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in HardwarePairingSheet(config: config)
+        }
+        .onChange(of: trezorManager.showPairingCode) { _, needsCode in
+            // A hardware device asked for its one-time pairing code (e.g. during reconnect);
+            // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
+            if needsCode {
+                sheets.showSheet(.hardwarePairing)
+            } else {
+                sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")
+            }
+        }
+        .onReceive(hwWalletManager.receivedTxPublisher) { tx in
+            // New inbound transaction to a watched hardware wallet — show the received celebration.
+            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: tx.sats))
         }
         .accentColor(.white)
         .overlay {

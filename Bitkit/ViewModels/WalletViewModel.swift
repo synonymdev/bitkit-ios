@@ -385,8 +385,11 @@ class WalletViewModel: ObservableObject {
         case .unreachablePeers:
             Logger.warn("⚠️ [DEBUG] Simulating unreachable API peers")
             return [
-                LnPeer(nodeId: "000000000000000000000000000000000000000000000000000000000000000001",
-                       host: "192.0.2.1", port: 9735),
+                LnPeer(
+                    nodeId: "000000000000000000000000000000000000000000000000000000000000000001",
+                    host: "192.0.2.1",
+                    port: 9735
+                ),
             ]
         case .none:
             break
@@ -1248,6 +1251,7 @@ class WalletViewModel: ObservableObject {
 
         let currentTime = UInt64(Date().timeIntervalSince1970)
         let preActivityMetadata = BitkitCore.PreActivityMetadata(
+            walletId: WalletScope.default,
             paymentId: paymentId,
             tags: tags,
             paymentHash: paymentHash,
