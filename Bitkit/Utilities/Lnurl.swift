@@ -121,7 +121,7 @@ private extension LnurlHelper {
     static func mapLnurlPayInvoiceError(_ error: Error) -> Error {
         if let lnurlError = error as? LnurlError {
             switch lnurlError {
-            case .InvalidAmount, .AmountMismatch, .MetadataMismatch:
+            case .InvalidAmount:
                 return LnurlPayInvoiceMismatchError()
             default:
                 break
