@@ -71,6 +71,12 @@ class AppViewModel: ObservableObject {
     private var pendingPaymentHashes: Set<String> = []
     private var pendingContactPaymentContexts: [String: ContactPaymentContext] = [:]
 
+    /// Txids for which a received-sheet presentation has already been started this session.
+    /// The received and confirmed LDK events for the same tx each call the presenter, so this
+    /// reserves the txid synchronously on the MainActor (before any await) to guarantee the sheet
+    /// is presented at most once and avoid a double-notification race. See issue #455.
+    private var receivedSheetInFlightTxids: Set<String> = []
+
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
     @Published var sendSheetPendingResolution: SendSheetPendingResolution?
@@ -822,6 +828,44 @@ extension AppViewModel {
 // MARK: LDK Node Events
 
 extension AppViewModel {
+    /// Shows the "received" sheet for an incoming on-chain tx, unless it was already shown.
+    /// Used by both the received (mempool) and confirmed (straight-to-confirmed) LDK events so a
+    /// tx that skips the mempool still notifies the user. See issue #455.
+    private func presentReceivedSheetForOnchainTransaction(txid: String, amountSats: Int64) {
+        guard amountSats > 0 else { return }
+
+        // During a restore replay, LDK re-fires confirmed events for historical (already-received) txs.
+        // Suppress the sheet for the whole restore window; the first post-restore on-chain sync marks
+        // those activities seen and clears this flag, after which genuinely-new receives notify again. #588
+        guard !SettingsViewModel.shared.pendingRestoreActivitySeen else { return }
+
+        // Reserve the txid synchronously on the MainActor (no await between check and insert) so the
+        // received and confirmed events for the same tx can't both pass the seen-check and present the
+        // sheet twice. The persisted seenAt still handles cross-launch dedup; this closes the in-session
+        // concurrency race.
+        guard receivedSheetInFlightTxids.insert(txid).inserted else { return }
+
+        let sats = UInt64(amountSats)
+
+        Task {
+            // 500ms delay so the activity is written to the DB before the dedup/filter checks read it.
+            try? await Task.sleep(nanoseconds: 500_000_000)
+
+            if await CoreService.shared.activity.isOnchainActivitySeen(txid: txid) {
+                return
+            }
+
+            let shouldShow = await CoreService.shared.activity.shouldShowReceivedSheet(txid: txid, value: sats)
+            guard shouldShow else { return }
+
+            await CoreService.shared.activity.markOnchainActivityAsSeen(txid: txid)
+
+            await MainActor.run {
+                sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: sats))
+            }
+        }
+    }
+
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
         case let .paymentReceived(paymentId, _, amountMsat, _):
@@ -933,30 +977,12 @@ extension AppViewModel {
         // MARK: New Onchain Transaction Events
 
         case let .onchainTransactionReceived(txid, details):
-            // Show notification for incoming transactions
-            if details.amountSats > 0 {
-                let sats = UInt64(abs(Int64(details.amountSats)))
-
-                Task {
-                    // Show sheet for new transactions or replacements with value changes
-                    try? await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
-
-                    if await CoreService.shared.activity.isOnchainActivitySeen(txid: txid) {
-                        return
-                    }
-
-                    let shouldShow = await CoreService.shared.activity.shouldShowReceivedSheet(txid: txid, value: sats)
-                    guard shouldShow else { return }
-
-                    await CoreService.shared.activity.markOnchainActivityAsSeen(txid: txid)
-
-                    await MainActor.run {
-                        sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: sats))
-                    }
-                }
-            }
-        case let .onchainTransactionConfirmed(txid, _, blockHeight, _, _):
+            // Show notification for incoming transactions seen in the mempool
+            presentReceivedSheetForOnchainTransaction(txid: txid, amountSats: details.amountSats)
+        case let .onchainTransactionConfirmed(txid, _, blockHeight, _, details):
             Logger.info("Transaction confirmed: \(txid) at block \(blockHeight)")
+            // Also notify when a tx goes straight to confirmed without a prior received event
+            presentReceivedSheetForOnchainTransaction(txid: txid, amountSats: details.amountSats)
         case let .onchainTransactionReplaced(txid, conflicts):
             Logger.info("Transaction replaced: \(txid) by \(conflicts.count) conflict(s)")
             Task {
@@ -1026,6 +1052,15 @@ extension AppViewModel {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 30 * 1_000_000_000) // 30s delay after sync
                     await SettingsViewModel.shared.pruneEmptyAddressTypesAfterRestore()
+                }
+            }
+
+            // After a seed restore, the first on-chain sync has now discovered the historical txs.
+            // Mark them seen so they don't pop a "Received" sheet, and lift the restore suppression. #588
+            if SettingsViewModel.shared.pendingRestoreActivitySeen, syncType == .onchainWallet {
+                SettingsViewModel.shared.pendingRestoreActivitySeen = false
+                Task { @MainActor in
+                    await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
                 }
             }
 
