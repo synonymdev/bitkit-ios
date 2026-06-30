@@ -22,7 +22,9 @@ struct HardwareWalletScreen: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
+        let wallet = wallet
+
+        return ZStack(alignment: .top) {
             if let wallet {
                 NavigationBar(title: wallet.name, icon: "btc-circle-blue")
                     .padding(.horizontal, 16)
@@ -40,7 +42,7 @@ struct HardwareWalletScreen: View {
             Task { await loadActivities() }
         }
         // Leave the screen once the device is gone, whether removed here or forgotten elsewhere.
-        .onChange(of: hwWalletManager.wallets.contains { $0.deviceIds.contains(deviceId) }) { _, stillPaired in
+        .onChange(of: wallet != nil) { _, stillPaired in
             if hwWalletManager.walletsLoaded, !stillPaired {
                 navigation.navigateBack()
             }
@@ -152,6 +154,7 @@ struct HardwareWalletScreen: View {
         .allowsHitTesting(false)
     }
 
+    @MainActor
     private func loadActivities() async {
         guard let walletId = wallet?.walletId else { return }
         do {
