@@ -33,6 +33,7 @@ final class ActivityTests: XCTestCase {
         // Create a lightning activity
         let lightningActivity = Activity.lightning(
             LightningActivity(
+                walletId: WalletScope.default,
                 id: "test-lightning-1",
                 txType: .sent,
                 status: .succeeded,
@@ -75,6 +76,7 @@ final class ActivityTests: XCTestCase {
         // Create an onchain activity
         let onchainActivity = Activity.onchain(
             OnchainActivity(
+                walletId: WalletScope.default,
                 id: "test-onchain-1",
                 txType: .received,
                 txId: "abc123",
@@ -121,6 +123,7 @@ final class ActivityTests: XCTestCase {
         // Create and insert an activity
         let activity = Activity.lightning(
             LightningActivity(
+                walletId: WalletScope.default,
                 id: "test-tags-1",
                 txType: .sent,
                 status: .succeeded,
@@ -160,6 +163,7 @@ final class ActivityTests: XCTestCase {
         let activities = [
             Activity.lightning(
                 LightningActivity(
+                    walletId: WalletScope.default,
                     id: "test-tag-filter-1",
                     txType: .sent,
                     status: .succeeded,
@@ -177,6 +181,7 @@ final class ActivityTests: XCTestCase {
             ),
             Activity.lightning(
                 LightningActivity(
+                    walletId: WalletScope.default,
                     id: "test-tag-filter-2",
                     txType: .sent,
                     status: .succeeded,
@@ -220,6 +225,7 @@ final class ActivityTests: XCTestCase {
         let activities = [
             Activity.lightning(
                 LightningActivity(
+                    walletId: WalletScope.default,
                     id: "test-unique-tags-1",
                     txType: .sent,
                     status: .succeeded,
@@ -237,6 +243,7 @@ final class ActivityTests: XCTestCase {
             ),
             Activity.onchain(
                 OnchainActivity(
+                    walletId: WalletScope.default,
                     id: "test-unique-tags-2",
                     txType: .received,
                     txId: "abc123",
@@ -300,6 +307,7 @@ final class ActivityTests: XCTestCase {
         // Create and insert an activity
         let initialActivity = Activity.lightning(
             LightningActivity(
+                walletId: WalletScope.default,
                 id: "test-update-1",
                 txType: .sent,
                 status: .pending,
@@ -321,6 +329,7 @@ final class ActivityTests: XCTestCase {
         // Create updated version
         let updatedActivity = Activity.lightning(
             LightningActivity(
+                walletId: WalletScope.default,
                 id: "test-update-1",
                 txType: .sent,
                 status: .succeeded,
@@ -446,6 +455,7 @@ final class ActivityTests: XCTestCase {
         // Create and insert an activity
         let activity = Activity.lightning(
             LightningActivity(
+                walletId: WalletScope.default,
                 id: "test-delete-1",
                 txType: .sent,
                 status: .succeeded,
@@ -484,6 +494,7 @@ final class ActivityTests: XCTestCase {
         let activities = [
             Activity.lightning(
                 LightningActivity(
+                    walletId: WalletScope.default,
                     id: "test-limit-1",
                     txType: .sent,
                     status: .succeeded,
@@ -501,6 +512,7 @@ final class ActivityTests: XCTestCase {
             ),
             Activity.onchain(
                 OnchainActivity(
+                    walletId: WalletScope.default,
                     id: "test-limit-2",
                     txType: .received,
                     txId: "abc123",
@@ -525,6 +537,7 @@ final class ActivityTests: XCTestCase {
             ),
             Activity.lightning(
                 LightningActivity(
+                    walletId: WalletScope.default,
                     id: "test-limit-3",
                     txType: .received,
                     status: .succeeded,
@@ -566,6 +579,7 @@ final class ActivityTests: XCTestCase {
         let timestamp = UInt64(Date().timeIntervalSince1970)
         return Activity.onchain(
             OnchainActivity(
+                walletId: WalletScope.default,
                 id: id,
                 txType: .sent,
                 txId: txId,

@@ -100,6 +100,7 @@ struct GiftLoading: View {
 
             // Create activity item for the received gift
             let lightningActivity = LightningActivity(
+                walletId: WalletScope.default,
                 id: openedOrder.channel?.fundingTx.id ?? orderId,
                 txType: .received,
                 status: .succeeded,

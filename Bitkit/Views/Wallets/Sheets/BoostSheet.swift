@@ -427,6 +427,7 @@ struct BoostSheet: View {
                 BoostSheet(
                     config: BoostSheetItem(
                         onchainActivity: OnchainActivity(
+                            walletId: WalletScope.default,
                             id: "test-onchain-1",
                             txType: .sent,
                             txId: "abc123",

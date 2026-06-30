@@ -4,14 +4,14 @@ import SwiftUI
 
 /// View displaying discovered Trezor devices
 struct TrezorDeviceListView: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
     @State private var connectingDevicePath: String?
     @State private var isWatcherExpanded = false
 
     /// Scanned devices that are NOT already in the known devices list
     private var nearbyDevices: [TrezorDeviceInfo] {
-        let knownIds = Set(trezor.knownDevices.map(\.id))
-        return trezor.devices.filter { !knownIds.contains($0.id) }
+        let knownIds = Set(trezorManager.knownDevices.map(\.id))
+        return trezorManager.devices.filter { !knownIds.contains($0.id) }
     }
 
     var body: some View {
@@ -20,28 +20,28 @@ struct TrezorDeviceListView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // Bluetooth status (don't show during initial .unknown state)
-                    if !trezor.isBridgeModeEnabled, trezor.bluetoothState != .poweredOn, trezor.bluetoothState != .unknown {
-                        BluetoothStatusCard(state: trezor.bluetoothState)
+                    if !trezorManager.isBridgeModeEnabled, trezorManager.bluetoothState != .poweredOn, trezorManager.bluetoothState != .unknown {
+                        BluetoothStatusCard(state: trezorManager.bluetoothState)
                     }
 
                     // Auto-reconnect indicator
-                    if trezor.isAutoReconnecting, let status = trezor.autoReconnectStatus {
+                    if trezorManager.isAutoReconnecting, let status = trezorManager.autoReconnectStatus {
                         AutoReconnectIndicator(status: status)
                     }
 
                     // Scanning indicator
-                    if trezor.isScanning, !trezor.isAutoReconnecting {
+                    if trezorManager.isScanning, !trezorManager.isAutoReconnecting {
                         ScanningIndicator()
                     }
 
                     // Known devices section
-                    if !trezor.knownDevices.isEmpty {
+                    if !trezorManager.knownDevices.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("My Devices")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(.white.opacity(0.6))
 
-                            ForEach(trezor.knownDevices) { device in
+                            ForEach(trezorManager.knownDevices) { device in
                                 KnownDeviceRow(
                                     device: device,
                                     isConnecting: connectingDevicePath == device.path
@@ -49,7 +49,7 @@ struct TrezorDeviceListView: View {
                                     connectToKnownDevice(device)
                                 } onForget: {
                                     Task {
-                                        await trezor.forgetDevice(id: device.id)
+                                        await trezorManager.forgetDevice(id: device.id)
                                     }
                                 }
                             }
@@ -75,14 +75,14 @@ struct TrezorDeviceListView: View {
                     }
 
                     // Empty state
-                    if !trezor.isScanning, !trezor.isAutoReconnecting,
-                       trezor.knownDevices.isEmpty, trezor.devices.isEmpty
+                    if !trezorManager.isScanning, !trezorManager.isAutoReconnecting,
+                       trezorManager.knownDevices.isEmpty, trezorManager.devices.isEmpty
                     {
                         TrezorEmptyStateView()
                     }
 
                     // Error display
-                    if let error = trezor.error {
+                    if let error = trezorManager.error {
                         ErrorCard(message: error)
                     }
 
@@ -103,17 +103,17 @@ struct TrezorDeviceListView: View {
             }
 
             // Bottom action button
-            if !trezor.isScanning, !trezor.isAutoReconnecting,
-               trezor.isBridgeModeEnabled || trezor.bluetoothState == .poweredOn || trezor.bluetoothState == .unknown
+            if !trezorManager.isScanning, !trezorManager.isAutoReconnecting,
+               trezorManager.isBridgeModeEnabled || trezorManager.bluetoothState == .poweredOn || trezorManager.bluetoothState == .unknown
             {
                 Button(action: {
                     Task {
-                        await trezor.startScan()
+                        await trezorManager.startScan()
                     }
                 }) {
                     HStack(spacing: 8) {
                         Image(systemName: "antenna.radiowaves.left.and.right")
-                        Text(trezor.devices.isEmpty ? "Scan for Devices" : "Scan Again")
+                        Text(trezorManager.devices.isEmpty ? "Scan for Devices" : "Scan Again")
                     }
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.black)
@@ -131,27 +131,27 @@ struct TrezorDeviceListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .trezorAccessibilityAnchor("TrezorDeviceList")
         .task {
-            trezor.loadKnownDevices()
+            trezorManager.loadKnownDevices()
 
             // Wait briefly for BLE state to settle if still unknown
             // (CBCentralManager fires centralManagerDidUpdateState async after creation)
-            if trezor.bluetoothState == .unknown {
+            if trezorManager.bluetoothState == .unknown {
                 for _ in 0 ..< 10 {
                     try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                    if trezor.bluetoothState != .unknown { break }
+                    if trezorManager.bluetoothState != .unknown { break }
                 }
             }
 
-            guard trezor.isBridgeModeEnabled || trezor.bluetoothState == .poweredOn else { return }
+            guard trezorManager.isBridgeModeEnabled || trezorManager.bluetoothState == .poweredOn else { return }
 
-            if !trezor.knownDevices.isEmpty {
-                await trezor.autoReconnect()
-            } else if trezor.devices.isEmpty {
-                await trezor.startScan()
+            if !trezorManager.knownDevices.isEmpty {
+                await trezorManager.autoReconnect()
+            } else if trezorManager.devices.isEmpty {
+                await trezorManager.startScan()
             }
         }
         .onDisappear {
-            trezor.stopScan()
+            trezorManager.stopScan()
         }
     }
 
@@ -159,7 +159,7 @@ struct TrezorDeviceListView: View {
         connectingDevicePath = device.path
 
         Task {
-            await trezor.connect(device: device)
+            await trezorManager.connect(device: device)
             connectingDevicePath = nil
         }
     }
@@ -169,15 +169,15 @@ struct TrezorDeviceListView: View {
 
         Task {
             // Check if this device was found in the last scan
-            if let scanned = trezor.devices.first(where: { $0.id == knownDevice.id }) {
-                await trezor.connect(device: scanned)
+            if let scanned = trezorManager.devices.first(where: { $0.id == knownDevice.id }) {
+                await trezorManager.connect(device: scanned)
             } else {
                 // Need to scan first to find the device
-                await trezor.startScan(clearExisting: false)
-                if let scanned = trezor.devices.first(where: { $0.id == knownDevice.id }) {
-                    await trezor.connect(device: scanned)
+                await trezorManager.startScan(clearExisting: false)
+                if let scanned = trezorManager.devices.first(where: { $0.id == knownDevice.id }) {
+                    await trezorManager.connect(device: scanned)
                 } else {
-                    trezor.error = "Device not found nearby. Make sure your Trezor is turned on."
+                    trezorManager.error = "Device not found nearby. Make sure your Trezor is turned on."
                 }
             }
             connectingDevicePath = nil
@@ -329,7 +329,7 @@ private struct ErrorCard: View {
             NavigationStack {
                 TrezorDeviceListView()
             }
-            .environment(TrezorViewModel())
+            .environment(TrezorManager())
         }
     }
 #endif

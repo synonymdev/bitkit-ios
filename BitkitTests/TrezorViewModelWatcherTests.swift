@@ -9,7 +9,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
     /// Mock watcher service, standing in for Android's mocked `TrezorRepo`.
     /// `holdStart` mirrors the `CompletableDeferred`-backed mock used to keep
     /// the native start call in flight until the test resolves it.
-    private final class MockWatcherService: TrezorWatcherServicing, @unchecked Sendable {
+    private final class MockWatcherService: OnChainWatcherServicing, @unchecked Sendable {
         private let lock = NSLock()
 
         private(set) var startedParams: [WatcherParams] = []
@@ -77,48 +77,42 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         total: 156_000
     )
 
-    private static let sampleTransactions: [HistoryTransaction] = [
-        HistoryTransaction(
-            txid: "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16",
-            received: 50000,
-            sent: 0,
-            net: 50000,
-            fee: nil,
-            amount: 50000,
-            direction: .received,
-            blockHeight: 849_990,
+    private static func onchainActivity(txId: String, value: UInt64, txType: PaymentType) -> Activity {
+        .onchain(OnchainActivity(
+            walletId: "trezor:watcher",
+            id: txId,
+            txType: txType,
+            txId: txId,
+            value: value,
+            fee: 0,
+            feeRate: 1,
+            address: "",
+            confirmed: true,
             timestamp: 1_700_000_000,
-            confirmations: 11
-        ),
-        HistoryTransaction(
-            txid: "a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d",
-            received: 0,
-            sent: 20000,
-            net: -20000,
-            fee: 500,
-            amount: 19500,
-            direction: .sent,
-            blockHeight: 849_995,
-            timestamp: 1_700_001_000,
-            confirmations: 6
-        ),
-        HistoryTransaction(
-            txid: "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516",
-            received: 10000,
-            sent: 10500,
-            net: -500,
-            fee: 500,
-            amount: 500,
-            direction: .selfTransfer,
-            blockHeight: nil,
-            timestamp: nil,
-            confirmations: 0
-        ),
+            isBoosted: false,
+            boostTxIds: [],
+            isTransfer: false,
+            doesExist: true,
+            confirmTimestamp: 1_700_000_000,
+            channelId: nil,
+            transferTxId: nil,
+            contact: nil,
+            createdAt: 1_700_000_000,
+            updatedAt: 1_700_000_000,
+            seenAt: nil
+        ))
+    }
+
+    private static let sampleActivities: [Activity] = [
+        onchainActivity(txId: "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16", value: 50000, txType: .received),
+        onchainActivity(txId: "a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d", value: 19500, txType: .sent),
+        onchainActivity(txId: "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516", value: 500, txType: .sent),
     ]
 
     private static func sampleTransactionsChangedEvent() -> WatcherEvent {
         .transactionsChanged(
-            transactions: sampleTransactions,
+            activities: sampleActivities,
+            transactionDetails: [],
             balance: sampleBalance,
             txCount: 3,
             blockHeight: 850_000,
@@ -130,7 +124,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
 
     @MainActor
     private func makeViewModel(service: MockWatcherService) -> TrezorViewModel {
-        let viewModel = TrezorViewModel(watcherService: service)
+        let viewModel = TrezorViewModel(connection: TrezorManager(), watcherService: service)
         viewModel.watcherExtendedKey = "xpub6test123"
         return viewModel
     }
@@ -184,32 +178,27 @@ final class TrezorViewModelWatcherTests: XCTestCase {
 
     @MainActor
     func testDisconnectedStateResetClearsSensitiveWalletState() {
-        let service = MockWatcherService()
-        let viewModel = makeViewModel(service: service)
+        let connection = TrezorManager()
 
         TrezorUiHandler.shared.setWalletMode(.passphraseHost, hostPassphrase: "secret")
-        viewModel.walletMode = .passphraseHost
-        viewModel.deviceFingerprint = "73c5da0a"
-        viewModel.generatedAddress = "bcrt1qexample"
-        viewModel.xpub = "xpub6previous"
-        viewModel.publicKeyHex = "02abcdef"
-        viewModel.showPinEntry = true
-        viewModel.showPassphraseEntry = true
-        viewModel.showConfirmOnDevice = true
-        viewModel.showWalletModeChooser = true
+        connection.walletMode = .passphraseHost
+        connection.deviceFingerprint = "73c5da0a"
+        connection.showPinEntry = true
+        connection.showPassphraseEntry = true
+        connection.showConfirmOnDevice = true
+        connection.showWalletModeChooser = true
 
-        viewModel.clearDisconnectedDeviceState(errorMessage: "disconnect failed")
+        connection.clearDisconnectedDeviceState(errorMessage: "disconnect failed")
 
-        XCTAssertNil(viewModel.deviceFingerprint)
-        XCTAssertNil(viewModel.generatedAddress)
-        XCTAssertNil(viewModel.xpub)
-        XCTAssertNil(viewModel.publicKeyHex)
-        XCTAssertEqual(viewModel.error, "disconnect failed")
-        XCTAssertFalse(viewModel.showPinEntry)
-        XCTAssertFalse(viewModel.showPassphraseEntry)
-        XCTAssertFalse(viewModel.showConfirmOnDevice)
-        XCTAssertFalse(viewModel.showWalletModeChooser)
-        XCTAssertEqual(viewModel.walletMode, .standard)
+        XCTAssertNil(connection.deviceFingerprint)
+        XCTAssertNil(connection.connectedDevice)
+        XCTAssertNil(connection.deviceFeatures)
+        XCTAssertEqual(connection.error, "disconnect failed")
+        XCTAssertFalse(connection.showPinEntry)
+        XCTAssertFalse(connection.showPassphraseEntry)
+        XCTAssertFalse(connection.showConfirmOnDevice)
+        XCTAssertFalse(connection.showWalletModeChooser)
+        XCTAssertEqual(connection.walletMode, .standard)
 
         switch TrezorUiHandler.shared.currentSelection() {
         case .standard:
@@ -279,7 +268,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         XCTAssertNil(viewModel.activeWatcherId)
         XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
         XCTAssertNil(viewModel.watcherBalance)
-        XCTAssertTrue(viewModel.watcherTransactions.isEmpty)
+        XCTAssertTrue(viewModel.watcherActivities.isEmpty)
     }
 
     /// iOS-specific: stopping while the native start call is still in flight
@@ -307,7 +296,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         await waitUntil(timeout: 0.2) { viewModel.watcherBalance != nil }
 
         XCTAssertNil(viewModel.watcherBalance)
-        XCTAssertTrue(viewModel.watcherTransactions.isEmpty)
+        XCTAssertTrue(viewModel.watcherActivities.isEmpty)
         XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
 
         // The held native call returning success must not activate the watcher.
@@ -319,27 +308,11 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
     }
 
-    /// iOS-specific: the root view calls stopAllWatchers from onDisappear since the
-    /// ViewModel is app-lifetime (no onCleared equivalent).
+    /// iOS-specific: dashboard dismissal stops only this dashboard's dev watcher and resets
+    /// the watcher input fields. It must NOT call the global stop, since production hardware
+    /// watchers owned by HwWalletManager share the same service and have to stay live.
     @MainActor
-    func testStopAllWatchersStopsActiveWatcherAndService() async throws {
-        let service = MockWatcherService()
-        let viewModel = makeViewModel(service: service)
-
-        await viewModel.startWatcher()
-        let watcherId = try XCTUnwrap(viewModel.activeWatcherId)
-
-        viewModel.stopAllWatchers()
-
-        XCTAssertEqual(service.stoppedWatcherIds, [watcherId])
-        XCTAssertEqual(service.stopAllWatchersCallCount, 1)
-        XCTAssertNil(viewModel.activeWatcherId)
-        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
-    }
-
-    /// iOS-specific: dashboard dismissal also resets the watcher input fields.
-    @MainActor
-    func testHandleDashboardDismissStopsWatchersAndClearsInputState() async throws {
+    func testHandleDashboardDismissStopsDevWatcherAndClearsInputState() async throws {
         let service = MockWatcherService()
         let viewModel = makeViewModel(service: service)
         viewModel.watcherGapLimit = "30"
@@ -351,7 +324,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         viewModel.handleDashboardDismiss()
 
         XCTAssertEqual(service.stoppedWatcherIds, [watcherId])
-        XCTAssertEqual(service.stopAllWatchersCallCount, 1)
+        XCTAssertEqual(service.stopAllWatchersCallCount, 0)
         XCTAssertNil(viewModel.activeWatcherId)
         XCTAssertEqual(viewModel.watcherExtendedKey, "")
         XCTAssertEqual(viewModel.watcherGapLimit, "20")

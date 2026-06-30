@@ -851,6 +851,7 @@ extension AppViewModel {
                         let now = UInt64(Date().timeIntervalSince1970)
 
                         let ln = LightningActivity(
+                            walletId: WalletScope.default,
                             id: channel.fundingTxo?.txid ?? "",
                             txType: .received,
                             status: .succeeded,

@@ -528,7 +528,7 @@ private struct ResultRow: View {
             NavigationStack {
                 TrezorTransactionDetailView()
             }
-            .environment(TrezorViewModel())
+            .environment(TrezorViewModel(connection: TrezorManager()))
         }
     }
 #endif

@@ -86,10 +86,10 @@ final class TrezorTransport: TrezorTransportCallback {
                 throw error
             }
 
-            return TrezorTransportWriteResult(success: true, error: "")
+            return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
         } catch {
             debugLog("openDevice FAILED: \(error.localizedDescription)")
-            return TrezorTransportWriteResult(success: false, error: error.localizedDescription)
+            return TrezorTransportWriteResult(success: false, error: error.localizedDescription, errorCode: nil)
         }
     }
 
@@ -102,11 +102,11 @@ final class TrezorTransport: TrezorTransportCallback {
         }
 
         guard path.hasPrefix("ble:") else {
-            return TrezorTransportWriteResult(success: false, error: "Invalid device path: \(path)")
+            return TrezorTransportWriteResult(success: false, error: "Invalid device path: \(path)", errorCode: nil)
         }
 
         bleManager.disconnect(path: path)
-        return TrezorTransportWriteResult(success: true, error: "")
+        return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
     }
 
     /// Read a chunk of data from the device
@@ -123,10 +123,10 @@ final class TrezorTransport: TrezorTransportCallback {
             let data = try bleManager.readChunk(path: path)
             debugLog("readChunk: \(data.count) bytes")
 
-            return TrezorTransportReadResult(success: true, data: data, error: "")
+            return TrezorTransportReadResult(success: true, data: data, error: "", errorCode: nil)
         } catch {
             debugLog("readChunk FAILED: \(error.localizedDescription)")
-            return TrezorTransportReadResult(success: false, data: Data(), error: error.localizedDescription)
+            return TrezorTransportReadResult(success: false, data: Data(), error: error.localizedDescription, errorCode: nil)
         }
     }
 
@@ -162,10 +162,10 @@ final class TrezorTransport: TrezorTransportCallback {
                 throw error
             }
 
-            return TrezorTransportWriteResult(success: true, error: "")
+            return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
         } catch {
             debugLog("writeChunk FAILED: \(error.localizedDescription)")
-            return TrezorTransportWriteResult(success: false, error: error.localizedDescription)
+            return TrezorTransportWriteResult(success: false, error: error.localizedDescription, errorCode: nil)
         }
     }
 
