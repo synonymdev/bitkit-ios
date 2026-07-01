@@ -100,8 +100,6 @@ struct AppScene: View {
             ) {
                 config in ForgotPinSheet(config: config)
             }
-            // Presented at the root (not in MainNavView) so the non-critical update prompt
-            // can also surface during onboarding, before a wallet exists (issue #460).
             .sheet(
                 item: $sheets.appUpdateSheetItem,
                 onDismiss: {
@@ -214,9 +212,6 @@ struct AppScene: View {
                 handleBackupFailure(intervalMinutes: intervalMinutes)
             }
             .onReceive(AppUpdateService.shared.$availableUpdate) { update in
-                // The update check finishes asynchronously. If it lands after the initial settle
-                // check (common on a fresh first launch), re-run the evaluation so the non-critical
-                // prompt still surfaces instead of waiting for the next primary-screen entry (issue #460).
                 guard update != nil else { return }
                 TimedSheetManager.shared.reevaluate()
             }
@@ -353,9 +348,8 @@ struct AppScene: View {
             walletIsInitializing = nil
             walletInitShouldFinish = false
 
-            // Let the non-critical update prompt reach the onboarding flow too (issue #460).
-            // Only the app-update sheet can pass shouldShow() without a wallet, so this won't
-            // surface wallet-related timed sheets here.
+            // Only the app-update sheet qualifies without a wallet, so onboarding
+            // won't surface the other (wallet-gated) timed sheets.
             TimedSheetManager.shared.onPrimaryScreenEntered()
         }
         .onDisappear {
