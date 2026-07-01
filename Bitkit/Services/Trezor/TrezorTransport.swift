@@ -305,6 +305,12 @@ final class TrezorTransport: TrezorTransportCallback {
         bleManager.bluetoothState
     }
 
+    /// Emits a device path when an established BLE connection drops unexpectedly
+    /// (out of range or phone Bluetooth turned off).
+    var externalDisconnectPublisher: PassthroughSubject<String, Never> {
+        bleManager.externalDisconnectPublisher
+    }
+
     var isBridgeEnabled: Bool {
         bridgeTransport.isEnabled
     }

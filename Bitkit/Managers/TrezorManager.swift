@@ -125,6 +125,17 @@ final class TrezorManager {
             }
             .store(in: &cancellables)
 
+        // A spontaneous BLE drop (device out of range or phone Bluetooth turned off)
+        // must clear the live session.
+        transport.externalDisconnectPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] path in
+                guard let self, connectedDevice?.path == path else { return }
+                trezorLog("External disconnect for \(path); clearing session")
+                clearDisconnectedDeviceState()
+            }
+            .store(in: &cancellables)
+
         // Passphrase entry is now driven proactively by the wallet-mode selector
         // (see setWalletMode / requestPassphraseWallet). The device callback
         // `onPassphraseRequest` is answered silently from the selected mode, so there
