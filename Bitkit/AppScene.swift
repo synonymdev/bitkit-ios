@@ -108,6 +108,15 @@ struct AppScene: View {
             ) {
                 config in ForgotPinSheet(config: config)
             }
+            .sheet(
+                item: $sheets.appUpdateSheetItem,
+                onDismiss: {
+                    sheets.hideSheet()
+                    app.ignoreAppUpdate()
+                }
+            ) {
+                config in AppUpdateSheet(config: config)
+            }
             .task(priority: .userInitiated, setupTask)
             .onChange(of: currency.hasStaleData) { _, newValue in handleCurrencyStaleData(newValue) }
             .onChange(of: wallet.walletExists) { _, newValue in handleWalletExistsChange(newValue) }
@@ -218,6 +227,10 @@ struct AppScene: View {
             }
             .onReceive(BackupService.shared.backupFailurePublisher) { intervalMinutes in
                 handleBackupFailure(intervalMinutes: intervalMinutes)
+            }
+            .onReceive(AppUpdateService.shared.$availableUpdate) { update in
+                guard update != nil else { return }
+                TimedSheetManager.shared.reevaluate()
             }
     }
 
@@ -351,6 +364,13 @@ struct AppScene: View {
             // Reset these values if the wallet is wiped
             walletIsInitializing = nil
             walletInitShouldFinish = false
+
+            // Only the app-update sheet qualifies without a wallet, so onboarding
+            // won't surface the other (wallet-gated) timed sheets.
+            TimedSheetManager.shared.onPrimaryScreenEntered()
+        }
+        .onDisappear {
+            TimedSheetManager.shared.onPrimaryScreenExited()
         }
     }
 

@@ -87,11 +87,11 @@ struct HomeScreen: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            TimedSheetManager.shared.onHomeScreenEntered()
+            TimedSheetManager.shared.onPrimaryScreenEntered()
             consumeRequestedHomePage()
         }
         .onDisappear {
-            TimedSheetManager.shared.onHomeScreenExited()
+            TimedSheetManager.shared.onPrimaryScreenExited()
         }
         .onChange(of: app.requestedHomePage) { _, _ in
             consumeRequestedHomePage()
