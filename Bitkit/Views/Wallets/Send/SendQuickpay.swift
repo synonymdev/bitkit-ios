@@ -34,38 +34,38 @@ struct SendQuickpay: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             Task {
-                try await performPayment()
+                await performPayment()
             }
         }
     }
 
-    private func performPayment() async throws {
-        var bolt11Invoice: String?
-
-        // Handle LNURL Pay
-        if let lnurlPayData = app.lnurlPayData {
-            // Set the amount in sats for the success screen
-            wallet.sendAmountSats = lnurlPayData.minSendableSat
-
-            bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
-                callbackUrl: lnurlPayData.callback,
-                amountMsats: lnurlPayData.callbackAmountMsats()
-            )
-        } else if let scannedInvoice = app.scannedLightningInvoice {
-            wallet.sendAmountSats = scannedInvoice.amountSatoshis
-            bolt11Invoice = scannedInvoice.bolt11
-        }
-
-        guard let bolt11 = bolt11Invoice else {
-            throw NSError(
-                domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "No Lightning invoice found"]
-            )
-        }
-
-        let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
-        let paymentHash = String(describing: parsedInvoice.paymentHash())
-
+    private func performPayment() async {
         do {
+            var bolt11Invoice: String?
+
+            // Handle LNURL Pay
+            if let lnurlPayData = app.lnurlPayData {
+                // Set the amount in sats for the success screen
+                wallet.sendAmountSats = lnurlPayData.minSendableSat
+
+                bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
+                    data: lnurlPayData,
+                    amountMsats: lnurlPayData.callbackAmountMsats()
+                )
+            } else if let scannedInvoice = app.scannedLightningInvoice {
+                wallet.sendAmountSats = scannedInvoice.amountSatoshis
+                bolt11Invoice = scannedInvoice.bolt11
+            }
+
+            guard let bolt11 = bolt11Invoice else {
+                throw NSError(
+                    domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "No Lightning invoice found"]
+                )
+            }
+
+            let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
+            let paymentHash = String(describing: parsedInvoice.paymentHash())
+
             // Quickpay only triggers for invoices with built-in amounts, so pass sats: nil
             // to let LDK use the invoice's native millisatoshi precision.
             try await wallet.sendWithTimeout(
@@ -82,15 +82,19 @@ struct SendQuickpay: View {
             // onTimeout callback already navigated to .pending; suppress throw
             return
         } catch {
-            Logger.error("Quickpay payment failed: \(error)")
+            handlePaymentError(error)
+        }
+    }
 
-            // TODO: remove toast and use failure screen instead
-            app.toast(error)
+    private func handlePaymentError(_ error: Error) {
+        Logger.error("Quickpay payment failed: \(error)")
 
-            // TODO: this is a hack to make sure the navigation binding is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                navigationPath.append(.failure)
-            }
+        // TODO: remove toast and use failure screen instead
+        app.toast(error)
+
+        // TODO: this is a hack to make sure the navigation binding is ready
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            navigationPath.append(.failure)
         }
     }
 }
