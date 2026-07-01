@@ -5,6 +5,7 @@ import SwiftUI
 enum Route: Hashable {
     case savingsWallet
     case spendingWallet
+    case hardwareWallet(deviceId: String)
     case activityList
     case activityDetail(Activity)
     case activityExplorer(Activity)

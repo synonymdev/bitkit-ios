@@ -528,7 +528,10 @@ final class TrezorManager {
     }
 
     func forgetDevice(id: String) async {
-        if let device = knownDevices.first(where: { $0.id == id }) {
+        let known = knownDevices.first(where: { $0.id == id })
+        let isActiveSession = connectedDevice?.id == id || (known.map { connectedDevice?.path == $0.path } ?? false)
+
+        if let device = known {
             do {
                 try await trezorService.clearCredentials(deviceId: device.path)
             } catch {
@@ -539,6 +542,10 @@ final class TrezorManager {
         TrezorKnownDeviceStorage.remove(id: id)
         loadKnownDevices()
         trezorLog("Forgot device: \(id)")
+
+        if isActiveSession {
+            await disconnect()
+        }
     }
 
     // MARK: - Auto-Reconnect

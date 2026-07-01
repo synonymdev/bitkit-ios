@@ -8,10 +8,15 @@ struct TabBar: View {
 
     var shouldShow: Bool {
         if calculatorInput.isPresented { return false }
-
-        let routesWithTabBar = Set<Route>([.activityList, .savingsWallet, .spendingWallet])
         if navigation.path.isEmpty { return true }
-        return navigation.currentRoute.map { routesWithTabBar.contains($0) } ?? false
+        guard let route = navigation.currentRoute else { return false }
+
+        switch route {
+        case .activityList, .savingsWallet, .spendingWallet, .hardwareWallet:
+            return true
+        default:
+            return false
+        }
     }
 
     var body: some View {

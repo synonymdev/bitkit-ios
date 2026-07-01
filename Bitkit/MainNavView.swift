@@ -413,6 +413,7 @@ struct MainNavView: View {
                 case .buyBitcoin: BuyBitcoinView()
                 case .savingsWallet: SavingsWalletScreen()
                 case .spendingWallet: SpendingWalletScreen()
+                case let .hardwareWallet(deviceId): HardwareWalletScreen(deviceId: deviceId)
                 case .scanner: ScannerScreen()
 
                 // Transfer
