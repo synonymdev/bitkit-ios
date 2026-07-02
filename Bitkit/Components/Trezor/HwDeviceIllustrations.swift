@@ -24,7 +24,7 @@ struct HwDeviceIllustrations: View {
             let staggerY = width * Layout.proportionalStagger
 
             ZStack {
-                Image("trezor")
+                Image("trezor-cropped")
                     .resizable()
                     .scaledToFit()
                     .frame(width: width * Layout.trezorProportionalWidth, height: imageHeight)

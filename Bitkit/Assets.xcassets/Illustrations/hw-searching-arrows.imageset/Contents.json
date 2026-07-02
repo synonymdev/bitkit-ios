@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "hw-searching-arrows.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
