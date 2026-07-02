@@ -200,12 +200,15 @@ class BackupService {
                 UserDefaults.standard.set(encodedData, forKey: "savedWidgets")
             }
 
+            var pendingPaykitSdkBackupState: String?
+            var didRestoreWalletBackup = false
+
             try await performRestore(category: .wallet) { dataBytes in
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
-                await PrivatePaykitService.shared.restoreBackup(payload.privatePaykitContactLinks)
-                await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+                pendingPaykitSdkBackupState = payload.paykitSdkBackupState
+                didRestoreWalletBackup = true
 
                 Logger.debug("Restored \(payload.transfers.count) transfers", context: "BackupService")
             }
@@ -235,11 +238,21 @@ class BackupService {
                 } catch {
                     Logger.warn("Failed to restore pubky session backup state: \(error)", context: "BackupService")
                 }
+                ContactsManager.restoreContactProfileOverrides(payload.pubkyContactProfileOverrides)
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
 
                 Logger.debug("Restored caches, \(payload.tagMetadata.count) pre-activity metadata", context: "BackupService")
+            }
+
+            if didRestoreWalletBackup {
+                do {
+                    try await PrivatePaykitService.shared.restoreBackup(pendingPaykitSdkBackupState)
+                    await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+                } catch {
+                    Logger.warn("Failed to restore Paykit SDK backup state: \(error)", context: "BackupService")
+                }
             }
 
             try await performRestore(category: .blocktank) { dataBytes in
@@ -341,6 +354,14 @@ class BackupService {
             }
             .store(in: &cancellables)
 
+        PaykitSdkService.walletBackupDataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .wallet)
+            }
+            .store(in: &cancellables)
+
         // ACTIVITIES
         CoreService.shared.activity.activitiesChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
@@ -394,7 +415,7 @@ class BackupService {
             }
             .store(in: &cancellables)
 
-        Logger.debug("Started 9 data store listeners", context: "BackupService")
+        Logger.debug("Started data store listeners", context: "BackupService")
     }
 
     private func startPeriodicBackupFailureCheck() {
@@ -674,13 +695,13 @@ class BackupService {
         case .wallet:
             let transfers = try TransferStorage.shared.getAll()
             let privatePaykitHighestReservedReceiveIndexByAddressType = await PrivatePaykitAddressReservationStore.shared.backupSnapshot()
-            let privatePaykitContactLinks = await PrivatePaykitService.shared.backupSnapshot()
+            let paykitSdkBackupState = try await PrivatePaykitService.shared.backupSnapshot()
             let payload = WalletBackupV1(
                 version: 1,
                 createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 transfers: transfers,
                 privatePaykitHighestReservedReceiveIndexByAddressType: privatePaykitHighestReservedReceiveIndexByAddressType,
-                privatePaykitContactLinks: privatePaykitContactLinks
+                paykitSdkBackupState: paykitSdkBackupState
             )
             return try JSONEncoder().encode(payload)
 
@@ -688,6 +709,7 @@ class BackupService {
             let currentTime = UInt64(Date().timeIntervalSince1970 * 1000)
             let cache = await SettingsViewModel.shared.getAppCacheData()
             let pubkySession = try PubkyProfileManager.snapshotSessionBackupState()
+            let pubkyContactProfileOverrides = ContactsManager.backupContactProfileOverrides()
 
             let preActivityMetadata = try await CoreService.shared.activity.getAllPreActivityMetadata()
 
@@ -696,7 +718,8 @@ class BackupService {
                 createdAt: currentTime,
                 tagMetadata: preActivityMetadata,
                 cache: cache,
-                pubkySession: pubkySession
+                pubkySession: pubkySession,
+                pubkyContactProfileOverrides: pubkyContactProfileOverrides
             )
             return try JSONEncoder().encode(payload)
 

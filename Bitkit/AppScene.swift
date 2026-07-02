@@ -667,6 +667,19 @@ struct AppScene: View {
     }
 
     private func retryPendingPaykitEndpointRemoval() async {
+        if PublicPaykitService.isCleanupPending {
+            if UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey) {
+                PublicPaykitService.setCleanupPending(false)
+            } else {
+                do {
+                    try await PublicPaykitService.removePublishedEndpoints()
+                    PublicPaykitService.setCleanupPending(false)
+                } catch {
+                    Logger.warn("Failed to retry public Paykit endpoint cleanup: \(error)", context: "AppScene")
+                }
+            }
+        }
+
         await PrivatePaykitService.shared.retryPendingEndpointRemoval(
             wallet: wallet,
             savedPublicKeys: contactsManager.contacts.map(\.publicKey)

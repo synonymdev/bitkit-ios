@@ -1,14 +1,11 @@
 import Foundation
+import Paykit
 import SwiftUI
 
 private let pubkyPrefix = "pubky"
 
 private func ensurePubkyPrefix(_ key: String) -> String {
     key.hasPrefix(pubkyPrefix) ? key : "\(pubkyPrefix)\(key)"
-}
-
-private func stripPubkyPrefix(_ key: String) -> String {
-    key.hasPrefix(pubkyPrefix) ? String(key.dropFirst(pubkyPrefix.count)) : key
 }
 
 enum AddContactValidationResult: Equatable {
@@ -123,8 +120,7 @@ class ContactsManager: ObservableObject {
     @Published var loadErrorMessage: String?
     @Published var shouldOpenAddContactSheet = false
 
-    /// Temporarily holds contacts discovered during import (e.g., from pubky.app after Ring auth).
-    /// Cleared after import is completed or discarded.
+    /// Pending contacts discovered during import, such as pubky.app follows after Ring auth.
     @Published var pendingImportProfile: PubkyProfile?
     @Published var pendingImportContacts: [PubkyContact] = []
 
@@ -153,7 +149,7 @@ class ContactsManager: ObservableObject {
         pendingImportContacts = []
     }
 
-    // MARK: - Load Contacts (from bitkit.to homeserver)
+    // MARK: - Load Contacts
 
     func loadContacts(for publicKey: String) async throws {
         guard !isLoading else {
@@ -165,42 +161,26 @@ class ContactsManager: ObservableObject {
         loadErrorMessage = nil
         defer { isLoading = false }
 
-        let basePath = contactsBasePath
-        Logger.info("Loading contacts from \(basePath) for \(PubkyPublicKeyFormat.redacted(publicKey))", context: "ContactsManager")
+        Logger.info("Loading contacts for \(PubkyPublicKeyFormat.redacted(publicKey))", context: "ContactsManager")
 
         do {
-            let sessionSecret = try getSessionSecret()
-
-            let contactPaths = try await Task.detached {
-                try await PubkyService.sessionList(sessionSecret: sessionSecret, dirPath: basePath)
+            let records = try await Task.detached {
+                try await PubkyService.contactRecords()
             }.value
-            let savedContactKeys = contactPaths
-                .map(extractPublicKey(from:))
-                .filter { !$0.isEmpty }
-                .map(ensurePubkyPrefix)
 
-            Logger.debug("Listed \(contactPaths.count) contacts from homeserver", context: "ContactsManager")
-
-            let strippedKey = stripPubkyPrefix(publicKey)
+            Logger.debug("Loaded \(records.count) SDK contact records", context: "ContactsManager")
 
             let loadedResult: (contacts: [PubkyContact], failures: Int,
                                missingFailures: Int, firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
-                for path in contactPaths {
-                    let contactKey = extractPublicKey(from: path)
-                    guard !contactKey.isEmpty else { continue }
-
-                    let prefixedKey = ensurePubkyPrefix(contactKey)
-                    let uri = "pubky://\(strippedKey)\(basePath)\(prefixedKey)"
-
+                let overrides = Self.loadContactProfileOverrides()
+                for record in records {
                     group.addTask {
                         do {
-                            let json = try await PubkyService.fetchFileString(uri: uri)
-                            let profileData = try PubkyProfileData.decode(from: json)
-                            let profile = profileData.toProfile(publicKey: prefixedKey)
-                            return .success(PubkyContact(publicKey: prefixedKey, profile: profile))
+                            let contact = try await Self.contact(from: record, overrides: overrides, includePlaceholder: true)
+                            return .success(contact)
                         } catch {
                             Logger.warn(
-                                "Failed to load contact data for '\(PubkyPublicKeyFormat.redacted(prefixedKey))': \(error)",
+                                "Failed to load contact data for '\(PubkyPublicKeyFormat.redacted(record.publicKey))': \(error)",
                                 context: "ContactsManager"
                             )
                             return .failure(error)
@@ -229,7 +209,7 @@ class ContactsManager: ObservableObject {
                 return (results, failures, missingFailures, firstError)
             }
 
-            if !contactPaths.isEmpty, loadedResult.contacts.isEmpty {
+            if !records.isEmpty, loadedResult.contacts.isEmpty {
                 if loadedResult.failures == loadedResult.missingFailures {
                     await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
                     contacts = []
@@ -241,7 +221,8 @@ class ContactsManager: ObservableObject {
             }
 
             contacts = loadedResult.contacts.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-            await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: savedContactKeys)
+            await PrivatePaykitService.shared
+                .pruneUnsavedContactState(savedPublicKeys: records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) })
             hasLoaded = true
 
             if loadedResult.failures > 0 {
@@ -270,7 +251,7 @@ class ContactsManager: ObservableObject {
         }
     }
 
-    // MARK: - Add Contact (prefer bitkit.to profile, then pubky.app, then placeholder)
+    // MARK: - Add Contact
 
     func addContact(publicKey: String, existingProfile: PubkyProfile? = nil, ownPublicKey: String? = nil) async throws {
         guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
@@ -285,8 +266,6 @@ class ContactsManager: ObservableObject {
             throw ContactsManagerError.alreadyExists
         }
 
-        // Use existing profile if provided (e.g., already fetched during preview),
-        // otherwise resolve remote profile with a placeholder fallback.
         let profile: PubkyProfile = if let existingProfile {
             PubkyProfile(
                 publicKey: prefixedKey,
@@ -301,9 +280,9 @@ class ContactsManager: ObservableObject {
             try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true)
         }
 
-        // Build PubkyProfileData and write to bitkit.to
-        let contactData = PubkyProfileData.from(profile: profile)
-        try await savePubkyProfileData(publicKey: prefixedKey, data: contactData)
+        try await Task.detached {
+            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: profile.name)
+        }.value
 
         Logger.info("Added contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
 
@@ -312,20 +291,18 @@ class ContactsManager: ObservableObject {
         contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
 
-    // MARK: - Import Contacts (prefer bitkit.to profiles, then pubky.app, then placeholder)
+    // MARK: - Import Contacts
 
     func importContacts(publicKeys: [String]) async throws {
         let prefixedKeys = Array(Set(publicKeys.compactMap(PubkyPublicKeyFormat.normalized)))
 
-        // Resolve profiles remotely, then write each to bitkit.to
         let loadedResult: (contacts: [PubkyContact], failures: Int,
                            firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
             for key in prefixedKeys {
                 group.addTask { [self] in
                     do {
-                        let profile = await resolveImportContactProfile(publicKey: key)
-                        let contactData = PubkyProfileData.from(profile: profile)
-                        try await savePubkyProfileData(publicKey: key, data: contactData)
+                        let profile = try await resolveContactProfile(publicKey: key, includePlaceholder: true)
+                        _ = try await PubkyService.saveContact(publicKey: key, label: profile.name)
                         return .success(PubkyContact(publicKey: key, profile: profile))
                     } catch {
                         Logger.warn("Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(key))': \(error)", context: "ContactsManager")
@@ -355,7 +332,6 @@ class ContactsManager: ObservableObject {
             throw loadedResult.firstError ?? PubkyServiceError.profileNotFound
         }
 
-        // Merge with existing contacts, avoiding duplicates
         let existingKeys = Set(contacts.map(\.publicKey))
         let newContacts = loadedResult.contacts.filter { !existingKeys.contains($0.publicKey) }
         contacts.append(contentsOf: newContacts)
@@ -368,7 +344,7 @@ class ContactsManager: ObservableObject {
         Logger.info("Imported \(newContacts.count) new contacts", context: "ContactsManager")
     }
 
-    // MARK: - Update Contact (edit and save back to bitkit.to)
+    // MARK: - Update Contact
 
     func updateContact(publicKey: String, name: String, bio: String, imageUrl: String?, links: [PubkyProfileLink], tags: [String]) async throws {
         let prefixedKey = ensurePubkyPrefix(publicKey)
@@ -381,9 +357,11 @@ class ContactsManager: ObservableObject {
             tags: tags
         )
 
-        try await savePubkyProfileData(publicKey: prefixedKey, data: contactData)
+        try await Task.detached {
+            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: name)
+        }.value
+        Self.upsertContactProfileOverride(publicKey: prefixedKey, data: contactData)
 
-        // Update local array
         let updatedProfile = contactData.toProfile(publicKey: prefixedKey)
         if let index = contacts.firstIndex(where: { $0.publicKey == prefixedKey }) {
             contacts[index] = PubkyContact(publicKey: prefixedKey, profile: updatedProfile)
@@ -397,16 +375,11 @@ class ContactsManager: ObservableObject {
 
     func removeContact(publicKey: String) async throws {
         let prefixedKey = ensurePubkyPrefix(publicKey)
-        let path = "\(contactsBasePath)\(prefixedKey)"
-
-        let sessionSecret = try getSessionSecret()
 
         try await Task.detached {
-            try await PubkyService.sessionDelete(
-                sessionSecret: sessionSecret,
-                path: path
-            )
+            _ = try await PubkyService.removeContact(publicKey: prefixedKey)
         }.value
+        Self.removeContactProfileOverride(publicKey: prefixedKey)
 
         Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
 
@@ -414,41 +387,34 @@ class ContactsManager: ObservableObject {
         await PrivatePaykitService.shared.removeSavedContact(publicKey: prefixedKey)
     }
 
-    /// Delete all contacts from the homeserver and keep local state in sync with completed deletions.
     func deleteAllContacts() async throws {
-        let sessionSecret = try getSessionSecret()
-
-        let basePath = contactsBasePath
-
-        let contactPaths: [String]
+        let records: [ContactRecord]
         do {
-            contactPaths = try await Task.detached {
-                try await PubkyService.sessionList(sessionSecret: sessionSecret, dirPath: basePath)
+            records = try await Task.detached {
+                try await PubkyService.contactRecords()
             }.value
         } catch {
-            if Self.isMissingContactsDataError(error) {
-                await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
-                contacts.removeAll()
-                return
+            guard Self.isMissingContactsDataError(error) else {
+                throw error
             }
-            Logger.error("Failed to list contacts for deletion: \(error)", context: "ContactsManager")
-            throw error
+
+            Self.clearContactProfileOverrides()
+            await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
+            contacts.removeAll()
+            Logger.info("Contacts storage missing, treating delete-all as empty", context: "ContactsManager")
+            return
         }
 
         var deletedKeys = Set<String>()
         var firstError: Error?
 
-        for path in contactPaths {
-            let contactKey = extractPublicKey(from: path)
-            guard !contactKey.isEmpty else { continue }
+        for record in records {
+            guard let contactKey = PubkyPublicKeyFormat.normalized(record.publicKey) else { continue }
             do {
                 try await Task.detached {
-                    try await PubkyService.sessionDelete(
-                        sessionSecret: sessionSecret,
-                        path: "\(basePath)\(contactKey)"
-                    )
+                    _ = try await PubkyService.removeContact(publicKey: contactKey)
                 }.value
-                deletedKeys.insert(ensurePubkyPrefix(contactKey))
+                deletedKeys.insert(contactKey)
             } catch {
                 firstError = firstError ?? error
                 Logger.warn("Failed to delete contact '\(PubkyPublicKeyFormat.redacted(contactKey))': \(error)", context: "ContactsManager")
@@ -464,15 +430,25 @@ class ContactsManager: ObservableObject {
         }
 
         // All remote deletes succeeded, so clear any local-only contacts too.
+        Self.clearContactProfileOverrides()
         await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
         contacts.removeAll()
         Logger.info("Deleted all contacts", context: "ContactsManager")
     }
 
-    // MARK: - Discover Remote Contacts (list from pubky.app, then resolve each profile)
+    func deleteAllContactsBestEffort() async {
+        do {
+            try await deleteAllContacts()
+        } catch {
+            Logger.warn("Continuing after contact cleanup failed: \(error)", context: "ContactsManager")
+            Self.clearContactProfileOverrides()
+            await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
+            contacts.removeAll()
+        }
+    }
 
-    /// Discover profile and contacts from pubky.app, store as pending imports.
-    /// Returns true if any import data was found.
+    // MARK: - Remote Contact Discovery
+
     @discardableResult
     func prepareImport(profile: PubkyProfile?, publicKey: String) async -> Bool {
         clearPendingImport()
@@ -491,7 +467,6 @@ class ContactsManager: ObservableObject {
         return hasImportData ? .contactImportOverview : .payContacts
     }
 
-    /// Fetch the user's contacts from pubky.app and store as pending imports.
     func discoverRemoteContacts(publicKey: String) async {
         let prefixedKey = ensurePubkyPrefix(publicKey)
 
@@ -506,8 +481,12 @@ class ContactsManager: ObservableObject {
                 for key in contactKeys {
                     let pk = ensurePubkyPrefix(key)
                     group.addTask { [self] in
-                        let profile = await resolveImportContactProfile(publicKey: pk)
-                        return .success(PubkyContact(publicKey: pk, profile: profile))
+                        do {
+                            let profile = try await resolveContactProfile(publicKey: pk, includePlaceholder: true)
+                            return .success(PubkyContact(publicKey: pk, profile: profile))
+                        } catch {
+                            return .failure(error)
+                        }
                     }
                 }
 
@@ -539,7 +518,7 @@ class ContactsManager: ObservableObject {
         }
     }
 
-    // MARK: - Fetch Contact Profile (prefer bitkit.to profile, then pubky.app)
+    // MARK: - Contact Profile Resolution
 
     func fetchContactProfile(publicKey: String, includePlaceholder: Bool = false) async -> PubkyProfile? {
         guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
@@ -555,95 +534,150 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Helpers
 
-    private var contactsBasePath: String {
-        switch Env.network {
-        case .bitcoin:
-            return "/pub/bitkit.to/contacts/"
-        default:
-            return "/pub/staging.bitkit.to/contacts/"
+    nonisolated static func backupContactProfileOverrides() -> [String: PubkyProfileData]? {
+        let overrides = loadContactProfileOverrides()
+        return overrides.isEmpty ? nil : overrides
+    }
+
+    nonisolated static func restoreContactProfileOverrides(_ overrides: [String: PubkyProfileData]?) {
+        guard let overrides, !overrides.isEmpty else {
+            UserDefaults.standard.removeObject(forKey: contactProfileOverridesKey)
+            notifyContactProfileOverridesChanged()
+            return
         }
+
+        saveContactProfileOverrides(overrides)
     }
 
-    private func getSessionSecret() throws -> String {
-        guard let sessionSecret = try? Keychain.loadString(key: .paykitSession),
-              !sessionSecret.isEmpty
-        else {
-            throw PubkyServiceError.sessionNotActive
-        }
-        return sessionSecret
-    }
-
-    /// Write PubkyProfileData JSON to homeserver at /pub/bitkit.to/contacts/<pk>
-    private func savePubkyProfileData(publicKey: String, data: PubkyProfileData) async throws {
-        let path = "\(contactsBasePath)\(publicKey)"
-        let sessionSecret = try getSessionSecret()
-
-        let jsonData = try data.encoded()
-
-        try await Task.detached {
-            try await PubkyService.sessionPut(
-                sessionSecret: sessionSecret,
-                path: path,
-                content: jsonData
-            )
-        }.value
-    }
-
-    /// Resolve a contact profile using bitkit.to first, then pubky.app, optionally falling back to a placeholder.
     private func resolveContactProfile(publicKey: String, includePlaceholder: Bool = false) async throws -> PubkyProfile {
-        let prefixedKey = ensurePubkyPrefix(publicKey)
-        do {
-            return try await PubkyProfileManager.resolveRemoteProfile(publicKey: prefixedKey)
-        } catch {
-            if includePlaceholder, Self.isMissingContactsDataError(error) {
-                Logger.info(
-                    "No remote profile found for '\(PubkyPublicKeyFormat.redacted(prefixedKey))', using placeholder",
-                    context: "ContactsManager"
-                )
-                return PubkyProfile.placeholder(publicKey: prefixedKey)
-            }
-
-            Logger.warn("Failed to resolve contact profile for '\(PubkyPublicKeyFormat.redacted(prefixedKey))': \(error)", context: "ContactsManager")
-            throw error
-        }
+        try await Self.resolveContactProfile(publicKey: publicKey, includePlaceholder: includePlaceholder)
     }
 
-    private func resolveImportContactProfile(publicKey: String) async -> PubkyProfile {
+    private nonisolated static func resolveContactProfile(publicKey: String, includePlaceholder: Bool = false) async throws -> PubkyProfile {
         let prefixedKey = ensurePubkyPrefix(publicKey)
-
         for attempt in 0 ..< 2 {
             do {
-                return try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true)
+                if let resolution = try await PubkyService.resolveContactProfile(publicKey: prefixedKey, allowPubkyProfileFallback: true) {
+                    return PubkyProfile(resolution: resolution)
+                }
+                throw PubkyServiceError.profileNotFound
             } catch {
                 if attempt == 0, !(error is CancellationError) {
                     Logger.warn(
-                        "Retrying imported contact profile resolution for '\(PubkyPublicKeyFormat.redacted(prefixedKey))' after transient error: \(error)",
+                        "Retrying contact profile resolution for '\(PubkyPublicKeyFormat.redacted(prefixedKey))' after transient error: \(error)",
                         context: "ContactsManager"
                     )
                     try? await Task.sleep(nanoseconds: 250_000_000)
                     continue
                 }
 
+                if includePlaceholder, !(error is CancellationError) {
+                    let message = Self.isMissingContactsDataError(error)
+                        ? "No remote profile found"
+                        : "Failed to resolve remote profile"
+                    Logger.warn(
+                        "\(message) for '\(PubkyPublicKeyFormat.redacted(prefixedKey))', using placeholder: \(error)",
+                        context: "ContactsManager"
+                    )
+                    return PubkyProfile.placeholder(publicKey: prefixedKey)
+                }
+
                 Logger.warn(
-                    "Falling back to placeholder while importing contact '\(PubkyPublicKeyFormat.redacted(prefixedKey))': \(error)",
+                    "Failed to resolve contact profile for '\(PubkyPublicKeyFormat.redacted(prefixedKey))': \(error)",
                     context: "ContactsManager"
                 )
-                return PubkyProfile.placeholder(publicKey: prefixedKey)
+                throw error
             }
         }
 
-        return PubkyProfile.placeholder(publicKey: prefixedKey)
+        throw PubkyServiceError.profileNotFound
     }
 
-    /// Extract the public key from a path returned by sessionList
-    private func extractPublicKey(from path: String) -> String {
-        // sessionList returns paths like "/pub/bitkit.to/contacts/pubkyXYZ" — extract last component
-        let components = path.split(separator: "/")
-        guard let last = components.last else { return "" }
-        return String(last)
+    private nonisolated static let contactProfileOverridesKey = "pubkyContactProfileOverrides"
+
+    private nonisolated static func contact(
+        from record: Paykit.ContactRecord,
+        overrides: [String: PubkyProfileData],
+        includePlaceholder: Bool
+    ) async throws -> PubkyContact {
+        let prefixedKey = PubkyPublicKeyFormat.normalized(record.publicKey) ?? ensurePubkyPrefix(record.publicKey)
+
+        if let override = overrides[prefixedKey] {
+            return PubkyContact(publicKey: prefixedKey, profile: override.toProfile(publicKey: prefixedKey))
+        }
+
+        if let profile = record.profile {
+            let contactProfile = PubkyProfile(publicKey: prefixedKey, paykitProfile: profile)
+                .withNameFallback(record.label)
+            return PubkyContact(publicKey: prefixedKey, profile: contactProfile)
+        }
+
+        do {
+            let profile = try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: includePlaceholder)
+                .withNameFallback(record.label)
+            return PubkyContact(
+                publicKey: prefixedKey,
+                profile: profile
+            )
+        } catch {
+            if !includePlaceholder {
+                throw error
+            }
+        }
+
+        if includePlaceholder {
+            return PubkyContact(
+                publicKey: prefixedKey,
+                profile: PubkyProfile.forDisplay(publicKey: prefixedKey, name: record.label, imageUrl: nil)
+            )
+        }
+
+        throw PubkyServiceError.profileNotFound
     }
 
-    static func isMissingContactsDataError(_ error: Error) -> Bool {
+    private nonisolated static func loadContactProfileOverrides() -> [String: PubkyProfileData] {
+        guard let data = UserDefaults.standard.data(forKey: contactProfileOverridesKey),
+              let overrides = try? JSONDecoder().decode([String: PubkyProfileData].self, from: data)
+        else {
+            return [:]
+        }
+        return overrides
+    }
+
+    private nonisolated static func saveContactProfileOverrides(_ overrides: [String: PubkyProfileData]) {
+        if overrides.isEmpty {
+            UserDefaults.standard.removeObject(forKey: contactProfileOverridesKey)
+        } else if let data = try? JSONEncoder().encode(overrides) {
+            UserDefaults.standard.set(data, forKey: contactProfileOverridesKey)
+        }
+        notifyContactProfileOverridesChanged()
+    }
+
+    private nonisolated static func upsertContactProfileOverride(publicKey: String, data: PubkyProfileData) {
+        guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
+        var overrides = loadContactProfileOverrides()
+        overrides[prefixedKey] = data
+        saveContactProfileOverrides(overrides)
+    }
+
+    private nonisolated static func removeContactProfileOverride(publicKey: String) {
+        guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
+        var overrides = loadContactProfileOverrides()
+        overrides.removeValue(forKey: prefixedKey)
+        saveContactProfileOverrides(overrides)
+    }
+
+    private nonisolated static func clearContactProfileOverrides() {
+        saveContactProfileOverrides([:])
+    }
+
+    private nonisolated static func notifyContactProfileOverridesChanged() {
+        Task { @MainActor in
+            SettingsViewModel.shared.notifyAppStateChanged()
+        }
+    }
+
+    nonisolated static func isMissingContactsDataError(_ error: Error) -> Bool {
         if case .profileNotFound = error as? PubkyServiceError {
             return true
         }
@@ -688,7 +722,7 @@ class ContactsManager: ObservableObject {
         return false
     }
 
-    private static func isMissingContactsDataMessage(_ message: String?) -> Bool {
+    private nonisolated static func isMissingContactsDataMessage(_ message: String?) -> Bool {
         guard let message else {
             return false
         }

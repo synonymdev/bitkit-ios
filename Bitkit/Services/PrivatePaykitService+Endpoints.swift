@@ -2,308 +2,56 @@ import CryptoKit
 import Foundation
 import Paykit
 
-// MARK: - Endpoint Publishing
+// MARK: - Endpoint Preparation
 
 extension PrivatePaykitService {
-    private static let privatePaymentsEnvelopeKind = "paykit.private_payments"
-    private static let privatePaymentsReferencePlaceholder = "550e8400-e29b-41d4-a716-446655440000"
-
-    static func isNoisePayloadWithinLimit(_ paymentMap: [String: String]) -> Bool {
-        let envelope: [String: Any] = [
-            "version": 1,
-            "kind": privatePaymentsEnvelopeKind,
-            "reference": privatePaymentsReferencePlaceholder,
-            "entries": paymentMap,
-        ]
-        guard let data = try? JSONSerialization.data(withJSONObject: envelope) else {
-            return false
-        }
-        return data.count <= maxNoisePayloadBytes
-    }
-
     func handleReceivedPayment(paymentHash: String, wallet: WalletViewModel) async {
-        let matchingContacts = state.contacts.compactMap { publicKey, contactState -> String? in
-            guard isKnownSavedContact(publicKey) else { return nil }
-            return contactState.localInvoice?.paymentHash == paymentHash ? publicKey : nil
-        }
-
-        guard !matchingContacts.isEmpty else { return }
-
-        for publicKey in matchingContacts {
-            rememberReceivedInvoicePaymentHash(paymentHash, publicKey: publicKey)
-            if state.contacts[publicKey]?.localInvoice?.paymentHash == paymentHash {
-                state.contacts[publicKey]?.localInvoice = nil
-            }
-        }
-        persistState()
-
-        guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
-
-        for publicKey in matchingContacts {
-            let generation = stateGeneration
-            do {
-                guard let linkId = try await establishedLinkId(for: publicKey, maxAdvanceSteps: 1, generation: generation) else {
-                    continue
-                }
-                try await publishLocalEndpoints(to: publicKey, linkId: linkId, wallet: wallet, generation: generation)
-            } catch {
-                Logger.warn(
-                    "Failed to rotate private Paykit invoice for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
-                    context: "PrivatePaykit"
-                )
-            }
-        }
+        guard let publicKey = contactPublicKey(forPrivateInvoicePaymentHash: paymentHash) else { return }
+        rememberReceivedInvoicePaymentHash(paymentHash, publicKey: publicKey)
+        await refreshSavedContactEndpoints(for: [publicKey], wallet: wallet)
     }
 
     func reconcileReceivedPayments(wallet: WalletViewModel) async {
-        for paymentHash in await settledPrivateInvoicePaymentHashes() {
+        let settledHashes = await settledPrivateInvoicePaymentHashes()
+        guard !settledHashes.isEmpty else { return }
+
+        for paymentHash in settledHashes {
             await handleReceivedPayment(paymentHash: paymentHash, wallet: wallet)
         }
     }
 
     func handleOnchainActivity(wallet: WalletViewModel) async {
-        guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
         let publicKeys = await PrivatePaykitAddressReservationStore.shared.contactsWithUsedReservedAddresses()
-            .filter(isKnownSavedContact)
+            .compactMap(knownSavedContact)
         guard !publicKeys.isEmpty else { return }
 
-        await rotateOnchainEndpoints(for: publicKeys, wallet: wallet, reason: "on-chain rotation", forceRotate: false)
+        await refreshSavedContactEndpoints(for: publicKeys, wallet: wallet, forceRefreshLightning: false)
     }
 
     func handleOnchainActivity(receivedAddresses: [String], wallet: WalletViewModel) async {
-        let receivedAddresses = receivedAddresses.filter { !$0.isEmpty }
-        guard !receivedAddresses.isEmpty else {
-            await handleOnchainActivity(wallet: wallet)
-            return
-        }
-        guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
-
-        var publicKeys = Set<String>()
+        var publicKeys: [String] = []
         for address in receivedAddresses {
             if let publicKey = await PrivatePaykitAddressReservationStore.shared.currentContactPublicKey(forReservedAddress: address),
-               isKnownSavedContact(publicKey)
+               let savedKey = knownSavedContact(publicKey)
             {
-                publicKeys.insert(publicKey)
+                publicKeys.append(savedKey)
             }
         }
+
         guard !publicKeys.isEmpty else { return }
-
-        await rotateOnchainEndpoints(for: Array(publicKeys), wallet: wallet, reason: "on-chain transaction output rotation", forceRotate: true)
+        await refreshSavedContactEndpoints(for: publicKeys, wallet: wallet, forceRefreshLightning: false)
     }
 
-    private func rotateOnchainEndpoints(for publicKeys: [String], wallet: WalletViewModel, reason: String, forceRotate: Bool) async {
-        var rotatedPublicKeys: [String] = []
-        for publicKey in publicKeys {
-            do {
-                if forceRotate {
-                    _ = try await PrivatePaykitAddressReservationStore.shared.rotateAddress(for: publicKey)
-                } else {
-                    _ = try await PrivatePaykitAddressReservationStore.shared.currentOrRotatedAddress(for: publicKey)
-                }
-                rotatedPublicKeys.append(publicKey)
-            } catch {
-                Logger.warn(
-                    "Failed to rotate used private Paykit address for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
-                    context: "PrivatePaykit"
-                )
-            }
-        }
-
-        guard !rotatedPublicKeys.isEmpty else { return }
-        await publishLocalEndpoints(for: rotatedPublicKeys, wallet: wallet, maxAdvanceSteps: 1, reason: reason)
-    }
-
-    func publishLocalEndpointsBestEffort(to publicKey: String, linkId: String, wallet: WalletViewModel,
-                                         generation: UInt64, context: String, fetchedRemoteCount: Int) async throws
-    {
-        guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
-        guard await shouldPublishLocalEndpoints(publicKey: publicKey, fetchedRemoteCount: fetchedRemoteCount) else { return }
-        guard !shouldDeferInitialLocalPublish(publicKey: publicKey, fetchedRemoteCount: fetchedRemoteCount) else { return }
-
-        do {
-            try await publishLocalEndpoints(to: publicKey, linkId: linkId, wallet: wallet, generation: generation)
-        } catch {
-            try Task.checkCancellation()
-            Logger.warn(
-                "Failed to publish local private Paykit endpoints during \(context) for \(PubkyPublicKeyFormat.redacted(publicKey)); continuing with remote fetch: \(error)",
-                context: "PrivatePaykit"
-            )
-        }
-    }
-
-    func shouldPublishLocalEndpoints(publicKey: String, fetchedRemoteCount: Int) async -> Bool {
-        let contactState = state.contacts[publicKey]
-        if contactState?.lastLocalPayloadHash != nil {
-            return true
-        }
-
-        if fetchedRemoteCount > 0 || contactState?.remoteEndpoints.isEmpty == false {
-            return true
-        }
-
-        guard let ownPublicKey = await PubkyService.currentPublicKey() else {
-            return false
-        }
-
-        return Self.shouldInitiate(ownPublicKey: ownPublicKey, remotePublicKey: publicKey)
-    }
-
-    func shouldDeferInitialLocalPublish(publicKey: String, fetchedRemoteCount: Int) -> Bool {
-        guard fetchedRemoteCount == 0,
-              let contactState = state.contacts[publicKey],
-              contactState.lastLocalPayloadHash == nil,
-              contactState.remoteEndpoints.isEmpty,
-              let linkCompletedAt = contactState.linkCompletedAt
-        else {
-            return false
-        }
-
-        let now = UInt64(Date().timeIntervalSince1970)
-        return now <= linkCompletedAt + Self.freshLinkInitialPublishDelaySeconds
-    }
-
-    func publishLocalEndpoints(
-        to publicKey: String,
-        linkId: String,
+    @MainActor
+    func buildLocalEndpoints(
+        for publicKey: String,
         wallet: WalletViewModel,
-        generation: UInt64,
-        force: Bool = false,
         forceRefreshLightning: Bool = false
-    ) async throws {
-        let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
-        let previousTask = publicationTasks[normalizedKey]?.task
-        let taskId = UUID()
-        let task = Task { [weak self] in
-            if let previousTask {
-                try? await previousTask.value
-            }
-            guard let self else { throw PrivatePaykitError.privateUnavailable }
-            try Task.checkCancellation()
-            try await publishLocalEndpointsUnlocked(
-                to: normalizedKey,
-                linkId: linkId,
-                wallet: wallet,
-                generation: generation,
-                force: force,
-                forceRefreshLightning: forceRefreshLightning
-            )
-        }
-        publicationTasks[normalizedKey] = PublicationTask(id: taskId, task: task)
-
-        do {
-            try await task.value
-            if publicationTasks[normalizedKey]?.id == taskId {
-                publicationTasks[normalizedKey] = nil
-            }
-        } catch {
-            if publicationTasks[normalizedKey]?.id == taskId {
-                publicationTasks[normalizedKey] = nil
-            }
-            throw error
-        }
-    }
-
-    func publishLocalEndpointsUnlocked(
-        to publicKey: String,
-        linkId: String,
-        wallet: WalletViewModel,
-        generation: UInt64,
-        force: Bool,
-        forceRefreshLightning: Bool
-    ) async throws {
-        guard await canPublishPrivateEndpoints(wallet: wallet),
-              isKnownSavedContact(publicKey)
-        else { return }
-        try ensureCurrentGeneration(generation)
-        let endpoints: [PublicPaykitService.Endpoint]
-        do {
-            endpoints = try await buildLocalEndpoints(
-                for: publicKey,
-                wallet: wallet,
-                generation: generation,
-                forceRefreshLightning: forceRefreshLightning
-            )
-        } catch let error as PrivatePaykitError {
-            guard case .privateUnavailable = error else {
-                throw error
-            }
-            try await publishLocalEndpointRemovalTombstone(
-                to: publicKey,
-                linkId: linkId,
-                wallet: wallet,
-                generation: generation,
-                force: force
-            )
-            return
-        }
-        try ensureCurrentGeneration(generation)
-        guard !endpoints.isEmpty else { return }
-
-        let entries = try entriesWithinNoiseLimit(from: endpoints, publicKey: publicKey)
-        let payloadHash = localPayloadHash(entries: entries)
-        guard force || state.contacts[publicKey]?.lastLocalPayloadHash != payloadHash else {
-            return
-        }
-
-        try ensureCurrentGeneration(generation)
-        guard await canPublishPrivateEndpoints(wallet: wallet),
-              isKnownSavedContact(publicKey)
-        else { return }
-
-        do {
-            try await PubkyService.setPrivatePayments(linkId: linkId, entries: entries)
-            try ensureCurrentGeneration(generation)
-        } catch {
-            await recordLinkFailure(publicKey: publicKey, error: error, generation: generation)
-            throw error
-        }
-
-        try await persistLinkSnapshot(linkId: linkId, publicKey: publicKey, generation: generation)
-        state.contacts[publicKey, default: ContactState()].lastLocalPayloadHash = payloadHash
-        persistState()
-    }
-
-    func publishLocalEndpointRemovalTombstone(
-        to publicKey: String,
-        linkId: String,
-        wallet: WalletViewModel,
-        generation: UInt64,
-        force: Bool
-    ) async throws {
-        guard shouldRequirePrivateEndpointRemoval(publicKey: publicKey) else { return }
-
-        let entries = privateEndpointRemovalEntries()
-        try validateNoisePayload(entries: entries)
-        let payloadHash = localPayloadHash(entries: entries)
-        guard force || state.contacts[publicKey]?.lastLocalPayloadHash != payloadHash else {
-            return
-        }
-
-        try ensureCurrentGeneration(generation)
-        guard await canPublishPrivateEndpoints(wallet: wallet),
-              isKnownSavedContact(publicKey)
-        else { return }
-
-        do {
-            try await PubkyService.setPrivatePayments(linkId: linkId, entries: entries)
-            try ensureCurrentGeneration(generation)
-        } catch {
-            await recordLinkFailure(publicKey: publicKey, error: error, generation: generation)
-            throw error
-        }
-
-        try await persistLinkSnapshot(linkId: linkId, publicKey: publicKey, generation: generation)
-        state.contacts[publicKey, default: ContactState()].lastLocalPayloadHash = payloadHash
-        persistState()
-    }
-
-    func buildLocalEndpoints(for publicKey: String, wallet: WalletViewModel,
-                             generation: UInt64, forceRefreshLightning: Bool = false) async throws -> [PublicPaykitService.Endpoint]
-    {
+    ) async throws -> [PublicPaykitService.Endpoint] {
         var endpoints: [PublicPaykitService.Endpoint] = []
+
         if PublicPaykitService.isOnchainPaymentOptionEnabled() {
             let reservedAddress = try await PrivatePaykitAddressReservationStore.shared.currentOrRotatedAddress(for: publicKey)
-            try ensureCurrentGeneration(generation)
             let onchainPayload = try PublicPaykitService.serializePayload(value: reservedAddress)
             endpoints.append(
                 PublicPaykitService.Endpoint(
@@ -316,15 +64,9 @@ extension PrivatePaykitService {
             )
         }
 
-        if PublicPaykitService.isLightningPaymentOptionEnabled(), await walletHasUsableChannels(wallet) {
+        if PublicPaykitService.isLightningPaymentOptionEnabled(), walletHasUsableChannels(wallet) {
             do {
-                let invoice = try await currentOrRotatedInvoice(
-                    for: publicKey,
-                    wallet: wallet,
-                    generation: generation,
-                    forceRefresh: forceRefreshLightning
-                )
-                try ensureCurrentGeneration(generation)
+                let invoice = try await currentOrRotatedInvoice(for: publicKey, wallet: wallet, forceRefresh: forceRefreshLightning)
                 let invoicePayload = try PublicPaykitService.serializePayload(value: invoice.bolt11)
                 endpoints.append(
                     PublicPaykitService.Endpoint(
@@ -335,77 +77,60 @@ extension PrivatePaykitService {
                         rawPayload: invoicePayload
                     )
                 )
-            } catch {
-                try ensureCurrentGeneration(generation)
-                if let privateError = error as? PrivatePaykitError,
-                   case .routeHintsUnavailable = privateError
-                {
-                    schedulePendingPublicationRetry(for: publicKey, wallet: wallet)
-                }
-                Logger.warn(
-                    "Failed to prepare private Paykit Lightning invoice for \(PubkyPublicKeyFormat.redacted(publicKey)); publishing on-chain only: \(error)",
-                    context: "PrivatePaykit"
-                )
+            } catch PrivatePaykitError.routeHintsUnavailable {
+                Logger.warn("Private Paykit Lightning invoice has no route hints; publishing on-chain endpoint only", context: "PrivatePaykit")
             }
         }
 
         guard !endpoints.isEmpty else {
-            throw PrivatePaykitError.privateUnavailable
+            throw PublicPaykitError.noSupportedEndpoint
         }
 
         return endpoints
     }
 
-    func validateNoisePayload(entries: [FfiPaymentEntry]) throws {
-        let map = Dictionary(uniqueKeysWithValues: entries.map { ($0.methodId, $0.endpointData) })
-        guard Self.isNoisePayloadWithinLimit(map) else {
-            throw PrivatePaykitError.payloadTooLarge
-        }
-    }
+    func reservations(from endpoints: [PublicPaykitService.Endpoint], publicKey: String) -> [PaymentEndpointReservationInput] {
+        endpoints.map { endpoint in
+            let paymentHash = state.contacts[publicKey]?.localInvoice?.takeIfBolt11(endpoint)?.paymentHash
+            let attribution = [
+                "type": "private_paykit",
+                "counterparty": publicKey,
+            ].merging(paymentHash.map { ["payment_hash": $0] } ?? [:]) { current, _ in current }
 
-    func entriesWithinNoiseLimit(from endpoints: [PublicPaykitService.Endpoint], publicKey: String) throws -> [FfiPaymentEntry] {
-        let entries = endpoints.map {
-            FfiPaymentEntry(methodId: $0.methodId.rawValue, endpointData: $0.rawPayload)
-        }
-
-        do {
-            try validateNoisePayload(entries: entries)
-            return entries
-        } catch let error as PrivatePaykitError {
-            guard case .payloadTooLarge = error else {
-                throw error
-            }
-
-            let onchainOnlyEntries = entries.filter { $0.methodId != PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue }
-            guard onchainOnlyEntries.count < entries.count, !onchainOnlyEntries.isEmpty else {
-                throw error
-            }
-
-            try validateNoisePayload(entries: onchainOnlyEntries)
-            Logger.warn(
-                "Private Paykit endpoint map is too large with Lightning invoice for \(PubkyPublicKeyFormat.redacted(publicKey)); publishing on-chain only.",
-                context: "PrivatePaykit"
+            return PaymentEndpointReservationInput(
+                reservationId: reservationId(for: endpoint, publicKey: publicKey),
+                identifier: endpoint.methodId.rawValue,
+                payload: endpoint.rawPayload,
+                expiresAt: endpoint.methodId == .bitcoinLightningBolt11 ? state.contacts[publicKey]?.localInvoice?.expiresAt.rfc3339Text : nil,
+                attribution: attribution
             )
-            return onchainOnlyEntries
         }
     }
 
-    func privateEndpointRemovalEntries() -> [FfiPaymentEntry] {
-        PublicPaykitService.MethodId.publishableMethodIds.map {
-            FfiPaymentEntry(methodId: $0.rawValue, endpointData: Self.privateEndpointRemovalPayload)
-        }
-    }
-
-    func localPayloadHash(entries: [FfiPaymentEntry]) -> String {
-        let payload = entries
-            .sorted { $0.methodId < $1.methodId }
-            .map { entry in
-                "\(entry.methodId.count):\(entry.methodId)\(entry.endpointData.count):\(entry.endpointData)"
-            }
-            .joined()
-
-        return SHA256.hash(data: Data(payload.utf8))
+    private func reservationId(for endpoint: PublicPaykitService.Endpoint, publicKey: String) -> String {
+        let payloadHashPrefix = SHA256.hash(data: Data(endpoint.rawPayload.utf8))
+            .prefix(8)
             .map { String(format: "%02x", $0) }
             .joined()
+        return "\(publicKey):\(endpoint.methodId.rawValue):\(payloadHashPrefix)"
+    }
+
+    func cacheResolvedEndpoints(_ endpoints: [PublicPaykitService.Endpoint], publicKey: String) {
+        var contactState = state.contacts[publicKey, default: ContactState()]
+        contactState.cachedResolvedEndpoints = endpoints.map(StoredPaymentEntry.init(endpoint:))
+        state.contacts[publicKey] = contactState
+        persistState(markWalletBackup: true)
+    }
+}
+
+private extension PrivatePaykitService.StoredInvoice {
+    func takeIfBolt11(_ endpoint: PublicPaykitService.Endpoint) -> Self? {
+        endpoint.methodId == .bitcoinLightningBolt11 && bolt11 == endpoint.value ? self : nil
+    }
+}
+
+private extension Double {
+    var rfc3339Text: String {
+        ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: self))
     }
 }

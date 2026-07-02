@@ -165,22 +165,6 @@ class WalletViewModel: ObservableObject {
                 MigrationsService.shared.pendingChannelMigration = nil
             }
 
-            // // If no local migration data, try fetching from RN remote backup (one-time)
-            // if channelMigration == nil {
-            //     let (remoteMigration, allRetrieved) = await fetchOrphanedChannelMonitorsIfNeeded(walletIndex: walletIndex)
-            //     if let remoteMigration {
-            //         channelMigration = ChannelDataMigration(
-            //             // don't overwrite channel manager, we only need the monitors for the sweep
-            //             channelManager: nil,
-            //             channelMonitors: remoteMigration.channelMonitors.map { [UInt8]($0) }
-            //         )
-            //         MigrationsService.shared.pendingChannelMigration = nil
-            //     }
-            //     if allRetrieved {
-            //         MigrationsService.shared.isChannelRecoveryChecked = true
-            //     }
-            // }
-
             await runLegacyNetworkGraphCleanupIfNeeded()
 
             try await lightningService.setup(
@@ -1066,10 +1050,7 @@ class WalletViewModel: ObservableObject {
                     guard case .routeHintsUnavailable = error else {
                         throw error
                     }
-                    Logger.warn(
-                        "Public Paykit Lightning invoice has no route hints yet; publishing without Lightning for now",
-                        context: "WalletViewModel"
-                    )
+                    Logger.warn("Public Paykit Lightning invoice has no route hints; publishing on-chain endpoint only", context: "WalletViewModel")
                 }
             }
         } else if includeLightning {
