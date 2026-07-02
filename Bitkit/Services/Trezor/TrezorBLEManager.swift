@@ -294,6 +294,10 @@ class TrezorBLEManager: NSObject {
         // Clean up any stale connection state (preserves discoveredPeripherals cache)
         cleanupConnectionState()
 
+        // Drop any stale deliberate-disconnect marker from a prior session so it can't
+        // suppress a future spontaneous drop on this reused path.
+        expectedDisconnectPaths.remove(path)
+
         debugLog("connectOnce: \(path)")
 
         // Try to get peripheral from cache first
