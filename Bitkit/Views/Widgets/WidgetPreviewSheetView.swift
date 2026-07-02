@@ -6,6 +6,7 @@ struct WidgetPreviewSheetView: View {
     let type: WidgetType
     @Binding var navigationPath: [WidgetsRoute]
 
+    @Environment(HwWalletManager.self) private var hwWalletManager
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
@@ -74,6 +75,7 @@ struct WidgetPreviewSheetView: View {
             settings: settings,
             suggestionsManager: suggestionsManager,
             pubkyProfile: pubkyProfile,
+            hasHardwareWallet: !hwWalletManager.wallets.isEmpty,
             isPaykitUIEnabled: isPaykitUIActive
         ).isEmpty
     }

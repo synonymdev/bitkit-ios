@@ -164,17 +164,20 @@ enum Env {
 
     // MARK: Server URLs
 
-    static var electrumServerUrl: String {
-        if isE2E, e2eBackend == "local" {
-            return "tcp://127.0.0.1:60001"
-        }
-
+    static func electrumServerUrl(for network: LDKNode.Network) -> String {
         switch network {
         case .bitcoin: return "ssl://bitkit.to:9999"
         case .signet: return "ssl://mempool.space:60602"
         case .testnet: return "ssl://electrum.blockstream.info:60002"
         case .regtest: return "ssl://electrs.bitkit.stag0.blocktank.to:9999"
         }
+    }
+
+    static var electrumServerUrl: String {
+        if isE2E, e2eBackend == "local" {
+            return "tcp://127.0.0.1:60001"
+        }
+        return electrumServerUrl(for: network)
     }
 
     static var trezorBridgeEnabled: Bool {

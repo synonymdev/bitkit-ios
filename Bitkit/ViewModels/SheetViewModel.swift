@@ -24,6 +24,8 @@ enum SheetID: String, CaseIterable {
     case tagFilter
     case dateRangeSelector
     case widgets
+    case hardwareIntro
+    case hardwarePairing
 }
 
 struct SheetConfiguration {
@@ -293,6 +295,30 @@ class SheetViewModel: ObservableObject {
             let receivedTxConfig = config.data as? ReceivedTxSheetDetails
             guard let details = receivedTxConfig else { return nil }
             return ReceivedTxSheetItem(details: details)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var hardwareIntroSheetItem: HardwareIntroSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .hardwareIntro else { return nil }
+            return HardwareIntroSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var hardwarePairingSheetItem: HardwarePairingSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .hardwarePairing else { return nil }
+            return HardwarePairingSheetItem()
         }
         set {
             if newValue == nil {

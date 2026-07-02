@@ -139,12 +139,12 @@ private struct WatcherStatusView: View {
             }
 
             // Transactions
-            if !trezor.watcherTransactions.isEmpty {
-                CaptionMText("Transactions (\(trezor.watcherTransactions.count))")
+            if !trezor.watcherActivities.isEmpty {
+                CaptionMText("Transactions (\(trezor.watcherActivities.count))")
 
                 VStack(spacing: 4) {
-                    ForEach(trezor.watcherTransactions, id: \.txid) { tx in
-                        WatcherTransactionRow(tx: tx)
+                    ForEach(trezor.watcherActivities, id: \.watcherRowId) { activity in
+                        WatcherActivityRow(activity: activity)
                     }
                 }
             }
@@ -181,39 +181,55 @@ private struct WatcherStatusView: View {
     }
 }
 
-private struct WatcherTransactionRow: View {
-    let tx: HistoryTransaction
+private struct WatcherActivityRow: View {
+    let activity: Activity
+
+    private var onchain: OnchainActivity? {
+        guard case let .onchain(onchain) = activity else { return nil }
+        return onchain
+    }
 
     private var directionLabel: String {
-        switch tx.direction {
+        switch onchain?.txType {
         case .sent: return "Sent"
         case .received: return "Recv"
-        case .selfTransfer: return "Self"
+        case .none: return "-"
         }
     }
 
     private var directionColor: Color {
-        switch tx.direction {
+        switch onchain?.txType {
         case .sent: return .redAccent
         case .received: return .greenAccent
-        case .selfTransfer: return .white64
+        case .none: return .white64
         }
     }
 
     private var shortTxid: String {
-        guard tx.txid.count > 16 else { return tx.txid }
-        return "\(tx.txid.prefix(8))...\(tx.txid.suffix(8))"
+        let txid = onchain?.txId ?? ""
+        guard txid.count > 16 else { return txid }
+        return "\(txid.prefix(8))...\(txid.suffix(8))"
     }
 
     var body: some View {
         HStack {
-            CaptionText("\(directionLabel) \(tx.amount) sats", textColor: directionColor)
+            CaptionText("\(directionLabel) \(onchain?.value ?? 0) sats", textColor: directionColor)
             Spacer()
             Text(shortTxid)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(.white50)
         }
         .padding(.vertical, 2)
+    }
+}
+
+private extension Activity {
+    /// Stable identifier for list rendering.
+    var watcherRowId: String {
+        switch self {
+        case let .onchain(onchain): return onchain.id
+        case let .lightning(lightning): return lightning.id
+        }
     }
 }
 

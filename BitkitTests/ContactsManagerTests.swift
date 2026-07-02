@@ -40,6 +40,7 @@ final class ContactsManagerTests: XCTestCase {
         let contact = makeContact(publicKey: "pubky\(rawKey)")
         let activity = Activity.lightning(
             LightningActivity(
+                walletId: WalletScope.default,
                 id: "test-lightning-contact",
                 txType: .sent,
                 status: .succeeded,
@@ -64,6 +65,7 @@ final class ContactsManagerTests: XCTestCase {
         let contact = makeContact(publicKey: "pubky\(rawKey)")
         let activity = Activity.onchain(
             OnchainActivity(
+                walletId: WalletScope.default,
                 id: "test-onchain-boosting-contact",
                 txType: .sent,
                 txId: "txid",
@@ -94,6 +96,7 @@ final class ContactsManagerTests: XCTestCase {
         let replacedTxId = "replaced_tx_id"
         let activity = Activity.onchain(
             OnchainActivity(
+                walletId: WalletScope.default,
                 id: replacedTxId,
                 txType: .sent,
                 txId: replacedTxId,

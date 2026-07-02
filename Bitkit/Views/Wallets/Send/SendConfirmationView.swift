@@ -712,6 +712,7 @@ struct SendConfirmationView: View {
     ) async {
         let currentTime = UInt64(Date().timeIntervalSince1970)
         let preActivityMetadata = BitkitCore.PreActivityMetadata(
+            walletId: WalletScope.default,
             paymentId: paymentId,
             tags: tagManager.selectedTagsArray,
             paymentHash: paymentHash,
