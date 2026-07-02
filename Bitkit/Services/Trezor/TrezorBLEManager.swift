@@ -1,3 +1,4 @@
+import Combine
 import CoreBluetooth
 import Foundation
 import Observation
@@ -46,6 +47,15 @@ class TrezorBLEManager: NSObject {
     /// Currently connected peripheral
     private var connectedPeripheral: CBPeripheral?
     private var connectedPath: String?
+
+    /// Paths whose disconnect was user-initiated (via `disconnect(path:)`), so the
+    /// spontaneous-disconnect signal is suppressed for deliberate teardowns.
+    private var expectedDisconnectPaths: Set<String> = []
+
+    /// Emits the device path when an established connection drops for a reason the
+    /// user did not request — device out of range or phone Bluetooth turned off.
+    /// `TrezorManager` subscribes (via `TrezorTransport`) to clear the stale session.
+    let externalDisconnectPublisher = PassthroughSubject<String, Never>()
 
     /// GATT characteristics
     private var writeCharacteristic: CBCharacteristic?
@@ -284,6 +294,10 @@ class TrezorBLEManager: NSObject {
         // Clean up any stale connection state (preserves discoveredPeripherals cache)
         cleanupConnectionState()
 
+        // Drop any stale deliberate-disconnect marker from a prior session so it can't
+        // suppress a future spontaneous drop on this reused path.
+        expectedDisconnectPaths.remove(path)
+
         debugLog("connectOnce: \(path)")
 
         // Try to get peripheral from cache first
@@ -437,6 +451,10 @@ class TrezorBLEManager: NSObject {
 
         debugLog("Disconnecting: \(path)")
 
+        // Mark this as a deliberate teardown so the resulting didDisconnect callback
+        // does not surface as a spontaneous (out-of-range) drop.
+        expectedDisconnectPaths.insert(path)
+
         if let notifyChar = notifyCharacteristic {
             peripheral.setNotifyValue(false, for: notifyChar)
         }
@@ -550,6 +568,20 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
                 self.isScanning = false
             }
         }
+
+        // Bluetooth turned off / unauthorized invalidates any live connection. iOS does
+        // not guarantee a per-peripheral didDisconnect on power-off, so treat it as a
+        // spontaneous drop here: clear internal state and surface the disconnect.
+        if central.state != .poweredOn, let path = connectedPath {
+            connectedPeripheral = nil
+            connectedPath = nil
+            writeCharacteristic = nil
+            notifyCharacteristic = nil
+            readQueue.clear()
+            if expectedDisconnectPaths.remove(path) == nil {
+                externalDisconnectPublisher.send(path)
+            }
+        }
     }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
@@ -592,7 +624,11 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
         takeConnectContinuation()?.resume(throwing: error ?? TrezorBLEError.connectionFailed)
     }
 
-    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+    func centralManager(
+        _ central: CBCentralManager,
+        didDisconnectPeripheral peripheral: CBPeripheral,
+        error: Error?
+    ) {
         debugLog("didDisconnect: \(peripheral.identifier)\(error.map { " error: \($0.localizedDescription)" } ?? "")")
 
         let disconnectError = error ?? TrezorBLEError.connectionFailed
@@ -603,12 +639,23 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
         takeNotificationContinuation()?.resume(throwing: disconnectError)
         takeWriteContinuation()?.resume(throwing: disconnectError)
 
+        let path = "ble:\(peripheral.identifier.uuidString)"
+        // Consume any deliberate-disconnect marker even when disconnect(path:) already
+        // cleared connection state, so it can't be mistaken for a future real drop.
+        let wasExpected = expectedDisconnectPaths.remove(path) != nil
+
         if connectedPeripheral?.identifier == peripheral.identifier {
             connectedPeripheral = nil
             connectedPath = nil
             writeCharacteristic = nil
             notifyCharacteristic = nil
             readQueue.clear()
+
+            // Surface a spontaneous drop (out of range) so the session can be cleared.
+            // A deliberate disconnect(path:) is suppressed via expectedDisconnectPaths.
+            if !wasExpected {
+                externalDisconnectPublisher.send(path)
+            }
         }
     }
 }

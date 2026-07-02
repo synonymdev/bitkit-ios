@@ -125,6 +125,17 @@ final class TrezorManager {
             }
             .store(in: &cancellables)
 
+        // A spontaneous BLE drop (device out of range or phone Bluetooth turned off)
+        // must clear the live session.
+        transport.externalDisconnectPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] path in
+                guard let self, connectedDevice?.path == path else { return }
+                trezorLog("External disconnect for \(path); clearing session")
+                clearDisconnectedDeviceState()
+            }
+            .store(in: &cancellables)
+
         // Passphrase entry is now driven proactively by the wallet-mode selector
         // (see setWalletMode / requestPassphraseWallet). The device callback
         // `onPassphraseRequest` is answered silently from the selected mode, so there
@@ -427,6 +438,42 @@ final class TrezorManager {
         knownDevices = TrezorKnownDeviceStorage.loadAll()
     }
 
+    /// Display name for the currently connected device, applying any Bitkit-side custom rename (from
+    /// the stored known-device record) over the device's own label/model — mirrors how watch-only
+    /// tiles resolve names, so a rename shows on the connected-device screen too.
+    var connectedDeviceDisplayName: String? {
+        guard let device = connectedDevice else { return nil }
+        let customLabel = knownDevices.first { $0.id == device.id }?.customLabel
+        return resolveHwWalletName(
+            label: device.label ?? deviceFeatures?.label,
+            model: device.model ?? deviceFeatures?.model,
+            customLabel: customLabel
+        )
+    }
+
+    /// Set the Bitkit-side custom name for a paired device. The name is trimmed and capped; an empty
+    /// result clears the custom name (falling back to the device label/model). Applies to every stored
+    /// entry sharing the target's xpub set so the same device renamed over either transport stays
+    /// consistent, then reloads so the snapshot re-pushes and `HwWallet.name` updates.
+    func renameDevice(id: String, newName: String) {
+        let devices = TrezorKnownDeviceStorage.loadAll()
+        guard let target = devices.first(where: { $0.id == id }) else { return }
+
+        let trimmed = String(newName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.deviceLabelMaxLength))
+        let customLabel = trimmed.isEmpty ? nil : trimmed
+
+        let updated = devices.map { device -> TrezorKnownDevice in
+            let sameGroup = device.id == id || (!target.xpubs.isEmpty && device.xpubs == target.xpubs)
+            guard sameGroup else { return device }
+            var copy = device
+            copy.customLabel = customLabel
+            return copy
+        }
+        TrezorKnownDeviceStorage.saveAll(updated)
+        loadKnownDevices()
+        trezorLog("Renamed device \(id) to \(customLabel ?? "<default>")")
+    }
+
     /// Captures the connected device's account xpubs so watch-only balances/activity stay available
     /// while disconnected. The watch-only wallet id is derived from the captured xpub set, so a save
     /// is blocked only when an address type failed *transiently* (a retryable transport error) and
@@ -464,7 +511,8 @@ final class TrezorManager {
             label: device.label ?? deviceFeatures?.label,
             model: device.model ?? deviceFeatures?.model,
             lastConnectedAt: Date(),
-            xpubs: mergedXpubs
+            xpubs: mergedXpubs,
+            customLabel: previous?.customLabel
         )
         TrezorKnownDeviceStorage.save(known)
         loadKnownDevices()
@@ -474,6 +522,7 @@ final class TrezorManager {
 
     private static let maxXpubFetchAttempts = 3
     private static let xpubFetchRetryDelayNanos: UInt64 = 300_000_000
+    private static let deviceLabelMaxLength = 50
 
     /// Markers (matched against the underlying `TrezorError` carried in the wrapped error's text)
     /// for transient transport problems worth retrying. Anything else is treated as the address

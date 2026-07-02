@@ -5,6 +5,8 @@ struct GeneralSettingsView: View {
     @AppStorage(PublicPaykitService.lightningPaymentOptionEnabledKey) private var lightningPaymentOptionEnabled = true
     @AppStorage(PublicPaykitService.onchainPaymentOptionEnabledKey) private var onchainPaymentOptionEnabled = true
 
+    @Environment(HwWalletManager.self) private var hwWalletManager
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
@@ -110,6 +112,15 @@ struct GeneralSettingsView: View {
                     )
                 }
                 .accessibilityIdentifier("NotificationsSettings")
+
+                NavigationLink(value: Route.hardwareWalletsSettings) {
+                    SettingsRow(
+                        title: t("settings__hardware_wallets__nav_title"),
+                        iconName: "device-mobile-speaker",
+                        rightText: String(hwWalletManager.wallets.count)
+                    )
+                }
+                .accessibilityIdentifier("HardwareWalletsSettings")
             }
             .padding(.top, 16)
             .padding(.horizontal, 16)
@@ -138,6 +149,7 @@ struct GeneralSettingsView: View {
             .environmentObject(CurrencyViewModel())
             .environmentObject(PubkyProfileManager())
             .environmentObject(AppViewModel())
+            .environment(HwWalletManager())
     }
     .preferredColorScheme(.dark)
 }
