@@ -620,7 +620,11 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
         takeConnectContinuation()?.resume(throwing: error ?? TrezorBLEError.connectionFailed)
     }
 
-    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+    func centralManager(
+        _ central: CBCentralManager,
+        didDisconnectPeripheral peripheral: CBPeripheral,
+        error: Error?
+    ) {
         debugLog("didDisconnect: \(peripheral.identifier)\(error.map { " error: \($0.localizedDescription)" } ?? "")")
 
         let disconnectError = error ?? TrezorBLEError.connectionFailed
@@ -631,8 +635,12 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
         takeNotificationContinuation()?.resume(throwing: disconnectError)
         takeWriteContinuation()?.resume(throwing: disconnectError)
 
+        let path = "ble:\(peripheral.identifier.uuidString)"
+        // Consume any deliberate-disconnect marker even when disconnect(path:) already
+        // cleared connection state, so it can't be mistaken for a future real drop.
+        let wasExpected = expectedDisconnectPaths.remove(path) != nil
+
         if connectedPeripheral?.identifier == peripheral.identifier {
-            let path = connectedPath
             connectedPeripheral = nil
             connectedPath = nil
             writeCharacteristic = nil
@@ -641,10 +649,8 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
 
             // Surface a spontaneous drop (out of range) so the session can be cleared.
             // A deliberate disconnect(path:) is suppressed via expectedDisconnectPaths.
-            if let path {
-                if expectedDisconnectPaths.remove(path) == nil {
-                    externalDisconnectPublisher.send(path)
-                }
+            if !wasExpected {
+                externalDisconnectPublisher.send(path)
             }
         }
     }
