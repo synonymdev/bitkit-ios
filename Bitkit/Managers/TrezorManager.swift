@@ -438,6 +438,19 @@ final class TrezorManager {
         knownDevices = TrezorKnownDeviceStorage.loadAll()
     }
 
+    /// Display name for the currently connected device, applying any Bitkit-side custom rename (from
+    /// the stored known-device record) over the device's own label/model — mirrors how watch-only
+    /// tiles resolve names, so a rename shows on the connected-device screen too.
+    var connectedDeviceDisplayName: String? {
+        guard let device = connectedDevice else { return nil }
+        let customLabel = knownDevices.first { $0.id == device.id }?.customLabel
+        return resolveHwWalletName(
+            label: device.label ?? deviceFeatures?.label,
+            model: device.model ?? deviceFeatures?.model,
+            customLabel: customLabel
+        )
+    }
+
     /// Set the Bitkit-side custom name for a paired device. The name is trimmed and capped; an empty
     /// result clears the custom name (falling back to the device label/model). Applies to every stored
     /// entry sharing the target's xpub set so the same device renamed over either transport stays
