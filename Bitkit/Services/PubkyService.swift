@@ -270,29 +270,33 @@ actor PaykitSdkService {
     }
 
     func completeAuth() async throws -> String {
-        try await operationLock.withLock {
-            guard let request = activeAuthRequest else {
-                throw PubkyServiceError.invalidAuthUrl
-            }
-            guard let requestID = activeAuthRequestID else {
-                throw PubkyServiceError.invalidAuthUrl
-            }
+        guard let request = activeAuthRequest else {
+            throw PubkyServiceError.invalidAuthUrl
+        }
+        guard let requestID = activeAuthRequestID else {
+            throw PubkyServiceError.invalidAuthUrl
+        }
 
-            defer {
-                if activeAuthRequestID == requestID {
-                    activeAuthRequest = nil
-                    activeAuthRequestID = nil
-                }
-            }
-
-            let previousPublicKey = await currentSdkStatePublicKey()
-            let result = try await request.complete(
+        let result: PubkySessionBootstrapResult
+        do {
+            result = try await request.complete(
                 localSecretKey: nil,
                 requiredCapabilities: Self.requiredCapabilities()
             )
+        } catch {
+            clearActiveAuthRequest(ifCurrent: requestID)
+            throw error
+        }
+
+        return try await operationLock.withLock {
             guard activeAuthRequestID == requestID, activeAuthRequest != nil else {
                 throw CancellationError()
             }
+            defer {
+                clearActiveAuthRequest(ifCurrent: requestID)
+            }
+
+            let previousPublicKey = await currentSdkStatePublicKey()
             try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: false)
             markWalletBackupDataChanged()
             return result.sessionAccess.exportSessionSecret()
@@ -549,6 +553,12 @@ actor PaykitSdkService {
 
     private func resetRuntime() {
         sdk = nil
+    }
+
+    private func clearActiveAuthRequest(ifCurrent requestID: UUID) {
+        guard activeAuthRequestID == requestID else { return }
+        activeAuthRequest = nil
+        activeAuthRequestID = nil
     }
 
     private func persistSessionAccess(_ access: PubkySessionAccess, shouldStoreLocalSecret: Bool) throws {
