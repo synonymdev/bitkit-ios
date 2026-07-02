@@ -28,11 +28,11 @@ struct HwFoundView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 32)
 
-            Image("trezor")
+            Image("trezor-device")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 256, height: 256)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.vertical, 24)
 
             HStack(spacing: 16) {
                 CustomButton(title: t("common__cancel"), variant: .secondary, shouldExpand: true) {
