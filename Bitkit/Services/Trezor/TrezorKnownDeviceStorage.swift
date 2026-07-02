@@ -12,6 +12,9 @@ struct TrezorKnownDevice: Codable, Identifiable {
     /// Account-level extended public keys keyed by `AddressScriptType.stringValue`.
     /// Persisted so watch-only balances/activity stay available while disconnected.
     var xpubs: [String: String]
+    /// User-set name applied while managing the wallet in Bitkit; nil until renamed. Takes priority
+    /// over the device's own `label`/`model` when resolving the display name.
+    var customLabel: String?
 
     init(
         id: String,
@@ -21,7 +24,8 @@ struct TrezorKnownDevice: Codable, Identifiable {
         label: String? = nil,
         model: String? = nil,
         lastConnectedAt: Date,
-        xpubs: [String: String] = [:]
+        xpubs: [String: String] = [:],
+        customLabel: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -31,6 +35,7 @@ struct TrezorKnownDevice: Codable, Identifiable {
         self.model = model
         self.lastConnectedAt = lastConnectedAt
         self.xpubs = xpubs
+        self.customLabel = customLabel
     }
 
     init(from decoder: any Decoder) throws {
@@ -43,6 +48,7 @@ struct TrezorKnownDevice: Codable, Identifiable {
         model = try container.decodeIfPresent(String.self, forKey: .model)
         lastConnectedAt = try container.decode(Date.self, forKey: .lastConnectedAt)
         xpubs = try container.decodeIfPresent([String: String].self, forKey: .xpubs) ?? [:]
+        customLabel = try container.decodeIfPresent(String.self, forKey: .customLabel)
     }
 }
 
@@ -63,6 +69,14 @@ enum TrezorKnownDeviceStorage {
         var devices = loadAll()
         devices.removeAll { $0.id == device.id }
         devices.insert(device, at: 0)
+        if let data = try? JSONEncoder().encode(devices) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    /// Persist the full device list as-is. Used for bulk updates (e.g. renaming every entry of a
+    /// device shared across transports) without per-device reordering.
+    static func saveAll(_ devices: [TrezorKnownDevice]) {
         if let data = try? JSONEncoder().encode(devices) {
             UserDefaults.standard.set(data, forKey: key)
         }

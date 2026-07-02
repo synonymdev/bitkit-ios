@@ -204,6 +204,14 @@ struct MainNavView: View {
         ) {
             config in HardwarePairingSheet(config: config)
         }
+        .sheet(
+            item: $sheets.renameHardwareWalletSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in RenameHardwareWalletSheet(config: config)
+        }
         .onChange(of: trezorManager.showPairingCode) { _, needsCode in
             // A hardware device asked for its one-time pairing code (e.g. during reconnect);
             // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
@@ -531,6 +539,7 @@ struct MainNavView: View {
                 case .notificationsIntro: NotificationsIntro()
                 case .paymentPreference:
                     if isPaykitUIActive { PaymentPreferenceView() } else { paykitDisabledRedirectView }
+                case .hardwareWalletsSettings: HardwareWalletsSettingsScreen()
 
                 // Security settings
                 case .changePin: ChangePinScreen()

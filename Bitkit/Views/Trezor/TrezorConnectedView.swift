@@ -19,7 +19,7 @@ struct TrezorConnectedView: View {
             VStack(spacing: 24) {
                 // Device card
                 DeviceInfoCard(
-                    device: trezorManager.connectedDevice,
+                    name: trezorManager.connectedDeviceDisplayName ?? "Trezor",
                     features: trezorManager.deviceFeatures
                 )
 
@@ -143,7 +143,7 @@ struct TrezorConnectedView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 TrezorStatusBadge(
                     isConnected: trezorManager.isConnected,
-                    deviceName: trezorManager.deviceFeatures?.label
+                    deviceName: trezorManager.connectedDeviceDisplayName
                 )
                 .allowsHitTesting(false)
             }
@@ -202,7 +202,7 @@ private struct WalletModeSelectorRow: View {
 // MARK: - Device Info Card
 
 private struct DeviceInfoCard: View {
-    let device: TrezorDeviceInfo?
+    let name: String
     let features: TrezorFeatures?
 
     var body: some View {
@@ -217,7 +217,7 @@ private struct DeviceInfoCard: View {
 
             // Device name
             VStack(spacing: 4) {
-                Text(features?.label ?? "Trezor")
+                Text(name)
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.white)
 
