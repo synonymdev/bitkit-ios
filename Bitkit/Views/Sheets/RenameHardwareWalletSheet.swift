@@ -49,6 +49,7 @@ struct RenameHardwareWalletSheet: View {
 
                 CustomButton(
                     title: t("common__save"),
+                    isDisabled: trimmedName.isEmpty,
                     shouldExpand: true
                 ) {
                     save()
@@ -65,6 +66,7 @@ struct RenameHardwareWalletSheet: View {
     }
 
     private func save() {
+        guard !trimmedName.isEmpty else { return }
         trezorManager.renameDevice(id: config.deviceId, newName: trimmedName)
         sheets.hideSheet()
     }
