@@ -498,7 +498,8 @@ final class TrezorManager {
             label: device.label ?? deviceFeatures?.label,
             model: device.model ?? deviceFeatures?.model,
             lastConnectedAt: Date(),
-            xpubs: mergedXpubs
+            xpubs: mergedXpubs,
+            customLabel: previous?.customLabel
         )
         TrezorKnownDeviceStorage.save(known)
         loadKnownDevices()
