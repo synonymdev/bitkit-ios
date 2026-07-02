@@ -12,6 +12,12 @@ struct HwSearchingAnimation: View {
     /// Inner dashed-ring width as a fraction of the loader — 207 in the 311-wide Figma HW ring.
     private let innerRingRatio: CGFloat = 207.0 / 311.0
 
+    /// Seconds per full ring turn (both rings counter-rotate one turn every 2s).
+    private let ringSpin: Double = 2
+
+    /// Seconds per full arrows turn.
+    private let arrowsSpin: Double = 4
+
     @State private var animate = false
 
     var body: some View {
@@ -21,21 +27,21 @@ struct HwSearchingAnimation: View {
                 .scaledToFit()
                 .frame(width: canvasSize, height: canvasSize)
                 .rotationEffect(.degrees(animate ? -360 : 0))
-                .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: animate)
+                .animation(.linear(duration: ringSpin).repeatForever(autoreverses: false), value: animate)
 
             Image("hw-searching-ring-inner")
                 .resizable()
                 .scaledToFit()
                 .frame(width: canvasSize * innerRingRatio, height: canvasSize * innerRingRatio)
                 .rotationEffect(.degrees(animate ? 360 : 0))
-                .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: animate)
+                .animation(.linear(duration: ringSpin).repeatForever(autoreverses: false), value: animate)
 
             Image("hw-searching-arrows")
                 .resizable()
                 .scaledToFit()
                 .frame(width: canvasSize * arrowsRatio, height: canvasSize * arrowsRatio)
                 .rotationEffect(.degrees(animate ? -360 : 0))
-                .animation(.linear(duration: 4).repeatForever(autoreverses: false), value: animate)
+                .animation(.linear(duration: arrowsSpin).repeatForever(autoreverses: false), value: animate)
         }
         .frame(width: canvasSize, height: canvasSize)
         .onAppear { animate = true }
