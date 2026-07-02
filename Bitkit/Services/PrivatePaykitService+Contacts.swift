@@ -315,15 +315,36 @@ extension PrivatePaykitService {
     }
 
     private func schedulePendingPrivateMessageDrainRetries(reason: String, publicKeys: [String]) {
+        let retryKeys = Set(normalizedSavedContactKeys(publicKeys))
+        guard !retryKeys.isEmpty else { return }
+
+        pendingMessageDrainRetryKeys.formUnion(retryKeys)
+        pendingMessageDrainRetryGeneration += 1
+        let retryGeneration = pendingMessageDrainRetryGeneration
         pendingMessageDrainRetryTask?.cancel()
-        pendingMessageDrainRetryTask = Task { [reason, publicKeys] in
+
+        pendingMessageDrainRetryTask = Task { [reason, retryGeneration] in
             for delay in Self.privateMessageDrainRetryDelays {
                 guard !Task.isCancelled else { return }
                 try? await Task.sleep(nanoseconds: delay)
                 guard !Task.isCancelled else { return }
-                await PrivatePaykitService.shared.drainPendingPrivateMessages(reason: "\(reason) retry", advancingLinksFor: publicKeys)
+                await PrivatePaykitService.shared.drainPendingPrivateMessageRetryKeys(reason: "\(reason) retry")
             }
+            guard !Task.isCancelled else { return }
+            await PrivatePaykitService.shared.finishPendingPrivateMessageDrainRetries(generation: retryGeneration)
         }
+    }
+
+    private func drainPendingPrivateMessageRetryKeys(reason: String) async {
+        let retryKeys = Array(pendingMessageDrainRetryKeys)
+        guard !retryKeys.isEmpty else { return }
+        await drainPendingPrivateMessages(reason: reason, advancingLinksFor: retryKeys)
+    }
+
+    private func finishPendingPrivateMessageDrainRetries(generation: Int) {
+        guard generation == pendingMessageDrainRetryGeneration else { return }
+        pendingMessageDrainRetryTask = nil
+        pendingMessageDrainRetryKeys.removeAll()
     }
 
     private func applyPrivatePaymentListDeliveryReport(_ report: PrivatePaymentListDeliveryReport, reason: String) -> Error? {

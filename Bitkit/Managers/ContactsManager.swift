@@ -607,13 +607,17 @@ class ContactsManager: ObservableObject {
         }
 
         if let profile = record.profile {
-            return PubkyContact(publicKey: prefixedKey, profile: PubkyProfile(publicKey: prefixedKey, paykitProfile: profile))
+            let contactProfile = PubkyProfile(publicKey: prefixedKey, paykitProfile: profile)
+                .withNameFallback(record.label)
+            return PubkyContact(publicKey: prefixedKey, profile: contactProfile)
         }
 
         do {
-            return try await PubkyContact(
+            let profile = try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: includePlaceholder)
+                .withNameFallback(record.label)
+            return PubkyContact(
                 publicKey: prefixedKey,
-                profile: resolveContactProfile(publicKey: prefixedKey, includePlaceholder: includePlaceholder)
+                profile: profile
             )
         } catch {
             if !includePlaceholder {
@@ -622,7 +626,10 @@ class ContactsManager: ObservableObject {
         }
 
         if includePlaceholder {
-            return PubkyContact(publicKey: prefixedKey, profile: PubkyProfile.placeholder(publicKey: prefixedKey))
+            return PubkyContact(
+                publicKey: prefixedKey,
+                profile: PubkyProfile.forDisplay(publicKey: prefixedKey, name: record.label, imageUrl: nil)
+            )
         }
 
         throw PubkyServiceError.profileNotFound

@@ -21,17 +21,20 @@ struct PubkyAuthRequest {
     let rawUrl: String
     let kind: Paykit.PubkyAuthRequestKind
     let relay: String
+    let capabilities: String
     let permissions: [PubkyAuthPermission]
     let serviceNames: [String]
 
     static func parse(url: String) throws -> PubkyAuthRequest {
         let details = try Paykit.parsePubkyAuthUrl(authUrl: url)
-        let permissions = parseCapabilities(details.capabilities ?? "")
+        let capabilities = details.capabilities ?? ""
+        let permissions = parseCapabilities(capabilities)
         let serviceNames = permissions.compactMap { extractServiceName($0.path) }
         return PubkyAuthRequest(
             rawUrl: url,
             kind: details.kind,
             relay: details.relayUrl ?? "",
+            capabilities: capabilities,
             permissions: permissions,
             serviceNames: serviceNames
         )

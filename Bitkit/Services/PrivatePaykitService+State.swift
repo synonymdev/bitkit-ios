@@ -6,6 +6,8 @@ extension PrivatePaykitService {
     func closeAndClear() async {
         pendingMessageDrainRetryTask?.cancel()
         pendingMessageDrainRetryTask = nil
+        pendingMessageDrainRetryKeys.removeAll()
+        pendingMessageDrainRetryGeneration += 1
         state = PrivatePaykitState(contacts: [:])
         knownSavedContactKeys.removeAll()
         await PaykitSdkService.shared.clearState()

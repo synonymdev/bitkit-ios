@@ -346,7 +346,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func deleteProfile() async throws {
-        try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.deleteProfile")
+        await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
         do {
             try await Task.detached {
                 try await PubkyService.deletePaykitProfile()
@@ -498,18 +498,33 @@ class PubkyProfileManager: ObservableObject {
     /// Long-polls the relay, activates the SDK session, then loads the profile.
     @discardableResult
     func completeAuthentication() async throws -> String {
+        try await completeAuthentication(
+            completeAuth: { _ = try await PubkyService.completeAuth() },
+            currentPublicKey: { await PubkyService.currentPublicKey() },
+            clearSessionAccess: { await PubkyService.clearSessionAccess() }
+        )
+    }
+
+    @discardableResult
+    private func completeAuthentication(
+        completeAuth: @escaping () async throws -> Void,
+        currentPublicKey: @escaping () async -> String?,
+        clearSessionAccess: @escaping () async -> Void
+    ) async throws -> String {
         guard let attemptID = activeAuthAttemptID else {
             throw CancellationError()
         }
+        var didCompleteAuth = false
 
         do {
-            _ = try await PubkyService.completeAuth()
+            try await completeAuth()
+            didCompleteAuth = true
             try Task.checkCancellation()
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
 
-            guard let pk = await PubkyService.currentPublicKey() else {
+            guard let pk = await currentPublicKey() else {
                 throw PubkyServiceError.sessionNotActive
             }
             try Task.checkCancellation()
@@ -527,12 +542,14 @@ class PubkyProfileManager: ObservableObject {
             await loadProfile()
             return pk
         } catch is CancellationError {
+            await clearCompletedAuthSessionIfNeeded(didCompleteAuth, clearSessionAccess: clearSessionAccess)
             if activeAuthAttemptID == attemptID {
                 activeAuthAttemptID = nil
                 restoreAuthStateAfterAuthFlow()
             }
             throw CancellationError()
         } catch let serviceError as PubkyServiceError {
+            await clearCompletedAuthSessionIfNeeded(didCompleteAuth, clearSessionAccess: clearSessionAccess)
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
@@ -541,6 +558,7 @@ class PubkyProfileManager: ObservableObject {
             restoreAuthStateAfterAuthFlow()
             throw serviceError
         } catch {
+            await clearCompletedAuthSessionIfNeeded(didCompleteAuth, clearSessionAccess: clearSessionAccess)
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
@@ -549,6 +567,11 @@ class PubkyProfileManager: ObservableObject {
             setAuthFlowError(error.localizedDescription)
             throw error
         }
+    }
+
+    private func clearCompletedAuthSessionIfNeeded(_ didCompleteAuth: Bool, clearSessionAccess: @escaping () async -> Void) async {
+        guard didCompleteAuth else { return }
+        await clearSessionAccess()
     }
 
     func finalizeAuthentication() {
@@ -579,6 +602,19 @@ class PubkyProfileManager: ObservableObject {
 
         var activeAuthAttemptIDForTesting: UUID? {
             activeAuthAttemptID
+        }
+
+        @discardableResult
+        func completeAuthenticationForTesting(
+            completeAuth: @escaping () async throws -> Void,
+            currentPublicKey: @escaping () async -> String?,
+            clearSessionAccess: @escaping () async -> Void
+        ) async throws -> String {
+            try await completeAuthentication(
+                completeAuth: completeAuth,
+                currentPublicKey: currentPublicKey,
+                clearSessionAccess: clearSessionAccess
+            )
         }
     #endif
 
@@ -694,7 +730,7 @@ class PubkyProfileManager: ObservableObject {
     private func signOut(cleanPrivatePaykitEndpoints: Bool) async throws {
         try await Task.detached {
             if cleanPrivatePaykitEndpoints {
-                try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
+                await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
             }
             await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
             do {

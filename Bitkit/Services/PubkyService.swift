@@ -74,8 +74,12 @@ enum PubkyService {
     }
 
     /// Approve a pubkyauth:// request using the local secret key.
-    static func approveAuth(authUrl: String, secretKeyHex: String) async throws {
-        try await PaykitSdkService.shared.approveAuth(authUrl: authUrl, secretKeyHex: secretKeyHex)
+    static func approveAuth(authUrl: String, expectedCapabilities: String, secretKeyHex: String) async throws {
+        try await PaykitSdkService.shared.approveAuth(
+            authUrl: authUrl,
+            expectedCapabilities: expectedCapabilities,
+            secretKeyHex: secretKeyHex
+        )
     }
 
     // MARK: - Key Derivation
@@ -300,11 +304,11 @@ actor PaykitSdkService {
         activeAuthRequestID = nil
     }
 
-    func approveAuth(authUrl: String, secretKeyHex: String) async throws {
+    func approveAuth(authUrl: String, expectedCapabilities: String, secretKeyHex: String) async throws {
         try await operationLock.withLock {
             try await bootstrap().approveAuth(
                 authUrl: authUrl,
-                expectedCapabilities: Self.requiredCapabilities(),
+                expectedCapabilities: expectedCapabilities,
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex)
             )
         }

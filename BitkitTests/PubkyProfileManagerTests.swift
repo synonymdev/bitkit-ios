@@ -114,6 +114,36 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertFalse(manager.isAuthenticated)
     }
 
+    @MainActor
+    func testCompleteAuthenticationClearsSessionWhenAuthIsCanceledAfterCompletion() async {
+        let manager = PubkyProfileManager()
+        let attemptID = UUID()
+        var didClearSession = false
+
+        manager.setActiveAuthAttemptIDForTesting(attemptID)
+        manager.authState = .authenticating
+
+        do {
+            try await manager.completeAuthenticationForTesting(
+                completeAuth: {
+                    manager.setActiveAuthAttemptIDForTesting(nil)
+                },
+                currentPublicKey: {
+                    "pubky_test"
+                },
+                clearSessionAccess: {
+                    didClearSession = true
+                }
+            )
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            XCTAssertTrue(didClearSession)
+            XCTAssertNil(manager.activeAuthAttemptIDForTesting)
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+    }
+
     // MARK: - HomegateResponse Decoding
 
     private typealias HomegateResponse = PubkyProfileManager.HomegateResponse

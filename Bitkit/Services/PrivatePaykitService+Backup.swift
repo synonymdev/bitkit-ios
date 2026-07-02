@@ -13,6 +13,8 @@ extension PrivatePaykitService {
     func restoreBackup(_ backup: String?) async throws {
         pendingMessageDrainRetryTask?.cancel()
         pendingMessageDrainRetryTask = nil
+        pendingMessageDrainRetryKeys.removeAll()
+        pendingMessageDrainRetryGeneration += 1
         state = PrivatePaykitState(contacts: [:])
         knownSavedContactKeys.removeAll()
         if let backup {

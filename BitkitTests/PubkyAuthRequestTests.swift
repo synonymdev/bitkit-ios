@@ -3,6 +3,17 @@ import XCTest
 
 /// Tests for PubkyAuthRequest capability parsing and permission display.
 final class PubkyAuthRequestTests: XCTestCase {
+    func testParseUrlPreservesRequestedCapabilities() throws {
+        let capabilities = "/pub/bitkit.to/:rw"
+        let url = "pubkyauth://signin?caps=\(capabilities)&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+
+        let request = try PubkyAuthRequest.parse(url: url)
+
+        XCTAssertEqual(request.capabilities, capabilities)
+        XCTAssertEqual(request.permissions.count, 1)
+        XCTAssertEqual(request.permissions[0].path, "/pub/bitkit.to/")
+    }
+
     // MARK: - parseCapabilities
 
     func testParseCapabilitiesSingleEntry() {

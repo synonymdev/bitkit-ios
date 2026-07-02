@@ -179,6 +179,22 @@ struct PubkyProfile {
         )
     }
 
+    func withNameFallback(_ fallbackName: String?) -> PubkyProfile {
+        guard name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let fallbackName,
+              !fallbackName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return self }
+        return PubkyProfile(
+            publicKey: publicKey,
+            name: fallbackName,
+            bio: bio,
+            imageUrl: imageUrl,
+            links: links,
+            tags: tags,
+            status: status
+        )
+    }
+
     private static func truncate(_ key: String) -> String {
         guard key.count > 10 else { return key }
         return "\(key.prefix(4))...\(key.suffix(4))"

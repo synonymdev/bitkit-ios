@@ -62,6 +62,8 @@ actor PrivatePaykitService {
     var state: PrivatePaykitState
     var knownSavedContactKeys: Set<String> = []
     var pendingMessageDrainRetryTask: Task<Void, Never>?
+    var pendingMessageDrainRetryKeys: Set<String> = []
+    var pendingMessageDrainRetryGeneration = 0
     private let publicationLock = PrivatePaykitPublicationLock()
 
     init() {
