@@ -32,7 +32,7 @@ protocol HwConnectServicing {
 @Observable
 @MainActor
 final class HwConnectViewModel {
-    enum Phase: Equatable {
+    enum Phase: Hashable {
         case intro
         case searching
         case found

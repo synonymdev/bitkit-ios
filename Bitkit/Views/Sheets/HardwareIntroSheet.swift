@@ -22,8 +22,9 @@ struct HardwareIntroSheet: View {
     }
 }
 
-/// Drives the phase-based Connect Hardware wizard. Cancel/back always dismisses the sheet (never
-/// steps backward), so each phase is rendered from a single `phase` switch rather than a back stack.
+/// Drives the phase-based Connect Hardware wizard. Steps are swapped by phase with a push-style
+/// slide transition (see `pushTransition`); cancel always dismisses the sheet rather than stepping
+/// back through a transient Searching or a one-shot connect.
 private struct HardwareConnectFlow: View {
     @Environment(TrezorManager.self) private var trezorManager
     @Environment(HwWalletManager.self) private var hwWalletManager
@@ -42,35 +43,12 @@ private struct HardwareConnectFlow: View {
 
     var body: some View {
         Sheet(id: .hardwareIntro, data: config) {
-            Group {
-                switch viewModel.phase {
-                case .intro:
-                    introStep
-                case .searching:
-                    HwSearchingView(errorMessage: viewModel.errorMessage, onCancel: { sheets.hideSheet() })
-                case .found:
-                    HwFoundView(
-                        deviceModel: foundDeviceModel,
-                        isConnecting: viewModel.isConnecting,
-                        errorMessage: viewModel.errorMessage,
-                        onConnect: viewModel.onConnect,
-                        onCancel: {
-                            viewModel.cancelConnect()
-                            sheets.hideSheet()
-                        }
-                    )
-                case .paired:
-                    HwPairedView(
-                        deviceName: viewModel.deviceName,
-                        balanceSats: viewModel.balanceSats,
-                        labelText: labelBinding,
-                        onFinish: viewModel.onFinish
-                    )
-                case .pairCode:
-                    HwPairCodeView(onSubmit: { trezorManager.submitPairingCode($0) })
-                }
+            ZStack {
+                currentPhaseView
+                    .id(viewModel.phase)
+                    .transition(pushTransition)
             }
-            .animation(.easeInOut(duration: 0.2), value: viewModel.phase)
+            .animation(.easeInOut(duration: 0.3), value: viewModel.phase)
         }
         .onChange(of: trezorManager.showPairingCode) { _, needsCode in
             if needsCode { viewModel.onPairingCodeRequested() }
@@ -91,6 +69,46 @@ private struct HardwareConnectFlow: View {
         } message: {
             Text(bluetoothAlertMessage)
         }
+    }
+
+    @ViewBuilder
+    private var currentPhaseView: some View {
+        switch viewModel.phase {
+        case .intro:
+            introStep
+        case .searching:
+            HwSearchingView(errorMessage: viewModel.errorMessage, onCancel: { sheets.hideSheet() })
+        case .found:
+            HwFoundView(
+                deviceModel: foundDeviceModel,
+                isConnecting: viewModel.isConnecting,
+                errorMessage: viewModel.errorMessage,
+                onConnect: viewModel.onConnect,
+                onCancel: {
+                    viewModel.cancelConnect()
+                    sheets.hideSheet()
+                }
+            )
+        case .paired:
+            HwPairedView(
+                deviceName: viewModel.deviceName,
+                balanceSats: viewModel.balanceSats,
+                labelText: labelBinding,
+                onFinish: viewModel.onFinish
+            )
+        case .pairCode:
+            HwPairCodeView(onSubmit: { trezorManager.submitPairingCode($0) })
+        }
+    }
+
+    /// Steps slide in from the trailing edge as the flow advances, mirroring the push transitions of
+    /// the app's other multi-step sheets, without a `NavigationStack` (which would draw its own
+    /// background over the sheet gradient). Cancel and back still dismiss the sheet.
+    private var pushTransition: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: .trailing),
+            removal: .move(edge: .leading)
+        )
     }
 
     // MARK: - Intro step
