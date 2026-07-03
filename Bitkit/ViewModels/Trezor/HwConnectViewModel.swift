@@ -117,8 +117,10 @@ final class HwConnectViewModel {
             guard let self else { return }
             do {
                 let result = try await service.connect(to: device)
+                if Task.isCancelled { return }
                 onConnected(result)
             } catch {
+                if Task.isCancelled { return }
                 onConnectFailed()
             }
             connectTask = nil

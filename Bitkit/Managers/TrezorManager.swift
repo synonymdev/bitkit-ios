@@ -274,6 +274,13 @@ final class TrezorManager {
 
         do {
             let features = try await trezorService.connect(deviceId: device.path, selection: uiHandler.currentSelection())
+
+            if Task.isCancelled {
+                try? await trezorService.disconnect()
+                trezorLog("Connect cancelled before pairing; disconnected \(device.path)")
+                return
+            }
+
             connectedDevice = device
             deviceFeatures = features
             showConfirmOnDevice = false
