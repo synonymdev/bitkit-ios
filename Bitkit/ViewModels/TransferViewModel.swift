@@ -97,9 +97,8 @@ class TransferViewModel: ObservableObject {
     private let hwFundingFallbackSatsPerVByte: UInt64 = 1
     /// Fallback fee percentage used when fee estimates are temporarily unavailable.
     private let hwFundingFallbackFeePercent = 0.1
-    private let hwReconnectTimeout: Double = 30
-    private let hwComposeTimeout: Double = 45
-    private let hwSignTimeout: Double = 120
+    /// Per-phase timeouts (seconds). Injectable so tests can drive the timeout paths.
+    private let hwTimeouts: (reconnect: Double, compose: Double, sign: Double)
 
     init(
         coreService: CoreService = .shared,
@@ -110,6 +109,7 @@ class TransferViewModel: ObservableObject {
         hwFunding: HwTransferFunding? = nil,
         hwConnecting: HwTransferConnecting? = nil,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
+        hwTimeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 30, compose: 45, sign: 120),
         onBalanceRefresh: (() async -> Void)? = nil
     ) {
         self.coreService = coreService
@@ -120,6 +120,7 @@ class TransferViewModel: ObservableObject {
         self.hwFunding = hwFunding
         self.hwConnecting = hwConnecting
         self.hwFeeRateProvider = hwFeeRateProvider
+        self.hwTimeouts = hwTimeouts
         self.onBalanceRefresh = onBalanceRefresh
     }
 
@@ -538,7 +539,7 @@ class TransferViewModel: ObservableObject {
 
     private func ensureHardwareConnected(deviceId: String, hwConnecting: HwTransferConnecting) async throws {
         do {
-            try await withHwTimeout(hwReconnectTimeout) {
+            try await withHwTimeout(hwTimeouts.reconnect) {
                 try await hwConnecting.ensureConnected(deviceId: deviceId)
             }
         } catch is CancellationError {
@@ -556,7 +557,7 @@ class TransferViewModel: ObservableObject {
         hwFunding: HwTransferFunding
     ) async throws -> HwFundingTransaction {
         do {
-            return try await withHwTimeout(hwComposeTimeout) {
+            return try await withHwTimeout(hwTimeouts.compose) {
                 try await hwFunding.composeFundingTransaction(
                     deviceId: deviceId,
                     address: address,
@@ -580,7 +581,7 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting
     ) async throws -> HwFundingBroadcastResult {
         do {
-            return try await withHwTimeout(hwSignTimeout) {
+            return try await withHwTimeout(hwTimeouts.sign) {
                 try await hwFunding.signAndBroadcastFunding(deviceId: deviceId, funding: funding)
             }
         } catch is CancellationError {
@@ -608,12 +609,30 @@ class TransferViewModel: ObservableObject {
 
     /// On-chain fee reserve to hold back from the device balance before the exact compose runs.
     private func hwFundingFeeReserve(balanceSats: UInt64) async -> UInt64 {
-        guard let satsPerVByte = await hwFeeRateProvider?() else {
-            let minReserve = hwFundingFallbackSatsPerVByte * hwFundingTxVBytes
-            let fallback = UInt64(Double(balanceSats) * hwFundingFallbackFeePercent)
+        await Self.hwFundingFeeReserve(
+            balanceSats: balanceSats,
+            satsPerVByte: hwFeeRateProvider?(),
+            txVBytes: hwFundingTxVBytes,
+            fallbackSatsPerVByte: hwFundingFallbackSatsPerVByte,
+            fallbackFeePercent: hwFundingFallbackFeePercent
+        )
+    }
+
+    /// Pure fee-reserve computation. With a known fee rate: `rate × vbytes`. Without one (estimates
+    /// unavailable): `max(minReserve, balance × fallbackPercent)`.
+    static func hwFundingFeeReserve(
+        balanceSats: UInt64,
+        satsPerVByte: UInt64?,
+        txVBytes: UInt64 = 1200,
+        fallbackSatsPerVByte: UInt64 = 1,
+        fallbackFeePercent: Double = 0.1
+    ) -> UInt64 {
+        guard let satsPerVByte else {
+            let minReserve = fallbackSatsPerVByte * txVBytes
+            let fallback = UInt64(Double(balanceSats) * fallbackFeePercent)
             return max(minReserve, fallback)
         }
-        return satsPerVByte * hwFundingTxVBytes
+        return satsPerVByte * txVBytes
     }
 
     private func hwFundingSatsPerVByte() async -> UInt64 {
