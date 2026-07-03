@@ -91,7 +91,11 @@ final class HwConnectViewModel {
                     if Task.isCancelled { return }
                     errorMessage = t("hardware__search_error")
                 }
-                try? await Task.sleep(for: Self.scanInterval)
+                do {
+                    try await Task.sleep(for: Self.scanInterval)
+                } catch {
+                    return
+                }
             }
         }
     }
