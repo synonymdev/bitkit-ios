@@ -64,7 +64,6 @@
 "hardware__remove_button" = "Remove {name}";
 "hardware__remove_dialog_title" = "Remove {name}";
 "hardware__remove_dialog_text" = "Don't worry, your funds are safe and your coins won't be deleted. Bitkit will simply stop displaying the amounts in the wallet.";
-"hardware__transfer_not_implemented" = "Transfer to spending not yet implemented.";
 "cards__buyBitcoin__title" = "Buy";
 "cards__buyBitcoin__description" = "Buy some bitcoin";
 "cards__btFailed__title" = "Failed";
@@ -88,6 +87,7 @@
 "common__copy" = "Copy";
 "common__edit" = "Edit";
 "common__error" = "Error";
+"common__error_body" = "Unknown error";
 "common__share" = "Share";
 "common__search" = "Search";
 "common__discard" = "Discard";
@@ -174,6 +174,11 @@
 "lightning__transfer__confirm" = "Please\n<accent>confirm</accent>";
 "lightning__transfer__custom_fee" = "Custom <accent>fee</accent>";
 "lightning__transfer__swipe" = "Swipe To Transfer";
+"lightning__transfer_hw__open_connect" = "Open Trezor Connect";
+"lightning__transfer_hw__reconnect_error_description" = "Please reconnect your hardware device, it appears to be disconnected from your phone.";
+"lightning__transfer_hw__reconnect_error_title" = "Reconnect Hardware Device";
+"lightning__transfer_hw__sign_title" = "Sign with\n<accent>your device</accent>";
+"lightning__transfer_hw__signed_title" = "Transaction\n<accent>signed</accent>";
 "lightning__transfer_to_savings_button" = "Transfer To Savings";
 "lightning__transfer_to_spending_button" = "Transfer To Spending";
 "lightning__spending_intro__title" = "Transfer\n<accent>to spending</accent>";
@@ -1260,6 +1265,7 @@
 "wallet__toast_payment_success_description" = "Your instant payment was sent successfully.";
 "wallet__toast_payment_failed_title" = "Payment Failed";
 "wallet__toast_payment_failed_description" = "Your instant payment failed. Please try again.";
+"wallet__toast_payment_failed_timeout" = "Payment timed out. Please try again.";
 "wallet__toast_received_transaction_replaced_title" = "Received Transaction Replaced";
 "wallet__toast_received_transaction_replaced_description" = "Your received transaction was replaced by a fee bump";
 "wallet__toast_transaction_replaced_title" = "Transaction Replaced";
