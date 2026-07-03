@@ -217,7 +217,7 @@ struct TrezorHwConnectService: HwConnectServicing {
 
     func connect(to device: TrezorDeviceInfo) async throws -> HwConnectResult {
         await trezorManager.connect(device: device)
-        guard let connected = trezorManager.connectedDevice else {
+        guard let connected = trezorManager.connectedDevice, connected.id == device.id else {
             throw AppError(message: trezorManager.error ?? t("hardware__connect_error"), debugMessage: nil)
         }
         let name = resolveHwWalletName(
