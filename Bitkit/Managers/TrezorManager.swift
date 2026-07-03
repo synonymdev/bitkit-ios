@@ -639,6 +639,68 @@ final class TrezorManager {
         autoReconnectStatus = nil
     }
 
+    // MARK: - Reconnect for on-device signing
+
+    /// Ensure the given known device has a live session so it can sign. Reuses the current
+    /// connection when it already matches the requested device; otherwise reconnects it. Throws on
+    /// failure so the transfer flow can surface a reconnect error.
+    func ensureConnected(deviceId: String) async throws {
+        if connectedDevice?.id == deviceId, await trezorService.isConnected() {
+            return
+        }
+        // A stale or mismatched session blocks a clean reconnect — clear it first.
+        if connectedDevice != nil {
+            await disconnectStaleSession(deviceId: connectedDevice?.id ?? deviceId)
+        }
+        try await reconnectKnownDevice(deviceId: deviceId)
+    }
+
+    private func reconnectKnownDevice(deviceId: String) async throws {
+        await startScan(clearExisting: true)
+
+        let target: TrezorDeviceInfo
+        if let scanned = devices.first(where: { $0.id == deviceId }) {
+            target = scanned
+        } else if let known = knownDevices.first(where: { $0.id == deviceId }), known.transportType == "bluetooth" {
+            // Honor the stored BLE transport — reconnect directly to a known device that didn't
+            // surface within the scan window instead of failing outright.
+            target = deviceInfo(from: known)
+        } else {
+            throw AppError(message: "Reconnect Hardware Device", debugMessage: "Device '\(deviceId)' not found nearby")
+        }
+
+        await connect(device: target)
+
+        guard connectedDevice?.id == deviceId, await trezorService.isConnected() else {
+            throw AppError(message: "Reconnect Hardware Device", debugMessage: error ?? "Failed to reconnect '\(deviceId)'")
+        }
+    }
+
+    /// Tear down the current device session so the next connect establishes a fresh one. Used after
+    /// a signing failure or timeout, where the transport session may be left in a bad state.
+    func disconnectStaleSession(deviceId: String) async {
+        do {
+            try await trezorService.disconnect()
+        } catch {
+            trezorLog("Failed to disconnect stale session for '\(deviceId)': \(error)", level: "warn")
+        }
+        clearDisconnectedDeviceState()
+    }
+
+    /// Reconstruct a `TrezorDeviceInfo` for reconnecting to a known BLE device when a fresh scan
+    /// hasn't surfaced it (BLE devices advertise intermittently).
+    private func deviceInfo(from known: TrezorKnownDevice) -> TrezorDeviceInfo {
+        TrezorDeviceInfo(
+            id: known.id,
+            transportType: known.transportType == "bluetooth" ? .bluetooth : .usb,
+            name: known.name,
+            path: known.path,
+            label: known.label,
+            model: known.model,
+            isBootloader: false
+        )
+    }
+
     // MARK: - Network Switching
 
     /// Switches the dashboard's network independently of the app's global network.
