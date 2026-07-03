@@ -52,7 +52,7 @@
 "hardware__bluetooth_unavailable_title" = "Bluetooth Unavailable";
 "hardware__bluetooth_unavailable_text" = "Bluetooth is not available. Please check your device settings.";
 "hardware__found_title" = "Found Device";
-"hardware__found_header" = "Found <accent>Trezor</accent>";
+"hardware__found_header" = "Found\n<accent>Trezor</accent>";
 "hardware__found_text" = "Would you like to securely pair this {model} with Bitkit?";
 "hardware__paired_title" = "Device Connected";
 "hardware__paired_header" = "Paired <accent>Trezor</accent>";
