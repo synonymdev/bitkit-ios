@@ -73,8 +73,6 @@ final class TransferViewModelHwTests: XCTestCase {
         timeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 5, compose: 5, sign: 5)
     ) -> TransferViewModel {
         TransferViewModel(
-            transferService: TransferService(lightningService: .shared, blocktankService: CoreService.shared.blocktank),
-            sheetViewModel: SheetViewModel(),
             hwFunding: funding,
             hwConnecting: connecting,
             hwFeeRateProvider: { feeRate },

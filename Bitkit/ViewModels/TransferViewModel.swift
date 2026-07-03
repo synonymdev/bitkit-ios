@@ -144,6 +144,33 @@ class TransferViewModel: ObservableObject {
         )
     }
 
+    /// Convenience initializer for hardware-wallet transfer tests. Builds the `TransferService`
+    /// inside the app module so callers don't construct cross-module service types.
+    convenience init(
+        hwFunding: HwTransferFunding?,
+        hwConnecting: HwTransferConnecting?,
+        hwFeeRateProvider: (() async -> UInt64?)? = nil,
+        hwTimeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 30, compose: 45, sign: 120),
+        coreService: CoreService = .shared,
+        lightningService: LightningService = .shared,
+        sheetViewModel: SheetViewModel = SheetViewModel()
+    ) {
+        let transferService = TransferService(
+            lightningService: lightningService,
+            blocktankService: coreService.blocktank
+        )
+        self.init(
+            coreService: coreService,
+            lightningService: lightningService,
+            transferService: transferService,
+            sheetViewModel: sheetViewModel,
+            hwFunding: hwFunding,
+            hwConnecting: hwConnecting,
+            hwFeeRateProvider: hwFeeRateProvider,
+            hwTimeouts: hwTimeouts
+        )
+    }
+
     deinit {
         Task { @MainActor [weak self] in
             Logger.debug("Stopping poll for order")
