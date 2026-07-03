@@ -8,44 +8,55 @@ struct HwPairedView: View {
     @Binding var labelText: String
     let onFinish: () -> Void
 
+    /// Coins illustration width as a fraction of the sheet — the 256-wide Visual in the 375-wide Figma frame.
+    private let coinsWidthRatio: CGFloat = 256.0 / 375.0
+
     var body: some View {
-        VStack(spacing: 0) {
-            SheetHeader(title: t("hardware__paired_title"))
-                .padding(.horizontal, 16)
-
-            VStack(alignment: .leading, spacing: 0) {
-                DisplayText(t("hardware__paired_header"), accentColor: .blueAccent)
-
-                BodyMText(t("hardware__paired_text"))
-                    .padding(.top, 8)
-
-                HwPairedBalanceView(name: deviceName, sats: balanceSats)
-                    .padding(.top, 32)
-
-                CaptionMText(t("hardware__paired_label"))
-                    .padding(.top, 32)
-                    .padding(.bottom, 8)
-
-                TextField(
-                    deviceName,
-                    text: $labelText,
-                    testIdentifier: "HardwareWalletLabelInput"
-                )
+        ZStack(alignment: .bottom) {
+            GeometryReader { geo in
+                Image("coin-stack-3")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: geo.size.width * coinsWidthRatio)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
-            .padding(.horizontal, 32)
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
 
-            Image("coin-stack-3")
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .clipped()
+            VStack(spacing: 0) {
+                SheetHeader(title: t("hardware__paired_title"))
+                    .padding(.horizontal, 16)
 
-            CustomButton(title: t("hardware__paired_finish"), shouldExpand: true) {
-                onFinish()
+                VStack(alignment: .leading, spacing: 0) {
+                    DisplayText(t("hardware__paired_header"), accentColor: .blueAccent)
+
+                    BodyMText(t("hardware__paired_text"))
+                        .padding(.top, 8)
+
+                    HwPairedBalanceView(name: deviceName, sats: balanceSats)
+                        .padding(.top, 32)
+
+                    CaptionMText(t("hardware__paired_label"))
+                        .padding(.top, 32)
+                        .padding(.bottom, 8)
+
+                    TextField(
+                        deviceName,
+                        text: $labelText,
+                        testIdentifier: "HardwareWalletLabelInput"
+                    )
+                }
+                .padding(.horizontal, 32)
+
+                Spacer(minLength: 0)
+
+                CustomButton(title: t("hardware__paired_finish"), shouldExpand: true) {
+                    onFinish()
+                }
+                .accessibilityIdentifier("HardwareWalletPairedFinish")
+                .padding(.horizontal, 32)
+                .padding(.bottom, 16)
             }
-            .accessibilityIdentifier("HardwareWalletPairedFinish")
-            .padding(.horizontal, 32)
-            .padding(.bottom, 16)
         }
         .accessibilityIdentifier("HardwareWalletPairedScreen")
     }

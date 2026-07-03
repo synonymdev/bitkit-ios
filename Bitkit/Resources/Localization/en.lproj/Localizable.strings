@@ -55,7 +55,7 @@
 "hardware__found_header" = "Found\n<accent>Trezor</accent>";
 "hardware__found_text" = "Would you like to securely pair this {model} with Bitkit?";
 "hardware__paired_title" = "Device Connected";
-"hardware__paired_header" = "Paired <accent>Trezor</accent>";
+"hardware__paired_header" = "Paired\n<accent>Trezor</accent>";
 "hardware__paired_text" = "Bitkit found funds on your device and added these to your balance.";
 "hardware__paired_label" = "Label Funds";
 "hardware__paired_finish" = "Finish";
