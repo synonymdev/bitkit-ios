@@ -1,8 +1,8 @@
 import CoreBluetooth
 import SwiftUI
 
-struct HardwareIntroSheetItem: SheetItem {
-    let id: SheetID = .hardwareIntro
+struct HardwareConnectSheetItem: SheetItem {
+    let id: SheetID = .hardwareConnect
     let size: SheetSize = .large
 }
 
@@ -10,9 +10,9 @@ struct HardwareIntroSheetItem: SheetItem {
 /// Hardware Wallets settings Add button. Hosts the four connect steps (Intro → Searching → Found →
 /// Paired) plus the inline Pair Device step shown when the device asks for its one-time pairing code.
 /// Reads the shared `TrezorManager` from the environment and hands it to the flow driver.
-struct HardwareIntroSheet: View {
+struct HardwareConnectSheet: View {
     @Environment(TrezorManager.self) private var trezorManager
-    let config: HardwareIntroSheetItem
+    let config: HardwareConnectSheetItem
 
     var body: some View {
         HardwareConnectFlow(
@@ -32,18 +32,18 @@ private struct HardwareConnectFlow: View {
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
 
-    let config: HardwareIntroSheetItem
+    let config: HardwareConnectSheetItem
 
     @State private var viewModel: HwConnectViewModel
     @State private var showBluetoothAlert = false
 
-    init(service: HwConnectServicing, config: HardwareIntroSheetItem) {
+    init(service: HwConnectServicing, config: HardwareConnectSheetItem) {
         self.config = config
         _viewModel = State(initialValue: HwConnectViewModel(service: service))
     }
 
     var body: some View {
-        Sheet(id: .hardwareIntro, data: config) {
+        Sheet(id: .hardwareConnect, data: config) {
             ZStack {
                 currentPhaseView
                     .id(viewModel.phase)

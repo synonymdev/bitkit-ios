@@ -24,7 +24,7 @@ enum SheetID: String, CaseIterable {
     case tagFilter
     case dateRangeSelector
     case widgets
-    case hardwareIntro
+    case hardwareConnect
     case hardwarePairing
     case renameHardwareWallet
 }
@@ -304,10 +304,10 @@ class SheetViewModel: ObservableObject {
         }
     }
 
-    var hardwareIntroSheetItem: HardwareIntroSheetItem? {
+    var hardwareConnectSheetItem: HardwareConnectSheetItem? {
         get {
-            guard let config = activeSheetConfiguration, config.id == .hardwareIntro else { return nil }
-            return HardwareIntroSheetItem()
+            guard let config = activeSheetConfiguration, config.id == .hardwareConnect else { return nil }
+            return HardwareConnectSheetItem()
         }
         set {
             if newValue == nil {
