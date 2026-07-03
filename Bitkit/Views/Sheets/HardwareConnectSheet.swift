@@ -6,10 +6,7 @@ struct HardwareConnectSheetItem: SheetItem {
     let size: SheetSize = .large
 }
 
-/// Entry point for the Connect Hardware flow, opened from the Home hardware suggestion card and the
-/// Hardware Wallets settings Add button. Hosts the four connect steps (Intro → Searching → Found →
-/// Paired) plus the inline Pair Device step shown when the device asks for its one-time pairing code.
-/// Reads the shared `TrezorManager` from the environment and hands it to the flow driver.
+/// Entry point for the Connect Hardware flow.
 struct HardwareConnectSheet: View {
     @Environment(TrezorManager.self) private var trezorManager
     let config: HardwareConnectSheetItem
@@ -22,9 +19,6 @@ struct HardwareConnectSheet: View {
     }
 }
 
-/// Drives the phase-based Connect Hardware wizard. Steps are swapped by phase with a push-style
-/// slide transition (see `pushTransition`); cancel always dismisses the sheet rather than stepping
-/// back through a transient Searching or a one-shot connect.
 private struct HardwareConnectFlow: View {
     @Environment(TrezorManager.self) private var trezorManager
     @Environment(HwWalletManager.self) private var hwWalletManager
