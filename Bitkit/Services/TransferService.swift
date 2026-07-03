@@ -73,6 +73,25 @@ class TransferService {
         return id
     }
 
+    /// Create the pending on-chain activity for a hardware-wallet transfer to spending. The funding
+    /// tx is broadcast externally (on-device signing), so LDK's own activity sync won't surface it;
+    /// this makes it appear immediately, marked as a transfer.
+    func createPendingToSpendingActivity(order: IBtOrder, txId: String, fee: UInt64, feeRate: UInt64) async {
+        guard let address = order.payment?.onchain?.address, !address.isEmpty else {
+            Logger.error("Order '\(order.id)' has no on-chain payment address", context: "TransferService")
+            return
+        }
+        await coreService.activity.createSentOnchainActivityFromSendResult(
+            txid: txId,
+            address: address,
+            amount: order.feeSat,
+            fee: fee,
+            feeRate: UInt32(feeRate),
+            isTransfer: true,
+            channelId: order.channel?.shortChannelId
+        )
+    }
+
     /// Mark a transfer as settled
     func markSettled(id: String) async throws {
         let settledAt = UInt64(Date().timeIntervalSince1970)
@@ -123,6 +142,12 @@ class TransferService {
                     )
                     try storage.update(updatedTransfer)
                     Logger.debug("Updated transfer \(transfer.id) with channelId: \(channelId)", context: "TransferService")
+                }
+
+                // Associate the funding tx's on-chain activity with the resolved channel so it reads
+                // as a transfer (e.g. the hardware-wallet funding tx created before the channel opened).
+                if let fundingTxId = transfer.fundingTxId {
+                    await markOnchainActivityAsTransfer(txid: fundingTxId, channelId: channelId)
                 }
 
                 // Check if channel is ready (usable)
@@ -222,6 +247,22 @@ class TransferService {
                     }
                 }
             }
+        }
+    }
+
+    /// Mark the on-chain activity for `txid` as a transfer associated with `channelId`. Preserves
+    /// activities that are already correctly tagged.
+    private func markOnchainActivityAsTransfer(txid: String, channelId: String) async {
+        guard let activity = try? await coreService.activity.getOnchainActivityByTxId(txid: txid) else { return }
+        if activity.isTransfer, activity.channelId == channelId { return }
+        var updated = activity
+        updated.isTransfer = true
+        updated.channelId = channelId
+        do {
+            try await coreService.activity.update(id: activity.id, activity: .onchain(updated))
+            Logger.debug("Marked activity \(activity.id) as transfer for channel \(channelId)", context: "TransferService")
+        } catch {
+            Logger.error("Failed to mark activity as transfer for \(txid): \(error)", context: "TransferService")
         }
     }
 

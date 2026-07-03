@@ -1102,6 +1102,8 @@ class ActivityService {
         amount: UInt64,
         fee: UInt64,
         feeRate: UInt32,
+        isTransfer: Bool = false,
+        channelId: String? = nil,
         contact: String? = nil
     ) async {
         do {
@@ -1124,10 +1126,10 @@ class ActivityService {
                     timestamp: now,
                     isBoosted: false,
                     boostTxIds: [],
-                    isTransfer: false,
+                    isTransfer: isTransfer,
                     doesExist: true,
                     confirmTimestamp: nil,
-                    channelId: nil,
+                    channelId: channelId,
                     transferTxId: nil,
                     contact: contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 },
                     createdAt: now,
@@ -1141,6 +1143,30 @@ class ActivityService {
             }
         } catch {
             Logger.error("Failed to create sent onchain activity for txid \(txid): \(error)", context: "ActivityService")
+        }
+    }
+
+    /// Update an existing hardware-wallet on-chain activity from watcher data (confirmation, fee),
+    /// preserving any transfer metadata already set on it. No-op when no matching activity exists.
+    func syncHardwareOnchainActivity(_ activity: OnchainActivity) async {
+        do {
+            try await ServiceQueue.background(.core) {
+                guard let existing = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: activity.txId) else { return }
+                let confirmTimestamp = existing.confirmTimestamp
+                    ?? (activity.confirmed ? (activity.confirmTimestamp ?? activity.timestamp) : nil)
+                var updated = existing
+                updated.confirmed = existing.confirmed || activity.confirmed
+                updated.confirmTimestamp = confirmTimestamp
+                updated.doesExist = activity.confirmed ? true : existing.doesExist
+                updated.fee = (existing.fee == 0 && activity.fee > 0) ? activity.fee : existing.fee
+                updated.updatedAt = max(existing.updatedAt ?? 0, activity.updatedAt ?? activity.timestamp)
+                guard updated != existing else { return }
+                try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                self.activitiesChangedSubject.send()
+                Logger.debug("Synced hardware onchain activity '\(activity.txId)'", context: "ActivityService")
+            }
+        } catch {
+            Logger.error("Failed to sync hardware activity '\(activity.txId)': \(error)", context: "ActivityService")
         }
     }
 

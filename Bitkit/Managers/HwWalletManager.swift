@@ -45,6 +45,7 @@ final class HwWalletManager {
     private let networkProvider: () -> TrezorCoinType
     private let persistActivities: ([Activity]) -> Void
     private let deleteActivities: (String) -> Void
+    private let syncHardwareActivity: (OnchainActivity) -> Void
 
     // MARK: - Internal state
 
@@ -89,7 +90,8 @@ final class HwWalletManager {
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
         persistActivities: (([Activity]) -> Void)? = nil,
-        deleteActivities: ((String) -> Void)? = nil
+        deleteActivities: ((String) -> Void)? = nil,
+        syncHardwareActivity: ((OnchainActivity) -> Void)? = nil
     ) {
         self.watcherService = watcherService
         networkProvider = network ?? { OnChainHwService.appDefaultCoinType }
@@ -113,6 +115,9 @@ final class HwWalletManager {
                     CoreService.shared.activity.notifyActivitiesChanged()
                 }
             }
+        }
+        self.syncHardwareActivity = syncHardwareActivity ?? { activity in
+            Task { await CoreService.shared.activity.syncHardwareOnchainActivity(activity) }
         }
     }
 
@@ -328,6 +333,13 @@ final class HwWalletManager {
         let groups = deviceGroups()
         recomputeDerivedState(groups: groups)
         persistGroupActivities(forDevice: deviceId, groups: groups)
+        // Bridge watcher confirmation data to any matching main-wallet transfer activity (e.g. the
+        // funding tx of a transfer to spending), without clobbering its transfer metadata.
+        for activity in activities {
+            if case let .onchain(onchain) = activity {
+                syncHardwareActivity(onchain)
+            }
+        }
         emitReceivedTxs(previous: previous, activities: activities)
     }
 
