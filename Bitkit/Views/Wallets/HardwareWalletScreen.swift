@@ -61,8 +61,9 @@ struct HardwareWalletScreen: View {
     }
 
     private func content(for wallet: HwWallet) -> some View {
-        let hasFunds = wallet.balanceSats > 0
         let hasActivity = !activities.isEmpty
+        // Only the native-segwit account can currently fund a transfer to spending.
+        let canTransferToSpending = wallet.fundingBalanceSats > 0
 
         return VStack(spacing: 0) {
             ScrollView(showsIndicators: false) {
@@ -74,7 +75,7 @@ struct HardwareWalletScreen: View {
                     testIdPrefix: "TotalBalance"
                 )
 
-                if hasFunds {
+                if canTransferToSpending {
                     transferButton
                         .padding(.top, 28)
                 }
@@ -125,9 +126,13 @@ struct HardwareWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            app.toast(type: .warning, title: t("hardware__transfer_not_implemented"))
+            if app.hasSeenTransferToSpendingIntro {
+                navigation.navigate(.spendingAmountHw(deviceId: deviceId))
+            } else {
+                navigation.navigate(.spendingIntroHw(deviceId: deviceId))
+            }
         }
-        .accessibilityIdentifier("HwTransferToSpending")
+        .accessibilityIdentifier("HardwareTransferToSpending")
     }
 
     private func removeButton(for wallet: HwWallet) -> some View {
