@@ -36,6 +36,7 @@ struct SheetConfiguration {
 
 class SheetViewModel: ObservableObject {
     @Published var activeSheetConfiguration: SheetConfiguration? = nil
+    @Published var hardwareConnectHandlesPairing = false
 
     func showSheet(_ id: SheetID, data: Any? = nil) {
         if isAnySheetOpen {

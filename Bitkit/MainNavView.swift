@@ -216,9 +216,7 @@ struct MainNavView: View {
             // A hardware device asked for its one-time pairing code (e.g. during reconnect);
             // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
             if needsCode {
-                // The Connect Hardware wizard is itself the hardwareConnect sheet and drives the
-                // pair-code step inline within its own flow; replacing it here would tear that down.
-                guard sheets.activeSheetConfiguration?.id != .hardwareConnect else { return }
+                guard !sheets.hardwareConnectHandlesPairing else { return }
                 sheets.showSheet(.hardwarePairing)
             } else {
                 sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")

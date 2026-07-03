@@ -48,6 +48,9 @@ private struct HardwareConnectFlow: View {
         .onChange(of: trezorManager.showPairingCode) { _, needsCode in
             if needsCode { viewModel.onPairingCodeRequested() }
         }
+        .onChange(of: viewModel.isConnecting) { _, connecting in
+            sheets.hardwareConnectHandlesPairing = connecting
+        }
         .onChange(of: connectedWalletKey) { _, _ in
             viewModel.onWalletsUpdated(hwWalletManager.wallets)
         }
@@ -58,7 +61,10 @@ private struct HardwareConnectFlow: View {
                 app.requestedHomePage = 0
             }
         }
-        .onDisappear { viewModel.reset() }
+        .onDisappear {
+            viewModel.reset()
+            sheets.hardwareConnectHandlesPairing = false
+        }
         .alert(bluetoothAlertTitle, isPresented: $showBluetoothAlert) {
             Button(t("common__cancel"), role: .cancel) {}
             Button(t("hardware__bluetooth_open_settings")) { openSettings() }
