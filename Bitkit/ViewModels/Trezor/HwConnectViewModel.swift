@@ -13,13 +13,9 @@ struct HwConnectResult: Equatable {
 /// without the BLE stack.
 @MainActor
 protocol HwConnectServicing {
-    /// One scan pass; returns the nearby devices that are not already paired (known).
     func scanForUnpairedDevices() async throws -> [TrezorDeviceInfo]
-    /// Connects and pairs a discovered device, persisting it as a watch-only known device.
     func connect(to device: TrezorDeviceInfo) async throws -> HwConnectResult
-    /// Persists the Bitkit-side funds label for a paired device (applied across its wallet identity).
     func setDeviceLabel(id: String, label: String)
-    /// Cancels a pending one-time pairing-code request.
     func cancelPairingCode()
 }
 
