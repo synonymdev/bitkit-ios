@@ -28,6 +28,7 @@ struct HardwareIntroSheet: View {
 private struct HardwareConnectFlow: View {
     @Environment(TrezorManager.self) private var trezorManager
     @Environment(HwWalletManager.self) private var hwWalletManager
+    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
 
@@ -60,6 +61,7 @@ private struct HardwareConnectFlow: View {
             viewModel.onFinished = {
                 sheets.hideSheet()
                 navigation.reset()
+                app.requestedHomePage = 0
             }
         }
         .onDisappear { viewModel.reset() }
