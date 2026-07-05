@@ -65,6 +65,11 @@ extension PrivatePaykitService {
                 return .opened(paymentRequest: PublicPaykitService.paymentRequest(from: payableEndpoints))
             }
 
+            if resolution.privateState == .recoveryPending {
+                schedulePrivatePaymentRecovery(for: publicKey)
+                return .noEndpoint
+            }
+
             let publicEndpoints = resolvedEndpoints(from: resolution, source: .publicPaymentEndpoint)
             let publicPayableEndpoints = await PublicPaykitService.payableEndpoints(from: publicEndpoints)
             if !publicPayableEndpoints.isEmpty {

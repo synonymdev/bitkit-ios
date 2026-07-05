@@ -927,9 +927,7 @@ class PubkyProfileManager: ObservableObject {
             throw PubkyServiceError.authFailed("Mnemonic not found")
         }
 
-        let passphrase = try loadKeychainString(.bip39Passphrase(index: 0))
-        let seed = try PubkyService.mnemonicToSeed(mnemonic: mnemonic, passphrase: passphrase)
-        return try PubkyService.derivePubkySecretKey(seed: seed)
+        return try PubkyService.derivePubkySecretKey(mnemonic: mnemonic)
     }
 
     nonisolated static func publicKeyFromSecretKey(_ secretKeyHex: String) throws -> String {

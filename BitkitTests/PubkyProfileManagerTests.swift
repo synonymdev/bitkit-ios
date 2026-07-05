@@ -497,6 +497,9 @@ final class PubkyProfileManagerTests: XCTestCase {
         try await PubkyProfileManager.restoreSessionBackupState(
             PubkySessionBackupV1(kind: .localSeed, sessionSecret: nil),
             loadKeychainString: { key in
+                if case .bip39Passphrase = key {
+                    XCTFail("Pubky key derivation should not read the wallet passphrase")
+                }
                 store[key.storageKey]
             },
             persistKeychainString: { key, value in
@@ -528,6 +531,9 @@ final class PubkyProfileManagerTests: XCTestCase {
             try await PubkyProfileManager.restoreSessionBackupState(
                 PubkySessionBackupV1(kind: .localSeed, sessionSecret: nil),
                 loadKeychainString: { key in
+                    if case .bip39Passphrase = key {
+                        XCTFail("Pubky key derivation should not read the wallet passphrase")
+                    }
                     store[key.storageKey]
                 },
                 persistKeychainString: { key, value in

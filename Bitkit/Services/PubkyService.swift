@@ -1,4 +1,3 @@
-import BitkitCore
 import Combine
 import Foundation
 import Paykit
@@ -84,14 +83,10 @@ enum PubkyService {
 
     // MARK: - Key Derivation
 
-    /// Convert a BIP39 mnemonic to a seed.
-    static func mnemonicToSeed(mnemonic: String, passphrase: String? = nil) throws -> Data {
-        try BitkitCore.mnemonicToSeed(mnemonicPhrase: mnemonic, passphrase: passphrase)
-    }
-
-    /// Derive an Ed25519 secret key from a BIP39 seed. Returns hex-encoded 32-byte key.
-    static func derivePubkySecretKey(seed: Data) throws -> String {
-        try PaykitSdkService.secretKeyHex(from: Paykit.derivePubkySecretKey(seed: seed, runtimeLabel: PaykitSdkService.pubkyDerivationRuntimeLabel))
+    /// Derive an Ed25519 secret key from a BIP39 mnemonic. Returns hex-encoded 32-byte key.
+    static func derivePubkySecretKey(mnemonic: String) throws -> String {
+        let secretKey = try Paykit.pubkySecretKeyFromBip39Mnemonic(mnemonicPhrase: mnemonic)
+        return PaykitSdkService.secretKeyHex(from: secretKey)
     }
 
     /// Derive the z32-encoded public key from a hex-encoded secret key.
@@ -179,7 +174,6 @@ enum PubkyService {
 
 actor PaykitSdkService {
     static let shared = PaykitSdkService()
-    nonisolated static let pubkyDerivationRuntimeLabel = "bitkit"
     private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
 
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
@@ -261,7 +255,7 @@ actor PaykitSdkService {
 
     func startAuth() async throws -> String {
         try await operationLock.withLock {
-            let request = try bootstrap().startSignInAuth(capabilities: Self.requiredCapabilities())
+            let request = try await bootstrap().startSignInAuth(capabilities: Self.requiredCapabilities())
             let requestID = UUID()
             activeAuthRequest = request
             activeAuthRequestID = requestID
@@ -415,6 +409,18 @@ actor PaykitSdkService {
     func processPendingPrivateMessages() async throws {
         try await withStateRevisionTracking { sdk in
             _ = try await sdk.processPendingPrivateMessages()
+        }
+    }
+
+    func linkedPeers() async throws -> [LinkedPeerRecord] {
+        try await operationLock.withLock {
+            try await handle().linkedPeers()
+        }
+    }
+
+    func pendingOutboundPrivateCounterparties() async throws -> [String] {
+        try await operationLock.withLock {
+            try await handle().pendingOutboundPrivateCounterparties()
         }
     }
 

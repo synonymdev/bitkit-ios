@@ -324,27 +324,86 @@ extension PrivatePaykitService {
         pendingMessageDrainRetryTask?.cancel()
 
         pendingMessageDrainRetryTask = Task { [reason, retryGeneration] in
-            for delay in Self.privateMessageDrainRetryDelays {
+            var retryIndex = 0
+            while !Task.isCancelled {
+                let delay = Self.privateMessageDrainRetryDelays[min(retryIndex, Self.privateMessageDrainRetryDelays.count - 1)]
                 guard !Task.isCancelled else { return }
                 try? await Task.sleep(nanoseconds: delay)
                 guard !Task.isCancelled else { return }
                 await PrivatePaykitService.shared.drainPendingPrivateMessageRetryKeys(reason: "\(reason) retry")
+                let hasPending = await PrivatePaykitService.shared.hasPendingMessageDrainRetryKeys(generation: retryGeneration)
+                guard hasPending else { break }
+                retryIndex += 1
             }
             guard !Task.isCancelled else { return }
             await PrivatePaykitService.shared.finishPendingPrivateMessageDrainRetries(generation: retryGeneration)
         }
     }
 
+    func schedulePrivatePaymentRecovery(for publicKey: String) {
+        schedulePendingPrivateMessageDrainRetries(reason: "payment recovery", publicKeys: [publicKey])
+    }
+
     private func drainPendingPrivateMessageRetryKeys(reason: String) async {
         let retryKeys = Array(pendingMessageDrainRetryKeys)
         guard !retryKeys.isEmpty else { return }
         await drainPendingPrivateMessages(reason: reason, advancingLinksFor: retryKeys)
+        await updatePendingMessageDrainRetryKeys(retryKeys)
+    }
+
+    private func hasPendingMessageDrainRetryKeys(generation: Int) -> Bool {
+        generation == pendingMessageDrainRetryGeneration && !pendingMessageDrainRetryKeys.isEmpty
     }
 
     private func finishPendingPrivateMessageDrainRetries(generation: Int) {
         guard generation == pendingMessageDrainRetryGeneration else { return }
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()
+    }
+
+    private func updatePendingMessageDrainRetryKeys(_ publicKeys: [String]) async {
+        let remainingKeys = await pendingPrivateMessageDrainKeys(publicKeys)
+        pendingMessageDrainRetryKeys.subtract(publicKeys)
+        pendingMessageDrainRetryKeys.formUnion(remainingKeys)
+    }
+
+    private func pendingPrivateMessageDrainKeys(_ publicKeys: [String]) async -> Set<String> {
+        let retryKeys = Set(normalizedSavedContactKeys(publicKeys))
+        guard !retryKeys.isEmpty else { return [] }
+
+        let linkedPeers: [String: LinkedPeerState]
+        do {
+            linkedPeers = Dictionary(
+                uniqueKeysWithValues: try await PaykitSdkService.shared.linkedPeers().compactMap { peer in
+                    guard let publicKey = PubkyPublicKeyFormat.normalized(peer.counterparty) else { return nil }
+                    return (publicKey, peer.state)
+                }
+            )
+        } catch {
+            Logger.warn("Failed to inspect private Paykit link state: \(error)", context: "PrivatePaykit")
+            return retryKeys
+        }
+
+        let pendingOutbound: Set<String>
+        do {
+            pendingOutbound = Set(normalizedSavedContactKeys(try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties()))
+        } catch {
+            Logger.warn("Failed to inspect pending private Paykit messages: \(error)", context: "PrivatePaykit")
+            return retryKeys
+        }
+
+        return Set(retryKeys.filter { publicKey in
+            switch linkedPeers[publicKey] {
+            case .linked:
+                pendingOutbound.contains(publicKey)
+            case .blocked, .unknown:
+                false
+            case nil:
+                pendingOutbound.contains(publicKey)
+            default:
+                true
+            }
+        })
     }
 
     private func applyPrivatePaymentListDeliveryReport(_ report: PrivatePaymentListDeliveryReport, reason: String) -> Error? {
