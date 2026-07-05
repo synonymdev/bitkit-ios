@@ -78,9 +78,9 @@ class TransferViewModel: ObservableObject {
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
     private let onBalanceRefresh: (() async -> Void)?
-    private let hwFunding: HwTransferFunding?
-    private let hwConnecting: HwTransferConnecting?
-    private let hwFeeRateProvider: (() async -> UInt64?)?
+    /// The device-signing orchestration for a hardware-wallet transfer; nil when the HW capabilities
+    /// aren't injected (previews/plain init).
+    private let hwSigner: HwFundingSigner?
 
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
@@ -89,16 +89,6 @@ class TransferViewModel: ObservableObject {
     private let retryInterval: TimeInterval = 60 // 1 min
     private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
     private var coopCloseRetryTask: Task<Void, Never>?
-
-    /// Hardware funding fee tuning.
-    /// Conservative vbyte reserve for multi-input hardware funding before the exact compose runs.
-    private let hwFundingTxVBytes: UInt64 = 1200
-    /// Minimum fallback fee rate when fee estimates are temporarily unavailable.
-    private let hwFundingFallbackSatsPerVByte: UInt64 = 1
-    /// Fallback fee percentage used when fee estimates are temporarily unavailable.
-    private let hwFundingFallbackFeePercent = 0.1
-    /// Per-phase timeouts (seconds). Injectable so tests can drive the timeout paths.
-    private let hwTimeouts: (reconnect: Double, compose: Double, sign: Double)
 
     init(
         coreService: CoreService = .shared,
@@ -117,11 +107,17 @@ class TransferViewModel: ObservableObject {
         self.currencyService = currencyService
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
-        self.hwFunding = hwFunding
-        self.hwConnecting = hwConnecting
-        self.hwFeeRateProvider = hwFeeRateProvider
-        self.hwTimeouts = hwTimeouts
         self.onBalanceRefresh = onBalanceRefresh
+        if let hwFunding, let hwConnecting {
+            hwSigner = HwFundingSigner(
+                funding: hwFunding,
+                connecting: hwConnecting,
+                feeRateProvider: hwFeeRateProvider ?? { nil },
+                timeouts: hwTimeouts
+            )
+        } else {
+            hwSigner = nil
+        }
     }
 
     /// Convenience initializer for testing and previews
@@ -448,40 +444,37 @@ class TransferViewModel: ObservableObject {
 
     // MARK: - Hardware Wallet Transfer
 
-    /// Compute the available/MAX/quarter limits for a hardware-wallet transfer, sourcing the
-    /// spendable balance from the device's native-segwit account minus an on-chain fee reserve, then
-    /// clamping to the LSP receiving cap via the shared spending-limit calculation.
+    /// Compute the available/MAX/quarter limits for a hardware-wallet transfer: the signer resolves
+    /// the device's native-segwit balance minus an on-chain fee reserve, then the shared
+    /// spending-limit calculation clamps it to the LSP receiving cap.
     func updateHwLimits(
         deviceId: String,
         blocktankInfo: IBtInfo?,
         estimateOrderFee: @escaping (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws
             -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
     ) async {
-        guard let hwFunding else { return }
+        guard let hwSigner else { return }
         hwSpending.isLoading = true
 
-        let account: HwFundingAccount
+        let availability: HwFundingSigner.Availability
         do {
-            account = try hwFunding.getFundingAccount(deviceId: deviceId, addressType: hwFundingDefaultAddressType)
+            availability = try await hwSigner.availability(deviceId: deviceId)
         } catch {
             hwSpending = HwSpendingState(isLoading: false)
             hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
             return
         }
 
-        let reserve = await hwFundingFeeReserve(balanceSats: account.balanceSats)
-        let available = account.balanceSats > reserve ? account.balanceSats - reserve : 0
-
         do {
             let (avail, maxAmount) = try await calculateSpendingLimits(
-                onchainAvailable: available,
+                onchainAvailable: availability.available,
                 lspMaxClientBalance: blocktankInfo?.options.maxClientBalanceSat,
                 transferValues: { self.calculateTransferValues(clientBalanceSat: $0, blocktankInfo: blocktankInfo) },
                 estimateOrderFee: estimateOrderFee
             )
             hwSpending.balanceAfterFee = avail
             hwSpending.maxAllowedToSend = maxAmount
-            hwSpending.quarterAmount = min(account.balanceSats / 4, maxAmount)
+            hwSpending.quarterAmount = min(availability.balanceSats / 4, maxAmount)
         } catch {
             hwSpending.balanceAfterFee = 0
             hwSpending.maxAllowedToSend = 0
@@ -491,10 +484,15 @@ class TransferViewModel: ObservableObject {
         hwSpending.isLoading = false
     }
 
-    /// Pay for the order by composing and signing the funding send on the Trezor, then watch it.
+    /// Pay for the order by composing and signing the funding send on the Trezor (via the signer),
+    /// then record and watch it. Coordination only — the device orchestration lives in `HwFundingSigner`.
     func onTransferToSpendingHwConfirm(order: IBtOrder, deviceId: String) {
         guard !hwSpending.isSigning else { return }
-        guard let hwFunding, let hwConnecting else {
+        guard let hwSigner else {
+            hwTransferError = .generic(t("common__error"))
+            return
+        }
+        guard let address = order.payment?.onchain?.address, !address.isEmpty else {
             hwTransferError = .generic(t("common__error"))
             return
         }
@@ -509,19 +507,8 @@ class TransferViewModel: ObservableObject {
                 self.hwSignTask = nil
             }
 
-            guard let address = order.payment?.onchain?.address, !address.isEmpty else {
-                hwTransferError = .generic(t("common__error"))
-                return
-            }
-
             do {
-                let result = try await signTransferToSpendingWithHardware(
-                    order: order,
-                    deviceId: deviceId,
-                    address: address,
-                    hwFunding: hwFunding,
-                    hwConnecting: hwConnecting
-                )
+                let result = try await hwSigner.sign(order: order, deviceId: deviceId, address: address)
                 await fundPaidOrder(
                     order: order,
                     txId: result.txId,
@@ -540,86 +527,6 @@ class TransferViewModel: ObservableObject {
         }
     }
 
-    private func signTransferToSpendingWithHardware(
-        order: IBtOrder,
-        deviceId: String,
-        address: String,
-        hwFunding: HwTransferFunding,
-        hwConnecting: HwTransferConnecting
-    ) async throws -> HwFundingBroadcastResult {
-        try await ensureHardwareConnected(deviceId: deviceId, hwConnecting: hwConnecting)
-        let satsPerVByte = await hwFundingSatsPerVByte()
-        let funding = try await composeHardwareFundingTransaction(
-            deviceId: deviceId,
-            address: address,
-            sats: order.feeSat,
-            satsPerVByte: satsPerVByte,
-            hwFunding: hwFunding
-        )
-        return try await signAndBroadcastHardwareFunding(
-            deviceId: deviceId,
-            funding: funding,
-            hwFunding: hwFunding,
-            hwConnecting: hwConnecting
-        )
-    }
-
-    private func ensureHardwareConnected(deviceId: String, hwConnecting: HwTransferConnecting) async throws {
-        do {
-            try await withHwTimeout(hwTimeouts.reconnect) {
-                try await hwConnecting.ensureConnected(deviceId: deviceId)
-            }
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            throw HwTransferError.reconnect
-        }
-    }
-
-    private func composeHardwareFundingTransaction(
-        deviceId: String,
-        address: String,
-        sats: UInt64,
-        satsPerVByte: UInt64,
-        hwFunding: HwTransferFunding
-    ) async throws -> HwFundingTransaction {
-        do {
-            return try await withHwTimeout(hwTimeouts.compose) {
-                try await hwFunding.composeFundingTransaction(
-                    deviceId: deviceId,
-                    address: address,
-                    sats: sats,
-                    satsPerVByte: satsPerVByte,
-                    addressType: hwFundingDefaultAddressType
-                )
-            }
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            let message = (error as? AppError)?.debugMessage ?? (error as? AppError)?.message ?? error.localizedDescription
-            throw HwTransferError.funding(message)
-        }
-    }
-
-    private func signAndBroadcastHardwareFunding(
-        deviceId: String,
-        funding: HwFundingTransaction,
-        hwFunding: HwTransferFunding,
-        hwConnecting: HwTransferConnecting
-    ) async throws -> HwFundingBroadcastResult {
-        do {
-            return try await withHwTimeout(hwTimeouts.sign) {
-                try await hwFunding.signAndBroadcastFunding(deviceId: deviceId, funding: funding)
-            }
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch is HwTimeout {
-            await hwConnecting.disconnectStaleSession(deviceId: deviceId)
-            throw HwTransferError.signingTimeout
-        }
-        // Any other (real sign/broadcast) error propagates to the generic toast.
-    }
-
     private func handleHardwareTransferFailure(_ error: HwTransferError, deviceId: String) {
         switch error {
         case .reconnect:
@@ -632,58 +539,6 @@ class TransferViewModel: ObservableObject {
             break
         }
         hwTransferError = error
-    }
-
-    /// On-chain fee reserve to hold back from the device balance before the exact compose runs.
-    private func hwFundingFeeReserve(balanceSats: UInt64) async -> UInt64 {
-        await Self.hwFundingFeeReserve(
-            balanceSats: balanceSats,
-            satsPerVByte: hwFeeRateProvider?(),
-            txVBytes: hwFundingTxVBytes,
-            fallbackSatsPerVByte: hwFundingFallbackSatsPerVByte,
-            fallbackFeePercent: hwFundingFallbackFeePercent
-        )
-    }
-
-    /// Pure fee-reserve computation. With a known fee rate: `rate × vbytes`. Without one (estimates
-    /// unavailable): `max(minReserve, balance × fallbackPercent)`.
-    static func hwFundingFeeReserve(
-        balanceSats: UInt64,
-        satsPerVByte: UInt64?,
-        txVBytes: UInt64 = 1200,
-        fallbackSatsPerVByte: UInt64 = 1,
-        fallbackFeePercent: Double = 0.1
-    ) -> UInt64 {
-        guard let satsPerVByte else {
-            let minReserve = fallbackSatsPerVByte * txVBytes
-            let fallback = UInt64(Double(balanceSats) * fallbackFeePercent)
-            return max(minReserve, fallback)
-        }
-        return satsPerVByte * txVBytes
-    }
-
-    private func hwFundingSatsPerVByte() async -> UInt64 {
-        await hwFeeRateProvider?() ?? hwFundingFallbackSatsPerVByte
-    }
-
-    private struct HwTimeout: Error {}
-
-    /// Race an async operation against a timeout. Cancellation (user dismiss) propagates as
-    /// `CancellationError`; the deadline throws `HwTimeout`.
-    private func withHwTimeout<T: Sendable>(
-        _ seconds: Double,
-        _ operation: @escaping @Sendable () async throws -> T
-    ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw HwTimeout()
-            }
-            defer { group.cancelAll() }
-            guard let result = try await group.next() else { throw HwTimeout() }
-            return result
-        }
     }
 
     // MARK: - Balance Calculation

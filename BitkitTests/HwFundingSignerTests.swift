@@ -1,0 +1,138 @@
+@testable import Bitkit
+import BitkitCore
+import XCTest
+
+/// Device-signing orchestration coverage for `HwFundingSigner`, adapting the sign/compose/reconnect
+/// cases from bitkit-android's `TransferViewModelTest`. Exercised in isolation from
+/// `TransferViewModel` via the `HwTransferFunding` / `HwTransferConnecting` mocks.
+@MainActor
+final class HwFundingSignerTests: XCTestCase {
+    private func makeSigner(
+        funding: MockHwFunding,
+        connecting: MockHwConnecting,
+        feeRate: UInt64? = 2,
+        timeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 5, compose: 5, sign: 5)
+    ) -> HwFundingSigner {
+        HwFundingSigner(funding: funding, connecting: connecting, feeRateProvider: { feeRate }, timeouts: timeouts)
+    }
+
+    // MARK: - Fee reserve
+
+    func testFeeReserveUsesRateWhenAvailable() {
+        XCTAssertEqual(HwFundingSigner.feeReserve(balanceSats: 1_000_000, satsPerVByte: 5), 5 * 1200)
+    }
+
+    func testFeeReserveFallbackUsesPercentWhenLarger() {
+        // 10% of 1,000,000 = 100,000 dominates the 1,200 sat floor.
+        XCTAssertEqual(HwFundingSigner.feeReserve(balanceSats: 1_000_000, satsPerVByte: nil), 100_000)
+    }
+
+    func testFeeReserveFallbackUsesFloorWhenPercentSmaller() {
+        // 10% of 5,000 = 500, below the 1 * 1200 floor.
+        XCTAssertEqual(HwFundingSigner.feeReserve(balanceSats: 5000, satsPerVByte: nil), 1200)
+    }
+
+    // MARK: - Availability
+
+    func testAvailabilityReturnsBalanceMinusReserve() async throws {
+        let funding = MockHwFunding()
+        funding.account = HwFundingAccount(xpub: "zpubNS", addressType: .nativeSegwit, balanceSats: 1_000_000)
+        let signer = makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: 2)
+
+        let availability = try await signer.availability(deviceId: "dev1")
+
+        XCTAssertEqual(availability.balanceSats, 1_000_000)
+        XCTAssertEqual(availability.available, 1_000_000 - 2 * 1200)
+    }
+
+    // MARK: - Sign orchestration
+
+    func testHappyPathComposesFinalOrderFeeAndReturnsBroadcast() async throws {
+        let funding = MockHwFunding()
+        let signer = makeSigner(funding: funding, connecting: MockHwConnecting())
+        let order = IBtOrder.mock() // feeSat = 1000, address = "bc1q..."
+
+        let result = try await signer.sign(order: order, deviceId: "dev1", address: XCTUnwrap(order.payment?.onchain?.address))
+
+        XCTAssertEqual(result.txId, "txid")
+        XCTAssertEqual(funding.composeCalls.count, 1)
+        XCTAssertEqual(funding.composeCalls.first?.sats, order.feeSat)
+        XCTAssertEqual(funding.composeCalls.first?.address, order.payment?.onchain?.address)
+        XCTAssertEqual(funding.composeCalls.first?.satsPerVByte, 2)
+    }
+
+    func testReconnectFailureThrowsReconnectAndSkipsCompose() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = MockHwFunding.TestError()
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        await assertThrowsAsync {
+            _ = try await signer.sign(order: .mock(), deviceId: "dev1", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .reconnect)
+        }
+        XCTAssertTrue(funding.composeCalls.isEmpty)
+        XCTAssertEqual(funding.signCalls, 0)
+    }
+
+    func testComposeFailureThrowsFundingError() async {
+        let funding = MockHwFunding()
+        funding.composeError = MockHwFunding.TestError()
+        let signer = makeSigner(funding: funding, connecting: MockHwConnecting())
+
+        await assertThrowsAsync {
+            _ = try await signer.sign(order: .mock(), deviceId: "dev1", address: "bc1q...")
+        } _: { error in
+            if case .funding = error as? HwTransferError {} else { XCTFail("expected .funding, got \(error)") }
+        }
+        XCTAssertEqual(funding.signCalls, 0)
+    }
+
+    func testSigningTimeoutThrowsTimeoutAndClearsStaleSession() async {
+        let funding = MockHwFunding()
+        funding.signDelay = 0.4
+        let connecting = MockHwConnecting()
+        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 5, sign: 0.05))
+
+        await assertThrowsAsync {
+            _ = try await signer.sign(order: .mock(), deviceId: "dev1", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .signingTimeout)
+        }
+        XCTAssertEqual(connecting.staleDisconnects, ["dev1"])
+        XCTAssertEqual(funding.signCalls, 1)
+    }
+
+    func testRawSignErrorPropagatesUnwrapped() async {
+        let funding = MockHwFunding()
+        funding.signError = MockHwFunding.TestError()
+        let connecting = MockHwConnecting()
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        await assertThrowsAsync {
+            _ = try await signer.sign(order: .mock(), deviceId: "dev1", address: "bc1q...")
+        } _: { error in
+            XCTAssertTrue(error is MockHwFunding.TestError, "a real sign/broadcast error must propagate unwrapped")
+            XCTAssertNil(error as? HwTransferError)
+        }
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a non-timeout error must not clear the session")
+    }
+}
+
+/// Async variant of `XCTAssertThrowsError` using a plain (non-autoclosure) operation closure, so the
+/// call site reads `await assertThrowsAsync { try await … }` without effect-hoisting ambiguity.
+func assertThrowsAsync(
+    _ message: String = "",
+    file: StaticString = #filePath,
+    line: UInt = #line,
+    _ operation: () async throws -> Void,
+    _ errorHandler: (Error) -> Void = { _ in }
+) async {
+    do {
+        try await operation()
+        XCTFail(message.isEmpty ? "Expected error but none thrown" : message, file: file, line: line)
+    } catch {
+        errorHandler(error)
+    }
+}
