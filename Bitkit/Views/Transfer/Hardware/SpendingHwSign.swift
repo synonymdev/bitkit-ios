@@ -22,11 +22,40 @@ struct SpendingHwSign: View {
         }
     }
 
+    /// Figma "Visual" width as a fraction of the 375-wide frame (256/375).
+    private let illustrationWidthRatio = 256.0 / 375.0
+    /// Figma top of the Trezor "Visual" within the content area below the nav bar:
+    /// (visualTop - navHeight) / (frameHeight - navHeight - homeIndicator).
+    private let illustrationTopRatio = (488.0 - 92.0) / (812.0 - 92.0 - 34.0)
+
     private func content(order: IBtOrder) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("lightning__transfer__nav_title"))
                 .padding(.bottom, 16)
 
+            // The Trezor is a background visual behind the content (including the bottom button), so
+            // it renders at its natural aspect and doesn't get squeezed by the vertical layout.
+            ZStack(alignment: .top) {
+                trezorIllustration
+
+                belowNav(order: order)
+            }
+        }
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
+        .onChange(of: transfer.hwSignedEvent) {
+            navigation.navigate(.spendingHwSigned)
+        }
+        .onChange(of: transfer.hwTransferError) { _, error in
+            guard let error else { return }
+            showToast(for: error)
+            transfer.hwTransferError = nil
+        }
+    }
+
+    private func belowNav(order: IBtOrder) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             DisplayText(t("lightning__transfer_hw__sign_title"), accentColor: .purpleAccent)
 
             SpendingHwFeeGrid(order: order)
@@ -53,8 +82,6 @@ struct SpendingHwSign: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 24)
 
-            trezorIllustration
-
             Spacer()
 
             CustomButton(
@@ -66,27 +93,23 @@ struct SpendingHwSign: View {
             }
             .accessibilityIdentifier("HardwareTransferOpenTrezorConnect")
         }
-        .navigationBarHidden(true)
-        .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
-        .onChange(of: transfer.hwSignedEvent) {
-            navigation.navigate(.spendingHwSigned)
-        }
-        .onChange(of: transfer.hwTransferError) { _, error in
-            guard let error else { return }
-            showToast(for: error)
-            transfer.hwTransferError = nil
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var trezorIllustration: some View {
-        Image("trezor-device")
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .frame(height: 220)
-            .padding(.top, 24)
-            .accessibilityHidden(true)
+        GeometryReader { geo in
+            let side = geo.size.width * illustrationWidthRatio
+            Image("trezor-card")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: side, height: side)
+                .position(x: geo.size.width / 2, y: geo.size.height * illustrationTopRatio + side / 2)
+        }
+        // Span the full screen width (negate the screen's horizontal content padding) so the visual
+        // matches the Figma sizing, which is measured against the full frame.
+        .padding(.horizontal, -16)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private func showToast(for error: HwTransferError) {
