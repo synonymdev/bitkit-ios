@@ -45,8 +45,8 @@ private struct HardwareConnectFlow: View {
             }
             .animation(.easeInOut(duration: 0.3), value: viewModel.phase)
         }
-        .onChange(of: trezorManager.showPairingCode) { _, needsCode in
-            if needsCode { viewModel.onPairingCodeRequested() }
+        .onChange(of: trezorManager.pairingCodeRequestID) { _, _ in
+            if trezorManager.showPairingCode { viewModel.onPairingCodeRequested() }
         }
         .onChange(of: viewModel.isConnecting) { _, connecting in
             sheets.hardwareConnectHandlesPairing = connecting
@@ -100,6 +100,7 @@ private struct HardwareConnectFlow: View {
             )
         case .pairCode:
             HwPairCodeView(onSubmit: { trezorManager.submitPairingCode($0) })
+                .id(trezorManager.pairingCodeRequestID)
         }
     }
 
