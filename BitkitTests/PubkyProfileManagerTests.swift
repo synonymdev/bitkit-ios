@@ -301,7 +301,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         )
 
         let snapshot = try PubkyProfileManager.snapshotSessionBackupState { key in
-            store[key.storageKey]
+            return store[key.storageKey]
         }
 
         XCTAssertEqual(snapshot, PubkySessionBackupV1(kind: .localSeed, sessionSecret: nil))
@@ -311,7 +311,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         let store = makeKeychainStore(paykitSession: "external-session")
 
         let snapshot = try PubkyProfileManager.snapshotSessionBackupState { key in
-            store[key.storageKey]
+            return store[key.storageKey]
         }
 
         XCTAssertEqual(snapshot, PubkySessionBackupV1(kind: .externalSession, sessionSecret: "external-session"))
@@ -428,7 +428,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         try await PubkyProfileManager.restoreSessionBackupState(
             PubkySessionBackupV1(kind: .externalSession, sessionSecret: "external-session"),
             loadKeychainString: { key in
-                store[key.storageKey]
+                return store[key.storageKey]
             },
             persistKeychainString: { key, value in
                 store[key.storageKey] = value
@@ -465,7 +465,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         try await PubkyProfileManager.restoreSessionBackupState(
             nil,
             loadKeychainString: { key in
-                store[key.storageKey]
+                return store[key.storageKey]
             },
             persistKeychainString: { key, value in
                 store[key.storageKey] = value
@@ -500,7 +500,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                 if case .bip39Passphrase = key {
                     XCTFail("Pubky key derivation should not read the wallet passphrase")
                 }
-                store[key.storageKey]
+                return store[key.storageKey]
             },
             persistKeychainString: { key, value in
                 store[key.storageKey] = value
@@ -534,7 +534,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                     if case .bip39Passphrase = key {
                         XCTFail("Pubky key derivation should not read the wallet passphrase")
                     }
-                    store[key.storageKey]
+                    return store[key.storageKey]
                 },
                 persistKeychainString: { key, value in
                     store[key.storageKey] = value
