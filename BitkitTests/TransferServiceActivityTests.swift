@@ -45,4 +45,42 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertTrue(onchain.isTransfer, "A hardware funding activity must be marked as a transfer")
         XCTAssertEqual(onchain.value, order.feeSat)
     }
+
+    /// The atomic mark-as-transfer must only touch `isTransfer`/`channelId`, preserving confirmation
+    /// and fee that a concurrent watcher sync may have written.
+    func testMarkOnchainActivityAsTransferPreservesConfirmationAndFee() async throws {
+        let seeded = OnchainActivity(
+            walletId: WalletScope.default,
+            id: "hwtx2",
+            txType: .sent,
+            txId: "hwtx2",
+            value: 1000,
+            fee: 500,
+            feeRate: 2,
+            address: "bc1q...",
+            confirmed: true,
+            timestamp: 1,
+            isBoosted: false,
+            boostTxIds: [],
+            isTransfer: false,
+            doesExist: true,
+            confirmTimestamp: 123,
+            channelId: nil,
+            transferTxId: nil,
+            contact: nil,
+            createdAt: 1,
+            updatedAt: 1,
+            seenAt: 1
+        )
+        try await activity.insert(.onchain(seeded))
+
+        await activity.markOnchainActivityAsTransfer(txId: "hwtx2", channelId: "boltchan")
+
+        let stored = try await activity.getOnchainActivityByTxId(txid: "hwtx2")
+        let onchain = try XCTUnwrap(stored)
+        XCTAssertTrue(onchain.isTransfer)
+        XCTAssertEqual(onchain.channelId, "boltchan")
+        XCTAssertTrue(onchain.confirmed, "confirmation must be preserved")
+        XCTAssertEqual(onchain.fee, 500, "fee must be preserved")
+    }
 }

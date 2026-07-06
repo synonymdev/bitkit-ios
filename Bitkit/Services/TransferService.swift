@@ -146,7 +146,7 @@ class TransferService {
                 // Associate the funding tx's on-chain activity with the resolved channel so it reads
                 // as a transfer (e.g. the hardware-wallet funding tx created before the channel opened).
                 if let fundingTxId = transfer.fundingTxId {
-                    await markOnchainActivityAsTransfer(txid: fundingTxId, channelId: channelId)
+                    await coreService.activity.markOnchainActivityAsTransfer(txId: fundingTxId, channelId: channelId)
                 }
 
                 // Check if channel is ready (usable)
@@ -246,22 +246,6 @@ class TransferService {
                     }
                 }
             }
-        }
-    }
-
-    /// Mark the on-chain activity for `txid` as a transfer associated with `channelId`. Preserves
-    /// activities that are already correctly tagged.
-    private func markOnchainActivityAsTransfer(txid: String, channelId: String) async {
-        guard let activity = try? await coreService.activity.getOnchainActivityByTxId(txid: txid) else { return }
-        if activity.isTransfer, activity.channelId == channelId { return }
-        var updated = activity
-        updated.isTransfer = true
-        updated.channelId = channelId
-        do {
-            try await coreService.activity.update(id: activity.id, activity: .onchain(updated))
-            Logger.debug("Marked activity \(activity.id) as transfer for channel \(channelId)", context: "TransferService")
-        } catch {
-            Logger.error("Failed to mark activity as transfer for \(txid): \(error)", context: "TransferService")
         }
     }
 

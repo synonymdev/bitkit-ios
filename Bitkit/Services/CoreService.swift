@@ -1169,6 +1169,26 @@ class ActivityService {
         }
     }
 
+    /// Atomically mark the on-chain activity for `txId` as a transfer associated with `channelId`,
+    /// in a single core-queue transaction so a concurrent watcher sync can't clobber it. No-op when
+    /// no matching activity exists or it is already correctly tagged.
+    func markOnchainActivityAsTransfer(txId: String, channelId: String) async {
+        do {
+            try await ServiceQueue.background(.core) {
+                guard let existing = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txId) else { return }
+                if existing.isTransfer, existing.channelId == channelId { return }
+                var updated = existing
+                updated.isTransfer = true
+                updated.channelId = channelId
+                try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                self.activitiesChangedSubject.send()
+                Logger.debug("Marked activity \(existing.id) as transfer for channel \(channelId)", context: "ActivityService")
+            }
+        } catch {
+            Logger.error("Failed to mark activity as transfer for \(txId): \(error)", context: "ActivityService")
+        }
+    }
+
     func setContact(_ publicKey: String?, forActivity id: String) async throws {
         let normalizedContact = publicKey.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
 
