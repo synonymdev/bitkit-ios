@@ -717,6 +717,12 @@ final class TrezorManager {
         if message.contains("Pairing required") {
             return "Bluetooth pairing required. Please put your Trezor in pairing mode."
         }
+        if message.contains("Code verification failed") || message.contains("verification failed") {
+            return t("hardware__pairing_code_invalid")
+        }
+        if message.contains("DeviceBusy") || message.contains("Device is busy") || message.contains("DeviceLocked") {
+            return t("hardware__device_busy")
+        }
         if message.contains("Pairing failed") || message.contains("Invalid credentials") {
             return "Pairing failed. Please try putting your Trezor back in pairing mode."
         }
