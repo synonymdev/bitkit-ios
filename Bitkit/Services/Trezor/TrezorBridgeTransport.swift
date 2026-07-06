@@ -12,11 +12,11 @@ final class TrezorBridgeTransport {
     private static let headerSize = 6
     private static let connectTimeout: TimeInterval = 5
     private static let readTimeout: TimeInterval = 30
-    /// Longer read timeout for the on-device signing call, which blocks while the user confirms on
-    /// the Trezor. Without it the standard 30s timeout fires before confirmation completes.
-    private static let signTxReadTimeout: TimeInterval = 120
-    /// Trezor protobuf `MessageType_SignTx`. The only call that waits for on-device signing.
-    private static let signTxMessageType: UInt16 = 15
+    /// Read timeout for `/call` messages. Any message in an interactive session (signing, address
+    /// confirmation, …) can block while the user confirms on the device, and the confirmation isn't
+    /// tied to a single message type, so every `/call` gets the long window. Bridge is dev/E2E-only
+    /// and management calls return immediately regardless.
+    private static let callReadTimeout: TimeInterval = 120
 
     private let decoder = JSONDecoder()
     private let sessionLock = NSLock()
@@ -138,13 +138,12 @@ final class TrezorBridgeTransport {
 
         do {
             let request = Self.encodeFrame(messageType: messageType, data: data)
-            // Signing blocks on device confirmation, so it needs a longer read timeout than the
-            // standard management calls.
-            let readTimeout = messageType == Self.signTxMessageType ? Self.signTxReadTimeout : Self.readTimeout
-            let response = try post(path: "/call/\(Self.encode(session))", body: request, readTimeout: readTimeout)
+            // Any interactive message can block on device confirmation, so use the long window.
+            debugLog("callMessage type=\(messageType)")
+            let response = try post(path: "/call/\(Self.encode(session))", body: request, readTimeout: Self.callReadTimeout)
             return try Self.decodeFrame(response)
         } catch {
-            debugLog("callMessage FAILED: \(error.localizedDescription)")
+            debugLog("callMessage FAILED (type=\(messageType)): \(error.localizedDescription)")
             return TrezorCallMessageResult(success: false, messageType: 0, data: Data(), error: error.localizedDescription, errorCode: nil)
         }
     }
