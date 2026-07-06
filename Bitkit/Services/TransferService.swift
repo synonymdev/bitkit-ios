@@ -87,8 +87,7 @@ class TransferService {
             amount: order.feeSat,
             fee: fee,
             feeRate: UInt32(feeRate),
-            isTransfer: true,
-            channelId: order.channel?.shortChannelId
+            isTransfer: true
         )
     }
 

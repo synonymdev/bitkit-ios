@@ -1103,7 +1103,6 @@ class ActivityService {
         fee: UInt64,
         feeRate: UInt32,
         isTransfer: Bool = false,
-        channelId: String? = nil,
         contact: String? = nil
     ) async {
         do {
@@ -1129,7 +1128,7 @@ class ActivityService {
                     isTransfer: isTransfer,
                     doesExist: true,
                     confirmTimestamp: nil,
-                    channelId: channelId,
+                    channelId: nil,
                     transferTxId: nil,
                     contact: contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 },
                     createdAt: now,
