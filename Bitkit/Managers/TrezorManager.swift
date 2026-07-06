@@ -170,6 +170,7 @@ final class TrezorManager {
         showPinEntry = false
         showPassphraseEntry = false
         showConfirmOnDevice = false
+        showPairingCode = false
         showWalletModeChooser = false
         uiHandler.setWalletMode(.standard)
         walletMode = .standard
@@ -263,6 +264,7 @@ final class TrezorManager {
     func connect(device: TrezorDeviceInfo) async {
         error = nil
         suppressNextAutoReconnect = false
+        showPairingCode = false
 
         // Explicit user-initiated connect always opens the standard wallet — a
         // passphrase/on-device selection left over from a previously connected device
