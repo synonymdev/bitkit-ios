@@ -125,7 +125,7 @@ final class HwConnectViewModel {
                 onConnected(result)
             } catch {
                 if Task.isCancelled { return }
-                onConnectFailed()
+                onConnectFailed(error)
             }
             connectTask = nil
         }
@@ -143,9 +143,9 @@ final class HwConnectViewModel {
         phase = .paired
     }
 
-    private func onConnectFailed() {
+    private func onConnectFailed(_ error: Error) {
         isConnecting = false
-        errorMessage = t("hardware__connect_error")
+        errorMessage = (error as? AppError)?.message ?? t("hardware__connect_error")
         phase = .found
     }
 
