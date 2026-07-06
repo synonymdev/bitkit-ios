@@ -102,6 +102,11 @@ struct SpendingAmountHw: View {
         }
         .onChange(of: maxAllowed) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { onMaxExceeded() }
+        .onChange(of: transfer.hwTransferError) { _, error in
+            guard let error else { return }
+            app.toast(error)
+            transfer.hwTransferError = nil
+        }
     }
 
     private func updateInputCap() {

@@ -49,7 +49,7 @@ struct SpendingHwSign: View {
         }
         .onChange(of: transfer.hwTransferError) { _, error in
             guard let error else { return }
-            showToast(for: error)
+            app.toast(error)
             transfer.hwTransferError = nil
         }
     }
@@ -110,27 +110,6 @@ struct SpendingHwSign: View {
         .padding(.horizontal, -16)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-
-    private func showToast(for error: HwTransferError) {
-        switch error {
-        case .reconnect:
-            app.toast(
-                type: .error,
-                title: t("lightning__transfer_hw__reconnect_error_title"),
-                description: t("lightning__transfer_hw__reconnect_error_description")
-            )
-        case .signingTimeout:
-            app.toast(
-                type: .error,
-                title: t("common__error"),
-                description: t("wallet__toast_payment_failed_timeout")
-            )
-        case let .funding(message):
-            app.toast(type: .error, title: t("common__error"), description: message ?? t("common__error_body"))
-        case let .generic(message):
-            app.toast(type: .error, title: t("common__error"), description: message ?? t("common__error_body"))
-        }
     }
 }
 
