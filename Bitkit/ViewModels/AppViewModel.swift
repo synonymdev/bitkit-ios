@@ -293,6 +293,12 @@ extension AppViewModel {
             )
         case .signingTimeout:
             toast(type: .error, title: t("common__error"), description: t("wallet__toast_payment_failed_timeout"))
+        case .broadcastUncertain:
+            toast(
+                type: .warning,
+                title: t("lightning__transfer_hw__broadcast_uncertain_title"),
+                description: t("lightning__transfer_hw__broadcast_uncertain_description")
+            )
         case let .funding(message):
             toast(type: .error, title: t("common__error"), description: message ?? t("common__error_body"))
         case let .generic(message):

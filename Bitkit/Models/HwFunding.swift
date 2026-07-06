@@ -30,6 +30,16 @@ struct HwFundingTransaction: Equatable {
     let satsPerVByte: UInt64
 }
 
+/// A signed (but not yet broadcast) hardware-wallet funding payment. Carries the fee metadata from
+/// the composed payment so the broadcast result can be built without re-reading it.
+struct HwFundingSignedTx: Equatable {
+    /// Signed raw transaction hex, ready to broadcast.
+    let serializedTx: String
+    let miningFeeSats: UInt64
+    let feeRate: Float
+    let totalSpent: UInt64
+}
+
 /// The result of signing a composed funding payment on the device and broadcasting it.
 struct HwFundingBroadcastResult: Equatable {
     let txId: String

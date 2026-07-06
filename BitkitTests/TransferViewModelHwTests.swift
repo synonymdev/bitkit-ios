@@ -11,7 +11,7 @@ final class TransferViewModelHwTests: XCTestCase {
         funding: MockHwFunding,
         connecting: MockHwConnecting,
         feeRate: UInt64? = 2,
-        timeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 5, compose: 5, sign: 5)
+        timeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 5, compose: 5, sign: 5, broadcast: 5)
     ) -> TransferViewModel {
         TransferViewModel(
             hwFunding: funding,

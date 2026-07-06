@@ -573,24 +573,29 @@ final class HwWalletManager {
         )
     }
 
-    /// Sign a composed funding payment on the device and broadcast it. Requires the device to be
-    /// connected. On signing failure the caller is responsible for clearing the stale session
-    /// (via `TrezorManager.disconnectStaleSession`).
-    func signAndBroadcastFunding(
+    /// Sign a composed funding payment on the device. Requires the device to be connected. On signing
+    /// failure the caller is responsible for clearing the stale session (via
+    /// `TrezorManager.disconnectStaleSession`). Broadcasting is a separate step so a device-signing
+    /// timeout is never conflated with an in-flight broadcast.
+    func signFunding(
         deviceId _: String,
         funding: HwFundingTransaction
-    ) async throws -> HwFundingBroadcastResult {
+    ) async throws -> HwFundingSignedTx {
         let network = networkProvider()
         let signed = try await TrezorService.shared.signTxFromPsbt(psbtBase64: funding.psbt, network: network)
-        let txId = try await OnChainHwService.shared.broadcastRawTx(
+        return HwFundingSignedTx(
             serializedTx: signed.serializedTx,
-            electrumUrl: electrumUrlProvider()
-        )
-        return HwFundingBroadcastResult(
-            txId: txId,
             miningFeeSats: funding.miningFeeSats,
-            feeRate: UInt64(funding.feeRate.rounded(.up)),
+            feeRate: funding.feeRate,
             totalSpent: funding.totalSpent
+        )
+    }
+
+    /// Broadcast a signed funding transaction and return its txid. Does not require a connected device.
+    func broadcastFunding(serializedTx: String) async throws -> String {
+        try await OnChainHwService.shared.broadcastRawTx(
+            serializedTx: serializedTx,
+            electrumUrl: electrumUrlProvider()
         )
     }
 

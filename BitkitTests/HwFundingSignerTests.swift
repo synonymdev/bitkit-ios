@@ -12,7 +12,7 @@ final class HwFundingSignerTests: XCTestCase {
         connecting: MockHwConnecting,
         feeRate: UInt64? = 2,
         address: String? = "bc1qtest",
-        timeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 5, compose: 5, sign: 5)
+        timeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 5, compose: 5, sign: 5, broadcast: 5)
     ) -> HwFundingSigner {
         HwFundingSigner(
             funding: funding,
@@ -136,7 +136,7 @@ final class HwFundingSignerTests: XCTestCase {
         let funding = MockHwFunding()
         funding.signDelay = 0.4
         let connecting = MockHwConnecting()
-        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 5, sign: 0.05))
+        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 5, sign: 0.05, broadcast: 5))
 
         await assertThrowsAsync {
             _ = try await signer.sign(order: .mock(), deviceId: "dev1", address: "bc1q...")
@@ -147,11 +147,42 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.signCalls, 1)
     }
 
+    func testBroadcastTimeoutThrowsBroadcastUncertainWithoutClearingSession() async {
+        let funding = MockHwFunding()
+        funding.broadcastDelay = 0.4
+        let connecting = MockHwConnecting()
+        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 5, sign: 5, broadcast: 0.05))
+
+        await assertThrowsAsync {
+            _ = try await signer.sign(order: .mock(), deviceId: "dev1", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .broadcastUncertain)
+        }
+        XCTAssertEqual(funding.signCalls, 1, "signing completes before broadcast")
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a broadcast timeout must not tear down the device session")
+    }
+
+    func testRawBroadcastErrorPropagatesUnwrapped() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = MockHwFunding.TestError()
+        let connecting = MockHwConnecting()
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        await assertThrowsAsync {
+            _ = try await signer.sign(order: .mock(), deviceId: "dev1", address: "bc1q...")
+        } _: { error in
+            XCTAssertTrue(error is MockHwFunding.TestError, "a real broadcast error must propagate unwrapped")
+            XCTAssertNil(error as? HwTransferError)
+        }
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty)
+    }
+
     func testComposeTimeoutClearsStaleSessionAndThrowsTimeout() async {
         let funding = MockHwFunding()
         funding.composeDelay = 0.4
         let connecting = MockHwConnecting()
-        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 0.05, sign: 5))
+        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 0.05, sign: 5, broadcast: 5))
 
         await assertThrowsAsync {
             _ = try await signer.sign(order: .mock(), deviceId: "dev1", address: "bc1q...")

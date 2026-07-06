@@ -176,6 +176,8 @@
 "lightning__transfer__confirm" = "Please\n<accent>confirm</accent>";
 "lightning__transfer__custom_fee" = "Custom <accent>fee</accent>";
 "lightning__transfer__swipe" = "Swipe To Transfer";
+"lightning__transfer_hw__broadcast_uncertain_title" = "Transaction may have been sent";
+"lightning__transfer_hw__broadcast_uncertain_description" = "Your funding transaction may have been broadcast. Please check your activity before trying again.";
 "lightning__transfer_hw__open_connect" = "Open Trezor Connect";
 "lightning__transfer_hw__reconnect_error_description" = "Please reconnect your hardware device, it appears to be disconnected from your phone.";
 "lightning__transfer_hw__reconnect_error_title" = "Reconnect Hardware Device";

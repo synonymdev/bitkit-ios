@@ -29,6 +29,7 @@ struct HwSpendingState: Equatable {
 enum HwTransferError: Error, Equatable {
     case reconnect
     case signingTimeout
+    case broadcastUncertain
     case funding(String?)
     case generic(String?)
 }
@@ -51,7 +52,8 @@ protocol HwTransferFunding: Sendable {
         satsPerVByte: UInt64,
         addressType: AddressScriptType
     ) async throws -> HwFundingTransaction
-    func signAndBroadcastFunding(deviceId: String, funding: HwFundingTransaction) async throws -> HwFundingBroadcastResult
+    func signFunding(deviceId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
+    func broadcastFunding(serializedTx: String) async throws -> String
 }
 
 /// The device-session capability the transfer flow needs for on-device signing. Implemented by
@@ -106,7 +108,7 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting? = nil,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
-        hwTimeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 30, compose: 45, sign: 120),
+        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 60),
         onBalanceRefresh: (() async -> Void)? = nil
     ) {
         self.coreService = coreService
@@ -155,7 +157,7 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting?,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
-        hwTimeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 30, compose: 45, sign: 120),
+        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 60),
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel()
@@ -533,6 +535,8 @@ class TransferViewModel: ObservableObject {
             Logger.error("Failed to reconnect hardware device '\(deviceId)'", context: "TransferViewModel")
         case .signingTimeout:
             Logger.warn("Timed out hardware transfer signing for '\(deviceId)'", context: "TransferViewModel")
+        case .broadcastUncertain:
+            Logger.warn("Hardware funding broadcast timed out (uncertain) for '\(deviceId)'", context: "TransferViewModel")
         case let .funding(message):
             Logger.warn("Failed to compose hardware funding for '\(deviceId)': \(message ?? "")", context: "TransferViewModel")
         case .generic:

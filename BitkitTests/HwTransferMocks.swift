@@ -15,12 +15,16 @@ final class MockHwFunding: HwTransferFunding {
     var composeDelay: Double = 0
     var signError: Error?
     var signDelay: Double = 0
+    var broadcastError: Error?
+    var broadcastDelay: Double = 0
     var funding = HwFundingTransaction(psbt: "psbt", miningFeeSats: 141, feeRate: 1, totalSpent: 43186, satsPerVByte: 1)
-    var broadcast = HwFundingBroadcastResult(txId: "txid", miningFeeSats: 141, feeRate: 1, totalSpent: 43186)
+    var signedTx = HwFundingSignedTx(serializedTx: "rawtx", miningFeeSats: 141, feeRate: 1, totalSpent: 43186)
+    var broadcastTxId = "txid"
 
     private(set) var composeCalls: [(address: String, sats: UInt64, satsPerVByte: UInt64)] = []
     private(set) var maxSpendableCalls: [(address: String, satsPerVByte: UInt64)] = []
     private(set) var signCalls = 0
+    private(set) var broadcastCalls = 0
 
     func getFundingAccount(deviceId _: String, addressType _: AddressScriptType) throws -> HwFundingAccount {
         if let accountError { throw accountError }
@@ -51,11 +55,18 @@ final class MockHwFunding: HwTransferFunding {
         return funding
     }
 
-    func signAndBroadcastFunding(deviceId _: String, funding _: HwFundingTransaction) async throws -> HwFundingBroadcastResult {
+    func signFunding(deviceId _: String, funding _: HwFundingTransaction) async throws -> HwFundingSignedTx {
         signCalls += 1
         if signDelay > 0 { try await Task.sleep(nanoseconds: UInt64(signDelay * 1_000_000_000)) }
         if let signError { throw signError }
-        return broadcast
+        return signedTx
+    }
+
+    func broadcastFunding(serializedTx _: String) async throws -> String {
+        broadcastCalls += 1
+        if broadcastDelay > 0 { try await Task.sleep(nanoseconds: UInt64(broadcastDelay * 1_000_000_000)) }
+        if let broadcastError { throw broadcastError }
+        return broadcastTxId
     }
 }
 

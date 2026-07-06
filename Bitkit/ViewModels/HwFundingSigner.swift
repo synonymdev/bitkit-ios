@@ -21,7 +21,7 @@ struct HwFundingSigner {
     let feeRateProvider: () async -> UInt64?
     /// Provides a fee-estimation destination address (an app receive address); never broadcast to.
     let addressProvider: () async throws -> String
-    let timeouts: (reconnect: Double, compose: Double, sign: Double)
+    let timeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double)
 
     /// Conservative vbyte reserve, used only as a fallback when the real coin-selection estimate
     /// (a `sendMax` compose) is unavailable.
@@ -74,7 +74,14 @@ struct HwFundingSigner {
         try await ensureConnected(deviceId: deviceId)
         let satsPerVByte = await resolvedSatsPerVByte()
         let tx = try await compose(deviceId: deviceId, address: address, sats: order.feeSat, satsPerVByte: satsPerVByte)
-        return try await signAndBroadcast(deviceId: deviceId, funding: tx)
+        let signed = try await signStep(deviceId: deviceId, funding: tx)
+        let txId = try await broadcastStep(serializedTx: signed.serializedTx)
+        return HwFundingBroadcastResult(
+            txId: txId,
+            miningFeeSats: signed.miningFeeSats,
+            feeRate: UInt64(signed.feeRate.rounded(.up)),
+            totalSpent: signed.totalSpent
+        )
     }
 
     private func ensureConnected(deviceId: String) async throws {
@@ -116,13 +123,10 @@ struct HwFundingSigner {
         }
     }
 
-    private func signAndBroadcast(
-        deviceId: String,
-        funding tx: HwFundingTransaction
-    ) async throws -> HwFundingBroadcastResult {
+    private func signStep(deviceId: String, funding tx: HwFundingTransaction) async throws -> HwFundingSignedTx {
         do {
             return try await withTimeout(timeouts.sign) {
-                try await funding.signAndBroadcastFunding(deviceId: deviceId, funding: tx)
+                try await funding.signFunding(deviceId: deviceId, funding: tx)
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -130,7 +134,24 @@ struct HwFundingSigner {
             await connecting.disconnectStaleSession(deviceId: deviceId)
             throw HwTransferError.signingTimeout
         }
-        // Any other (real sign/broadcast) error propagates to the caller's generic handler.
+        // Any other (real signing) error propagates to the caller's generic handler.
+    }
+
+    /// Broadcast the signed tx under its own timeout, separate from signing. A broadcast that has
+    /// already been handed to the network must never be reported as a signing timeout, so a timeout
+    /// here surfaces `.broadcastUncertain` (the funding tx may still confirm) without tearing down the
+    /// device session.
+    private func broadcastStep(serializedTx: String) async throws -> String {
+        do {
+            return try await withTimeout(timeouts.broadcast) {
+                try await funding.broadcastFunding(serializedTx: serializedTx)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch is Timeout {
+            throw HwTransferError.broadcastUncertain
+        }
+        // Any other (real broadcast) error propagates to the caller's generic handler.
     }
 
     private func resolvedSatsPerVByte() async -> UInt64 {
