@@ -46,6 +46,17 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertFalse(vm.hwSpending.isLoading)
     }
 
+    func testUpdateHwLimitsClearsStalePreviousDeviceCap() async {
+        let funding = MockHwFunding()
+        funding.accountError = MockHwFunding.TestError()
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+        vm.hwSpending.maxAllowedToSend = 999_999 // stale cap from a previously-selected device
+
+        await vm.updateHwLimits(deviceId: "dev1", blocktankInfo: nil, estimateOrderFee: { _, _ in (0, 0) })
+
+        XCTAssertEqual(vm.hwSpending.maxAllowedToSend, 0, "a reload must not keep the previous device's cap")
+    }
+
     func testReconnectFailureMapsToReconnectErrorAndResetsSigning() async {
         let funding = MockHwFunding()
         let connecting = MockHwConnecting()

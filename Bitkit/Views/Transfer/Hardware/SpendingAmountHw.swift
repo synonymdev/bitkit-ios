@@ -27,7 +27,7 @@ struct SpendingAmountHw: View {
     }
 
     private var isValidAmount: Bool {
-        maxAllowed > 0 && amountSats <= maxAllowed
+        !transfer.hwSpending.isLoading && maxAllowed > 0 && amountSats <= maxAllowed
     }
 
     var body: some View {

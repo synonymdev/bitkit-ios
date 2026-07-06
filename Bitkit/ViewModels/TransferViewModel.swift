@@ -456,7 +456,7 @@ class TransferViewModel: ObservableObject {
             -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
     ) async {
         guard let hwSigner else { return }
-        hwSpending.isLoading = true
+        hwSpending = HwSpendingState(isLoading: true)
 
         let availability: HwFundingSigner.Availability
         do {
