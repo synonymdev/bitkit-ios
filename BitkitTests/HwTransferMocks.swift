@@ -10,6 +10,7 @@ final class MockHwFunding: HwTransferFunding {
     var account = HwFundingAccount(xpub: "zpubNS", addressType: .nativeSegwit, balanceSats: 1_000_000)
     var accountError: Error?
     var composeError: Error?
+    var composeDelay: Double = 0
     var signError: Error?
     var signDelay: Double = 0
     var funding = HwFundingTransaction(psbt: "psbt", miningFeeSats: 141, feeRate: 1, totalSpent: 43186, satsPerVByte: 1)
@@ -31,6 +32,7 @@ final class MockHwFunding: HwTransferFunding {
         addressType _: AddressScriptType
     ) async throws -> HwFundingTransaction {
         composeCalls.append((address, sats, satsPerVByte))
+        if composeDelay > 0 { try await Task.sleep(nanoseconds: UInt64(composeDelay * 1_000_000_000)) }
         if let composeError { throw composeError }
         return funding
     }

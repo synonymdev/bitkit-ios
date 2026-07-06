@@ -104,6 +104,21 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.signCalls, 1)
     }
 
+    func testComposeTimeoutClearsStaleSessionAndThrowsTimeout() async {
+        let funding = MockHwFunding()
+        funding.composeDelay = 0.4
+        let connecting = MockHwConnecting()
+        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 0.05, sign: 5))
+
+        await assertThrowsAsync {
+            _ = try await signer.sign(order: .mock(), deviceId: "dev1", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .signingTimeout)
+        }
+        XCTAssertEqual(connecting.staleDisconnects, ["dev1"], "a compose timeout must tear down the stale session")
+        XCTAssertEqual(funding.signCalls, 0, "signing must not run after a compose timeout")
+    }
+
     func testRawSignErrorPropagatesUnwrapped() async {
         let funding = MockHwFunding()
         funding.signError = MockHwFunding.TestError()

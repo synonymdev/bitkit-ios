@@ -79,6 +79,9 @@ struct HwFundingSigner {
             }
         } catch is CancellationError {
             throw CancellationError()
+        } catch is Timeout {
+            await connecting.disconnectStaleSession(deviceId: deviceId)
+            throw HwTransferError.signingTimeout
         } catch {
             let message = (error as? AppError)?.debugMessage ?? (error as? AppError)?.message ?? error.localizedDescription
             throw HwTransferError.funding(message)
