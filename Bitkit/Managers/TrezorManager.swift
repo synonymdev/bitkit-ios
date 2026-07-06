@@ -52,6 +52,8 @@ final class TrezorManager {
 
     var showPairingCode: Bool = false
 
+    private(set) var pairingCodeRequestID: Int = 0
+
     var showConfirmOnDevice: Bool = false
 
     var confirmMessage: String = ""
@@ -115,6 +117,7 @@ final class TrezorManager {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in
                 self?.showPairingCode = true
+                self?.pairingCodeRequestID &+= 1
             }
             .store(in: &cancellables)
 
