@@ -60,7 +60,24 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertFalse(sut.isConnecting)
     }
 
-    func testOnConnectSurfacesFailureAndReturnsToFound() async {
+    func testOnConnectSurfacesRealErrorMessageAndReturnsToFound() async {
+        await givenDeviceFound()
+        let realMessage = t("hardware__pairing_code_invalid")
+        // Use the module-qualified type: `Errors.swift` is also compiled into the test target, so an
+        // unqualified `AppError` here is a distinct `BitkitTests.AppError` that the view model's
+        // `Bitkit.AppError` cast would reject. Production throws `Bitkit.AppError`, so mirror that.
+        service.connectResult = .failure(Bitkit.AppError(message: realMessage, debugMessage: nil))
+
+        sut.onConnect()
+
+        await waitUntil { self.sut.errorMessage != nil }
+        XCTAssertEqual(sut.phase, .found)
+        XCTAssertFalse(sut.isConnecting)
+        XCTAssertEqual(sut.errorMessage, realMessage)
+        XCTAssertEqual(sut.foundDevice?.id, "dev1")
+    }
+
+    func testOnConnectFallsBackToGenericErrorForNonAppError() async {
         await givenDeviceFound()
         service.connectResult = .failure(TestError.stub)
 
@@ -70,7 +87,6 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertEqual(sut.phase, .found)
         XCTAssertFalse(sut.isConnecting)
         XCTAssertEqual(sut.errorMessage, t("hardware__connect_error"))
-        XCTAssertEqual(sut.foundDevice?.id, "dev1")
     }
 
     // MARK: - Pairing code
