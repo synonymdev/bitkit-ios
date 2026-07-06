@@ -38,6 +38,9 @@ struct HardwareWalletScreen: View {
         .task(id: wallet?.walletId) {
             await loadActivities()
         }
+        .task {
+            await app.checkGeoStatus()
+        }
         .onReceive(activity.activitiesChangedPublisher) { _ in
             Task { await loadActivities() }
         }
@@ -124,7 +127,8 @@ struct HardwareWalletScreen: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 16, height: 16)
-                .foregroundColor(.white80)
+                .foregroundColor(.white80),
+            isDisabled: GeoService.shared.isGeoBlocked
         ) {
             if app.hasSeenTransferToSpendingIntro {
                 navigation.navigate(.spendingAmountHw(deviceId: deviceId))
