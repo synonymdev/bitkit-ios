@@ -63,7 +63,10 @@ final class HwConnectViewModelTests: XCTestCase {
     func testOnConnectSurfacesRealErrorMessageAndReturnsToFound() async {
         await givenDeviceFound()
         let realMessage = t("hardware__pairing_code_invalid")
-        service.connectResult = .failure(AppError(message: realMessage, debugMessage: nil))
+        // Use the module-qualified type: `Errors.swift` is also compiled into the test target, so an
+        // unqualified `AppError` here is a distinct `BitkitTests.AppError` that the view model's
+        // `Bitkit.AppError` cast would reject. Production throws `Bitkit.AppError`, so mirror that.
+        service.connectResult = .failure(Bitkit.AppError(message: realMessage, debugMessage: nil))
 
         sut.onConnect()
 
