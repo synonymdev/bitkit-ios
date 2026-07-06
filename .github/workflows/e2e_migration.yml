@@ -13,7 +13,6 @@ on:
 env:
   TERM: xterm-256color
   FORCE_COLOR: 1
-  GIT_LFS_SKIP_SMUDGE: "1"
   SIMULATOR_NAME: "iPhone 17"
   IOS_VERSION: "26.2"
 

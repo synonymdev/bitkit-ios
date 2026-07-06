@@ -8,9 +8,6 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
-env:
-  GIT_LFS_SKIP_SMUDGE: "1"
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

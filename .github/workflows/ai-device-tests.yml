@@ -22,7 +22,6 @@ on:
 env:
   TERM: xterm-256color
   FORCE_COLOR: 1
-  GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.suite }}
