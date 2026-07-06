@@ -52,6 +52,8 @@ final class TrezorManager {
 
     var showPairingCode: Bool = false
 
+    private(set) var pairingCodeRequestID: Int = 0
+
     var showConfirmOnDevice: Bool = false
 
     var confirmMessage: String = ""
@@ -115,6 +117,7 @@ final class TrezorManager {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in
                 self?.showPairingCode = true
+                self?.pairingCodeRequestID &+= 1
             }
             .store(in: &cancellables)
 
@@ -170,6 +173,7 @@ final class TrezorManager {
         showPinEntry = false
         showPassphraseEntry = false
         showConfirmOnDevice = false
+        showPairingCode = false
         showWalletModeChooser = false
         uiHandler.setWalletMode(.standard)
         walletMode = .standard
@@ -263,6 +267,7 @@ final class TrezorManager {
     func connect(device: TrezorDeviceInfo) async {
         error = nil
         suppressNextAutoReconnect = false
+        showPairingCode = false
 
         // Explicit user-initiated connect always opens the standard wallet — a
         // passphrase/on-device selection left over from a previously connected device
@@ -274,6 +279,13 @@ final class TrezorManager {
 
         do {
             let features = try await trezorService.connect(deviceId: device.path, selection: uiHandler.currentSelection())
+
+            if Task.isCancelled {
+                try? await trezorService.disconnect()
+                trezorLog("Connect cancelled before pairing; disconnected \(device.path)")
+                return
+            }
+
             connectedDevice = device
             deviceFeatures = features
             showConfirmOnDevice = false
@@ -709,6 +721,12 @@ final class TrezorManager {
         }
         if message.contains("Pairing required") {
             return "Bluetooth pairing required. Please put your Trezor in pairing mode."
+        }
+        if message.contains("Code verification failed") || message.contains("verification failed") {
+            return t("hardware__pairing_code_invalid")
+        }
+        if message.contains("DeviceBusy") || message.contains("Device is busy") || message.contains("DeviceLocked") {
+            return t("hardware__device_busy")
         }
         if message.contains("Pairing failed") || message.contains("Invalid credentials") {
             return "Pairing failed. Please try putting your Trezor back in pairing mode."

@@ -1,12 +1,12 @@
 {
   "images" : [
     {
-      "filename" : "trezor.png",
+      "filename" : "trezor-cropped.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
-      "filename" : "trezor@2x.png",
+      "filename" : "trezor-cropped@2x.png",
       "idiom" : "universal",
       "scale" : "2x"
     },

@@ -30,7 +30,7 @@ struct HardwareWalletsSettingsScreen: View {
                 title: t("settings__hardware_wallets__add_button"),
                 shouldExpand: true
             ) {
-                sheets.showSheet(.hardwareIntro)
+                sheets.showSheet(.hardwareConnect)
             }
             .accessibilityIdentifier("AddHardwareWallet")
             .padding(.horizontal, 16)

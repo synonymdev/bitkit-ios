@@ -189,12 +189,12 @@ struct MainNavView: View {
             config in WidgetsSheet(config: config)
         }
         .sheet(
-            item: $sheets.hardwareIntroSheetItem,
+            item: $sheets.hardwareConnectSheetItem,
             onDismiss: {
                 sheets.hideSheet()
             }
         ) {
-            config in HardwareIntroSheet(config: config)
+            config in HardwareConnectSheet(config: config)
         }
         .sheet(
             item: $sheets.hardwarePairingSheetItem,
@@ -216,6 +216,7 @@ struct MainNavView: View {
             // A hardware device asked for its one-time pairing code (e.g. during reconnect);
             // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
             if needsCode {
+                guard !sheets.hardwareConnectHandlesPairing else { return }
                 sheets.showSheet(.hardwarePairing)
             } else {
                 sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")
