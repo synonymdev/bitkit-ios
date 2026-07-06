@@ -9,6 +9,8 @@ final class MockHwFunding: HwTransferFunding {
 
     var account = HwFundingAccount(xpub: "zpubNS", addressType: .nativeSegwit, balanceSats: 1_000_000)
     var accountError: Error?
+    var maxSpendable: UInt64 = 990_000
+    var maxSpendableError: Error?
     var composeError: Error?
     var composeDelay: Double = 0
     var signError: Error?
@@ -17,11 +19,23 @@ final class MockHwFunding: HwTransferFunding {
     var broadcast = HwFundingBroadcastResult(txId: "txid", miningFeeSats: 141, feeRate: 1, totalSpent: 43186)
 
     private(set) var composeCalls: [(address: String, sats: UInt64, satsPerVByte: UInt64)] = []
+    private(set) var maxSpendableCalls: [(address: String, satsPerVByte: UInt64)] = []
     private(set) var signCalls = 0
 
     func getFundingAccount(deviceId _: String, addressType _: AddressScriptType) throws -> HwFundingAccount {
         if let accountError { throw accountError }
         return account
+    }
+
+    func maxSpendableFunding(
+        deviceId _: String,
+        destinationAddress: String,
+        satsPerVByte: UInt64,
+        addressType _: AddressScriptType
+    ) async throws -> UInt64 {
+        maxSpendableCalls.append((destinationAddress, satsPerVByte))
+        if let maxSpendableError { throw maxSpendableError }
+        return maxSpendable
     }
 
     func composeFundingTransaction(

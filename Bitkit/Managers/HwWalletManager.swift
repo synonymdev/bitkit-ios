@@ -489,6 +489,44 @@ final class HwWalletManager {
         )
     }
 
+    /// The exact amount spendable from the funding account after the real coin-selection mining fee,
+    /// computed offline via a `sendMax` compose. No connected device is needed — `fingerprint` is only
+    /// required for signing — so this mirrors the software wallet's max-sendable estimate.
+    /// `destinationAddress` is a fee-estimation destination only (never broadcast).
+    func maxSpendableFunding(
+        deviceId: String,
+        destinationAddress: String,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType = hwFundingDefaultAddressType
+    ) async throws -> UInt64 {
+        let account = try getFundingAccount(deviceId: deviceId, addressType: addressType)
+        let params = ComposeParams(
+            wallet: WalletParams(
+                extendedKey: account.xpub,
+                electrumUrl: electrumUrlProvider(),
+                fingerprint: nil,
+                network: networkProvider().coreNetwork,
+                accountType: account.accountType
+            ),
+            outputs: [.sendMax(address: destinationAddress)],
+            feeRates: [Float(satsPerVByte)],
+            coinSelection: .branchAndBound
+        )
+        let results = try await OnChainHwService.shared.composeTransaction(params: params)
+        for result in results {
+            if case let .success(_, fee, _, totalSpent) = result {
+                return totalSpent > fee ? totalSpent - fee : 0
+            }
+        }
+        let composeError: String? = results.compactMap {
+            if case let .error(error) = $0 { return error } else { return nil }
+        }.first
+        throw AppError(
+            message: "Failed to estimate hardware funding amount",
+            debugMessage: composeError ?? "No successful compose result"
+        )
+    }
+
     /// Compose the exact on-chain funding payment before prompting for the on-device signature.
     /// Requires the device to be connected (the fingerprint drives the PSBT derivation paths); the
     /// caller must ensure the Trezor is connected first (via `TrezorManager`).

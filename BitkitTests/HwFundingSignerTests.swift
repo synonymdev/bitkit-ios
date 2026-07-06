@@ -11,12 +11,19 @@ final class HwFundingSignerTests: XCTestCase {
         funding: MockHwFunding,
         connecting: MockHwConnecting,
         feeRate: UInt64? = 2,
+        address: String? = "bc1qtest",
         timeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 5, compose: 5, sign: 5)
     ) -> HwFundingSigner {
-        HwFundingSigner(funding: funding, connecting: connecting, feeRateProvider: { feeRate }, timeouts: timeouts)
+        HwFundingSigner(
+            funding: funding,
+            connecting: connecting,
+            feeRateProvider: { feeRate },
+            addressProvider: { if let address { return address } else { throw MockHwFunding.TestError() } },
+            timeouts: timeouts
+        )
     }
 
-    // MARK: - Fee reserve
+    // MARK: - Fee reserve (fallback math)
 
     func testFeeReserveUsesRateWhenAvailable() {
         XCTAssertEqual(HwFundingSigner.feeReserve(balanceSats: 1_000_000, satsPerVByte: 5), 5 * 1200)
@@ -34,14 +41,50 @@ final class HwFundingSignerTests: XCTestCase {
 
     // MARK: - Availability
 
-    func testAvailabilityReturnsBalanceMinusReserve() async throws {
+    func testAvailabilityUsesRealMaxSpendable() async throws {
         let funding = MockHwFunding()
         funding.account = HwFundingAccount(xpub: "zpubNS", addressType: .nativeSegwit, balanceSats: 1_000_000)
+        funding.maxSpendable = 990_000
         let signer = makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: 2)
 
         let availability = try await signer.availability(deviceId: "dev1")
 
         XCTAssertEqual(availability.balanceSats, 1_000_000)
+        XCTAssertEqual(availability.available, 990_000, "available comes from the real sendMax estimate")
+        XCTAssertEqual(funding.maxSpendableCalls.first?.satsPerVByte, 2)
+        XCTAssertEqual(funding.maxSpendableCalls.first?.address, "bc1qtest")
+    }
+
+    func testAvailabilityClampsSpendableToBalance() async throws {
+        let funding = MockHwFunding()
+        funding.account = HwFundingAccount(xpub: "zpubNS", addressType: .nativeSegwit, balanceSats: 800_000)
+        funding.maxSpendable = 990_000
+        let signer = makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: 2)
+
+        let availability = try await signer.availability(deviceId: "dev1")
+
+        XCTAssertEqual(availability.available, 800_000, "available is clamped to the device balance")
+    }
+
+    func testAvailabilityFallsBackToReserveWhenEstimateFails() async throws {
+        let funding = MockHwFunding()
+        funding.account = HwFundingAccount(xpub: "zpubNS", addressType: .nativeSegwit, balanceSats: 1_000_000)
+        funding.maxSpendableError = MockHwFunding.TestError()
+        let signer = makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: 2)
+
+        let availability = try await signer.availability(deviceId: "dev1")
+
+        XCTAssertEqual(availability.available, 1_000_000 - 2 * 1200, "falls back to the reserve estimate")
+    }
+
+    func testAvailabilityFallsBackToReserveWhenAddressUnavailable() async throws {
+        let funding = MockHwFunding()
+        funding.account = HwFundingAccount(xpub: "zpubNS", addressType: .nativeSegwit, balanceSats: 1_000_000)
+        let signer = makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: 2, address: nil)
+
+        let availability = try await signer.availability(deviceId: "dev1")
+
+        XCTAssertTrue(funding.maxSpendableCalls.isEmpty, "no estimate without a destination address")
         XCTAssertEqual(availability.available, 1_000_000 - 2 * 1200)
     }
 

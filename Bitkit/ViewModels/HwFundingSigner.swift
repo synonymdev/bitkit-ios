@@ -19,24 +19,52 @@ struct HwFundingSigner {
     let funding: HwTransferFunding
     let connecting: HwTransferConnecting
     let feeRateProvider: () async -> UInt64?
+    /// Provides a fee-estimation destination address (an app receive address); never broadcast to.
+    let addressProvider: () async throws -> String
     let timeouts: (reconnect: Double, compose: Double, sign: Double)
 
-    /// Conservative vbyte reserve for multi-input hardware funding before the exact compose runs.
+    /// Conservative vbyte reserve, used only as a fallback when the real coin-selection estimate
+    /// (a `sendMax` compose) is unavailable.
     var txVBytes: UInt64 = 1200
     /// Minimum fallback fee rate when fee estimates are temporarily unavailable.
     var fallbackSatsPerVByte: UInt64 = 1
     /// Fallback fee percentage used when fee estimates are temporarily unavailable.
     var fallbackFeePercent: Double = 0.1
 
-    /// Resolve the device balance and the amount available to fund after the fee reserve.
+    /// Resolve the device balance and the amount available to fund. Prefers the real max-sendable
+    /// (same coin-selection fee as the software wallet), falling back to the reserve estimate.
     func availability(
         deviceId: String,
         addressType: AddressScriptType = hwFundingDefaultAddressType
     ) async throws -> Availability {
         let account = try funding.getFundingAccount(deviceId: deviceId, addressType: addressType)
-        let reserve = await feeReserve(balanceSats: account.balanceSats)
-        let available = account.balanceSats > reserve ? account.balanceSats - reserve : 0
+        let available = await maxSpendable(deviceId: deviceId, balanceSats: account.balanceSats, addressType: addressType)
         return Availability(balanceSats: account.balanceSats, available: available)
+    }
+
+    /// The amount available to fund. Computes the exact max-sendable via a `sendMax` compose at the
+    /// target fee rate; when the fee rate, address, or compose is unavailable, falls back to the
+    /// conservative reserve clamp.
+    private func maxSpendable(deviceId: String, balanceSats: UInt64, addressType: AddressScriptType) async -> UInt64 {
+        if let satsPerVByte = await feeRateProvider(),
+           let address = try? await addressProvider(),
+           let spendable = try? await funding.maxSpendableFunding(
+               deviceId: deviceId,
+               destinationAddress: address,
+               satsPerVByte: satsPerVByte,
+               addressType: addressType
+           )
+        {
+            return min(balanceSats, spendable)
+        }
+        let reserve = await Self.feeReserve(
+            balanceSats: balanceSats,
+            satsPerVByte: feeRateProvider(),
+            txVBytes: txVBytes,
+            fallbackSatsPerVByte: fallbackSatsPerVByte,
+            fallbackFeePercent: fallbackFeePercent
+        )
+        return balanceSats > reserve ? balanceSats - reserve : 0
     }
 
     /// Reconnect → compose → sign+broadcast. Throws `HwTransferError` for recoverable failures and
@@ -107,16 +135,6 @@ struct HwFundingSigner {
 
     private func resolvedSatsPerVByte() async -> UInt64 {
         await feeRateProvider() ?? fallbackSatsPerVByte
-    }
-
-    private func feeReserve(balanceSats: UInt64) async -> UInt64 {
-        await Self.feeReserve(
-            balanceSats: balanceSats,
-            satsPerVByte: feeRateProvider(),
-            txVBytes: txVBytes,
-            fallbackSatsPerVByte: fallbackSatsPerVByte,
-            fallbackFeePercent: fallbackFeePercent
-        )
     }
 
     /// Pure fee-reserve computation. With a known fee rate: `rate × vbytes`. Without one (estimates

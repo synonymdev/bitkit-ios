@@ -38,6 +38,12 @@ enum HwTransferError: Error, Equatable {
 @MainActor
 protocol HwTransferFunding: Sendable {
     func getFundingAccount(deviceId: String, addressType: AddressScriptType) throws -> HwFundingAccount
+    func maxSpendableFunding(
+        deviceId: String,
+        destinationAddress: String,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> UInt64
     func composeFundingTransaction(
         deviceId: String,
         address: String,
@@ -99,6 +105,7 @@ class TransferViewModel: ObservableObject {
         hwFunding: HwTransferFunding? = nil,
         hwConnecting: HwTransferConnecting? = nil,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
+        hwAddressProvider: (() async throws -> String)? = nil,
         hwTimeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 30, compose: 45, sign: 120),
         onBalanceRefresh: (() async -> Void)? = nil
     ) {
@@ -113,6 +120,7 @@ class TransferViewModel: ObservableObject {
                 funding: hwFunding,
                 connecting: hwConnecting,
                 feeRateProvider: hwFeeRateProvider ?? { nil },
+                addressProvider: hwAddressProvider ?? { throw AppError(message: "No address provider", debugMessage: "") },
                 timeouts: hwTimeouts
             )
         } else {
@@ -146,6 +154,7 @@ class TransferViewModel: ObservableObject {
         hwFunding: HwTransferFunding?,
         hwConnecting: HwTransferConnecting?,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
+        hwAddressProvider: (() async throws -> String)? = nil,
         hwTimeouts: (reconnect: Double, compose: Double, sign: Double) = (reconnect: 30, compose: 45, sign: 120),
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
@@ -163,6 +172,7 @@ class TransferViewModel: ObservableObject {
             hwFunding: hwFunding,
             hwConnecting: hwConnecting,
             hwFeeRateProvider: hwFeeRateProvider,
+            hwAddressProvider: hwAddressProvider,
             hwTimeouts: hwTimeouts
         )
     }
@@ -430,16 +440,6 @@ class TransferViewModel: ObservableObject {
         uiState.order = defaultOrder
         uiState.defaultOrder = nil
         uiState.isAdvanced = false
-    }
-
-    func resetState() {
-        hwSignTask?.cancel()
-        hwSignTask = nil
-        hwSpending = HwSpendingState()
-        hwTransferError = nil
-        uiState = TransferUiState()
-        transferValues = TransferValues()
-        selectedChannelIds = []
     }
 
     // MARK: - Hardware Wallet Transfer

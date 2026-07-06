@@ -35,6 +35,17 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertFalse(vm.hwSpending.isSigning)
     }
 
+    func testUpdateHwLimitsSurfacesErrorWhenAvailabilityFails() async {
+        let funding = MockHwFunding()
+        funding.accountError = MockHwFunding.TestError()
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+
+        await vm.updateHwLimits(deviceId: "dev1", blocktankInfo: nil, estimateOrderFee: { _, _ in (0, 0) })
+
+        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
+        XCTAssertFalse(vm.hwSpending.isLoading)
+    }
+
     func testReconnectFailureMapsToReconnectErrorAndResetsSigning() async {
         let funding = MockHwFunding()
         let connecting = MockHwConnecting()

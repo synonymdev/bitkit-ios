@@ -89,6 +89,10 @@ struct AppScene: View {
                 guard let rates = await feeEstimatesManager.getEstimates() else { return nil }
                 return UInt64(SettingsViewModel.shared.defaultTransactionSpeed.getFeeRate(from: rates))
             },
+            hwAddressProvider: {
+                let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+                return try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
+            },
             onBalanceRefresh: { await walletVm.updateBalanceState() }
         ))
         _widgets = StateObject(wrappedValue: WidgetsViewModel())
