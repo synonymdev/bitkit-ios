@@ -198,6 +198,10 @@ final class TrezorTransport: TrezorTransportCallback {
         submittedPairingCode = ""
         pairingCodeLock.unlock()
 
+        // Drain any leftover signal from a prior (cancelled/submitted) pairing so this request
+        // doesn't return an empty code instantly and abort the handshake mid-pairing.
+        while pairingCodeSemaphore.wait(timeout: DispatchTime.now()) == .success {}
+
         // Notify UI to show pairing code dialog
         DispatchQueue.main.async {
             self.needsPairingCodePublisher.send()

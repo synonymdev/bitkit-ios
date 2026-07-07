@@ -358,7 +358,7 @@ struct Suggestions: View {
         case .support:
             route = .support
         case .hardware:
-            sheets.showSheet(.hardwareIntro)
+            sheets.showSheet(.hardwareConnect)
         case .transferToSpending:
             route = app.hasSeenTransferIntro ? .fundingOptions : .transferIntro
         }
