@@ -261,7 +261,10 @@ class TransferService {
                 orders = try await blocktankService.orders(orderIds: [orderId], filter: nil, refresh: false)
             } catch {
                 Logger.error("Failed to fetch Blocktank orders for orderId \(orderId): \(error)", context: "TransferService")
-                return nil
+                // Fall back to the persisted channel id (same BOLT `channelId.description` format the
+                // success path returns) so a transient Blocktank failure doesn't drop a known channel
+                // and double-count the transfer in the balance calc.
+                return transfer.channelId
             }
 
             if let order = orders?.first {
