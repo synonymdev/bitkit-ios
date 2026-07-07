@@ -92,6 +92,9 @@ struct HwFundingSigner {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            // A device-decline during reconnect must stay silent — propagate it raw so the caller's
+            // cancellation check catches it, rather than surfacing a reconnect error.
+            if error.isTrezorUserCancellation() { throw error }
             throw HwTransferError.reconnect
         }
     }

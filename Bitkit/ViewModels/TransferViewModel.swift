@@ -524,6 +524,10 @@ class TransferViewModel: ObservableObject {
             } catch let error as HwTransferError {
                 self.handleHardwareTransferFailure(error, deviceId: deviceId)
             } catch {
+                if error.isTrezorUserCancellation() {
+                    Logger.info("Hardware transfer cancelled on device '\(deviceId)'", context: "TransferViewModel")
+                    return
+                }
                 hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
             }
         }

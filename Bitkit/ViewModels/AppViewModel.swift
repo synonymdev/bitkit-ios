@@ -277,7 +277,7 @@ extension AppViewModel {
     }
 
     func toast(_ error: Error) {
-        if error is CancellationError {
+        if error is CancellationError || error.isTrezorUserCancellation() {
             return
         }
         toast(type: .error, title: "Error", description: error.localizedDescription)
