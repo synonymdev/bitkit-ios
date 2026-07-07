@@ -66,8 +66,21 @@ final class TransferViewModelHwTests: XCTestCase {
         vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
         await awaitSigningComplete(vm)
 
-        XCTAssertEqual(vm.hwTransferError, .reconnect)
+        XCTAssertEqual(vm.hwTransferError, .reconnect(isBluetooth: false))
         XCTAssertFalse(vm.hwSpending.isSigning)
+    }
+
+    func testReconnectFailureCarriesBluetoothFlagForKnownBleDevice() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = MockHwFunding.TestError()
+        connecting.isBluetooth = true
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(vm.hwTransferError, .reconnect(isBluetooth: true), "a known BLE device gets the softer INFO reconnect toast")
     }
 
     func testRawSignErrorMapsToGenericError() async {
@@ -110,6 +123,16 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertNil(vm.hwTransferError, "a reconnect-step cancel must not surface a toast")
         XCTAssertFalse(vm.hwSpending.isSigning)
         XCTAssertTrue(funding.composeCalls.isEmpty, "compose must not run after a reconnect cancel")
+    }
+
+    func testWarmUpHardwareConnectionDelegatesToConnecting() {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.warmUpHardwareConnection(deviceId: "dev1")
+
+        XCTAssertEqual(connecting.warmUpCalls, ["dev1"])
     }
 
     func testCancelHwSigningStopsInFlightSign() async {

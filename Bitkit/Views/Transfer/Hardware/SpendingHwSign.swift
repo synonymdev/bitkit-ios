@@ -44,6 +44,10 @@ struct SpendingHwSign: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .task {
+            // Warm up the BLE connection ahead of the user tapping Open Trezor Connect.
+            transfer.warmUpHardwareConnection(deviceId: deviceId)
+        }
         .onChange(of: transfer.hwSignedEvent) {
             navigation.navigate(.spendingHwSigned)
         }

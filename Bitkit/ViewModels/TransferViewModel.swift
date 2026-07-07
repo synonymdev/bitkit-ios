@@ -27,7 +27,9 @@ struct HwSpendingState: Equatable {
 /// A recoverable failure surfaced by the hardware-wallet transfer flow. The Sign screen maps each
 /// case to the matching localized toast.
 enum HwTransferError: Error, Equatable {
-    case reconnect
+    /// Reconnect failed. `isBluetooth` selects the softer INFO toast for a known BLE device
+    /// (advertises intermittently — "check that it is unlocked and try again") vs the ERROR toast.
+    case reconnect(isBluetooth: Bool)
     case signingTimeout
     case broadcastUncertain
     case funding(String?)
@@ -62,6 +64,12 @@ protocol HwTransferFunding: Sendable {
 protocol HwTransferConnecting: Sendable {
     func ensureConnected(deviceId: String) async throws
     func disconnectStaleSession(deviceId: String) async
+    /// Whether the device is a known Bluetooth device, so a reconnect failure can show the softer
+    /// BLE "check that it is unlocked and try again" toast instead of the generic reconnect error.
+    func isKnownBluetoothDevice(deviceId: String) -> Bool
+    /// Best-effort pre-connect when the sign screen appears, so tapping Open Trezor Connect is less
+    /// likely to hit a cold reconnect. Fire-and-forget.
+    func warmUpConnection(deviceId: String)
 }
 
 @MainActor
@@ -531,6 +539,13 @@ class TransferViewModel: ObservableObject {
                 hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
             }
         }
+    }
+
+    /// Pre-connect the hardware device when the sign screen appears, mirroring Android's warm-up, so
+    /// tapping Open Trezor Connect is less likely to hit a cold reconnect. Best-effort no-op without
+    /// the HW capabilities.
+    func warmUpHardwareConnection(deviceId: String) {
+        hwSigner?.warmUp(deviceId: deviceId)
     }
 
     /// Cancel an in-flight hardware signing task when the user abandons the sign flow, so a later

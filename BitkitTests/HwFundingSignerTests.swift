@@ -113,7 +113,7 @@ final class HwFundingSignerTests: XCTestCase {
         await assertThrowsAsync {
             _ = try await signer.sign(order: .mock(), deviceId: "dev1", address: "bc1q...")
         } _: { error in
-            XCTAssertEqual(error as? HwTransferError, .reconnect)
+            XCTAssertEqual(error as? HwTransferError, .reconnect(isBluetooth: false))
         }
         XCTAssertTrue(funding.composeCalls.isEmpty)
         XCTAssertEqual(funding.signCalls, 0)

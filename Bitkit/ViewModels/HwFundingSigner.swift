@@ -84,6 +84,12 @@ struct HwFundingSigner {
         )
     }
 
+    /// Best-effort pre-connect of the device before signing (fire-and-forget). Delegates to the
+    /// device-session capability, which no-ops unless it's a known BLE device that isn't connected.
+    func warmUp(deviceId: String) {
+        connecting.warmUpConnection(deviceId: deviceId)
+    }
+
     private func ensureConnected(deviceId: String) async throws {
         do {
             try await withTimeout(timeouts.reconnect) {
@@ -95,7 +101,7 @@ struct HwFundingSigner {
             // A device-decline during reconnect must stay silent — propagate it raw so the caller's
             // cancellation check catches it, rather than surfacing a reconnect error.
             if error.isTrezorUserCancellation() { throw error }
-            throw HwTransferError.reconnect
+            throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(deviceId: deviceId))
         }
     }
 

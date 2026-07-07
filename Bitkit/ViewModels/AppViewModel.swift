@@ -285,12 +285,18 @@ extension AppViewModel {
 
     func toast(_ error: HwTransferError) {
         switch error {
-        case .reconnect:
-            toast(
-                type: .error,
-                title: t("lightning__transfer_hw__reconnect_error_title"),
-                description: t("lightning__transfer_hw__reconnect_error_description")
-            )
+        case let .reconnect(isBluetooth):
+            if isBluetooth {
+                // BLE devices advertise intermittently; a reconnect miss is usually a locked/asleep
+                // device, so surface the softer INFO guidance rather than a hard error.
+                toast(type: .info, title: t("hardware__connect_error"))
+            } else {
+                toast(
+                    type: .error,
+                    title: t("lightning__transfer_hw__reconnect_error_title"),
+                    description: t("lightning__transfer_hw__reconnect_error_description")
+                )
+            }
         case .signingTimeout:
             toast(type: .error, title: t("common__error"), description: t("wallet__toast_payment_failed_timeout"))
         case .broadcastUncertain:

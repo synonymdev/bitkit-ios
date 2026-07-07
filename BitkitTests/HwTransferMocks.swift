@@ -73,12 +73,22 @@ final class MockHwFunding: HwTransferFunding {
 @MainActor
 final class MockHwConnecting: HwTransferConnecting {
     var connectError: Error?
+    var isBluetooth = false
     private(set) var ensureCalls = 0
     private(set) var staleDisconnects: [String] = []
+    private(set) var warmUpCalls: [String] = []
 
     func ensureConnected(deviceId _: String) async throws {
         ensureCalls += 1
         if let connectError { throw connectError }
+    }
+
+    func isKnownBluetoothDevice(deviceId _: String) -> Bool {
+        isBluetooth
+    }
+
+    func warmUpConnection(deviceId: String) {
+        warmUpCalls.append(deviceId)
     }
 
     func disconnectStaleSession(deviceId: String) async {

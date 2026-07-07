@@ -681,6 +681,28 @@ final class TrezorManager {
         }
     }
 
+    /// Whether the given device is a known Bluetooth device. iOS is BLE-only in practice, but the
+    /// stored transport is honored so a USB device still gets the hard reconnect error.
+    func isKnownBluetoothDevice(deviceId: String) -> Bool {
+        knownDevices.first(where: { $0.id == deviceId })?.transportType == "bluetooth"
+    }
+
+    /// Best-effort pre-connect of a known BLE Trezor before the sign screen asks for it, so tapping
+    /// Open Trezor Connect is less likely to hit a cold reconnect. Fire-and-forget; no-op when already
+    /// connected to it, a connect is in flight, or it isn't a known BLE device.
+    func warmUpConnection(deviceId: String) {
+        guard connectedDevice?.id != deviceId else { return }
+        guard !isScanning else { return }
+        guard isKnownBluetoothDevice(deviceId: deviceId) else { return }
+        Task {
+            do {
+                try await reconnectKnownDevice(deviceId: deviceId)
+            } catch {
+                trezorLog("Warm-up connect failed for '\(deviceId)': \(error)", level: "debug")
+            }
+        }
+    }
+
     /// Tear down the current device session so the next connect establishes a fresh one. Used after
     /// a signing failure or timeout, where the transport session may be left in a bad state.
     func disconnectStaleSession(deviceId: String) async {
