@@ -83,6 +83,35 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertTrue(connecting.staleDisconnects.isEmpty)
     }
 
+    func testDeviceCancelDuringSigningIsSilent() async {
+        let funding = MockHwFunding()
+        funding.signError = TrezorError.UserCancelled
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertNil(vm.hwTransferError, "a device cancel must not surface a toast")
+        XCTAssertFalse(vm.hwSpending.isSigning)
+        XCTAssertEqual(vm.hwSignedEvent, 0, "a cancelled transfer must not advance the flow")
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a device cancel must not tear down the session")
+    }
+
+    func testDeviceCancelDuringReconnectIsSilent() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = TrezorError.UserCancelled
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertNil(vm.hwTransferError, "a reconnect-step cancel must not surface a toast")
+        XCTAssertFalse(vm.hwSpending.isSigning)
+        XCTAssertTrue(funding.composeCalls.isEmpty, "compose must not run after a reconnect cancel")
+    }
+
     func testReentrancyGuardIgnoresConcurrentConfirm() async {
         let funding = MockHwFunding()
         funding.composeError = MockHwFunding.TestError() // fail before the network-bound funding tail
