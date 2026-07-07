@@ -26,6 +26,22 @@ struct SpendingAmountHw: View {
         transfer.hwSpending.maxAllowedToSend
     }
 
+    /// Inputs the limit calculation depends on. Keying the `.task` on this reruns `updateHwLimits`
+    /// when Blocktank info arrives after the screen opens (the LSP caps are otherwise nil → 0 limits).
+    private struct HwLimitInputs: Equatable {
+        let deviceId: String
+        let maxChannelSizeSat: UInt64?
+        let maxClientBalanceSat: UInt64?
+    }
+
+    private var hwLimitInputs: HwLimitInputs {
+        HwLimitInputs(
+            deviceId: deviceId,
+            maxChannelSizeSat: blocktank.info?.options.maxChannelSizeSat,
+            maxClientBalanceSat: blocktank.info?.options.maxClientBalanceSat
+        )
+    }
+
     private var isValidAmount: Bool {
         !transfer.hwSpending.isLoading && maxAllowed > 0 && amountSats <= maxAllowed
     }
@@ -90,7 +106,7 @@ struct SpendingAmountHw: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .offlineOverlay(title: t("lightning__transfer__nav_title"))
-        .task(id: deviceId) {
+        .task(id: hwLimitInputs) {
             await transfer.updateHwLimits(
                 deviceId: deviceId,
                 blocktankInfo: blocktank.info,
