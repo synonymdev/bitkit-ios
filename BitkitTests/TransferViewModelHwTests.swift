@@ -112,6 +112,24 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertTrue(funding.composeCalls.isEmpty, "compose must not run after a reconnect cancel")
     }
 
+    func testCancelHwSigningStopsInFlightSign() async {
+        let funding = MockHwFunding()
+        funding.signDelay = 1.0 // keep signing in-flight so cancel interrupts it
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        while !vm.hwSpending.isSigning {
+            await Task.yield()
+        }
+        vm.cancelHwSigning()
+        await awaitSigningComplete(vm)
+
+        XCTAssertFalse(vm.hwSpending.isSigning)
+        XCTAssertEqual(vm.hwSignedEvent, 0, "a cancelled sign must not advance the flow")
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty, "cancelling must not tear down the session")
+    }
+
     func testReentrancyGuardIgnoresConcurrentConfirm() async {
         let funding = MockHwFunding()
         funding.composeError = MockHwFunding.TestError() // fail before the network-bound funding tail

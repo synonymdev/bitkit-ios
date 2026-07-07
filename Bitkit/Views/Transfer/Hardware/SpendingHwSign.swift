@@ -52,6 +52,14 @@ struct SpendingHwSign: View {
             app.toast(error)
             transfer.hwTransferError = nil
         }
+        .onDisappear {
+            // Cancel an in-flight sign only when the user truly leaves the flow (back/reset), not when
+            // pushing deeper (Learn More / Advanced / Signed) which keeps this route in the path.
+            let stillInFlow = navigation.path.contains {
+                if case .spendingHwSign = $0 { return true } else { return false }
+            }
+            if !stillInFlow { transfer.cancelHwSigning() }
+        }
     }
 
     private func belowNav(order: IBtOrder) -> some View {

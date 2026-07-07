@@ -533,6 +533,14 @@ class TransferViewModel: ObservableObject {
         }
     }
 
+    /// Cancel an in-flight hardware signing task when the user abandons the sign flow, so a later
+    /// on-device approval can't still sign/broadcast/record. Idempotent.
+    func cancelHwSigning() {
+        hwSignTask?.cancel()
+        hwSignTask = nil
+        hwSpending.isSigning = false
+    }
+
     private func handleHardwareTransferFailure(_ error: HwTransferError, deviceId: String) {
         switch error {
         case .reconnect:
