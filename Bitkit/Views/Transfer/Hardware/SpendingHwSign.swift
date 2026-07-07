@@ -80,12 +80,20 @@ struct SpendingHwSign: View {
                 .accessibilityIdentifier("HardwareTransferSignLearnMore")
 
                 if transfer.uiState.isAdvanced {
-                    CustomButton(title: t("lightning__spending_confirm__default"), size: .small) {
+                    CustomButton(
+                        title: t("lightning__spending_confirm__default"),
+                        size: .small,
+                        isDisabled: transfer.hwSpending.isSigning
+                    ) {
                         transfer.onDefaultClick()
                     }
                     .accessibilityIdentifier("HardwareTransferSignDefault")
                 } else {
-                    CustomButton(title: t("common__advanced"), size: .small) {
+                    CustomButton(
+                        title: t("common__advanced"),
+                        size: .small,
+                        isDisabled: transfer.hwSpending.isSigning
+                    ) {
                         navigation.navigate(.spendingAdvanced(order: order))
                     }
                     .accessibilityIdentifier("HardwareTransferSignAdvanced")
