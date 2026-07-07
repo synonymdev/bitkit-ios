@@ -116,7 +116,7 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting? = nil,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
-        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 60),
+        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
         onBalanceRefresh: (() async -> Void)? = nil
     ) {
         self.coreService = coreService
@@ -165,7 +165,7 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting?,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
-        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 60),
+        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel()
