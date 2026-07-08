@@ -211,7 +211,11 @@ class BackupService {
             }
 
             try await performRestore(category: .activity) { dataBytes in
-                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: dataBytes)
+                let migrated = try self.migrateCoreOwnedBackupFields(dataBytes, fieldMigrations: [
+                    "activities": migrateBackupActivitiesJson,
+                    "activityTags": migrateBackupActivityTagsJson,
+                ])
+                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: migrated)
 
                 try await CoreService.shared.activity.upsertList(payload.activities)
                 try await CoreService.shared.activity.upsertTags(payload.activityTags)
@@ -224,7 +228,10 @@ class BackupService {
             }
 
             try await performRestore(category: .metadata) { dataBytes in
-                let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: dataBytes)
+                let migrated = try self.migrateCoreOwnedBackupFields(dataBytes, fieldMigrations: [
+                    "tagMetadata": migrateBackupPreActivityMetadataJson,
+                ])
+                let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: migrated)
 
                 try await CoreService.shared.activity.upsertPreActivityMetadata(payload.tagMetadata)
 
@@ -737,6 +744,28 @@ class BackupService {
                 userInfo: [NSLocalizedDescriptionKey: "LIGHTNING_CONNECTIONS backup is managed by ldk-node"]
             )
         }
+    }
+
+    /// Fills in wallet ids that predate wallet-scoped activity data before a
+    /// backup envelope is decoded. Each Core-owned array field is handed to the
+    /// matching Core migration helper as raw JSON, so the app never edits Core
+    /// model JSON itself. Records that already carry a wallet id are left
+    /// unchanged, so this is safe to run on current backups too.
+    private func migrateCoreOwnedBackupFields(
+        _ dataBytes: Data,
+        fieldMigrations: [String: (String) throws -> String]
+    ) throws -> Data {
+        guard var root = try JSONSerialization.jsonObject(with: dataBytes) as? [String: Any] else {
+            return dataBytes
+        }
+        for (field, migrate) in fieldMigrations {
+            guard let array = root[field] as? [Any] else { continue }
+            let arrayData = try JSONSerialization.data(withJSONObject: array)
+            let migratedJson = try migrate(String(decoding: arrayData, as: UTF8.self))
+            guard let migratedData = migratedJson.data(using: .utf8) else { continue }
+            root[field] = try JSONSerialization.jsonObject(with: migratedData)
+        }
+        return try JSONSerialization.data(withJSONObject: root)
     }
 
     private func performRestore(category: BackupCategory, restoreAction: (Data) async throws -> Void) async throws {
