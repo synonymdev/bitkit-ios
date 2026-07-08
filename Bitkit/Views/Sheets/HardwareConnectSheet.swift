@@ -134,19 +134,20 @@ private struct HardwareConnectFlow: View {
                     CustomButton(title: t("common__cancel"), variant: .secondary, shouldExpand: true) {
                         sheets.hideSheet()
                     }
-                    .accessibilityIdentifier("HwIntroCancel")
+                    .accessibilityIdentifier("HardwareWalletIntroCancel")
 
                     CustomButton(title: t("common__continue"), shouldExpand: true) {
                         onContinueTapped()
                     }
-                    .accessibilityIdentifier("HwIntroContinue")
+                    .accessibilityIdentifier("HardwareWalletIntroContinue")
                 }
                 .padding(.top, 32)
                 .padding(.bottom, 16)
             }
             .padding(.horizontal, 32)
         }
-        .accessibilityIdentifier("HwIntroSheet")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("HardwareWalletIntroScreen")
     }
 
     private func onContinueTapped() {

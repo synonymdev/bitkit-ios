@@ -37,6 +37,7 @@ struct HardwareWalletsSettingsScreen: View {
             .padding(.bottom, 16)
         }
         .navigationBarHidden(true)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareWalletsScreen")
         .alert(
             t("hardware__remove_dialog_title", variables: ["name": pendingRemoval?.name ?? ""]),
@@ -46,7 +47,10 @@ struct HardwareWalletsSettingsScreen: View {
                 guard let wallet = pendingRemoval else { return }
                 Task { await remove(wallet) }
             }
+            .accessibilityIdentifier("DialogConfirm")
+
             Button(t("common__dialog_cancel"), role: .cancel) {}
+                .accessibilityIdentifier("DialogCancel")
         } message: {
             Text(t("hardware__remove_dialog_text"))
         }
@@ -116,14 +120,13 @@ private struct HwWalletRow: View {
         HStack(spacing: 12) {
             HwConnectionBadge(isConnected: wallet.isConnected)
 
-            Button(action: onRename) {
-                BodyMText(wallet.name, textColor: .textPrimary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("HardwareWalletRowName_\(wallet.id)")
+            BodyMText(wallet.name, textColor: .textPrimary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onRename)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("HardwareWalletRowName\(wallet.id)")
 
             MoneyText(
                 sats: Int(clamping: wallet.balanceSats),
@@ -133,20 +136,20 @@ private struct HwWalletRow: View {
                 symbolColor: .white64
             )
 
-            Button(action: onRemove) {
-                Image("trash")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 24, height: 24)
-                    .foregroundColor(.white)
-                    .padding(.vertical, 8)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("HardwareWalletRowDelete_\(wallet.id)")
+            Image("trash")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 24, height: 24)
+                .foregroundColor(.white)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onRemove)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("HardwareWalletRowDelete_\(wallet.id)")
         }
         .frame(height: 50)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareWalletRow_\(wallet.id)")
     }
 }
