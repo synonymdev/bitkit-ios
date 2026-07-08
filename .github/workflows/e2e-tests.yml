@@ -113,6 +113,8 @@ jobs:
             -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$OS_VERSION" \
             -derivedDataPath DerivedData \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD' \
+            TREZOR_BRIDGE=true \
+            TREZOR_BRIDGE_URL=http://127.0.0.1:21325 \
             -allowProvisioningUpdates \
             build
 
@@ -238,7 +240,7 @@ jobs:
           # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
           # - { name: settings, grep: "@settings" }
           # - { name: security, grep: "@security" }
-          - { name: e2e, grep: '@transfer|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4' }
+          - { name: e2e, grep: '@transfer|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4|@hardware_wallet' }
 
     name: e2e-tests-local - ${{ matrix.shard.name }}
 
@@ -280,6 +282,12 @@ jobs:
       - name: Install dependencies
         working-directory: bitkit-e2e-tests
         run: npm ci
+
+      - name: Pull Trezor emulator image
+        working-directory: bitkit-e2e-tests
+        run: |
+          cd docker
+          docker compose --profile trezor pull --quiet trezor-user-env
 
       - name: Docker info
         run: |
