@@ -111,6 +111,24 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a device cancel must not tear down the session")
     }
 
+    /// On device, `ServiceQueue` boxes the `TrezorError` into an `AppError` before it reaches the view
+    /// model, so the silent-cancel path must survive the wrapping (raw `TrezorError` is covered above).
+    /// `AppError` is qualified as `Bitkit.AppError` because `Errors.swift` is also compiled into this
+    /// test target — an unqualified `AppError` would be the test-target copy, not what production throws.
+    func testWrappedDeviceCancelDuringSigningIsSilent() async {
+        let funding = MockHwFunding()
+        funding.signError = Bitkit.AppError(error: TrezorError.UserCancelled)
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertNil(vm.hwTransferError, "a wrapped device cancel must not surface a toast")
+        XCTAssertFalse(vm.hwSpending.isSigning)
+        XCTAssertEqual(vm.hwSignedEvent, 0, "a cancelled transfer must not advance the flow")
+    }
+
     func testDeviceCancelDuringReconnectIsSilent() async {
         let funding = MockHwFunding()
         let connecting = MockHwConnecting()

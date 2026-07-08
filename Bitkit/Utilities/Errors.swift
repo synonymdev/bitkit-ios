@@ -77,6 +77,10 @@ enum BlocktankError_deprecated: Error {
 struct AppError: LocalizedError {
     let message: String
     let debugMessage: String?
+    /// The original error this was wrapped from, when known. Preserved so callers can unwrap and
+    /// inspect the underlying error (e.g. `isTrezorUserCancellation()`) after it has been boxed by
+    /// `ServiceQueue` into a generic `AppError`.
+    let underlyingError: Error?
 
     var errorDescription: String? {
         return NSLocalizedString(message, comment: "")
@@ -102,15 +106,17 @@ struct AppError: LocalizedError {
         // EsploraError
         // PersistenceError
 
-        self.init(message: "App Error", debugMessage: error.localizedDescription)
+        self.init(message: "App Error", debugMessage: error.localizedDescription, underlyingError: error)
     }
 
-    init(message: String, debugMessage: String?) {
+    init(message: String, debugMessage: String?, underlyingError: Error? = nil) {
         self.message = message
         self.debugMessage = debugMessage
+        self.underlyingError = underlyingError
     }
 
     init(serviceError: CustomServiceError) {
+        underlyingError = serviceError
         switch serviceError {
         case .nodeNotSetup:
             message = "Node is not setup"
@@ -157,6 +163,7 @@ struct AppError: LocalizedError {
     //    }
 
     private init(ldkBuildError: BuildError) {
+        underlyingError = ldkBuildError
         switch ldkBuildError as BuildError {
         case let .InvalidSeedBytes(message: ldkMessage):
             message = "Invalid seed bytes"
@@ -213,6 +220,7 @@ struct AppError: LocalizedError {
     }
 
     private init(ldkError: NodeError) {
+        underlyingError = ldkError
         switch ldkError as NodeError {
         case let .AlreadyRunning(message: ldkMessage):
             message = "Node is already running"
