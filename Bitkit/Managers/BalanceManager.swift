@@ -35,8 +35,12 @@ class BalanceManager {
         let channels = await MainActor.run { lightningService.channels } ?? []
         let activeTransfers = try transferService.getActiveTransfers()
 
-        let paidOrdersSats = getOrderPaymentsSats(activeTransfers: activeTransfers)
-        let pendingChannelsSats = getPendingChannelsSats(
+        let paidOrdersSats = await getOrderPaymentsSats(
+            activeTransfers: activeTransfers,
+            channels: channels,
+            balances: balanceDetails
+        )
+        let pendingChannelsSats = await getPendingChannelsSats(
             transfers: activeTransfers,
             channels: channels,
             balances: balanceDetails
@@ -96,21 +100,34 @@ class BalanceManager {
 
     // MARK: - Private Helper Methods
 
-    /// Calculates the total amount paid for LSP orders before their channel is assigned.
-    /// Once channelId is set, funds are tracked by getPendingChannelsSats instead.
-    private func getOrderPaymentsSats(activeTransfers: [Transfer]) -> UInt64 {
-        // Only count orders that don't have a channel assigned yet
-        let paidOrders = activeTransfers.filter {
-            $0.type.isToSpending() && $0.lspOrderId != nil && $0.channelId == nil
-        }
+    /// Calculates the total amount paid for LSP orders whose funds are not yet reflected in a
+    /// Lightning channel balance. The channel is resolved dynamically (via the order's funding tx),
+    /// so an order is dropped here as soon as LDK exposes its pending channel — where
+    /// getPendingChannelsSats then tracks it — preventing a double-count during the
+    /// paid-order → pending-channel transition (notably for hardware-wallet transfers, where LDK can
+    /// expose the pending channel before the transfer's channelId is persisted).
+    private func getOrderPaymentsSats(
+        activeTransfers: [Transfer],
+        channels: [ChannelDetails],
+        balances: BalanceDetails
+    ) async -> UInt64 {
+        var amount: UInt64 = 0
+        let paidOrders = activeTransfers.filter { $0.type.isToSpending() && $0.lspOrderId != nil }
 
         for transfer in paidOrders {
-            Logger.debug(
-                "Order payment transfer: id=\(transfer.id) orderId=\(transfer.lspOrderId ?? "nil") amount=\(transfer.amountSats)"
-            )
+            let channelId = try? await transferService.resolveChannelId(for: transfer, channels: channels)
+            let channelBalance = channelId.flatMap { id in
+                balances.lightningBalances.first { $0.channelIdString == id }
+            }
+            if channelBalance == nil {
+                Logger.debug(
+                    "Order payment transfer: id=\(transfer.id) orderId=\(transfer.lspOrderId ?? "nil") amount=\(transfer.amountSats)"
+                )
+                amount += transfer.amountSats
+            }
         }
 
-        return paidOrders.reduce(0) { $0 + $1.amountSats }
+        return amount
     }
 
     /// Amount to subtract from displayed on-chain for order payments whose tx is not yet reflected in LDK.
@@ -129,20 +146,24 @@ class BalanceManager {
     }
 
     /// Calculates the total balance in pending (not yet usable) channels.
+    ///
+    /// The channel is resolved dynamically (via the order's funding tx) rather than only from the
+    /// transfer's stored channelId, so a pending channel is subtracted from the Lightning total as
+    /// soon as LDK exposes it — even before syncTransferStates persists the channelId.
     private func getPendingChannelsSats(
         transfers: [Transfer],
         channels: [ChannelDetails],
         balances: BalanceDetails
-    ) -> UInt64 {
+    ) async -> UInt64 {
         var amount: UInt64 = 0
-        let pendingTransfers = transfers.filter { $0.type.isToSpending() && $0.channelId != nil }
+        let pendingTransfers = transfers.filter { $0.type.isToSpending() }
 
         Logger.debug("Checking \(pendingTransfers.count) pending transfers to spending")
         Logger.debug("Available channels: \(channels.count), Lightning balances: \(balances.lightningBalances.count)")
 
         for transfer in pendingTransfers {
-            guard let channelId = transfer.channelId else {
-                Logger.debug("Transfer \(transfer.id) has no channelId")
+            guard let channelId = try? await transferService.resolveChannelId(for: transfer, channels: channels) else {
+                Logger.debug("Transfer \(transfer.id) has no resolvable channelId")
                 continue
             }
 

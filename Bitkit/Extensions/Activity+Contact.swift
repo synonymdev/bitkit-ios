@@ -40,3 +40,19 @@ extension Activity {
         }
     }
 }
+
+extension [Activity] {
+    /// Drop hardware-wallet on-chain rows whose tx already exists as a main-wallet activity, so a
+    /// transfer shows a single (main-wallet) row in the merged home / All Activity lists. The HW row
+    /// still appears on the hardware wallet detail screen (which fetches scoped to the device).
+    func withoutHardwareDuplicates() -> [Activity] {
+        let localTxIds = Set(compactMap { activity -> String? in
+            guard !activity.isHardwareWallet, case let .onchain(onchain) = activity else { return nil }
+            return onchain.txId
+        })
+        return filter { activity in
+            guard activity.isHardwareWallet, case let .onchain(onchain) = activity else { return true }
+            return !localTxIds.contains(onchain.txId)
+        }
+    }
+}

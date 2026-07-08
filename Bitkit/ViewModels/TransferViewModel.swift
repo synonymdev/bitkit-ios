@@ -15,6 +15,63 @@ struct TransferValues {
     var maxClientBalance: UInt64 = 0
 }
 
+/// Limits/flags for the hardware-wallet transfer-to-spending flow, sourced from the device balance.
+struct HwSpendingState: Equatable {
+    var isLoading = false
+    var isSigning = false
+    var maxAllowedToSend: UInt64 = 0
+    var balanceAfterFee: UInt64 = 0
+    var quarterAmount: UInt64 = 0
+}
+
+/// A recoverable failure surfaced by the hardware-wallet transfer flow. The Sign screen maps each
+/// case to the matching localized toast.
+enum HwTransferError: Error, Equatable {
+    /// Reconnect failed. `isBluetooth` selects the softer INFO toast for a known BLE device
+    /// (advertises intermittently — "check that it is unlocked and try again") vs the ERROR toast.
+    case reconnect(isBluetooth: Bool)
+    case signingTimeout
+    case broadcastUncertain
+    case funding(String?)
+    case generic(String?)
+}
+
+/// The hardware-wallet funding capability the transfer flow needs. Implemented by `HwWalletManager`;
+/// declared as a protocol so the flow stays testable.
+@MainActor
+protocol HwTransferFunding: Sendable {
+    func getFundingAccount(deviceId: String, addressType: AddressScriptType) throws -> HwFundingAccount
+    func maxSpendableFunding(
+        deviceId: String,
+        destinationAddress: String,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> UInt64
+    func composeFundingTransaction(
+        deviceId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> HwFundingTransaction
+    func signFunding(deviceId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
+    func broadcastFunding(serializedTx: String) async throws -> String
+}
+
+/// The device-session capability the transfer flow needs for on-device signing. Implemented by
+/// `TrezorManager`.
+@MainActor
+protocol HwTransferConnecting: Sendable {
+    func ensureConnected(deviceId: String) async throws
+    func disconnectStaleSession(deviceId: String) async
+    /// Whether the device is a known Bluetooth device, so a reconnect failure can show the softer
+    /// BLE "check that it is unlocked and try again" toast instead of the generic reconnect error.
+    func isKnownBluetoothDevice(deviceId: String) -> Bool
+    /// Best-effort pre-connect when the sign screen appears, so tapping Open Trezor Connect is less
+    /// likely to hit a cold reconnect. Fire-and-forget.
+    func warmUpConnection(deviceId: String)
+}
+
 @MainActor
 class TransferViewModel: ObservableObject {
     @Published var uiState = TransferUiState()
@@ -24,15 +81,26 @@ class TransferViewModel: ObservableObject {
     @Published var channelsToClose: [ChannelDetails] = []
     @Published var transferUnavailable = false
 
+    /// Hardware-wallet transfer-to-spending state.
+    @Published var hwSpending = HwSpendingState()
+    /// Bumped when a hardware funding tx is signed + broadcast, so the Sign screen advances.
+    @Published var hwSignedEvent = 0
+    /// A recoverable hardware transfer failure the Sign screen should toast, then clear.
+    @Published var hwTransferError: HwTransferError?
+
     private let coreService: CoreService
     private let lightningService: LightningService
     private let currencyService: CurrencyService
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
     private let onBalanceRefresh: (() async -> Void)?
+    /// The device-signing orchestration for a hardware-wallet transfer; nil when the HW capabilities
+    /// aren't injected (previews/plain init).
+    private let hwSigner: HwFundingSigner?
 
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
+    private var hwSignTask: Task<Void, Never>?
 
     private let retryInterval: TimeInterval = 60 // 1 min
     private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
@@ -44,6 +112,11 @@ class TransferViewModel: ObservableObject {
         currencyService: CurrencyService = .shared,
         transferService: TransferService,
         sheetViewModel: SheetViewModel,
+        hwFunding: HwTransferFunding? = nil,
+        hwConnecting: HwTransferConnecting? = nil,
+        hwFeeRateProvider: (() async -> UInt64?)? = nil,
+        hwAddressProvider: (() async throws -> String)? = nil,
+        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
         onBalanceRefresh: (() async -> Void)? = nil
     ) {
         self.coreService = coreService
@@ -52,6 +125,17 @@ class TransferViewModel: ObservableObject {
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
         self.onBalanceRefresh = onBalanceRefresh
+        if let hwFunding, let hwConnecting {
+            hwSigner = HwFundingSigner(
+                funding: hwFunding,
+                connecting: hwConnecting,
+                feeRateProvider: hwFeeRateProvider ?? { nil },
+                addressProvider: hwAddressProvider ?? { throw AppError(message: "No address provider", debugMessage: "") },
+                timeouts: hwTimeouts
+            )
+        } else {
+            hwSigner = nil
+        }
     }
 
     /// Convenience initializer for testing and previews
@@ -71,6 +155,35 @@ class TransferViewModel: ObservableObject {
             currencyService: currencyService,
             transferService: transferService,
             sheetViewModel: sheetViewModel
+        )
+    }
+
+    /// Convenience initializer for hardware-wallet transfer tests. Builds the `TransferService`
+    /// inside the app module so callers don't construct cross-module service types.
+    convenience init(
+        hwFunding: HwTransferFunding?,
+        hwConnecting: HwTransferConnecting?,
+        hwFeeRateProvider: (() async -> UInt64?)? = nil,
+        hwAddressProvider: (() async throws -> String)? = nil,
+        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
+        coreService: CoreService = .shared,
+        lightningService: LightningService = .shared,
+        sheetViewModel: SheetViewModel = SheetViewModel()
+    ) {
+        let transferService = TransferService(
+            lightningService: lightningService,
+            blocktankService: coreService.blocktank
+        )
+        self.init(
+            coreService: coreService,
+            lightningService: lightningService,
+            transferService: transferService,
+            sheetViewModel: sheetViewModel,
+            hwFunding: hwFunding,
+            hwConnecting: hwConnecting,
+            hwFeeRateProvider: hwFeeRateProvider,
+            hwAddressProvider: hwAddressProvider,
+            hwTimeouts: hwTimeouts
         )
     }
 
@@ -154,29 +267,48 @@ class TransferViewModel: ObservableObject {
 
         let txTotalSats = order.feeSat + txFee
 
-        // Create transfer tracking record for spending
-        do {
-            // Create pre-activity metadata for the transfer transaction
-            let currentTime = UInt64(Date().timeIntervalSince1970)
-            let preActivityMetadata = BitkitCore.PreActivityMetadata(
-                walletId: WalletScope.default,
-                paymentId: txid,
-                tags: [],
-                paymentHash: nil,
-                txId: txid,
-                address: address,
-                isReceive: false,
-                feeRate: UInt64(satsPerVbyte),
-                isTransfer: true,
-                channelId: nil,
-                createdAt: currentTime
-            )
-            try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
+        // Pre-activity metadata lets the LDK activity sync recognize this send as a transfer.
+        let currentTime = UInt64(Date().timeIntervalSince1970)
+        let preActivityMetadata = BitkitCore.PreActivityMetadata(
+            walletId: WalletScope.default,
+            paymentId: txid,
+            tags: [],
+            paymentHash: nil,
+            txId: txid,
+            address: address,
+            isReceive: false,
+            feeRate: UInt64(satsPerVbyte),
+            isTransfer: true,
+            channelId: nil,
+            createdAt: currentTime
+        )
+        try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
 
+        await fundPaidOrder(
+            order: order,
+            txId: txid,
+            txTotalSats: txTotalSats,
+            preTransferOnchainSats: preTransferOnchainSats
+        )
+    }
+
+    /// Records a paid order and starts watching it, after the funding tx was broadcast (local LDK
+    /// send or hardware-signed). For the hardware path, also creates the pending on-chain activity
+    /// (the tx is broadcast externally, so LDK's own activity sync won't surface it).
+    private func fundPaidOrder(
+        order: IBtOrder,
+        txId: String,
+        createTransferActivity: Bool = false,
+        fee: UInt64 = 0,
+        feeRate: UInt64 = 0,
+        txTotalSats: UInt64? = nil,
+        preTransferOnchainSats: UInt64? = nil
+    ) async {
+        do {
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
                 amountSats: order.clientBalanceSat,
-                fundingTxId: txid,
+                fundingTxId: txId,
                 lspOrderId: order.id,
                 txTotalSats: txTotalSats,
                 preTransferOnchainSats: preTransferOnchainSats
@@ -187,7 +319,12 @@ class TransferViewModel: ObservableObject {
             // Don't throw - we still want to continue with the order
         }
 
+        if createTransferActivity {
+            await transferService.createPendingToSpendingActivity(order: order, txId: txId, fee: fee, feeRate: feeRate)
+        }
+
         lightningSetupStep = 0
+        await onBalanceRefresh?()
         watchOrder(orderId: order.id)
     }
 
@@ -315,10 +452,124 @@ class TransferViewModel: ObservableObject {
         uiState.isAdvanced = false
     }
 
-    func resetState() {
-        uiState = TransferUiState()
-        transferValues = TransferValues()
-        selectedChannelIds = []
+    // MARK: - Hardware Wallet Transfer
+
+    /// Compute the available/MAX/quarter limits for a hardware-wallet transfer: the signer resolves
+    /// the device's native-segwit balance minus an on-chain fee reserve, then the shared
+    /// spending-limit calculation clamps it to the LSP receiving cap.
+    func updateHwLimits(
+        deviceId: String,
+        blocktankInfo: IBtInfo?,
+        estimateOrderFee: @escaping (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws
+            -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async {
+        guard let hwSigner else { return }
+        hwSpending = HwSpendingState(isLoading: true)
+
+        let availability: HwFundingSigner.Availability
+        do {
+            availability = try await hwSigner.availability(deviceId: deviceId)
+        } catch {
+            hwSpending = HwSpendingState(isLoading: false)
+            hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
+            return
+        }
+
+        do {
+            let (avail, maxAmount) = try await calculateSpendingLimits(
+                onchainAvailable: availability.available,
+                lspMaxClientBalance: blocktankInfo?.options.maxClientBalanceSat,
+                transferValues: { self.calculateTransferValues(clientBalanceSat: $0, blocktankInfo: blocktankInfo) },
+                estimateOrderFee: estimateOrderFee
+            )
+            hwSpending.balanceAfterFee = avail
+            hwSpending.maxAllowedToSend = maxAmount
+            hwSpending.quarterAmount = min(availability.balanceSats / 4, maxAmount)
+        } catch {
+            hwSpending.balanceAfterFee = 0
+            hwSpending.maxAllowedToSend = 0
+            hwSpending.quarterAmount = 0
+        }
+
+        hwSpending.isLoading = false
+    }
+
+    /// Pay for the order by composing and signing the funding send on the Trezor (via the signer),
+    /// then record and watch it. Coordination only — the device orchestration lives in `HwFundingSigner`.
+    func onTransferToSpendingHwConfirm(order: IBtOrder, deviceId: String) {
+        guard !hwSpending.isSigning else { return }
+        guard let hwSigner else {
+            hwTransferError = .generic(t("common__error"))
+            return
+        }
+        guard let address = order.payment?.onchain?.address, !address.isEmpty else {
+            hwTransferError = .generic(t("common__error"))
+            return
+        }
+
+        hwSpending.isSigning = true
+        hwTransferError = nil
+
+        hwSignTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.hwSpending.isSigning = false
+                self.hwSignTask = nil
+            }
+
+            do {
+                let result = try await hwSigner.sign(order: order, deviceId: deviceId, address: address)
+                await fundPaidOrder(
+                    order: order,
+                    txId: result.txId,
+                    createTransferActivity: true,
+                    fee: result.miningFeeSats,
+                    feeRate: result.feeRate
+                )
+                hwSignedEvent += 1
+            } catch is CancellationError {
+                // User dismissed the flow — no toast.
+            } catch let error as HwTransferError {
+                self.handleHardwareTransferFailure(error, deviceId: deviceId)
+            } catch {
+                if error.isTrezorUserCancellation() {
+                    Logger.info("Hardware transfer cancelled on device '\(deviceId)'", context: "TransferViewModel")
+                    return
+                }
+                hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
+            }
+        }
+    }
+
+    /// Pre-connect the hardware device when the sign screen appears, mirroring Android's warm-up, so
+    /// tapping Open Trezor Connect is less likely to hit a cold reconnect. Best-effort no-op without
+    /// the HW capabilities.
+    func warmUpHardwareConnection(deviceId: String) {
+        hwSigner?.warmUp(deviceId: deviceId)
+    }
+
+    /// Cancel an in-flight hardware signing task when the user abandons the sign flow, so a later
+    /// on-device approval can't still sign/broadcast/record. Idempotent.
+    func cancelHwSigning() {
+        hwSignTask?.cancel()
+        hwSignTask = nil
+        hwSpending.isSigning = false
+    }
+
+    private func handleHardwareTransferFailure(_ error: HwTransferError, deviceId: String) {
+        switch error {
+        case .reconnect:
+            Logger.error("Failed to reconnect hardware device '\(deviceId)'", context: "TransferViewModel")
+        case .signingTimeout:
+            Logger.warn("Timed out hardware transfer signing for '\(deviceId)'", context: "TransferViewModel")
+        case .broadcastUncertain:
+            Logger.warn("Hardware funding broadcast timed out (uncertain) for '\(deviceId)'", context: "TransferViewModel")
+        case let .funding(message):
+            Logger.warn("Failed to compose hardware funding for '\(deviceId)': \(message ?? "")", context: "TransferViewModel")
+        case .generic:
+            break
+        }
+        hwTransferError = error
     }
 
     // MARK: - Balance Calculation
@@ -779,3 +1030,8 @@ actor ChannelPendingCapture {
         return channelData
     }
 }
+
+// MARK: - Hardware transfer capability conformances
+
+extension HwWalletManager: HwTransferFunding {}
+extension TrezorManager: HwTransferConnecting {}

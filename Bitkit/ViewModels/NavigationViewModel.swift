@@ -28,7 +28,11 @@ enum Route: Hashable {
     case transferIntro
     case fundingOptions
     case spendingIntro
+    case spendingIntroHw(deviceId: String)
     case spendingAmount
+    case spendingAmountHw(deviceId: String)
+    case spendingHwSign(deviceId: String)
+    case spendingHwSigned
     case spendingConfirm(order: IBtOrder)
     case spendingAdvanced(order: IBtOrder)
     case transferLearnMore(order: IBtOrder)

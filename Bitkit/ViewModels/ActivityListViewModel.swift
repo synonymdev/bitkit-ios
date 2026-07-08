@@ -141,7 +141,7 @@ class ActivityListViewModel: ObservableObject {
             // Fetch extra to account for potential filtering of replaced transactions.
             // walletId nil → global: merges the Bitkit wallet with watch-only hardware wallets.
             let latest = try await coreService.activity.get(filter: .all, limit: limitLatest * 3, walletId: nil)
-            let filtered = await filterOutReplacedSentTransactions(latest)
+            let filtered = await filterOutReplacedSentTransactions(latest).withoutHardwareDuplicates()
             latestActivities = Array(filtered.prefix(Int(limitLatest)))
 
             // Fetch all activities
@@ -201,8 +201,9 @@ class ActivityListViewModel: ObservableObject {
                 walletId: nil
             )
 
-            // Filter out replaced sent transactions that appear in another transaction's boostTxIds
-            let filteredOutReplaced = await filterOutReplacedSentTransactions(baseFilteredActivities)
+            // Filter out replaced sent transactions that appear in another transaction's boostTxIds,
+            // then collapse hardware-wallet duplicates of the same funding tx into the main-wallet row.
+            let filteredOutReplaced = await filterOutReplacedSentTransactions(baseFilteredActivities).withoutHardwareDuplicates()
 
             // Apply tab filtering
             filteredActivities = filterActivitiesByTab(filteredOutReplaced, selectedTab: selectedTab)

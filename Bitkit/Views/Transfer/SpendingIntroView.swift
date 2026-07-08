@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct SpendingIntroView: View {
+    /// When set, this intro is for a hardware-wallet transfer; Continue routes to the HW amount flow.
+    var deviceId: String?
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
@@ -13,7 +16,11 @@ struct SpendingIntroView: View {
             buttonText: t("lightning__spending_intro__button"),
             onButtonPress: {
                 app.hasSeenTransferToSpendingIntro = true
-                navigation.navigate(.spendingAmount)
+                if let deviceId {
+                    navigation.navigate(.spendingAmountHw(deviceId: deviceId))
+                } else {
+                    navigation.navigate(.spendingAmount)
+                }
             },
             accentColor: .purpleAccent,
             imagePosition: .center,

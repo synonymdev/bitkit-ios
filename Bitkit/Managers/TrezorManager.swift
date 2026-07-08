@@ -644,6 +644,90 @@ final class TrezorManager {
         autoReconnectStatus = nil
     }
 
+    // MARK: - Reconnect for on-device signing
+
+    /// Ensure the given known device has a live session so it can sign. Reuses the current
+    /// connection when it already matches the requested device; otherwise reconnects it. Throws on
+    /// failure so the transfer flow can surface a reconnect error.
+    func ensureConnected(deviceId: String) async throws {
+        if connectedDevice?.id == deviceId, await trezorService.isConnected() {
+            return
+        }
+        // A stale or mismatched session blocks a clean reconnect — clear it first.
+        if connectedDevice != nil {
+            await disconnectStaleSession(deviceId: connectedDevice?.id ?? deviceId)
+        }
+        try await reconnectKnownDevice(deviceId: deviceId)
+    }
+
+    private func reconnectKnownDevice(deviceId: String) async throws {
+        await startScan(clearExisting: true)
+
+        let target: TrezorDeviceInfo
+        if let scanned = devices.first(where: { $0.id == deviceId }) {
+            target = scanned
+        } else if let known = knownDevices.first(where: { $0.id == deviceId }), known.transportType == "bluetooth" {
+            // Honor the stored BLE transport — reconnect directly to a known device that didn't
+            // surface within the scan window instead of failing outright.
+            target = deviceInfo(from: known)
+        } else {
+            throw AppError(message: "Reconnect Hardware Device", debugMessage: "Device '\(deviceId)' not found nearby")
+        }
+
+        await connect(device: target)
+
+        guard connectedDevice?.id == deviceId, await trezorService.isConnected() else {
+            throw AppError(message: "Reconnect Hardware Device", debugMessage: error ?? "Failed to reconnect '\(deviceId)'")
+        }
+    }
+
+    /// Whether the given device is a known Bluetooth device. iOS is BLE-only in practice, but the
+    /// stored transport is honored so a USB device still gets the hard reconnect error.
+    func isKnownBluetoothDevice(deviceId: String) -> Bool {
+        knownDevices.first(where: { $0.id == deviceId })?.transportType == "bluetooth"
+    }
+
+    /// Best-effort pre-connect of a known BLE Trezor before the sign screen asks for it, so tapping
+    /// Open Trezor Connect is less likely to hit a cold reconnect. Fire-and-forget; no-op when already
+    /// connected to it, a connect is in flight, or it isn't a known BLE device.
+    func warmUpConnection(deviceId: String) {
+        guard connectedDevice?.id != deviceId else { return }
+        guard !isScanning else { return }
+        guard isKnownBluetoothDevice(deviceId: deviceId) else { return }
+        Task {
+            do {
+                try await reconnectKnownDevice(deviceId: deviceId)
+            } catch {
+                trezorLog("Warm-up connect failed for '\(deviceId)': \(error)", level: "debug")
+            }
+        }
+    }
+
+    /// Tear down the current device session so the next connect establishes a fresh one. Used after
+    /// a signing failure or timeout, where the transport session may be left in a bad state.
+    func disconnectStaleSession(deviceId: String) async {
+        do {
+            try await trezorService.disconnect()
+        } catch {
+            trezorLog("Failed to disconnect stale session for '\(deviceId)': \(error)", level: "warn")
+        }
+        clearDisconnectedDeviceState()
+    }
+
+    /// Reconstruct a `TrezorDeviceInfo` for reconnecting to a known BLE device when a fresh scan
+    /// hasn't surfaced it (BLE devices advertise intermittently).
+    private func deviceInfo(from known: TrezorKnownDevice) -> TrezorDeviceInfo {
+        TrezorDeviceInfo(
+            id: known.id,
+            transportType: known.transportType == "bluetooth" ? .bluetooth : .usb,
+            name: known.name,
+            path: known.path,
+            label: known.label,
+            model: known.model,
+            isBootloader: false
+        )
+    }
+
     // MARK: - Network Switching
 
     /// Switches the dashboard's network independently of the app's global network.

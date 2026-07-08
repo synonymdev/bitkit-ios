@@ -73,6 +73,24 @@ class TransferService {
         return id
     }
 
+    /// Create the pending on-chain activity for a hardware-wallet transfer to spending. The funding
+    /// tx is broadcast externally (on-device signing), so LDK's own activity sync won't surface it;
+    /// this makes it appear immediately, marked as a transfer.
+    func createPendingToSpendingActivity(order: IBtOrder, txId: String, fee: UInt64, feeRate: UInt64) async {
+        guard let address = order.payment?.onchain?.address, !address.isEmpty else {
+            Logger.error("Order '\(order.id)' has no on-chain payment address", context: "TransferService")
+            return
+        }
+        await coreService.activity.createSentOnchainActivityFromSendResult(
+            txid: txId,
+            address: address,
+            amount: order.feeSat,
+            fee: fee,
+            feeRate: UInt32(feeRate),
+            isTransfer: true
+        )
+    }
+
     /// Mark a transfer as settled
     func markSettled(id: String) async throws {
         let settledAt = UInt64(Date().timeIntervalSince1970)
@@ -123,6 +141,12 @@ class TransferService {
                     )
                     try storage.update(updatedTransfer)
                     Logger.debug("Updated transfer \(transfer.id) with channelId: \(channelId)", context: "TransferService")
+                }
+
+                // Associate the funding tx's on-chain activity with the resolved channel so it reads
+                // as a transfer (e.g. the hardware-wallet funding tx created before the channel opened).
+                if let fundingTxId = transfer.fundingTxId {
+                    await coreService.activity.markOnchainActivityAsTransfer(txId: fundingTxId, channelId: channelId)
                 }
 
                 // Check if channel is ready (usable)
@@ -237,7 +261,10 @@ class TransferService {
                 orders = try await blocktankService.orders(orderIds: [orderId], filter: nil, refresh: false)
             } catch {
                 Logger.error("Failed to fetch Blocktank orders for orderId \(orderId): \(error)", context: "TransferService")
-                return nil
+                // Fall back to the persisted channel id (same BOLT `channelId.description` format the
+                // success path returns) so a transient Blocktank failure doesn't drop a known channel
+                // and double-count the transfer in the balance calc.
+                return transfer.channelId
             }
 
             if let order = orders?.first {

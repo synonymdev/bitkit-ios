@@ -13,6 +13,10 @@ struct HwWallet: Identifiable {
     let model: String?
     let isConnected: Bool
     let balanceSats: UInt64
+    /// Balance available to fund a transfer to spending, sourced from the native-segwit account only
+    /// (v1 funds from native-segwit; other address types are watched but not spent). Defaults to
+    /// `balanceSats` when not computed separately.
+    let fundingBalanceSats: UInt64
     let deviceIds: Set<String>
 
     init(
@@ -22,6 +26,7 @@ struct HwWallet: Identifiable {
         model: String?,
         isConnected: Bool,
         balanceSats: UInt64,
+        fundingBalanceSats: UInt64? = nil,
         deviceIds: Set<String>? = nil
     ) {
         self.id = id
@@ -30,6 +35,7 @@ struct HwWallet: Identifiable {
         self.model = model
         self.isConnected = isConnected
         self.balanceSats = balanceSats
+        self.fundingBalanceSats = fundingBalanceSats ?? balanceSats
         self.deviceIds = deviceIds ?? [id]
     }
 }
