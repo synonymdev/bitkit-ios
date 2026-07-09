@@ -114,6 +114,11 @@ enum Env {
         return networkSuffix == "bitcoin" ? base : "\(base).\(networkSuffix)"
     }
 
+    /// Keychain access group shared with Pubky Ring for cross-app pubky identity reuse.
+    /// Network-independent: pubky key material is the same across networks (only homeservers differ).
+    /// Must match the `$(AppIdentifierPrefix)pubky.shared` entry in Bitkit.entitlements and Pubky Ring's entitlement.
+    static let sharedPubkyKeychainGroup = "KYH47R284B.pubky.shared"
+
     // MARK: wallet services
 
     static let network: LDKNode.Network = {
