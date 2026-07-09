@@ -45,6 +45,7 @@ final class HwWalletManager {
     private let networkProvider: () -> TrezorCoinType
     private let persistActivities: ([Activity]) -> Void
     private let deleteActivities: (String) -> Void
+    private let syncHardwareActivity: (OnchainActivity) -> Void
 
     // MARK: - Internal state
 
@@ -89,7 +90,8 @@ final class HwWalletManager {
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
         persistActivities: (([Activity]) -> Void)? = nil,
-        deleteActivities: ((String) -> Void)? = nil
+        deleteActivities: ((String) -> Void)? = nil,
+        syncHardwareActivity: ((OnchainActivity) -> Void)? = nil
     ) {
         self.watcherService = watcherService
         networkProvider = network ?? { OnChainHwService.appDefaultCoinType }
@@ -113,6 +115,9 @@ final class HwWalletManager {
                     CoreService.shared.activity.notifyActivitiesChanged()
                 }
             }
+        }
+        self.syncHardwareActivity = syncHardwareActivity ?? { activity in
+            Task { await CoreService.shared.activity.syncHardwareOnchainActivity(activity) }
         }
     }
 
@@ -328,6 +333,13 @@ final class HwWalletManager {
         let groups = deviceGroups()
         recomputeDerivedState(groups: groups)
         persistGroupActivities(forDevice: deviceId, groups: groups)
+        // Bridge watcher confirmation data to any matching main-wallet transfer activity (e.g. the
+        // funding tx of a transfer to spending), without clobbering its transfer metadata.
+        for activity in activities {
+            if case let .onchain(onchain) = activity {
+                syncHardwareActivity(onchain)
+            }
+        }
         emitReceivedTxs(previous: previous, activities: activities)
     }
 
@@ -414,6 +426,7 @@ final class HwWalletManager {
                 model: device.model,
                 isConnected: connectedDevice != nil,
                 balanceSats: deviceWatchers.reduce(UInt64(0)) { $0.saturatingAdd($1.balanceSats) },
+                fundingBalanceSats: fundingBalance(group: group, addressType: hwFundingDefaultAddressType),
                 deviceIds: group.ids
             )
         }
@@ -438,11 +451,164 @@ final class HwWalletManager {
         }
     }
 
+    // MARK: - Funding (transfer to spending)
+
+    /// The watch-only balance available to fund a transfer to spending from `deviceId`, sourced from
+    /// the given address-type account only (v1: native segwit). Does not require a connected device.
+    func fundingBalance(deviceId: String, addressType: AddressScriptType = hwFundingDefaultAddressType) -> UInt64 {
+        guard let group = deviceGroups().first(where: { $0.ids.contains(deviceId) }) else { return 0 }
+        return fundingBalance(group: group, addressType: addressType)
+    }
+
+    private func fundingBalance(group: DeviceGroup, addressType: AddressScriptType) -> UInt64 {
+        watcherData
+            .filter { group.ids.contains($0.value.deviceId) && self.addressType(fromWatcherId: $0.key) == addressType.stringValue }
+            .reduce(UInt64(0)) { $0.saturatingAdd($1.value.balanceSats) }
+    }
+
+    /// Resolve the funding account (xpub + watch-only balance) for a paired device. Does not require
+    /// a connected device — the xpub is read from the stored known-device record and the balance
+    /// from the running watchers.
+    func getFundingAccount(
+        deviceId: String,
+        addressType: AddressScriptType = hwFundingDefaultAddressType
+    ) throws -> HwFundingAccount {
+        guard let device = knownDevices.first(where: { $0.id == deviceId }) else {
+            throw AppError(message: "Unknown hardware wallet", debugMessage: "No known device '\(deviceId)'")
+        }
+        guard let xpub = device.xpubs[addressType.stringValue] else {
+            throw AppError(
+                message: "Missing account",
+                debugMessage: "Device '\(deviceId)' has no '\(addressType.stringValue)' account xpub"
+            )
+        }
+        return HwFundingAccount(
+            xpub: xpub,
+            addressType: addressType,
+            balanceSats: fundingBalance(deviceId: deviceId, addressType: addressType)
+        )
+    }
+
+    /// The exact amount spendable from the funding account after the real coin-selection mining fee,
+    /// computed offline via a `sendMax` compose. No connected device is needed — `fingerprint` is only
+    /// required for signing — so this mirrors the software wallet's max-sendable estimate.
+    /// `destinationAddress` is a fee-estimation destination only (never broadcast).
+    func maxSpendableFunding(
+        deviceId: String,
+        destinationAddress: String,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType = hwFundingDefaultAddressType
+    ) async throws -> UInt64 {
+        let account = try getFundingAccount(deviceId: deviceId, addressType: addressType)
+        let params = ComposeParams(
+            wallet: WalletParams(
+                extendedKey: account.xpub,
+                electrumUrl: electrumUrlProvider(),
+                fingerprint: nil,
+                network: networkProvider().coreNetwork,
+                accountType: account.accountType
+            ),
+            outputs: [.sendMax(address: destinationAddress)],
+            feeRates: [Float(satsPerVByte)],
+            coinSelection: .branchAndBound
+        )
+        let results = try await OnChainHwService.shared.composeTransaction(params: params)
+        for result in results {
+            if case let .success(_, fee, _, totalSpent) = result {
+                return totalSpent > fee ? totalSpent - fee : 0
+            }
+        }
+        let composeError: String? = results.compactMap {
+            if case let .error(error) = $0 { return error } else { return nil }
+        }.first
+        throw AppError(
+            message: "Failed to estimate hardware funding amount",
+            debugMessage: composeError ?? "No successful compose result"
+        )
+    }
+
+    /// Compose the exact on-chain funding payment before prompting for the on-device signature.
+    /// Requires the device to be connected (the fingerprint drives the PSBT derivation paths); the
+    /// caller must ensure the Trezor is connected first (via `TrezorManager`).
+    func composeFundingTransaction(
+        deviceId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType = hwFundingDefaultAddressType
+    ) async throws -> HwFundingTransaction {
+        let account = try getFundingAccount(deviceId: deviceId, addressType: addressType)
+        let network = networkProvider()
+        let fingerprint = try await TrezorService.shared.getDeviceFingerprint()
+        let params = ComposeParams(
+            wallet: WalletParams(
+                extendedKey: account.xpub,
+                electrumUrl: electrumUrlProvider(),
+                fingerprint: fingerprint,
+                network: network.coreNetwork,
+                accountType: account.accountType
+            ),
+            outputs: [.payment(address: address, amountSats: sats)],
+            feeRates: [Float(satsPerVByte)],
+            coinSelection: .branchAndBound
+        )
+        let results = try await OnChainHwService.shared.composeTransaction(params: params)
+        for result in results {
+            if case let .success(psbt, fee, feeRate, totalSpent) = result {
+                return HwFundingTransaction(
+                    psbt: psbt,
+                    miningFeeSats: fee,
+                    feeRate: feeRate,
+                    totalSpent: totalSpent,
+                    satsPerVByte: satsPerVByte
+                )
+            }
+        }
+        let composeError: String? = results.compactMap {
+            if case let .error(error) = $0 { return error } else { return nil }
+        }.first
+        throw AppError(
+            message: "Failed to compose hardware transfer",
+            debugMessage: composeError ?? "No successful compose result"
+        )
+    }
+
+    /// Sign a composed funding payment on the device. Requires the device to be connected. On signing
+    /// failure the caller is responsible for clearing the stale session (via
+    /// `TrezorManager.disconnectStaleSession`). Broadcasting is a separate step so a device-signing
+    /// timeout is never conflated with an in-flight broadcast.
+    func signFunding(
+        deviceId _: String,
+        funding: HwFundingTransaction
+    ) async throws -> HwFundingSignedTx {
+        let network = networkProvider()
+        let signed = try await TrezorService.shared.signTxFromPsbt(psbtBase64: funding.psbt, network: network)
+        return HwFundingSignedTx(
+            serializedTx: signed.serializedTx,
+            miningFeeSats: funding.miningFeeSats,
+            feeRate: funding.feeRate,
+            totalSpent: funding.totalSpent
+        )
+    }
+
+    /// Broadcast a signed funding transaction and return its txid. Does not require a connected device.
+    func broadcastFunding(serializedTx: String) async throws -> String {
+        try await OnChainHwService.shared.broadcastRawTx(
+            serializedTx: serializedTx,
+            electrumUrl: electrumUrlProvider()
+        )
+    }
+
     // MARK: - Helpers
 
     private func deviceId(fromWatcherId watcherId: String) -> String {
         guard let range = watcherId.range(of: Constants.watcherIdSeparator) else { return watcherId }
         return String(watcherId[..<range.lowerBound])
+    }
+
+    private func addressType(fromWatcherId watcherId: String) -> String {
+        guard let range = watcherId.range(of: Constants.watcherIdSeparator) else { return "" }
+        return String(watcherId[range.upperBound...])
     }
 
     // MARK: - Supporting types

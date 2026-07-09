@@ -74,9 +74,25 @@ struct AppScene: View {
         _blocktank = StateObject(wrappedValue: BlocktankViewModel())
         _feeEstimatesManager = StateObject(wrappedValue: feeEstimatesManager)
         _activity = StateObject(wrappedValue: ActivityListViewModel(transferService: transferService))
+
+        // Created ahead of `transfer` so the hardware-wallet transfer flow can reach the funding
+        // (compose/sign/broadcast) and device-session (reconnect) capabilities.
+        let trezorManager = TrezorManager()
+        let hwWalletManager = HwWalletManager()
+
         _transfer = StateObject(wrappedValue: TransferViewModel(
             transferService: transferService,
             sheetViewModel: sheetViewModel,
+            hwFunding: hwWalletManager,
+            hwConnecting: trezorManager,
+            hwFeeRateProvider: {
+                guard let rates = await feeEstimatesManager.getEstimates() else { return nil }
+                return UInt64(SettingsViewModel.shared.defaultTransactionSpeed.getFeeRate(from: rates))
+            },
+            hwAddressProvider: {
+                let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+                return try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
+            },
             onBalanceRefresh: { await walletVm.updateBalanceState() }
         ))
         _widgets = StateObject(wrappedValue: WidgetsViewModel())
@@ -84,11 +100,10 @@ struct AppScene: View {
 
         _transferTracking = StateObject(wrappedValue: TransferTrackingManager(service: transferService))
 
-        let trezorManager = TrezorManager()
         let trezorViewModel = TrezorViewModel(connection: trezorManager)
         _trezorManager = State(initialValue: trezorManager)
         _trezorViewModel = State(initialValue: trezorViewModel)
-        _hwWalletManager = State(initialValue: HwWalletManager())
+        _hwWalletManager = State(initialValue: hwWalletManager)
 
         CoreService.shared.activity.setPrivatePaykitContactResolvers(
             invoice: { paymentHash in

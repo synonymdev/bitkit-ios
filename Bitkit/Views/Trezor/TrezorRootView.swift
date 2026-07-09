@@ -110,24 +110,12 @@ private struct TrezorLifecycleModifier: ViewModifier {
     }
 }
 
-// MARK: - Debug Log Wrapper
-
-/// Isolates the debug log panel's ViewModel binding.
-private struct TrezorDebugLogWrapper: View {
-    @Environment(TrezorViewModel.self) private var trezor
-
-    var body: some View {
-        @Bindable var trezor = trezor
-        TrezorDebugLogPanel(
-            isExpanded: $trezor.showDebugLog
-        )
-    }
-}
-
 // MARK: - Dialogs Modifier
 
-/// Groups all sheet and overlay presentations that depend on ViewModel state,
-/// keeping TrezorRootView's body free of @Environment access.
+/// Groups all sheet and overlay presentations that depend on ViewModel state, keeping
+/// TrezorRootView's body free of @Environment access. Dev-only: this is the independent PIN/passphrase
+/// path used by the Trezor dashboard / emulator testing. The user-facing hardware transfer flow relies
+/// on the on-connect flow (`HardwareConnectSheet`) and on-device PIN entry instead.
 private struct TrezorDialogsModifier: ViewModifier {
     @Environment(TrezorManager.self) private var trezorManager
 
@@ -173,6 +161,20 @@ private struct TrezorDialogsModifier: ViewModifier {
                     )
                 }
             }
+    }
+}
+
+// MARK: - Debug Log Wrapper
+
+/// Isolates the debug log panel's ViewModel binding.
+private struct TrezorDebugLogWrapper: View {
+    @Environment(TrezorViewModel.self) private var trezor
+
+    var body: some View {
+        @Bindable var trezor = trezor
+        TrezorDebugLogPanel(
+            isExpanded: $trezor.showDebugLog
+        )
     }
 }
 

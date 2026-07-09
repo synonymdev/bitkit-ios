@@ -12,6 +12,11 @@ final class TrezorBridgeTransport {
     private static let headerSize = 6
     private static let connectTimeout: TimeInterval = 5
     private static let readTimeout: TimeInterval = 30
+    /// Read timeout for `/call` messages. Any message in an interactive session (signing, address
+    /// confirmation, …) can block while the user confirms on the device, and the confirmation isn't
+    /// tied to a single message type, so every `/call` gets the long window. Bridge is dev/E2E-only
+    /// and management calls return immediately regardless.
+    private static let callReadTimeout: TimeInterval = 120
 
     private let decoder = JSONDecoder()
     private let sessionLock = NSLock()
@@ -133,22 +138,24 @@ final class TrezorBridgeTransport {
 
         do {
             let request = Self.encodeFrame(messageType: messageType, data: data)
-            let response = try post(path: "/call/\(Self.encode(session))", body: request)
+            // Any interactive message can block on device confirmation, so use the long window.
+            debugLog("callMessage type=\(messageType)")
+            let response = try post(path: "/call/\(Self.encode(session))", body: request, readTimeout: Self.callReadTimeout)
             return try Self.decodeFrame(response)
         } catch {
-            debugLog("callMessage FAILED: \(error.localizedDescription)")
+            debugLog("callMessage FAILED (type=\(messageType)): \(error.localizedDescription)")
             return TrezorCallMessageResult(success: false, messageType: 0, data: Data(), error: error.localizedDescription, errorCode: nil)
         }
     }
 
-    private func post(path: String, body: String? = nil) throws -> String {
+    private func post(path: String, body: String? = nil, readTimeout: TimeInterval? = nil) throws -> String {
         guard let url = URL(string: "\(Env.trezorBridgeUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")))\(path)") else {
             throw TrezorBridgeTransportError.invalidUrl
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = body == nil ? Self.connectTimeout : Self.readTimeout
+        request.timeoutInterval = body == nil ? Self.connectTimeout : (readTimeout ?? Self.readTimeout)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         if let body {
             request.httpBody = Data(body.utf8)
