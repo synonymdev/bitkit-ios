@@ -541,10 +541,14 @@ final class TrezorManager {
     /// type being genuinely unavailable on this device — e.g. taproot on firmware without BIP86 —
     /// which must not block the device, since that absence is stable across reconnects.
     private static let transientFailureMarkers = [
-        "TransportError", "ConnectionError", "DeviceDisconnected", "DeviceBusy", "Timeout", "IoError", "SessionError",
+        "TransportError", "ConnectionError", "DeviceDisconnected", "Timeout", "IoError", "SessionError",
     ]
 
     private static func isTransientTransportFailure(_ error: Error) -> Bool {
+        // A locked device is worth a bounded retry: the user unlocks and the xpub read succeeds.
+        if error.isTrezorDeviceBusy() {
+            return true
+        }
         let text = (error as? AppError)?.debugMessage ?? "\(error)"
         return transientFailureMarkers.contains { text.contains($0) }
     }
@@ -758,76 +762,6 @@ final class TrezorManager {
     // MARK: - Error Handling
 
     private func errorMessage(from error: Error) -> String {
-        // ServiceQueue wraps all errors in AppError, so extract the original message
-        if let appError = error as? AppError {
-            // debugMessage contains the original error's localizedDescription
-            if let debugMessage = appError.debugMessage, !debugMessage.isEmpty {
-                return formatTrezorErrorMessage(debugMessage)
-            }
-            // Fall through to the app error message if no debug info
-            return appError.message
-        }
-
-        if let trezorError = error as? TrezorError {
-            return trezorError.localizedDescription
-        }
-
-        if let bleError = error as? TrezorBLEError {
-            return bleError.localizedDescription
-        }
-
-        if let transportError = error as? TrezorTransportError {
-            return transportError.localizedDescription
-        }
-
-        let description = error.localizedDescription
-        if description == "The operation couldn't be completed." || description.isEmpty {
-            return "Connection failed. Please ensure your Trezor is in pairing mode and try again."
-        }
-        return description
-    }
-
-    private func formatTrezorErrorMessage(_ message: String) -> String {
-        let cleanedMessage = message
-            .replacingOccurrences(of: "Transport error: ", with: "")
-            .replacingOccurrences(of: "Connection error: ", with: "")
-            .replacingOccurrences(of: "Protocol error: ", with: "")
-            .replacingOccurrences(of: "Device error: ", with: "")
-            .replacingOccurrences(of: "Session error: ", with: "")
-            .replacingOccurrences(of: "IO error: ", with: "")
-
-        if message.contains("Stale Bluetooth pairing") || message.contains("Peer removed pairing") {
-            return "Stale Bluetooth pairing detected. Go to iOS Settings → Bluetooth, forget your Trezor device, "
-                + "then put it back in pairing mode and try again."
-        }
-        if message.contains("Unable to open device") || message.contains("Failed to connect") {
-            return "Failed to connect to Trezor. Please ensure it's in pairing mode and try again."
-        }
-        if message.contains("Pairing required") {
-            return "Bluetooth pairing required. Please put your Trezor in pairing mode."
-        }
-        if message.contains("Code verification failed") || message.contains("verification failed") {
-            return t("hardware__pairing_code_invalid")
-        }
-        if message.contains("DeviceBusy") || message.contains("Device is busy") || message.contains("DeviceLocked") {
-            return t("hardware__device_busy")
-        }
-        if message.contains("Pairing failed") || message.contains("Invalid credentials") {
-            return "Pairing failed. Please try putting your Trezor back in pairing mode."
-        }
-        if message.contains("THP handshake failed") {
-            return "Connection handshake failed. Please disconnect and try again."
-        }
-        if message.contains("timed out") || message.contains("Timeout") {
-            return "Connection timed out. Please try again."
-        }
-        if message.contains("Device disconnected") {
-            return "Trezor disconnected. Please reconnect and try again."
-        }
-        if message.contains("Action cancelled") {
-            return "Action was cancelled on the device."
-        }
-
-        return cleanedMessage
+        TrezorErrorPresenter.userMessage(from: error)
     }
 }

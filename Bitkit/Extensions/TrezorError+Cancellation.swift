@@ -22,4 +22,20 @@ extension Error {
 
         return false
     }
+
+    /// Whether this error is a locked/busy Trezor (typed `TrezorError.DeviceBusy` since bitkit-core 0.3.9).
+    func isTrezorDeviceBusy() -> Bool {
+        if let trezorError = self as? TrezorError {
+            if case .DeviceBusy = trezorError {
+                return true
+            }
+            return false
+        }
+
+        if let appError = self as? AppError, let underlyingError = appError.underlyingError {
+            return underlyingError.isTrezorDeviceBusy()
+        }
+
+        return false
+    }
 }
