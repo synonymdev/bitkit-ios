@@ -4,6 +4,16 @@ import LDKNode
 import XCTest
 
 final class PublicPaykitServiceTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        clearPaykitDefaults()
+    }
+
+    override func tearDown() {
+        clearPaykitDefaults()
+        super.tearDown()
+    }
+
     func testParseEndpointReadsSpecPayloadObject() {
         let endpoint = PublicPaykitService.parseEndpoint(
             methodId: "btc-lightning-bolt11",
@@ -61,7 +71,7 @@ final class PublicPaykitServiceTests: XCTestCase {
         )
     }
 
-    func testParseEndpointRejectsNonSpecLegacyLnurlMethodId() {
+    func testParseEndpointRejectsUnsupportedLnurlMethodId() {
         let endpoint = PublicPaykitService.parseEndpoint(
             methodId: "btc-lightning-lnurl-pay",
             endpointData: #"{"value":"lnurl1example"}"#
@@ -156,77 +166,16 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertTrue(payable.isEmpty)
     }
 
-    func testMethodIdsToRemoveWhenUnpublishingOnlyIncludesBitkitManagedEndpoints() {
-        let methodIds = PublicPaykitService.methodIdsToRemoveWhenUnpublishing(existingMethodIds: [
-            .bitcoinLightningBolt11,
-            .bitcoinLightningLnurl,
-            .bitcoinOnchainP2tr,
-        ])
+    func testBuildAvailabilityMarksPublicCleanupPendingForPublishedPublicState() throws {
+        try withIsolatedDefaults { defaults in
+            defaults.set(true, forKey: "hasConfirmedPublicPaykitEndpoints")
 
-        XCTAssertEqual(methodIds, [.bitcoinLightningBolt11, .bitcoinOnchainP2tr])
-    }
+            PaykitFeatureFlags.enforceBuildAvailability(defaults: defaults, isUIEnabled: false)
 
-    func testPublishedEndpointSyncPlanRemovesStalePublishedMethods() {
-        let desired = [
-            endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice"),
-            endpoint(.bitcoinOnchainP2tr, value: "bc1ptaproot"),
-        ]
-
-        let plan = PublicPaykitService.publishedEndpointSyncPlan(
-            existingEndpoints: [
-                .bitcoinLightningBolt11: #"{"value":"oldinvoice"}"#,
-                .bitcoinOnchainP2wpkh: #"{"value":"bc1qsegwit"}"#,
-                .bitcoinOnchainP2sh: #"{"value":"3nested"}"#,
-            ],
-            desiredEndpoints: desired
-        )
-
-        XCTAssertEqual(plan.endpointsToSet, desired)
-        XCTAssertEqual(plan.methodIdsToRemove, [.bitcoinOnchainP2wpkh, .bitcoinOnchainP2sh])
-    }
-
-    func testPublishedEndpointSyncPlanSkipsUnchangedPublishedPayloads() {
-        let bolt11 = endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice")
-        let taproot = endpoint(.bitcoinOnchainP2tr, value: "bc1ptaproot")
-
-        let plan = PublicPaykitService.publishedEndpointSyncPlan(
-            existingEndpoints: [
-                .bitcoinLightningBolt11: bolt11.rawPayload,
-                .bitcoinOnchainP2tr: #"{"value":"oldtaproot"}"#,
-            ],
-            desiredEndpoints: [bolt11, taproot]
-        )
-
-        XCTAssertEqual(plan.endpointsToSet, [taproot])
-        XCTAssertTrue(plan.methodIdsToRemove.isEmpty)
-    }
-
-    func testPublishedEndpointSyncPlanPreservesExternallyOwnedLnurlEndpoint() {
-        let bolt11 = endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice")
-
-        let plan = PublicPaykitService.publishedEndpointSyncPlan(
-            existingEndpoints: [
-                .bitcoinLightningLnurl: #"{"value":"lnurl1external"}"#,
-            ],
-            desiredEndpoints: [bolt11]
-        )
-
-        XCTAssertEqual(plan.endpointsToSet, [bolt11])
-        XCTAssertTrue(plan.methodIdsToRemove.isEmpty)
-    }
-
-    func testPublishedEndpointSyncPlanRemovesAllManagedEndpointsWhenDesiredSetIsEmpty() {
-        let plan = PublicPaykitService.publishedEndpointSyncPlan(
-            existingEndpoints: [
-                .bitcoinLightningBolt11: #"{"value":"lnbc1old"}"#,
-                .bitcoinLightningLnurl: #"{"value":"lnurl1external"}"#,
-                .bitcoinOnchainP2wpkh: #"{"value":"bc1qold"}"#,
-            ],
-            desiredEndpoints: []
-        )
-
-        XCTAssertTrue(plan.endpointsToSet.isEmpty)
-        XCTAssertEqual(plan.methodIdsToRemove, [.bitcoinLightningBolt11, .bitcoinOnchainP2wpkh])
+            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
+            XCTAssertFalse(defaults.bool(forKey: "hasConfirmedPublicPaykitEndpoints"))
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
     }
 
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {
@@ -237,5 +186,23 @@ final class PublicPaykitServiceTests: XCTestCase {
             max: nil,
             rawPayload: #"{"value":"\#(value)"}"#
         )
+    }
+
+    private func clearPaykitDefaults() {
+        UserDefaults.standard.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.removeObject(forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.removeObject(forKey: PublicPaykitService.cleanupPendingKey)
+        UserDefaults.standard.removeObject(forKey: "hasConfirmedPublicPaykitEndpoints")
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
+    }
+
+    private func withIsolatedDefaults(_ body: (UserDefaults) throws -> Void) throws {
+        let suiteName = "PublicPaykitServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        try body(defaults)
     }
 }

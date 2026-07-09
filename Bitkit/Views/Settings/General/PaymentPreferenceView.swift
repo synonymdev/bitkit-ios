@@ -161,9 +161,7 @@ struct PaymentPreferenceView: View {
                 return
             }
 
-            if !previousCleanupPending {
-                PrivatePaykitService.setContactSharingCleanupPending(false)
-            }
+            PrivatePaykitService.setContactSharingCleanupPending(false)
             hasConfirmedPublicPaykitEndpoints = true
         } else {
             do {

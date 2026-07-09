@@ -6,19 +6,16 @@ import UIKit
 // MARK: - Invoice Rotation
 
 extension PrivatePaykitService {
-    func currentOrRotatedInvoice(for publicKey: String, wallet: WalletViewModel, generation: UInt64,
-                                 forceRefresh: Bool = false) async throws -> StoredInvoice
-    {
+    func currentOrRotatedInvoice(
+        for publicKey: String,
+        wallet: WalletViewModel,
+        forceRefresh: Bool = false
+    ) async throws -> StoredInvoice {
         if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey) {
             return invoice
         }
 
         let bolt11 = try await createVariableInvoice(wallet)
-        try ensureCurrentGeneration(generation)
-        if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey) {
-            return invoice
-        }
-
         guard case let .lightning(decodedInvoice) = try await decode(invoice: bolt11) else {
             throw PublicPaykitError.invalidPayload
         }
@@ -44,9 +41,9 @@ extension PrivatePaykitService {
 
         contactState.receivedInvoicePaymentHashes.append(paymentHash)
         if contactState.receivedInvoicePaymentHashes.count > Self.maxReceivedInvoicePaymentHashesPerContact {
-            contactState
-                .receivedInvoicePaymentHashes = Array(contactState.receivedInvoicePaymentHashes
-                    .suffix(Self.maxReceivedInvoicePaymentHashesPerContact))
+            contactState.receivedInvoicePaymentHashes = Array(
+                contactState.receivedInvoicePaymentHashes.suffix(Self.maxReceivedInvoicePaymentHashesPerContact)
+            )
         }
         state.contacts[publicKey] = contactState
         persistState()
@@ -82,16 +79,6 @@ extension PrivatePaykitService {
     @MainActor
     func walletHasUsableChannels(_ wallet: WalletViewModel) -> Bool {
         wallet.hasUsableChannels
-    }
-
-    func shouldRetryMissingPrivateLightningEndpoint(for publicKey: String, wallet: WalletViewModel) async -> Bool {
-        guard PublicPaykitService.isLightningPaymentOptionEnabled(),
-              await walletHasUsableChannels(wallet)
-        else {
-            return false
-        }
-
-        return await reusablePrivateInvoice(for: publicKey) == nil
     }
 
     @MainActor

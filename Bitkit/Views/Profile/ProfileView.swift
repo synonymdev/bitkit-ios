@@ -197,7 +197,11 @@ struct ProfileView: View {
 
     private func performSignOut() async {
         isSigningOut = true
-        await pubkyProfile.signOut()
+        do {
+            try await pubkyProfile.signOut()
+        } catch {
+            app.toast(type: .error, title: t("profile__sign_out_title"), description: error.localizedDescription)
+        }
         isSigningOut = false
     }
 

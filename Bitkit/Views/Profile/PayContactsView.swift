@@ -88,29 +88,58 @@ struct PayContactsView: View {
                     )
                 }
             } else {
-                var cleanupError: Error?
+                let previousSharesPrivate = sharesPrivatePaykitEndpoints
+                let previousSharesPublic = sharesPublicPaykitEndpoints
+                var publicCleanupError: Error?
+                var privateCleanupError: Error?
                 sharesPrivatePaykitEndpoints = false
                 sharesPublicPaykitEndpoints = false
                 hasConfirmedPublicPaykitEndpoints = true
                 do {
                     try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
+                    PublicPaykitService.setCleanupPending(false)
                 } catch {
-                    cleanupError = error
+                    publicCleanupError = error
+                    PublicPaykitService.setCleanupPending(true)
                     Logger.warn("Failed to remove public Paykit endpoints while disabling contact payments: \(error)", context: "PayContactsView")
                 }
                 do {
                     try await PrivatePaykitService.shared.removePublishedEndpoints()
                 } catch {
-                    if cleanupError == nil {
-                        cleanupError = error
-                    }
+                    privateCleanupError = error
                     Logger.warn("Failed to remove private Paykit endpoints while disabling contact payments: \(error)", context: "PayContactsView")
                 }
-                if let cleanupError {
-                    PrivatePaykitService.setContactSharingCleanupPending(true)
-                    throw cleanupError
+
+                if publicCleanupError != nil {
+                    sharesPublicPaykitEndpoints = previousSharesPublic
                 }
+
+                if let privateCleanupError {
+                    var restoredPrivateSharing = false
+                    if previousSharesPrivate {
+                        sharesPrivatePaykitEndpoints = true
+                        if let restoreError = await PrivatePaykitService.shared.prepareSavedContacts(
+                            contactsManager.contacts.map(\.publicKey),
+                            wallet: wallet,
+                            requireImmediatePublication: true
+                        ) {
+                            sharesPrivatePaykitEndpoints = false
+                            Logger.warn(
+                                "Failed to restore private Paykit endpoints after cleanup failure: \(restoreError)",
+                                context: "PayContactsView"
+                            )
+                        } else {
+                            restoredPrivateSharing = true
+                        }
+                    }
+                    PrivatePaykitService.setContactSharingCleanupPending(!restoredPrivateSharing)
+                    throw publicCleanupError ?? privateCleanupError
+                }
+
                 PrivatePaykitService.setContactSharingCleanupPending(false)
+                if let publicCleanupError {
+                    throw publicCleanupError
+                }
             }
             navigation.path = [.profile]
         } catch {

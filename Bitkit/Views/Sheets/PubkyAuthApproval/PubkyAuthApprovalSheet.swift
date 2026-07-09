@@ -309,6 +309,7 @@ struct PubkyAuthApprovalSheet: View {
 
             try await PubkyService.approveAuth(
                 authUrl: config.authUrl,
+                expectedCapabilities: config.request.capabilities,
                 secretKeyHex: secretKey
             )
 
