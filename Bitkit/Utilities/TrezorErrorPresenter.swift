@@ -54,7 +54,7 @@ enum TrezorErrorPresenter {
         if message.contains("Pairing required") {
             return "Bluetooth pairing required. Please put your Trezor in pairing mode."
         }
-        if message.contains("Code verification failed") || message.contains("verification failed") {
+        if message.contains("Code verification failed") {
             return t("hardware__pairing_code_invalid")
         }
         if message.contains("DeviceBusy") || message.contains("Device is busy") {

@@ -39,4 +39,16 @@ final class TrezorDeviceBusyTests: XCTestCase {
     func testPresenterPassesUnrelatedMessageThrough() {
         XCTAssertEqual(TrezorErrorPresenter.mapMessage("some unmapped detail"), "some unmapped detail")
     }
+
+    func testPresenterMapsPairingCodeFailureToInvalidPrompt() {
+        XCTAssertEqual(TrezorErrorPresenter.mapMessage("Code verification failed"), t("hardware__pairing_code_invalid"))
+    }
+
+    /// A message-signature verification error shares the "verification failed" phrasing but is not a
+    /// pairing failure, so it must fall through rather than showing the pairing-code prompt.
+    func testPresenterDoesNotMapMessageVerificationToPairingPrompt() {
+        let message = "Bitcoin message verification failed"
+        XCTAssertNotEqual(TrezorErrorPresenter.mapMessage(message), t("hardware__pairing_code_invalid"))
+        XCTAssertEqual(TrezorErrorPresenter.mapMessage(message), message)
+    }
 }
