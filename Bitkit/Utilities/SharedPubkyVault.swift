@@ -27,13 +27,22 @@ enum SharedPubkyVault {
         let mnemonic: String
     }
 
+    /// Length of a bare z-base32 Ed25519 public key (32 bytes → ceil(256/5) chars).
+    private static let bareZ32Length = 52
+
     /// Strip Bitkit's display prefix so the id matches Pubky Ring's bare z-base32 form.
     static func canonicalPubky(_ raw: String) -> String {
         if raw.hasPrefix("pubky://") {
             return String(raw.dropFirst("pubky://".count))
         }
+        // Bitkit's display form prefixes the bare z32 with "pubky". Strip it only when the remainder is a
+        // full-length bare z32, so a genuine z32 that happens to start with the letters "pubky" (all valid
+        // z-base32 symbols) is never truncated.
         if raw.hasPrefix("pubky") {
-            return String(raw.dropFirst("pubky".count))
+            let stripped = String(raw.dropFirst("pubky".count))
+            if stripped.count == bareZ32Length {
+                return stripped
+            }
         }
         return raw
     }

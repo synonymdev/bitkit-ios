@@ -194,12 +194,15 @@ class PubkyProfileManager: ObservableObject {
     /// Mirror any locally-created Bitkit identity into the shared vault, then refresh the list of
     /// identities available for reuse (vault records that aren't Bitkit's current identity).
     func refreshSharedIdentities() async {
-        let ownPubky = publicKey.map { SharedPubkyVault.canonicalPubky($0) }
-        let records = await Task.detached {
+        let livePubky = publicKey.map { SharedPubkyVault.canonicalPubky($0) }
+        let (records, walletPubky) = await Task.detached { () -> ([SharedPubkyRecord], String?) in
             Self.mirrorExistingLocalIdentity()
-            return SharedPubkyVault.list()
+            return (SharedPubkyVault.list(), Self.walletDerivedCanonicalPubky())
         }.value
-        availableSharedIdentities = records.filter { $0.pubky != ownPubky }
+        // Exclude Bitkit's own identity by BOTH the live session key and the wallet-derived key, so a
+        // signed-out or offline user is never offered their own seed-derivable identity as an external session.
+        let excluded = Set([livePubky, walletPubky].compactMap { $0 })
+        availableSharedIdentities = records.filter { !excluded.contains($0.pubky) }
     }
 
     /// Adopt a pubky identity discovered in the shared vault (e.g. one created in Pubky Ring).
@@ -271,6 +274,19 @@ class PubkyProfileManager: ObservableObject {
         }
 
         SharedPubkyVault.upsert(pubky: rawKey, secretKeyHex: secretKeyHex, mnemonic: "")
+    }
+
+    /// The wallet-seed-derived pubky, computed independently of any active session, so Bitkit can always
+    /// recognise and exclude its own identity from the reuse list even when signed out or offline.
+    private nonisolated static func walletDerivedCanonicalPubky() -> String? {
+        guard let secretKeyHex = try? deriveLocalSecretKeyFromWalletSeed(),
+              !secretKeyHex.isEmpty,
+              let rawKey = try? PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        else {
+            return nil
+        }
+
+        return SharedPubkyVault.canonicalPubky(rawKey)
     }
 
     // MARK: - Key Derivation & Identity Creation
