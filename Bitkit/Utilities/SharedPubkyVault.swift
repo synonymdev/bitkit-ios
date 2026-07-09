@@ -60,6 +60,7 @@ enum SharedPubkyVault {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
 
         if status == errSecItemNotFound {
+            Logger.debug("Shared pubky vault: no items (errSecItemNotFound)", context: context)
             return []
         }
         guard status == noErr, let items = result as? [[String: Any]] else {
@@ -67,11 +68,19 @@ enum SharedPubkyVault {
             return []
         }
 
-        return items.compactMap { item in
-            guard let service = item[kSecAttrService as String] as? String,
-                  let data = item[kSecValueData as String] as? Data,
-                  let payload = try? JSONDecoder().decode(Payload.self, from: data)
-            else {
+        Logger.debug("Shared pubky vault: SecItemCopyMatching returned \(items.count) raw item(s)", context: context)
+
+        return items.compactMap { item -> SharedPubkyRecord? in
+            guard let service = item[kSecAttrService as String] as? String else {
+                Logger.warn("Shared vault item missing/invalid service attribute (type: \(type(of: item[kSecAttrService as String])))", context: context)
+                return nil
+            }
+            guard let data = item[kSecValueData as String] as? Data else {
+                Logger.warn("Shared vault item \(service) missing data", context: context)
+                return nil
+            }
+            guard let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
+                Logger.warn("Shared vault item \(service) failed JSON decode", context: context)
                 return nil
             }
             return SharedPubkyRecord(pubky: service, secretKeyHex: payload.secretKey, mnemonic: payload.mnemonic)
