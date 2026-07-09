@@ -1,70 +1,111 @@
 import Combine
 import Foundation
 
+private actor PrivatePaykitPublicationLock {
+    private var isLocked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func withLock<T>(_ operation: () async throws -> T) async throws -> T {
+        await lock()
+        defer { unlock() }
+        return try await operation()
+    }
+
+    private func lock() async {
+        if !isLocked {
+            isLocked = true
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    private func unlock() {
+        guard !waiters.isEmpty else {
+            isLocked = false
+            return
+        }
+
+        waiters.removeFirst().resume()
+    }
+}
+
 // MARK: - Core Actor
 
 actor PrivatePaykitService {
     static let shared = PrivatePaykitService()
 
-    static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
+    private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
 
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
         walletBackupDataChangedSubject.eraseToAnyPublisher()
     }
 
-    static let maxNoisePayloadBytes = 1000
     static let invoiceRefreshBufferSeconds: TimeInterval = 30 * 60
     static let maxReceivedInvoicePaymentHashesPerContact = 100
-    static let staleLinkFailureThreshold = 3
     static let publishingEnabledKey = "sharesPrivatePaykitEndpoints"
     static let cleanupPendingKey = "paykitContactSharingCleanupPending"
-    static let profileRecoveryPendingKey = "privatePaykitProfileRecoveryPending"
+    static let deletedContactCleanupKeysKey = "privatePaykitDeletedContactCleanupKeys"
     static let cacheStateKey = "privatePaykitCacheState"
-    static let privateEndpointRemovalPayload = #"{"value":""}"#
-    static let recoveryMarkerStageInit = "init"
-    static let recoveryMarkerStageResponse = "response"
-    static let recoveryMarkerStageFinal = "final"
-    static let pendingPublicationRetryDelay: UInt64 = 5_000_000_000
-    static let pendingPublicationRetryAttempts = 60
-    static let privatePaymentRecoveryRetryDelay: UInt64 = 2_000_000_000
-    static let privatePaymentRecoveryRetryAttempts = 12
-    static let freshLinkInitialPublishDelaySeconds: UInt64 = 8
-    static let privateStorageRootPath = "/pub/paykit/v0/private/"
-    static let privateStoragePurgeMaxEntries = 500
-    static let privateStoragePurgeMaxDepth = 3
+    /// Private links can finish after a contact is added on the other device; keep draining long enough for staggered mutual adds.
+    static let privateMessageDrainRetryDelays: [UInt64] = [
+        1_000_000_000,
+        3_000_000_000,
+        8_000_000_000,
+        20_000_000_000,
+        45_000_000_000,
+        90_000_000_000,
+    ]
 
     var state: PrivatePaykitState
-    var activeHandlesByContact: [String: ContactPaykitHandles] = [:]
-    var linkEstablishmentTasks: [String: LinkEstablishmentTask] = [:]
-    var publicationTasks: [String: PublicationTask] = [:]
-    var pendingPublicationRetryTasks: [String: Task<Void, Never>] = [:]
     var knownSavedContactKeys: Set<String> = []
-    var stateGeneration: UInt64 = 0
+    var pendingMessageDrainRetryTask: Task<Void, Never>?
+    var pendingMessageDrainRetryKeys: Set<String> = []
+    var pendingMessageDrainRetryGeneration = 0
+    private let publicationLock = PrivatePaykitPublicationLock()
 
     init() {
-        let secretState = (try? Keychain.load(key: .privatePaykitSecretState))
-            .flatMap { try? JSONDecoder().decode(PrivatePaykitSecretState.self, from: $0) } ?? PrivatePaykitSecretState(contacts: [:])
-        let cacheState = UserDefaults.standard.data(forKey: Self.cacheStateKey)
-            .flatMap { try? JSONDecoder().decode(PrivatePaykitCacheState.self, from: $0) } ?? PrivatePaykitCacheState(contacts: [:])
-
-        state = PrivatePaykitState(secretState: secretState, cacheState: cacheState)
+        state = UserDefaults.standard.data(forKey: Self.cacheStateKey)
+            .flatMap { try? JSONDecoder().decode(PrivatePaykitState.self, from: $0) } ?? PrivatePaykitState(contacts: [:])
     }
 
-    static func shouldInitiate(ownPublicKey: String, remotePublicKey: String) -> Bool {
-        let own = PubkyPublicKeyFormat.normalized(ownPublicKey) ?? ownPublicKey
-        let remote = PubkyPublicKeyFormat.normalized(remotePublicKey) ?? remotePublicKey
-        return own > remote
+    func withPublicationLock<T>(_ operation: () async throws -> T) async throws -> T {
+        try await publicationLock.withLock(operation)
+    }
+
+    func markWalletBackupDataChanged() {
+        Self.walletBackupDataChangedSubject.send()
     }
 
     static func setContactSharingCleanupPending(_ isPending: Bool) {
         UserDefaults.standard.set(isPending, forKey: cleanupPendingKey)
     }
 
-    static func setProfileRecoveryPending(_ isPending: Bool) {
-        UserDefaults.standard.set(isPending, forKey: profileRecoveryPendingKey)
+    static func pendingDeletedContactCleanupKeys() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: deletedContactCleanupKeysKey) ?? [])
     }
 
-    static var isProfileRecoveryPending: Bool {
-        UserDefaults.standard.bool(forKey: profileRecoveryPendingKey)
+    static func markDeletedContactCleanupPending(_ publicKeys: [String]) {
+        let normalizedKeys = publicKeys.compactMap(PubkyPublicKeyFormat.normalized)
+        guard !normalizedKeys.isEmpty else { return }
+
+        let keys = pendingDeletedContactCleanupKeys().union(normalizedKeys)
+        UserDefaults.standard.set(Array(keys).sorted(), forKey: deletedContactCleanupKeysKey)
+    }
+
+    static func clearDeletedContactCleanupPending(_ publicKeys: [String]) {
+        var keys = pendingDeletedContactCleanupKeys()
+        keys.subtract(publicKeys.compactMap(PubkyPublicKeyFormat.normalized))
+        if keys.isEmpty {
+            UserDefaults.standard.removeObject(forKey: deletedContactCleanupKeysKey)
+        } else {
+            UserDefaults.standard.set(Array(keys).sorted(), forKey: deletedContactCleanupKeysKey)
+        }
+    }
+
+    static func clearDeletedContactCleanupPending() {
+        UserDefaults.standard.removeObject(forKey: deletedContactCleanupKeysKey)
     }
 }

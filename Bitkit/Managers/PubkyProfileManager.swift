@@ -220,31 +220,9 @@ class PubkyProfileManager: ObservableObject {
 
     /// Upload an avatar image to the user's homeserver blob storage. Returns the `pubky://` URI.
     func uploadAvatar(image: UIImage) async throws -> String {
-        guard let sessionSecret = try? Keychain.loadString(key: .paykitSession),
-              !sessionSecret.isEmpty
-        else {
-            // If no session yet (creating identity), use secret key to upload
-            guard let secretKeyHex = try? Keychain.loadString(key: .pubkySecretKey),
-                  !secretKeyHex.isEmpty
-            else {
-                throw PubkyServiceError.sessionNotActive
-            }
-
-            let rawKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
-            let publicKey = rawKey.hasPrefix("pubky") ? rawKey : "pubky\(rawKey)"
-            return try await uploadAvatar(image: image, secretKeyHex: secretKeyHex, publicKey: publicKey)
-        }
-
-        guard let publicKey, !publicKey.isEmpty else {
-            throw PubkyServiceError.sessionNotActive
-        }
-
-        return try await uploadAvatar(image: image, sessionSecret: sessionSecret, publicKey: publicKey)
-    }
-
-    /// Strip the `pubky` prefix from a public key for use in `pubky://` URIs.
-    private nonisolated static func stripPubkyPrefix(_ key: String) -> String {
-        key.hasPrefix("pubky") ? String(key.dropFirst(5)) : key
+        _ = try activeSessionSecret()
+        let imageData = try compressAvatar(image)
+        return try await PubkyService.uploadProfileAvatar(bytes: imageData, contentType: "image/jpeg")
     }
 
     private func compressAvatar(_ image: UIImage, maxSize: CGFloat = 400) throws -> Data {
@@ -262,36 +240,6 @@ class PubkyProfileManager: ObservableObject {
         return jpegData
     }
 
-    private func avatarBlobPath() -> String {
-        let timestamp = Int(Date().timeIntervalSince1970 * 1000)
-        switch Env.network {
-        case .bitcoin:
-            return "/pub/bitkit.to/blobs/\(timestamp).jpg"
-        default:
-            return "/pub/staging.bitkit.to/blobs/\(timestamp).jpg"
-        }
-    }
-
-    private func uploadAvatar(image: UIImage, sessionSecret: String, publicKey: String) async throws -> String {
-        let imageData = try compressAvatar(image)
-        let blobPath = avatarBlobPath()
-        let blobUri = "pubky://\(Self.stripPubkyPrefix(publicKey))\(blobPath)"
-
-        try await PubkyService.sessionPut(sessionSecret: sessionSecret, path: blobPath, content: imageData)
-        return blobUri
-    }
-
-    private func uploadAvatar(image: UIImage, secretKeyHex: String, publicKey: String) async throws -> String {
-        let imageData = try compressAvatar(image)
-        let blobPath = avatarBlobPath()
-        let blobUri = "pubky://\(Self.stripPubkyPrefix(publicKey))\(blobPath)"
-
-        try await PubkyService.putWithSecretKey(secretKeyHex: secretKeyHex, path: blobPath, content: imageData)
-        return blobUri
-    }
-
-    /// Create a new Pubky identity: fetch signup code from Homegate, signup on homeserver,
-    /// persist keys + session, upload avatar, write profile. Falls back to signIn if already registered.
     nonisolated static func resolvedImageUrl(newImageUrl: String?, existingImageUrl: String?) -> String? {
         newImageUrl ?? existingImageUrl
     }
@@ -306,12 +254,9 @@ class PubkyProfileManager: ObservableObject {
     ) async throws {
         let (publicKeyZ32, secretKeyHex) = try await deriveKeys()
 
-        // Sign up on homeserver via Homegate
-        let sessionSecret = try await Task.detached {
-            // 1. Get signup code from Homegate
+        _ = try await Task.detached {
             let homegate = try await Self.fetchHomegateSignupCode()
 
-            // 2. Sign up — if already registered, fall back to signIn
             var session: String
             do {
                 session = try await PubkyService.signUp(
@@ -327,26 +272,36 @@ class PubkyProfileManager: ObservableObject {
             return session
         }.value
 
-        var avatarUri: String?
-        if let avatarImage {
-            avatarUri = try await uploadAvatar(image: avatarImage, sessionSecret: sessionSecret, publicKey: publicKeyZ32)
-        }
-        let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: avatarUri, existingImageUrl: existingImageUrl)
-
-        try await writeProfile(
-            sessionSecret: sessionSecret,
-            name: name,
-            bio: bio,
-            imageUrl: resolvedImageUrl,
-            links: links,
-            tags: tags
-        )
-
         do {
-            try Self.upsertKeychainString(.pubkySecretKey, value: secretKeyHex)
-            try Self.upsertKeychainString(.paykitSession, value: sessionSecret)
-            _ = try await PubkyService.importSession(secret: sessionSecret)
+            var avatarUri: String?
+            if let avatarImage {
+                avatarUri = try await uploadAvatar(image: avatarImage)
+            }
+            let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: avatarUri, existingImageUrl: existingImageUrl)
+
+            try await writeProfile(
+                name: name,
+                bio: bio,
+                imageUrl: resolvedImageUrl,
+                links: links,
+                tags: tags
+            )
             Self.notifyAppStateBackupChanged()
+
+            let createdProfile = PubkyProfile(
+                publicKey: publicKeyZ32,
+                name: name,
+                bio: bio,
+                imageUrl: resolvedImageUrl,
+                links: links,
+                tags: tags,
+                status: nil
+            )
+
+            publicKey = publicKeyZ32
+            authState = .authenticated
+            profile = createdProfile
+            cacheProfileMetadata(createdProfile)
         } catch {
             try? Keychain.delete(key: .pubkySecretKey)
             try? Keychain.delete(key: .paykitSession)
@@ -354,25 +309,9 @@ class PubkyProfileManager: ObservableObject {
             throw error
         }
 
-        let createdProfile = PubkyProfile(
-            publicKey: publicKeyZ32,
-            name: name,
-            bio: bio,
-            imageUrl: resolvedImageUrl,
-            links: links,
-            tags: tags,
-            status: nil
-        )
-
-        publicKey = publicKeyZ32
-        authState = .authenticated
-        profile = createdProfile
-        cacheProfileMetadata(createdProfile)
-
         Logger.info("Pubky identity created for \(publicKeyZ32)", context: "PubkyProfileManager")
     }
 
-    /// Update profile data on the homeserver (for edit mode).
     func saveProfile(
         name: String,
         bio: String,
@@ -380,12 +319,11 @@ class PubkyProfileManager: ObservableObject {
         tags: [String] = [],
         newImageUrl: String? = nil
     ) async throws {
-        let sessionSecret = try activeSessionSecret()
+        _ = try activeSessionSecret()
 
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
 
         try await writeProfile(
-            sessionSecret: sessionSecret,
             name: name,
             bio: bio,
             imageUrl: resolvedImageUrl,
@@ -393,7 +331,6 @@ class PubkyProfileManager: ObservableObject {
             tags: tags
         )
 
-        // Update profile locally from the data we just wrote
         let pk = publicKey ?? ""
         let updatedProfile = PubkyProfile(
             publicKey: pk,
@@ -409,15 +346,10 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func deleteProfile() async throws {
-        let sessionSecret = try activeSessionSecret()
-        let path = Self.profilePath
-
+        await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
         do {
             try await Task.detached {
-                try await PubkyService.sessionDelete(
-                    sessionSecret: sessionSecret,
-                    path: path
-                )
+                try await PubkyService.deletePaykitProfile()
             }.value
         } catch {
             guard Self.isMissingBitkitProfileStorageError(error) else {
@@ -427,12 +359,10 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Bitkit profile storage already missing, continuing sign out", context: "PubkyProfileManager")
         }
 
-        await signOut()
+        try await signOut(cleanPrivatePaykitEndpoints: false)
     }
 
-    /// Serialize profile JSON and PUT to homeserver.
     private func writeProfile(
-        sessionSecret: String,
         name: String,
         bio: String,
         imageUrl: String?,
@@ -447,25 +377,9 @@ class PubkyProfileManager: ObservableObject {
             tags: tags
         )
 
-        let jsonData = try profileData.encoded()
-        let path = Self.profilePath
-
         try await Task.detached {
-            try await PubkyService.sessionPut(
-                sessionSecret: sessionSecret,
-                path: path,
-                content: jsonData
-            )
+            try await PubkyService.publishPaykitProfile(profileData.toPaykitProfile())
         }.value
-    }
-
-    private nonisolated static var profilePath: String {
-        switch Env.network {
-        case .bitcoin:
-            return "/pub/bitkit.to/profile.json"
-        default:
-            return "/pub/staging.bitkit.to/profile.json"
-        }
     }
 
     static func isRingAvailable() -> Bool {
@@ -581,36 +495,45 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    /// Long-polls the relay, persists + imports the session, then loads the profile.
+    /// Long-polls the relay, activates the SDK session, then loads the profile.
     @discardableResult
     func completeAuthentication() async throws -> String {
+        try await completeAuthentication(
+            completeAuth: { _ = try await PubkyService.completeAuth() },
+            currentPublicKey: { await PubkyService.currentPublicKey() },
+            clearSessionAccess: { await PubkyService.clearSessionAccess() }
+        )
+    }
+
+    @discardableResult
+    private func completeAuthentication(
+        completeAuth: @escaping () async throws -> Void,
+        currentPublicKey: @escaping () async -> String?,
+        clearSessionAccess: @escaping () async -> Void
+    ) async throws -> String {
         guard let attemptID = activeAuthAttemptID else {
             throw CancellationError()
         }
+        var didCompleteAuth = false
 
         do {
-            let sessionSecret = try await PubkyService.completeAuth()
+            try await completeAuth()
+            didCompleteAuth = true
             try Task.checkCancellation()
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
 
-            let pk = try await PubkyService.importSession(secret: sessionSecret)
+            guard let pk = await currentPublicKey() else {
+                throw PubkyServiceError.sessionNotActive
+            }
             try Task.checkCancellation()
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
 
-            do {
-                try? Keychain.delete(key: .pubkySecretKey)
-                try Self.upsertKeychainString(.paykitSession, value: sessionSecret)
-                UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
-                PrivatePaykitService.setProfileRecoveryPending(false)
-                Self.notifyAppStateBackupChanged()
-            } catch {
-                await PubkyService.forceSignOut()
-                throw error
-            }
+            UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+            Self.notifyAppStateBackupChanged()
 
             activeAuthAttemptID = nil
             publicKey = pk
@@ -619,12 +542,14 @@ class PubkyProfileManager: ObservableObject {
             await loadProfile()
             return pk
         } catch is CancellationError {
+            await clearCompletedAuthSessionIfNeeded(didCompleteAuth, clearSessionAccess: clearSessionAccess)
             if activeAuthAttemptID == attemptID {
                 activeAuthAttemptID = nil
                 restoreAuthStateAfterAuthFlow()
             }
             throw CancellationError()
         } catch let serviceError as PubkyServiceError {
+            await clearCompletedAuthSessionIfNeeded(didCompleteAuth, clearSessionAccess: clearSessionAccess)
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
@@ -633,6 +558,7 @@ class PubkyProfileManager: ObservableObject {
             restoreAuthStateAfterAuthFlow()
             throw serviceError
         } catch {
+            await clearCompletedAuthSessionIfNeeded(didCompleteAuth, clearSessionAccess: clearSessionAccess)
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
@@ -641,6 +567,11 @@ class PubkyProfileManager: ObservableObject {
             setAuthFlowError(error.localizedDescription)
             throw error
         }
+    }
+
+    private func clearCompletedAuthSessionIfNeeded(_ didCompleteAuth: Bool, clearSessionAccess: @escaping () async -> Void) async {
+        guard didCompleteAuth else { return }
+        await clearSessionAccess()
     }
 
     func finalizeAuthentication() {
@@ -671,6 +602,19 @@ class PubkyProfileManager: ObservableObject {
 
         var activeAuthAttemptIDForTesting: UUID? {
             activeAuthAttemptID
+        }
+
+        @discardableResult
+        func completeAuthenticationForTesting(
+            completeAuth: @escaping () async throws -> Void,
+            currentPublicKey: @escaping () async -> String?,
+            clearSessionAccess: @escaping () async -> Void
+        ) async throws -> String {
+            try await completeAuthentication(
+                completeAuth: completeAuth,
+                currentPublicKey: currentPublicKey,
+                clearSessionAccess: clearSessionAccess
+            )
         }
     #endif
 
@@ -705,58 +649,18 @@ class PubkyProfileManager: ObservableObject {
     }
 
     nonisolated static func resolveRemoteProfile(publicKey: String) async throws -> PubkyProfile {
-        try await resolveRemoteProfile(
-            publicKey: publicKey,
-            fetchBitkitProfile: { key in
-                await fetchBitkitProfile(publicKey: key)
-            },
-            fetchPubkyProfile: { key in
-                try await fetchPubkyProfile(publicKey: key)
-            }
-        )
-    }
-
-    nonisolated static func resolveRemoteProfile(
-        publicKey: String,
-        fetchBitkitProfile: @escaping @Sendable (String) async -> PubkyProfile?,
-        fetchPubkyProfile: @escaping @Sendable (String) async throws -> PubkyProfile
-    ) async throws -> PubkyProfile {
-        if let bitkitProfile = await fetchBitkitProfile(publicKey) {
-            return bitkitProfile
+        let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
+        if let resolution = try await PubkyService.resolveContactProfile(publicKey: normalizedKey, allowPubkyProfileFallback: true) {
+            return PubkyProfile(resolution: resolution)
         }
 
-        return try await fetchPubkyProfile(publicKey)
-    }
-
-    /// Read the user's bitkit profile.json which contains the complete profile data we wrote.
-    private nonisolated static func fetchBitkitProfile(publicKey: String) async -> PubkyProfile? {
-        let strippedKey = stripPubkyPrefix(publicKey)
-        let uri = "pubky://\(strippedKey)\(profilePath)"
-
-        do {
-            let jsonString = try await PubkyService.fetchFileString(uri: uri)
-            let profileData = try PubkyProfileData.decode(from: jsonString)
-            Logger.debug("Fetched bitkit profile.json for \(publicKey)", context: "PubkyProfileManager")
-            return profileData.toProfile(publicKey: publicKey)
-        } catch {
-            Logger.debug("Could not fetch bitkit profile.json: \(error)", context: "PubkyProfileManager")
-            return nil
-        }
-    }
-
-    private nonisolated static func fetchPubkyProfile(publicKey: String) async throws -> PubkyProfile {
-        let profileDto = try await PubkyService.getProfile(publicKey: publicKey)
-        Logger.debug(
-            "Profile loaded from pubky FFI — name: \(profileDto.name), image: \(profileDto.image ?? "nil")",
-            context: "PubkyProfileManager"
-        )
-        return PubkyProfile(publicKey: publicKey, ffiProfile: profileDto)
+        throw PubkyServiceError.profileNotFound
     }
 
     // MARK: - Sign Out
 
     static func clearLocalState() async {
-        await PrivatePaykitService.shared.closeAndClear(markProfileRecoveryPending: true)
+        await PrivatePaykitService.shared.closeAndClear()
         await PrivatePaykitAddressReservationStore.shared.clearContactAssignments()
         await PubkyService.forceSignOut()
         try? Keychain.delete(key: .paykitSession)
@@ -764,6 +668,7 @@ class PubkyProfileManager: ObservableObject {
         await PubkyImageCache.shared.clear()
         UserDefaults.standard.removeObject(forKey: cachedNameKey)
         UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
+        ContactsManager.restoreContactProfileOverrides(nil)
         clearPublicPaykitSharingState()
         notifyAppStateBackupChanged()
     }
@@ -790,21 +695,44 @@ class PubkyProfileManager: ObservableObject {
     }
 
     static func removePublicPaykitEndpointsBestEffort(context: String) async {
-        try? await removePublicPaykitEndpoints(context: context)
+        do {
+            try await removePublicPaykitEndpoints(context: context)
+            PublicPaykitService.setCleanupPending(false)
+        } catch {
+            PublicPaykitService.setCleanupPending(true)
+        }
+    }
+
+    static func removePrivatePaykitEndpoints(context: String) async throws {
+        do {
+            try await PrivatePaykitService.shared.removePublishedEndpoints()
+            PrivatePaykitService.setContactSharingCleanupPending(false)
+        } catch {
+            PrivatePaykitService.setContactSharingCleanupPending(true)
+            Logger.warn("Failed to remove private Paykit endpoints before clearing session: \(error)", context: context)
+            throw error
+        }
     }
 
     static func removePrivatePaykitEndpointsBestEffort(context: String) async {
         do {
-            try await PrivatePaykitService.shared.removePublishedEndpoints()
+            try await removePrivatePaykitEndpoints(context: context)
+            PrivatePaykitService.setContactSharingCleanupPending(false)
         } catch {
-            Logger.warn("Failed to remove private Paykit endpoints before clearing session: \(error)", context: context)
+            PrivatePaykitService.setContactSharingCleanupPending(true)
         }
     }
 
-    func signOut() async {
-        await Task.detached {
+    func signOut() async throws {
+        try await signOut(cleanPrivatePaykitEndpoints: true)
+    }
+
+    private func signOut(cleanPrivatePaykitEndpoints: Bool) async throws {
+        try await Task.detached {
+            if cleanPrivatePaykitEndpoints {
+                await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
+            }
             await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
-            await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
             do {
                 try await PubkyService.signOut()
             } catch {
@@ -820,8 +748,7 @@ class PubkyProfileManager: ObservableObject {
         await Self.refreshSessionIfPossible(
             after: error,
             loadKeychainString: { try Keychain.loadString(key: $0) },
-            signInWithSecretKey: { try await PubkyService.signIn(secretKeyHex: $0) },
-            persistSessionSecret: { try Self.upsertKeychainString(.paykitSession, value: $0) }
+            signInWithSecretKey: { try await PubkyService.signIn(secretKeyHex: $0) }
         )
     }
 
@@ -917,34 +844,43 @@ class PubkyProfileManager: ObservableObject {
             try Keychain.loadString(key: $0)
         },
         persistKeychainString: (KeychainEntryType, String) throws -> Void = { key, value in
-            try PubkyProfileManager.upsertKeychainString(key, value: value)
+            guard let data = value.data(using: .utf8) else {
+                throw KeychainError.failedToSave
+            }
+            try Keychain.upsert(key: key, data: data)
         },
         deleteKeychainValue: (KeychainEntryType) throws -> Void = {
             try Keychain.delete(key: $0)
         },
-        forceSignOut: @escaping () async -> Void = {
-            await PubkyService.forceSignOut()
+        clearSessionAccess: @escaping () async -> Void = {
+            await PubkyService.clearSessionAccess()
+        },
+        signInWithSecretKey: @escaping (String) async throws -> String = {
+            try await PubkyService.signIn(secretKeyHex: $0)
+        },
+        importExternalSession: @escaping (String) async throws -> String = {
+            try await PubkyService.importExternalSession(secret: $0)
         }
     ) async throws {
-        await forceSignOut()
+        await clearSessionAccess()
 
         switch backup?.kind {
         case .none:
-            // Missing pubky backup state clears restored pubky credentials, including legacy backups without this field.
+            // Backups without pubky state do not carry recoverable pubky credentials.
             try? deleteKeychainValue(.paykitSession)
             try? deleteKeychainValue(.pubkySecretKey)
         case .localSeed:
             let secretKeyHex = try deriveLocalSecretKeyFromWalletSeed(loadKeychainString: loadKeychainString)
             try persistKeychainString(.pubkySecretKey, secretKeyHex)
             try? deleteKeychainValue(.paykitSession)
+            _ = try await signInWithSecretKey(secretKeyHex)
         case .externalSession:
             guard let sessionSecret = backup?.sessionSecret,
                   !sessionSecret.isEmpty
             else {
                 throw PubkyServiceError.authFailed("Missing session secret in backup")
             }
-            try persistKeychainString(.paykitSession, sessionSecret)
-            try? deleteKeychainValue(.pubkySecretKey)
+            _ = try await importExternalSession(sessionSecret)
         }
     }
 
@@ -958,10 +894,6 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    private nonisolated static func upsertKeychainString(_ key: KeychainEntryType, value: String) throws {
-        try Keychain.upsert(key: key, data: Data(value.utf8))
-    }
-
     private nonisolated static func initializePersistedSession() async throws -> SessionInitializationResult {
         try await PubkyService.initialize()
 
@@ -972,9 +904,6 @@ class PubkyProfileManager: ObservableObject {
             storedSecretKeyHex: secretKeyHex,
             importSession: { try await PubkyService.importSession(secret: $0) },
             signInWithSecretKey: { try await PubkyService.signIn(secretKeyHex: $0) },
-            persistSessionSecret: { secret in
-                try upsertKeychainString(.paykitSession, value: secret)
-            },
             deleteSessionSecret: {
                 try? Keychain.delete(key: .paykitSession)
             }
@@ -998,9 +927,15 @@ class PubkyProfileManager: ObservableObject {
             throw PubkyServiceError.authFailed("Mnemonic not found")
         }
 
-        let passphrase = try loadKeychainString(.bip39Passphrase(index: 0))
-        let seed = try PubkyService.mnemonicToSeed(mnemonic: mnemonic, passphrase: passphrase)
-        return try PubkyService.derivePubkySecretKey(seed: seed)
+        return try PubkyService.derivePubkySecretKey(mnemonic: mnemonic)
+    }
+
+    nonisolated static func publicKeyFromSecretKey(_ secretKeyHex: String) throws -> String {
+        let publicKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        guard let normalized = PubkyPublicKeyFormat.normalized(publicKey) else {
+            throw PubkyServiceError.authFailed("Invalid Pubky public key")
+        }
+        return normalized
     }
 
     nonisolated static func isMissingBitkitProfileStorageError(_ error: Error) -> Bool {
@@ -1048,7 +983,9 @@ class PubkyProfileManager: ObservableObject {
             try Keychain.loadString(key: $0)
         },
         signInWithSecretKey: (String) async throws -> String,
-        persistSessionSecret: (String) throws -> Void
+        publicKeyFromSecretKey: (String) throws -> String = {
+            try PubkyProfileManager.publicKeyFromSecretKey($0)
+        }
     ) async -> Bool {
         guard isSessionRefreshableError(error) else {
             return false
@@ -1062,8 +999,8 @@ class PubkyProfileManager: ObservableObject {
         }
 
         do {
-            let newSessionSecret = try await signInWithSecretKey(secretKeyHex)
-            try persistSessionSecret(newSessionSecret)
+            _ = try await signInWithSecretKey(secretKeyHex)
+            _ = try publicKeyFromSecretKey(secretKeyHex)
             Logger.info("Refreshed pubky session from local secret key", context: "PubkyProfileManager")
             return true
         } catch {
@@ -1077,7 +1014,9 @@ class PubkyProfileManager: ObservableObject {
         storedSecretKeyHex: String?,
         importSession: (String) async throws -> String,
         signInWithSecretKey: (String) async throws -> String,
-        persistSessionSecret: (String) throws -> Void,
+        publicKeyFromSecretKey: (String) throws -> String = {
+            try PubkyProfileManager.publicKeyFromSecretKey($0)
+        },
         deleteSessionSecret: () -> Void
     ) async -> SessionInitializationResult {
         if let savedSessionSecret,
@@ -1106,9 +1045,8 @@ class PubkyProfileManager: ObservableObject {
         }
 
         do {
-            let newSession = try await signInWithSecretKey(storedSecretKeyHex)
-            try persistSessionSecret(newSession)
-            let publicKey = try await importSession(newSession)
+            _ = try await signInWithSecretKey(storedSecretKeyHex)
+            let publicKey = try publicKeyFromSecretKey(storedSecretKeyHex)
             Logger.info("Re-signed in and restored session for \(publicKey)", context: "PubkyProfileManager")
             return .restored(publicKey: publicKey)
         } catch {

@@ -336,16 +336,6 @@ enum Env {
         }
     }
 
-    /// Pubky/Paykit capabilities — production for mainnet, staging for regtest/testnet/signet.
-    static var pubkyCapabilities: String {
-        switch network {
-        case .bitcoin:
-            return "/pub/bitkit.to/:rw,/pub/pubky.app/:r,/pub/paykit/v0/:rw"
-        default:
-            return "/pub/staging.bitkit.to/:rw,/pub/staging.pubky.app/:r,/pub/paykit/v0/:rw"
-        }
-    }
-
     /// Homegate URL for auto-provisioned identity signup via IP verification.
     static var homegateUrl: String {
         if isLocalE2EBackend {

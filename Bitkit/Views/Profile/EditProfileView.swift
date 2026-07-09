@@ -175,15 +175,18 @@ struct EditProfileView: View {
     }
 
     private func performDeleteProfile() async throws {
-        await PrivatePaykitService.shared.markProfileRecoveryPendingIfNeeded()
-        try await contactsManager.deleteAllContacts()
+        await contactsManager.deleteAllContactsBestEffort()
         try await pubkyProfile.deleteProfile()
         navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
     }
 
     private func disconnectAfterFailedDelete() async {
-        await pubkyProfile.signOut()
-        navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
+        do {
+            try await pubkyProfile.signOut()
+            navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
+        } catch {
+            app.toast(type: .error, title: t("profile__sign_out_title"), description: error.localizedDescription)
+        }
     }
 
     // MARK: - Save Profile
