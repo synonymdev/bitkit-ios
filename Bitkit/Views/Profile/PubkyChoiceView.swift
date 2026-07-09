@@ -43,6 +43,9 @@ struct PubkyChoiceView: View {
             guard isWaitingForRing else { return }
             await waitForApproval()
         }
+        .task {
+            await pubkyProfile.refreshSharedIdentities()
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active, isWaitingForRing {
                 // Ring returned to app — approval task handles completion

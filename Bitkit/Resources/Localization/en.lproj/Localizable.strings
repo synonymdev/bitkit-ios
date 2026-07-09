@@ -1084,6 +1084,12 @@
 "profile__choice_description" = "Create a new pubky and profile in Bitkit, or import an existing profile with Pubky Ring.";
 "profile__choice_create" = "Create profile with Bitkit";
 "profile__choice_import" = "Import with Pubky Ring";
+"profile__reuse_title" = "Your pubky is\n<accent>already here</accent>";
+"profile__reuse_description" = "Found an existing pubky from Pubky Ring on this device. Use it to set up your profile instantly.";
+"profile__reuse_create_new" = "Create a new profile instead";
+"profile__reuse_loading" = "Setting up your profile…";
+"profile__reuse_error_title" = "Couldn't use this pubky";
+"profile__reuse_source" = "Saved in Pubky Ring";
 "profile__deriving_keys" = "Deriving your keys…";
 "profile__create_nav_title" = "Create Profile";
 "profile__restore_nav_title" = "Restore Profile";

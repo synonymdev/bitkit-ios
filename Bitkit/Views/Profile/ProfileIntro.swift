@@ -3,6 +3,7 @@ import SwiftUI
 struct ProfileIntroView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     var body: some View {
         OnboardingView(
@@ -20,6 +21,9 @@ struct ProfileIntroView: View {
             testID: "ProfileIntro"
         )
         .navigationBarHidden(true)
+        .task {
+            await pubkyProfile.refreshSharedIdentities()
+        }
     }
 }
 
@@ -28,6 +32,7 @@ struct ProfileIntroView: View {
         ProfileIntroView()
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
+            .environmentObject(PubkyProfileManager())
     }
     .preferredColorScheme(.dark)
 }

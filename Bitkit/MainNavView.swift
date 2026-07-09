@@ -439,6 +439,8 @@ struct MainNavView: View {
                             pubkyLoadingView
                         } else if pubkyProfile.isAuthenticated {
                             ContactsListView()
+                        } else if !pubkyProfile.availableSharedIdentities.isEmpty {
+                            ReusePubkyView()
                         } else if app.hasSeenProfileIntro {
                             PubkyChoiceView()
                         } else {
@@ -489,6 +491,8 @@ struct MainNavView: View {
                         pubkyLoadingView
                     } else if pubkyProfile.isAuthenticated {
                         ProfileView()
+                    } else if !pubkyProfile.availableSharedIdentities.isEmpty {
+                        ReusePubkyView()
                     } else if app.hasSeenProfileIntro {
                         PubkyChoiceView()
                     } else {
