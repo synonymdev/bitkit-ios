@@ -136,6 +136,7 @@ class PubkyProfileManager: ObservableObject {
     @Published var isInitialized = false
     @Published var initializationErrorMessage: String?
     @Published var sessionRestorationFailed = false
+    @Published var availableSharedIdentities: [SharedPubkyRecord] = []
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
 
@@ -176,11 +177,100 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
             Task { await loadProfile() }
         case .restorationFailed:
-            clearAuthenticatedState()
-            sessionRestorationFailed = true
+            if await tryRehealSessionFromSharedVault() {
+                Logger.info("Recovered paykit session from shared vault", context: "PubkyProfileManager")
+            } else {
+                clearAuthenticatedState()
+                sessionRestorationFailed = true
+            }
         }
 
+        await refreshSharedIdentities()
         isInitialized = true
+    }
+
+    // MARK: - Shared Vault (Pubky Ring interop)
+
+    /// Mirror any locally-created Bitkit identity into the shared vault, then refresh the list of
+    /// identities available for reuse (vault records that aren't Bitkit's current identity).
+    func refreshSharedIdentities() async {
+        let ownPubky = publicKey.map { SharedPubkyVault.canonicalPubky($0) }
+        let records = await Task.detached {
+            Self.mirrorExistingLocalIdentity()
+            return SharedPubkyVault.list()
+        }.value
+        availableSharedIdentities = records.filter { $0.pubky != ownPubky }
+    }
+
+    /// Adopt a pubky identity discovered in the shared vault (e.g. one created in Pubky Ring).
+    /// Session-only, mirroring the Ring-auth model: the imported key signs in and only the resulting
+    /// session is persisted, so it is never stored as `.pubkySecretKey` and never re-derived from the
+    /// wallet seed on restore. The shared vault remains the recovery source.
+    func adoptSharedIdentity(_ record: SharedPubkyRecord) async throws {
+        authState = .authenticating
+
+        do {
+            let sessionSecret = try await PubkyService.signIn(secretKeyHex: record.secretKeyHex)
+
+            do {
+                try? Keychain.delete(key: .pubkySecretKey)
+                try Self.upsertKeychainString(.paykitSession, value: sessionSecret)
+                UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+                PrivatePaykitService.setProfileRecoveryPending(false)
+                Self.notifyAppStateBackupChanged()
+            } catch {
+                await PubkyService.forceSignOut()
+                throw error
+            }
+
+            let pk = try await PubkyService.importSession(secret: sessionSecret)
+            publicKey = pk
+            authState = .authenticated
+            availableSharedIdentities.removeAll { $0.pubky == SharedPubkyVault.canonicalPubky(pk) }
+            Logger.info("Adopted shared pubky identity \(pk)", context: "PubkyProfileManager")
+            await loadProfile()
+        } catch {
+            restoreAuthStateAfterAuthFlow()
+            throw error
+        }
+    }
+
+    /// Recovers an adopted (session-only) identity whose saved session no longer imports, by looking
+    /// its secret key up in the shared vault and re-signing-in. The session secret is `<pubky>:<cookie>`.
+    private func tryRehealSessionFromSharedVault() async -> Bool {
+        guard let savedSession = try? Keychain.loadString(key: .paykitSession),
+              !savedSession.isEmpty,
+              let pubky = savedSession.split(separator: ":").first.map(String.init),
+              let record = SharedPubkyVault.read(pubky: pubky)
+        else {
+            return false
+        }
+
+        do {
+            let newSession = try await PubkyService.signIn(secretKeyHex: record.secretKeyHex)
+            try Self.upsertKeychainString(.paykitSession, value: newSession)
+            let pk = try await PubkyService.importSession(secret: newSession)
+            publicKey = pk
+            authState = .authenticated
+            Task { await loadProfile() }
+            return true
+        } catch {
+            Logger.warn("Vault re-heal failed: \(error)", context: "PubkyProfileManager")
+            return false
+        }
+    }
+
+    /// Mirror an existing locally-created Bitkit identity into the shared vault so Pubky Ring can reuse
+    /// it. Only the wallet-derived pubky secret key is shared — never the BIP39 wallet mnemonic.
+    private nonisolated static func mirrorExistingLocalIdentity() {
+        guard let secretKeyHex = try? Keychain.loadString(key: .pubkySecretKey),
+              !secretKeyHex.isEmpty,
+              let rawKey = try? PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        else {
+            return
+        }
+
+        SharedPubkyVault.upsert(pubky: rawKey, secretKeyHex: secretKeyHex, mnemonic: "")
     }
 
     // MARK: - Key Derivation & Identity Creation
@@ -353,6 +443,8 @@ class PubkyProfileManager: ObservableObject {
             await PubkyService.forceSignOut()
             throw error
         }
+
+        SharedPubkyVault.upsert(pubky: publicKeyZ32, secretKeyHex: secretKeyHex, mnemonic: "")
 
         let createdProfile = PubkyProfile(
             publicKey: publicKeyZ32,
