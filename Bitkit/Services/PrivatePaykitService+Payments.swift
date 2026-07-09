@@ -13,26 +13,6 @@ extension PrivatePaykitService {
         }?.key
     }
 
-    func resolveSavedContactPayableEndpoint(publicKey: String, wallet: WalletViewModel) async -> Bool {
-        guard let normalizedKey = knownSavedContact(publicKey) else {
-            return await (try? PublicPaykitService.hasPayablePublicEndpoint(publicKey: publicKey)) == true
-        }
-
-        do {
-            let result = try await beginPrivateOrPublicPayment(to: normalizedKey, wallet: wallet)
-            if case .opened = result {
-                return true
-            }
-            return false
-        } catch {
-            return false
-        }
-    }
-
-    func resolvePayableEndpoint(publicKey: String, wallet: WalletViewModel) async -> Bool {
-        await resolveSavedContactPayableEndpoint(publicKey: publicKey, wallet: wallet)
-    }
-
     func beginSavedContactPayment(to publicKey: String, wallet: WalletViewModel) async throws -> PublicPaykitPaymentLaunchResult {
         guard let normalizedKey = knownSavedContact(publicKey) else {
             return try await PublicPaykitService.beginPayment(to: publicKey)
