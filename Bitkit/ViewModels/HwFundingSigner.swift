@@ -92,8 +92,8 @@ struct HwFundingSigner {
         do {
             txId = try await broadcastStep(serializedTx: signed.serializedTx)
         } catch {
-            guard let signedTxId = signed.txId, Self.isAlreadyBroadcastError(error) else { throw error }
-            txId = signedTxId
+            guard Self.isAlreadyBroadcastError(error) else { throw error }
+            txId = signed.txId
         }
         return HwFundingBroadcastResult(
             txId: txId,

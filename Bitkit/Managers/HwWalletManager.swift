@@ -594,12 +594,15 @@ final class HwWalletManager {
     ) async throws -> HwFundingSignedTx {
         let network = networkProvider()
         let signed = try await TrezorService.shared.signTxFromPsbt(psbtBase64: funding.psbt, network: network)
+        guard let txId = signed.txid else {
+            throw AppError(message: "Failed to sign hardware transfer", debugMessage: "Signed transaction missing txid")
+        }
         return HwFundingSignedTx(
             serializedTx: signed.serializedTx,
             miningFeeSats: funding.miningFeeSats,
             feeRate: funding.feeRate,
             totalSpent: funding.totalSpent,
-            txId: signed.txid
+            txId: txId
         )
     }
 
