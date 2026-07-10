@@ -195,6 +195,7 @@ struct AppScene: View {
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     Task {
                         try? await contactsManager.loadContacts(for: pk)
+                        await refreshPrivateOnlyPaykitReceiverMarker()
                         if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
                             await retryPendingPaykitEndpointRemoval()
                         }
@@ -632,6 +633,7 @@ struct AppScene: View {
                     await retryPendingPaykitEndpointRemoval()
                 }
                 guard PaykitFeatureFlags.isUIEnabled else { return }
+                await refreshPrivateOnlyPaykitReceiverMarker()
                 await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
                 await PrivatePaykitService.shared.prepareSavedContacts(
                     contactsManager.contacts.map(\.publicKey),
@@ -671,6 +673,7 @@ struct AppScene: View {
                     await retryPendingPaykitEndpointRemoval()
                     await wallet.refreshPublicPaykitEndpointsOnForeground()
                     if PaykitFeatureFlags.isUIEnabled {
+                        await refreshPrivateOnlyPaykitReceiverMarker()
                         await PrivatePaykitService.shared.refreshSavedContactEndpoints(
                             for: contactsManager.contacts.map(\.publicKey),
                             wallet: wallet
@@ -681,17 +684,31 @@ struct AppScene: View {
         }
     }
 
+    private func refreshPrivateOnlyPaykitReceiverMarker() async {
+        let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
+        let privateSharingEnabled = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
+        guard privateSharingEnabled, !publicSharingEnabled else { return }
+        guard await PubkyService.currentPublicKey() != nil else { return }
+
+        do {
+            try await PublicPaykitService.syncLocalReceiverMarker()
+        } catch {
+            Logger.warn("Failed to refresh private Paykit receiver marker: \(error)", context: "AppScene")
+        }
+    }
+
     private func retryPendingPaykitEndpointRemoval() async {
         if PublicPaykitService.isCleanupPending {
-            if UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey) {
-                PublicPaykitService.setCleanupPending(false)
-            } else {
-                do {
+            do {
+                if UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey) {
+                    try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet)
+                } else {
                     try await PublicPaykitService.removePublishedEndpoints()
-                    PublicPaykitService.setCleanupPending(false)
-                } catch {
-                    Logger.warn("Failed to retry public Paykit endpoint cleanup: \(error)", context: "AppScene")
+                    try await PublicPaykitService.syncLocalReceiverMarker(publicSharingEnabled: false)
                 }
+                PublicPaykitService.setCleanupPending(false)
+            } catch {
+                Logger.warn("Failed to reconcile public Paykit state: \(error)", context: "AppScene")
             }
         }
 

@@ -219,6 +219,9 @@ struct AddContactView: View {
             isLoading = false
             return
         case .existingContact:
+            if let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) {
+                await contactsManager.refreshContactReceiverPaths(publicKey: normalizedKey, wallet: wallet)
+            }
             errorMessage = t("contacts__add_error_existing")
             canRetryError = false
             isLoading = false

@@ -6,7 +6,7 @@ import XCTest
 final class ContactsManagerTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
     }
 
     override func tearDown() {

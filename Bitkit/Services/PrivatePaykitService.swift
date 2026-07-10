@@ -32,6 +32,11 @@ private actor PrivatePaykitPublicationLock {
     }
 }
 
+struct PrivateMessageDrainRetryKey: Hashable {
+    let publicKey: String
+    let receiverPath: String
+}
+
 // MARK: - Core Actor
 
 actor PrivatePaykitService {
@@ -62,7 +67,7 @@ actor PrivatePaykitService {
     var state: PrivatePaykitState
     var knownSavedContactKeys: Set<String> = []
     var pendingMessageDrainRetryTask: Task<Void, Never>?
-    var pendingMessageDrainRetryKeys: Set<String> = []
+    var pendingMessageDrainRetryKeys: Set<PrivateMessageDrainRetryKey> = []
     var pendingMessageDrainRetryGeneration = 0
     private let publicationLock = PrivatePaykitPublicationLock()
 
