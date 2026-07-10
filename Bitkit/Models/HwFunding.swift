@@ -38,6 +38,21 @@ struct HwFundingSignedTx: Equatable {
     let miningFeeSats: UInt64
     let feeRate: Float
     let totalSpent: UInt64
+    let txId: String?
+
+    init(
+        serializedTx: String,
+        miningFeeSats: UInt64,
+        feeRate: Float,
+        totalSpent: UInt64,
+        txId: String? = nil
+    ) {
+        self.serializedTx = serializedTx
+        self.miningFeeSats = miningFeeSats
+        self.feeRate = feeRate
+        self.totalSpent = totalSpent
+        self.txId = txId
+    }
 }
 
 /// The result of signing a composed funding payment on the device and broadcasting it.

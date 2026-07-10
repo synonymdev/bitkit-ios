@@ -120,7 +120,26 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertEqual(funding.broadcastCalls, 2)
 
         vm.cancelHwSigning()
-        XCTAssertFalse(vm.hwSpending.hasPendingBroadcast)
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast, "leaving must retain an uncertain signed transaction")
+        vm.onOrderCreated(order: .mock())
+        XCTAssertFalse(vm.hwSpending.hasPendingBroadcast, "starting a new order discards the previous retry state")
+    }
+
+    func testBroadcastRetryDoesNotReuseSignedTransactionAfterOrderAddressChanges() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = MockHwFunding.TestError()
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+        var order = IBtOrder.mock()
+
+        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        order.payment?.onchain?.address = "bc1qnewdestination"
+        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(funding.composeCalls.last?.address, "bc1qnewdestination")
     }
 
     func testDeviceCancelDuringSigningIsSilent() async {

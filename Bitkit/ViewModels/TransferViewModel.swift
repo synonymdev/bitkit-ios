@@ -27,7 +27,17 @@ struct HwSpendingState: Equatable {
 
 private struct PendingHwFundingBroadcast {
     let orderId: String
+    let deviceId: String
+    let address: String
+    let amountSats: UInt64
     let signedTx: HwFundingSignedTx
+
+    func matches(order: IBtOrder, deviceId: String, address: String) -> Bool {
+        orderId == order.id &&
+            self.deviceId == deviceId &&
+            self.address == address &&
+            amountSats == order.feeSat
+    }
 }
 
 /// A recoverable failure surfaced by the hardware-wallet transfer flow. The Sign screen maps each
@@ -529,11 +539,17 @@ class TransferViewModel: ObservableObject {
 
             do {
                 let signedTx: HwFundingSignedTx
-                if let pending = pendingHwFundingBroadcast, pending.orderId == order.id {
+                if let pending = pendingHwFundingBroadcast, pending.matches(order: order, deviceId: deviceId, address: address) {
                     signedTx = pending.signedTx
                 } else {
                     signedTx = try await hwSigner.prepareSignedFunding(order: order, deviceId: deviceId, address: address)
-                    pendingHwFundingBroadcast = PendingHwFundingBroadcast(orderId: order.id, signedTx: signedTx)
+                    pendingHwFundingBroadcast = PendingHwFundingBroadcast(
+                        orderId: order.id,
+                        deviceId: deviceId,
+                        address: address,
+                        amountSats: order.feeSat,
+                        signedTx: signedTx
+                    )
                     hwSpending.hasPendingBroadcast = true
                 }
                 let result = try await hwSigner.broadcastSignedFunding(signedTx)
@@ -571,10 +587,10 @@ class TransferViewModel: ObservableObject {
     /// Cancel an in-flight hardware signing task when the user abandons the sign flow, so a later
     /// on-device approval can't still sign/broadcast/record. Idempotent.
     func cancelHwSigning() {
+        guard pendingHwFundingBroadcast == nil else { return }
         hwSignTask?.cancel()
         hwSignTask = nil
         hwSpending.isSigning = false
-        clearPendingHwFundingBroadcast()
     }
 
     private func clearPendingHwFundingBroadcast() {
