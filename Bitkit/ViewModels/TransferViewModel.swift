@@ -20,6 +20,7 @@ struct HwSpendingState: Equatable {
     var isLoading = false
     var isSigning = false
     var hasPendingBroadcast = false
+    var miningFeeSats: UInt64 = 0
     var maxAllowedToSend: UInt64 = 0
     var balanceAfterFee: UInt64 = 0
     var quarterAmount: UInt64 = 0
@@ -234,6 +235,7 @@ class TransferViewModel: ObservableObject {
 
     func onOrderCreated(order: IBtOrder) {
         clearPendingHwFundingBroadcast()
+        hwSpending.miningFeeSats = 0
         uiState.order = order
         uiState.isAdvanced = false
         uiState.defaultOrder = nil
@@ -241,6 +243,7 @@ class TransferViewModel: ObservableObject {
 
     func onAdvancedOrderCreated(order: IBtOrder) {
         clearPendingHwFundingBroadcast()
+        hwSpending.miningFeeSats = 0
         let defaultOrder = uiState.order
         uiState.order = order
         uiState.defaultOrder = defaultOrder
@@ -466,6 +469,7 @@ class TransferViewModel: ObservableObject {
 
     func onDefaultClick() {
         clearPendingHwFundingBroadcast()
+        hwSpending.miningFeeSats = 0
         let defaultOrder = uiState.defaultOrder
         uiState.order = defaultOrder
         uiState.defaultOrder = nil
@@ -541,8 +545,15 @@ class TransferViewModel: ObservableObject {
                 let signedTx: HwFundingSignedTx
                 if let pending = pendingHwFundingBroadcast, pending.matches(order: order, deviceId: deviceId, address: address) {
                     signedTx = pending.signedTx
+                    hwSpending.miningFeeSats = signedTx.miningFeeSats
                 } else {
-                    signedTx = try await hwSigner.prepareSignedFunding(order: order, deviceId: deviceId, address: address)
+                    signedTx = try await hwSigner.prepareSignedFunding(
+                        order: order,
+                        deviceId: deviceId,
+                        address: address
+                    ) { funding in
+                        self.hwSpending.miningFeeSats = funding.miningFeeSats
+                    }
                     pendingHwFundingBroadcast = PendingHwFundingBroadcast(
                         orderId: order.id,
                         deviceId: deviceId,

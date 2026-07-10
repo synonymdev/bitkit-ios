@@ -94,15 +94,18 @@ final class HwFundingSignerTests: XCTestCase {
         let funding = MockHwFunding()
         let signer = makeSigner(funding: funding, connecting: MockHwConnecting())
         let order = IBtOrder.mock() // feeSat = 1000, address = "bc1q..."
+        var composedMiningFee: UInt64?
 
         let signed = try await signer.prepareSignedFunding(
             order: order,
             deviceId: "dev1",
-            address: XCTUnwrap(order.payment?.onchain?.address)
+            address: XCTUnwrap(order.payment?.onchain?.address),
+            onComposed: { composedMiningFee = $0.miningFeeSats }
         )
         let result = try await signer.broadcastSignedFunding(signed)
 
         XCTAssertEqual(result.txId, "txid")
+        XCTAssertEqual(composedMiningFee, funding.funding.miningFeeSats)
         XCTAssertEqual(funding.composeCalls.count, 1)
         XCTAssertEqual(funding.composeCalls.first?.sats, order.feeSat)
         XCTAssertEqual(funding.composeCalls.first?.address, order.payment?.onchain?.address)

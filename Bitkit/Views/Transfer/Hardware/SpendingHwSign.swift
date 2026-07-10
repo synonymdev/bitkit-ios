@@ -77,8 +77,11 @@ struct SpendingHwSign: View {
                 accentColor: .purpleAccent
             )
 
-            SpendingHwFeeGrid(order: order)
-                .padding(.top, 16)
+            SpendingHwFeeGrid(
+                order: order,
+                miningFeeSats: transfer.hwSpending.miningFeeSats
+            )
+            .padding(.top, 16)
 
             HStack(spacing: 16) {
                 CustomButton(
@@ -151,13 +154,14 @@ struct SpendingHwSign: View {
 /// Blocktank order fee summary shared by the hardware Sign and Signed screens.
 struct SpendingHwFeeGrid: View {
     let order: IBtOrder
+    var miningFeeSats: UInt64 = 0
 
     var body: some View {
         VStack(spacing: 16) {
             HStack {
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__network_fee"),
-                    amount: order.networkFeeSat
+                    amount: order.networkFeeSat + miningFeeSats
                 )
                 .frame(maxWidth: .infinity)
 
@@ -177,7 +181,7 @@ struct SpendingHwFeeGrid: View {
 
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__total"),
-                    amount: order.feeSat
+                    amount: order.feeSat + miningFeeSats
                 )
                 .frame(maxWidth: .infinity)
             }

@@ -107,6 +107,7 @@ final class TransferViewModelHwTests: XCTestCase {
         await awaitSigningComplete(vm)
 
         XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
+        XCTAssertEqual(vm.hwSpending.miningFeeSats, funding.funding.miningFeeSats)
         XCTAssertEqual(funding.signCalls, 1)
         XCTAssertEqual(funding.broadcastCalls, 1)
 

@@ -79,10 +79,16 @@ struct HwFundingSigner {
     }
 
     /// Reconnects, composes and signs the funding transaction without broadcasting it.
-    func prepareSignedFunding(order: IBtOrder, deviceId: String, address: String) async throws -> HwFundingSignedTx {
+    func prepareSignedFunding(
+        order: IBtOrder,
+        deviceId: String,
+        address: String,
+        onComposed: (HwFundingTransaction) -> Void = { _ in }
+    ) async throws -> HwFundingSignedTx {
         try await ensureConnected(deviceId: deviceId)
         let satsPerVByte = await resolvedSatsPerVByte()
         let tx = try await compose(deviceId: deviceId, address: address, sats: order.feeSat, satsPerVByte: satsPerVByte)
+        onComposed(tx)
         return try await signStep(deviceId: deviceId, funding: tx)
     }
 
@@ -92,8 +98,8 @@ struct HwFundingSigner {
         do {
             txId = try await broadcastStep(serializedTx: signed.serializedTx)
         } catch {
-            guard Self.isAlreadyBroadcastError(error) else { throw error }
-            txId = signed.txId
+            guard let signedTxId = signed.txId, Self.isAlreadyBroadcastError(error) else { throw error }
+            txId = signedTxId
         }
         return HwFundingBroadcastResult(
             txId: txId,
