@@ -298,7 +298,11 @@ class ContactsManager: ObservableObject {
         do {
             let receiverPaths = try await Self.relevantReceiverPaths(for: prefixedKey)
             _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name, receiverPaths: receiverPaths)
-            await PrivatePaykitService.shared.refreshSavedContactEndpoints(for: [prefixedKey], wallet: wallet)
+            await PrivatePaykitService.shared.refreshSavedContactEndpoints(
+                for: [prefixedKey],
+                savedPublicKeys: contacts.map(\.publicKey),
+                wallet: wallet
+            )
         } catch is CancellationError {
             return
         } catch {

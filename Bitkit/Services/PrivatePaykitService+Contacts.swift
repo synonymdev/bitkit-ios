@@ -26,7 +26,16 @@ extension PrivatePaykitService {
         )
     }
 
-    func refreshSavedContactEndpoints(for publicKeys: [String], wallet: WalletViewModel, forceRefreshLightning: Bool = false) async {
+    func refreshSavedContactEndpoints(
+        for publicKeys: [String],
+        savedPublicKeys: [String]? = nil,
+        wallet: WalletViewModel,
+        forceRefreshLightning: Bool = false
+    ) async {
+        if let savedPublicKeys {
+            _ = rememberSavedContacts(savedPublicKeys + publicKeys, replacing: false)
+        }
+
         _ = await refreshSavedContactEndpointsReturningError(
             for: publicKeys,
             wallet: wallet,
@@ -99,10 +108,7 @@ extension PrivatePaykitService {
                     }
                     let retryKey = PrivateMessageDrainRetryKey(publicKey: publicKey, receiverPath: receiverPath)
                     await drainPendingPrivateMessages(reason: "cleanup", advancing: [retryKey])
-                    let pending = try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties()
-                    if pending.contains(where: {
-                        PubkyPublicKeyFormat.normalized($0.counterparty) == publicKey && $0.counterpartyReceiverPath == receiverPath
-                    }) {
+                    if await pendingPrivateMessageDrainKeys([retryKey]).contains(retryKey) {
                         throw PrivatePaykitError.privateUnavailable
                     }
                 } catch {

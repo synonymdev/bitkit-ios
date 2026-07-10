@@ -674,8 +674,10 @@ struct AppScene: View {
                     await wallet.refreshPublicPaykitEndpointsOnForeground()
                     if PaykitFeatureFlags.isUIEnabled {
                         await refreshPrivateOnlyPaykitReceiverMarker()
+                        let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
                         await PrivatePaykitService.shared.refreshSavedContactEndpoints(
-                            for: contactsManager.contacts.map(\.publicKey),
+                            for: contactPublicKeys,
+                            savedPublicKeys: contactPublicKeys,
                             wallet: wallet
                         )
                     }
