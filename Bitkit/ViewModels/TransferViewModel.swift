@@ -587,7 +587,6 @@ class TransferViewModel: ObservableObject {
     /// Cancel an in-flight hardware signing task when the user abandons the sign flow, so a later
     /// on-device approval can't still sign/broadcast/record. Idempotent.
     func cancelHwSigning() {
-        guard pendingHwFundingBroadcast == nil else { return }
         hwSignTask?.cancel()
         hwSignTask = nil
         hwSpending.isSigning = false
