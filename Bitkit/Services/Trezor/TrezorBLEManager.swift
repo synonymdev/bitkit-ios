@@ -114,6 +114,13 @@ class TrezorBLEManager: NSObject {
         return cont
     }
 
+    private func failPendingContinuations(with error: Error) {
+        takeConnectContinuation()?.resume(throwing: error)
+        takeServiceDiscoveryContinuation()?.resume(throwing: error)
+        takeNotificationContinuation()?.resume(throwing: error)
+        takeWriteContinuation()?.resume(throwing: error)
+    }
+
     /// Atomically store a continuation.
     private func setConnectContinuation(_ cont: CheckedContinuation<Void, Error>) {
         continuationLock.lock()
@@ -569,10 +576,15 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
             }
         }
 
+        guard central.state != .poweredOn else { return }
+
+        let disconnectError = TrezorBLEError.connectionFailed
+        failPendingContinuations(with: disconnectError)
+
         // Bluetooth turned off / unauthorized invalidates any live connection. iOS does
         // not guarantee a per-peripheral didDisconnect on power-off, so treat it as a
         // spontaneous drop here: clear internal state and surface the disconnect.
-        if central.state != .poweredOn, let path = connectedPath {
+        if let path = connectedPath {
             connectedPeripheral = nil
             connectedPath = nil
             writeCharacteristic = nil
@@ -634,10 +646,7 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
         let disconnectError = error ?? TrezorBLEError.connectionFailed
 
         // Resume any pending continuations so they fail-fast instead of hanging
-        takeConnectContinuation()?.resume(throwing: disconnectError)
-        takeServiceDiscoveryContinuation()?.resume(throwing: disconnectError)
-        takeNotificationContinuation()?.resume(throwing: disconnectError)
-        takeWriteContinuation()?.resume(throwing: disconnectError)
+        failPendingContinuations(with: disconnectError)
 
         let path = "ble:\(peripheral.identifier.uuidString)"
         // Consume any deliberate-disconnect marker even when disconnect(path:) already

@@ -53,6 +53,11 @@ struct DevSettingsView: View {
                         SettingsRow(title: "Orders")
                     }
 
+                    NavigationLink(value: Route.trezor) {
+                        SettingsRow(title: "Trezor Hardware Wallet")
+                    }
+                    .accessibilityIdentifier("Trezor")
+
                     SettingsSectionHeader("RECOVERY")
                         .padding(.top, 16)
 
