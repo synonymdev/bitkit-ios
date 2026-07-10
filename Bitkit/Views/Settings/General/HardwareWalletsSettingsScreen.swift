@@ -98,9 +98,8 @@ struct HardwareWalletsSettingsScreen: View {
 
     private func remove(_ wallet: HwWallet) async {
         pendingRemoval = nil
-        hwWalletManager.removeDevice(id: wallet.id)
-        for id in wallet.deviceIds {
-            await trezorManager.forgetDevice(id: id)
+        await hwWalletManager.removeWallet(wallet) { deviceId in
+            await trezorManager.forgetDevice(id: deviceId)
         }
     }
 }

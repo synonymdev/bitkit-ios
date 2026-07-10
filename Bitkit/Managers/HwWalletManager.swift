@@ -164,6 +164,17 @@ final class HwWalletManager {
         recomputeDerivedState()
     }
 
+    /// Removes a hardware wallet and forgets every device entry that belongs to its wallet identity.
+    func removeWallet(
+        _ wallet: HwWallet,
+        forgetDevice: (String) async -> Void
+    ) async {
+        removeDevice(id: wallet.id)
+        for deviceId in wallet.deviceIds {
+            await forgetDevice(deviceId)
+        }
+    }
+
     // MARK: - Watcher orchestration
 
     /// Reconcile watchers in response to a settings change, but only when the monitored address

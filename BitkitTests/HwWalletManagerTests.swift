@@ -640,6 +640,23 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])
     }
 
+    func testRemoveWalletForgetsEveryDeviceEntry() async throws {
+        let xpubs = ["nativeSegwit": "z"]
+        let devices = [
+            makeDevice(id: "dev1", xpubs: xpubs),
+            makeDevice(id: "dev2", xpubs: xpubs),
+        ]
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: devices, connectedDeviceId: nil)
+        let wallet = try XCTUnwrap(vm.wallets.first)
+        var forgottenDeviceIds: [String] = []
+
+        await vm.removeWallet(wallet) { forgottenDeviceIds.append($0) }
+
+        XCTAssertEqual(Set(forgottenDeviceIds), wallet.deviceIds)
+        XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])
+    }
+
     // MARK: - Forget device deletes activities
 
     func testForgettingDeviceViaUpdateDeletesActivities() async throws {
