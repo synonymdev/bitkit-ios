@@ -19,9 +19,15 @@ struct TransferValues {
 struct HwSpendingState: Equatable {
     var isLoading = false
     var isSigning = false
+    var hasPendingBroadcast = false
     var maxAllowedToSend: UInt64 = 0
     var balanceAfterFee: UInt64 = 0
     var quarterAmount: UInt64 = 0
+}
+
+private struct PendingHwFundingBroadcast {
+    let orderId: String
+    let signedTx: HwFundingSignedTx
 }
 
 /// A recoverable failure surfaced by the hardware-wallet transfer flow. The Sign screen maps each
@@ -101,6 +107,7 @@ class TransferViewModel: ObservableObject {
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
     private var hwSignTask: Task<Void, Never>?
+    private var pendingHwFundingBroadcast: PendingHwFundingBroadcast?
 
     private let retryInterval: TimeInterval = 60 // 1 min
     private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
@@ -216,12 +223,14 @@ class TransferViewModel: ObservableObject {
     }
 
     func onOrderCreated(order: IBtOrder) {
+        clearPendingHwFundingBroadcast()
         uiState.order = order
         uiState.isAdvanced = false
         uiState.defaultOrder = nil
     }
 
     func onAdvancedOrderCreated(order: IBtOrder) {
+        clearPendingHwFundingBroadcast()
         let defaultOrder = uiState.order
         uiState.order = order
         uiState.defaultOrder = defaultOrder
@@ -446,6 +455,7 @@ class TransferViewModel: ObservableObject {
     }
 
     func onDefaultClick() {
+        clearPendingHwFundingBroadcast()
         let defaultOrder = uiState.defaultOrder
         uiState.order = defaultOrder
         uiState.defaultOrder = nil
@@ -518,7 +528,16 @@ class TransferViewModel: ObservableObject {
             }
 
             do {
-                let result = try await hwSigner.sign(order: order, deviceId: deviceId, address: address)
+                let signedTx: HwFundingSignedTx
+                if let pending = pendingHwFundingBroadcast, pending.orderId == order.id {
+                    signedTx = pending.signedTx
+                } else {
+                    signedTx = try await hwSigner.prepareSignedFunding(order: order, deviceId: deviceId, address: address)
+                    pendingHwFundingBroadcast = PendingHwFundingBroadcast(orderId: order.id, signedTx: signedTx)
+                    hwSpending.hasPendingBroadcast = true
+                }
+                let result = try await hwSigner.broadcastSignedFunding(signedTx)
+                clearPendingHwFundingBroadcast()
                 await fundPaidOrder(
                     order: order,
                     txId: result.txId,
@@ -545,6 +564,7 @@ class TransferViewModel: ObservableObject {
     /// tapping Open Trezor Connect is less likely to hit a cold reconnect. Best-effort no-op without
     /// the HW capabilities.
     func warmUpHardwareConnection(deviceId: String) {
+        guard !hwSpending.hasPendingBroadcast else { return }
         hwSigner?.warmUp(deviceId: deviceId)
     }
 
@@ -554,6 +574,12 @@ class TransferViewModel: ObservableObject {
         hwSignTask?.cancel()
         hwSignTask = nil
         hwSpending.isSigning = false
+        clearPendingHwFundingBroadcast()
+    }
+
+    private func clearPendingHwFundingBroadcast() {
+        pendingHwFundingBroadcast = nil
+        hwSpending.hasPendingBroadcast = false
     }
 
     private func handleHardwareTransferFailure(_ error: HwTransferError, deviceId: String) {

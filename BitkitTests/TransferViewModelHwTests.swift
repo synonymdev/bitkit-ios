@@ -96,6 +96,33 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertTrue(connecting.staleDisconnects.isEmpty)
     }
 
+    func testBroadcastFailureRetainsSignedTransactionForRetry() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = MockHwFunding.TestError()
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+
+        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+
+        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
+        XCTAssertEqual(connecting.ensureCalls, 1)
+        XCTAssertEqual(funding.composeCalls.count, 1)
+        XCTAssertEqual(funding.signCalls, 1, "retry must reuse the signed transaction")
+        XCTAssertEqual(funding.broadcastCalls, 2)
+
+        vm.cancelHwSigning()
+        XCTAssertFalse(vm.hwSpending.hasPendingBroadcast)
+    }
+
     func testDeviceCancelDuringSigningIsSilent() async {
         let funding = MockHwFunding()
         funding.signError = TrezorError.UserCancelled

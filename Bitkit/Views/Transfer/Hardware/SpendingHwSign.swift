@@ -68,13 +68,24 @@ struct SpendingHwSign: View {
 
     private func belowNav(order: IBtOrder) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            DisplayText(t("lightning__transfer_hw__sign_title"), accentColor: .purpleAccent)
+            DisplayText(
+                t(
+                    transfer.hwSpending.hasPendingBroadcast
+                        ? "lightning__transfer_hw__signed_title"
+                        : "lightning__transfer_hw__sign_title"
+                ),
+                accentColor: .purpleAccent
+            )
 
             SpendingHwFeeGrid(order: order)
                 .padding(.top, 16)
 
             HStack(spacing: 16) {
-                CustomButton(title: t("common__learn_more"), size: .small) {
+                CustomButton(
+                    title: t("common__learn_more"),
+                    size: .small,
+                    isDisabled: transfer.hwSpending.isSigning || transfer.hwSpending.hasPendingBroadcast
+                ) {
                     navigation.navigate(.transferLearnMore(order: order))
                 }
                 .accessibilityIdentifier("HardwareTransferSignLearnMore")
@@ -83,7 +94,7 @@ struct SpendingHwSign: View {
                     CustomButton(
                         title: t("lightning__spending_confirm__default"),
                         size: .small,
-                        isDisabled: transfer.hwSpending.isSigning
+                        isDisabled: transfer.hwSpending.isSigning || transfer.hwSpending.hasPendingBroadcast
                     ) {
                         transfer.onDefaultClick()
                     }
@@ -92,7 +103,7 @@ struct SpendingHwSign: View {
                     CustomButton(
                         title: t("common__advanced"),
                         size: .small,
-                        isDisabled: transfer.hwSpending.isSigning
+                        isDisabled: transfer.hwSpending.isSigning || transfer.hwSpending.hasPendingBroadcast
                     ) {
                         navigation.navigate(.spendingAdvanced(order: order))
                     }
@@ -105,7 +116,11 @@ struct SpendingHwSign: View {
             Spacer()
 
             CustomButton(
-                title: t("lightning__transfer_hw__open_connect"),
+                title: t(
+                    transfer.hwSpending.hasPendingBroadcast
+                        ? "common__retry"
+                        : "lightning__transfer_hw__open_connect"
+                ),
                 isDisabled: transfer.hwSpending.isSigning,
                 isLoading: transfer.hwSpending.isSigning
             ) {

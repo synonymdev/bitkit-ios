@@ -67,14 +67,16 @@ struct HwFundingSigner {
         return balanceSats > reserve ? balanceSats - reserve : 0
     }
 
-    /// Reconnect → compose → sign+broadcast. Throws `HwTransferError` for recoverable failures and
-    /// rethrows `CancellationError` when the caller's task is cancelled (user dismissed the flow).
-    /// Any non-timeout sign/broadcast error propagates as-is for the caller's generic handling.
-    func sign(order: IBtOrder, deviceId: String, address: String) async throws -> HwFundingBroadcastResult {
+    /// Reconnects, composes and signs the funding transaction without broadcasting it.
+    func prepareSignedFunding(order: IBtOrder, deviceId: String, address: String) async throws -> HwFundingSignedTx {
         try await ensureConnected(deviceId: deviceId)
         let satsPerVByte = await resolvedSatsPerVByte()
         let tx = try await compose(deviceId: deviceId, address: address, sats: order.feeSat, satsPerVByte: satsPerVByte)
-        let signed = try await signStep(deviceId: deviceId, funding: tx)
+        return try await signStep(deviceId: deviceId, funding: tx)
+    }
+
+    /// Broadcasts a signed funding transaction without requiring the hardware device.
+    func broadcastSignedFunding(_ signed: HwFundingSignedTx) async throws -> HwFundingBroadcastResult {
         let txId = try await broadcastStep(serializedTx: signed.serializedTx)
         return HwFundingBroadcastResult(
             txId: txId,
