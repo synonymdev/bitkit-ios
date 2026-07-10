@@ -69,14 +69,6 @@ actor PrivatePaykitAddressReservationStore {
 
     // MARK: - Contact Assignments
 
-    func hasContactAssignment(for publicKey: String) -> Bool {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey),
-              let assignment = ledger.contactAssignments.first(where: { Self.publicKey(fromAssignmentKey: $0.key) == normalizedKey })?.value
-        else { return false }
-
-        return LDKNode.AddressType.from(string: assignment.addressType) != nil
-    }
-
     func contactPublicKey(forReservedAddress address: String) async -> String? {
         guard !address.isEmpty else { return nil }
 
