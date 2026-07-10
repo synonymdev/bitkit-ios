@@ -289,7 +289,11 @@ extension AppViewModel {
             if isBluetooth {
                 // BLE devices advertise intermittently; a reconnect miss is usually a locked/asleep
                 // device, so surface the softer INFO guidance rather than a hard error.
-                toast(type: .info, title: t("hardware__connect_error"))
+                toast(
+                    type: .info,
+                    title: t("hardware__connect_title"),
+                    description: t("hardware__connect_error")
+                )
             } else {
                 toast(
                     type: .error,
