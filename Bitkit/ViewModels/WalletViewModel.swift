@@ -198,19 +198,21 @@ class WalletViewModel: ObservableObject {
 
                     // Handle specific events for targeted UI updates
                     switch event {
-                    case let .probeSuccessful(paymentId, paymentHash: paymentHash):
+                    case let .probeSuccessful(paymentId, paymentHash: paymentHash, routeFeeMsat: routeFeeMsat):
                         self.cacheProbeOutcome(
                             success: true,
                             paymentId: paymentId,
                             paymentHash: paymentHash,
-                            shortChannelId: nil
+                            shortChannelId: nil,
+                            routeFeeMsat: routeFeeMsat
                         )
-                    case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId):
+                    case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId, routeFeeMsat: routeFeeMsat):
                         self.cacheProbeOutcome(
                             success: false,
                             paymentId: paymentId,
                             paymentHash: paymentHash,
-                            shortChannelId: shortChannelId
+                            shortChannelId: shortChannelId,
+                            routeFeeMsat: routeFeeMsat
                         )
                     case let .paymentReceived(_, paymentHash, _, _):
                         self.bolt11 = ""
@@ -693,6 +695,7 @@ class WalletViewModel: ObservableObject {
         let paymentId: PaymentId
         let paymentHash: PaymentHash
         let shortChannelId: UInt64?
+        let routeFeeMsat: UInt64?
     }
 
     /// Waits for probe results that match one of the returned probe `paymentId`s.
@@ -717,7 +720,7 @@ class WalletViewModel: ObservableObject {
             addOnEvent(id: eventId) { event in
                 guard !resumed else { return }
                 switch event {
-                case let .probeSuccessful(paymentId, paymentHash: paymentHash):
+                case let .probeSuccessful(paymentId, paymentHash: paymentHash, routeFeeMsat: routeFeeMsat):
                     guard pendingPaymentIds.contains(paymentId) else { return }
                     resumed = true
                     self.removeOnEvent(id: eventId)
@@ -725,15 +728,17 @@ class WalletViewModel: ObservableObject {
                         success: true,
                         paymentId: paymentId,
                         paymentHash: paymentHash,
-                        shortChannelId: nil
+                        shortChannelId: nil,
+                        routeFeeMsat: routeFeeMsat
                     ))
-                case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId):
+                case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId, routeFeeMsat: routeFeeMsat):
                     guard pendingPaymentIds.remove(paymentId) != nil else { return }
                     lastFailure = .init(
                         success: false,
                         paymentId: paymentId,
                         paymentHash: paymentHash,
-                        shortChannelId: shortChannelId
+                        shortChannelId: shortChannelId,
+                        routeFeeMsat: routeFeeMsat
                     )
                     if pendingPaymentIds.isEmpty, let lastFailure {
                         resumed = true
@@ -747,12 +752,13 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    private func cacheProbeOutcome(success: Bool, paymentId: PaymentId, paymentHash: PaymentHash, shortChannelId: UInt64?) {
+    private func cacheProbeOutcome(success: Bool, paymentId: PaymentId, paymentHash: PaymentHash, shortChannelId: UInt64?, routeFeeMsat: UInt64?) {
         probeOutcomes[paymentId] = ProbeOutcome(
             success: success,
             paymentId: paymentId,
             paymentHash: paymentHash,
-            shortChannelId: shortChannelId
+            shortChannelId: shortChannelId,
+            routeFeeMsat: routeFeeMsat
         )
     }
 

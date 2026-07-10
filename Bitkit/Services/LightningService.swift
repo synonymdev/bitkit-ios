@@ -1245,12 +1245,14 @@ extension LightningService {
                     Logger.info(
                         "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)"
                     )
-                case let .probeSuccessful(paymentId, paymentHash):
-                    Logger.info("🤑 Probe successful: paymentId: \(paymentId) paymentHash: \(paymentHash)")
-                case let .probeFailed(paymentId, paymentHash, shortChannelId):
+                case let .probeSuccessful(paymentId, paymentHash, routeFeeMsat):
+                    let routeFeeText = routeFeeMsat.map(String.init) ?? "unknown"
+                    Logger.info("🤑 Probe successful: paymentId: \(paymentId) paymentHash: \(paymentHash) routeFeeMsat: \(routeFeeText)")
+                case let .probeFailed(paymentId, paymentHash, shortChannelId, routeFeeMsat):
+                    let routeFeeText = routeFeeMsat.map(String.init) ?? "unknown"
                     Logger
                         .info(
-                            "❌ Probe failed: paymentId: \(paymentId) paymentHash: \(paymentHash) shortChannelId: \(String(describing: shortChannelId))"
+                            "❌ Probe failed: paymentId: \(paymentId) paymentHash: \(paymentHash) shortChannelId: \(String(describing: shortChannelId)) routeFeeMsat: \(routeFeeText)"
                         )
                 // Payment claimable doesn't need activity update - it's still pending
                 // The payment will be updated when it succeeds or fails via paymentSuccessful/paymentFailed events
