@@ -193,9 +193,8 @@ class TrezorBLEManager: NSObject {
 
     // MARK: - Debug Logging
 
-    /// Log to both Logger and in-app TrezorDebugLog
+    /// Log to the in-app Trezor debug panel only (not persisted to disk via Logger).
     private func debugLog(_ message: String) {
-        Logger.debug(message, context: "TrezorBLEManager")
         Task { @MainActor in
             TrezorDebugLog.shared.log("[BLE] \(message)")
         }
@@ -498,7 +497,11 @@ class TrezorBLEManager: NSObject {
         connectedPath = nil
         writeCharacteristic = nil
         notifyCharacteristic = nil
-        readQueue.clear()
+        readQueue.fail()
+    }
+
+    private var isPathConnected: Bool {
+        connectedPath != nil && connectedPeripheral?.state == .connected
     }
 
     // MARK: - Read/Write Operations
@@ -512,14 +515,23 @@ class TrezorBLEManager: NSObject {
             throw TrezorBLEError.notConnected
         }
 
-        // Block waiting for notification data
-        guard let data = readQueue.poll(timeout: Self.readTimeoutSeconds) else {
-            debugLog("readChunk: TIMEOUT")
-            throw TrezorBLEError.readTimeout
+        let deadline = Date().addingTimeInterval(Self.readTimeoutSeconds)
+        while Date() < deadline {
+            if path != connectedPath || !isPathConnected {
+                debugLog("readChunk: disconnected while waiting")
+                throw TrezorBLEError.notConnected
+            }
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 { break }
+            let pollInterval = min(remaining, 0.05)
+            if let data = readQueue.poll(timeout: pollInterval) {
+                debugLog("readChunk: \(data.count) bytes")
+                return data
+            }
         }
 
-        debugLog("readChunk: \(data.count) bytes")
-        return data
+        debugLog("readChunk: TIMEOUT")
+        throw TrezorBLEError.readTimeout
     }
 
     /// Write a chunk to the device with retry logic.
@@ -615,7 +627,7 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
             connectedPath = nil
             writeCharacteristic = nil
             notifyCharacteristic = nil
-            readQueue.clear()
+            readQueue.fail()
             if expectedDisconnectPaths.remove(path) == nil {
                 externalDisconnectPublisher.send(path)
             }
@@ -684,7 +696,7 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
             connectedPath = nil
             writeCharacteristic = nil
             notifyCharacteristic = nil
-            readQueue.clear()
+            readQueue.fail()
 
             // Surface a spontaneous drop (out of range) so the session can be cleared.
             // A deliberate disconnect(path:) is suppressed via expectedDisconnectPaths.
@@ -813,6 +825,7 @@ enum TrezorBLEError: LocalizedError {
 private class BlockingQueue<T> {
     private var queue: [T] = []
     private let lock = NSCondition()
+    private var failed = false
 
     func offer(_ item: T) {
         lock.lock()
@@ -827,10 +840,14 @@ private class BlockingQueue<T> {
 
         let deadline = Date().addingTimeInterval(timeout)
 
-        while queue.isEmpty {
+        while queue.isEmpty, !failed {
             if !lock.wait(until: deadline) {
-                return nil // Timeout
+                return nil
             }
+        }
+
+        if failed || queue.isEmpty {
+            return nil
         }
 
         return queue.removeFirst()
@@ -839,6 +856,14 @@ private class BlockingQueue<T> {
     func clear() {
         lock.lock()
         queue.removeAll()
+        failed = false
+        lock.unlock()
+    }
+
+    func fail() {
+        lock.lock()
+        failed = true
+        lock.broadcast()
         lock.unlock()
     }
 }

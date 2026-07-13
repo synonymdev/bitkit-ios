@@ -49,6 +49,12 @@ enum HwTransferError: Error, Equatable {
     case reconnect(isBluetooth: Bool)
     case signingTimeout
     case broadcastUncertain
+    /// Signed tx is retained but Electrum/network is unreachable — retry broadcast later.
+    case broadcastConnectivity
+    /// Trezor is locked or otherwise busy before signing can start.
+    case deviceBusy
+    /// Firmware error (code 99) — user must reconnect the device.
+    case firmwareReconnect
     case funding(String?)
     case generic(String?)
 }
@@ -102,6 +108,8 @@ class TransferViewModel: ObservableObject {
     @Published var hwSpending = HwSpendingState()
     /// Bumped when a hardware funding tx is signed + broadcast, so the Sign screen advances.
     @Published var hwSignedEvent = 0
+    /// Set when funding is paid and recorded; observed app-wide so navigation survives leaving the sign screen.
+    @Published var hwFundingComplete = false
     /// A recoverable hardware transfer failure the Sign screen should toast, then clear.
     @Published var hwTransferError: HwTransferError?
 
@@ -114,11 +122,13 @@ class TransferViewModel: ObservableObject {
     /// The device-signing orchestration for a hardware-wallet transfer; nil when the HW capabilities
     /// aren't injected (previews/plain init).
     private let hwSigner: HwFundingSigner?
+    private let hwConnecting: HwTransferConnecting?
 
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
     private var hwSignTask: Task<Void, Never>?
     private var pendingHwFundingBroadcast: PendingHwFundingBroadcast?
+    private var activeHwTransferDeviceId: String?
 
     private let retryInterval: TimeInterval = 60 // 1 min
     private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
@@ -144,6 +154,7 @@ class TransferViewModel: ObservableObject {
         self.sheetViewModel = sheetViewModel
         self.onBalanceRefresh = onBalanceRefresh
         if let hwFunding, let hwConnecting {
+            self.hwConnecting = hwConnecting
             hwSigner = HwFundingSigner(
                 funding: hwFunding,
                 connecting: hwConnecting,
@@ -152,6 +163,7 @@ class TransferViewModel: ObservableObject {
                 timeouts: hwTimeouts
             )
         } else {
+            self.hwConnecting = nil
             hwSigner = nil
         }
     }
@@ -531,6 +543,7 @@ class TransferViewModel: ObservableObject {
             return
         }
 
+        activeHwTransferDeviceId = deviceId
         hwSpending.isSigning = true
         hwTransferError = nil
 
@@ -572,6 +585,8 @@ class TransferViewModel: ObservableObject {
                     fee: result.miningFeeSats,
                     feeRate: result.feeRate
                 )
+                activeHwTransferDeviceId = nil
+                hwFundingComplete = true
                 hwSignedEvent += 1
             } catch is CancellationError {
                 // User dismissed the flow — no toast.
@@ -582,7 +597,7 @@ class TransferViewModel: ObservableObject {
                     Logger.info("Hardware transfer cancelled on device '\(deviceId)'", context: "TransferViewModel")
                     return
                 }
-                hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
+                handleRawHardwareTransferFailure(error, deviceId: deviceId)
             }
         }
     }
@@ -596,11 +611,24 @@ class TransferViewModel: ObservableObject {
     }
 
     /// Cancel an in-flight hardware signing task when the user abandons the sign flow, so a later
-    /// on-device approval can't still sign/broadcast/record. Idempotent.
+    /// on-device approval can't still sign/broadcast/record. Idempotent. No-op while a signed tx
+    /// is awaiting broadcast retry.
     func cancelHwSigning() {
+        guard pendingHwFundingBroadcast == nil else { return }
+        let deviceId = activeHwTransferDeviceId
         hwSignTask?.cancel()
         hwSignTask = nil
         hwSpending.isSigning = false
+        activeHwTransferDeviceId = nil
+        if let deviceId, let hwConnecting {
+            Task {
+                await hwConnecting.disconnectStaleSession(deviceId: deviceId)
+            }
+        }
+    }
+
+    func consumeHwFundingComplete() {
+        hwFundingComplete = false
     }
 
     private func clearPendingHwFundingBroadcast() {
@@ -616,12 +644,37 @@ class TransferViewModel: ObservableObject {
             Logger.warn("Timed out hardware transfer signing for '\(deviceId)'", context: "TransferViewModel")
         case .broadcastUncertain:
             Logger.warn("Hardware funding broadcast timed out (uncertain) for '\(deviceId)'", context: "TransferViewModel")
+        case .broadcastConnectivity:
+            Logger.warn("Hardware funding broadcast connectivity failure for '\(deviceId)'", context: "TransferViewModel")
+        case .deviceBusy:
+            Logger.warn("Blocked hardware transfer for locked or busy Trezor '\(deviceId)'", context: "TransferViewModel")
+        case .firmwareReconnect:
+            Logger.warn("Received Trezor firmware error for '\(deviceId)'", context: "TransferViewModel")
         case let .funding(message):
             Logger.warn("Failed to compose hardware funding for '\(deviceId)': \(message ?? "")", context: "TransferViewModel")
         case .generic:
             break
         }
         hwTransferError = error
+    }
+
+    private func handleRawHardwareTransferFailure(_ error: Error, deviceId: String) {
+        if error.isTrezorDeviceBusy() {
+            hwTransferError = .deviceBusy
+            return
+        }
+        if error.isTrezorFirmwareError() {
+            hwTransferError = .firmwareReconnect
+            return
+        }
+        if pendingHwFundingBroadcast != nil {
+            if error.isBroadcastConnectivityFailure() {
+                hwTransferError = .broadcastConnectivity
+                return
+            }
+            clearPendingHwFundingBroadcast()
+        }
+        hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
     }
 
     // MARK: - Balance Calculation

@@ -98,7 +98,7 @@ final class TransferViewModelHwTests: XCTestCase {
 
     func testBroadcastFailureRetainsSignedTransactionForRetry() async {
         let funding = MockHwFunding()
-        funding.broadcastError = MockHwFunding.TestError()
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
         let connecting = MockHwConnecting()
         let vm = makeViewModel(funding: funding, connecting: connecting)
         let order = IBtOrder.mock()
@@ -110,6 +110,7 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertEqual(vm.hwSpending.miningFeeSats, funding.funding.miningFeeSats)
         XCTAssertEqual(funding.signCalls, 1)
         XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertEqual(vm.hwTransferError, .broadcastConnectivity)
 
         vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
         await awaitSigningComplete(vm)
@@ -128,7 +129,7 @@ final class TransferViewModelHwTests: XCTestCase {
 
     func testBroadcastRetryDoesNotReuseSignedTransactionAfterOrderAddressChanges() async {
         let funding = MockHwFunding()
-        funding.broadcastError = MockHwFunding.TestError()
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
         let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
         var order = IBtOrder.mock()
 
@@ -211,11 +212,66 @@ final class TransferViewModelHwTests: XCTestCase {
             await Task.yield()
         }
         vm.cancelHwSigning()
+        for _ in 0 ..< 50 where connecting.staleDisconnects.isEmpty {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
         await awaitSigningComplete(vm)
 
         XCTAssertFalse(vm.hwSpending.isSigning)
         XCTAssertEqual(vm.hwSignedEvent, 0, "a cancelled sign must not advance the flow")
-        XCTAssertTrue(connecting.staleDisconnects.isEmpty, "cancelling must not tear down the session")
+        XCTAssertEqual(connecting.staleDisconnects, ["dev1"], "cancelling during sign must tear down the stale session")
+    }
+
+    func testDeviceBusyMapsToDeviceBusyError() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = TrezorError.DeviceBusy
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(vm.hwTransferError, .deviceBusy)
+    }
+
+    func testFirmwareErrorMapsToFirmwareReconnectError() async {
+        let funding = MockHwFunding()
+        funding.signError = Bitkit.AppError(
+            message: "Firmware error",
+            debugMessage: "Device error (code 99): Firmware error"
+        )
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(vm.hwTransferError, .firmwareReconnect)
+    }
+
+    func testElectrumBroadcastFailureKeepsPendingAndSurfacesConnectivityToast() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+        let order = IBtOrder.mock()
+
+        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
+        XCTAssertEqual(vm.hwTransferError, .broadcastConnectivity)
+    }
+
+    func testPermanentBroadcastFailureClearsPendingState() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = Bitkit.AppError(message: "rejected", debugMessage: "invalid tx")
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertFalse(vm.hwSpending.hasPendingBroadcast)
+        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
     }
 
     func testReentrancyGuardIgnoresConcurrentConfirm() async {

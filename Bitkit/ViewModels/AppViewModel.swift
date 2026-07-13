@@ -309,6 +309,20 @@ extension AppViewModel {
                 title: t("lightning__transfer_hw__broadcast_uncertain_title"),
                 description: t("lightning__transfer_hw__broadcast_uncertain_description")
             )
+        case .broadcastConnectivity:
+            toast(
+                type: .warning,
+                title: t("other__connection_issue"),
+                description: t("other__connection_issue_explain")
+            )
+        case .deviceBusy:
+            toast(type: .info, title: t("hardware__device_busy"))
+        case .firmwareReconnect:
+            toast(
+                type: .error,
+                title: t("lightning__transfer_hw__reconnect_error_title"),
+                description: t("lightning__transfer_hw__reconnect_error_description")
+            )
         case let .funding(message):
             toast(type: .error, title: t("common__error"), description: message ?? t("common__error_body"))
         case let .generic(message):
