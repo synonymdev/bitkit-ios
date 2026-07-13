@@ -27,11 +27,8 @@ struct SpendingHwSigned: View {
 
             DisplayText(t("lightning__transfer_hw__signed_title"), accentColor: .purpleAccent)
 
-            SpendingHwFeeGrid(
-                order: order,
-                miningFeeSats: transfer.hwSpending.miningFeeSats
-            )
-            .padding(.top, 16)
+            SpendingHwFeeGrid(order: order)
+                .padding(.top, 16)
 
             Image("check")
                 .resizable()
