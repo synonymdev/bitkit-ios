@@ -74,6 +74,11 @@ class TrezorBLEManager: NSObject {
     /// Continuation for service discovery
     private var serviceDiscoveryContinuation: CheckedContinuation<Void, Error>?
 
+    private var connectContinuationId: UInt64 = 0
+    private var writeContinuationId: UInt64 = 0
+    private var serviceDiscoveryContinuationId: UInt64 = 0
+    private var notificationContinuationId: UInt64 = 0
+
     /// Lock protecting all continuation properties from concurrent access.
     /// Timeouts fire on DispatchQueue.global() while delegate callbacks fire on
     /// centralQueue — without synchronization both can resume the same continuation.
@@ -82,33 +87,37 @@ class TrezorBLEManager: NSObject {
     // MARK: - Continuation Helpers
 
     /// Atomically take and nil-out a continuation so it can only be resumed once.
-    private func takeConnectContinuation() -> CheckedContinuation<Void, Error>? {
+    private func takeConnectContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
+        if let id, id != connectContinuationId { return nil }
         let cont = connectContinuation
         connectContinuation = nil
         return cont
     }
 
-    private func takeWriteContinuation() -> CheckedContinuation<Void, Error>? {
+    private func takeWriteContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
+        if let id, id != writeContinuationId { return nil }
         let cont = writeContinuation
         writeContinuation = nil
         return cont
     }
 
-    private func takeServiceDiscoveryContinuation() -> CheckedContinuation<Void, Error>? {
+    private func takeServiceDiscoveryContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
+        if let id, id != serviceDiscoveryContinuationId { return nil }
         let cont = serviceDiscoveryContinuation
         serviceDiscoveryContinuation = nil
         return cont
     }
 
-    private func takeNotificationContinuation() -> CheckedContinuation<Void, Error>? {
+    private func takeNotificationContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
+        if let id, id != notificationContinuationId { return nil }
         let cont = notificationContinuation
         notificationContinuation = nil
         return cont
@@ -122,28 +131,44 @@ class TrezorBLEManager: NSObject {
     }
 
     /// Atomically store a continuation.
-    private func setConnectContinuation(_ cont: CheckedContinuation<Void, Error>) {
+    @discardableResult
+    private func setConnectContinuation(_ cont: CheckedContinuation<Void, Error>) -> UInt64 {
         continuationLock.lock()
+        connectContinuationId &+= 1
+        let id = connectContinuationId
         connectContinuation = cont
         continuationLock.unlock()
+        return id
     }
 
-    private func setWriteContinuation(_ cont: CheckedContinuation<Void, Error>) {
+    @discardableResult
+    private func setWriteContinuation(_ cont: CheckedContinuation<Void, Error>) -> UInt64 {
         continuationLock.lock()
+        writeContinuationId &+= 1
+        let id = writeContinuationId
         writeContinuation = cont
         continuationLock.unlock()
+        return id
     }
 
-    private func setServiceDiscoveryContinuation(_ cont: CheckedContinuation<Void, Error>) {
+    @discardableResult
+    private func setServiceDiscoveryContinuation(_ cont: CheckedContinuation<Void, Error>) -> UInt64 {
         continuationLock.lock()
+        serviceDiscoveryContinuationId &+= 1
+        let id = serviceDiscoveryContinuationId
         serviceDiscoveryContinuation = cont
         continuationLock.unlock()
+        return id
     }
 
-    private func setNotificationContinuation(_ cont: CheckedContinuation<Void, Error>) {
+    @discardableResult
+    private func setNotificationContinuation(_ cont: CheckedContinuation<Void, Error>) -> UInt64 {
         continuationLock.lock()
+        notificationContinuationId &+= 1
+        let id = notificationContinuationId
         notificationContinuation = cont
         continuationLock.unlock()
+        return id
     }
 
     // MARK: - Observable State
@@ -338,9 +363,9 @@ class TrezorBLEManager: NSObject {
 
         // Handle stale or transitioning OS-level connection from previous app session
         // After force-quit, iOS may keep the BLE connection alive briefly. Connecting
-        // to an already-connected peripheral can produce a stale GATT session that
+        // to an already-connected/disconnecting peripheral can produce a stale GATT session that
         // the Trezor then drops. Cancel it first and wait for disconnect to complete.
-        if peripheral.state == .connected || peripheral.state == .connecting {
+        if peripheral.state == .connected || peripheral.state == .connecting || peripheral.state == .disconnecting {
             debugLog("Cancelling stale connection (state: \(peripheral.state.rawValue))")
             centralManager?.cancelPeripheralConnection(peripheral)
             try await Task.sleep(nanoseconds: 500_000_000) // 500ms for disconnect to complete
@@ -349,14 +374,14 @@ class TrezorBLEManager: NSObject {
         // Step 1: Connect to peripheral
         debugLog("CBConnect starting...")
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.setConnectContinuation(continuation)
+            let continuationId = self.setConnectContinuation(continuation)
             self.connectionError = nil
 
             centralManager?.connect(peripheral, options: nil)
 
             // Set up timeout
             DispatchQueue.global().asyncAfter(deadline: .now() + Self.connectionTimeoutSeconds) { [weak self] in
-                self?.takeConnectContinuation()?.resume(throwing: TrezorBLEError.connectionTimeout)
+                self?.takeConnectContinuation(id: continuationId)?.resume(throwing: TrezorBLEError.connectionTimeout)
             }
         }
 
@@ -379,13 +404,13 @@ class TrezorBLEManager: NSObject {
 
         debugLog("Enabling notifications...")
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.setNotificationContinuation(continuation)
+            let continuationId = self.setNotificationContinuation(continuation)
             peripheral.setNotifyValue(true, for: notifyChar)
 
             // Timeout for notification enable
             DispatchQueue.global().asyncAfter(deadline: .now() + 5.0) { [weak self] in
                 // Don't fail, just continue
-                self?.takeNotificationContinuation()?.resume()
+                self?.takeNotificationContinuation(id: continuationId)?.resume()
             }
         }
 
@@ -406,12 +431,12 @@ class TrezorBLEManager: NSObject {
     private func discoverServicesAndCharacteristics(peripheral: CBPeripheral) async throws {
         // Discover Trezor service
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.setServiceDiscoveryContinuation(continuation)
+            let continuationId = self.setServiceDiscoveryContinuation(continuation)
             peripheral.discoverServices([Self.serviceUUID])
 
             // Timeout for service discovery
             DispatchQueue.global().asyncAfter(deadline: .now() + Self.discoveryTimeoutSeconds) { [weak self] in
-                self?.takeServiceDiscoveryContinuation()?.resume(throwing: TrezorBLEError.serviceNotFound)
+                self?.takeServiceDiscoveryContinuation(id: continuationId)?.resume(throwing: TrezorBLEError.serviceNotFound)
             }
         }
 
@@ -422,12 +447,13 @@ class TrezorBLEManager: NSObject {
 
         // Discover characteristics
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.setServiceDiscoveryContinuation(continuation)
+            let continuationId = self.setServiceDiscoveryContinuation(continuation)
             peripheral.discoverCharacteristics([Self.writeCharUUID, Self.notifyCharUUID], for: service)
 
             // Timeout for characteristic discovery
             DispatchQueue.global().asyncAfter(deadline: .now() + Self.discoveryTimeoutSeconds) { [weak self] in
-                self?.takeServiceDiscoveryContinuation()?.resume(throwing: TrezorBLEError.characteristicNotFound("discovery timeout"))
+                self?.takeServiceDiscoveryContinuation(id: continuationId)?
+                    .resume(throwing: TrezorBLEError.characteristicNotFound("discovery timeout"))
             }
         }
 
@@ -527,13 +553,13 @@ class TrezorBLEManager: NSObject {
         for attempt in 1 ... Self.writeMaxAttempts {
             do {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    self.setWriteContinuation(continuation)
+                    let continuationId = self.setWriteContinuation(continuation)
 
                     peripheral.writeValue(data, for: writeChar, type: .withResponse)
 
                     // Set up timeout
                     DispatchQueue.global().asyncAfter(deadline: .now() + Self.writeTimeoutSeconds) { [weak self] in
-                        self?.takeWriteContinuation()?.resume(throwing: TrezorBLEError.writeTimeout)
+                        self?.takeWriteContinuation(id: continuationId)?.resume(throwing: TrezorBLEError.writeTimeout)
                     }
                 }
 
