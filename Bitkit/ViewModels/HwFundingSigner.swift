@@ -10,17 +10,6 @@ import BitkitCore
 /// machinery (spending limits, order watching, published state).
 @MainActor
 struct HwFundingSigner {
-    private static let alreadyBroadcastMarkers = [
-        "already in block chain",
-        "already in blockchain",
-        "already in mempool",
-        "already-in-block-chain",
-        "already-in-mempool",
-        "txn-already-known",
-        "transaction already exists",
-        "already known",
-    ]
-
     /// Device balance and the amount available to fund after holding back an on-chain fee reserve.
     struct Availability: Equatable {
         let balanceSats: UInt64
@@ -94,13 +83,7 @@ struct HwFundingSigner {
 
     /// Broadcasts a signed funding transaction without requiring the hardware device.
     func broadcastSignedFunding(_ signed: HwFundingSignedTx) async throws -> HwFundingBroadcastResult {
-        let txId: String
-        do {
-            txId = try await broadcastStep(serializedTx: signed.serializedTx)
-        } catch {
-            guard let signedTxId = signed.txId, Self.isAlreadyBroadcastError(error) else { throw error }
-            txId = signedTxId
-        }
+        let txId = try await broadcastStep(serializedTx: signed.serializedTx)
         return HwFundingBroadcastResult(
             txId: txId,
             miningFeeSats: signed.miningFeeSats,
@@ -190,21 +173,6 @@ struct HwFundingSigner {
 
     private func resolvedSatsPerVByte() async -> UInt64 {
         await feeRateProvider() ?? fallbackSatsPerVByte
-    }
-
-    private static func isAlreadyBroadcastError(_ error: Error) -> Bool {
-        let messages = [
-            (error as? AppError)?.message,
-            (error as? AppError)?.debugMessage,
-            error.localizedDescription,
-        ].compactMap { $0?.lowercased() }
-        if messages.contains(where: { message in alreadyBroadcastMarkers.contains(where: message.contains) }) {
-            return true
-        }
-        if let underlyingError = (error as? AppError)?.underlyingError {
-            return isAlreadyBroadcastError(underlyingError)
-        }
-        return false
     }
 
     /// Pure fee-reserve computation. With a known fee rate: `rate × vbytes`. Without one (estimates

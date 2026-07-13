@@ -598,8 +598,7 @@ final class HwWalletManager {
             serializedTx: signed.serializedTx,
             miningFeeSats: funding.miningFeeSats,
             feeRate: funding.feeRate,
-            totalSpent: funding.totalSpent,
-            txId: signed.txid
+            totalSpent: funding.totalSpent
         )
     }
 

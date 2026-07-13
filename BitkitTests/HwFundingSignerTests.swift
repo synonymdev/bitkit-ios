@@ -186,24 +186,20 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertTrue(connecting.staleDisconnects.isEmpty)
     }
 
-    func testAlreadyKnownBroadcastUsesSignedTransactionId() async throws {
+    func testAlreadyKnownBroadcastUsesCoreReturnedTransactionId() async throws {
         let funding = MockHwFunding()
-        funding.broadcastError = Bitkit.AppError(
-            message: "Broadcast failed",
-            debugMessage: "txn-already-in-mempool"
-        )
+        funding.broadcastTxId = "core-derived-txid"
         let signer = makeSigner(funding: funding, connecting: MockHwConnecting())
         let signed = HwFundingSignedTx(
             serializedTx: "rawtx",
             miningFeeSats: 141,
             feeRate: 1,
-            totalSpent: 43186,
-            txId: "signed-txid"
+            totalSpent: 43186
         )
 
         let result = try await signer.broadcastSignedFunding(signed)
 
-        XCTAssertEqual(result.txId, "signed-txid")
+        XCTAssertEqual(result.txId, "core-derived-txid")
     }
 
     func testComposeTimeoutClearsStaleSessionAndThrowsTimeout() async {
