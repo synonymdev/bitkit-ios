@@ -283,12 +283,6 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
-      - name: Pull Trezor emulator image
-        working-directory: bitkit-e2e-tests
-        run: |
-          cd docker
-          docker compose --profile trezor pull --quiet trezor-user-env
-
       - name: Docker info
         run: |
           docker --version
