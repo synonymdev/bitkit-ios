@@ -35,6 +35,19 @@ class LightningService {
     private static let scoringConsideredImpossiblePenaltyMsat: UInt64 = 1_000_000_000_000
     private static let scoringProbingDiversityPenaltyMsat: UInt64 = 60000
 
+    private static let defaultScoringFeeParameters = ScoringFeeParameters(
+        basePenaltyMsat: 1024,
+        basePenaltyAmountMultiplierMsat: 131_072,
+        liquidityPenaltyMultiplierMsat: 0,
+        liquidityPenaltyAmountMultiplierMsat: 0,
+        historicalLiquidityPenaltyMultiplierMsat: 10000,
+        historicalLiquidityPenaltyAmountMultiplierMsat: 1250,
+        antiProbingPenaltyMsat: 250,
+        consideredImpossiblePenaltyMsat: 100_000_000_000,
+        linearSuccessProbability: false,
+        probingDiversityPenaltyMsat: 0
+    )
+
     private init() {}
 
     /// Flag and lock to prevent concurrent setup calls
@@ -1585,7 +1598,8 @@ extension LightningService {
     // MARK: - Probing
 
     private static func scoringFeeParameters(config: Config) -> ScoringFeeParameters {
-        let defaultParameters = config.scoringFeeParams!
+        let defaultParameters = config.scoringFeeParams ?? defaultScoringFeeParameters
+
         return ScoringFeeParameters(
             basePenaltyMsat: scoringBasePenaltyMsat,
             basePenaltyAmountMultiplierMsat: defaultParameters.basePenaltyAmountMultiplierMsat,
