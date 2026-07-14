@@ -98,6 +98,18 @@ struct HwFundingSigner {
         connecting.warmUpConnection(deviceId: deviceId)
     }
 
+    /// Offline compose for the exact order amount; does not require a connected device.
+    func estimateOfflineFundingMiningFee(deviceId: String, address: String, sats: UInt64) async throws -> UInt64 {
+        let satsPerVByte = await resolvedSatsPerVByte()
+        return try await funding.estimateOfflineFundingMiningFee(
+            deviceId: deviceId,
+            address: address,
+            sats: sats,
+            satsPerVByte: satsPerVByte,
+            addressType: hwFundingDefaultAddressType
+        )
+    }
+
     private func ensureConnected(deviceId: String) async throws {
         do {
             try await withTimeout(timeouts.reconnect) {

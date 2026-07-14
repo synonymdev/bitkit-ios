@@ -22,6 +22,7 @@ final class MockHwFunding: HwTransferFunding {
     var broadcastTxId = "txid"
 
     private(set) var composeCalls: [(address: String, sats: UInt64, satsPerVByte: UInt64)] = []
+    private(set) var estimateCalls: [(address: String, sats: UInt64, satsPerVByte: UInt64)] = []
     private(set) var maxSpendableCalls: [(address: String, satsPerVByte: UInt64)] = []
     private(set) var signCalls = 0
     private(set) var broadcastCalls = 0
@@ -53,6 +54,18 @@ final class MockHwFunding: HwTransferFunding {
         if composeDelay > 0 { try await Task.sleep(nanoseconds: UInt64(composeDelay * 1_000_000_000)) }
         if let composeError { throw composeError }
         return funding
+    }
+
+    func estimateOfflineFundingMiningFee(
+        deviceId _: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType _: AddressScriptType
+    ) async throws -> UInt64 {
+        estimateCalls.append((address, sats, satsPerVByte))
+        if let composeError { throw composeError }
+        return funding.miningFeeSats
     }
 
     func signFunding(deviceId _: String, funding _: HwFundingTransaction) async throws -> HwFundingSignedTx {

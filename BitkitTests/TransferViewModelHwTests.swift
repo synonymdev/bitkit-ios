@@ -274,6 +274,50 @@ final class TransferViewModelHwTests: XCTestCase {
         if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
     }
 
+    func testElectrumBroadcastRejectionClearsPendingState() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = BroadcastError.ElectrumError(
+            errorDetails: "Broadcast failed: bad-txns-inputs-missingorspent"
+        )
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        XCTAssertFalse(vm.hwSpending.hasPendingBroadcast)
+        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
+        XCTAssertEqual(funding.signCalls, 1)
+    }
+
+    func testUpdateHwLimitsClearsDesyncedPendingBroadcast() async {
+        let funding = MockHwFunding()
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+        let order = IBtOrder.mock()
+
+        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        await awaitSigningComplete(vm)
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
+
+        await vm.updateHwLimits(deviceId: "dev1", blocktankInfo: nil, estimateOrderFee: { _, _ in (0, 0) })
+
+        XCTAssertFalse(vm.hwSpending.hasPendingBroadcast)
+        vm.cancelHwSigning()
+        XCTAssertEqual(funding.signCalls, 1, "cancel after limits reload must not be blocked by stale pending tx")
+    }
+
+    func testUpdateHwFundingFeeEstimateSetsMiningFeeBeforeSigning() async {
+        let funding = MockHwFunding()
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+        let order = IBtOrder.mock()
+
+        await vm.updateHwFundingFeeEstimate(order: order, deviceId: "dev1")
+
+        XCTAssertEqual(vm.hwSpending.miningFeeSats, funding.funding.miningFeeSats)
+        XCTAssertEqual(funding.estimateCalls.count, 1)
+        XCTAssertTrue(funding.composeCalls.isEmpty)
+    }
+
     func testReentrancyGuardIgnoresConcurrentConfirm() async {
         let funding = MockHwFunding()
         funding.composeError = MockHwFunding.TestError() // fail before the network-bound funding tail

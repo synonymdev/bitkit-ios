@@ -548,9 +548,46 @@ final class HwWalletManager {
         satsPerVByte: UInt64,
         addressType: AddressScriptType = hwFundingDefaultAddressType
     ) async throws -> HwFundingTransaction {
+        let fingerprint = try await TrezorService.shared.getDeviceFingerprint()
+        return try await composeFundingTransactionInternal(
+            deviceId: deviceId,
+            address: address,
+            sats: sats,
+            satsPerVByte: satsPerVByte,
+            fingerprint: fingerprint,
+            addressType: addressType
+        )
+    }
+
+    /// Offline coin-selection for the exact funding amount; returns the mining fee only.
+    func estimateOfflineFundingMiningFee(
+        deviceId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType = hwFundingDefaultAddressType
+    ) async throws -> UInt64 {
+        let funding = try await composeFundingTransactionInternal(
+            deviceId: deviceId,
+            address: address,
+            sats: sats,
+            satsPerVByte: satsPerVByte,
+            fingerprint: nil,
+            addressType: addressType
+        )
+        return funding.miningFeeSats
+    }
+
+    private func composeFundingTransactionInternal(
+        deviceId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        fingerprint: String?,
+        addressType: AddressScriptType
+    ) async throws -> HwFundingTransaction {
         let account = try getFundingAccount(deviceId: deviceId, addressType: addressType)
         let network = networkProvider()
-        let fingerprint = try await TrezorService.shared.getDeviceFingerprint()
         let params = ComposeParams(
             wallet: WalletParams(
                 extendedKey: account.xpub,

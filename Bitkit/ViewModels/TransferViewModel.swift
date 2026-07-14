@@ -77,6 +77,14 @@ protocol HwTransferFunding: Sendable {
         satsPerVByte: UInt64,
         addressType: AddressScriptType
     ) async throws -> HwFundingTransaction
+    /// Offline coin-selection estimate for the exact funding amount (`fingerprint: nil`); fee only.
+    func estimateOfflineFundingMiningFee(
+        deviceId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> UInt64
     func signFunding(deviceId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
     func broadcastFunding(serializedTx: String) async throws -> String
 }
@@ -500,7 +508,8 @@ class TransferViewModel: ObservableObject {
             -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
     ) async {
         guard let hwSigner else { return }
-        hwSpending = HwSpendingState(isLoading: true)
+        clearPendingHwFundingBroadcast()
+        hwSpending.isLoading = true
 
         let availability: HwFundingSigner.Availability
         do {
@@ -528,6 +537,22 @@ class TransferViewModel: ObservableObject {
         }
 
         hwSpending.isLoading = false
+    }
+
+    /// Best-effort offline mining-fee estimate for the Sign screen (`fingerprint: nil` compose).
+    func updateHwFundingFeeEstimate(order: IBtOrder, deviceId: String) async {
+        guard let hwSigner else { return }
+        guard !hwSpending.hasPendingBroadcast else { return }
+        guard let address = order.payment?.onchain?.address, !address.isEmpty else { return }
+        do {
+            hwSpending.miningFeeSats = try await hwSigner.estimateOfflineFundingMiningFee(
+                deviceId: deviceId,
+                address: address,
+                sats: order.feeSat
+            )
+        } catch {
+            Logger.debug("Skipped offline hardware funding fee estimate for '\(deviceId)'", context: "TransferViewModel")
+        }
     }
 
     /// Pay for the order by composing and signing the funding send on the Trezor (via the signer),
@@ -564,8 +589,8 @@ class TransferViewModel: ObservableObject {
                         order: order,
                         deviceId: deviceId,
                         address: address
-                    ) { funding in
-                        self.hwSpending.miningFeeSats = funding.miningFeeSats
+                    ) { [weak self] funding in
+                        self?.hwSpending.miningFeeSats = funding.miningFeeSats
                     }
                     pendingHwFundingBroadcast = PendingHwFundingBroadcast(
                         orderId: order.id,
