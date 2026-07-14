@@ -26,9 +26,8 @@ final class TrezorTransport: TrezorTransportCallback {
 
     // MARK: - Debug Logging
 
-    /// Log to both Logger and in-app TrezorDebugLog
+    /// Log to the in-app Trezor debug panel only (not persisted to disk via Logger).
     private func debugLog(_ message: String) {
-        Logger.debug(message, context: "TrezorTransport")
         TrezorDebugLog.shared.log("[FFI] \(message)")
     }
 
@@ -272,9 +271,8 @@ final class TrezorTransport: TrezorTransportCallback {
         return result
     }
 
-    /// Forward Rust-level debug messages to Logger and TrezorDebugLog
+    /// Forward Rust-level debug messages to the in-app Trezor debug panel only.
     func logDebug(tag: String, message: String) {
-        Logger.debug("[\(tag)] \(message)", context: "TrezorTransport")
         TrezorDebugLog.shared.log("[\(tag)] \(message)")
     }
 

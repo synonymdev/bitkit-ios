@@ -13,6 +13,7 @@ struct MainNavView: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var transfer: TransferViewModel
     @Environment(TrezorManager.self) private var trezorManager
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(\.scenePhase) var scenePhase
@@ -31,6 +32,12 @@ struct MainNavView: View {
     var body: some View {
         NavigationStack(path: $navigation.path) {
             navigationContent
+        }
+        .onChange(of: transfer.hwFundingComplete) { _, complete in
+            if complete {
+                transfer.consumeHwFundingComplete()
+                navigation.navigate(.spendingHwSigned)
+            }
         }
         .sheet(
             item: $sheets.addTagSheetItem,

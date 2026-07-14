@@ -117,7 +117,7 @@ struct GeneralSettingsView: View {
                     SettingsRow(
                         title: t("settings__hardware_wallets__nav_title"),
                         iconName: "device-mobile-speaker",
-                        rightText: String(hwWalletManager.wallets.count)
+                        rightText: hwWalletManager.wallets.isEmpty ? nil : String(hwWalletManager.wallets.count)
                     )
                 }
                 .accessibilityIdentifier("HardwareWalletsSettings")

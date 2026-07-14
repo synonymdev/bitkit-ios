@@ -46,9 +46,14 @@ private struct HardwareWalletCell: View {
             onTap(wallet)
         } label: {
             VStack(alignment: .leading) {
-                CaptionMText(wallet.name)
-                    .lineLimit(1)
-                    .padding(.bottom, 4)
+                HStack(spacing: 4) {
+                    CaptionMText(wallet.name)
+                        .lineLimit(1)
+
+                    HwWalletConnectionIcon(isConnected: wallet.isConnected)
+                        .frame(width: 16, height: 16)
+                }
+                .padding(.bottom, 4)
 
                 HStack(spacing: 4) {
                     Image("btc-circle-blue")
@@ -63,9 +68,6 @@ private struct HardwareWalletCell: View {
                         enableHide: true,
                         symbolColor: .textPrimary
                     )
-
-                    HwWalletConnectionIcon(isConnected: wallet.isConnected)
-                        .frame(width: 16, height: 16)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
