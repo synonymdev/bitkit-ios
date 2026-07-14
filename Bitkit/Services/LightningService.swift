@@ -191,6 +191,8 @@ class LightningService {
             }
         }
 
+        try await registerEnabledWatchOnlyAccounts(walletIndex: walletIndex)
+
         Logger.info("LDK node setup")
 
         // Clear memory
@@ -498,6 +500,55 @@ class LightningService {
         } else {
             let syncTimestamp = UInt64(Date().timeIntervalSince1970)
             syncStatusChangedSubject.send(syncTimestamp)
+        }
+    }
+
+    func createAndTrackWatchOnlyAccount(accountIndex: UInt32, addressType: LDKNode.AddressType) async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            let xpub = try node.exportOnchainWalletAccountXpub(addressType: addressType, accountIndex: accountIndex)
+            let isAlreadyTracked = node.listOnchainWalletAccounts().contains {
+                $0.addressType == addressType && $0.accountIndex == accountIndex
+            }
+            if !isAlreadyTracked {
+                try node.addOnchainWalletAccount(addressType: addressType, accountIndex: accountIndex, xpub: xpub)
+            }
+            try node.syncWallets()
+            return xpub
+        }
+    }
+
+    private func registerEnabledWatchOnlyAccounts(walletIndex: Int) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        let records = WatchOnlyAccountStore.load().filter {
+            $0.walletIndex == walletIndex && $0.isTrackingEnabled
+        }
+        guard !records.isEmpty else { return }
+
+        try await ServiceQueue.background(.ldk) {
+            let registered = Set(node.listOnchainWalletAccounts().map {
+                "\($0.addressType)-\($0.accountIndex)"
+            })
+
+            for record in records {
+                guard let addressType = LDKNode.AddressType.from(string: record.addressType) else {
+                    throw WatchOnlyAccountError.invalidExtendedPublicKey
+                }
+                let key = "\(addressType)-\(record.accountIndex)"
+                if !registered.contains(key) {
+                    try node.addOnchainWalletAccount(
+                        addressType: addressType,
+                        accountIndex: record.accountIndex,
+                        xpub: record.xpub
+                    )
+                }
+            }
         }
     }
 
@@ -1210,195 +1261,198 @@ extension LightningService {
 
 extension LightningService {
     func listenForEvents(onEvent: ((Event) -> Void)? = nil) {
-        Task {
-            while true {
-                guard let node = self.node else {
-                    Logger.error("LDK node not started")
-                    return
+        Task<Void, Never> { [weak self] in
+            guard let self else { return }
+            await listenForEventsLoop(onEvent: onEvent)
+        }
+    }
+
+    private func listenForEventsLoop(onEvent: ((Event) -> Void)?) async {
+        while true {
+            guard let node else {
+                Logger.error("LDK node not started")
+                return
+            }
+
+            let event = await node.nextEventAsync()
+
+            do {
+                try node.eventHandled()
+            } catch {
+                Logger.error(error, context: "node.eventHandled()")
+            }
+
+            if case .channelReady = event {
+                await refreshChannelCache()
+            }
+
+            onEvent?(event)
+
+            switch event {
+            case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
+                Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
+                Task {
+                    let hash = paymentId ?? paymentHash
+                    do {
+                        try await CoreService.shared.activity.handlePaymentEvent(paymentHash: hash)
+                    } catch {
+                        Logger.error("Failed to handle payment success for \(hash): \(error)", context: "LightningService")
+                    }
                 }
-
-                let event = await node.nextEventAsync()
-
-                do {
-                    try node.eventHandled()
-                } catch {
-                    Logger.error(error, context: "node.eventHandled()")
-                }
-
-                if case .channelReady = event {
-                    await refreshChannelCache()
-                }
-
-                onEvent?(event)
-
-                switch event {
-                case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
-                    Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
-                    Task {
-                        let hash = paymentId ?? paymentHash
+            case let .paymentFailed(paymentId, paymentHash, reason):
+                Logger.info(
+                    "❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)"
+                )
+                Task {
+                    if let hash = paymentId ?? paymentHash {
                         do {
                             try await CoreService.shared.activity.handlePaymentEvent(paymentHash: hash)
                         } catch {
-                            Logger.error("Failed to handle payment success for \(hash): \(error)", context: "LightningService")
-                        }
-                    }
-                case let .paymentFailed(paymentId, paymentHash, reason):
-                    Logger.info(
-                        "❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)"
-                    )
-                    Task {
-                        if let hash = paymentId ?? paymentHash {
-                            do {
-                                try await CoreService.shared.activity.handlePaymentEvent(paymentHash: hash)
-                            } catch {
-                                Logger.error("Failed to handle payment failure for \(hash): \(error)", context: "LightningService")
-                            }
-                        } else {
-                            Logger.warn("No paymentId or paymentHash available for failed payment", context: "LightningService")
-                        }
-                    }
-                case let .paymentReceived(paymentId, paymentHash, amountMsat, _):
-                    Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
-                    Task {
-                        let hash = paymentId ?? paymentHash
-                        do {
-                            try await CoreService.shared.activity.handlePaymentEvent(paymentHash: hash)
-                        } catch {
-                            Logger.error("Failed to handle payment received for \(hash): \(error)", context: "LightningService")
-                        }
-                    }
-                case let .paymentClaimable(paymentId, paymentHash, claimableAmountMsat, _, _):
-                    Logger.info(
-                        "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)"
-                    )
-                case let .probeSuccessful(paymentId, paymentHash, routeFeeMsat):
-                    let routeFeeText = routeFeeMsat.map(String.init) ?? "unknown"
-                    Logger.info("🤑 Probe successful: paymentId: \(paymentId) paymentHash: \(paymentHash) routeFeeMsat: \(routeFeeText)")
-                case let .probeFailed(paymentId, paymentHash, shortChannelId, routeFeeMsat):
-                    let routeFeeText = routeFeeMsat.map(String.init) ?? "unknown"
-                    Logger
-                        .info(
-                            "❌ Probe failed: paymentId: \(paymentId) paymentHash: \(paymentHash) shortChannelId: \(String(describing: shortChannelId)) routeFeeMsat: \(routeFeeText)"
-                        )
-                // Payment claimable doesn't need activity update - it's still pending
-                // The payment will be updated when it succeeds or fails via paymentSuccessful/paymentFailed events
-                case let .channelPending(channelId, userChannelId, formerTemporaryChannelId, counterpartyNodeId, fundingTxo):
-                    Logger.info(
-                        "⏳ Channel pending: channelId: \(channelId) userChannelId: \(userChannelId) formerTemporaryChannelId: \(formerTemporaryChannelId) counterpartyNodeId: \(counterpartyNodeId) fundingTxo: \(fundingTxo)"
-                    )
-                    await refreshChannelCache()
-                case let .channelReady(channelId, userChannelId, counterpartyNodeId, fundingTxo):
-                    Logger.info(
-                        "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") fundingTxo: \(fundingTxo != nil ? "\(fundingTxo!.txid):\(fundingTxo!.vout)" : "nil")"
-                    )
-                case let .channelClosed(channelId, userChannelId, counterpartyNodeId, reason):
-                    let reasonString = reason.map { String(describing: $0) } ?? ""
-                    Logger.info(
-                        "⛔ Channel closed: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") reason: \(reasonString)"
-                    )
-
-                    let channelIdString = channelId.description
-                    let channel = await MainActor.run {
-                        channelCache[channelIdString]
-                    }
-
-                    if let channel {
-                        await registerClosedChannel(channel: channel, reason: reasonString)
-                        _ = await MainActor.run {
-                            channelCache.removeValue(forKey: channelIdString)
+                            Logger.error("Failed to handle payment failure for \(hash): \(error)", context: "LightningService")
                         }
                     } else {
-                        Logger.error(
-                            "Could not find channel details for closed channel: channelId=\(channelIdString) userChannelId=\(userChannelId) in cache",
-                            context: "LightningService"
-                        )
+                        Logger.warn("No paymentId or paymentHash available for failed payment", context: "LightningService")
                     }
-                case .paymentForwarded:
-                    break
+                }
+            case let .paymentReceived(paymentId, paymentHash, amountMsat, _):
+                Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
+                Task {
+                    let hash = paymentId ?? paymentHash
+                    do {
+                        try await CoreService.shared.activity.handlePaymentEvent(paymentHash: hash)
+                    } catch {
+                        Logger.error("Failed to handle payment received for \(hash): \(error)", context: "LightningService")
+                    }
+                }
+            case let .paymentClaimable(paymentId, paymentHash, claimableAmountMsat, _, _):
+                Logger.info(
+                    "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)"
+                )
+            case let .probeSuccessful(paymentId, paymentHash, _):
+                Logger.info("🤑 Probe successful: paymentId: \(paymentId) paymentHash: \(paymentHash)")
+            case let .probeFailed(paymentId, paymentHash, shortChannelId, _):
+                Logger
+                    .info(
+                        "❌ Probe failed: paymentId: \(paymentId) paymentHash: \(paymentHash) shortChannelId: \(String(describing: shortChannelId))"
+                    )
+            // Payment claimable doesn't need activity update - it's still pending
+            // The payment will be updated when it succeeds or fails via paymentSuccessful/paymentFailed events
+            case let .channelPending(channelId, userChannelId, formerTemporaryChannelId, counterpartyNodeId, fundingTxo):
+                Logger.info(
+                    "⏳ Channel pending: channelId: \(channelId) userChannelId: \(userChannelId) formerTemporaryChannelId: \(formerTemporaryChannelId) counterpartyNodeId: \(counterpartyNodeId) fundingTxo: \(fundingTxo)"
+                )
+                await refreshChannelCache()
+            case let .channelReady(channelId, userChannelId, counterpartyNodeId, fundingTxo):
+                Logger.info(
+                    "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") fundingTxo: \(fundingTxo != nil ? "\(fundingTxo!.txid):\(fundingTxo!.vout)" : "nil")"
+                )
+            case let .channelClosed(channelId, userChannelId, counterpartyNodeId, reason):
+                let reasonString = reason.map { String(describing: $0) } ?? ""
+                Logger.info(
+                    "⛔ Channel closed: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") reason: \(reasonString)"
+                )
+
+                let channelIdString = channelId.description
+                let channel = await MainActor.run {
+                    channelCache[channelIdString]
+                }
+
+                if let channel {
+                    await registerClosedChannel(channel: channel, reason: reasonString)
+                    _ = await MainActor.run {
+                        channelCache.removeValue(forKey: channelIdString)
+                    }
+                } else {
+                    Logger.error(
+                        "Could not find channel details for closed channel: channelId=\(channelIdString) userChannelId=\(userChannelId) in cache",
+                        context: "LightningService"
+                    )
+                }
+            case .paymentForwarded:
+                break
 
                 // MARK: New Onchain Transaction Events
 
-                case let .onchainTransactionReceived(txid, details):
-                    Logger.info("📥 Onchain transaction received: txid=\(txid) amountSats=\(details.amountSats)")
-                    Task {
-                        do {
-                            try await CoreService.shared.activity.handleOnchainTransactionReceived(txid: txid, details: details)
-                        } catch {
-                            Logger.error("Failed to handle transaction received for \(txid): \(error)", context: "LightningService")
-                        }
+            case let .onchainTransactionReceived(txid, details):
+                Logger.info("📥 Onchain transaction received: txid=\(txid) amountSats=\(details.amountSats)")
+                Task {
+                    do {
+                        try await CoreService.shared.activity.handleOnchainTransactionReceived(txid: txid, details: details)
+                    } catch {
+                        Logger.error("Failed to handle transaction received for \(txid): \(error)", context: "LightningService")
                     }
-                case let .onchainTransactionConfirmed(txid, _, blockHeight, _, details):
-                    Logger.info("✅ Onchain transaction confirmed: txid=\(txid) blockHeight=\(blockHeight) amountSats=\(details.amountSats)")
-                    Task {
-                        do {
-                            try await CoreService.shared.activity.handleOnchainTransactionConfirmed(
-                                txid: txid,
-                                details: details
-                            )
-                        } catch {
-                            Logger.error("Failed to handle transaction confirmed for \(txid): \(error)", context: "LightningService")
-                        }
+                }
+            case let .onchainTransactionConfirmed(txid, _, blockHeight, _, details):
+                Logger.info("✅ Onchain transaction confirmed: txid=\(txid) blockHeight=\(blockHeight) amountSats=\(details.amountSats)")
+                Task {
+                    do {
+                        try await CoreService.shared.activity.handleOnchainTransactionConfirmed(
+                            txid: txid,
+                            details: details
+                        )
+                    } catch {
+                        Logger.error("Failed to handle transaction confirmed for \(txid): \(error)", context: "LightningService")
                     }
-                case let .onchainTransactionReplaced(txid, conflicts):
-                    Logger.info("🔄 Onchain transaction replaced (RBF): txid=\(txid) by \(conflicts.count) conflict(s)")
-                    Task {
-                        do {
-                            try await CoreService.shared.activity.handleOnchainTransactionReplaced(txid: txid, conflicts: conflicts)
-                        } catch {
-                            Logger.error("Failed to handle transaction replaced for \(txid): \(error)", context: "LightningService")
-                        }
+                }
+            case let .onchainTransactionReplaced(txid, conflicts):
+                Logger.info("🔄 Onchain transaction replaced (RBF): txid=\(txid) by \(conflicts.count) conflict(s)")
+                Task {
+                    do {
+                        try await CoreService.shared.activity.handleOnchainTransactionReplaced(txid: txid, conflicts: conflicts)
+                    } catch {
+                        Logger.error("Failed to handle transaction replaced for \(txid): \(error)", context: "LightningService")
                     }
-                case let .onchainTransactionReorged(txid):
-                    Logger.warn("⚠️ Onchain transaction reorged (unconfirmed): txid=\(txid)")
-                    Task {
-                        do {
-                            try await CoreService.shared.activity.handleOnchainTransactionReorged(txid: txid)
-                        } catch {
-                            Logger.error("Failed to handle transaction reorged for \(txid): \(error)", context: "LightningService")
-                        }
+                }
+            case let .onchainTransactionReorged(txid):
+                Logger.warn("⚠️ Onchain transaction reorged (unconfirmed): txid=\(txid)")
+                Task {
+                    do {
+                        try await CoreService.shared.activity.handleOnchainTransactionReorged(txid: txid)
+                    } catch {
+                        Logger.error("Failed to handle transaction reorged for \(txid): \(error)", context: "LightningService")
                     }
-                case let .onchainTransactionEvicted(txid):
-                    Logger.warn("🗑️ Onchain transaction removed from mempool: txid=\(txid)")
-                    Task {
-                        do {
-                            try await CoreService.shared.activity.handleOnchainTransactionEvicted(txid: txid)
-                        } catch {
-                            Logger.error("Failed to handle transaction evicted for \(txid): \(error)", context: "LightningService")
-                        }
+                }
+            case let .onchainTransactionEvicted(txid):
+                Logger.warn("🗑️ Onchain transaction removed from mempool: txid=\(txid)")
+                Task {
+                    do {
+                        try await CoreService.shared.activity.handleOnchainTransactionEvicted(txid: txid)
+                    } catch {
+                        Logger.error("Failed to handle transaction evicted for \(txid): \(error)", context: "LightningService")
                     }
+                }
 
                 // MARK: Sync Events
 
-                case let .syncProgress(syncType, progressPercent, currentBlockHeight, targetBlockHeight):
-                    Logger
-                        .debug(
-                            "🔄 Sync progress: type=\(syncType) progress=\(progressPercent)% current=\(currentBlockHeight) target=\(targetBlockHeight)"
-                        )
-                case let .syncCompleted(syncType, syncedBlockHeight):
-                    Logger.info("✅ Sync completed: type=\(syncType) height=\(syncedBlockHeight)")
-                    // Send sync status update - PassthroughSubject is thread-safe
-                    syncStatusChangedSubject.send(UInt64(Date().timeIntervalSince1970))
+            case let .syncProgress(syncType, progressPercent, currentBlockHeight, targetBlockHeight):
+                Logger
+                    .debug(
+                        "🔄 Sync progress: type=\(syncType) progress=\(progressPercent)% current=\(currentBlockHeight) target=\(targetBlockHeight)"
+                    )
+            case let .syncCompleted(syncType, syncedBlockHeight):
+                Logger.info("✅ Sync completed: type=\(syncType) height=\(syncedBlockHeight)")
+                // Send sync status update - PassthroughSubject is thread-safe
+                syncStatusChangedSubject.send(UInt64(Date().timeIntervalSince1970))
 
                 // MARK: Balance Events
 
-                case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, _, _, oldLightning, newLightning):
-                    Logger
-                        .info("💰 Balance changed: onchain=\(oldSpendableOnchain)->\(newSpendableOnchain) lightning=\(oldLightning)->\(newLightning)")
+            case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, _, _, oldLightning, newLightning):
+                Logger
+                    .info("💰 Balance changed: onchain=\(oldSpendableOnchain)->\(newSpendableOnchain) lightning=\(oldLightning)->\(newLightning)")
 
                 // MARK: Splice Events
 
-                case let .splicePending(channelId, userChannelId, counterpartyNodeId, newFundingTxo):
-                    Logger
-                        .info(
-                            "🔀 Splice pending: channelId=\(channelId) userChannelId=\(userChannelId) counterpartyNodeId=\(counterpartyNodeId) newFundingTxo=\(newFundingTxo)"
-                        )
-                    await refreshChannelCache()
-                case let .spliceFailed(channelId, userChannelId, counterpartyNodeId, abandonedFundingTxo):
-                    Logger
-                        .warn(
-                            "❌ Splice failed: channelId=\(channelId) userChannelId=\(userChannelId) counterpartyNodeId=\(counterpartyNodeId) abandonedFundingTxo=\(abandonedFundingTxo != nil ? "\(abandonedFundingTxo!.txid):\(abandonedFundingTxo!.vout)" : "nil")"
-                        )
-                }
+            case let .splicePending(channelId, userChannelId, counterpartyNodeId, newFundingTxo):
+                Logger
+                    .info(
+                        "🔀 Splice pending: channelId=\(channelId) userChannelId=\(userChannelId) counterpartyNodeId=\(counterpartyNodeId) newFundingTxo=\(newFundingTxo)"
+                    )
+                await refreshChannelCache()
+            case let .spliceFailed(channelId, userChannelId, counterpartyNodeId, abandonedFundingTxo):
+                Logger
+                    .warn(
+                        "❌ Splice failed: channelId=\(channelId) userChannelId=\(userChannelId) counterpartyNodeId=\(counterpartyNodeId) abandonedFundingTxo=\(abandonedFundingTxo != nil ? "\(abandonedFundingTxo!.txid):\(abandonedFundingTxo!.vout)" : "nil")"
+                    )
             }
         }
     }

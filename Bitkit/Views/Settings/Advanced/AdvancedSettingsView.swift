@@ -63,6 +63,15 @@ struct AdvancedSettingsView: View {
                     }
                     .accessibilityIdentifier("AddressViewer")
 
+                    NavigationLink(value: Route.watchOnlyAccounts) {
+                        SettingsRow(
+                            title: t("watch_only_accounts__title"),
+                            iconName: "keyring",
+                            rightText: String(WatchOnlyAccountManager.shared.accounts(for: LightningService.shared.currentWalletIndex).count)
+                        )
+                    }
+                    .accessibilityIdentifier("WatchOnlyAccounts")
+
                     // Networks section
                     SettingsSectionHeader(t("settings__adv__section_networks"))
                         .padding(.top, 16)

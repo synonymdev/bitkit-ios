@@ -574,6 +574,7 @@ struct MainNavView: View {
                 case .electrumSettings: ElectrumSettingsScreen()
                 case .rgsSettings: RgsSettingsScreen()
                 case .addressViewer: AddressViewer()
+                case .watchOnlyAccounts: WatchOnlyAccountsView()
                 case .devSettings: DevSettingsView()
 
                 // Dev settings

@@ -48,6 +48,7 @@ struct PubkyAuthApprovalSheet: View {
 
     @State private var state: ApprovalState = .authorize
     @State private var isShowingAuthCheck = false
+    @State private var watchOnlyAccountName = ""
 
     private enum ApprovalState {
         case authorize
@@ -88,6 +89,12 @@ struct PubkyAuthApprovalSheet: View {
                 }
             )
         }
+        .task {
+            guard config.request.bitkitClaim != nil, watchOnlyAccountName.isEmpty else { return }
+            watchOnlyAccountName = config.request.serviceNames.first.map {
+                t("pubky_auth__watch_only_account_default_name", variables: ["service": $0])
+            } ?? t("pubky_auth__watch_only_account_fallback_name")
+        }
     }
 
     // MARK: - Authorize State (Screen 3)
@@ -99,6 +106,14 @@ struct PubkyAuthApprovalSheet: View {
 
             permissionsSection
                 .padding(.bottom, 16)
+
+            if config.request.bitkitClaim != nil {
+                bitkitClaimSection
+                    .padding(.bottom, 16)
+
+                watchOnlyAccountNameSection
+                    .padding(.bottom, 16)
+            }
 
             Spacer()
 
@@ -131,6 +146,15 @@ struct PubkyAuthApprovalSheet: View {
 
             permissionsSection
                 .padding(.bottom, 16)
+
+            if config.request.bitkitClaim != nil {
+                bitkitClaimSection
+                    .padding(.bottom, 16)
+
+                watchOnlyAccountNameSection
+                    .disabled(true)
+                    .padding(.bottom, 16)
+            }
 
             Spacer()
 
@@ -224,6 +248,35 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var bitkitClaimSection: some View {
+        switch config.request.bitkitClaim {
+        case .some(.watchOnlyAccountV1):
+            VStack(alignment: .leading, spacing: 8) {
+                CaptionMText(t("pubky_auth__watch_only_account_title"), textColor: .white64)
+                BodySText(t("pubky_auth__watch_only_account_description"))
+                    .lineSpacing(4)
+            }
+            .padding(16)
+            .background(Color.gray6)
+            .cornerRadius(16)
+            .accessibilityIdentifier("PubkyAuthWatchOnlyAccountClaim")
+        case nil:
+            EmptyView()
+        }
+    }
+
+    private var watchOnlyAccountNameSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("pubky_auth__watch_only_account_name_label"), textColor: .white64)
+            TextField(
+                t("pubky_auth__watch_only_account_name_placeholder"),
+                text: $watchOnlyAccountName,
+                testIdentifier: "PubkyAuthWatchOnlyAccountName"
+            )
+        }
+    }
+
     private var trustWarning: some View {
         BodySText(t("pubky_auth__trust_warning"))
             .lineSpacing(4)
@@ -307,11 +360,26 @@ struct PubkyAuthApprovalSheet: View {
                 return
             }
 
+            var preparedAccountId: UUID?
+            if config.request.bitkitClaim == .watchOnlyAccountV1 {
+                let preparedClaim = try await WatchOnlyAccountManager.shared.prepareSignedClaim(
+                    authUrl: config.authUrl,
+                    name: watchOnlyAccountName,
+                    secretKeyHex: secretKey
+                )
+                try await WatchOnlyAccountManager.shared.deliver(payload: preparedClaim.1, authUrl: config.authUrl)
+                preparedAccountId = preparedClaim.0.id
+            }
+
             try await PubkyService.approveAuth(
                 authUrl: config.authUrl,
                 expectedCapabilities: config.request.capabilities,
                 secretKeyHex: secretKey
             )
+
+            if let preparedAccountId {
+                try WatchOnlyAccountManager.shared.markSetupActive(id: preparedAccountId)
+            }
 
             state = .success
         } catch {

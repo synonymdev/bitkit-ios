@@ -207,6 +207,8 @@ class BackupService {
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
+                try WatchOnlyAccountStore.restore(payload.watchOnlyAccounts)
+                await WatchOnlyAccountManager.shared.reload()
                 pendingPaykitSdkBackupState = payload.paykitSdkBackupState
                 didRestoreWalletBackup = true
 
@@ -362,6 +364,14 @@ class BackupService {
             .store(in: &cancellables)
 
         PaykitSdkService.walletBackupDataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .wallet)
+            }
+            .store(in: &cancellables)
+
+        WatchOnlyAccountStore.walletBackupDataChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -708,7 +718,8 @@ class BackupService {
                 createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 transfers: transfers,
                 privatePaykitHighestReservedReceiveIndexByAddressType: privatePaykitHighestReservedReceiveIndexByAddressType,
-                paykitSdkBackupState: paykitSdkBackupState
+                paykitSdkBackupState: paykitSdkBackupState,
+                watchOnlyAccounts: WatchOnlyAccountStore.load()
             )
             return try JSONEncoder().encode(payload)
 

@@ -97,6 +97,7 @@ enum Route: Hashable {
     case electrumSettings
     case rgsSettings
     case addressViewer
+    case watchOnlyAccounts
     case devSettings
 
     // Dev settings

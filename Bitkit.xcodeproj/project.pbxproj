@@ -173,6 +173,7 @@
 				Services/GeoService.swift,
 				Services/LightningService.swift,
 				Services/MigrationsService.swift,
+				Services/WatchOnlyAccountService.swift,
 				Services/RNBackupClient.swift,
 				Services/ServiceQueue.swift,
 				Services/TransferStorage.swift,
@@ -182,6 +183,7 @@
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
 				Utilities/LightningAmountConversion.swift,
+				Utilities/LocalizeHelpers.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
@@ -201,12 +203,14 @@
 				Services/CoreService.swift,
 				Services/GeoService.swift,
 				Services/LightningService.swift,
+				Services/WatchOnlyAccountService.swift,
 				Services/ServiceQueue.swift,
 				Services/VssStoreIdProvider.swift,
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
 				Utilities/LightningAmountConversion.swift,
+				Utilities/LocalizeHelpers.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
@@ -570,8 +574,8 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/LDKNodeFFI.framework/_CodeSignature/CodeResources",
-				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/vss_rust_client_ffiFFI.framework/_CodeSignature/CodeResources",
+				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/LDKNodeFFI.framework",
+				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/vss_rust_client_ffiFFI.framework",
 			);
 			name = "Remove Static Framework Stubs";
 			outputFileListPaths = (
@@ -1193,7 +1197,7 @@
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
 			requirement = {
 				kind = exactVersion;
-				version = "0.7.0-rc.53";
+				version = "0.7.0-rc.54";
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {
