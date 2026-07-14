@@ -211,7 +211,7 @@ class WalletViewModel: ObservableObject {
                             success: false,
                             paymentId: paymentId,
                             paymentHash: paymentHash,
-                            shortChannelId: shortChannelId,
+                            shortChannelId: shortChannelId.map(String.init),
                             routeFeeMsat: routeFeeMsat
                         )
                     case let .paymentReceived(_, paymentHash, _, _):
@@ -694,7 +694,7 @@ class WalletViewModel: ObservableObject {
         let success: Bool
         let paymentId: PaymentId
         let paymentHash: PaymentHash
-        let shortChannelId: UInt64?
+        let shortChannelId: String?
         let routeFeeMsat: UInt64?
     }
 
@@ -737,7 +737,7 @@ class WalletViewModel: ObservableObject {
                         success: false,
                         paymentId: paymentId,
                         paymentHash: paymentHash,
-                        shortChannelId: shortChannelId,
+                        shortChannelId: shortChannelId.map(String.init),
                         routeFeeMsat: routeFeeMsat
                     )
                     if pendingPaymentIds.isEmpty, let lastFailure {
@@ -752,7 +752,7 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    private func cacheProbeOutcome(success: Bool, paymentId: PaymentId, paymentHash: PaymentHash, shortChannelId: UInt64?, routeFeeMsat: UInt64?) {
+    private func cacheProbeOutcome(success: Bool, paymentId: PaymentId, paymentHash: PaymentHash, shortChannelId: String?, routeFeeMsat: UInt64?) {
         probeOutcomes[paymentId] = ProbeOutcome(
             success: success,
             paymentId: paymentId,
