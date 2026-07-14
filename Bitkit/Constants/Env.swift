@@ -291,7 +291,7 @@ enum Env {
 
     static var btcRatesServer: String {
         switch network {
-        case .bitcoin: "https://blocktank.synonym.to/fx/rates/btc"
+        case .bitcoin: "https://api1.blocktank.to/api/fx/rates/btc"
         case .signet: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
         case .testnet: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
         case .regtest: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
