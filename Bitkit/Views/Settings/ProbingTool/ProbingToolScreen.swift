@@ -259,7 +259,7 @@ struct ProbingToolScreen: View {
                 }
                 app.toast(type: .success, title: "Probe Successful", description: "Route verified in \(durationMs) ms")
             } else {
-                let scidText = resolved.shortChannelId.map(String.init) ?? "unknown"
+                let scidText = resolved.shortChannelId ?? "unknown"
                 let message = "Hash: \(resolved.paymentHash), SCID: \(scidText)"
                 await MainActor.run {
                     probeResult = ProbeResult(
