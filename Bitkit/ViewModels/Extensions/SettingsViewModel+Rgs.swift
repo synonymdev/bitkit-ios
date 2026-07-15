@@ -44,8 +44,9 @@ extension SettingsViewModel {
     }
 
     func onRgsScan(_ data: String) async -> (success: Bool, url: String, errorMessage: String?)? {
-        // Validate scanned data
-        guard isValidRgsUrl(data) else {
+        // Validate scanned data off the main thread (regex could block on pathological input)
+        let isValid = await Task.detached { [self] in isValidRgsUrl(data) }.value
+        guard isValid else {
             return nil
         }
 
