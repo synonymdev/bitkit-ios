@@ -21,6 +21,14 @@ extension SettingsViewModel {
 
         let url = rgsServerUrl.trimmingCharacters(in: .whitespaces)
 
+        // Re-validate the exact URL at connect time; the debounced rgsUrlIsValid can be stale
+        // for ~300ms after the field changes, which would otherwise leave Connect enabled.
+        let isValid = await Task.detached { [self] in isValidRgsUrl(url) }.value
+        guard isValid else {
+            rgsIsLoading = false
+            return (success: false, url: url, errorMessage: nil)
+        }
+
         do {
             // Save the configuration to settings first
             rgsConfigService.saveServerUrl(url)
