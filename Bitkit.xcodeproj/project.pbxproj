@@ -1177,7 +1177,7 @@
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
 				kind = exactVersion;
-				version = "0.1.0-rc35";
+				version = "0.1.0-rc36";
 			};
 		};
 		18B58A022F7A000100B58A01 /* XCRemoteSwiftPackageReference "Base58Swift" */ = {
@@ -1209,7 +1209,7 @@
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
 			requirement = {
 				kind = exactVersion;
-				version = "0.7.0-rc.55";
+				version = "0.7.0-rc.56";
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {

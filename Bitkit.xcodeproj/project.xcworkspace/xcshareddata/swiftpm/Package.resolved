@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
-        "revision" : "6cfa59000a35e7c31130df5f0ddb0951779e495f",
-        "version" : "0.7.0-rc.55"
+        "revision" : "b8c959c75b6922d6fa722ccf5492af0671b82a4b",
+        "version" : "0.7.0-rc.56"
       }
     },
     {
@@ -60,8 +60,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pubky/paykit-rs",
       "state" : {
-        "revision" : "2ff082c349b82a4becea23afac39164e202751c6",
-        "version" : "0.1.0-rc35"
+        "revision" : "e0c71ce1b3850193b21b4fb3d9475ce09ac05822",
+        "version" : "0.1.0-rc36"
       }
     },
     {

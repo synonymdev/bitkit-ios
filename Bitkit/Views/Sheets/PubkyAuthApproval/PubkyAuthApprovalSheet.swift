@@ -52,11 +52,13 @@ func approvePubkyAuthRequest(
     let accountManager = accountManager ?? .shared
     if request.bitkitClaim == .watchOnlyAccountV1 {
         let preparedClaim = try await accountManager.prepareUnsignedClaim(authUrl: authUrl, name: accountName)
+        let authorizationAttempt = try accountManager.acquireSetupAuthorizationAttempt(id: preparedClaim.0.id)
+        defer { accountManager.finishSetupAuthorizationAttempt(authorizationAttempt) }
         do {
-            try await accountManager.beginSetupAuthorization(id: preparedClaim.0.id)
+            try await accountManager.beginSetupAuthorization(attempt: authorizationAttempt)
         } catch {
             do {
-                try await accountManager.cancelSetupAuthorization(id: preparedClaim.0.id)
+                try await accountManager.cancelSetupAuthorization(attempt: authorizationAttempt)
             } catch let cleanupError {
                 Logger.error("Failed to unload incomplete watch-only account: \(cleanupError)", context: "PubkyAuthApprovalSheet")
             }
@@ -67,14 +69,14 @@ func approvePubkyAuthRequest(
         } catch {
             if !PubkyService.didDeliverCompanionClaim(error: error) {
                 do {
-                    try await accountManager.cancelSetupAuthorization(id: preparedClaim.0.id)
+                    try await accountManager.cancelSetupAuthorization(attempt: authorizationAttempt)
                 } catch let cleanupError {
                     Logger.error("Failed to unload incomplete watch-only account: \(cleanupError)", context: "PubkyAuthApprovalSheet")
                 }
             }
             throw error
         }
-        try accountManager.markSetupActive(id: preparedClaim.0.id)
+        try await accountManager.markSetupActive(attempt: authorizationAttempt)
     } else {
         try await ordinaryApproval(authUrl, request.capabilities, secretKeyHex)
     }

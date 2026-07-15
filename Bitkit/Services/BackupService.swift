@@ -207,12 +207,10 @@ class BackupService {
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
-                try WatchOnlyAccountStore.restore(
+                try await WatchOnlyAccountManager.shared.restore(
                     payload.watchOnlyAccounts,
                     allocationState: payload.watchOnlyAccountAllocationState
                 )
-                try await WatchOnlyAccountManager.shared.reload()
-                try await LightningService.shared.reconcileWatchOnlyAccounts()
                 pendingPaykitSdkBackupState = payload.paykitSdkBackupState
                 didRestoreWalletBackup = true
 

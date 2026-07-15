@@ -128,7 +128,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let firstConfirmation = Task { @MainActor in
             try await harness.confirm()
         }
-        await companionApprovalGate.waitUntilFirstApprovalStarts()
+        try await companionApprovalGate.waitUntilFirstApprovalStarts()
 
         do {
             try await harness.confirm()
@@ -148,6 +148,67 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         XCTAssertEqual(manager.accounts.count, 1)
         XCTAssertEqual(manager.accounts.first?.setupState, .active)
         XCTAssertEqual(node.trackingChanges, [true])
+    }
+
+    @MainActor
+    func testReplacingAndReopeningSheetCannotStartConcurrentCompanionApproval() async throws {
+        let suiteName = "PubkyAuthApprovalSheetTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let firstAuthUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let secondAuthUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=f3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let firstRequest = try PubkyAuthRequest.parse(url: firstAuthUrl)
+        let secondRequest = try PubkyAuthRequest.parse(url: secondAuthUrl)
+        let node = ApprovalFakeWatchOnlyAccountNode()
+        let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
+        let companionApprovalGate = ApprovalCompanionGate()
+        let firstApproval = Task { @MainActor in
+            try await approvePubkyAuthRequest(
+                request: firstRequest,
+                authUrl: firstAuthUrl,
+                accountName: "First account",
+                secretKeyHex: "secret",
+                accountManager: manager,
+                companionApproval: { _, _, _ in await companionApprovalGate.approve() }
+            )
+        }
+        try await companionApprovalGate.waitUntilFirstApprovalStarts()
+
+        for (request, authUrl) in [(secondRequest, secondAuthUrl), (firstRequest, firstAuthUrl)] {
+            do {
+                try await approvePubkyAuthRequest(
+                    request: request,
+                    authUrl: authUrl,
+                    accountName: "Replacement account",
+                    secretKeyHex: "secret",
+                    accountManager: manager,
+                    companionApproval: { _, _, _ in XCTFail("Concurrent companion approval must not start") }
+                )
+                XCTFail("Expected concurrent authorization to be rejected")
+            } catch {
+                XCTAssertEqual(error as? Bitkit.WatchOnlyAccountError, .authorizationInProgress)
+            }
+        }
+
+        let companionApprovalCount = await companionApprovalGate.approvalCount
+        XCTAssertEqual(companionApprovalCount, 1)
+        XCTAssertEqual(node.trackingChanges, [true])
+        XCTAssertEqual(manager.accounts.map(\.setupState), [.authorizing, .pendingDelivery])
+
+        await companionApprovalGate.releaseFirstApproval()
+        try await firstApproval.value
+        try await approvePubkyAuthRequest(
+            request: secondRequest,
+            authUrl: secondAuthUrl,
+            accountName: "Second account",
+            secretKeyHex: "secret",
+            accountManager: manager,
+            companionApproval: { _, _, _ in }
+        )
+
+        XCTAssertEqual(manager.accounts.map(\.setupState), [.active, .active])
+        XCTAssertEqual(node.trackingChanges, [true, true])
     }
 
     @MainActor
@@ -180,6 +241,46 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
     }
 
     @MainActor
+    func testRetryFailureAfterCompanionDeliveryKeepsAccountTracked() async throws {
+        let suiteName = "PubkyAuthApprovalSheetTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let request = try PubkyAuthRequest.parse(url: authUrl)
+        let node = ApprovalFakeWatchOnlyAccountNode()
+        let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
+
+        await XCTAssertThrowsErrorAsync {
+            try await approvePubkyAuthRequest(
+                request: request,
+                authUrl: authUrl,
+                accountName: "Creator store",
+                secretKeyHex: "secret",
+                accountManager: manager,
+                companionApproval: { _, _, _ in
+                    throw Paykit.PubkyAuthCompanionClaimApprovalError.AuthorizationFailure(reason: "normal auth failed")
+                }
+            )
+        }
+
+        await XCTAssertThrowsErrorAsync {
+            try await approvePubkyAuthRequest(
+                request: request,
+                authUrl: authUrl,
+                accountName: "Creator store",
+                secretKeyHex: "secret",
+                accountManager: manager,
+                companionApproval: { _, _, _ in throw ApprovalFakeError.deliveryFailed }
+            )
+        }
+
+        XCTAssertEqual(manager.accounts.first?.setupState, .authorizing)
+        XCTAssertEqual(manager.accounts.first?.isTrackingEnabled, true)
+        XCTAssertEqual(node.trackingChanges, [true, true, true])
+    }
+
+    @MainActor
     func testTrackingPreparationFailureUnloadsAccountBeforeApproval() async throws {
         let suiteName = "PubkyAuthApprovalSheetTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -208,10 +309,51 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         XCTAssertEqual(manager.accounts.first?.isTrackingEnabled, false)
         XCTAssertEqual(node.trackingChanges, [true, false])
     }
+
+    @MainActor
+    func testCancellationDuringCompanionDeliveryStillUnloadsAccount() async throws {
+        let suiteName = "PubkyAuthApprovalSheetTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let request = try PubkyAuthRequest.parse(url: authUrl)
+        let node = ApprovalFakeWatchOnlyAccountNode()
+        node.checkCancellationWhenDisabling = true
+        let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
+        let companionApprovalGate = ApprovalCompanionGate()
+
+        let approval = Task { @MainActor in
+            try await approvePubkyAuthRequest(
+                request: request,
+                authUrl: authUrl,
+                accountName: "Creator store",
+                secretKeyHex: "secret",
+                accountManager: manager,
+                companionApproval: { _, _, _ in
+                    await companionApprovalGate.approve()
+                    try Task.checkCancellation()
+                }
+            )
+        }
+        try await companionApprovalGate.waitUntilFirstApprovalStarts()
+        approval.cancel()
+        await companionApprovalGate.releaseFirstApproval()
+
+        do {
+            try await approval.value
+            XCTFail("Expected companion approval cancellation")
+        } catch is CancellationError {}
+
+        XCTAssertEqual(manager.accounts.first?.setupState, .pendingDelivery)
+        XCTAssertEqual(manager.accounts.first?.isTrackingEnabled, false)
+        XCTAssertEqual(node.trackingChanges, [true, false])
+    }
 }
 
 private enum ApprovalFakeError: Error {
     case deliveryFailed
+    case timedOut
     case trackingPreparationFailed
 }
 
@@ -260,7 +402,6 @@ private final class ApprovalSingleFlightHarness {
 private actor ApprovalCompanionGate {
     private var count = 0
     private var firstApprovalContinuation: CheckedContinuation<Void, Never>?
-    private var firstApprovalStartWaiters: [CheckedContinuation<Void, Never>] = []
     private var hasStartedFirstApproval = false
 
     var approvalCount: Int {
@@ -272,20 +413,18 @@ private actor ApprovalCompanionGate {
         guard count == 1 else { return }
 
         hasStartedFirstApproval = true
-        let waiters = firstApprovalStartWaiters
-        firstApprovalStartWaiters.removeAll()
-        waiters.forEach { $0.resume() }
 
         await withCheckedContinuation { continuation in
             firstApprovalContinuation = continuation
         }
     }
 
-    func waitUntilFirstApprovalStarts() async {
-        guard !hasStartedFirstApproval else { return }
-
-        await withCheckedContinuation { continuation in
-            firstApprovalStartWaiters.append(continuation)
+    func waitUntilFirstApprovalStarts(timeout: Duration = .seconds(2)) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !hasStartedFirstApproval {
+            guard clock.now < deadline else { throw ApprovalFakeError.timedOut }
+            await Task.yield()
         }
     }
 
@@ -298,6 +437,7 @@ private actor ApprovalCompanionGate {
 private final class ApprovalFakeWatchOnlyAccountNode: Bitkit.WatchOnlyAccountNodeHandling {
     var currentWalletIndex = 0
     var failNextTrackingPreparation = false
+    var checkCancellationWhenDisabling = false
     private(set) var trackingChanges: [Bool] = []
 
     func exportWatchOnlyAccountXpub(accountIndex _: UInt32, addressType _: LDKNode.AddressType) async throws -> String {
@@ -310,12 +450,20 @@ private final class ApprovalFakeWatchOnlyAccountNode: Bitkit.WatchOnlyAccountNod
         xpub _: String,
         enabled: Bool
     ) async throws {
+        if !enabled, checkCancellationWhenDisabling {
+            try Task.checkCancellation()
+        }
         trackingChanges.append(enabled)
         if enabled, failNextTrackingPreparation {
             failNextTrackingPreparation = false
             throw ApprovalFakeError.trackingPreparationFailed
         }
     }
+
+    func reconcileWatchOnlyAccountTracking(
+        records _: [Bitkit.WatchOnlyAccountRecord],
+        managedRecords _: [Bitkit.WatchOnlyAccountRecord]
+    ) async throws {}
 
     private func base58CheckEncode(_ payload: Data) -> String {
         Base58.base58CheckEncode([UInt8](payload))

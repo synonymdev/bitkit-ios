@@ -75,14 +75,14 @@ struct WatchOnlyAccountsView: View {
         .navigationBarHidden(true)
         .task {
             do {
-                try manager.reload()
+                try await manager.reload()
             } catch {
                 app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
             }
         }
         .sheet(item: $selectedAccount) { account in
             WatchOnlyAccountDetailsSheet(account: account) { name in
-                try manager.rename(id: account.id, name: name)
+                try await manager.rename(id: account.id, name: name)
             }
             .environmentObject(app)
         }
@@ -149,11 +149,11 @@ private struct WatchOnlyAccountDetailsSheet: View {
     @EnvironmentObject private var app: AppViewModel
 
     let account: WatchOnlyAccountRecord
-    let onRename: (String) throws -> Void
+    let onRename: (String) async throws -> Void
 
     @State private var name: String
 
-    init(account: WatchOnlyAccountRecord, onRename: @escaping (String) throws -> Void) {
+    init(account: WatchOnlyAccountRecord, onRename: @escaping (String) async throws -> Void) {
         self.account = account
         self.onRename = onRename
         _name = State(initialValue: account.name)
@@ -179,7 +179,9 @@ private struct WatchOnlyAccountDetailsSheet: View {
                 testIdentifier: "WatchOnlyAccountName_\(account.accountIndex)",
                 submitLabel: .done
             )
-            .onSubmit(saveName)
+            .onSubmit {
+                Task { await saveName() }
+            }
 
             CaptionMText(t("watch_only_accounts__xpub"), textColor: .white64)
                 .padding(.top, 24)
@@ -194,7 +196,7 @@ private struct WatchOnlyAccountDetailsSheet: View {
 
             HStack(spacing: 12) {
                 CustomButton(title: t("watch_only_accounts__save_name"), variant: .secondary) {
-                    saveName()
+                    Task { await saveName() }
                 }
                 .accessibilityIdentifier("WatchOnlyAccountSaveName_\(account.accountIndex)")
 
@@ -213,9 +215,10 @@ private struct WatchOnlyAccountDetailsSheet: View {
         .presentationCornerRadius(32)
     }
 
-    private func saveName() {
+    @MainActor
+    private func saveName() async {
         do {
-            try onRename(name)
+            try await onRename(name)
             app.toast(type: .success, title: t("watch_only_accounts__name_saved"))
             dismiss()
         } catch {
