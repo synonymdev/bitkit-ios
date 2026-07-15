@@ -662,7 +662,7 @@
 "settings__backup__export" = "Exportovat data peněženky do telefonu";
 "settings__backup__reset" = "Resetovat a obnovit peněženku";
 "settings__backup__failed_title" = "Zálohování dat selhalo";
-"settings__backup__failed_message" = "Bitkitu se nepodařilo zálohovat data peněženky. Opakovaný pokus za {interval, plural, one {# minute} dalších {# minutes}}.";
+"settings__backup__failed_message" = "Bitkitu se nepodařilo zálohovat data peněženky. Opakovaný pokus za {interval, plural, one {# minute} other {# minutes}}.";
 "settings__backup__latest" = "nejnovější zálohy dat";
 "settings__backup__status_failed" = "Zálohování se nezdařilo: {time}";
 "settings__backup__status_success" = "Poslední záloha: {time}";
