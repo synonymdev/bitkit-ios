@@ -29,6 +29,13 @@ extension SettingsViewModel {
             return (success: false, url: url, errorMessage: nil)
         }
 
+        // Verify the endpoint actually serves a snapshot before restarting the node; a
+        // well-formed but wrong URL would otherwise report success. Empty URL disables RGS.
+        if !url.isEmpty, await !isRgsEndpointReachable(url) {
+            rgsIsLoading = false
+            return (success: false, url: url, errorMessage: nil)
+        }
+
         do {
             // Save the configuration to settings first
             rgsConfigService.saveServerUrl(url)
@@ -48,6 +55,31 @@ extension SettingsViewModel {
             Logger.error(error, context: "Failed to connect to RGS server")
 
             return (success: false, url: url, errorMessage: error.localizedDescription)
+        }
+    }
+
+    /// RGS servers serve snapshots at <url>/<lastSyncTimestamp>; timestamp 0 is the full snapshot
+    /// and returns a 2xx for a valid endpoint, so a HEAD request confirms reachability without
+    /// downloading the body. Mirrors the Android RGS connect check.
+    nonisolated func isRgsEndpointReachable(_ url: String) async -> Bool {
+        let base = url.hasSuffix("/") ? String(url.dropLast()) : url
+        guard let testUrl = URL(string: "\(base)/0") else {
+            return false
+        }
+
+        var request = URLRequest(url: testUrl)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 10
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return false
+            }
+            return (200 ... 299).contains(http.statusCode)
+        } catch {
+            Logger.warn("RGS endpoint unreachable at \(testUrl.absoluteString): \(error.localizedDescription)")
+            return false
         }
     }
 
