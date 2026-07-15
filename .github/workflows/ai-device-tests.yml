@@ -99,7 +99,7 @@ jobs:
             -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$SIMULATOR_OS" \
             -derivedDataPath DerivedData \
             -resultBundlePath TestResults/TrezorBridgeDashboardUITests.xcresult \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD TEST_TREZOR_EMU' \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) DEBUG E2E_BUILD TEST_TREZOR_EMU' \
             -only-testing:BitkitUITests/TrezorBridgeDashboardUITests \
             -parallel-testing-enabled NO \
             | xcbeautify
