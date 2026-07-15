@@ -124,6 +124,8 @@ class SettingsViewModel: NSObject, ObservableObject {
     // RGS Server Settings
     @Published var rgsServerUrl: String = ""
     @Published var rgsIsLoading: Bool = false
+    @Published var rgsUrlIsValid: Bool = false
+    private var rgsValidationCancellable: AnyCancellable?
 
     // Services
     let lightningService: LightningService
@@ -166,6 +168,17 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         updatePinEnabledState()
+        setupRgsValidationDebounce()
+    }
+
+    private func setupRgsValidationDebounce() {
+        rgsValidationCancellable = $rgsServerUrl
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .receive(on: DispatchQueue.global(qos: .userInitiated))
+            .map { [weak self] url in self?.isValidRgsUrl(url) ?? false }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isValid in self?.rgsUrlIsValid = isValid }
     }
 
     deinit {
@@ -252,7 +265,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     var rgsCanConnect: Bool {
         let formUrl = rgsServerUrl.trimmingCharacters(in: .whitespaces)
-        return rgsHasEdited && !formUrl.isEmpty && isValidRgsUrl(formUrl)
+        return rgsHasEdited && !formUrl.isEmpty && rgsUrlIsValid
     }
 
     var rgsCanReset: Bool {
@@ -538,7 +551,12 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     // MARK: - RGS URL Validation
 
-    func isValidRgsUrl(_ url: String) -> Bool {
+    private nonisolated static let rgsUrlRegex = try? NSRegularExpression(
+        pattern: URLValidationPattern.rgsServerUrl,
+        options: .caseInsensitive
+    )
+
+    nonisolated func isValidRgsUrl(_ url: String) -> Bool {
         // Allow empty URL (disables RGS)
         if url.isEmpty {
             return true
@@ -554,8 +572,8 @@ class SettingsViewModel: NSObject, ObservableObject {
             return false
         }
 
-        // Must have a host
-        guard urlObj.host != nil else {
+        // Must have a host, and reject over-long hosts before running the regex
+        guard let host = urlObj.host, host.count <= URLValidationPattern.maxHostLength else {
             return false
         }
 
@@ -564,11 +582,11 @@ class SettingsViewModel: NSObject, ObservableObject {
             return true
         }
 
-        // Basic URL pattern validation
-        let pattern = #"^(https?:\/\/)?((([a-z\d]([a-z\d-]*[a-z\d])*)\.)+[a-z]{2,}|((\d{1,3}\.){3}\d{1,3}))(\:\d+)?(\/[-a-z\d%_.~+]*)*"#
-        let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        guard let regex = Self.rgsUrlRegex else {
+            return false
+        }
         let range = NSRange(location: 0, length: url.utf16.count)
-        return regex?.firstMatch(in: url, options: [], range: range) != nil
+        return regex.firstMatch(in: url, options: [], range: range) != nil
     }
 
     // MARK: - Backup/Restore
