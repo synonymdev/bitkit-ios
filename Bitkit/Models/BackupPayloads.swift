@@ -10,6 +10,7 @@ struct WalletBackupV1: Codable {
     let privatePaykitHighestReservedReceiveIndexByAddressType: [String: UInt32]?
     let paykitSdkBackupState: String?
     let watchOnlyAccounts: [WatchOnlyAccountRecord]?
+    let watchOnlyAccountAllocationState: WatchOnlyAccountAllocationState?
 }
 
 struct MetadataBackupV1: Codable {

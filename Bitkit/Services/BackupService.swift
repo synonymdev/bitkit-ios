@@ -207,8 +207,12 @@ class BackupService {
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
-                try WatchOnlyAccountStore.restore(payload.watchOnlyAccounts)
-                await WatchOnlyAccountManager.shared.reload()
+                try WatchOnlyAccountStore.restore(
+                    payload.watchOnlyAccounts,
+                    allocationState: payload.watchOnlyAccountAllocationState
+                )
+                try await WatchOnlyAccountManager.shared.reload()
+                try await LightningService.shared.reconcileWatchOnlyAccounts()
                 pendingPaykitSdkBackupState = payload.paykitSdkBackupState
                 didRestoreWalletBackup = true
 
@@ -713,13 +717,15 @@ class BackupService {
             let transfers = try TransferStorage.shared.getAll()
             let privatePaykitHighestReservedReceiveIndexByAddressType = await PrivatePaykitAddressReservationStore.shared.backupSnapshot()
             let paykitSdkBackupState = try await PrivatePaykitService.shared.backupSnapshot()
+            let watchOnlyAccountSnapshot = try WatchOnlyAccountStore.backupSnapshot()
             let payload = WalletBackupV1(
                 version: 1,
                 createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 transfers: transfers,
                 privatePaykitHighestReservedReceiveIndexByAddressType: privatePaykitHighestReservedReceiveIndexByAddressType,
                 paykitSdkBackupState: paykitSdkBackupState,
-                watchOnlyAccounts: WatchOnlyAccountStore.load()
+                watchOnlyAccounts: watchOnlyAccountSnapshot.accounts,
+                watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState
             )
             return try JSONEncoder().encode(payload)
 

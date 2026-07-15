@@ -24,6 +24,62 @@ func resolvePubkyApprovalLocalAuthMode(
     return .none
 }
 
+typealias OrdinaryPubkyAuthApproval = (String, String, String) async throws -> Void
+typealias CompanionPubkyAuthApproval = (String, Data, String) async throws -> Void
+
+@MainActor
+func approvePubkyAuthRequest(
+    request: PubkyAuthRequest,
+    authUrl: String,
+    accountName: String,
+    secretKeyHex: String,
+    accountManager: WatchOnlyAccountManager? = nil,
+    ordinaryApproval: @escaping OrdinaryPubkyAuthApproval = { authUrl, capabilities, secretKeyHex in
+        try await PubkyService.approveAuth(
+            authUrl: authUrl,
+            expectedCapabilities: capabilities,
+            secretKeyHex: secretKeyHex
+        )
+    },
+    companionApproval: @escaping CompanionPubkyAuthApproval = { authUrl, unsignedPayload, secretKeyHex in
+        try await PubkyService.approveAuthWithCompanionClaim(
+            authUrl: authUrl,
+            unsignedPayload: unsignedPayload,
+            secretKeyHex: secretKeyHex
+        )
+    }
+) async throws {
+    let accountManager = accountManager ?? .shared
+    if request.bitkitClaim == .watchOnlyAccountV1 {
+        let preparedClaim = try await accountManager.prepareUnsignedClaim(authUrl: authUrl, name: accountName)
+        do {
+            try await accountManager.beginSetupAuthorization(id: preparedClaim.0.id)
+        } catch {
+            do {
+                try await accountManager.cancelSetupAuthorization(id: preparedClaim.0.id)
+            } catch let cleanupError {
+                Logger.error("Failed to unload incomplete watch-only account: \(cleanupError)", context: "PubkyAuthApprovalSheet")
+            }
+            throw error
+        }
+        do {
+            try await companionApproval(authUrl, preparedClaim.1, secretKeyHex)
+        } catch {
+            if !PubkyService.didDeliverCompanionClaim(error: error) {
+                do {
+                    try await accountManager.cancelSetupAuthorization(id: preparedClaim.0.id)
+                } catch let cleanupError {
+                    Logger.error("Failed to unload incomplete watch-only account: \(cleanupError)", context: "PubkyAuthApprovalSheet")
+                }
+            }
+            throw error
+        }
+        try accountManager.markSetupActive(id: preparedClaim.0.id)
+    } else {
+        try await ordinaryApproval(authUrl, request.capabilities, secretKeyHex)
+    }
+}
+
 struct PubkyAuthApprovalConfig {
     let authUrl: String
     let request: PubkyAuthRequest
@@ -50,10 +106,17 @@ struct PubkyAuthApprovalSheet: View {
     @State private var isShowingAuthCheck = false
     @State private var watchOnlyAccountName = ""
 
-    private enum ApprovalState {
+    enum ApprovalState {
         case authorize
         case authorizing
         case success
+
+        @MainActor
+        mutating func beginAuthorization() -> Bool {
+            guard self == .authorize else { return false }
+            self = .authorizing
+            return true
+        }
     }
 
     private var headerTitle: String {
@@ -101,27 +164,7 @@ struct PubkyAuthApprovalSheet: View {
 
     private var authorizeContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            descriptionText
-                .padding(.bottom, 32)
-
-            permissionsSection
-                .padding(.bottom, 16)
-
-            if config.request.bitkitClaim != nil {
-                bitkitClaimSection
-                    .padding(.bottom, 16)
-
-                watchOnlyAccountNameSection
-                    .padding(.bottom, 16)
-            }
-
-            Spacer()
-
-            trustWarning
-                .padding(.bottom, 16)
-
-            profileCard
-                .padding(.bottom, 24)
+            approvalDetails(disablesName: false)
 
             HStack(spacing: 16) {
                 CustomButton(title: t("common__cancel"), variant: .secondary) {
@@ -141,28 +184,7 @@ struct PubkyAuthApprovalSheet: View {
 
     private var authorizingContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            descriptionText
-                .padding(.bottom, 32)
-
-            permissionsSection
-                .padding(.bottom, 16)
-
-            if config.request.bitkitClaim != nil {
-                bitkitClaimSection
-                    .padding(.bottom, 16)
-
-                watchOnlyAccountNameSection
-                    .disabled(true)
-                    .padding(.bottom, 16)
-            }
-
-            Spacer()
-
-            trustWarning
-                .padding(.bottom, 16)
-
-            profileCard
-                .padding(.bottom, 24)
+            approvalDetails(disablesName: true)
 
             CustomButton(title: t("pubky_auth__authorizing"), isLoading: true) {}
                 .disabled(true)
@@ -194,6 +216,34 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     // MARK: - Shared Components
+
+    private func approvalDetails(disablesName: Bool) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                descriptionText
+                    .padding(.bottom, 32)
+
+                permissionsSection
+                    .padding(.bottom, 16)
+
+                if config.request.bitkitClaim != nil {
+                    bitkitClaimSection
+                        .padding(.bottom, 16)
+
+                    watchOnlyAccountNameSection
+                        .disabled(disablesName)
+                        .padding(.bottom, 16)
+                }
+
+                trustWarning
+                    .padding(.bottom, 16)
+
+                profileCard
+                    .padding(.bottom, 24)
+            }
+        }
+        .scrollIndicators(.hidden)
+    }
 
     private var serviceText: String {
         config.request.serviceNames.joined(separator: " and ")
@@ -256,6 +306,7 @@ struct PubkyAuthApprovalSheet: View {
                 CaptionMText(t("pubky_auth__watch_only_account_title"), textColor: .white64)
                 BodySText(t("pubky_auth__watch_only_account_description"))
                     .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(16)
             .background(Color.gray6)
@@ -349,7 +400,7 @@ struct PubkyAuthApprovalSheet: View {
 
     @MainActor
     private func confirmAuthorize() async {
-        state = .authorizing
+        guard state.beginAuthorization() else { return }
 
         do {
             guard let secretKey = try Keychain.loadString(key: .pubkySecretKey),
@@ -360,26 +411,12 @@ struct PubkyAuthApprovalSheet: View {
                 return
             }
 
-            var preparedAccountId: UUID?
-            if config.request.bitkitClaim == .watchOnlyAccountV1 {
-                let preparedClaim = try await WatchOnlyAccountManager.shared.prepareSignedClaim(
-                    authUrl: config.authUrl,
-                    name: watchOnlyAccountName,
-                    secretKeyHex: secretKey
-                )
-                try await WatchOnlyAccountManager.shared.deliver(payload: preparedClaim.1, authUrl: config.authUrl)
-                preparedAccountId = preparedClaim.0.id
-            }
-
-            try await PubkyService.approveAuth(
+            try await approvePubkyAuthRequest(
+                request: config.request,
                 authUrl: config.authUrl,
-                expectedCapabilities: config.request.capabilities,
+                accountName: watchOnlyAccountName,
                 secretKeyHex: secretKey
             )
-
-            if let preparedAccountId {
-                try WatchOnlyAccountManager.shared.markSetupActive(id: preparedAccountId)
-            }
 
             state = .success
         } catch {

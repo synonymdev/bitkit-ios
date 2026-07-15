@@ -46,7 +46,7 @@ enum AppReset {
         if let bundleID = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
         }
-        WatchOnlyAccountManager.shared.reload()
+        try WatchOnlyAccountManager.shared.reload()
 
         // Singleton retains stale @AppStorage values after removePersistentDomain
         SettingsViewModel.shared.resetToDefaults()

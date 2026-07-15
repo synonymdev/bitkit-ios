@@ -32,6 +32,14 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertNil(request.bitkitClaim)
     }
 
+    func testParseUrlRejectsWatchOnlyCapabilityWithoutClaim() {
+        let url = authUrl(capabilities: PubkyAuthClaim.watchOnlyAccountCapabilities)
+
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url)) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .missingBitkitClaim)
+        }
+    }
+
     func testParseUrlRejectsDuplicateBitkitClaim() {
         let url = authUrl(
             capabilities: PubkyAuthClaim.watchOnlyAccountCapabilities,

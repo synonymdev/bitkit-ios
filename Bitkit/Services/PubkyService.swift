@@ -95,6 +95,27 @@ enum PubkyService {
         )
     }
 
+    static func approveAuthWithCompanionClaim(authUrl: String, unsignedPayload: Data, secretKeyHex: String) async throws {
+        try await PaykitSdkService.shared.approveAuthWithCompanionClaim(
+            authUrl: authUrl,
+            expectedCapabilities: PubkyAuthClaim.watchOnlyAccountCapabilities,
+            secretKeyHex: secretKeyHex,
+            claim: Paykit.PubkyAuthCompanionClaim(
+                queryParameter: PubkyAuthClaim.queryParameter,
+                claimType: PubkyAuthClaim.watchOnlyAccountV1.rawValue,
+                unsignedPayload: unsignedPayload
+            )
+        )
+    }
+
+    static func didDeliverCompanionClaim(error: Error) -> Bool {
+        guard let approvalError = error as? Paykit.PubkyAuthCompanionClaimApprovalError else { return false }
+        if case .AuthorizationFailure = approvalError {
+            return true
+        }
+        return false
+    }
+
     // MARK: - Key Derivation
 
     /// Derive an Ed25519 secret key from a BIP39 mnemonic. Returns hex-encoded 32-byte key.
@@ -330,6 +351,22 @@ actor PaykitSdkService {
                 authUrl: authUrl,
                 expectedCapabilities: expectedCapabilities,
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex)
+            )
+        }
+    }
+
+    func approveAuthWithCompanionClaim(
+        authUrl: String,
+        expectedCapabilities: String,
+        secretKeyHex: String,
+        claim: Paykit.PubkyAuthCompanionClaim
+    ) async throws {
+        try await operationLock.withLock {
+            try await bootstrap().approveAuthWithCompanionClaim(
+                authUrl: authUrl,
+                expectedCapabilities: expectedCapabilities,
+                localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
+                claim: claim
             )
         }
     }

@@ -10,6 +10,7 @@ enum PubkyAuthClaim: String, Equatable {
 
 enum PubkyAuthRequestError: Error, Equatable {
     case invalidUrl
+    case missingBitkitClaim
     case duplicateBitkitClaim
     case unsupportedBitkitClaim(String)
     case invalidBitkitClaimCapabilities
@@ -69,7 +70,12 @@ struct PubkyAuthRequest {
         guard claimValues.count <= 1 else {
             throw PubkyAuthRequestError.duplicateBitkitClaim
         }
-        guard let claimValue = claimValues.first else { return nil }
+        guard let claimValue = claimValues.first else {
+            if capabilities == PubkyAuthClaim.watchOnlyAccountCapabilities {
+                throw PubkyAuthRequestError.missingBitkitClaim
+            }
+            return nil
+        }
         guard let claim = PubkyAuthClaim(rawValue: claimValue) else {
             throw PubkyAuthRequestError.unsupportedBitkitClaim(claimValue)
         }

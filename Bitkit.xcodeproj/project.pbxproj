@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		182817C12F59A7F10055A441 /* Paykit in Frameworks */ = {isa = PBXBuildFile; productRef = 182817C02F59A7F10055A441 /* Paykit */; };
+		18B58A012F7A000100B58A01 /* Base58Swift in Frameworks */ = {isa = PBXBuildFile; productRef = 18B58A032F7A000100B58A01 /* Base58Swift */; };
 		18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65DFF2EB964B500252335 /* VssRustClientFfi */; };
 		18D65E022EB964BD00252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65E012EB964BD00252335 /* VssRustClientFfi */; };
 		3D76260F4C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */; };
@@ -203,14 +204,12 @@
 				Services/CoreService.swift,
 				Services/GeoService.swift,
 				Services/LightningService.swift,
-				Services/WatchOnlyAccountService.swift,
 				Services/ServiceQueue.swift,
 				Services/VssStoreIdProvider.swift,
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
 				Utilities/LightningAmountConversion.swift,
-				Utilities/LocalizeHelpers.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
@@ -260,6 +259,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				182817C12F59A7F10055A441 /* Paykit in Frameworks */,
+				18B58A012F7A000100B58A01 /* Base58Swift in Frameworks */,
 				3D76260F4C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */,
 				968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */,
 				18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */,
@@ -401,6 +401,7 @@
 				4AAB08C92E1FE77600BA63DF /* Lottie */,
 				18D65DFF2EB964B500252335 /* VssRustClientFfi */,
 				182817C02F59A7F10055A441 /* Paykit */,
+				18B58A032F7A000100B58A01 /* Base58Swift */,
 			);
 			productName = Bitkit;
 			productReference = 96FE1F612C2DE6AA006D0C8B /* Bitkit.app */;
@@ -511,6 +512,7 @@
 				4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */,
 				18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */,
 				182817BF2F59A7F10055A441 /* XCRemoteSwiftPackageReference "paykit-rs" */,
+				18B58A022F7A000100B58A01 /* XCRemoteSwiftPackageReference "Base58Swift" */,
 			);
 			productRefGroup = 96FE1F622C2DE6AA006D0C8B /* Products */;
 			projectDirPath = "";
@@ -574,8 +576,8 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/LDKNodeFFI.framework",
-				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/vss_rust_client_ffiFFI.framework",
+				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/LDKNodeFFI.framework/_CodeSignature",
+				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/vss_rust_client_ffiFFI.framework/_CodeSignature",
 			);
 			name = "Remove Static Framework Stubs";
 			outputFileListPaths = (
@@ -769,6 +771,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) BITKIT_NOTIFICATION_EXTENSION";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -801,6 +804,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) BITKIT_NOTIFICATION_EXTENSION";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1173,7 +1177,15 @@
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
 				kind = exactVersion;
-				version = "0.1.0-rc33";
+				version = "0.1.0-rc35";
+			};
+		};
+		18B58A022F7A000100B58A01 /* XCRemoteSwiftPackageReference "Base58Swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/keefertaylor/Base58Swift";
+			requirement = {
+				kind = exactVersion;
+				version = 2.1.14;
 			};
 		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {
@@ -1197,7 +1209,7 @@
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
 			requirement = {
 				kind = exactVersion;
-				version = "0.7.0-rc.54";
+				version = "0.7.0-rc.55";
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {
@@ -1231,6 +1243,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 182817BF2F59A7F10055A441 /* XCRemoteSwiftPackageReference "paykit-rs" */;
 			productName = Paykit;
+		};
+		18B58A032F7A000100B58A01 /* Base58Swift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18B58A022F7A000100B58A01 /* XCRemoteSwiftPackageReference "Base58Swift" */;
+			productName = Base58Swift;
 		};
 		18D65DFF2EB964B500252335 /* VssRustClientFfi */ = {
 			isa = XCSwiftPackageProductDependency;
