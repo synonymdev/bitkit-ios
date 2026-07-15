@@ -291,7 +291,7 @@ enum Env {
 
     static var btcRatesServer: String {
         switch network {
-        case .bitcoin: "https://blocktank.synonym.to/fx/rates/btc"
+        case .bitcoin: "https://api1.blocktank.to/api/fx/rates/btc"
         case .signet: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
         case .testnet: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
         case .regtest: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
@@ -333,16 +333,6 @@ enum Env {
         switch network {
         case .bitcoin: "https://blocktank.synonym.to/backups-ldk"
         default: "https://bitkit.stag0.blocktank.to/backups-ldk"
-        }
-    }
-
-    /// Pubky/Paykit capabilities — production for mainnet, staging for regtest/testnet/signet.
-    static var pubkyCapabilities: String {
-        switch network {
-        case .bitcoin:
-            return "/pub/bitkit.to/:rw,/pub/pubky.app/:r,/pub/paykit/v0/:rw"
-        default:
-            return "/pub/staging.bitkit.to/:rw,/pub/staging.pubky.app/:r,/pub/paykit/v0/:rw"
         }
     }
 

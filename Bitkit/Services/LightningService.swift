@@ -28,6 +28,26 @@ class LightningService {
 
     static var shared = LightningService()
 
+    private static let scoringBasePenaltyMsat: UInt64 = 50000
+    private static let scoringLiquidityPenaltyMultiplierMsat: UInt64 = 10000
+    private static let scoringLiquidityPenaltyAmountMultiplierMsat: UInt64 = 10000
+    private static let scoringHistoricalLiquidityPenaltyAmountMultiplierMsat: UInt64 = 20000
+    private static let scoringConsideredImpossiblePenaltyMsat: UInt64 = 1_000_000_000_000
+    private static let scoringProbingDiversityPenaltyMsat: UInt64 = 60000
+
+    private static let defaultScoringFeeParameters = ScoringFeeParameters(
+        basePenaltyMsat: 1024,
+        basePenaltyAmountMultiplierMsat: 131_072,
+        liquidityPenaltyMultiplierMsat: 0,
+        liquidityPenaltyAmountMultiplierMsat: 0,
+        historicalLiquidityPenaltyMultiplierMsat: 10000,
+        historicalLiquidityPenaltyAmountMultiplierMsat: 1250,
+        antiProbingPenaltyMsat: 250,
+        consideredImpossiblePenaltyMsat: 100_000_000_000,
+        linearSuccessProbability: false,
+        probingDiversityPenaltyMsat: 0
+    )
+
     private init() {}
 
     /// Flag and lock to prevent concurrent setup calls
@@ -106,6 +126,8 @@ class LightningService {
             Logger.info("Setting pathfinding scores source from scorer url: \(scorerUrl)")
             builder.setPathfindingScoresSource(url: scorerUrl)
         }
+
+        builder.setScoringFeeParams(params: Self.scoringFeeParameters(config: config))
 
         // Configure gossip source from current settings
         configureGossipSource(builder: builder, rgsServerUrl: rgsServerUrl)
@@ -1249,12 +1271,14 @@ extension LightningService {
                     Logger.info(
                         "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)"
                     )
-                case let .probeSuccessful(paymentId, paymentHash):
-                    Logger.info("🤑 Probe successful: paymentId: \(paymentId) paymentHash: \(paymentHash)")
-                case let .probeFailed(paymentId, paymentHash, shortChannelId):
+                case let .probeSuccessful(paymentId, paymentHash, routeFeeMsat):
+                    let routeFeeText = routeFeeMsat.map(String.init) ?? "unknown"
+                    Logger.info("🤑 Probe successful: paymentId: \(paymentId) paymentHash: \(paymentHash) routeFeeMsat: \(routeFeeText)")
+                case let .probeFailed(paymentId, paymentHash, shortChannelId, routeFeeMsat):
+                    let routeFeeText = routeFeeMsat.map(String.init) ?? "unknown"
                     Logger
                         .info(
-                            "❌ Probe failed: paymentId: \(paymentId) paymentHash: \(paymentHash) shortChannelId: \(String(describing: shortChannelId))"
+                            "❌ Probe failed: paymentId: \(paymentId) paymentHash: \(paymentHash) shortChannelId: \(String(describing: shortChannelId)) routeFeeMsat: \(routeFeeText)"
                         )
                 // Payment claimable doesn't need activity update - it's still pending
                 // The payment will be updated when it succeeds or fails via paymentSuccessful/paymentFailed events
@@ -1572,6 +1596,23 @@ extension LightningService {
     }
 
     // MARK: - Probing
+
+    private static func scoringFeeParameters(config: Config) -> ScoringFeeParameters {
+        let defaultParameters = config.scoringFeeParams ?? defaultScoringFeeParameters
+
+        return ScoringFeeParameters(
+            basePenaltyMsat: scoringBasePenaltyMsat,
+            basePenaltyAmountMultiplierMsat: defaultParameters.basePenaltyAmountMultiplierMsat,
+            liquidityPenaltyMultiplierMsat: scoringLiquidityPenaltyMultiplierMsat,
+            liquidityPenaltyAmountMultiplierMsat: scoringLiquidityPenaltyAmountMultiplierMsat,
+            historicalLiquidityPenaltyMultiplierMsat: defaultParameters.historicalLiquidityPenaltyMultiplierMsat,
+            historicalLiquidityPenaltyAmountMultiplierMsat: scoringHistoricalLiquidityPenaltyAmountMultiplierMsat,
+            antiProbingPenaltyMsat: defaultParameters.antiProbingPenaltyMsat,
+            consideredImpossiblePenaltyMsat: scoringConsideredImpossiblePenaltyMsat,
+            linearSuccessProbability: defaultParameters.linearSuccessProbability,
+            probingDiversityPenaltyMsat: scoringProbingDiversityPenaltyMsat
+        )
+    }
 
     /// Sends a probe to test if a payment route exists for the given invoice.
     /// - Parameters:

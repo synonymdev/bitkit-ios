@@ -1,5 +1,7 @@
 import BitkitCore
 
+private let firmwareErrorCode = 99
+
 extension Error {
     /// Whether this error is a Trezor on-device cancellation (user declined signing, or cancelled PIN
     /// / passphrase entry). Distinct from Swift `CancellationError` (the flow/task being dismissed).
@@ -21,5 +23,37 @@ extension Error {
         }
 
         return false
+    }
+
+    /// Whether this error is a locked/busy Trezor (typed `TrezorError.DeviceBusy` since bitkit-core 0.3.9).
+    func isTrezorDeviceBusy() -> Bool {
+        if let trezorError = self as? TrezorError {
+            if case .DeviceBusy = trezorError {
+                return true
+            }
+            return false
+        }
+
+        if let appError = self as? AppError, let underlyingError = appError.underlyingError {
+            return underlyingError.isTrezorDeviceBusy()
+        }
+
+        return false
+    }
+
+    func isTrezorFirmwareError() -> Bool {
+        if let appError = self as? AppError {
+            let message = appError.debugMessage ?? appError.message
+            if message.contains("Device error (code \(firmwareErrorCode))") && message.contains("Firmware error") {
+                return true
+            }
+            if let underlyingError = appError.underlyingError {
+                return underlyingError.isTrezorFirmwareError()
+            }
+            return false
+        }
+
+        let message = localizedDescription
+        return message.contains("Device error (code \(firmwareErrorCode))") && message.contains("Firmware error")
     }
 }

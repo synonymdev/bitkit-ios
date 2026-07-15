@@ -99,6 +99,31 @@ final class PubkyModelTests: XCTestCase {
         XCTAssertEqual(profile.status, "online")
     }
 
+    func testProfileUsesFallbackNameWhenNameIsEmpty() {
+        let profile = PubkyProfile(
+            publicKey: "pk1",
+            name: "",
+            bio: "Bio",
+            imageUrl: "pubky://avatar",
+            links: [PubkyProfileLink(label: "Web", url: "https://example.com")],
+            status: "online"
+        )
+
+        let updated = profile.withNameFallback("Alice")
+
+        XCTAssertEqual(updated.name, "Alice")
+        XCTAssertEqual(updated.bio, "Bio")
+        XCTAssertEqual(updated.imageUrl, "pubky://avatar")
+        XCTAssertEqual(updated.links.count, 1)
+        XCTAssertEqual(updated.status, "online")
+    }
+
+    func testProfileKeepsExistingNameOverFallback() {
+        let profile = PubkyProfile(publicKey: "pk1", name: "Bob", bio: "", imageUrl: nil, links: [], status: nil)
+
+        XCTAssertEqual(profile.withNameFallback("Alice").name, "Bob")
+    }
+
     // MARK: - PubkyContact
 
     func testContactDisplayName() {

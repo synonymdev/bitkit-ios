@@ -102,6 +102,14 @@ class TrezorService {
         await trezorGetFeatures()
     }
 
+    /// Refresh device features from the connected Trezor without reconnecting.
+    func refreshFeatures() async throws -> TrezorFeatures {
+        try await ServiceQueue.background(.core) { [self] in
+            ensureCallbacksRegistered()
+            return try await trezorRefreshFeatures()
+        }
+    }
+
     /// Get the device's master root fingerprint as an 8-character hex string
     /// - Returns: The root fingerprint (e.g., "73c5da0a")
     func getDeviceFingerprint() async throws -> String {

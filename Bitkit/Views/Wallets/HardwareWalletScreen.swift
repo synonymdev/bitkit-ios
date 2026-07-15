@@ -181,9 +181,8 @@ struct HardwareWalletScreen: View {
     /// snapshot and removes the tile. The reactive auto-pop above then leaves the screen.
     private func removeWallet() async {
         guard let wallet else { return }
-        hwWalletManager.removeDevice(id: wallet.id)
-        for id in wallet.deviceIds {
-            await trezorManager.forgetDevice(id: id)
+        await hwWalletManager.removeWallet(wallet) { deviceId in
+            await trezorManager.forgetDevice(id: deviceId)
         }
     }
 }

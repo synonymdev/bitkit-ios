@@ -39,7 +39,7 @@
 "hardware__connect_title" = "Connect Device";
 "hardware__connect_header" = "Searching for <accent>devices</accent>";
 "hardware__connect_text" = "Please connect your hardware wallet now via Bluetooth.";
-"hardware__connect_error" = "Could not connect to your Trezor. Check that it is unlocked and try again.";
+"hardware__connect_error" = "Could not connect to your hardware device. Make sure it is unlocked, nearby, and not connected to another phone or computer, then try again.";
 "hardware__search_error" = "Could not search for hardware wallets. Check your connection and try again.";
 "hardware__pairing_code_invalid" = "Incorrect pairing code. Put your Trezor back in pairing mode and try again.";
 "hardware__device_busy" = "Your Trezor is busy. Unlock it on the device, then try again.";

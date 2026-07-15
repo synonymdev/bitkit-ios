@@ -8,20 +8,7 @@ struct WalletBackupV1: Codable {
     let createdAt: UInt64
     let transfers: [Transfer]
     let privatePaykitHighestReservedReceiveIndexByAddressType: [String: UInt32]?
-    let privatePaykitContactLinks: [String: PrivatePaykitContactLinkBackupV1]?
-}
-
-struct PrivatePaykitContactLinkBackupV1: Codable, Equatable {
-    let publicKey: String
-    let linkSnapshotHex: String?
-    let handshakeSnapshotHex: String?
-    let remoteEndpoints: [String: String]
-    let linkCompletedAt: UInt64?
-    let handshakeUpdatedAt: UInt64?
-    let recoveryStartedAt: UInt64?
-    let mainRecoveryAttemptId: String?
-    let responderRecoveryAttemptId: String?
-    var awaitingRecoveredRemoteEndpoints: Bool? = nil
+    let paykitSdkBackupState: String?
 }
 
 struct MetadataBackupV1: Codable {
@@ -30,6 +17,7 @@ struct MetadataBackupV1: Codable {
     let tagMetadata: [PreActivityMetadata]
     let cache: AppCacheData
     let pubkySession: PubkySessionBackupV1?
+    let pubkyContactProfileOverrides: [String: PubkyProfileData]?
 }
 
 struct PubkySessionBackupV1: Codable, Equatable {
