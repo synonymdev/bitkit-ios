@@ -22,6 +22,10 @@ struct PubkyAuthPermission {
     let path: String
     let accessLevel: String
 
+    var displayPath: String {
+        path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+    }
+
     var displayAccess: String {
         var levels: [String] = []
         if accessLevel.contains("r") { levels.append("READ") }

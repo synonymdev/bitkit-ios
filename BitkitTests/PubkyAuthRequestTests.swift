@@ -160,7 +160,17 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertEqual(PubkyAuthRequest.extractServiceName("pub/pubky.app/"), "pubky.app")
     }
 
-    // MARK: - PubkyAuthPermission displayAccess
+    // MARK: - PubkyAuthPermission display
+
+    func testDisplayPathRemovesCapabilitySeparator() {
+        let permission = PubkyAuthPermission(path: "/pub/paykit/v0/bitkit/server/", accessLevel: "rw")
+        XCTAssertEqual(permission.displayPath, "/pub/paykit/v0/bitkit/server")
+    }
+
+    func testDisplayPathPreservesRoot() {
+        let permission = PubkyAuthPermission(path: "/", accessLevel: "r")
+        XCTAssertEqual(permission.displayPath, "/")
+    }
 
     func testDisplayAccessReadWrite() {
         let permission = PubkyAuthPermission(path: "/test", accessLevel: "rw")

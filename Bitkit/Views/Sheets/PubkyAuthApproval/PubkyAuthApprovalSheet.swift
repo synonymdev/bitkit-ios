@@ -103,25 +103,11 @@ struct PubkyAuthApprovalSheet: View {
 
     var body: some View {
         Sheet(id: .pubkyAuthApproval, data: config) {
-            VStack(alignment: .leading, spacing: 0) {
-                SheetHeader(
-                    title: headerTitle,
-                    showBackButton: showsBackButton,
-                    onBack: onBack
-                )
-
-                switch state {
-                case .watchOnlyConsent:
-                    watchOnlyConsentContent
-                case .authorize:
-                    authorizeContent
-                case .authorizing:
-                    authorizingContent
-                case .success:
-                    successContent
-                }
+            if state == .watchOnlyConsent {
+                watchOnlyConsentContent
+            } else {
+                authorizationFlowContent
             }
-            .padding(.horizontal, 16)
         }
         .fullScreenCover(isPresented: $isShowingAuthCheck) {
             AuthCheck(
@@ -142,53 +128,45 @@ struct PubkyAuthApprovalSheet: View {
     // MARK: - Watch-Only Consent
 
     private var watchOnlyConsentContent: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    Image("coin-stack")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 256, height: 256)
-                        .frame(maxWidth: .infinity)
-
-                    Spacer()
-                        .frame(height: 36)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        DisplayText(
-                            t("pubky_auth__watch_only_intro_title"),
-                            accentColor: .blueAccent
-                        )
-                        .fixedSize(horizontal: false, vertical: true)
-
-                        BodyMText(t("pubky_auth__watch_only_intro_description"))
-                            .lineSpacing(4)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    HStack(spacing: 16) {
-                        CustomButton(title: t("common__cancel"), variant: .secondary) {
-                            sheets.hideSheet()
-                        }
-                        .accessibilityIdentifier("PubkyAuthWatchOnlyCancel")
-
-                        CustomButton(title: t("pubky_auth__watch_only_intro_approve")) {
-                            _ = state.approveWatchOnlyConsent()
-                        }
-                        .accessibilityIdentifier("PubkyAuthWatchOnlyApprove")
-                    }
-                }
-                .frame(minHeight: geometry.size.height, alignment: .top)
-                .padding(.horizontal, 16)
-            }
-            .scrollIndicators(.hidden)
-        }
-        .accessibilityIdentifier("PubkyAuthWatchOnlyConsent")
+        SheetIntro(
+            navTitle: t("pubky_auth__watch_only_intro_nav_title"),
+            title: t("pubky_auth__watch_only_intro_title"),
+            description: t("pubky_auth__watch_only_intro_description"),
+            image: "coin-stack",
+            continueText: t("pubky_auth__watch_only_intro_approve"),
+            cancelText: t("common__cancel"),
+            accentColor: .blueAccent,
+            testID: "PubkyAuthWatchOnlyConsent",
+            cancelTestID: "PubkyAuthWatchOnlyCancel",
+            continueTestID: "PubkyAuthWatchOnlyApprove",
+            onCancel: { sheets.hideSheet() },
+            onContinue: { _ = state.approveWatchOnlyConsent() }
+        )
     }
 
     // MARK: - Authorization
+
+    private var authorizationFlowContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SheetHeader(
+                title: headerTitle,
+                showBackButton: showsBackButton,
+                onBack: onBack
+            )
+
+            switch state {
+            case .watchOnlyConsent:
+                EmptyView()
+            case .authorize:
+                authorizeContent
+            case .authorizing:
+                authorizingContent
+            case .success:
+                successContent
+            }
+        }
+        .padding(.horizontal, 16)
+    }
 
     private var authorizeContent: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -261,7 +239,7 @@ struct PubkyAuthApprovalSheet: View {
                         .padding(.bottom, 16)
 
                     profileCard
-                        .padding(.bottom, 24)
+                        .padding(.bottom, 16)
                 }
                 .frame(minHeight: geometry.size.height, alignment: .top)
             }
@@ -311,7 +289,7 @@ struct PubkyAuthApprovalSheet: View {
                 .font(.system(size: 14))
                 .foregroundColor(.white)
 
-            BodySSBText(permission.path)
+            BodySSBText(permission.displayPath)
                 .lineLimit(1)
 
             Spacer()
