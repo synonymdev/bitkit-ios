@@ -1,8 +1,11 @@
-import Base58Swift
 @testable import Bitkit
 import LDKNode
 import Paykit
 import XCTest
+
+private let approvalTestXpub =
+    "tpubDDWohsp5dx2iMJ9N7iHbgAEDhH4BJB9NWW1fEW3yA3AFNDREmpzteCXNqppMLUmKFY5q5e3" +
+    "PXtS5CuqWCQbYcGhpPqYAgQSYdwknW9J6sQv"
 
 final class PubkyAuthApprovalSheetTests: XCTestCase {
     func testAuthDisplayPublicKeyOmitsPubkyPrefix() {
@@ -390,7 +393,7 @@ private final class ApprovalFakeWatchOnlyAccountNode: Bitkit.WatchOnlyAccountNod
     private(set) var trackingChanges: [Bool] = []
 
     func exportWatchOnlyAccountXpub(accountIndex _: UInt32, addressType _: LDKNode.AddressType) async throws -> String {
-        base58CheckEncode(Data((0 ..< Bitkit.WatchOnlyAccountClaimCodec.serializedXpubLength).map { UInt8($0 + 1) }))
+        approvalTestXpub
     }
 
     func setWatchOnlyAccountTracking(
@@ -413,10 +416,6 @@ private final class ApprovalFakeWatchOnlyAccountNode: Bitkit.WatchOnlyAccountNod
         records _: [Bitkit.WatchOnlyAccountRecord],
         managedRecords _: [Bitkit.WatchOnlyAccountRecord]
     ) async throws {}
-
-    private func base58CheckEncode(_ payload: Data) -> String {
-        Base58.base58CheckEncode([UInt8](payload))
-    }
 }
 
 private func XCTAssertThrowsErrorAsync(

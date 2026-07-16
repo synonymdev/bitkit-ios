@@ -1,12 +1,21 @@
-import Base58Swift
 @testable import Bitkit
 import LDKNode
 import XCTest
 
+private let testXpub =
+    "tpubDDWohsp5dx2iMJ9N7iHbgAEDhH4BJB9NWW1fEW3yA3AFNDREmpzteCXNqppMLUmKFY5q5e3" +
+    "PXtS5CuqWCQbYcGhpPqYAgQSYdwknW9J6sQv"
+private let alternateTestXpub =
+    "tpubDCgMbrEACV32r3jqiWn685Ni6Z8vkPtVn73Pv5ZvyXkwh4iFbrpcrXXPvtJhiCvHvRvZY6dXU" +
+    "gKt8aZEPpo4tRpHkNC7jR9B7JVZo8kFxCz"
+private let testSerializedXpubHex =
+    "043587cf03caafd489800000004b5fcc4a5fe210d9fba6616b4db1d025237dd7f035101f11f562401bc7104699" +
+    "02e0bf22b51a6a49e0b149b995670d0ed9bb1fd99417748bacefba88fae655572d"
+
 final class WatchOnlyAccountServiceTests: XCTestCase {
     func testUnsignedClaimContainsExactAccountMetadata() throws {
-        let rawXpub = Data((0 ..< WatchOnlyAccountClaimCodec.serializedXpubLength).map { UInt8($0 + 1) })
-        let record = makeRecord(accountIndex: 42, xpub: base58CheckEncode(rawXpub))
+        let rawXpub = testSerializedXpubHex.hexaData
+        let record = makeRecord(accountIndex: 42, xpub: testXpub)
 
         let payload = try WatchOnlyAccountClaimCodec.encode(record: record)
 
@@ -21,9 +30,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
     }
 
     func testUnsignedClaimRejectsInvalidBase58CheckChecksum() throws {
-        let rawXpub = Data((0 ..< WatchOnlyAccountClaimCodec.serializedXpubLength).map { UInt8($0 + 1) })
-        let validXpub = base58CheckEncode(rawXpub)
-        let invalidXpub = String(validXpub.dropLast()) + (validXpub.last == "1" ? "2" : "1")
+        let invalidXpub = String(testXpub.dropLast()) + (testXpub.last == "1" ? "2" : "1")
 
         XCTAssertThrowsError(try WatchOnlyAccountClaimCodec.encode(record: makeRecord(accountIndex: 1, xpub: invalidXpub))) {
             XCTAssertEqual($0 as? WatchOnlyAccountError, .invalidExtendedPublicKey)
@@ -120,7 +127,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
+        let xpub = testXpub
         let pending = makeRecord(
             accountIndex: 1,
             xpub: xpub,
@@ -182,7 +189,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
+        let xpub = testXpub
         let local = makeRecord(
             accountIndex: 1,
             xpub: xpub,
@@ -212,13 +219,13 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
 
         let local = makeRecord(
             accountIndex: 1,
-            xpub: base58CheckEncode(Data(repeating: 1, count: 78)),
+            xpub: testXpub,
             setupState: .active,
             requestFingerprint: "local"
         )
         let conflictingBackup = makeRecord(
             accountIndex: 1,
-            xpub: base58CheckEncode(Data(repeating: 2, count: 78)),
+            xpub: alternateTestXpub,
             setupState: .active,
             requestFingerprint: "restored"
         )
@@ -233,7 +240,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
+        let xpub = testXpub
         let walletZero = makeRecord(accountIndex: 1, xpub: xpub, walletIndex: 0, setupState: .active)
         let walletOne = makeRecord(accountIndex: 1, xpub: xpub, walletIndex: 1, setupState: .active)
         try WatchOnlyAccountStore.save([walletZero, walletOne], defaults: defaults)
@@ -252,7 +259,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
+        let xpub = testXpub
         try WatchOnlyAccountStore.save(
             [
                 makeRecord(accountIndex: 1, xpub: xpub, setupState: .active),
@@ -351,7 +358,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         )
         let record = makeRecord(
             accountIndex: accountIndex,
-            xpub: base58CheckEncode(Data(repeating: 1, count: 78)),
+            xpub: testXpub,
             isTrackingEnabled: false
         )
         try WatchOnlyAccountStore.save([record], defaults: defaults)
@@ -685,7 +692,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         )
         let restored = makeRecord(
             accountIndex: 8,
-            xpub: base58CheckEncode(Data(repeating: 8, count: 78)),
+            xpub: testXpub,
             setupState: .active
         )
 
@@ -732,7 +739,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         try await activateSetupAuthorization(manager: manager, id: prepared.0.id)
         let restored = makeRecord(
             accountIndex: 8,
-            xpub: base58CheckEncode(Data(repeating: 8, count: 78)),
+            xpub: testXpub,
             setupState: .active
         )
 
@@ -760,7 +767,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         try await activateSetupAuthorization(manager: manager, id: prepared.0.id)
         let restored = makeRecord(
             accountIndex: 8,
-            xpub: base58CheckEncode(Data(repeating: 8, count: 78)),
+            xpub: testXpub,
             setupState: .active
         )
         try await manager.restore([restored], allocationState: nil)
@@ -813,10 +820,6 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
             setupState: setupState
         )
     }
-
-    private func base58CheckEncode(_ payload: Data) -> String {
-        Base58.base58CheckEncode([UInt8](payload))
-    }
 }
 
 private struct TrackingChange: Equatable {
@@ -852,8 +855,7 @@ private final class FakeWatchOnlyAccountNode: WatchOnlyAccountNodeHandling {
             failNextCreation = false
             throw FakeNodeError.creationFailed
         }
-        let rawXpub = Data((0 ..< WatchOnlyAccountClaimCodec.serializedXpubLength).map { UInt8(($0 + Int(accountIndex)) % 255 + 1) })
-        return base58CheckEncode(rawXpub)
+        return accountIndex.isMultiple(of: 2) ? alternateTestXpub : testXpub
     }
 
     func setWatchOnlyAccountTracking(
@@ -894,10 +896,6 @@ private final class FakeWatchOnlyAccountNode: WatchOnlyAccountNodeHandling {
             throw FakeNodeError.reconciliationFailed
         }
         trackedAccountIndexes.formUnion(desiredAccountIndexes)
-    }
-
-    private func base58CheckEncode(_ payload: Data) -> String {
-        Base58.base58CheckEncode([UInt8](payload))
     }
 }
 

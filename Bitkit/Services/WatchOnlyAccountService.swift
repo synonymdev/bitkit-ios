@@ -1,4 +1,4 @@
-import Base58Swift
+import BitkitCore
 import Combine
 import CryptoKit
 import Foundation
@@ -905,12 +905,18 @@ enum WatchOnlyAccountClaimCodec {
     }
 
     static func serializedXpub(_ xpub: String) throws -> Data {
-        guard xpub.count > 4,
-              let decoded = Base58.base58CheckDecode(xpub),
-              decoded.count == serializedXpubLength
-        else {
+        guard xpub.count > 4 else {
             throw WatchOnlyAccountError.invalidExtendedPublicKey
         }
-        return Data(decoded)
+
+        do {
+            let serialized = try BitkitCore.serializedExtendedPubkey(xpub: xpub)
+            guard serialized.count == serializedXpubLength else {
+                throw WatchOnlyAccountError.invalidExtendedPublicKey
+            }
+            return serialized
+        } catch {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
+        }
     }
 }
