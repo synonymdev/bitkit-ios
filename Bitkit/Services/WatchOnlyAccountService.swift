@@ -73,7 +73,7 @@ struct WatchOnlyAccountAllocationState: Codable, Equatable {
 private struct WatchOnlyAccountData: Codable {
     var accounts: [WatchOnlyAccountRecord] = []
     var allocationState = WatchOnlyAccountAllocationState()
-    var accountsPendingUnload: [WatchOnlyAccountRecord]?
+    var accountsPendingUnload: [WatchOnlyAccountRecord] = []
 }
 
 struct WatchOnlyAccountBackupSnapshot {
@@ -91,8 +91,6 @@ enum WatchOnlyAccountStore {
 
     static let dataKey = "watchOnlyAccountDataV1"
 
-    private static let legacyAccountsKey = "watchOnlyAccountsV1"
-    private static let legacyAllocationKey = "watchOnlyAccountAllocationsV1"
     private static let maximumAccountIndex = UInt32(Int32.max)
     private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
 
@@ -131,7 +129,7 @@ enum WatchOnlyAccountStore {
         let restoredRecords = records ?? []
         var data = (try? loadData(defaults: defaults)) ?? WatchOnlyAccountData()
         let currentAccounts = data.accounts
-        let locallyManagedAccounts = currentAccounts + (data.accountsPendingUnload ?? [])
+        let locallyManagedAccounts = currentAccounts + data.accountsPendingUnload
         let authorizingAccounts = sanitizedAccounts(locallyManagedAccounts.filter { $0.setupState == .authorizing })
         let authorizingIds = Set(authorizingAccounts.map(\.id))
         let authorizingKeys = Set(authorizingAccounts.map(managementKey))
@@ -163,9 +161,9 @@ enum WatchOnlyAccountStore {
         }) + protectedLocalAccounts
         let mergedKeys = Set(mergedRecords.map(managementKey))
 
-        let accountsPendingUnload = uniqueAccounts((data.accountsPendingUnload ?? []) + currentAccounts)
+        let accountsPendingUnload = uniqueAccounts(data.accountsPendingUnload + currentAccounts)
             .filter { !mergedKeys.contains(managementKey($0)) }
-        data.accountsPendingUnload = accountsPendingUnload.isEmpty ? nil : accountsPendingUnload
+        data.accountsPendingUnload = accountsPendingUnload
         data.accounts = mergedRecords.sorted { $0.accountIndex < $1.accountIndex }
 
         var localAllocationState = WatchOnlyAccountAllocationState(
@@ -248,17 +246,14 @@ enum WatchOnlyAccountStore {
         let data = try loadData(defaults: defaults)
         return WatchOnlyAccountReconciliationSnapshot(
             accounts: data.accounts.sorted { $0.accountIndex < $1.accountIndex },
-            managedAccounts: uniqueAccounts(data.accounts + (data.accountsPendingUnload ?? []))
+            managedAccounts: uniqueAccounts(data.accounts + data.accountsPendingUnload)
         )
     }
 
     static func finishReconciliation(walletIndex: Int, defaults: UserDefaults = .standard) throws {
         var data = try loadData(defaults: defaults)
-        guard let accountsPendingUnload = data.accountsPendingUnload,
-              accountsPendingUnload.contains(where: { $0.walletIndex == walletIndex })
-        else { return }
-        let remainingAccounts = accountsPendingUnload.filter { $0.walletIndex != walletIndex }
-        data.accountsPendingUnload = remainingAccounts.isEmpty ? nil : remainingAccounts
+        guard data.accountsPendingUnload.contains(where: { $0.walletIndex == walletIndex }) else { return }
+        data.accountsPendingUnload = data.accountsPendingUnload.filter { $0.walletIndex != walletIndex }
         try saveData(data, defaults: defaults)
     }
 
@@ -321,28 +316,11 @@ enum WatchOnlyAccountStore {
 
     static func clear(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: dataKey)
-        defaults.removeObject(forKey: legacyAccountsKey)
-        defaults.removeObject(forKey: legacyAllocationKey)
     }
 
     private static func loadData(defaults: UserDefaults) throws -> WatchOnlyAccountData {
-        if let encoded = defaults.data(forKey: dataKey) {
-            return try JSONDecoder().decode(WatchOnlyAccountData.self, from: encoded)
-        }
-
-        let legacyAccountsData = defaults.data(forKey: legacyAccountsKey)
-        let legacyAllocationData = defaults.data(forKey: legacyAllocationKey)
-        guard legacyAccountsData != nil || legacyAllocationData != nil else {
-            return WatchOnlyAccountData()
-        }
-
-        let accounts = try legacyAccountsData.map { try JSONDecoder().decode([WatchOnlyAccountRecord].self, from: $0) } ?? []
-        var allocationState = try legacyAllocationData.map {
-            try JSONDecoder().decode(WatchOnlyAccountAllocationState.self, from: $0)
-        } ?? WatchOnlyAccountAllocationState()
-        allocationState.reconcileAccountIndexes(accounts)
-
-        return WatchOnlyAccountData(accounts: accounts, allocationState: allocationState)
+        guard let encoded = defaults.data(forKey: dataKey) else { return WatchOnlyAccountData() }
+        return try JSONDecoder().decode(WatchOnlyAccountData.self, from: encoded)
     }
 
     private static func saveData(_ data: WatchOnlyAccountData, defaults: UserDefaults) throws {

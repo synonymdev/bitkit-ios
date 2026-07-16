@@ -821,24 +821,6 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         ), 6)
     }
 
-    func testLegacyLoadDoesNotWriteDuringRead() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let legacyRecord = makeRecord(
-            accountIndex: 3,
-            xpub: base58CheckEncode(Data(repeating: 1, count: 78)),
-            setupState: .active
-        )
-        try defaults.set(JSONEncoder().encode([legacyRecord]), forKey: "watchOnlyAccountsV1")
-
-        XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [legacyRecord])
-        XCTAssertNil(defaults.data(forKey: WatchOnlyAccountStore.dataKey))
-
-        try WatchOnlyAccountStore.save([legacyRecord], defaults: defaults)
-        XCTAssertNotNil(defaults.data(forKey: WatchOnlyAccountStore.dataKey))
-    }
-
     func testReconciliationClearsPendingUnloadsOnlyForCurrentWallet() throws {
         let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
