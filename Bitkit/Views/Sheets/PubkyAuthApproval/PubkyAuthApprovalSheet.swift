@@ -55,7 +55,6 @@ struct PubkyAuthApprovalSheet: View {
 
     @State private var state: ApprovalState
     @State private var isShowingAuthCheck = false
-    @State private var watchOnlyAccountName = ""
 
     enum ApprovalState: Equatable {
         case watchOnlyConsent
@@ -137,12 +136,6 @@ struct PubkyAuthApprovalSheet: View {
                     }
                 }
             )
-        }
-        .task {
-            guard config.request.bitkitClaim != nil, watchOnlyAccountName.isEmpty else { return }
-            watchOnlyAccountName = config.request.serviceNames.first.map {
-                t("pubky_auth__watch_only_account_default_name", variables: ["service": $0])
-            } ?? t("pubky_auth__watch_only_account_fallback_name")
         }
     }
 
@@ -414,7 +407,7 @@ struct PubkyAuthApprovalSheet: View {
             try await PubkyService.approveAuthRequest(
                 request: config.request,
                 authUrl: config.authUrl,
-                accountName: effectiveWatchOnlyAccountName,
+                accountName: watchOnlyAccountName,
                 secretKeyHex: secretKey
             )
 
@@ -426,9 +419,7 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
-    private var effectiveWatchOnlyAccountName: String {
-        let trimmedName = watchOnlyAccountName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedName.isEmpty else { return trimmedName }
+    private var watchOnlyAccountName: String {
         return config.request.serviceNames.first.map {
             t("pubky_auth__watch_only_account_default_name", variables: ["service": $0])
         } ?? t("pubky_auth__watch_only_account_fallback_name")

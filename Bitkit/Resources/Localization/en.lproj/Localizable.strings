@@ -664,13 +664,9 @@
 "pubky_auth__description_prefix" = "A service is requesting permission to access and edit your ";
 "pubky_auth__description_suffix" = " data.";
 "pubky_auth__requested_permissions" = "REQUESTED PERMISSIONS";
-"pubky_auth__watch_only_account_title" = "WATCH-ONLY BITCOIN ACCOUNT";
-"pubky_auth__watch_only_account_description" = "Share a watch-only Bitcoin account. This lets the service generate receive addresses and view this account's transactions and balance, but not spend funds.";
 "pubky_auth__watch_only_account_default_name" = "{service} account";
 "pubky_auth__watch_only_account_fallback_name" = "Paykit server account";
 "pubky_auth__watch_only_account_name_error" = "Enter an account name between 1 and 64 characters.";
-"pubky_auth__watch_only_account_name_label" = "ACCOUNT NAME";
-"pubky_auth__watch_only_account_name_placeholder" = "Name this account";
 "pubky_auth__watch_only_intro_approve" = "Approve";
 "pubky_auth__watch_only_intro_description" = "To earn, you need to share a watch-only Bitcoin account with Paykit. It can view sales activity, but cannot spend funds.";
 "pubky_auth__watch_only_intro_nav_title" = "Earn";

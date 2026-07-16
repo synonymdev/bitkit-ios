@@ -110,7 +110,7 @@ enum PubkyService {
 
     static func didDeliverCompanionClaim(error: Error) -> Bool {
         guard let approvalError = error as? Paykit.PubkyAuthCompanionClaimApprovalError else { return false }
-        // Paykit uses AuthorizationFailure exclusively after companion delivery; every other variant is pre-delivery.
+        // Paykit documents AuthorizationFailure as the post-delivery case; unknown errors do not imply delivery.
         if case .AuthorizationFailure = approvalError {
             return true
         }
