@@ -413,6 +413,8 @@ class WalletViewModel: ObservableObject {
 
     func stopLightningNode(clearEventCallback: Bool = false) async throws {
         nodeLifecycleState = .stopping
+        // Stop the swap updates stream with the node; it restarts on the next wallet start.
+        await BoltzService.shared.stopUpdates()
         try await lightningService.stop(clearEventCallback: clearEventCallback)
         nodeLifecycleState = .stopped
         probeOutcomes.removeAll()

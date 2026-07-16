@@ -220,6 +220,12 @@
 "lightning__availability__text" = "Funds transfer to savings is usually instant, but settlement may take up to <accent>14 days</accent> under certain network conditions.";
 "lightning__savings_confirm__label" = "Transfer to savings";
 "lightning__savings_confirm__transfer_all" = "Transfer all";
+"lightning__savings_confirm__amount" = "To savings";
+"lightning__savings_confirm__amount_too_low" = "Amount is too low to transfer to savings.";
+"lightning__savings_confirm__close_instead" = "Close channel instead";
+"lightning__savings_confirm__network_fee" = "Network fee";
+"lightning__savings_confirm__receive" = "You'll receive";
+"lightning__savings_confirm__service_fee" = "Service fee";
 "lightning__savings_advanced__title" = "Select funds\n<accent>to transfer</accent>";
 "lightning__savings_advanced__text" = "You can transfer part of your spending balance to savings, because you have multiple active Lightning Connections.";
 "lightning__savings_advanced__total" = "Total selected";

@@ -42,6 +42,8 @@ struct AppScene: View {
     @State private var walletInitShouldFinish = false
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
+    /// Long-lived collector that refreshes balances when a Boltz swap claim lands on-chain.
+    @State private var swapEventsTask: Task<Void, Never>?
 
     /// Check if there's a critical update available
     private var hasCriticalUpdate: Bool {
@@ -465,6 +467,10 @@ struct AppScene: View {
             // Start watching pending orders after wallet is ready
             await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
 
+            // Open the swap updates stream so any pending LN -> onchain swaps resume
+            // and auto-claim once their lockup confirms.
+            await startSwapUpdates()
+
             // Schedule full backup after wallet create/restore to prevent epoch dates in backup status
             await BackupService.shared.scheduleFullBackup()
         } catch {
@@ -477,6 +483,32 @@ struct AppScene: View {
                     SettingsViewModel.shared.updatePinEnabledState()
                 }
             }
+        }
+    }
+
+    /// Start the Boltz updates stream using the wallet's current fee rate for auto-claims,
+    /// and refresh balances whenever a swap lands on-chain so savings reflect it without
+    /// a manual sync.
+    private func startSwapUpdates() async {
+        if swapEventsTask == nil {
+            swapEventsTask = Task {
+                for await event in BoltzService.shared.events() {
+                    if case let .claimed(swapId, _) = event {
+                        Logger.info("Savings swap claimed: \(swapId)", context: "AppScene")
+                        await wallet.syncStateAsync()
+                    }
+                }
+            }
+        }
+
+        do {
+            var feeRate: Double?
+            if let rates = await feeEstimatesManager.getEstimates() {
+                feeRate = Double(SettingsViewModel.shared.defaultTransactionSpeed.getFeeRate(from: rates))
+            }
+            try await BoltzService.shared.startUpdates(feeRateSatPerVb: feeRate)
+        } catch {
+            Logger.error(error, context: "Failed to start swap updates")
         }
     }
 

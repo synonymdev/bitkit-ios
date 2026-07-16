@@ -106,6 +106,8 @@ enum Route: Hashable {
     case probingTool
     case legacyRnRecovery
     case orders
+    case swaps
+    case swapDetail(id: String)
     case logs
     case trezor
 }

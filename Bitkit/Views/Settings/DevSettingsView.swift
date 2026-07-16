@@ -53,6 +53,10 @@ struct DevSettingsView: View {
                         SettingsRow(title: "Orders")
                     }
 
+                    NavigationLink(value: Route.swaps) {
+                        SettingsRow(title: "Swaps")
+                    }
+
                     NavigationLink(value: Route.trezor) {
                         SettingsRow(title: "Trezor Hardware Wallet")
                     }

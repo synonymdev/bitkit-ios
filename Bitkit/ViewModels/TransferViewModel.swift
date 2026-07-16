@@ -112,6 +112,12 @@ class TransferViewModel: ObservableObject {
     @Published var channelsToClose: [ChannelDetails] = []
     @Published var transferUnavailable = false
 
+    /// How the LN -> onchain "transfer to savings" is executed. Swapping funds out
+    /// (default) keeps channels open; closing a channel is the fallback the user can
+    /// pick to drain a whole channel on-chain.
+    @Published var savingsTransferMode: SavingsTransferMode = .swap
+    @Published var savingsSwapState = SavingsSwapState()
+
     /// Hardware-wallet transfer-to-spending state.
     @Published var hwSpending = HwSpendingState()
     /// Bumped when a hardware funding tx is signed + broadcast, so the Sign screen advances.
@@ -141,6 +147,16 @@ class TransferViewModel: ObservableObject {
     private let retryInterval: TimeInterval = 60 // 1 min
     private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
     private var coopCloseRetryTask: Task<Void, Never>?
+
+    private let boltzService: BoltzService = .shared
+    /// The amount (sat) that will actually be swapped out; adjustable via the confirm slider.
+    private var pendingSwapAmountSat: UInt64 = 0
+    /// Cached swap limits so the slider can re-price locally without hitting the network.
+    private var reverseSwapLimits: BoltzPairInfo?
+    /// How long the confirm/progress flow waits for the on-chain claim before backgrounding it.
+    private let swapClaimTimeout: TimeInterval = 60
+    /// Minimum sats held back from a swap to cover Lightning routing fees.
+    private static let minLnRoutingFeeReserveSats: UInt64 = 10
 
     init(
         coreService: CoreService = .shared,
@@ -1140,6 +1156,155 @@ class TransferViewModel: ObservableObject {
 
         return trustedChannels.count
     }
+
+    // MARK: - Savings Swap (Boltz reverse swap)
+
+    /// Fetch swap limits, derive the adjustable amount range, and publish an initial fee quote
+    /// (defaulting to the maximum transferable) so the user sees the cost before confirming.
+    /// The confirm slider then re-prices locally via `onSwapAmountChange`. Errors surface in state.
+    func loadSavingsSwapQuote(requestedSat: UInt64, spendableSats: UInt64) async {
+        savingsSwapState = SavingsSwapState(isLoading: true)
+
+        let limits: BoltzPairInfo
+        do {
+            limits = try await boltzService.reverseLimits()
+        } catch {
+            Logger.error("Failed to load reverse swap limits", context: error.localizedDescription)
+            reverseSwapLimits = nil
+            savingsSwapState = SavingsSwapState(errorMessage: error.localizedDescription)
+            return
+        }
+        reverseSwapLimits = limits
+
+        // Reserve headroom for Lightning routing fees. Paying an invoice for 100% of
+        // outbound capacity leaves nothing for fees and fails to route, so cap the
+        // swap at outbound minus ~1% (with a small floor).
+        let routingReserve = max(spendableSats / 100, Self.minLnRoutingFeeReserveSats)
+        let sendable = spendableSats > routingReserve ? spendableSats - routingReserve : 0
+        let maxSat = min(requestedSat, limits.maximalSat, sendable)
+        let minSat = limits.minimalSat
+
+        guard maxSat >= minSat, maxSat > 0 else {
+            pendingSwapAmountSat = 0
+            savingsSwapState = SavingsSwapState(errorMessage: t("lightning__savings_confirm__amount_too_low"))
+            return
+        }
+
+        // Default to transferring as much as possible; the slider can lower it.
+        pendingSwapAmountSat = maxSat
+        savingsSwapState = SavingsSwapState(
+            quote: SavingsSwapQuote.build(amountSat: maxSat, limits: limits),
+            minSat: minSat,
+            maxSat: maxSat
+        )
+    }
+
+    /// Re-price the swap for a slider-selected amount, clamped to the allowed range.
+    func onSwapAmountChange(_ sat: UInt64) {
+        guard let limits = reverseSwapLimits, savingsSwapState.quote != nil, savingsSwapState.maxSat >= savingsSwapState.minSat else {
+            return
+        }
+        let amount = min(max(sat, savingsSwapState.minSat), savingsSwapState.maxSat)
+        pendingSwapAmountSat = amount
+        savingsSwapState.quote = SavingsSwapQuote.build(amountSat: amount, limits: limits)
+    }
+
+    /// Execute the LN -> onchain swap: derive a fresh claim address, create the swap,
+    /// pay the returned hold invoice over Lightning, then wait for the on-chain claim.
+    /// The claim is auto-broadcast by the updates stream once the lockup confirms, so a
+    /// timeout here is not a failure; the swap completes in the background.
+    func executeSavingsSwap() async -> SavingsSwapResult {
+        let amount = pendingSwapAmountSat
+        guard amount > 0 else {
+            return .failure(message: t("lightning__savings_confirm__amount_too_low"))
+        }
+
+        do {
+            let claimAddress = try await lightningService.newAddress()
+            let swap = try await boltzService.createReverseSwap(amountSat: amount, claimAddress: claimAddress)
+            Logger.info("Created savings transfer swap \(swap.id)", context: "TransferViewModel")
+
+            // Subscribe before paying so a claim settling faster than the payment
+            // call returns cannot be missed (events buffer from stream creation).
+            let events = boltzService.events()
+
+            // Pay the hold invoice (amount is encoded). It stays pending until Boltz
+            // locks funds on-chain and we claim them, which is the expected happy path.
+            _ = try await lightningService.send(bolt11: swap.invoice)
+
+            let result = await awaitSwapClaim(swapId: swap.id, events: events)
+            await onBalanceRefresh?()
+            return result
+        } catch {
+            Logger.error("Savings transfer swap failed", context: error.localizedDescription)
+            return .failure(message: error.localizedDescription)
+        }
+    }
+
+    private func awaitSwapClaim(swapId: String, events: AsyncStream<BoltzSwapEvent>) async -> SavingsSwapResult {
+        let waitTask = Task {
+            for await event in events {
+                switch event {
+                case let .claimed(swapId: id, txid: txid) where id == swapId:
+                    return SavingsSwapResult.success(txid: txid)
+                case let .error(swapId: id, message: message) where id == swapId:
+                    return SavingsSwapResult.failure(message: message)
+                default:
+                    continue
+                }
+            }
+            // No terminal event before cancellation; the claim completes in the background.
+            return SavingsSwapResult.pending
+        }
+
+        let timeoutTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(swapClaimTimeout * 1_000_000_000))
+            waitTask.cancel()
+        }
+
+        let result = await waitTask.value
+        timeoutTask.cancel()
+        return result
+    }
+}
+
+/// Whether a transfer to savings swaps funds out (default) or closes a channel.
+enum SavingsTransferMode {
+    case swap
+    case close
+}
+
+struct SavingsSwapQuote: Equatable {
+    let amountSat: UInt64
+    let networkFeeSat: UInt64
+    let swapFeeSat: UInt64
+    let receiveSat: UInt64
+
+    /// Estimate the fee breakdown for swapping `amountSat` out under the given pair limits.
+    static func build(amountSat: UInt64, limits: BoltzPairInfo) -> SavingsSwapQuote {
+        let swapFee = UInt64(max(0, (Double(amountSat) * limits.feePercentage / 100.0).rounded()))
+        let networkFee = limits.minerFeesSat
+        let totalFees = swapFee + networkFee
+        let receive = amountSat > totalFees ? amountSat - totalFees : 0
+        return SavingsSwapQuote(amountSat: amountSat, networkFeeSat: networkFee, swapFeeSat: swapFee, receiveSat: receive)
+    }
+}
+
+struct SavingsSwapState {
+    var isLoading = false
+    var quote: SavingsSwapQuote?
+    /// Inclusive adjustable range for the confirm slider (sat). Equal/zero when unavailable.
+    var minSat: UInt64 = 0
+    var maxSat: UInt64 = 0
+    var errorMessage: String?
+}
+
+enum SavingsSwapResult: Equatable {
+    /// Funds landed on-chain during the flow.
+    case success(txid: String)
+    /// Swap created and invoice paid; the claim completes in the background.
+    case pending
+    case failure(message: String)
 }
 
 /// Actor to safely capture channel data from channel pending events
