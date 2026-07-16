@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-07-16
+
+### Added
+- Added Trezor hidden-wallet passphrase selection and an on-chain event watcher for live xpub activity. #574
+- Show paired Trezor hardware wallet balances and activity on the home screen, with sheets to enter the pairing code and to notify incoming hardware wallet transactions. #605
+- Added a Hardware Wallets settings screen, reachable from Settings ▸ General ▸ Payments, to view, rename, and remove paired devices. #612
+- Connect a Trezor hardware wallet from the home suggestion card or Hardware Wallets settings to watch its balance, with a guided pairing flow that finds the device, enters the one-time pairing code, and labels the funds. #614
+- Transfer funds from a paired Trezor hardware wallet to your spending balance, signing the on-chain funding transaction on the device. #616
+
+### Changed
+- Toast notifications now arrive with a gentle spring settle, fade out quickly, and render their accent colors true to the design instead of washed out. #592
+- Error toasts now use Bitkit's brand color instead of a separate red accent, matching the design across all toast types. #594
+- Update FX rates endpoint to no longer use old Blocktank service. #624
+
+### Fixed
+- Amount entry across the send, spending, LNURL, and channel-funding screens now caps the number pad at your available balance and briefly warns when you try to enter more than you can send. #346
+- Channel close and transfer activities, including force closes, now offer an Explore button so the on-chain transaction ID and block explorer details are accessible. #361
+- Fixed private contact payment preferences so the toggle only updates after endpoint publication or removal succeeds. #583
+- Connection Details now shows the short channel ID and the correct channel point for Lightning connections. #587
+- Sending no longer waits indefinitely or crashes when Lightning channels stay unavailable: Bitkit now prefers Lightning while the peer reconnects, then falls back to an onchain payment when possible or shows the connection issues screen after a short wait. #590
+- Fixed Transfer to Spending showing a zero maximum when your on-chain balance exceeds the LSP's channel limit, and the displayed available balance now matches the amount you can actually transfer. #595
+- Re-adding the Suggestions widget now restores the default suggestion cards when all of them had been dismissed. #596
+- The Receive screen now keeps your selected Savings or Spending tab after editing the invoice amount, instead of resetting to Auto. #599
+- Recovery mode now has a Reset Network Graph option that re-downloads the Lightning network graph to fix "route not found" errors. #600
+- Bitkit now shows the optional update prompt during onboarding too, so it is no longer missed on a fresh first launch. #601
+- Improved hardware wallet settings and removal, connection guidance, Bluetooth interruption recovery, and signed-transfer broadcast retries. #621
+- Fixed the Czech backup-failure notification so its retry countdown displays properly instead of showing raw placeholder text. #628
+- Fixed a freeze on the Electrum and RGS server settings screens when entering a long hostname. #629
+
+
+
+
+
 ## [2.3.2] - 2026-07-14
 
 ### Fixed
@@ -65,7 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix keyboard and UI issues in the calculator widget #513
 - Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 
-[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.2...v2.4.0
 [2.3.2]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.2.1...v2.3.0
