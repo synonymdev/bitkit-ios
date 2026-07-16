@@ -204,12 +204,14 @@
 				Services/CoreService.swift,
 				Services/GeoService.swift,
 				Services/LightningService.swift,
+				Services/WatchOnlyAccountService.swift,
 				Services/ServiceQueue.swift,
 				Services/VssStoreIdProvider.swift,
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
 				Utilities/LightningAmountConversion.swift,
+				Utilities/LocalizeHelpers.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
@@ -771,7 +773,6 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) BITKIT_NOTIFICATION_EXTENSION";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -804,7 +805,6 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) BITKIT_NOTIFICATION_EXTENSION";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;

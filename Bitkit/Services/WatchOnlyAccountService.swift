@@ -55,12 +55,10 @@ protocol WatchOnlyAccountNodeHandling: AnyObject {
     var currentWalletIndex: Int { get }
     func exportWatchOnlyAccountXpub(accountIndex: UInt32, addressType: LDKNode.AddressType) async throws -> String
     func setWatchOnlyAccountTracking(accountIndex: UInt32, addressType: LDKNode.AddressType, xpub: String, enabled: Bool) async throws
-    #if !BITKIT_NOTIFICATION_EXTENSION
-        func reconcileWatchOnlyAccountTracking(
-            records: [WatchOnlyAccountRecord],
-            managedRecords: [WatchOnlyAccountRecord]
-        ) async throws
-    #endif
+    func reconcileWatchOnlyAccountTracking(
+        records: [WatchOnlyAccountRecord],
+        managedRecords: [WatchOnlyAccountRecord]
+    ) async throws
 }
 
 extension LightningService: WatchOnlyAccountNodeHandling {}
@@ -948,18 +946,16 @@ final class WatchOnlyAccountManager {
         }.value
     }
 
-    #if !BITKIT_NOTIFICATION_EXTENSION
-        func reconcileTracking() async throws {
-            try await lifecycleCoordinator.withLock {
-                let snapshot = try WatchOnlyAccountStore.reconciliationSnapshot(defaults: defaults)
-                try await node.reconcileWatchOnlyAccountTracking(
-                    records: snapshot.accounts,
-                    managedRecords: snapshot.managedAccounts
-                )
-                try WatchOnlyAccountStore.finishReconciliation(walletIndex: node.currentWalletIndex, defaults: defaults)
-            }
+    func reconcileTracking() async throws {
+        try await lifecycleCoordinator.withLock {
+            let snapshot = try WatchOnlyAccountStore.reconciliationSnapshot(defaults: defaults)
+            try await node.reconcileWatchOnlyAccountTracking(
+                records: snapshot.accounts,
+                managedRecords: snapshot.managedAccounts
+            )
+            try WatchOnlyAccountStore.finishReconciliation(walletIndex: node.currentWalletIndex, defaults: defaults)
         }
-    #endif
+    }
 
     private func reloadFromStore() throws {
         accounts = try WatchOnlyAccountStore.load(defaults: defaults)
