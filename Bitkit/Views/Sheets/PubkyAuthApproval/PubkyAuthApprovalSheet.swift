@@ -31,64 +31,6 @@ func pubkyAuthDisplayPublicKey(_ publicKey: String?) -> String {
     return "\(rawKey.prefix(4))...\(rawKey.suffix(4))"
 }
 
-typealias OrdinaryPubkyAuthApproval = (String, String, String) async throws -> Void
-typealias CompanionPubkyAuthApproval = (String, Data, String) async throws -> Void
-
-@MainActor
-func approvePubkyAuthRequest(
-    request: PubkyAuthRequest,
-    authUrl: String,
-    accountName: String,
-    secretKeyHex: String,
-    accountManager: WatchOnlyAccountManager? = nil,
-    ordinaryApproval: @escaping OrdinaryPubkyAuthApproval = { authUrl, capabilities, secretKeyHex in
-        try await PubkyService.approveAuth(
-            authUrl: authUrl,
-            expectedCapabilities: capabilities,
-            secretKeyHex: secretKeyHex
-        )
-    },
-    companionApproval: @escaping CompanionPubkyAuthApproval = { authUrl, unsignedPayload, secretKeyHex in
-        try await PubkyService.approveAuthWithCompanionClaim(
-            authUrl: authUrl,
-            unsignedPayload: unsignedPayload,
-            secretKeyHex: secretKeyHex
-        )
-    }
-) async throws {
-    let accountManager = accountManager ?? .shared
-    if request.bitkitClaim == .watchOnlyAccountV1 {
-        let preparedClaim = try await accountManager.prepareUnsignedClaim(authUrl: authUrl, name: accountName)
-        let authorizationAttempt = try accountManager.acquireSetupAuthorizationAttempt(id: preparedClaim.0.id)
-        defer { accountManager.finishSetupAuthorizationAttempt(authorizationAttempt) }
-        do {
-            try await accountManager.beginSetupAuthorization(attempt: authorizationAttempt)
-        } catch {
-            do {
-                try await accountManager.cancelSetupAuthorization(attempt: authorizationAttempt)
-            } catch let cleanupError {
-                Logger.error("Failed to unload incomplete watch-only account: \(cleanupError)", context: "PubkyAuthApprovalSheet")
-            }
-            throw error
-        }
-        do {
-            try await companionApproval(authUrl, preparedClaim.1, secretKeyHex)
-        } catch {
-            if !PubkyService.didDeliverCompanionClaim(error: error) {
-                do {
-                    try await accountManager.cancelSetupAuthorization(attempt: authorizationAttempt)
-                } catch let cleanupError {
-                    Logger.error("Failed to unload incomplete watch-only account: \(cleanupError)", context: "PubkyAuthApprovalSheet")
-                }
-            }
-            throw error
-        }
-        try await accountManager.markSetupActive(attempt: authorizationAttempt)
-    } else {
-        try await ordinaryApproval(authUrl, request.capabilities, secretKeyHex)
-    }
-}
-
 struct PubkyAuthApprovalConfig {
     let authUrl: String
     let request: PubkyAuthRequest
@@ -204,7 +146,7 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
-    // MARK: - Watch-Only Consent State (Screen 1)
+    // MARK: - Watch-Only Consent
 
     private var watchOnlyConsentContent: some View {
         GeometryReader { geometry in
@@ -253,7 +195,7 @@ struct PubkyAuthApprovalSheet: View {
         .accessibilityIdentifier("PubkyAuthWatchOnlyConsent")
     }
 
-    // MARK: - Authorize State (Screen 2)
+    // MARK: - Authorization
 
     private var authorizeContent: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -273,7 +215,7 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
-    // MARK: - Authorizing State (Screen 3)
+    // MARK: - Authorization Progress
 
     private var authorizingContent: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -285,7 +227,7 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
-    // MARK: - Success State (Screen 4)
+    // MARK: - Success
 
     private var successContent: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -469,7 +411,7 @@ struct PubkyAuthApprovalSheet: View {
                 return
             }
 
-            try await approvePubkyAuthRequest(
+            try await PubkyService.approveAuthRequest(
                 request: config.request,
                 authUrl: config.authUrl,
                 accountName: effectiveWatchOnlyAccountName,

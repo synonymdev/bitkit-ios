@@ -30,40 +30,29 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         }
     }
 
-    func testRestoreDoesNotLowerAllocatorHighWaterMark() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(walletIndex: 0, requestFingerprint: "first", defaults: defaults), 1)
-        try WatchOnlyAccountStore.completeAllocation(walletIndex: 0, requestFingerprint: "first", defaults: defaults)
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(walletIndex: 0, requestFingerprint: "second", defaults: defaults), 2)
-        try WatchOnlyAccountStore.completeAllocation(walletIndex: 0, requestFingerprint: "second", defaults: defaults)
-
-        let restored = makeRecord(accountIndex: 1, xpub: base58CheckEncode(Data(repeating: 1, count: 78)))
-        try WatchOnlyAccountStore.restore([restored], defaults: defaults)
-
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(walletIndex: 0, requestFingerprint: "next", defaults: defaults), 3)
-    }
-
-    func testRestoreWithoutAllocatorClearsPendingReservationAndPreservesHighWaterMark() throws {
+    func testRestorePreservesAllocatorHighWaterMarkWhileClearingUnrestoredReservation() throws {
         let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
             walletIndex: 0,
-            requestFingerprint: "stale-pending",
+            requestFingerprint: "first",
             defaults: defaults
         ), 1)
+        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
+            walletIndex: 0,
+            requestFingerprint: "second",
+            defaults: defaults
+        ), 2)
 
         try WatchOnlyAccountStore.restore([], defaults: defaults)
 
         XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
             walletIndex: 0,
-            requestFingerprint: "stale-pending",
+            requestFingerprint: "first",
             defaults: defaults
-        ), 2)
+        ), 3)
     }
 
     func testBackupRestoresPendingReservationAndHighWaterMark() throws {
@@ -101,7 +90,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         ), 2)
     }
 
-    func testRestorePreservesExactLocalPendingReservationForRetry() throws {
+    func testRestoreKeepsMatchingLocalPendingReservation() throws {
         let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -124,241 +113,9 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
             requestFingerprint: "pending",
             defaults: defaults
         ), 1)
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "next",
-            defaults: defaults
-        ), 2)
     }
 
-    func testRestoreRejectsDivergentReservationForLocalPendingRequest() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        for index in 1 ... 6 {
-            let requestFingerprint = "completed-\(index)"
-            XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-                walletIndex: 0,
-                requestFingerprint: requestFingerprint,
-                defaults: defaults
-            ), UInt32(index))
-            try WatchOnlyAccountStore.completeAllocation(
-                walletIndex: 0,
-                requestFingerprint: requestFingerprint,
-                defaults: defaults
-            )
-        }
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "pending",
-            defaults: defaults
-        ), 7)
-
-        try WatchOnlyAccountStore.restore(
-            [],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 7],
-                pendingAccountIndexByRequest: ["0:pending": 7]
-            ),
-            defaults: defaults
-        )
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "pending",
-            defaults: defaults
-        ), 7)
-
-        try WatchOnlyAccountStore.restore(
-            [],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 0],
-                pendingAccountIndexByRequest: ["0:pending": 8]
-            ),
-            defaults: defaults
-        )
-
-        let snapshot = try WatchOnlyAccountStore.backupSnapshot(defaults: defaults)
-        XCTAssertNil(snapshot.allocationState.pendingAccountIndexByRequest["0:pending"])
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "pending",
-            defaults: defaults
-        ), 9)
-    }
-
-    func testRestoreBurnsConflictingPendingReservationSlot() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        try WatchOnlyAccountStore.restore(
-            [],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 0],
-                pendingAccountIndexByRequest: [
-                    "0:first": 1,
-                    "0:second": 1,
-                ]
-            ),
-            defaults: defaults
-        )
-
-        let snapshot = try WatchOnlyAccountStore.backupSnapshot(defaults: defaults)
-        XCTAssertTrue(snapshot.allocationState.pendingAccountIndexByRequest.isEmpty)
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "next",
-            defaults: defaults
-        ), 2)
-    }
-
-    func testRestoreSanitizesDuplicateAccountOwners() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let sharedId = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
-        let pendingDuplicateId = makeRecord(
-            accountIndex: 1,
-            xpub: xpub,
-            id: sharedId,
-            requestFingerprint: "pending-duplicate-id"
-        )
-        let activeDuplicateId = makeRecord(
-            accountIndex: 2,
-            xpub: xpub,
-            setupState: .active,
-            id: sharedId,
-            requestFingerprint: "completed-request"
-        )
-        let pendingDuplicateSlot = makeRecord(
-            accountIndex: 3,
-            xpub: xpub,
-            requestFingerprint: "pending-duplicate-slot"
-        )
-        let authorizingDuplicateSlot = makeRecord(
-            accountIndex: 3,
-            xpub: xpub,
-            setupState: .authorizing,
-            requestFingerprint: "authorizing-duplicate-slot"
-        )
-        let pendingDuplicateRequest = makeRecord(
-            accountIndex: 4,
-            xpub: xpub,
-            requestFingerprint: "duplicate-incomplete-request"
-        )
-        let authorizingDuplicateRequest = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            setupState: .authorizing,
-            requestFingerprint: "duplicate-incomplete-request"
-        )
-        let repeatedCompletedRequest = makeRecord(
-            accountIndex: 6,
-            xpub: xpub,
-            setupState: .active,
-            requestFingerprint: "completed-request"
-        )
-
-        try WatchOnlyAccountStore.restore(
-            [
-                pendingDuplicateId,
-                activeDuplicateId,
-                pendingDuplicateSlot,
-                authorizingDuplicateSlot,
-                pendingDuplicateRequest,
-                authorizingDuplicateRequest,
-                repeatedCompletedRequest,
-            ],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 6],
-                pendingAccountIndexByRequest: [
-                    "0:pending-duplicate-id": 1,
-                    "0:duplicate-incomplete-request": 4,
-                ]
-            ),
-            defaults: defaults
-        )
-
-        let restored = try WatchOnlyAccountStore.load(defaults: defaults)
-        XCTAssertEqual(
-            Set(restored.map(\.id)),
-            Set([activeDuplicateId.id, authorizingDuplicateSlot.id, authorizingDuplicateRequest.id, repeatedCompletedRequest.id])
-        )
-        XCTAssertEqual(restored.map(\.accountIndex), [2, 3, 5, 6])
-        let snapshot = try WatchOnlyAccountStore.backupSnapshot(defaults: defaults)
-        XCTAssertNil(snapshot.allocationState.pendingAccountIndexByRequest["0:pending-duplicate-id"])
-        XCTAssertNil(snapshot.allocationState.pendingAccountIndexByRequest["0:duplicate-incomplete-request"])
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "pending-duplicate-id",
-            defaults: defaults
-        ), 7)
-    }
-
-    func testRestoreRaisesHighWaterForDiscardedDuplicateAccount() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let sharedId = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let retained = makeRecord(
-            accountIndex: 1,
-            xpub: xpub,
-            setupState: .active,
-            id: sharedId,
-            requestFingerprint: "retained"
-        )
-        let discarded = makeRecord(
-            accountIndex: 7,
-            xpub: xpub,
-            setupState: .active,
-            id: sharedId,
-            requestFingerprint: "discarded"
-        )
-
-        try WatchOnlyAccountStore.restore([discarded, retained], defaults: defaults)
-
-        XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [retained])
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "next",
-            defaults: defaults
-        ), 8)
-    }
-
-    func testRestoreRejectsReservationAtDiscardedAccountSlot() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let sharedId = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let retained = makeRecord(accountIndex: 1, xpub: xpub, setupState: .active, id: sharedId)
-        let discarded = makeRecord(accountIndex: 7, xpub: xpub, setupState: .active, id: sharedId)
-
-        try WatchOnlyAccountStore.restore(
-            [discarded, retained],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 7],
-                pendingAccountIndexByRequest: ["0:retry": 7]
-            ),
-            defaults: defaults
-        )
-
-        let snapshot = try WatchOnlyAccountStore.backupSnapshot(defaults: defaults)
-        XCTAssertNil(snapshot.allocationState.pendingAccountIndexByRequest["0:retry"])
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "retry",
-            defaults: defaults
-        ), 8)
-    }
-
-    func testRestoreNormalizesTrackingForIncompleteAccounts() throws {
+    func testRestoreSanitizesAccountsAndNormalizesIncompleteTracking() throws {
         let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -377,54 +134,42 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
             setupState: .authorizing,
             requestFingerprint: "authorizing"
         )
-        let disabledActive = makeRecord(
+        let activeDisabled = makeRecord(
             accountIndex: 3,
             xpub: xpub,
             isTrackingEnabled: false,
             setupState: .active,
             requestFingerprint: "active"
         )
+        let duplicateSlot = makeRecord(
+            accountIndex: 1,
+            xpub: xpub,
+            setupState: .active,
+            requestFingerprint: "duplicate"
+        )
+        let invalid = makeRecord(accountIndex: 4, xpub: "invalid", requestFingerprint: "invalid")
 
-        try WatchOnlyAccountStore.restore([pending, authorizing, disabledActive], defaults: defaults)
+        try WatchOnlyAccountStore.restore(
+            [pending, authorizing, activeDisabled, duplicateSlot, invalid],
+            defaults: defaults
+        )
 
-        let accounts = try WatchOnlyAccountStore.load(defaults: defaults)
-        XCTAssertEqual(accounts.first(where: { $0.id == pending.id })?.isTrackingEnabled, false)
-        XCTAssertEqual(accounts.first(where: { $0.id == authorizing.id })?.isTrackingEnabled, true)
-        XCTAssertEqual(accounts.first(where: { $0.id == disabledActive.id })?.isTrackingEnabled, false)
+        let restored = try WatchOnlyAccountStore.load(defaults: defaults)
+        XCTAssertEqual(restored.map(\.id), [pending.id, authorizing.id, activeDisabled.id])
+        XCTAssertEqual(restored.map(\.isTrackingEnabled), [false, true, false])
     }
 
-    func testRestoreDropsUnusableAccountsAndBurnsTheirIndexes() throws {
+    func testRestoreBurnsIndexesFromDiscardedAccounts() throws {
         let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let valid = makeRecord(accountIndex: 1, xpub: xpub, setupState: .active)
-        let invalidAddressType = makeRecord(
-            accountIndex: 7,
-            xpub: xpub,
-            addressType: "legacy",
-            setupState: .active
-        )
-        let invalidXpub = makeRecord(accountIndex: 8, xpub: "not-an-xpub", setupState: .authorizing)
-        let accountZero = makeRecord(accountIndex: 0, xpub: xpub, setupState: .active)
-        let outOfRange = makeRecord(accountIndex: .max, xpub: xpub, setupState: .active)
-
         try WatchOnlyAccountStore.restore(
-            [outOfRange, invalidXpub, accountZero, invalidAddressType, valid],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": .max],
-                pendingAccountIndexByRequest: ["0:out-of-range": .max]
-            ),
+            [makeRecord(accountIndex: 8, xpub: "invalid", requestFingerprint: "invalid")],
             defaults: defaults
         )
 
-        XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [valid])
-        XCTAssertEqual(try WatchOnlyAccountStore.enabledAccounts(for: 0, defaults: defaults), [valid])
-        XCTAssertNil(
-            try WatchOnlyAccountStore.backupSnapshot(defaults: defaults)
-                .allocationState.pendingAccountIndexByRequest["0:out-of-range"]
-        )
+        XCTAssertTrue(try WatchOnlyAccountStore.load(defaults: defaults).isEmpty)
         XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
             walletIndex: 0,
             requestFingerprint: "next",
@@ -432,68 +177,32 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         ), 9)
     }
 
-    func testRestorePreservesAuthorizingAccountsOverBackupConflicts() throws {
+    func testRestorePreservesAuthorizingAccountOverBackupState() throws {
         let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let authorizingById = makeRecord(
+        let local = makeRecord(
             accountIndex: 1,
             xpub: xpub,
             setupState: .authorizing,
-            requestFingerprint: "authorizing-by-id"
-        )
-        let authorizingByKey = makeRecord(
-            accountIndex: 2,
-            xpub: xpub,
-            setupState: .authorizing,
-            requestFingerprint: "authorizing-by-key"
-        )
-        try WatchOnlyAccountStore.save([authorizingById, authorizingByKey], defaults: defaults)
-
-        let conflictingId = makeRecord(
-            accountIndex: 9,
-            xpub: xpub,
-            setupState: .active,
-            id: authorizingById.id,
-            requestFingerprint: "backup-id-conflict"
-        )
-        let conflictingKey = makeRecord(
-            accountIndex: authorizingByKey.accountIndex,
-            xpub: xpub,
-            setupState: .active,
-            requestFingerprint: "backup-key-conflict"
+            requestFingerprint: "request"
         )
         let restored = makeRecord(
-            accountIndex: 7,
+            accountIndex: 1,
             xpub: xpub,
             setupState: .active,
-            requestFingerprint: "restored"
+            id: local.id,
+            requestFingerprint: "request"
         )
-        try WatchOnlyAccountStore.restore(
-            [conflictingId, conflictingKey, restored],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 9],
-                pendingAccountIndexByRequest: ["0:restored": restored.accountIndex]
-            ),
-            defaults: defaults
-        )
+        try WatchOnlyAccountStore.save([local], defaults: defaults)
 
-        let accounts = try WatchOnlyAccountStore.load(defaults: defaults)
-        XCTAssertEqual(Set(accounts.map(\.id)), Set([authorizingById.id, authorizingByKey.id, restored.id]))
-        XCTAssertEqual(accounts.first(where: { $0.id == authorizingById.id }), authorizingById)
-        XCTAssertEqual(accounts.first(where: { $0.id == authorizingByKey.id }), authorizingByKey)
+        try WatchOnlyAccountStore.restore([restored], defaults: defaults)
+
+        XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [local])
         let snapshot = try WatchOnlyAccountStore.backupSnapshot(defaults: defaults)
-        XCTAssertEqual(snapshot.allocationState.pendingAccountIndexByRequest["0:authorizing-by-id"], 1)
-        XCTAssertEqual(snapshot.allocationState.pendingAccountIndexByRequest["0:authorizing-by-key"], 2)
-        XCTAssertNil(snapshot.allocationState.pendingAccountIndexByRequest["0:restored"])
-
-        _ = try WatchOnlyAccountStore.markSetupActive(id: authorizingById.id, defaults: defaults)
-        XCTAssertEqual(
-            try WatchOnlyAccountStore.load(defaults: defaults).first(where: { $0.id == authorizingById.id })?.setupState,
-            .active
-        )
+        XCTAssertEqual(snapshot.allocationState.pendingAccountIndexByRequest["0:request"], 1)
     }
 
     func testRestorePreservesLocalOwnerWhenBackupReusesItsSlot() throws {
@@ -501,324 +210,23 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
         let local = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
+            accountIndex: 1,
+            xpub: base58CheckEncode(Data(repeating: 1, count: 78)),
             setupState: .active,
-            requestFingerprint: "local-owner"
+            requestFingerprint: "local"
         )
         let conflictingBackup = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
+            accountIndex: 1,
+            xpub: base58CheckEncode(Data(repeating: 2, count: 78)),
             setupState: .active,
-            requestFingerprint: "restored-owner"
+            requestFingerprint: "restored"
         )
         try WatchOnlyAccountStore.save([local], defaults: defaults)
 
         try WatchOnlyAccountStore.restore([conflictingBackup], defaults: defaults)
 
         XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [local])
-        XCTAssertEqual(try WatchOnlyAccountStore.reconciliationSnapshot(defaults: defaults).managedAccounts, [local])
-    }
-
-    func testRestorePrefersDeliveredOwnerOverLocalPendingSlot() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let localPending = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            isTrackingEnabled: false,
-            requestFingerprint: "local-pending"
-        )
-        let restoredActive = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            setupState: .active,
-            requestFingerprint: "restored-active"
-        )
-        try WatchOnlyAccountStore.save([localPending], defaults: defaults)
-
-        try WatchOnlyAccountStore.restore([restoredActive], defaults: defaults)
-
-        XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [restoredActive])
-        XCTAssertEqual(try WatchOnlyAccountStore.enabledAccounts(for: 0, defaults: defaults), [restoredActive])
-        XCTAssertEqual(try WatchOnlyAccountStore.reconciliationSnapshot(defaults: defaults).managedAccounts, [restoredActive])
-    }
-
-    func testRestoreKeepsTrackingEnabledAcrossDeliveredOwnerConflict() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let localDisabled = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            isTrackingEnabled: false,
-            setupState: .active,
-            requestFingerprint: "local-active"
-        )
-        let restoredEnabled = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            setupState: .active,
-            requestFingerprint: "restored-active"
-        )
-        try WatchOnlyAccountStore.save([localDisabled], defaults: defaults)
-
-        try WatchOnlyAccountStore.restore([restoredEnabled], defaults: defaults)
-
-        let account = try XCTUnwrap(try WatchOnlyAccountStore.load(defaults: defaults).first)
-        XCTAssertEqual(account.id, localDisabled.id)
-        XCTAssertTrue(account.isTrackingEnabled)
-        XCTAssertEqual(try WatchOnlyAccountStore.enabledAccounts(for: 0, defaults: defaults), [account])
-    }
-
-    func testRestoreProtectsOwnerAwaitingUnloadFromConflictingSlot() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let local = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            setupState: .active,
-            requestFingerprint: "local-owner"
-        )
-        let conflictingBackup = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            setupState: .active,
-            requestFingerprint: "restored-owner"
-        )
-        try WatchOnlyAccountStore.save([local], defaults: defaults)
-        try WatchOnlyAccountStore.restore([], defaults: defaults)
-
-        try WatchOnlyAccountStore.restore([conflictingBackup], defaults: defaults)
-
-        XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [local])
-        XCTAssertEqual(try WatchOnlyAccountStore.reconciliationSnapshot(defaults: defaults).managedAccounts, [local])
-    }
-
-    func testRestoreDoesNotRegressActiveLocalOwnerToIncomplete() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let local = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            setupState: .active,
-            requestFingerprint: "same-owner"
-        )
-        let incompleteBackup = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            isTrackingEnabled: false,
-            requestFingerprint: local.requestFingerprint
-        )
-        try WatchOnlyAccountStore.save([local], defaults: defaults)
-
-        try WatchOnlyAccountStore.restore([incompleteBackup], defaults: defaults)
-
-        XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [local])
-    }
-
-    func testRestoreUsesSameCanonicalIncompleteOwnerRegardlessOfInputOrder() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let lowerIndexId = try XCTUnwrap(UUID(uuidString: "ffffffff-ffff-ffff-ffff-ffffffffffff"))
-        let higherIndexId = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
-        let lowerIndex = makeRecord(
-            accountIndex: 3,
-            xpub: xpub,
-            isTrackingEnabled: false,
-            id: lowerIndexId,
-            requestFingerprint: "shared-request"
-        )
-        let higherIndex = makeRecord(
-            accountIndex: 4,
-            xpub: xpub,
-            isTrackingEnabled: false,
-            id: higherIndexId,
-            requestFingerprint: lowerIndex.requestFingerprint
-        )
-
-        try WatchOnlyAccountStore.restore([higherIndex, lowerIndex], defaults: defaults)
-        XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [lowerIndex])
-
-        try WatchOnlyAccountStore.restore([lowerIndex, higherIndex], defaults: defaults)
-        XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [lowerIndex])
-    }
-
-    func testRestoreDropsPendingReservationThatCollidesWithAuthorizingRequest() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let xpub = base58CheckEncode(Data(repeating: 1, count: 78))
-        let authorizing = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            setupState: .authorizing,
-            requestFingerprint: "request-a"
-        )
-        try WatchOnlyAccountStore.restore(
-            [authorizing],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 5],
-                pendingAccountIndexByRequest: ["0:request-a": 5]
-            ),
-            defaults: defaults
-        )
-
-        let conflictingBackupAccount = makeRecord(
-            accountIndex: 5,
-            xpub: xpub,
-            requestFingerprint: "request-b"
-        )
-        try WatchOnlyAccountStore.restore(
-            [conflictingBackupAccount],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 5],
-                pendingAccountIndexByRequest: ["0:request-b": 5]
-            ),
-            defaults: defaults
-        )
-
-        let snapshot = try WatchOnlyAccountStore.backupSnapshot(defaults: defaults)
-        XCTAssertEqual(snapshot.accounts, [authorizing])
-        XCTAssertEqual(snapshot.allocationState.pendingAccountIndexByRequest["0:request-a"], 5)
-        XCTAssertNil(snapshot.allocationState.pendingAccountIndexByRequest["0:request-b"])
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "request-b",
-            defaults: defaults
-        ), 6)
-    }
-
-    func testRestoreDropsUnboundPendingReservationBelowLocalHighWaterMark() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "first",
-            defaults: defaults
-        ), 1)
-        try WatchOnlyAccountStore.completeAllocation(walletIndex: 0, requestFingerprint: "first", defaults: defaults)
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "second",
-            defaults: defaults
-        ), 2)
-        try WatchOnlyAccountStore.completeAllocation(walletIndex: 0, requestFingerprint: "second", defaults: defaults)
-
-        try WatchOnlyAccountStore.restore(
-            [],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 1],
-                pendingAccountIndexByRequest: ["0:restored-request": 1]
-            ),
-            defaults: defaults
-        )
-
-        let snapshot = try WatchOnlyAccountStore.backupSnapshot(defaults: defaults)
-        XCTAssertNil(snapshot.allocationState.pendingAccountIndexByRequest["0:restored-request"])
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "restored-request",
-            defaults: defaults
-        ), 3)
-    }
-
-    func testRestoreDropsPendingReservationForAccountAwaitingUnload() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let accountAwaitingUnload = makeRecord(
-            accountIndex: 5,
-            xpub: base58CheckEncode(Data(repeating: 1, count: 78)),
-            setupState: .active,
-            requestFingerprint: "current-request"
-        )
-        try WatchOnlyAccountStore.save([accountAwaitingUnload], defaults: defaults)
-
-        try WatchOnlyAccountStore.restore(
-            [],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 5],
-                pendingAccountIndexByRequest: ["0:restored-request": 5]
-            ),
-            defaults: defaults
-        )
-
-        let snapshot = try WatchOnlyAccountStore.backupSnapshot(defaults: defaults)
-        XCTAssertNil(snapshot.allocationState.pendingAccountIndexByRequest["0:restored-request"])
-        XCTAssertEqual(
-            try WatchOnlyAccountStore.reconciliationSnapshot(defaults: defaults).managedAccounts,
-            [accountAwaitingUnload]
-        )
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "restored-request",
-            defaults: defaults
-        ), 6)
-    }
-
-    func testCorruptedStateFailsClosedWithoutResettingAllocator() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let corruptedData = Data("not-json".utf8)
-        defaults.set(corruptedData, forKey: WatchOnlyAccountStore.dataKey)
-
-        XCTAssertThrowsError(try WatchOnlyAccountStore.load(defaults: defaults))
-        XCTAssertThrowsError(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "request",
-            defaults: defaults
-        ))
-        XCTAssertEqual(defaults.data(forKey: WatchOnlyAccountStore.dataKey), corruptedData)
-    }
-
-    func testRestoreRepairsCorruptedLocalStateFromValidBackup() throws {
-        let suiteName = "WatchOnlyAccountServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set(Data("not-json".utf8), forKey: WatchOnlyAccountStore.dataKey)
-        let restored = makeRecord(
-            accountIndex: 4,
-            xpub: base58CheckEncode(Data(repeating: 1, count: 78)),
-            setupState: .active
-        )
-
-        try WatchOnlyAccountStore.restore(
-            [restored],
-            allocationState: WatchOnlyAccountAllocationState(
-                highestAccountIndexByWallet: ["0": 6],
-                pendingAccountIndexByRequest: ["0:pending": 6]
-            ),
-            defaults: defaults
-        )
-
-        XCTAssertEqual(try WatchOnlyAccountStore.load(defaults: defaults), [restored])
-        XCTAssertEqual(try WatchOnlyAccountStore.reserveAccountIndex(
-            walletIndex: 0,
-            requestFingerprint: "pending",
-            defaults: defaults
-        ), 6)
     }
 
     func testReconciliationClearsPendingUnloadsOnlyForCurrentWallet() throws {

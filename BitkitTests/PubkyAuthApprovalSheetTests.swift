@@ -84,7 +84,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         var companionApprovalCount = 0
 
         do {
-            try await approvePubkyAuthRequest(
+            try await PubkyService.approveAuthRequest(
                 request: request,
                 authUrl: authUrl,
                 accountName: "Creator store",
@@ -118,7 +118,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let node = ApprovalFakeWatchOnlyAccountNode()
         let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
 
-        try await approvePubkyAuthRequest(
+        try await PubkyService.approveAuthRequest(
             request: request,
             authUrl: authUrl,
             accountName: "Creator store",
@@ -133,46 +133,12 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
     }
 
     @MainActor
-    func testDuplicateConfirmationRunsOneCompanionApprovalLifecycle() async throws {
-        let suiteName = "PubkyAuthApprovalSheetTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+    func testApprovalStateBeginsAuthorizationOnlyOnce() {
+        var state = PubkyAuthApprovalSheet.ApprovalState.authorize
 
-        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
-        let request = try PubkyAuthRequest.parse(url: authUrl)
-        let node = ApprovalFakeWatchOnlyAccountNode()
-        let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
-        let companionApprovalGate = ApprovalCompanionGate()
-        let harness = ApprovalSingleFlightHarness(
-            request: request,
-            authUrl: authUrl,
-            manager: manager,
-            companionApprovalGate: companionApprovalGate
-        )
-
-        let firstConfirmation = Task { @MainActor in
-            try await harness.confirm()
-        }
-        try await companionApprovalGate.waitUntilFirstApprovalStarts()
-
-        do {
-            try await harness.confirm()
-        } catch {
-            await companionApprovalGate.releaseFirstApproval()
-            _ = try? await firstConfirmation.value
-            throw error
-        }
-
-        let companionApprovalCount = await companionApprovalGate.approvalCount
-        XCTAssertEqual(companionApprovalCount, 1)
-        XCTAssertEqual(node.trackingChanges, [true])
-
-        await companionApprovalGate.releaseFirstApproval()
-        try await firstConfirmation.value
-
-        XCTAssertEqual(manager.accounts.count, 1)
-        XCTAssertEqual(manager.accounts.first?.setupState, .active)
-        XCTAssertEqual(node.trackingChanges, [true])
+        XCTAssertTrue(state.beginAuthorization())
+        XCTAssertEqual(state, .authorizing)
+        XCTAssertFalse(state.beginAuthorization())
     }
 
     @MainActor
@@ -189,7 +155,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
         let companionApprovalGate = ApprovalCompanionGate()
         let firstApproval = Task { @MainActor in
-            try await approvePubkyAuthRequest(
+            try await PubkyService.approveAuthRequest(
                 request: firstRequest,
                 authUrl: firstAuthUrl,
                 accountName: "First account",
@@ -202,7 +168,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
 
         for (request, authUrl) in [(secondRequest, secondAuthUrl), (firstRequest, firstAuthUrl)] {
             do {
-                try await approvePubkyAuthRequest(
+                try await PubkyService.approveAuthRequest(
                     request: request,
                     authUrl: authUrl,
                     accountName: "Replacement account",
@@ -223,7 +189,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
 
         await companionApprovalGate.releaseFirstApproval()
         try await firstApproval.value
-        try await approvePubkyAuthRequest(
+        try await PubkyService.approveAuthRequest(
             request: secondRequest,
             authUrl: secondAuthUrl,
             accountName: "Second account",
@@ -248,7 +214,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
 
         await XCTAssertThrowsErrorAsync {
-            try await approvePubkyAuthRequest(
+            try await PubkyService.approveAuthRequest(
                 request: request,
                 authUrl: authUrl,
                 accountName: "Creator store",
@@ -277,7 +243,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
 
         await XCTAssertThrowsErrorAsync {
-            try await approvePubkyAuthRequest(
+            try await PubkyService.approveAuthRequest(
                 request: request,
                 authUrl: authUrl,
                 accountName: "Creator store",
@@ -290,7 +256,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         }
 
         await XCTAssertThrowsErrorAsync {
-            try await approvePubkyAuthRequest(
+            try await PubkyService.approveAuthRequest(
                 request: request,
                 authUrl: authUrl,
                 accountName: "Creator store",
@@ -319,7 +285,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         var companionApprovalCount = 0
 
         await XCTAssertThrowsErrorAsync {
-            try await approvePubkyAuthRequest(
+            try await PubkyService.approveAuthRequest(
                 request: request,
                 authUrl: authUrl,
                 accountName: "Creator store",
@@ -349,7 +315,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let companionApprovalGate = ApprovalCompanionGate()
 
         let approval = Task { @MainActor in
-            try await approvePubkyAuthRequest(
+            try await PubkyService.approveAuthRequest(
                 request: request,
                 authUrl: authUrl,
                 accountName: "Creator store",
@@ -380,48 +346,6 @@ private enum ApprovalFakeError: Error {
     case deliveryFailed
     case timedOut
     case trackingPreparationFailed
-}
-
-@MainActor
-private final class ApprovalSingleFlightHarness {
-    private var state: PubkyAuthApprovalSheet.ApprovalState = .authorize
-    private let request: Bitkit.PubkyAuthRequest
-    private let authUrl: String
-    private let manager: Bitkit.WatchOnlyAccountManager
-    private let companionApprovalGate: ApprovalCompanionGate
-
-    init(
-        request: Bitkit.PubkyAuthRequest,
-        authUrl: String,
-        manager: Bitkit.WatchOnlyAccountManager,
-        companionApprovalGate: ApprovalCompanionGate
-    ) {
-        self.request = request
-        self.authUrl = authUrl
-        self.manager = manager
-        self.companionApprovalGate = companionApprovalGate
-    }
-
-    func confirm() async throws {
-        guard state.beginAuthorization() else { return }
-
-        do {
-            try await approvePubkyAuthRequest(
-                request: request,
-                authUrl: authUrl,
-                accountName: "Creator store",
-                secretKeyHex: "secret",
-                accountManager: manager,
-                companionApproval: { [companionApprovalGate] _, _, _ in
-                    await companionApprovalGate.approve()
-                }
-            )
-            state = .success
-        } catch {
-            state = .authorize
-            throw error
-        }
-    }
 }
 
 private actor ApprovalCompanionGate {

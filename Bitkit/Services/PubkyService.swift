@@ -117,6 +117,77 @@ enum PubkyService {
         return false
     }
 
+    typealias OrdinaryAuthApproval = (String, String, String) async throws -> Void
+    typealias CompanionAuthApproval = (String, Data, String) async throws -> Void
+
+    @MainActor
+    static func approveAuthRequest(
+        request: PubkyAuthRequest,
+        authUrl: String,
+        accountName: String,
+        secretKeyHex: String,
+        accountManager: WatchOnlyAccountManager? = nil,
+        ordinaryApproval: @escaping OrdinaryAuthApproval = { authUrl, capabilities, secretKeyHex in
+            try await approveAuth(
+                authUrl: authUrl,
+                expectedCapabilities: capabilities,
+                secretKeyHex: secretKeyHex
+            )
+        },
+        companionApproval: @escaping CompanionAuthApproval = { authUrl, unsignedPayload, secretKeyHex in
+            try await approveAuthWithCompanionClaim(
+                authUrl: authUrl,
+                unsignedPayload: unsignedPayload,
+                secretKeyHex: secretKeyHex
+            )
+        }
+    ) async throws {
+        let accountManager = accountManager ?? .shared
+        if request.bitkitClaim == .watchOnlyAccountV1 {
+            let preparedClaim = try await accountManager.prepareUnsignedClaim(authUrl: authUrl, name: accountName)
+            let authorizationAttempt = try accountManager.acquireSetupAuthorizationAttempt(id: preparedClaim.0.id)
+            defer { accountManager.finishSetupAuthorizationAttempt(authorizationAttempt) }
+
+            do {
+                try await accountManager.beginSetupAuthorization(attempt: authorizationAttempt)
+            } catch {
+                await cancelIncompleteAuthorization(
+                    accountManager: accountManager,
+                    authorizationAttempt: authorizationAttempt
+                )
+                throw error
+            }
+
+            do {
+                try await companionApproval(authUrl, preparedClaim.1, secretKeyHex)
+            } catch {
+                if !didDeliverCompanionClaim(error: error) {
+                    await cancelIncompleteAuthorization(
+                        accountManager: accountManager,
+                        authorizationAttempt: authorizationAttempt
+                    )
+                }
+                throw error
+            }
+
+            try await accountManager.markSetupActive(attempt: authorizationAttempt)
+        } else {
+            try await ordinaryApproval(authUrl, request.capabilities, secretKeyHex)
+        }
+    }
+
+    @MainActor
+    private static func cancelIncompleteAuthorization(
+        accountManager: WatchOnlyAccountManager,
+        authorizationAttempt: WatchOnlyAccountAuthorizationAttempt
+    ) async {
+        do {
+            try await accountManager.cancelSetupAuthorization(attempt: authorizationAttempt)
+        } catch {
+            Logger.error("Failed to unload incomplete watch-only account: \(error)", context: "PubkyService")
+        }
+    }
+
     // MARK: - Key Derivation
 
     /// Derive an Ed25519 secret key from a BIP39 mnemonic. Returns hex-encoded 32-byte key.

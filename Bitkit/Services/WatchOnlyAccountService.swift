@@ -126,119 +126,59 @@ enum WatchOnlyAccountStore {
         allocationState restoredAllocationState: WatchOnlyAccountAllocationState? = nil,
         defaults: UserDefaults = .standard
     ) throws {
-        let restoredRecords = records ?? []
+        let restoredInput = records ?? []
+        let restoredAccounts = sanitizedAccounts(restoredInput)
         var data = (try? loadData(defaults: defaults)) ?? WatchOnlyAccountData()
         let currentAccounts = data.accounts
-        let locallyManagedAccounts = currentAccounts + data.accountsPendingUnload
-        let authorizingAccounts = sanitizedAccounts(locallyManagedAccounts.filter { $0.setupState == .authorizing })
-        let authorizingIds = Set(authorizingAccounts.map(\.id))
-        let authorizingKeys = Set(authorizingAccounts.map(managementKey))
-        let authorizingRequestKeys = Set(authorizingAccounts.map {
-            allocationRequestKey(walletIndex: $0.walletIndex, requestFingerprint: $0.requestFingerprint)
-        })
-        let protectedRestorationConflicts = sanitizedAccounts(locallyManagedAccounts.filter { account in
-            account.setupState != .authorizing
-                && !authorizingIds.contains(account.id)
-                && !authorizingKeys.contains(managementKey(account))
-                && (account.setupState == .active || !authorizingRequestKeys.contains(
-                    allocationRequestKey(walletIndex: account.walletIndex, requestFingerprint: account.requestFingerprint)
-                ))
-                && shouldProtectLocalAccount(account, from: restoredRecords)
-        }).map { promotedTrackingState(for: $0, from: restoredRecords) }
-        let protectedLocalAccounts = authorizingAccounts + protectedRestorationConflicts
-        let protectedIds = Set(protectedLocalAccounts.map(\.id))
-        let protectedKeys = Set(protectedLocalAccounts.map(managementKey))
-        let protectedIncompleteRequestKeys = Set(protectedLocalAccounts.compactMap { account -> String? in
-            guard account.setupState != .active else { return nil }
-            return allocationRequestKey(walletIndex: account.walletIndex, requestFingerprint: account.requestFingerprint)
-        })
-        let mergedRecords = sanitizedAccounts(restoredRecords.filter {
-            !protectedIds.contains($0.id)
-                && !protectedKeys.contains(managementKey($0))
-                && ($0.setupState == .active || !protectedIncompleteRequestKeys.contains(
-                    allocationRequestKey(walletIndex: $0.walletIndex, requestFingerprint: $0.requestFingerprint)
-                ))
-        }) + protectedLocalAccounts
-        let mergedKeys = Set(mergedRecords.map(managementKey))
+        let locallyManagedAccounts = uniqueAccounts(currentAccounts + data.accountsPendingUnload)
 
-        let accountsPendingUnload = uniqueAccounts(data.accountsPendingUnload + currentAccounts)
-            .filter { !mergedKeys.contains(managementKey($0)) }
-        data.accountsPendingUnload = accountsPendingUnload
-        data.accounts = mergedRecords.sorted { $0.accountIndex < $1.accountIndex }
+        let protectedLocalAccounts = sanitizedAccounts(locallyManagedAccounts.filter { localAccount in
+            localAccount.setupState == .authorizing
+                || shouldPreserveLocalAccount(localAccount, from: restoredAccounts)
+        })
+        let mergedAccounts = sanitizedAccounts(protectedLocalAccounts + restoredAccounts)
+        let mergedManagementKeys = Set(mergedAccounts.map(managementKey))
+
+        data.accountsPendingUnload = uniqueAccounts(currentAccounts + data.accountsPendingUnload)
+            .filter { !mergedManagementKeys.contains(managementKey($0)) }
+        data.accounts = mergedAccounts
 
         var localAllocationState = WatchOnlyAccountAllocationState(
-            highestAccountIndexByWallet: data.allocationState.highestAccountIndexByWallet.filter {
-                isValidAccountIndex($0.value)
-            },
-            pendingAccountIndexByRequest: data.allocationState.pendingAccountIndexByRequest.filter {
-                isValidAccountIndex($0.value)
-            }
+            highestAccountIndexByWallet: validHighestAccountIndexes(data.allocationState.highestAccountIndexByWallet),
+            pendingAccountIndexByRequest: validPendingAccountIndexes(data.allocationState.pendingAccountIndexByRequest)
         )
         localAllocationState.reconcileAccountIndexes(locallyManagedAccounts)
-        for (requestKey, accountIndex) in localAllocationState.pendingAccountIndexByRequest {
-            guard let walletIndex = walletIndex(fromAllocationRequestKey: requestKey) else { continue }
-            let walletKey = String(walletIndex)
-            localAllocationState.highestAccountIndexByWallet[walletKey] = max(
-                localAllocationState.highestAccountIndexByWallet[walletKey] ?? 0,
-                accountIndex
-            )
-        }
-        let localHighestAccountIndexByWallet = localAllocationState.highestAccountIndexByWallet
-        var highestAccountIndexByWallet = localHighestAccountIndexByWallet
+        localAllocationState.raiseHighWaterMarksForPendingReservations()
 
-        if let restoredAllocationState {
-            for (walletKey, restoredIndex) in restoredAllocationState.highestAccountIndexByWallet {
-                guard isValidAccountIndex(restoredIndex) else { continue }
-                highestAccountIndexByWallet[walletKey] = max(
-                    highestAccountIndexByWallet[walletKey] ?? 0,
-                    restoredIndex
-                )
-            }
-            for (requestKey, restoredIndex) in restoredAllocationState.pendingAccountIndexByRequest {
-                guard isValidAccountIndex(restoredIndex),
-                      let walletIndex = walletIndex(fromAllocationRequestKey: requestKey)
-                else { continue }
-                let walletKey = String(walletIndex)
-                highestAccountIndexByWallet[walletKey] = max(
-                    highestAccountIndexByWallet[walletKey] ?? 0,
-                    restoredIndex
-                )
-            }
-        }
-
-        var pendingAccountIndexByRequest = validPendingAccountIndexes(
-            restoredAllocationState?.pendingAccountIndexByRequest ?? [:],
-            accounts: mergedRecords,
-            restoredAccounts: restoredRecords,
-            blockedAccounts: accountsPendingUnload,
-            localHighestAccountIndexByWallet: localHighestAccountIndexByWallet,
-            localPendingAccountIndexByRequest: localAllocationState.pendingAccountIndexByRequest
-        )
-        for account in authorizingAccounts {
-            let accountSlot = allocationSlotKey(walletIndex: account.walletIndex, accountIndex: account.accountIndex)
-            pendingAccountIndexByRequest = pendingAccountIndexByRequest.filter { requestKey, accountIndex in
-                guard let walletIndex = walletIndex(fromAllocationRequestKey: requestKey) else { return false }
-                return allocationSlotKey(walletIndex: walletIndex, accountIndex: accountIndex) != accountSlot
-            }
-            let requestKey = allocationRequestKey(walletIndex: account.walletIndex, requestFingerprint: account.requestFingerprint)
-            pendingAccountIndexByRequest[requestKey] = account.accountIndex
-        }
-
-        for (requestKey, accountIndex) in pendingAccountIndexByRequest {
-            guard let walletIndex = walletIndex(fromAllocationRequestKey: requestKey) else { continue }
-            let walletKey = String(walletIndex)
+        var highestAccountIndexByWallet = localAllocationState.highestAccountIndexByWallet
+        for (walletKey, restoredIndex) in validHighestAccountIndexes(
+            restoredAllocationState?.highestAccountIndexByWallet ?? [:]
+        ) {
             highestAccountIndexByWallet[walletKey] = max(
                 highestAccountIndexByWallet[walletKey] ?? 0,
-                accountIndex
+                restoredIndex
             )
         }
 
-        data.allocationState = WatchOnlyAccountAllocationState(
+        var allocationState = WatchOnlyAccountAllocationState(
             highestAccountIndexByWallet: highestAccountIndexByWallet,
-            pendingAccountIndexByRequest: pendingAccountIndexByRequest
+            pendingAccountIndexByRequest: [:]
         )
+        allocationState.reconcileAccountIndexes(locallyManagedAccounts + restoredInput + data.accountsPendingUnload)
 
-        data.allocationState.reconcileAccountIndexes(restoredRecords + mergedRecords + accountsPendingUnload)
+        let retainedLocalPendingReservations = restoredAllocationState == nil
+            ? [:]
+            : localAllocationState.pendingAccountIndexByRequest
+        allocationState.pendingAccountIndexByRequest = mergedPendingAccountIndexes(
+            accounts: mergedAccounts,
+            blockedAccounts: data.accountsPendingUnload,
+            localPendingAccountIndexes: retainedLocalPendingReservations,
+            restoredPendingAccountIndexes: restoredAllocationState?.pendingAccountIndexByRequest ?? [:],
+            localHighestAccountIndexByWallet: localAllocationState.highestAccountIndexByWallet
+        )
+        allocationState.raiseHighWaterMarksForPendingReservations()
+
+        data.allocationState = allocationState
         try saveData(data, defaults: defaults)
     }
 
@@ -288,14 +228,6 @@ enum WatchOnlyAccountStore {
         data.allocationState.pendingAccountIndexByRequest[requestKey] = accountIndex
         try saveData(data, defaults: defaults)
         return accountIndex
-    }
-
-    static func completeAllocation(walletIndex: Int, requestFingerprint: String, defaults: UserDefaults = .standard) throws {
-        var data = try loadData(defaults: defaults)
-        data.allocationState.pendingAccountIndexByRequest.removeValue(
-            forKey: allocationRequestKey(walletIndex: walletIndex, requestFingerprint: requestFingerprint)
-        )
-        try saveData(data, defaults: defaults)
     }
 
     static func markSetupActive(id: UUID, defaults: UserDefaults = .standard) throws -> [WatchOnlyAccountRecord] {
@@ -350,100 +282,109 @@ enum WatchOnlyAccountStore {
         accountIndex > 0 && accountIndex <= maximumAccountIndex
     }
 
-    private static func validPendingAccountIndexes(
-        _ pendingAccountIndexes: [String: UInt32],
-        accounts: [WatchOnlyAccountRecord],
-        restoredAccounts: [WatchOnlyAccountRecord],
-        blockedAccounts: [WatchOnlyAccountRecord],
-        localHighestAccountIndexByWallet: [String: UInt32],
-        localPendingAccountIndexByRequest: [String: UInt32]
-    ) -> [String: UInt32] {
-        let accountsBySlot = Dictionary(grouping: accounts) {
-            allocationSlotKey(walletIndex: $0.walletIndex, accountIndex: $0.accountIndex)
+    private static func validHighestAccountIndexes(_ indexes: [String: UInt32]) -> [String: UInt32] {
+        indexes.reduce(into: [:]) { result, entry in
+            guard let walletIndex = Int(entry.key),
+                  walletIndex >= 0,
+                  isValidAccountIndex(entry.value)
+            else { return }
+            let walletKey = String(walletIndex)
+            result[walletKey] = max(result[walletKey] ?? 0, entry.value)
         }
-        let incompleteAccountSlotsByRequest: [String: String] = Dictionary(
-            uniqueKeysWithValues: accounts.compactMap { account -> (String, String)? in
-                guard account.setupState != .active else { return nil }
-                let requestKey = allocationRequestKey(
-                    walletIndex: account.walletIndex,
-                    requestFingerprint: account.requestFingerprint
-                )
-                return (requestKey, allocationSlotKey(walletIndex: account.walletIndex, accountIndex: account.accountIndex))
-            }
-        )
-        let restoredIncompleteRequestKeys = Set(restoredAccounts.compactMap { account -> String? in
-            guard account.setupState != .active else { return nil }
-            return allocationRequestKey(walletIndex: account.walletIndex, requestFingerprint: account.requestFingerprint)
-        })
-        let restoredAccountSlots = Set(restoredAccounts.map {
+    }
+
+    private static func validPendingAccountIndexes(_ indexes: [String: UInt32]) -> [String: UInt32] {
+        indexes.filter {
+            isValidAccountIndex($0.value) && walletIndex(fromAllocationRequestKey: $0.key) != nil
+        }
+    }
+
+    private static func mergedPendingAccountIndexes(
+        accounts: [WatchOnlyAccountRecord],
+        blockedAccounts: [WatchOnlyAccountRecord],
+        localPendingAccountIndexes: [String: UInt32],
+        restoredPendingAccountIndexes: [String: UInt32],
+        localHighestAccountIndexByWallet: [String: UInt32]
+    ) -> [String: UInt32] {
+        let activeSlots = Set(accounts.filter { $0.setupState == .active }.map {
             allocationSlotKey(walletIndex: $0.walletIndex, accountIndex: $0.accountIndex)
         })
         let blockedSlots = Set(blockedAccounts.map {
             allocationSlotKey(walletIndex: $0.walletIndex, accountIndex: $0.accountIndex)
         })
-        let candidates = pendingAccountIndexes.compactMap { requestKey, accountIndex -> (String, UInt32, String)? in
-            guard isValidAccountIndex(accountIndex),
+        var pendingAccountIndexes: [String: UInt32] = [:]
+        var reservedSlots = Set<String>()
+
+        func reserve(requestKey: String, accountIndex: UInt32, allowsHistoricalIndex: Bool) {
+            guard pendingAccountIndexes[requestKey] == nil,
+                  isValidAccountIndex(accountIndex),
                   let walletIndex = walletIndex(fromAllocationRequestKey: requestKey)
-            else { return nil }
+            else { return }
             let slot = allocationSlotKey(walletIndex: walletIndex, accountIndex: accountIndex)
-            let incompleteAccountSlot = incompleteAccountSlotsByRequest[requestKey]
-            guard !restoredIncompleteRequestKeys.contains(requestKey) || incompleteAccountSlot != nil,
-                  incompleteAccountSlot == nil || incompleteAccountSlot == slot,
-                  !restoredAccountSlots.contains(slot) || incompleteAccountSlot == slot
-            else { return nil }
-            if let localAccountIndex = localPendingAccountIndexByRequest[requestKey],
-               localAccountIndex != accountIndex
-            {
-                return nil
-            }
-            let slotAccounts = accountsBySlot[slot] ?? []
-            if slotAccounts.isEmpty {
-                guard !blockedSlots.contains(slot),
-                      localPendingAccountIndexByRequest[requestKey] == accountIndex
-                      || accountIndex > (localHighestAccountIndexByWallet[String(walletIndex)] ?? 0)
-                else { return nil }
-            } else {
-                guard slotAccounts.allSatisfy({
-                    $0.setupState != .active
-                        && allocationRequestKey(walletIndex: $0.walletIndex, requestFingerprint: $0.requestFingerprint) == requestKey
-                }) else { return nil }
-            }
-            return (requestKey, accountIndex, slot)
+            guard !reservedSlots.contains(slot),
+                  !activeSlots.contains(slot),
+                  !blockedSlots.contains(slot),
+                  allowsHistoricalIndex || accountIndex > (localHighestAccountIndexByWallet[String(walletIndex)] ?? 0)
+            else { return }
+            pendingAccountIndexes[requestKey] = accountIndex
+            reservedSlots.insert(slot)
         }
 
-        return Dictionary(grouping: candidates, by: { $0.2 }).values.reduce(into: [:]) { validIndexes, slotCandidates in
-            guard slotCandidates.count == 1, let candidate = slotCandidates.first else { return }
-            validIndexes[candidate.0] = candidate.1
+        for account in accounts where account.setupState != .active {
+            reserve(
+                requestKey: allocationRequestKey(
+                    walletIndex: account.walletIndex,
+                    requestFingerprint: account.requestFingerprint
+                ),
+                accountIndex: account.accountIndex,
+                allowsHistoricalIndex: true
+            )
         }
-    }
+        for (requestKey, accountIndex) in localPendingAccountIndexes.sorted(by: { $0.key < $1.key }) {
+            reserve(requestKey: requestKey, accountIndex: accountIndex, allowsHistoricalIndex: true)
+        }
+        for (requestKey, accountIndex) in restoredPendingAccountIndexes.sorted(by: { $0.key < $1.key }) {
+            reserve(requestKey: requestKey, accountIndex: accountIndex, allowsHistoricalIndex: false)
+        }
 
-    private static func uniqueAccounts(_ accounts: [WatchOnlyAccountRecord]) -> [WatchOnlyAccountRecord] {
-        Dictionary(grouping: accounts, by: managementKey).values.compactMap(\.last).sorted { $0.accountIndex < $1.accountIndex }
+        return pendingAccountIndexes
     }
 
     private static func sanitizedAccounts(_ accounts: [WatchOnlyAccountRecord]) -> [WatchOnlyAccountRecord] {
         var ids = Set<UUID>()
         var managementKeys = Set<String>()
         var incompleteRequestKeys = Set<String>()
+        var sanitized: [WatchOnlyAccountRecord] = []
 
-        return accounts.filter(isUsableAccount).sorted(by: accountRestorationOrder).filter { account in
+        for input in accounts where isUsableAccount(input) {
+            let account = normalizedTrackingState(input)
             let accountManagementKey = managementKey(account)
-            let incompleteRequestKey = allocationRequestKey(
+            let requestKey = allocationRequestKey(
                 walletIndex: account.walletIndex,
                 requestFingerprint: account.requestFingerprint
             )
             guard !ids.contains(account.id),
                   !managementKeys.contains(accountManagementKey),
-                  account.setupState == .active || !incompleteRequestKeys.contains(incompleteRequestKey)
-            else { return false }
-
+                  account.setupState == .active || !incompleteRequestKeys.contains(requestKey)
+            else { continue }
             ids.insert(account.id)
             managementKeys.insert(accountManagementKey)
             if account.setupState != .active {
-                incompleteRequestKeys.insert(incompleteRequestKey)
+                incompleteRequestKeys.insert(requestKey)
             }
-            return true
-        }.map(normalizedTrackingState)
+            sanitized.append(account)
+        }
+
+        return sanitized.sorted {
+            ($0.walletIndex, $0.accountIndex, $0.createdAt) < ($1.walletIndex, $1.accountIndex, $1.createdAt)
+        }
+    }
+
+    private static func uniqueAccounts(_ accounts: [WatchOnlyAccountRecord]) -> [WatchOnlyAccountRecord] {
+        var managementKeys = Set<String>()
+        return accounts.filter { managementKeys.insert(managementKey($0)).inserted }.sorted {
+            ($0.walletIndex, $0.accountIndex) < ($1.walletIndex, $1.accountIndex)
+        }
     }
 
     private static func isUsableAccount(_ account: WatchOnlyAccountRecord) -> Bool {
@@ -466,68 +407,25 @@ enum WatchOnlyAccountStore {
         return account
     }
 
-    private static func shouldProtectLocalAccount(
+    private static func shouldPreserveLocalAccount(
         _ localAccount: WatchOnlyAccountRecord,
         from restoredAccounts: [WatchOnlyAccountRecord]
     ) -> Bool {
-        let conflicts = restoredAccounts.filter(isUsableAccount).filter {
-            managementKey($0) == managementKey(localAccount) || $0.id == localAccount.id
+        let conflicts = restoredAccounts.filter {
+            $0.id == localAccount.id || managementKey($0) == managementKey(localAccount)
         }
-        guard let highestRestoredPriority = conflicts.map({ setupStatePriority($0.setupState) }).max() else {
-            return false
+        guard !conflicts.isEmpty else { return false }
+        if conflicts.contains(where: { !hasSameOwner(localAccount, $0) }) {
+            return true
         }
-        let localPriority = setupStatePriority(localAccount.setupState)
-        if localPriority != highestRestoredPriority {
-            return localPriority > highestRestoredPriority
-        }
-        return conflicts.contains {
-            setupStatePriority($0.setupState) == highestRestoredPriority
-                && !hasSameOwner(localAccount, $0)
-        }
-    }
-
-    private static func promotedTrackingState(
-        for localAccount: WatchOnlyAccountRecord,
-        from restoredAccounts: [WatchOnlyAccountRecord]
-    ) -> WatchOnlyAccountRecord {
-        guard localAccount.setupState == .active,
-              restoredAccounts.filter(isUsableAccount).contains(where: {
-                  managementKey($0) == managementKey(localAccount)
-                      && ($0.setupState == .authorizing || $0.setupState == .active && $0.isTrackingEnabled)
-              })
-        else { return localAccount }
-        var localAccount = localAccount
-        localAccount.isTrackingEnabled = true
-        return localAccount
+        return localAccount.setupState == .active
+            && conflicts.allSatisfy { $0.setupState != .active }
     }
 
     private static func hasSameOwner(_ lhs: WatchOnlyAccountRecord, _ rhs: WatchOnlyAccountRecord) -> Bool {
         managementKey(lhs) == managementKey(rhs)
             && lhs.requestFingerprint == rhs.requestFingerprint
             && lhs.xpub == rhs.xpub
-    }
-
-    private static func accountRestorationOrder(_ lhs: WatchOnlyAccountRecord, _ rhs: WatchOnlyAccountRecord) -> Bool {
-        let lhsPriority = setupStatePriority(lhs.setupState)
-        let rhsPriority = setupStatePriority(rhs.setupState)
-        if lhsPriority != rhsPriority { return lhsPriority > rhsPriority }
-        if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
-        if lhs.walletIndex != rhs.walletIndex { return lhs.walletIndex < rhs.walletIndex }
-        if lhs.accountIndex != rhs.accountIndex { return lhs.accountIndex < rhs.accountIndex }
-        if lhs.addressType != rhs.addressType { return lhs.addressType < rhs.addressType }
-        if lhs.requestFingerprint != rhs.requestFingerprint { return lhs.requestFingerprint < rhs.requestFingerprint }
-        if lhs.id != rhs.id { return lhs.id.uuidString < rhs.id.uuidString }
-        if lhs.xpub != rhs.xpub { return lhs.xpub < rhs.xpub }
-        if lhs.name != rhs.name { return lhs.name < rhs.name }
-        return lhs.isTrackingEnabled && !rhs.isTrackingEnabled
-    }
-
-    private static func setupStatePriority(_ state: WatchOnlyAccountSetupState) -> Int {
-        switch state {
-        case .active: return 3
-        case .authorizing: return 2
-        case .pendingDelivery: return 1
-        }
     }
 
     private static func managementKey(_ account: WatchOnlyAccountRecord) -> String {
@@ -537,10 +435,24 @@ enum WatchOnlyAccountStore {
 
 private extension WatchOnlyAccountAllocationState {
     mutating func reconcileAccountIndexes(_ accounts: [WatchOnlyAccountRecord]) {
-        for (walletIndex, walletAccounts) in Dictionary(grouping: accounts, by: \WatchOnlyAccountRecord.walletIndex) {
+        let validWalletAccounts = accounts.filter { $0.walletIndex >= 0 }
+        for (walletIndex, walletAccounts) in Dictionary(grouping: validWalletAccounts, by: \WatchOnlyAccountRecord.walletIndex) {
             guard let accountIndex = walletAccounts.map(\.accountIndex).filter({
                 $0 > 0 && $0 <= UInt32(Int32.max)
             }).max() else { continue }
+            let walletKey = String(walletIndex)
+            highestAccountIndexByWallet[walletKey] = max(highestAccountIndexByWallet[walletKey] ?? 0, accountIndex)
+        }
+    }
+
+    mutating func raiseHighWaterMarksForPendingReservations() {
+        for (requestKey, accountIndex) in pendingAccountIndexByRequest {
+            guard let separatorIndex = requestKey.firstIndex(of: ":"),
+                  let walletIndex = Int(requestKey[..<separatorIndex]),
+                  walletIndex >= 0,
+                  accountIndex > 0,
+                  accountIndex <= UInt32(Int32.max)
+            else { continue }
             let walletKey = String(walletIndex)
             highestAccountIndexByWallet[walletKey] = max(highestAccountIndexByWallet[walletKey] ?? 0, accountIndex)
         }
@@ -629,7 +541,6 @@ final class WatchOnlyAccountManager {
     private let defaults: UserDefaults
     private let lifecycleCoordinator: WatchOnlyAccountLifecycleCoordinator
     private let node: WatchOnlyAccountNodeHandling
-    private var preparationTasks: [String: Task<(WatchOnlyAccountRecord, Data), Error>] = [:]
     private var activeAuthorizationAttempt: WatchOnlyAccountAuthorizationAttempt?
     private var preservesAuthorizingStateOnFailure = false
 
@@ -656,23 +567,11 @@ final class WatchOnlyAccountManager {
     func prepareUnsignedClaim(authUrl: String, name: String) async throws -> (WatchOnlyAccountRecord, Data) {
         let normalizedName = try Self.normalizedName(name)
         let fingerprint = Self.requestFingerprint(authUrl)
-        let walletIndex = node.currentWalletIndex
-        let taskKey = "\(walletIndex):\(fingerprint)"
-
-        if let preparationTask = preparationTasks[taskKey] {
-            return try await preparationTask.value
-        }
-
-        let preparationTask = Task { @MainActor in
-            try await self.prepareUnsignedClaim(
-                normalizedName: normalizedName,
-                fingerprint: fingerprint,
-                walletIndex: walletIndex
-            )
-        }
-        preparationTasks[taskKey] = preparationTask
-        defer { preparationTasks[taskKey] = nil }
-        return try await preparationTask.value
+        return try await prepareUnsignedClaim(
+            normalizedName: normalizedName,
+            fingerprint: fingerprint,
+            walletIndex: node.currentWalletIndex
+        )
     }
 
     private func prepareUnsignedClaim(
