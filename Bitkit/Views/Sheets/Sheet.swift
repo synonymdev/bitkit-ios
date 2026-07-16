@@ -50,18 +50,29 @@ struct SheetHeader: View {
     let title: String
     let showBackButton: Bool
     let action: AnyView?
+    let onBack: (() -> Void)?
 
-    init(title: String, showBackButton: Bool = false, action: AnyView? = nil) {
+    init(
+        title: String,
+        showBackButton: Bool = false,
+        action: AnyView? = nil,
+        onBack: (() -> Void)? = nil
+    ) {
         self.title = title
         self.showBackButton = showBackButton
         self.action = action
+        self.onBack = onBack
     }
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
             if showBackButton {
                 Button(action: {
-                    dismiss()
+                    if let onBack {
+                        onBack()
+                    } else {
+                        dismiss()
+                    }
                 }) {
                     Image("arrow-left")
                         .resizable()

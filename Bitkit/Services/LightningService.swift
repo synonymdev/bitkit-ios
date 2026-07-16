@@ -107,7 +107,9 @@ class LightningService {
         let (selectedAddressType, monitoredTypes) = Self.addressTypeStateFromUserDefaults()
         config.addressType = selectedAddressType
         config.addressTypesToMonitor = monitoredTypes.filter { $0 != selectedAddressType }
-        config.onchainWalletAccounts = try Self.watchOnlyAccountConfigs(walletIndex: walletIndex)
+        #if !BITKIT_NOTIFICATION_EXTENSION
+            config.onchainWalletAccounts = try Self.watchOnlyAccountConfigs(walletIndex: walletIndex)
+        #endif
 
         let builder = Builder.fromConfig(config: config)
         builder.setCustomLogger(logWriter: LdkLogWriter())
@@ -284,11 +286,13 @@ class LightningService {
             try node.start()
         }
 
-        do {
-            try await reconcileWatchOnlyAccounts()
-        } catch {
-            Logger.error(error, context: "Failed to reconcile Paykit Server accounts during startup")
-        }
+        #if !BITKIT_NOTIFICATION_EXTENSION
+            do {
+                try await reconcileWatchOnlyAccounts()
+            } catch {
+                Logger.error(error, context: "Failed to reconcile Paykit Server accounts during startup")
+            }
+        #endif
 
         await refreshChannelCache()
         await refreshCache()
@@ -491,7 +495,9 @@ class LightningService {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        try await reconcileWatchOnlyAccounts()
+        #if !BITKIT_NOTIFICATION_EXTENSION
+            try await reconcileWatchOnlyAccounts()
+        #endif
 
         Logger.debug("Syncing LDK...")
         try await ServiceQueue.background(.ldk) {
@@ -570,74 +576,76 @@ class LightningService {
         }
     }
 
-    func reconcileWatchOnlyAccounts() async throws {
-        try await WatchOnlyAccountManager.shared.reconcileTracking()
-    }
-
-    func reconcileWatchOnlyAccountTracking(
-        records: [WatchOnlyAccountRecord],
-        managedRecords: [WatchOnlyAccountRecord]
-    ) async throws {
-        guard let node else {
-            throw AppError(serviceError: .nodeNotSetup)
+    #if !BITKIT_NOTIFICATION_EXTENSION
+        func reconcileWatchOnlyAccounts() async throws {
+            try await WatchOnlyAccountManager.shared.reconcileTracking()
         }
-        let walletRecords = records.filter { $0.walletIndex == currentWalletIndex }
-        let managedWalletRecords = managedRecords.filter { $0.walletIndex == currentWalletIndex }
-        let desiredConfigs = try Self.watchOnlyAccountConfigs(records: walletRecords)
 
-        try await ServiceQueue.background(.ldk) {
-            let trackedAccounts = node.listOnchainWalletAccounts()
-            let managedKeys = Set(managedWalletRecords.map { "\($0.addressType):\($0.accountIndex)" })
-            let desiredKeys = Set(desiredConfigs.map { "\($0.addressType.stringValue):\($0.accountIndex)" })
+        func reconcileWatchOnlyAccountTracking(
+            records: [WatchOnlyAccountRecord],
+            managedRecords: [WatchOnlyAccountRecord]
+        ) async throws {
+            guard let node else {
+                throw AppError(serviceError: .nodeNotSetup)
+            }
+            let walletRecords = records.filter { $0.walletIndex == currentWalletIndex }
+            let managedWalletRecords = managedRecords.filter { $0.walletIndex == currentWalletIndex }
+            let desiredConfigs = try Self.watchOnlyAccountConfigs(records: walletRecords)
 
-            for trackedAccount in trackedAccounts {
-                let key = "\(trackedAccount.addressType.stringValue):\(trackedAccount.accountIndex)"
-                if managedKeys.contains(key), !desiredKeys.contains(key) {
-                    try node.removeOnchainWalletAccount(
-                        addressType: trackedAccount.addressType,
-                        accountIndex: trackedAccount.accountIndex
+            try await ServiceQueue.background(.ldk) {
+                let trackedAccounts = node.listOnchainWalletAccounts()
+                let managedKeys = Set(managedWalletRecords.map { "\($0.addressType):\($0.accountIndex)" })
+                let desiredKeys = Set(desiredConfigs.map { "\($0.addressType.stringValue):\($0.accountIndex)" })
+
+                for trackedAccount in trackedAccounts {
+                    let key = "\(trackedAccount.addressType.stringValue):\(trackedAccount.accountIndex)"
+                    if managedKeys.contains(key), !desiredKeys.contains(key) {
+                        try node.removeOnchainWalletAccount(
+                            addressType: trackedAccount.addressType,
+                            accountIndex: trackedAccount.accountIndex
+                        )
+                    }
+                }
+
+                for config in desiredConfigs {
+                    let isTracked = trackedAccounts.contains {
+                        $0.addressType == config.addressType && $0.accountIndex == config.accountIndex
+                    }
+                    if !isTracked {
+                        try node.addOnchainWalletAccount(
+                            addressType: config.addressType,
+                            accountIndex: config.accountIndex,
+                            xpub: config.xpub
+                        )
+                    }
+                    try node.onchainPayment().revealReceiveAddressesToAccount(
+                        addressType: config.addressType,
+                        accountIndex: config.accountIndex,
+                        index: Self.watchOnlyAccountHighestPreRevealedAddressIndex
                     )
                 }
             }
+        }
 
-            for config in desiredConfigs {
-                let isTracked = trackedAccounts.contains {
-                    $0.addressType == config.addressType && $0.accountIndex == config.accountIndex
+        private static func watchOnlyAccountConfigs(walletIndex: Int) throws -> [OnchainWalletAccountConfig] {
+            try watchOnlyAccountConfigs(records: WatchOnlyAccountStore.enabledAccounts(for: walletIndex))
+        }
+
+        private static func watchOnlyAccountConfigs(records: [WatchOnlyAccountRecord]) throws -> [OnchainWalletAccountConfig] {
+            try records.filter {
+                ($0.setupState == .active || $0.setupState == .authorizing) && $0.isTrackingEnabled
+            }.map { record in
+                guard let addressType = LDKNode.AddressType.from(string: record.addressType) else {
+                    throw WatchOnlyAccountError.invalidExtendedPublicKey
                 }
-                if !isTracked {
-                    try node.addOnchainWalletAccount(
-                        addressType: config.addressType,
-                        accountIndex: config.accountIndex,
-                        xpub: config.xpub
-                    )
-                }
-                try node.onchainPayment().revealReceiveAddressesToAccount(
-                    addressType: config.addressType,
-                    accountIndex: config.accountIndex,
-                    index: Self.watchOnlyAccountHighestPreRevealedAddressIndex
+                return OnchainWalletAccountConfig(
+                    addressType: addressType,
+                    accountIndex: record.accountIndex,
+                    xpub: record.xpub
                 )
             }
         }
-    }
-
-    private static func watchOnlyAccountConfigs(walletIndex: Int) throws -> [OnchainWalletAccountConfig] {
-        try watchOnlyAccountConfigs(records: WatchOnlyAccountStore.enabledAccounts(for: walletIndex))
-    }
-
-    private static func watchOnlyAccountConfigs(records: [WatchOnlyAccountRecord]) throws -> [OnchainWalletAccountConfig] {
-        try records.filter {
-            ($0.setupState == .active || $0.setupState == .authorizing) && $0.isTrackingEnabled
-        }.map { record in
-            guard let addressType = LDKNode.AddressType.from(string: record.addressType) else {
-                throw WatchOnlyAccountError.invalidExtendedPublicKey
-            }
-            return OnchainWalletAccountConfig(
-                addressType: addressType,
-                accountIndex: record.accountIndex,
-                xpub: record.xpub
-            )
-        }
-    }
+    #endif
 
     func newAddress() async throws -> String {
         guard let node else {

@@ -671,6 +671,10 @@
 "pubky_auth__watch_only_account_name_error" = "Enter an account name between 1 and 64 characters.";
 "pubky_auth__watch_only_account_name_label" = "ACCOUNT NAME";
 "pubky_auth__watch_only_account_name_placeholder" = "Name this account";
+"pubky_auth__watch_only_intro_approve" = "Approve";
+"pubky_auth__watch_only_intro_description" = "To earn, you need to share a watch-only Bitcoin account with Paykit. It can view sales activity, but cannot spend funds.";
+"pubky_auth__watch_only_intro_nav_title" = "Earn";
+"pubky_auth__watch_only_intro_title" = "<accent>EARN BITCOIN</accent>\nFROM YOUR\nCONTENT";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit could not create a valid account xpub.";
 "pubky_auth__trust_warning" = "Make sure you trust the service, browser, or device before authorizing with your pubky.";
 "pubky_auth__authorizing" = "Authorizing...";

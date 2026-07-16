@@ -5,6 +5,31 @@ import Paykit
 import XCTest
 
 final class PubkyAuthApprovalSheetTests: XCTestCase {
+    func testAuthDisplayPublicKeyOmitsPubkyPrefix() {
+        XCTAssertEqual(pubkyAuthDisplayPublicKey("pubky3rsd123456789w5xg"), "3rsd...w5xg")
+        XCTAssertEqual(pubkyAuthDisplayPublicKey("3rsd123456789w5xg"), "3rsd...w5xg")
+        XCTAssertEqual(pubkyAuthDisplayPublicKey(nil), "")
+    }
+
+    @MainActor
+    func testWatchOnlyRequestStartsWithSeparateConsentBeforeAuthorization() throws {
+        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let request = try PubkyAuthRequest.parse(url: authUrl)
+        var state = PubkyAuthApprovalSheet.initialState(for: request)
+
+        XCTAssertEqual(state, .watchOnlyConsent)
+        XCTAssertTrue(state.approveWatchOnlyConsent())
+        XCTAssertEqual(state, .authorize)
+        XCTAssertFalse(state.approveWatchOnlyConsent())
+    }
+
+    func testOrdinaryRequestStartsAtNormalAuthorization() throws {
+        let authUrl = "pubkyauth://signin?caps=/pub/example/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+        let request = try PubkyAuthRequest.parse(url: authUrl)
+
+        XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request), .authorize)
+    }
+
     func testResolvePubkyApprovalLocalAuthModePrefersPinWhenPinEnabled() {
         let mode = resolvePubkyApprovalLocalAuthMode(
             isPinEnabled: true,
