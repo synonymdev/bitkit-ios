@@ -33,6 +33,24 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request), .authorize)
     }
 
+    @MainActor
+    func testOrdinaryRequestUsesOrdinaryApproval() async throws {
+        let authUrl = "pubkyauth://signin?caps=/pub/example/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+        let request = try PubkyAuthRequest.parse(url: authUrl)
+        var approvedCapabilities: String?
+
+        try await PubkyService.approveAuthRequest(
+            request: request,
+            authUrl: authUrl,
+            accountName: "",
+            secretKeyHex: "secret",
+            ordinaryApproval: { _, capabilities, _ in approvedCapabilities = capabilities },
+            companionApproval: { _, _, _ in XCTFail("Ordinary auth must not deliver a companion claim") }
+        )
+
+        XCTAssertEqual(approvedCapabilities, "/pub/example/:rw")
+    }
+
     func testResolvePubkyApprovalLocalAuthModePrefersPinWhenPinEnabled() {
         let mode = resolvePubkyApprovalLocalAuthMode(
             isPinEnabled: true,
@@ -272,6 +290,57 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         XCTAssertEqual(manager.accounts.first?.setupState, .authorizing)
         XCTAssertEqual(manager.accounts.first?.isTrackingEnabled, true)
         XCTAssertEqual(node.trackingChanges, [true, true, true])
+    }
+
+    @MainActor
+    func testRetryAfterRestartReusesAccountAndPayload() async throws {
+        let suiteName = "PubkyAuthApprovalSheetTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let request = try PubkyAuthRequest.parse(url: authUrl)
+        let node = ApprovalFakeWatchOnlyAccountNode()
+        let initialManager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
+        var deliveredPayloads: [Data] = []
+
+        await XCTAssertThrowsErrorAsync {
+            try await PubkyService.approveAuthRequest(
+                request: request,
+                authUrl: authUrl,
+                accountName: "Creator store",
+                secretKeyHex: "secret",
+                accountManager: initialManager,
+                companionApproval: { _, payload, _ in
+                    deliveredPayloads.append(payload)
+                    throw Paykit.PubkyAuthCompanionClaimApprovalError.AuthorizationFailure(reason: "normal auth failed")
+                }
+            )
+        }
+
+        let initialAccount = try XCTUnwrap(initialManager.accounts.first)
+        XCTAssertEqual(initialAccount.setupState, .authorizing)
+        XCTAssertTrue(initialAccount.isTrackingEnabled)
+
+        let restartedManager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
+        try await PubkyService.approveAuthRequest(
+            request: request,
+            authUrl: authUrl,
+            accountName: "Creator store",
+            secretKeyHex: "secret",
+            accountManager: restartedManager,
+            companionApproval: { _, payload, _ in deliveredPayloads.append(payload) }
+        )
+
+        let activeAccount = try XCTUnwrap(restartedManager.accounts.first)
+        XCTAssertEqual(deliveredPayloads.count, 2)
+        XCTAssertEqual(deliveredPayloads.first, deliveredPayloads.last)
+        XCTAssertEqual(activeAccount.id, initialAccount.id)
+        XCTAssertEqual(activeAccount.accountIndex, initialAccount.accountIndex)
+        XCTAssertEqual(activeAccount.xpub, initialAccount.xpub)
+        XCTAssertEqual(activeAccount.setupState, .active)
+        XCTAssertTrue(activeAccount.isTrackingEnabled)
+        XCTAssertEqual(node.trackingChanges, [true, true])
     }
 
     @MainActor
