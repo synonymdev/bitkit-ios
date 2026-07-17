@@ -89,7 +89,7 @@ struct AppScene: View {
             hwConnecting: trezorManager,
             hwFeeRateProvider: {
                 guard let rates = await feeEstimatesManager.getEstimates() else { return nil }
-                return UInt64(SettingsViewModel.shared.defaultTransactionSpeed.getFeeRate(from: rates))
+                return UInt64(TransactionSpeed.fast.getFeeRate(from: rates))
             },
             hwAddressProvider: {
                 let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))

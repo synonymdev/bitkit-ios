@@ -27,7 +27,7 @@ struct HwFundingSigner {
     /// (a `sendMax` compose) is unavailable.
     var txVBytes: UInt64 = 1200
     /// Minimum fallback fee rate when fee estimates are temporarily unavailable.
-    var fallbackSatsPerVByte: UInt64 = 1
+    var fallbackSatsPerVByte: UInt64 = 3
     /// Fallback fee percentage used when fee estimates are temporarily unavailable.
     var fallbackFeePercent: Double = 0.1
 
@@ -192,7 +192,7 @@ struct HwFundingSigner {
         balanceSats: UInt64,
         satsPerVByte: UInt64?,
         txVBytes: UInt64 = 1200,
-        fallbackSatsPerVByte: UInt64 = 1,
+        fallbackSatsPerVByte: UInt64 = 3,
         fallbackFeePercent: Double = 0.1
     ) -> UInt64 {
         guard let satsPerVByte else {
