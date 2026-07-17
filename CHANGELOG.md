@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update FX rates endpoint to no longer use old Blocktank service. #624
 
 ### Fixed
+- Hardware wallet transfers to spending now use a faster on-chain fee rate so funding confirms more reliably. #634
 - Amount entry across the send, spending, LNURL, and channel-funding screens now caps the number pad at your available balance and briefly warns when you try to enter more than you can send. #346
 - Channel close and transfer activities, including force closes, now offer an Explore button so the on-chain transaction ID and block explorer details are accessible. #361
 - Fixed private contact payment preferences so the toggle only updates after endpoint publication or removal succeeds. #583
