@@ -24,16 +24,26 @@ final class SavingsSwapTests: XCTestCase {
 
     // MARK: - Claim gating
 
-    func testIsClaimableOnlyWhileReverseLockupIsOnchainAndUnclaimed() {
+    func testIsClaimableWhileReverseSwapIsUnclaimedAndNotTerminal() {
         XCTAssertTrue(swap(status: .transactionMempool).isClaimable)
         XCTAssertTrue(swap(status: .transactionConfirmed).isClaimable)
         XCTAssertTrue(swap(status: .transactionClaimPending).isClaimable)
+        XCTAssertTrue(swap(status: .invoicePending).isClaimable)
 
-        XCTAssertFalse(swap(status: .swapCreated).isClaimable)
+        // A stalled updates stream leaves the swap at swapCreated locally even once Boltz has
+        // locked up on-chain, so the claim must stay reachable: this is the recovery case.
+        XCTAssertTrue(swap(status: .swapCreated).isClaimable)
+    }
+
+    func testIsClaimableFalseForTerminalAlreadyClaimedAndSubmarineSwaps() {
         XCTAssertFalse(swap(status: .swapExpired).isClaimable)
         XCTAssertFalse(swap(status: .transactionFailed).isClaimable)
+        XCTAssertFalse(swap(status: .transactionLockupFailed).isClaimable)
         XCTAssertFalse(swap(status: .transactionRefunded).isClaimable)
+        XCTAssertFalse(swap(status: .transactionClaimed).isClaimable)
         XCTAssertFalse(swap(status: .invoiceSettled).isClaimable)
+        XCTAssertFalse(swap(status: .invoiceExpired).isClaimable)
+        XCTAssertFalse(swap(status: .invoiceFailedToPay).isClaimable)
         XCTAssertFalse(swap(status: .transactionConfirmed, claimTxId: "txid1").isClaimable)
         XCTAssertFalse(swap(swapType: .submarine, status: .transactionConfirmed).isClaimable)
     }

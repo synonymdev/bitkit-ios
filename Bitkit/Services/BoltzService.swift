@@ -155,9 +155,10 @@ class BoltzService {
     // MARK: - Updates stream
 
     /// Open the Boltz updates WebSocket, subscribe all pending swaps and auto-claim
-    /// confirmed reverse swaps. `feeRateSatPerVb` is the rate used for those
-    /// auto-claims (Bitkit owns fee estimation). Replaces any running stream.
-    func startUpdates(feeRateSatPerVb: Double?) async throws {
+    /// reverse swaps. `feeRateSatPerVb` is the rate used for those auto-claims (Bitkit
+    /// owns fee estimation). `acceptZeroConf` claims a reverse swap as soon as its lockup
+    /// hits the mempool instead of waiting for its confirmation. Replaces any running stream.
+    func startUpdates(feeRateSatPerVb: Double?, acceptZeroConf: Bool = true) async throws {
         let (mnemonic, passphrase) = try credentials()
         try await ServiceQueue.background(.core) {
             try await boltzStartSwapUpdates(
@@ -165,7 +166,8 @@ class BoltzService {
                 listener: self.listener,
                 mnemonic: mnemonic,
                 bip39Passphrase: passphrase,
-                feeRateSatPerVb: feeRateSatPerVb
+                feeRateSatPerVb: feeRateSatPerVb,
+                acceptZeroConf: acceptZeroConf
             )
         }
         Logger.info("Started Boltz updates stream on \(Self.boltzNetwork)", context: "BoltzService")
@@ -214,16 +216,29 @@ private final class EventForwarder: BoltzEventListener {
 }
 
 extension BoltzSwap {
-    /// Whether a manual claim can succeed for this swap: reverse direction, lockup funds
-    /// visible on-chain (mempool or confirmed), and no claim broadcast yet. Freshly created,
-    /// expired, failed, and refunded swaps have nothing to claim.
+    /// Whether a manual claim is worth attempting: a reverse swap with no claim broadcast yet
+    /// that has not reached a terminal state.
+    ///
+    /// Deliberately permissive about `status`. The persisted status only advances while the
+    /// updates stream is delivering events, so gating on it hides the recovery tool in exactly
+    /// the case it exists for: a stalled stream leaves the swap at `.swapCreated` locally even
+    /// after Boltz has locked up on-chain and the funds are claimable. The chain, not the cached
+    /// status, is the source of truth here, so offer the claim and let `boltzClaimReverseSwap`
+    /// decide; when there is nothing to claim it fails harmlessly and the error surfaces.
     var isClaimable: Bool {
         guard swapType == .reverse, claimTxId == nil else { return false }
         switch status {
-        case .transactionMempool, .transactionConfirmed, .transactionClaimPending:
-            return true
-        default:
+        case .invoiceExpired,
+             .invoiceFailedToPay,
+             .invoiceSettled,
+             .swapExpired,
+             .transactionClaimed,
+             .transactionFailed,
+             .transactionLockupFailed,
+             .transactionRefunded:
             return false
+        default:
+            return true
         }
     }
 }

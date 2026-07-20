@@ -231,6 +231,8 @@
 "lightning__savings_advanced__total" = "Total selected";
 "lightning__savings_progress__title" = "Funds\n<accent>in transfer</accent>";
 "lightning__savings_progress__text" = "Please wait, your funds transfer is in progress. This should take <accent>±10 seconds.</accent>";
+"lightning__savings_settling__title" = "Transfer\n<accent>on the way</accent>";
+"lightning__savings_settling__text" = "Your transfer has been initiated and is <accent>settling on-chain</accent>. Your savings balance will update automatically once it completes.";
 "lightning__savings_interrupted__nav_title" = "Transfer\n<accent>interrupted</accent>";
 "lightning__savings_interrupted__title" = "Keep Bitkit\n<accent>open</accent>";
 "lightning__savings_interrupted__text" = "Funds were not transferred yet. Bitkit will try to initiate the transfer during the next <accent>30 minutes</accent>. Please keep your app open.";

@@ -154,7 +154,7 @@ class TransferViewModel: ObservableObject {
     /// Cached swap limits so the slider can re-price locally without hitting the network.
     private var reverseSwapLimits: BoltzPairInfo?
     /// How long the confirm/progress flow waits for the on-chain claim before backgrounding it.
-    private let swapClaimTimeout: TimeInterval = 60
+    private let swapClaimTimeout: TimeInterval = 30
     /// Minimum sats held back from a swap to cover Lightning routing fees.
     private static let minLnRoutingFeeReserveSats: UInt64 = 10
 
@@ -1185,8 +1185,10 @@ class TransferViewModel: ObservableObject {
         let minSat = limits.minimalSat
 
         guard maxSat >= minSat, maxSat > 0 else {
+            // Below the swap minimum: revert to the pre-swap view where the swipe closes
+            // the channel instead. No error text or extra close action is shown.
             pendingSwapAmountSat = 0
-            savingsSwapState = SavingsSwapState(errorMessage: t("lightning__savings_confirm__amount_too_low"))
+            savingsSwapState = SavingsSwapState(amountTooLow: true)
             return
         }
 
@@ -1297,6 +1299,8 @@ struct SavingsSwapState {
     var minSat: UInt64 = 0
     var maxSat: UInt64 = 0
     var errorMessage: String?
+    /// Swap amount is below the swap minimum; the screen falls back to closing the channel.
+    var amountTooLow = false
 }
 
 enum SavingsSwapResult: Equatable {

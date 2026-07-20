@@ -103,10 +103,16 @@ struct SavingsConfirmView: View {
                     accentColor: .brandAccent
                 ) {
                     // Swapping funds out is the default; it only fires once the fee quote is ready.
-                    guard swapState.quote != nil else { return }
+                    // Below the swap minimum we revert to the pre-swap behaviour: the swipe closes
+                    // the channel and the extra "close instead" action is hidden.
+                    if swapState.amountTooLow {
+                        transfer.savingsTransferMode = .close
+                    } else {
+                        guard swapState.quote != nil else { return }
+                        transfer.savingsTransferMode = .swap
+                    }
 
                     do {
-                        transfer.savingsTransferMode = .swap
                         transfer.onTransferToSavingsConfirm(channels: channels)
 
                         try await Task.sleep(nanoseconds: 300_000_000)
@@ -122,13 +128,15 @@ struct SavingsConfirmView: View {
                 }
             }
 
-            // Fallback: drain a whole channel on-chain by closing it instead of swapping.
-            CustomButton(title: t("lightning__savings_confirm__close_instead"), variant: .tertiary) {
-                transfer.savingsTransferMode = .close
-                transfer.onTransferToSavingsConfirm(channels: channels)
-                navigation.navigate(.savingsProgress)
+            if !swapState.amountTooLow {
+                // Fallback: drain a whole channel on-chain by closing it instead of swapping.
+                CustomButton(title: t("lightning__savings_confirm__close_instead"), variant: .tertiary) {
+                    transfer.savingsTransferMode = .close
+                    transfer.onTransferToSavingsConfirm(channels: channels)
+                    navigation.navigate(.savingsProgress)
+                }
+                .padding(.top, 12)
             }
-            .padding(.top, 12)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

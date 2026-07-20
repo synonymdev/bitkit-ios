@@ -2,6 +2,9 @@ import SwiftUI
 
 enum SavingsProgressState {
     case inProgress
+    /// Swap hold invoice is paid but the on-chain claim has not landed within the wait window.
+    /// The claim auto-broadcasts once the lockup appears, so the transfer is committed and settling.
+    case settling
     case success
     case failed
 }
@@ -18,7 +21,7 @@ struct SavingsProgressContentView: View {
 
     var navTitle: String {
         switch progressState {
-        case .inProgress: return t("lightning__transfer__nav_title")
+        case .inProgress, .settling: return t("lightning__transfer__nav_title")
         case .failed: return t("lightning__savings_interrupted__nav_title")
         case .success: return t("lightning__transfer__nav_title")
         }
@@ -27,6 +30,7 @@ struct SavingsProgressContentView: View {
     var title: String {
         switch progressState {
         case .inProgress: return t("lightning__savings_progress__title")
+        case .settling: return t("lightning__savings_settling__title")
         case .failed: return t("lightning__savings_interrupted__title")
         case .success: return t("lightning__transfer_success__title_savings")
         }
@@ -35,6 +39,7 @@ struct SavingsProgressContentView: View {
     var text: String {
         switch progressState {
         case .inProgress: return t("lightning__savings_progress__text")
+        case .settling: return t("lightning__savings_settling__text")
         case .failed: return t("lightning__savings_interrupted__text")
         case .success: return t("lightning__transfer_success__text_savings")
         }
@@ -52,7 +57,7 @@ struct SavingsProgressContentView: View {
 
             Spacer()
 
-            if progressState == .inProgress {
+            if progressState == .inProgress || progressState == .settling {
                 ZStack(alignment: .center) {
                     // Outer ellipse
                     Image("ellipse-outer-brand")
@@ -155,17 +160,27 @@ struct SavingsProgressView: View {
             }
     }
 
-    /// Swaps spending funds out to on-chain savings. A pending claim is treated as success
-    /// because the updates stream auto-claims it in the background.
+    /// Swaps spending funds out to on-chain savings. A pending claim is shown as "settling"
+    /// rather than success: the hold invoice is paid and the updates stream auto-claims it in
+    /// the background, so the transfer is committed but not yet landed on-chain.
     private func runSavingsSwap() async {
+        // Ensure the updates stream is running so the new swap is tracked and auto-claimed
+        // once its lockup appears, even if the launch-time start had not yet succeeded.
+        wallet.ensureSwapUpdatesRunning()
+
         let result = await transfer.executeSavingsSwap()
         UIApplication.shared.isIdleTimerDisabled = false
 
         switch result {
-        case .success, .pending:
+        case .success:
             await wallet.syncStateAsync()
             withAnimation {
                 progressState = .success
+            }
+        case .pending:
+            await wallet.syncStateAsync()
+            withAnimation {
+                progressState = .settling
             }
         case let .failure(message):
             app.toast(
@@ -222,6 +237,15 @@ struct SavingsProgressView: View {
 #Preview("In Progress") {
     NavigationStack {
         SavingsProgressContentView(progressState: .inProgress)
+            .environmentObject(AppViewModel())
+            .environmentObject(TransferViewModel())
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Settling") {
+    NavigationStack {
+        SavingsProgressContentView(progressState: .settling)
             .environmentObject(AppViewModel())
             .environmentObject(TransferViewModel())
     }
