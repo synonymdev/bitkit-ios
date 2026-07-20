@@ -41,10 +41,9 @@ enum ContactPaymentsService {
     }
 
     static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
-        guard defaults.bool(forKey: confirmedPreferenceKey) else { return true }
-
-        return defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) ||
-            defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.bool(forKey: confirmedPreferenceKey) &&
+            (defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) ||
+                defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
     }
 
     static func enableAllPaymentOptions(defaults: UserDefaults = .standard) {
@@ -117,12 +116,6 @@ enum ContactPaymentsService {
         operations: Operations,
         defaults: UserDefaults
     ) async throws {
-        try await operations.syncPublicEndpoints(true)
-
-        defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
-        defaults.set(canUsePrivatePayments, forKey: PrivatePaykitService.publishingEnabledKey)
-        defaults.set(true, forKey: confirmedPreferenceKey)
-
         if canUsePrivatePayments,
            let error = await operations.preparePrivateEndpoints(
                contactPublicKeys,
@@ -132,36 +125,37 @@ enum ContactPaymentsService {
             throw error
         }
 
+        try await operations.syncPublicEndpoints(true)
+
+        defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        defaults.set(canUsePrivatePayments, forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set(true, forKey: confirmedPreferenceKey)
+
         operations.setPublicCleanupPending(false)
         operations.setPrivateCleanupPending(false)
     }
 
     @MainActor
     private static func disable(operations: Operations, defaults: UserDefaults) async throws {
-        defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
-        defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
-        defaults.set(true, forKey: confirmedPreferenceKey)
-
-        var firstError: Error?
-        do {
-            try await operations.syncPublicEndpoints(false)
-            operations.setPublicCleanupPending(false)
-        } catch {
-            firstError = error
-            operations.setPublicCleanupPending(true)
-        }
-
         do {
             try await operations.removePrivateEndpoints()
             operations.setPrivateCleanupPending(false)
         } catch {
-            firstError = firstError ?? error
             operations.setPrivateCleanupPending(true)
+            throw error
         }
 
-        if let firstError {
-            throw firstError
+        do {
+            try await operations.syncPublicEndpoints(false)
+            operations.setPublicCleanupPending(false)
+        } catch {
+            operations.setPublicCleanupPending(true)
+            throw error
         }
+
+        defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+        defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set(true, forKey: confirmedPreferenceKey)
     }
 
     @MainActor

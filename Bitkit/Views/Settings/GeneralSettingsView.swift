@@ -27,7 +27,7 @@ struct GeneralSettingsView: View {
         Binding(
             get: {
                 pendingContactPaymentsValue ??
-                    (hasConfirmedContactPaymentsPreference ? sharesPublicPaykitEndpoints || sharesPrivatePaykitEndpoints : true)
+                    (hasConfirmedContactPaymentsPreference && (sharesPublicPaykitEndpoints || sharesPrivatePaykitEndpoints))
             },
             set: { enabled in
                 Task { await updateContactPayments(enabled) }
@@ -145,6 +145,12 @@ struct GeneralSettingsView: View {
         }
         .task {
             ContactPaymentsService.enableAllPaymentOptions()
+            guard isPaykitUIActive,
+                  pubkyProfile.isAuthenticated,
+                  !hasConfirmedContactPaymentsPreference
+            else { return }
+
+            await updateContactPayments(true)
         }
     }
 
@@ -159,11 +165,16 @@ struct GeneralSettingsView: View {
         }
 
         do {
+            let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
+            if canUsePrivatePayments, let publicKey = pubkyProfile.publicKey {
+                try await contactsManager.loadContactsIfNeeded(for: publicKey)
+            }
+
             try await ContactPaymentsService.setEnabled(
                 enabled,
                 wallet: wallet,
                 contactPublicKeys: contactsManager.contacts.map(\.publicKey),
-                canUsePrivatePayments: pubkyProfile.hasLocalSecretKeyForCurrentProfile
+                canUsePrivatePayments: canUsePrivatePayments
             )
         } catch {
             Logger.error("Failed to update contact payments: \(error)", context: "GeneralSettingsView")

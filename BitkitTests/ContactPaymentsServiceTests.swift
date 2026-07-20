@@ -4,9 +4,9 @@ import XCTest
 
 @MainActor
 final class ContactPaymentsServiceTests: XCTestCase {
-    func testContactPaymentsAreEnabledByDefaultBeforeConfirmation() throws {
+    func testContactPaymentsRemainOffUntilDefaultPublicationCompletes() throws {
         try withIsolatedDefaults { defaults in
-            XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
         }
     }
 
@@ -52,6 +52,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             XCTAssertEqual(operations.privatePublications.count, 1)
             XCTAssertEqual(operations.privatePublications[0].contactPublicKeys, ["contact-a", "contact-b"])
             XCTAssertTrue(operations.privatePublications[0].requiresImmediatePublication)
+            XCTAssertEqual(operations.calls, ["private:publish", "public:true"])
             XCTAssertEqual(operations.privateRemovalCount, 0)
             XCTAssertEqual(operations.publicCleanupValues, [false])
             XCTAssertEqual(operations.privateCleanupValues, [false])
@@ -99,6 +100,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
 
             XCTAssertEqual(operations.publicPublicationValues, [false])
             XCTAssertEqual(operations.privateRemovalCount, 1)
+            XCTAssertEqual(operations.calls, ["private:remove", "public:false"])
             XCTAssertEqual(operations.publicCleanupValues, [false])
             XCTAssertEqual(operations.privateCleanupValues, [false])
             XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
@@ -108,7 +110,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
-    func testFailedPrivateEnableRestoresDisabledState() async throws {
+    func testFailedPrivateEnableDoesNotPublishPublicEndpointAndRestoresDisabledState() async throws {
         try await withIsolatedDefaultsAsync { defaults in
             defaults.set(true, forKey: PublicPaykitService.cleanupPendingKey)
             let operations = OperationsSpy()
@@ -127,7 +129,8 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 XCTAssertEqual(error as? TestError, .operationFailed)
             }
 
-            XCTAssertEqual(operations.publicPublicationValues, [true, false])
+            XCTAssertEqual(operations.publicPublicationValues, [false])
+            XCTAssertFalse(operations.calls.contains("public:true"))
             XCTAssertEqual(operations.privatePublications.count, 1)
             XCTAssertEqual(operations.privateRemovalCount, 1)
             XCTAssertEqual(operations.publicCleanupValues, [true])
@@ -160,12 +163,12 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 XCTAssertEqual(error as? TestError, .operationFailed)
             }
 
-            XCTAssertEqual(operations.publicPublicationValues, [false, true])
+            XCTAssertEqual(operations.publicPublicationValues, [true])
             XCTAssertEqual(operations.privateRemovalCount, 1)
             XCTAssertEqual(operations.privatePublications.count, 1)
             XCTAssertEqual(operations.privatePublications[0].contactPublicKeys, ["contact-a"])
             XCTAssertTrue(operations.privatePublications[0].requiresImmediatePublication)
-            XCTAssertEqual(operations.publicCleanupValues, [false, true])
+            XCTAssertEqual(operations.publicCleanupValues, [true])
             XCTAssertEqual(operations.privateCleanupValues, [true, false])
             XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
             XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
@@ -206,6 +209,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
         var privateRemovalCount = 0
         var publicCleanupValues: [Bool] = []
         var privateCleanupValues: [Bool] = []
+        var calls: [String] = []
         var publicPublicationFailures: Set<Int> = []
         var privatePublicationFailures: Set<Int> = []
         var privateRemovalFailures: Set<Int> = []
@@ -213,12 +217,14 @@ final class ContactPaymentsServiceTests: XCTestCase {
         func makeOperations() -> ContactPaymentsService.Operations {
             ContactPaymentsService.Operations(
                 syncPublicEndpoints: { publish in
+                    self.calls.append("public:\(publish)")
                     self.publicPublicationValues.append(publish)
                     if self.publicPublicationFailures.contains(self.publicPublicationValues.count) {
                         throw TestError.operationFailed
                     }
                 },
                 preparePrivateEndpoints: { contactPublicKeys, requiresImmediatePublication in
+                    self.calls.append("private:publish")
                     self.privatePublications.append(
                         PrivatePublication(
                             contactPublicKeys: contactPublicKeys,
@@ -228,6 +234,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                     return self.privatePublicationFailures.contains(self.privatePublications.count) ? TestError.operationFailed : nil
                 },
                 removePrivateEndpoints: {
+                    self.calls.append("private:remove")
                     self.privateRemovalCount += 1
                     if self.privateRemovalFailures.contains(self.privateRemovalCount) {
                         throw TestError.operationFailed
