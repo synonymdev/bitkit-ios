@@ -196,8 +196,7 @@ struct PubkyProfile {
     }
 
     private static func truncate(_ key: String) -> String {
-        guard key.count > 10 else { return key }
-        return "\(key.prefix(4))...\(key.suffix(4))"
+        PubkyPublicKeyFormat.displayTruncated(key)
     }
 
     private static func normalizedPublicKey(_ key: String) -> String {

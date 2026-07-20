@@ -6,6 +6,7 @@ struct ContactAvatarLetter: View {
     var backgroundColor: Color = .white.opacity(0.1)
     var strokeColor: Color?
     var strokeWidth: CGFloat = 0
+    var textFont: Font?
 
     private var letter: String {
         String(source.prefix(1)).uppercased()
@@ -29,7 +30,9 @@ struct ContactAvatarLetter: View {
 
     @ViewBuilder
     private var avatarText: some View {
-        if size >= 72 {
+        if let textFont {
+            AccentedText(letter, font: textFont, fontColor: .textPrimary)
+        } else if size >= 72 {
             HeadlineText(letter)
         } else if size >= 56 {
             TitleText(letter)

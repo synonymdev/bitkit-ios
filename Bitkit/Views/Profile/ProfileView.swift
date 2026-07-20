@@ -6,6 +6,8 @@ struct ProfileView: View {
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     @State private var showSignOutConfirmation = false
+    @State private var showAddTagSheet = false
+    @State private var isUpdatingTags = false
     @State private var isSigningOut = false
 
     var body: some View {
@@ -62,24 +64,30 @@ struct ProfileView: View {
                 .padding(.bottom, 24)
 
                 profileQRCode(profile)
+                    .frame(width: 279)
                     .padding(.bottom, 24)
 
                 profileActions
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 24)
+
+                CustomDivider()
 
                 VStack(alignment: .leading, spacing: 0) {
                     if !profile.links.isEmpty {
                         profileLinks(profile)
                     }
 
-                    if !profile.tags.isEmpty {
-                        profileTags(profile)
-                            .padding(.top, 16)
-                    }
+                    profileTags(profile)
+                        .padding(.top, 16)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 16)
+        }
+        .sheet(isPresented: $showAddTagSheet) {
+            AddProfileTagSheet { tag in
+                addTag(tag, to: profile)
+            }
         }
     }
 
@@ -155,8 +163,45 @@ struct ProfileView: View {
 
             WrappingHStack(spacing: 8) {
                 ForEach(profile.tags, id: \.self) { tag in
-                    Tag(tag)
+                    Tag(tag, icon: .close, onDelete: {
+                        updateTags(profile.tags.filter { $0 != tag }, profile: profile)
+                    })
                 }
+
+                IconActionButton(
+                    icon: "tag",
+                    title: t("profile__create_add_tag"),
+                    accessibilityId: "ProfileAddTag"
+                ) {
+                    showAddTagSheet = true
+                }
+            }
+            .disabled(isUpdatingTags)
+        }
+    }
+
+    private func addTag(_ tag: String, to profile: PubkyProfile) {
+        guard !profile.tags.contains(tag) else { return }
+        updateTags(profile.tags + [tag], profile: profile)
+    }
+
+    private func updateTags(_ tags: [String], profile: PubkyProfile) {
+        guard !isUpdatingTags else { return }
+        isUpdatingTags = true
+
+        Task {
+            defer { isUpdatingTags = false }
+
+            do {
+                try await pubkyProfile.saveProfile(
+                    name: profile.name,
+                    bio: profile.bio,
+                    links: profile.links,
+                    tags: tags
+                )
+            } catch {
+                Logger.error("Failed to update profile tags: \(error)", context: "ProfileView")
+                app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
             }
         }
     }

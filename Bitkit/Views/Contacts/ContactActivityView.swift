@@ -20,7 +20,7 @@ struct ContactActivityView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: contactName.isEmpty ? t("wallet__activity") : contactName)
+            NavigationBar(title: t("wallet__activity"))
                 .padding(.horizontal, 16)
 
             if isLoading {

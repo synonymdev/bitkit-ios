@@ -94,6 +94,7 @@
 "common__search" = "Search";
 "common__discard" = "Discard";
 "common__save" = "Save";
+"common__pay" = "Pay";
 "common__done" = "Done";
 "common__delete" = "Delete";
 "common__delete_yes" = "Yes, Delete";
@@ -1016,9 +1017,9 @@
 "contacts__activity_sent_to" = "Sent to {name}";
 "contacts__activity_received_from" = "Received from {name}";
 "contacts__detail_empty_state" = "Unable to load contact.";
-"contacts__empty_state" = "You don't have any contacts yet.";
+"contacts__empty_state" = "Pay your contacts with just a tap. Send payments directly, to anyone, anywhere.";
 "contacts__intro_add_contact" = "Add Contact";
-"contacts__intro_description" = "Get automatic updates from contacts, pay them, and follow their public profiles.";
+"contacts__intro_description" = "Pay your contacts with just a tap. Send payments directly, to anyone, anywhere.";
 "contacts__intro_title" = "Dynamic\n<accent>contacts</accent>";
 "contacts__my_profile" = "MY PROFILE";
 "contacts__error_loading" = "Failed to load contacts";
@@ -1033,13 +1034,13 @@
 "contacts__add_error_existing" = "This pubky is already in your contacts.";
 "contacts__add_error_invalid_key" = "Invalid pubky key format. Please check and try again.";
 "contacts__add_error_self" = "You can't add your own pubky as a contact.";
-"contacts__add_retrieving" = "Retrieving\n<accent>contact info</accent>";
+"contacts__add_retrieving" = "Retrieving\ncontact info";
 "contacts__add_success" = "Contact added";
 "contacts__add_error" = "Failed to add contact";
 "contacts__add_disclaimer" = "Please note that you and {name} must add each other as contacts to pay each other privately. Otherwise, the payment will be visible publicly.";
 "contacts__import_nav_title" = "Import";
 "contacts__import_found_title" = "Found\n<accent>profile & contacts</accent>";
-"contacts__import_found_description" = "Bitkit found profile and contacts data connected to pubky {key}";
+"contacts__import_found_description" = "Bitkit found profile and contacts data connected to pubky <accent>{key}</accent>";
 "contacts__import_select" = "Select";
 "contacts__import_all" = "Import All";
 "contacts__import_error" = "Failed to import contacts";
@@ -1055,6 +1056,7 @@
 "contacts__delete_success" = "Contact deleted";
 "contacts__delete_error" = "Failed to delete contact";
 "contacts__delete_label" = "Delete Contact";
+"contacts__saved_title" = "Contact Saved";
 "contacts__edit_title" = "Edit Contact";
 "contacts__edit_bio_placeholder" = "Short note about this contact.";
 "contacts__edit_public_note" = "Please note contact information is stored in public files. Changes you make to a contact in Bitkit will not update their profile.";
@@ -1099,8 +1101,8 @@
 "slashtags__auth_depricated_title" = "Deprecated";
 "slashtags__auth_depricated_msg" = "Slashauth is deprecated. Please use Bitkit Beta.";
 "profile__nav_title" = "Profile";
-"profile__intro_title" = "Portable\n<accent>pubky\nprofile</accent>";
-"profile__intro_description" = "Set up your portable pubky profile, so your contacts can reach you or pay you anytime, anywhere in the ecosystem.";
+"profile__intro_title" = "Portable\n<accent>profile</accent>";
+"profile__intro_description" = "With your portable profile your contacts can reach you and pay you anywhere.";
 "profile__ring_auth_title" = "Join the\n<accent>pubky web</accent>";
 "profile__ring_auth_description" = "Please authorize Bitkit with Pubky Ring, your mobile keychain for the next web.";
 "profile__ring_download" = "Download";
@@ -1128,7 +1130,7 @@
 "profile__create_pubky_label" = "PUBKY";
 "profile__create_username_label" = "USERNAME";
 "profile__create_avatar_label" = "AVATAR";
-"profile__create_bio_label" = "NOTES";
+"profile__create_bio_label" = "BIO";
 "profile__create_bio_placeholder" = "Short note. Tell a bit about yourself.";
 "profile__create_add_link" = "Add Link";
 "profile__create_add_tag" = "Add Tag";
@@ -1141,7 +1143,7 @@
 "profile__edit_nav_title" = "Edit Profile";
 "profile__edit_saved" = "Profile updated";
 "profile__edit_delete_section" = "DELETE";
-"profile__edit_public_note" = "Please note profile information is stored in public files. Changes you make in Bitkit will not update your pubky.app profile.";
+"profile__edit_public_note" = "Please note profile information is stored in public files.";
 "profile__delete_title" = "Delete Profile?";
 "profile__delete_description" = "Are you sure you want to delete all of your profile information for your pubky?";
 "profile__delete_confirm" = "Yes, Delete";
@@ -1152,7 +1154,7 @@
 "profile__pay_contacts_nav_title" = "Pay Contacts";
 "profile__pay_contacts_title" = "Let your contacts\n<accent>pay you</accent>";
 "profile__pay_contacts_description" = "Use Bitkit with your contacts to send payments directly, anytime, anywhere.";
-"profile__pay_contacts_toggle" = "Share payment data and enable payments with contacts";
+"profile__pay_contacts_toggle" = "Enable payments with contacts";
 "profile__add_link_title" = "Add Link";
 "profile__add_link_label" = "LABEL";
 "profile__add_link_label_placeholder" = "For example 'Website'";

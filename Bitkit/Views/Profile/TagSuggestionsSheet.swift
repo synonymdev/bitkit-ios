@@ -28,9 +28,9 @@ struct TagSuggestionsSheet: View {
             Spacer()
         }
         .sheetBackground()
-        .presentationDetents([.height(400)])
+        .presentationDetents([.height(460)])
         .presentationCornerRadius(32)
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
     }
 }
 

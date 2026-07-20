@@ -168,12 +168,12 @@ final class PublicPaykitServiceTests: XCTestCase {
 
     func testBuildAvailabilityMarksPublicCleanupPendingForPublishedPublicState() throws {
         try withIsolatedDefaults { defaults in
-            defaults.set(true, forKey: "hasConfirmedPublicPaykitEndpoints")
+            defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
 
             PaykitFeatureFlags.enforceBuildAvailability(defaults: defaults, isUIEnabled: false)
 
             XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
-            XCTAssertFalse(defaults.bool(forKey: "hasConfirmedPublicPaykitEndpoints"))
+            XCTAssertFalse(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey))
             XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
         }
     }
@@ -192,7 +192,7 @@ final class PublicPaykitServiceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.removeObject(forKey: PublicPaykitService.publishingEnabledKey)
         UserDefaults.standard.removeObject(forKey: PublicPaykitService.cleanupPendingKey)
-        UserDefaults.standard.removeObject(forKey: "hasConfirmedPublicPaykitEndpoints")
+        UserDefaults.standard.removeObject(forKey: ContactPaymentsService.confirmedPreferenceKey)
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11ExpiresAt")

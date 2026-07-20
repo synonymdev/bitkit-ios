@@ -26,6 +26,7 @@ struct ContactsIntroView: View {
             },
             accentColor: .pubkyGreen,
             imagePosition: .center,
+            titleDescriptionSpacing: 8,
             testID: "ContactsIntro"
         )
         .navigationBarHidden(true)

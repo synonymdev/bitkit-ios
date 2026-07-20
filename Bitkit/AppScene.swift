@@ -59,6 +59,7 @@ struct AppScene: View {
         // Run app data migrations before any feature code loads migrated state
         AppDataMigrations.run()
         PaykitFeatureFlags.enforceBuildAvailability()
+        ContactPaymentsService.enableAllPaymentOptions()
 
         _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
         _sheets = StateObject(wrappedValue: sheetViewModel)

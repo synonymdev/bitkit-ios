@@ -45,13 +45,13 @@ struct CreateProfileView: View {
             VStack(spacing: 0) {
                 avatarSection
                     .padding(.top, 32)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 32)
 
                 nameInput
                     .padding(.bottom, 16)
 
                 CustomDivider()
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 32)
                     .padding(.bottom, 16)
 
                 pubkyKeySection
@@ -95,12 +95,12 @@ struct CreateProfileView: View {
             Image(uiImage: avatarImage)
                 .resizable()
                 .scaledToFill()
-                .frame(width: 100, height: 100)
+                .frame(width: 96, height: 96)
                 .clipShape(Circle())
         } else {
             Circle()
                 .fill(Color.gray5)
-                .frame(width: 100, height: 100)
+                .frame(width: 96, height: 96)
                 .overlay {
                     Image(systemName: "photo")
                         .font(.system(size: 32, weight: .medium))
@@ -131,7 +131,7 @@ struct CreateProfileView: View {
         VStack(spacing: 8) {
             CaptionMText(t("profile__create_pubky_display_label"), textColor: .white64)
 
-            BodySText(
+            BodyMSBText(
                 derivedPublicKey.isEmpty ? "..." : derivedPublicKey,
                 textColor: .white
             )

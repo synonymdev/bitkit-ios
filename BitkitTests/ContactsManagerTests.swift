@@ -35,6 +35,13 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(PubkyPublicKeyFormat.matches(prefixedKey, "pubkyinvalid"))
     }
 
+    func testPubkyPublicKeyFormatDisplaysRawTruncatedKey() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated(rawKey), "3rsd...w5xg")
+        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated("pubky\(rawKey)"), "3rsd...w5xg")
+    }
+
     func testActivityContactResolvesLightningContactKey() {
         let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         let contact = makeContact(publicKey: "pubky\(rawKey)")
