@@ -301,7 +301,10 @@ actor PaykitSdkService {
 
     func initialize() async throws {
         try await operationLock.withLock {
-            _ = try await handle().initialize()
+            _ = try sessionProvider.loadOrCreateReceiverNoiseSecretKey()
+            let sdk = try handle()
+            _ = try await sdk.initialize()
+            await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
         }
     }
 
@@ -329,9 +332,11 @@ actor PaykitSdkService {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
             let localSecret = includeLocalSecret ? try sessionProvider.loadLocalSecretKey() : nil
+            let receiverNoiseSecretKey = try sessionProvider.loadOrCreateReceiverNoiseSecretKey()
             let result = try await bootstrap().importSession(
                 sessionSecret: secret,
                 localSecretKey: localSecret,
+                receiverNoiseSecretKey: receiverNoiseSecretKey,
                 requiredCapabilities: Self.requiredCapabilities()
             )
             try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: includeLocalSecret)
@@ -343,8 +348,10 @@ actor PaykitSdkService {
     func signUp(secretKeyHex: String, homeserverPublicKey: String, signupCode: String?) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
+            let receiverNoiseSecretKey = try sessionProvider.loadOrCreateReceiverNoiseSecretKey()
             let result = try await bootstrap().signUp(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
+                receiverNoiseSecretKey: receiverNoiseSecretKey,
                 homeserverPublicKey: homeserverPublicKey,
                 signupCode: signupCode,
                 requiredCapabilities: Self.requiredCapabilities()
@@ -358,8 +365,10 @@ actor PaykitSdkService {
     func signIn(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
+            let receiverNoiseSecretKey = try sessionProvider.loadOrCreateReceiverNoiseSecretKey()
             let result = try await bootstrap().signIn(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
+                receiverNoiseSecretKey: receiverNoiseSecretKey,
                 requiredCapabilities: Self.requiredCapabilities()
             )
             try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
@@ -390,6 +399,7 @@ actor PaykitSdkService {
         do {
             result = try await request.complete(
                 localSecretKey: nil,
+                receiverNoiseSecretKey: sessionProvider.loadOrCreateReceiverNoiseSecretKey(),
                 requiredCapabilities: Self.requiredCapabilities()
             )
         } catch {
@@ -585,14 +595,7 @@ actor PaykitSdkService {
                 return
             }
 
-            let status = try await sdk.identityStatus()
-            let capabilities = Paykit.PaykitReceiverCapabilities(
-                privatePayments: status?.privateLinkCapable == true,
-                paymentRequests: false,
-                receipts: false,
-                outgoingPayments: true
-            )
-            _ = try await sdk.publishPaykitReceiverMarker(capabilities: capabilities)
+            _ = try await sdk.publishPaykitReceiverMarker(capabilities: receiverCapabilities(using: sdk))
         }
     }
 
@@ -813,6 +816,7 @@ actor PaykitSdkService {
             throw KeychainError.failedToSave
         }
         try Keychain.upsert(key: .paykitSession, data: sessionData)
+        try sessionProvider.persistReceiverNoiseSecretKey(access.exportReceiverNoiseSecretKey())
 
         guard shouldStoreLocalSecret, let localSecret = access.exportLocalSecretKey() else {
             try? Keychain.delete(key: .pubkySecretKey)
@@ -836,7 +840,29 @@ actor PaykitSdkService {
             try? Keychain.delete(key: .paykitSdkState)
         }
         resetRuntime()
-        _ = try await handle().initialize()
+        let sdk = try handle()
+        _ = try await sdk.initialize()
+        await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
+    }
+
+    private func publishReceiverMarkerIfLiveSessionAvailable(using sdk: PaykitSdk) async {
+        do {
+            let capabilities = try await receiverCapabilities(using: sdk)
+            guard capabilities.privatePayments else { return }
+            _ = try await sdk.publishPaykitReceiverMarker(capabilities: capabilities)
+        } catch {
+            Logger.warn("Failed to publish Paykit receiver marker: \(error)", context: "PaykitSdkService")
+        }
+    }
+
+    private func receiverCapabilities(using sdk: PaykitSdk) async throws -> Paykit.PaykitReceiverCapabilities {
+        let status = try await sdk.identityStatus()
+        return Paykit.PaykitReceiverCapabilities(
+            privatePayments: status?.liveSessionAvailable == true,
+            paymentRequests: false,
+            receipts: false,
+            outgoingPayments: true
+        )
     }
 
     private func currentSdkStatePublicKey() async -> String? {
@@ -975,6 +1001,7 @@ private final class PaykitSdkStateBlobStore: SdkStateBlobStore, @unchecked Senda
 
 private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendable {
     private let lock = NSLock()
+    private let receiverNoiseKeyStore = PaykitReceiverNoiseKeyStore()
     private var liveSessionAccess: PubkySessionAccess?
 
     func setLiveSessionAccess(_ access: PubkySessionAccess) {
@@ -1004,7 +1031,8 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
 
         return try PubkySessionAccess(
             sessionSecret: sessionSecret,
-            localSecretKey: loadLocalSecretKey()
+            localSecretKey: loadLocalSecretKey(),
+            receiverNoiseSecretKey: loadOrCreateReceiverNoiseSecretKey()
         )
     }
 
@@ -1024,6 +1052,71 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
         }
 
         return try PaykitSdkService.localSecretKey(fromHex: secretKeyHex)
+    }
+
+    func loadOrCreateReceiverNoiseSecretKey() throws -> ReceiverNoiseSecretKey {
+        try receiverNoiseKeyStore.loadOrCreate()
+    }
+
+    func persistReceiverNoiseSecretKey(_ key: ReceiverNoiseSecretKey) throws {
+        try receiverNoiseKeyStore.persist(key)
+    }
+}
+
+final class PaykitReceiverNoiseKeyStore: @unchecked Sendable {
+    private static let keyLength = 32
+
+    private let lock = NSLock()
+    private let loadBytes: () throws -> Data?
+    private let upsertBytes: (Data) throws -> Void
+
+    init(
+        loadBytes: @escaping () throws -> Data? = { try Keychain.load(key: .paykitReceiverNoiseSecretKey) },
+        upsertBytes: @escaping (Data) throws -> Void = { try Keychain.upsert(key: .paykitReceiverNoiseSecretKey, data: $0) }
+    ) {
+        self.loadBytes = loadBytes
+        self.upsertBytes = upsertBytes
+    }
+
+    func loadOrCreate() throws -> ReceiverNoiseSecretKey {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let bytes = try loadBytes() {
+            return try key(from: bytes)
+        }
+
+        let key = ReceiverNoiseSecretKey.random()
+        try upsertBytes(key.exportBytes())
+        return key
+    }
+
+    func persist(_ key: ReceiverNoiseSecretKey) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let bytes = key.exportBytes()
+        guard bytes.count == Self.keyLength else {
+            throw invalidKeyError("Paykit returned an invalid receiver Noise key")
+        }
+        if let storedBytes = try loadBytes() {
+            guard storedBytes == bytes else {
+                throw invalidKeyError("Paykit receiver Noise key changed unexpectedly")
+            }
+            return
+        }
+        try upsertBytes(bytes)
+    }
+
+    private func key(from bytes: Data) throws -> ReceiverNoiseSecretKey {
+        guard bytes.count == Self.keyLength else {
+            throw invalidKeyError("Stored Paykit receiver Noise key is invalid")
+        }
+        return ReceiverNoiseSecretKey(bytes: bytes)
+    }
+
+    private func invalidKeyError(_ context: String) -> PaykitError {
+        PaykitError.Identity(code: "invalid_receiver_noise_secret_key", context: context)
     }
 }
 
