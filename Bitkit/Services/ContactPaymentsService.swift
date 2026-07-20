@@ -3,6 +3,35 @@ import Foundation
 enum ContactPaymentsService {
     static let confirmedPreferenceKey = "hasConfirmedPublicPaykitEndpoints"
 
+    struct Operations {
+        let syncPublicEndpoints: (_ publish: Bool) async throws -> Void
+        let preparePrivateEndpoints: (_ contactPublicKeys: [String], _ requireImmediatePublication: Bool) async -> Error?
+        let removePrivateEndpoints: () async throws -> Void
+        let setPublicCleanupPending: (_ isPending: Bool) -> Void
+        let setPrivateCleanupPending: (_ isPending: Bool) -> Void
+
+        @MainActor
+        static func live(wallet: WalletViewModel) -> Operations {
+            Operations(
+                syncPublicEndpoints: { publish in
+                    try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: publish)
+                },
+                preparePrivateEndpoints: { contactPublicKeys, requireImmediatePublication in
+                    await PrivatePaykitService.shared.prepareSavedContacts(
+                        contactPublicKeys,
+                        wallet: wallet,
+                        requireImmediatePublication: requireImmediatePublication
+                    )
+                },
+                removePrivateEndpoints: {
+                    try await PrivatePaykitService.shared.removePublishedEndpoints()
+                },
+                setPublicCleanupPending: PublicPaykitService.setCleanupPending,
+                setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
+            )
+        }
+    }
+
     private struct StoredState {
         let sharesPublicEndpoints: Bool
         let sharesPrivateEndpoints: Bool
@@ -31,6 +60,23 @@ enum ContactPaymentsService {
         canUsePrivatePayments: Bool,
         defaults: UserDefaults = .standard
     ) async throws {
+        try await setEnabled(
+            enabled,
+            contactPublicKeys: contactPublicKeys,
+            canUsePrivatePayments: canUsePrivatePayments,
+            operations: .live(wallet: wallet),
+            defaults: defaults
+        )
+    }
+
+    @MainActor
+    static func setEnabled(
+        _ enabled: Bool,
+        contactPublicKeys: [String],
+        canUsePrivatePayments: Bool,
+        operations: Operations,
+        defaults: UserDefaults = .standard
+    ) async throws {
         enableAllPaymentOptions(defaults: defaults)
 
         let previousState = StoredState(
@@ -44,20 +90,20 @@ enum ContactPaymentsService {
         do {
             if enabled {
                 try await enable(
-                    wallet: wallet,
                     contactPublicKeys: contactPublicKeys,
                     canUsePrivatePayments: canUsePrivatePayments,
+                    operations: operations,
                     defaults: defaults
                 )
             } else {
-                try await disable(wallet: wallet, defaults: defaults)
+                try await disable(operations: operations, defaults: defaults)
             }
         } catch {
             await restore(
                 previousState,
-                wallet: wallet,
                 contactPublicKeys: contactPublicKeys,
                 canUsePrivatePayments: canUsePrivatePayments,
+                operations: operations,
                 defaults: defaults
             )
             throw error
@@ -66,56 +112,51 @@ enum ContactPaymentsService {
 
     @MainActor
     private static func enable(
-        wallet: WalletViewModel,
         contactPublicKeys: [String],
         canUsePrivatePayments: Bool,
+        operations: Operations,
         defaults: UserDefaults
     ) async throws {
-        try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: true)
+        try await operations.syncPublicEndpoints(true)
 
         defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
         defaults.set(canUsePrivatePayments, forKey: PrivatePaykitService.publishingEnabledKey)
         defaults.set(true, forKey: confirmedPreferenceKey)
 
         if canUsePrivatePayments,
-           let error = await PrivatePaykitService.shared.prepareSavedContacts(
+           let error = await operations.preparePrivateEndpoints(
                contactPublicKeys,
-               wallet: wallet,
-               requireImmediatePublication: true
+               true
            )
         {
             throw error
         }
 
-        try await PublicPaykitService.syncLocalReceiverMarker(
-            publicSharingEnabled: true,
-            privateSharingEnabled: canUsePrivatePayments
-        )
-        PublicPaykitService.setCleanupPending(false)
-        PrivatePaykitService.setContactSharingCleanupPending(false)
+        operations.setPublicCleanupPending(false)
+        operations.setPrivateCleanupPending(false)
     }
 
     @MainActor
-    private static func disable(wallet: WalletViewModel, defaults: UserDefaults) async throws {
+    private static func disable(operations: Operations, defaults: UserDefaults) async throws {
         defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
         defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         defaults.set(true, forKey: confirmedPreferenceKey)
 
         var firstError: Error?
         do {
-            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
-            PublicPaykitService.setCleanupPending(false)
+            try await operations.syncPublicEndpoints(false)
+            operations.setPublicCleanupPending(false)
         } catch {
             firstError = error
-            PublicPaykitService.setCleanupPending(true)
+            operations.setPublicCleanupPending(true)
         }
 
         do {
-            try await PrivatePaykitService.shared.removePublishedEndpoints()
-            PrivatePaykitService.setContactSharingCleanupPending(false)
+            try await operations.removePrivateEndpoints()
+            operations.setPrivateCleanupPending(false)
         } catch {
             firstError = firstError ?? error
-            PrivatePaykitService.setContactSharingCleanupPending(true)
+            operations.setPrivateCleanupPending(true)
         }
 
         if let firstError {
@@ -126,9 +167,9 @@ enum ContactPaymentsService {
     @MainActor
     private static func restore(
         _ state: StoredState,
-        wallet: WalletViewModel,
         contactPublicKeys: [String],
         canUsePrivatePayments: Bool,
+        operations: Operations,
         defaults: UserDefaults
     ) async {
         let restoresPrivateEndpoints = state.sharesPrivateEndpoints && canUsePrivatePayments
@@ -137,42 +178,31 @@ enum ContactPaymentsService {
         defaults.set(state.hasConfirmedPreference, forKey: confirmedPreferenceKey)
 
         do {
-            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: state.sharesPublicEndpoints)
-            PublicPaykitService.setCleanupPending(state.publicCleanupPending)
+            try await operations.syncPublicEndpoints(state.sharesPublicEndpoints)
+            operations.setPublicCleanupPending(state.publicCleanupPending)
         } catch {
-            PublicPaykitService.setCleanupPending(true)
+            operations.setPublicCleanupPending(true)
             Logger.warn("Failed to restore public contact payments: \(error)", context: "ContactPaymentsService")
         }
 
         if restoresPrivateEndpoints {
-            if let error = await PrivatePaykitService.shared.prepareSavedContacts(
+            if let error = await operations.preparePrivateEndpoints(
                 contactPublicKeys,
-                wallet: wallet,
-                requireImmediatePublication: true
+                true
             ) {
-                PrivatePaykitService.setContactSharingCleanupPending(true)
+                operations.setPrivateCleanupPending(true)
                 Logger.warn("Failed to restore private contact payments: \(error)", context: "ContactPaymentsService")
             } else {
-                PrivatePaykitService.setContactSharingCleanupPending(state.privateCleanupPending)
+                operations.setPrivateCleanupPending(state.privateCleanupPending)
             }
         } else {
             do {
-                try await PrivatePaykitService.shared.removePublishedEndpoints()
-                PrivatePaykitService.setContactSharingCleanupPending(state.privateCleanupPending)
+                try await operations.removePrivateEndpoints()
+                operations.setPrivateCleanupPending(state.privateCleanupPending)
             } catch {
-                PrivatePaykitService.setContactSharingCleanupPending(true)
+                operations.setPrivateCleanupPending(true)
                 Logger.warn("Failed to clean up private contact payments: \(error)", context: "ContactPaymentsService")
             }
-        }
-
-        do {
-            try await PublicPaykitService.syncLocalReceiverMarker(
-                publicSharingEnabled: state.sharesPublicEndpoints,
-                privateSharingEnabled: restoresPrivateEndpoints
-            )
-        } catch {
-            PublicPaykitService.setCleanupPending(true)
-            Logger.warn("Failed to restore the Paykit receiver marker: \(error)", context: "ContactPaymentsService")
         }
     }
 }
