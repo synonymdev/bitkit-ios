@@ -1,4 +1,6 @@
+import BitkitCore
 import Combine
+import CryptoKit
 import Foundation
 import Paykit
 
@@ -301,7 +303,6 @@ actor PaykitSdkService {
 
     func initialize() async throws {
         try await operationLock.withLock {
-            _ = try sessionProvider.loadOrCreateReceiverNoiseSecretKey()
             let sdk = try handle()
             _ = try await sdk.initialize()
             await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
@@ -332,7 +333,7 @@ actor PaykitSdkService {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
             let localSecret = includeLocalSecret ? try sessionProvider.loadLocalSecretKey() : nil
-            let receiverNoiseSecretKey = try sessionProvider.loadOrCreateReceiverNoiseSecretKey()
+            let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().importSession(
                 sessionSecret: secret,
                 localSecretKey: localSecret,
@@ -348,7 +349,7 @@ actor PaykitSdkService {
     func signUp(secretKeyHex: String, homeserverPublicKey: String, signupCode: String?) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
-            let receiverNoiseSecretKey = try sessionProvider.loadOrCreateReceiverNoiseSecretKey()
+            let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().signUp(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
                 receiverNoiseSecretKey: receiverNoiseSecretKey,
@@ -365,7 +366,7 @@ actor PaykitSdkService {
     func signIn(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
-            let receiverNoiseSecretKey = try sessionProvider.loadOrCreateReceiverNoiseSecretKey()
+            let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().signIn(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
                 receiverNoiseSecretKey: receiverNoiseSecretKey,
@@ -399,7 +400,7 @@ actor PaykitSdkService {
         do {
             result = try await request.complete(
                 localSecretKey: nil,
-                receiverNoiseSecretKey: sessionProvider.loadOrCreateReceiverNoiseSecretKey(),
+                receiverNoiseSecretKey: sessionProvider.loadOrDeriveReceiverNoiseSecretKey(),
                 requiredCapabilities: Self.requiredCapabilities()
             )
         } catch {
@@ -1032,7 +1033,7 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
         return try PubkySessionAccess(
             sessionSecret: sessionSecret,
             localSecretKey: loadLocalSecretKey(),
-            receiverNoiseSecretKey: loadOrCreateReceiverNoiseSecretKey()
+            receiverNoiseSecretKey: loadOrDeriveReceiverNoiseSecretKey()
         )
     }
 
@@ -1054,12 +1055,42 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
         return try PaykitSdkService.localSecretKey(fromHex: secretKeyHex)
     }
 
-    func loadOrCreateReceiverNoiseSecretKey() throws -> ReceiverNoiseSecretKey {
-        try receiverNoiseKeyStore.loadOrCreate()
+    func loadOrDeriveReceiverNoiseSecretKey() throws -> ReceiverNoiseSecretKey {
+        try receiverNoiseKeyStore.loadOrDerive()
     }
 
     func persistReceiverNoiseSecretKey(_ key: ReceiverNoiseSecretKey) throws {
         try receiverNoiseKeyStore.persist(key)
+    }
+}
+
+enum PaykitReceiverNoiseKeyDerivation {
+    private static let domain = "bitkit/paykit/receiver-noise-key"
+    private static let version = "v1"
+
+    static func deriveFromWalletSeed(
+        mnemonic: String,
+        passphrase: String?,
+        network: String,
+        receiverPath: String
+    ) throws -> Data {
+        var seed = try BitkitCore.mnemonicToSeed(
+            mnemonicPhrase: mnemonic,
+            passphrase: passphrase?.isEmpty == true ? nil : passphrase
+        )
+        defer { seed.resetBytes(in: seed.startIndex ..< seed.endIndex) }
+        return derive(seed: seed, network: network, receiverPath: receiverPath)
+    }
+
+    static func derive(seed: Data, network: String, receiverPath: String) -> Data {
+        let domainBytes = Data(domain.utf8)
+        let salt = Data(SHA256.hash(data: domainBytes))
+        var prk = Data(HMAC<SHA256>.authenticationCode(for: seed, using: SymmetricKey(data: salt)))
+        defer { prk.resetBytes(in: prk.startIndex ..< prk.endIndex) }
+
+        var expandInput = Data("\(version)\0\(network)\0\(receiverPath)".utf8)
+        expandInput.append(0x01)
+        return Data(HMAC<SHA256>.authenticationCode(for: expandInput, using: SymmetricKey(data: prk)))
     }
 }
 
@@ -1069,26 +1100,34 @@ final class PaykitReceiverNoiseKeyStore: @unchecked Sendable {
     private let lock = NSLock()
     private let loadBytes: () throws -> Data?
     private let upsertBytes: (Data) throws -> Void
+    private let deriveBytes: () throws -> Data
+    private var validatedBytes: Data?
 
     init(
         loadBytes: @escaping () throws -> Data? = { try Keychain.load(key: .paykitReceiverNoiseSecretKey) },
-        upsertBytes: @escaping (Data) throws -> Void = { try Keychain.upsert(key: .paykitReceiverNoiseSecretKey, data: $0) }
+        upsertBytes: @escaping (Data) throws -> Void = { try Keychain.upsert(key: .paykitReceiverNoiseSecretKey, data: $0) },
+        deriveBytes: @escaping () throws -> Data = {
+            guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)), !mnemonic.isEmpty else {
+                throw CustomServiceError.mnemonicNotFound
+            }
+            let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: 0))
+            return try PaykitReceiverNoiseKeyDerivation.deriveFromWalletSeed(
+                mnemonic: mnemonic,
+                passphrase: passphrase,
+                network: Env.networkName,
+                receiverPath: PaykitReceiverPath.wallet
+            )
+        }
     ) {
         self.loadBytes = loadBytes
         self.upsertBytes = upsertBytes
+        self.deriveBytes = deriveBytes
     }
 
-    func loadOrCreate() throws -> ReceiverNoiseSecretKey {
+    func loadOrDerive() throws -> ReceiverNoiseSecretKey {
         lock.lock()
         defer { lock.unlock() }
-
-        if let bytes = try loadBytes() {
-            return try key(from: bytes)
-        }
-
-        let key = ReceiverNoiseSecretKey.random()
-        try upsertBytes(key.exportBytes())
-        return key
+        return try ReceiverNoiseSecretKey(bytes: validatedKeyBytes())
     }
 
     func persist(_ key: ReceiverNoiseSecretKey) throws {
@@ -1096,23 +1135,35 @@ final class PaykitReceiverNoiseKeyStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         let bytes = key.exportBytes()
-        guard bytes.count == Self.keyLength else {
-            throw invalidKeyError("Paykit returned an invalid receiver Noise key")
+        let expectedBytes = try validatedKeyBytes()
+        guard bytes == expectedBytes else {
+            throw invalidKeyError("Paykit receiver Noise key changed unexpectedly")
         }
-        if let storedBytes = try loadBytes() {
-            guard storedBytes == bytes else {
-                throw invalidKeyError("Paykit receiver Noise key changed unexpectedly")
-            }
-            return
-        }
-        try upsertBytes(bytes)
     }
 
-    private func key(from bytes: Data) throws -> ReceiverNoiseSecretKey {
-        guard bytes.count == Self.keyLength else {
-            throw invalidKeyError("Stored Paykit receiver Noise key is invalid")
+    private func validatedKeyBytes() throws -> Data {
+        if let validatedBytes {
+            return validatedBytes
         }
-        return ReceiverNoiseSecretKey(bytes: bytes)
+
+        let derivedBytes = try deriveBytes()
+        guard derivedBytes.count == Self.keyLength else {
+            throw invalidKeyError("Derived Paykit receiver Noise key is invalid")
+        }
+
+        if let storedBytes = try loadBytes() {
+            guard storedBytes.count == Self.keyLength else {
+                throw invalidKeyError("Stored Paykit receiver Noise key is invalid")
+            }
+            guard storedBytes == derivedBytes else {
+                throw invalidKeyError("Stored Paykit receiver Noise key does not match the wallet seed")
+            }
+        } else {
+            try upsertBytes(derivedBytes)
+        }
+
+        validatedBytes = derivedBytes
+        return derivedBytes
     }
 
     private func invalidKeyError(_ context: String) -> PaykitError {
