@@ -1226,15 +1226,32 @@ class TransferViewModel: ObservableObject {
             let swap = try await boltzService.createReverseSwap(amountSat: amount, claimAddress: claimAddress)
             Logger.info("Created savings transfer swap \(swap.id)", context: "TransferViewModel")
 
-            // Subscribe before paying so a claim settling faster than the payment
-            // call returns cannot be missed (events buffer from stream creation).
+            // Subscribe before paying so no claim is missed (the events stream buffers from creation).
             let events = boltzService.events()
 
-            // Pay the hold invoice (amount is encoded). It stays pending until Boltz
-            // locks funds on-chain and we claim them, which is the expected happy path.
-            _ = try await lightningService.send(bolt11: swap.invoice)
+            // Pay the hold invoice in the background. A hold invoice only settles once Boltz locks
+            // up on-chain and we claim, so the payment await must not gate the claim timeout: the
+            // bounded wait below drives the screen, and this task keeps settling afterwards. We only
+            // read its result to surface a payment that failed to even initiate.
+            let payment = Task { () -> Error? in
+                do {
+                    _ = try await self.lightningService.send(bolt11: swap.invoice)
+                    return nil
+                } catch {
+                    return error
+                }
+            }
 
+            // Drive the outcome off the bounded claim wait, which runs concurrently with the payment.
+            // A timeout means the transfer is committed and settling in the background, not stuck.
             let result = await awaitSwapClaim(swapId: swap.id, events: events)
+
+            // If the claim did not land and the payment could not be initiated, report the failure
+            // instead of a false "settling" state.
+            if case .pending = result, let paymentError = await payment.value {
+                return .failure(message: paymentError.localizedDescription)
+            }
+
             await onBalanceRefresh?()
             return result
         } catch {
