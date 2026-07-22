@@ -58,9 +58,6 @@ struct SavingsConfirmView: View {
 
             if let quote = swapState.quote {
                 quoteSection(quote)
-            } else if let errorMessage = swapState.errorMessage {
-                BodySText(errorMessage)
-                    .padding(.top, 16)
             }
 
             if hasMultipleChannels {
@@ -100,18 +97,12 @@ struct SavingsConfirmView: View {
             if !hideSwipeButton {
                 SwipeButton(
                     title: t("lightning__transfer__swipe"),
-                    accentColor: .brandAccent
+                    accentColor: .brandAccent,
+                    isLoading: swapState.quote == nil && swapState.isLoading
                 ) {
-                    // Swapping funds out is the default; it only fires once the fee quote is ready.
-                    // Below the swap minimum we revert to the pre-swap behaviour: the swipe closes
-                    // the channel and the extra "close instead" action is hidden.
-                    if swapState.amountTooLow {
-                        transfer.savingsTransferMode = .close
-                    } else {
-                        guard swapState.quote != nil else { return }
-                        transfer.savingsTransferMode = .swap
-                    }
-
+                    // The swipe always commits the transfer: it swaps when a quote is ready and
+                    // otherwise falls back to the pre-swap behaviour of closing the channel, so it
+                    // is never inert.
                     do {
                         transfer.onTransferToSavingsConfirm(channels: channels)
 
@@ -128,11 +119,10 @@ struct SavingsConfirmView: View {
                 }
             }
 
-            if !swapState.amountTooLow {
+            if swapState.quote != nil {
                 // Fallback: drain a whole channel on-chain by closing it instead of swapping.
                 CustomButton(title: t("lightning__savings_confirm__close_instead"), variant: .tertiary) {
-                    transfer.savingsTransferMode = .close
-                    transfer.onTransferToSavingsConfirm(channels: channels)
+                    transfer.onTransferToSavingsConfirm(channels: channels, mode: .close)
                     navigation.navigate(.savingsProgress)
                 }
                 .padding(.top, 12)

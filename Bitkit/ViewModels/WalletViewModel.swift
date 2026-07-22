@@ -436,6 +436,7 @@ class WalletViewModel: ObservableObject {
     /// auto-claimed. A live stream is left untouched: restarting it would abort bitkit-core's
     /// background tasks and could race an in-flight claim. Safe to call repeatedly.
     func ensureSwapUpdatesRunning() {
+        guard BoltzService.shared.isSwapSupported else { return }
         collectSwapEventsOnce()
         guard !swapUpdatesRunning, swapUpdatesTask == nil else { return }
         swapUpdatesTask = Task { [weak self] in

@@ -180,6 +180,9 @@ class BoltzService {
 
     // MARK: - Helpers
 
+    /// Whether the configured network has a reachable Boltz backend. See `Env.isSwapSupported`.
+    var isSwapSupported: Bool { Env.isSwapSupported }
+
     /// The Boltz network matching the app's configured network.
     static var boltzNetwork: BoltzNetwork {
         switch Env.network {

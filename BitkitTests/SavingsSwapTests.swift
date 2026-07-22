@@ -22,6 +22,45 @@ final class SavingsSwapTests: XCTestCase {
         XCTAssertEqual(quote.receiveSat, 0)
     }
 
+    // MARK: - Network support
+
+    func testSwapsAreUnsupportedOffMainnet() {
+        // Unit tests run on regtest, where Boltz resolves to a local backend no build can reach.
+        XCTAssertEqual(Env.network, .regtest)
+        XCTAssertFalse(Env.isSwapSupported)
+        XCTAssertFalse(BoltzService.shared.isSwapSupported)
+    }
+
+    // MARK: - Transfer mode
+
+    @MainActor
+    func testTransferToSavingsFallsBackToCloseWithoutAQuote() async {
+        let transfer = TransferViewModel()
+        // Swaps are unsupported here, so no quote can be published and the swipe must still commit.
+        await transfer.loadSavingsSwapQuote(requestedSat: 100_000, spendableSats: 100_000)
+        XCTAssertNil(transfer.savingsSwapState.quote)
+
+        transfer.onTransferToSavingsConfirm(channels: [])
+
+        XCTAssertEqual(transfer.savingsTransferMode, .close)
+    }
+
+    @MainActor
+    func testTransferToSavingsSwapsWithAQuoteAndClosesWhenTheUserOptsOut() {
+        let transfer = TransferViewModel()
+        transfer.savingsSwapState = SavingsSwapState(
+            quote: SavingsSwapQuote.build(amountSat: 100_000, limits: limits()),
+            minSat: 25000,
+            maxSat: 100_000
+        )
+
+        transfer.onTransferToSavingsConfirm(channels: [])
+        XCTAssertEqual(transfer.savingsTransferMode, .swap)
+
+        transfer.onTransferToSavingsConfirm(channels: [], mode: .close)
+        XCTAssertEqual(transfer.savingsTransferMode, .close)
+    }
+
     // MARK: - Claim gating
 
     func testIsClaimableWhileReverseSwapIsUnclaimedAndNotTerminal() {

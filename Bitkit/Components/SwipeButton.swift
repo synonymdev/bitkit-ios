@@ -3,12 +3,16 @@ import SwiftUI
 struct SwipeButton: View {
     let title: String
     let accentColor: Color
+    /// Blocks the swipe and shows the knob spinner while a prerequisite is still loading.
+    var isLoading = false
     /// Optional binding for swipe progress (0...1), e.g. to drive animations in the parent.
     var swipeProgress: Binding<CGFloat>?
     let onComplete: () async throws -> Void
 
     @State private var offset: CGFloat = 0
-    @State private var isLoading = false
+    @State private var isSubmitting = false
+
+    private var isBusy: Bool { isLoading || isSubmitting }
 
     private let buttonHeight: CGFloat = 76
     private let innerPadding: CGFloat = 16
@@ -49,7 +53,7 @@ struct SwipeButton: View {
                     .frame(width: buttonHeight - innerPadding, height: buttonHeight - innerPadding)
                     .overlay(
                         ZStack {
-                            if isLoading {
+                            if isBusy {
                                 ActivityIndicator(theme: .dark)
                             } else {
                                 Image("arrow-right")
@@ -72,21 +76,21 @@ struct SwipeButton: View {
                     .gesture(
                         DragGesture()
                             .onChanged { value in
-                                guard !isLoading else { return }
+                                guard !isBusy else { return }
                                 withAnimation(.interactiveSpring()) {
                                     offset = value.translation.width
                                     swipeProgress?.wrappedValue = max(0, min(1, offset / maxOffset))
                                 }
                             }
                             .onEnded { _ in
-                                guard !isLoading else { return }
+                                guard !isBusy else { return }
                                 withAnimation(.spring()) {
                                     let threshold = geometry.size.width * 0.7
                                     if offset > threshold {
                                         Haptics.play(.medium)
                                         offset = geometry.size.width - buttonHeight
                                         swipeProgress?.wrappedValue = 1
-                                        isLoading = true
+                                        isSubmitting = true
                                         Task { @MainActor in
                                             do {
                                                 try await onComplete()
@@ -99,7 +103,7 @@ struct SwipeButton: View {
 
                                                 // Adjust the delay to match animation duration
                                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                                    isLoading = false
+                                                    isSubmitting = false
                                                 }
                                             }
                                         }
