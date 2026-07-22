@@ -5,6 +5,7 @@ struct AdvancedSettingsView: View {
     @EnvironmentObject private var wallet: WalletViewModel
 
     @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     private var electrumRowRightText: String {
         let currentServerUrl = settings.electrumCurrentServer.fullUrl
@@ -63,14 +64,16 @@ struct AdvancedSettingsView: View {
                     }
                     .accessibilityIdentifier("AddressViewer")
 
-                    NavigationLink(value: Route.watchOnlyAccounts) {
-                        SettingsRow(
-                            title: t("watch_only_accounts__title"),
-                            iconName: "keyring",
-                            rightText: String(WatchOnlyAccountManager.shared.accounts(for: LightningService.shared.currentWalletIndex).count)
-                        )
+                    if PaykitFeatureFlags.isUIAvailable, isPaykitUIEnabled {
+                        NavigationLink(value: Route.watchOnlyAccounts) {
+                            SettingsRow(
+                                title: t("watch_only_accounts__title"),
+                                iconName: "keyring",
+                                rightText: String(WatchOnlyAccountManager.shared.accounts(for: LightningService.shared.currentWalletIndex).count)
+                            )
+                        }
+                        .accessibilityIdentifier("WatchOnlyAccounts")
                     }
-                    .accessibilityIdentifier("WatchOnlyAccounts")
 
                     // Networks section
                     SettingsSectionHeader(t("settings__adv__section_networks"))
