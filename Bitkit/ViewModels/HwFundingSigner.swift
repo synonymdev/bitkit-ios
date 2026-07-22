@@ -27,7 +27,7 @@ struct HwFundingSigner {
     /// (a `sendMax` compose) is unavailable.
     var txVBytes: UInt64 = 1200
     /// Minimum fallback fee rate when fee estimates are temporarily unavailable.
-    var fallbackSatsPerVByte: UInt64 = 1
+    var fallbackSatsPerVByte: UInt64 = 3
     /// Fallback fee percentage used when fee estimates are temporarily unavailable.
     var fallbackFeePercent: Double = 0.1
 
@@ -67,14 +67,22 @@ struct HwFundingSigner {
         return balanceSats > reserve ? balanceSats - reserve : 0
     }
 
-    /// Reconnect → compose → sign+broadcast. Throws `HwTransferError` for recoverable failures and
-    /// rethrows `CancellationError` when the caller's task is cancelled (user dismissed the flow).
-    /// Any non-timeout sign/broadcast error propagates as-is for the caller's generic handling.
-    func sign(order: IBtOrder, deviceId: String, address: String) async throws -> HwFundingBroadcastResult {
+    /// Reconnects, composes and signs the funding transaction without broadcasting it.
+    func prepareSignedFunding(
+        order: IBtOrder,
+        deviceId: String,
+        address: String,
+        onComposed: (HwFundingTransaction) -> Void = { _ in }
+    ) async throws -> HwFundingSignedTx {
         try await ensureConnected(deviceId: deviceId)
         let satsPerVByte = await resolvedSatsPerVByte()
         let tx = try await compose(deviceId: deviceId, address: address, sats: order.feeSat, satsPerVByte: satsPerVByte)
-        let signed = try await signStep(deviceId: deviceId, funding: tx)
+        onComposed(tx)
+        return try await signStep(deviceId: deviceId, funding: tx)
+    }
+
+    /// Broadcasts a signed funding transaction without requiring the hardware device.
+    func broadcastSignedFunding(_ signed: HwFundingSignedTx) async throws -> HwFundingBroadcastResult {
         let txId = try await broadcastStep(serializedTx: signed.serializedTx)
         return HwFundingBroadcastResult(
             txId: txId,
@@ -90,6 +98,18 @@ struct HwFundingSigner {
         connecting.warmUpConnection(deviceId: deviceId)
     }
 
+    /// Offline compose for the exact order amount; does not require a connected device.
+    func estimateOfflineFundingMiningFee(deviceId: String, address: String, sats: UInt64) async throws -> UInt64 {
+        let satsPerVByte = await resolvedSatsPerVByte()
+        return try await funding.estimateOfflineFundingMiningFee(
+            deviceId: deviceId,
+            address: address,
+            sats: sats,
+            satsPerVByte: satsPerVByte,
+            addressType: hwFundingDefaultAddressType
+        )
+    }
+
     private func ensureConnected(deviceId: String) async throws {
         do {
             try await withTimeout(timeouts.reconnect) {
@@ -98,9 +118,8 @@ struct HwFundingSigner {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            // A device-decline during reconnect must stay silent — propagate it raw so the caller's
-            // cancellation check catches it, rather than surfacing a reconnect error.
             if error.isTrezorUserCancellation() { throw error }
+            if error.isTrezorDeviceBusy() { throw HwTransferError.deviceBusy }
             throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(deviceId: deviceId))
         }
     }
@@ -173,7 +192,7 @@ struct HwFundingSigner {
         balanceSats: UInt64,
         satsPerVByte: UInt64?,
         txVBytes: UInt64 = 1200,
-        fallbackSatsPerVByte: UInt64 = 1,
+        fallbackSatsPerVByte: UInt64 = 3,
         fallbackFeePercent: Double = 0.1
     ) -> UInt64 {
         guard let satsPerVByte else {

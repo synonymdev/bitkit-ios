@@ -44,9 +44,9 @@ struct SpendingHwSign: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .task {
-            // Warm up the BLE connection ahead of the user tapping Open Trezor Connect.
+        .task(id: order.id) {
             transfer.warmUpHardwareConnection(deviceId: deviceId)
+            await transfer.updateHwFundingFeeEstimate(order: order, deviceId: deviceId)
         }
         .onChange(of: transfer.hwSignedEvent) {
             navigation.navigate(.spendingHwSigned)
@@ -68,13 +68,24 @@ struct SpendingHwSign: View {
 
     private func belowNav(order: IBtOrder) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            DisplayText(t("lightning__transfer_hw__sign_title"), accentColor: .purpleAccent)
+            DisplayText(
+                t(
+                    transfer.hwSpending.hasPendingBroadcast
+                        ? "lightning__transfer_hw__signed_title"
+                        : "lightning__transfer_hw__sign_title"
+                ),
+                accentColor: .purpleAccent
+            )
 
-            SpendingHwFeeGrid(order: order)
+            SpendingHwFeeGrid(order: order, miningFeeSats: transfer.hwSpending.miningFeeSats)
                 .padding(.top, 16)
 
             HStack(spacing: 16) {
-                CustomButton(title: t("common__learn_more"), size: .small) {
+                CustomButton(
+                    title: t("common__learn_more"),
+                    size: .small,
+                    isDisabled: transfer.hwSpending.isSigning || transfer.hwSpending.hasPendingBroadcast
+                ) {
                     navigation.navigate(.transferLearnMore(order: order))
                 }
                 .accessibilityIdentifier("HardwareTransferSignLearnMore")
@@ -83,7 +94,7 @@ struct SpendingHwSign: View {
                     CustomButton(
                         title: t("lightning__spending_confirm__default"),
                         size: .small,
-                        isDisabled: transfer.hwSpending.isSigning
+                        isDisabled: transfer.hwSpending.isSigning || transfer.hwSpending.hasPendingBroadcast
                     ) {
                         transfer.onDefaultClick()
                     }
@@ -92,7 +103,7 @@ struct SpendingHwSign: View {
                     CustomButton(
                         title: t("common__advanced"),
                         size: .small,
-                        isDisabled: transfer.hwSpending.isSigning
+                        isDisabled: transfer.hwSpending.isSigning || transfer.hwSpending.hasPendingBroadcast
                     ) {
                         navigation.navigate(.spendingAdvanced(order: order))
                     }
@@ -105,7 +116,11 @@ struct SpendingHwSign: View {
             Spacer()
 
             CustomButton(
-                title: t("lightning__transfer_hw__open_connect"),
+                title: t(
+                    transfer.hwSpending.hasPendingBroadcast
+                        ? "common__retry"
+                        : "lightning__transfer_hw__open_connect"
+                ),
                 isDisabled: transfer.hwSpending.isSigning,
                 isLoading: transfer.hwSpending.isSigning
             ) {
@@ -136,19 +151,28 @@ struct SpendingHwSign: View {
 /// Blocktank order fee summary shared by the hardware Sign and Signed screens.
 struct SpendingHwFeeGrid: View {
     let order: IBtOrder
+    var miningFeeSats: UInt64 = 0
+
+    private var lspFee: UInt64 {
+        order.feeSat - order.clientBalanceSat
+    }
+
+    private var total: UInt64 {
+        order.feeSat + miningFeeSats
+    }
 
     var body: some View {
         VStack(spacing: 16) {
             HStack {
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__network_fee"),
-                    amount: order.networkFeeSat
+                    amount: miningFeeSats
                 )
                 .frame(maxWidth: .infinity)
 
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__lsp_fee"),
-                    amount: order.serviceFeeSat
+                    amount: lspFee
                 )
                 .frame(maxWidth: .infinity)
             }
@@ -162,7 +186,7 @@ struct SpendingHwFeeGrid: View {
 
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__total"),
-                    amount: order.feeSat
+                    amount: total
                 )
                 .frame(maxWidth: .infinity)
             }

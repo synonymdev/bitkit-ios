@@ -156,7 +156,6 @@ final class TrezorManager {
         default:
             Logger.info(message, context: "TrezorManager")
         }
-        TrezorDebugLog.shared.log(message)
     }
 
     // MARK: - State Reset Helpers
@@ -655,6 +654,8 @@ final class TrezorManager {
     /// failure so the transfer flow can surface a reconnect error.
     func ensureConnected(deviceId: String) async throws {
         if connectedDevice?.id == deviceId, await trezorService.isConnected() {
+            let features = try await refreshedFeaturesIfLocked()
+            try requireUnlocked(features: features)
             return
         }
         // A stale or mismatched session blocks a clean reconnect — clear it first.
@@ -662,6 +663,28 @@ final class TrezorManager {
             await disconnectStaleSession(deviceId: connectedDevice?.id ?? deviceId)
         }
         try await reconnectKnownDevice(deviceId: deviceId)
+        try requireUnlocked(features: deviceFeatures)
+    }
+
+    private func refreshedFeaturesIfLocked() async throws -> TrezorFeatures {
+        guard let features = deviceFeatures else {
+            let refreshed = try await trezorService.refreshFeatures()
+            deviceFeatures = refreshed
+            return refreshed
+        }
+        if features.pinProtection == true, features.unlocked == false {
+            let refreshed = try await trezorService.refreshFeatures()
+            deviceFeatures = refreshed
+            return refreshed
+        }
+        return features
+    }
+
+    private func requireUnlocked(features: TrezorFeatures?) throws {
+        guard let features else { return }
+        if features.pinProtection == true, features.unlocked == false {
+            throw TrezorError.DeviceBusy
+        }
     }
 
     private func reconnectKnownDevice(deviceId: String) async throws {
@@ -710,12 +733,15 @@ final class TrezorManager {
     /// Tear down the current device session so the next connect establishes a fresh one. Used after
     /// a signing failure or timeout, where the transport session may be left in a bad state.
     func disconnectStaleSession(deviceId: String) async {
-        do {
-            try await trezorService.disconnect()
-        } catch {
-            trezorLog("Failed to disconnect stale session for '\(deviceId)': \(error)", level: "warn")
-        }
-        clearDisconnectedDeviceState()
+        await Task.detached { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await trezorService.disconnect()
+            } catch {
+                trezorLog("Failed to disconnect stale session for '\(deviceId)': \(error)", level: "warn")
+            }
+            clearDisconnectedDeviceState()
+        }.value
     }
 
     /// Reconstruct a `TrezorDeviceInfo` for reconnecting to a known BLE device when a fresh scan

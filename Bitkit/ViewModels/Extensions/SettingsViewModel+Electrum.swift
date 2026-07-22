@@ -26,8 +26,11 @@ extension SettingsViewModel {
         let host = electrumHost.trimmingCharacters(in: .whitespaces)
         let port = electrumPort.trimmingCharacters(in: .whitespaces)
 
-        // Validate input first
-        if let validationError = validateElectrumInput(host: host, port: port) {
+        // Validate input off the main thread (regex could block on pathological input)
+        let validationError = await Task.detached { [self] in
+            validateElectrumInput(host: host, port: port)
+        }.value
+        if let validationError {
             electrumIsLoading = false
             return (success: false, host: host, port: port, errorMessage: validationError)
         }
@@ -110,7 +113,7 @@ extension SettingsViewModel {
         electrumSelectedProtocol = server.protocolType
     }
 
-    private func validateElectrumInput(host: String, port: String) -> String? {
+    nonisolated func validateElectrumInput(host: String, port: String) -> String? {
         // Check if both host and port are empty
         if host.isEmpty && port.isEmpty {
             return t("settings__es__error_host_port")
@@ -145,7 +148,7 @@ extension SettingsViewModel {
         return nil // No validation errors
     }
 
-    private func isValidElectrumURL(_ data: String) -> Bool {
+    nonisolated func isValidElectrumURL(_ data: String) -> Bool {
         // Add 'http://' if the protocol is missing to enable URL parsing
         let normalizedData = data.hasPrefix("http://") || data.hasPrefix("https://") ? data : "http://\(data)"
 
@@ -155,11 +158,10 @@ extension SettingsViewModel {
 
         let hostname = url.host ?? ""
 
-        // Allow standard domains, custom TLDs like .local, and IPv4 addresses
-        let isValidDomainOrIP =
-            hostname.range(
-                of: #"^([a-z\d]([a-z\d-]*[a-z\d])*\.)+[a-z\d-]+|(\d{1,3}\.){3}\d{1,3}$"#, options: .regularExpression, range: nil, locale: nil
-            ) != nil
+        // Reject over-long hosts before running the regex
+        guard hostname.count <= URLValidationPattern.maxHostLength else {
+            return false
+        }
 
         // Always allow .local domains
         if hostname.hasSuffix(".local") {
@@ -171,7 +173,11 @@ extension SettingsViewModel {
             return true
         }
 
-        return isValidDomainOrIP
+        // Allow standard domains, custom TLDs, and IPv4 addresses
+        return hostname.range(
+            of: URLValidationPattern.electrumHost,
+            options: .regularExpression, range: nil, locale: nil
+        ) != nil
     }
 
     private func parseElectrumScanData(_ data: String) -> ElectrumServer? {

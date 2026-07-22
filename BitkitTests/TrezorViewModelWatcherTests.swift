@@ -64,6 +64,30 @@ final class TrezorViewModelWatcherTests: XCTestCase {
             defer { lock.unlock() }
             stopAllWatchersCallCount += 1
         }
+
+        var startedCount: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return startedParams.count
+        }
+
+        func firstStartedWatcherId() -> String? {
+            lock.lock()
+            defer { lock.unlock() }
+            return startedParams.first?.watcherId
+        }
+
+        func snapshotStartedParams() -> [WatcherParams] {
+            lock.lock()
+            defer { lock.unlock() }
+            return startedParams
+        }
+
+        func snapshotStoppedWatcherIds() -> [String] {
+            lock.lock()
+            defer { lock.unlock() }
+            return stoppedWatcherIds
+        }
     }
 
     // MARK: - Fixtures
@@ -131,12 +155,25 @@ final class TrezorViewModelWatcherTests: XCTestCase {
 
     /// Poll until `condition` is true or the timeout elapses, yielding the main
     /// actor between checks so listener Tasks can run (Android: advanceUntilIdle).
+    @discardableResult
     @MainActor
-    private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async {
+    private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition(), Date() < deadline {
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
+        return condition()
+    }
+
+    @MainActor
+    private func requireWaitUntil(
+        timeout: TimeInterval = 5,
+        _ condition: () -> Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        let satisfied = await waitUntil(timeout: timeout, condition)
+        XCTAssertTrue(satisfied, file: file, line: line)
     }
 
     // MARK: - Tests
@@ -148,9 +185,9 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         let viewModel = makeViewModel(service: service)
 
         let startTask = Task { await viewModel.startWatcher() }
-        await waitUntil { service.startedParams.count == 1 }
+        await requireWaitUntil { service.startedCount >= 1 }
 
-        XCTAssertEqual(service.startedParams.count, 1)
+        XCTAssertEqual(service.startedCount, 1)
         XCTAssertTrue(viewModel.isStartingWatcher)
         XCTAssertNil(viewModel.activeWatcherId)
         XCTAssertEqual(viewModel.watcherConnectionStatus, .starting)
@@ -159,7 +196,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         await startTask.value
 
         XCTAssertFalse(viewModel.isStartingWatcher)
-        XCTAssertEqual(viewModel.activeWatcherId, service.startedParams[0].watcherId)
+        XCTAssertEqual(viewModel.activeWatcherId, service.snapshotStartedParams()[0].watcherId)
         XCTAssertEqual(viewModel.watcherConnectionStatus, .starting)
     }
 
@@ -171,7 +208,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
 
         await viewModel.startWatcher()
 
-        XCTAssertTrue(service.startedParams.isEmpty)
+        XCTAssertTrue(service.snapshotStartedParams().isEmpty)
         XCTAssertNil(viewModel.activeWatcherId)
         XCTAssertNotNil(viewModel.watcherError)
     }
@@ -232,8 +269,8 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         let viewModel = makeViewModel(service: service)
 
         let startTask = Task { await viewModel.startWatcher() }
-        await waitUntil { service.startedParams.count == 1 }
-        let watcherId = try XCTUnwrap(service.startedParams.first?.watcherId)
+        await requireWaitUntil { service.startedCount >= 1 }
+        let watcherId = try XCTUnwrap(service.firstStartedWatcherId())
         let listener = try XCTUnwrap(service.startedListeners.first)
 
         listener.onEvent(watcherId: watcherId, event: Self.sampleTransactionsChangedEvent())
@@ -281,8 +318,8 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         let viewModel = makeViewModel(service: service)
 
         let startTask = Task { await viewModel.startWatcher() }
-        await waitUntil { service.startedParams.count == 1 }
-        let watcherId = try XCTUnwrap(service.startedParams.first?.watcherId)
+        await requireWaitUntil { service.startedCount >= 1 }
+        let watcherId = try XCTUnwrap(service.firstStartedWatcherId())
         let listener = try XCTUnwrap(service.startedListeners.first)
 
         viewModel.stopWatcher()
@@ -342,11 +379,12 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         let firstWatcherId = try XCTUnwrap(viewModel.activeWatcherId)
 
         viewModel.onchainAccountTypeSelection = .taproot
-        await waitUntil { service.startedParams.count == 2 && viewModel.activeWatcherId != nil }
+        await requireWaitUntil { service.startedCount >= 2 && viewModel.activeWatcherId != nil }
 
-        XCTAssertEqual(service.stoppedWatcherIds, [firstWatcherId])
-        XCTAssertEqual(service.startedParams.count, 2)
-        XCTAssertEqual(service.startedParams.last?.accountType, .taproot)
+        let started = service.snapshotStartedParams()
+        XCTAssertEqual(service.snapshotStoppedWatcherIds(), [firstWatcherId])
+        XCTAssertEqual(started.count, 2)
+        XCTAssertEqual(started.last?.accountType, .taproot)
         let secondWatcherId = try XCTUnwrap(viewModel.activeWatcherId)
         XCTAssertNotEqual(secondWatcherId, firstWatcherId)
     }
@@ -361,19 +399,20 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         let viewModel = makeViewModel(service: service)
 
         let startTask = Task { await viewModel.startWatcher() }
-        await waitUntil { service.startedParams.count == 1 }
-        let firstWatcherId = try XCTUnwrap(service.startedParams.first?.watcherId)
+        await requireWaitUntil { service.startedCount >= 1 }
+        let firstWatcherId = try XCTUnwrap(service.firstStartedWatcherId())
 
         viewModel.onchainAccountTypeSelection = .taproot
         service.holdStart = false
         service.completeStart()
         await startTask.value
-        await waitUntil { service.startedParams.count == 2 && viewModel.activeWatcherId != nil }
+        await requireWaitUntil { service.startedCount >= 2 && viewModel.activeWatcherId != nil }
 
-        XCTAssertEqual(service.stoppedWatcherIds, [firstWatcherId])
-        XCTAssertEqual(service.startedParams.count, 2)
-        XCTAssertEqual(service.startedParams.last?.accountType, .taproot)
-        XCTAssertEqual(viewModel.activeWatcherId, service.startedParams.last?.watcherId)
+        let started = service.snapshotStartedParams()
+        XCTAssertEqual(service.snapshotStoppedWatcherIds(), [firstWatcherId])
+        XCTAssertEqual(started.count, 2)
+        XCTAssertEqual(started.last?.accountType, .taproot)
+        XCTAssertEqual(viewModel.activeWatcherId, started.last?.watcherId)
     }
 
     /// iOS-specific: dismissing the dashboard right after an account-type change
@@ -389,10 +428,10 @@ final class TrezorViewModelWatcherTests: XCTestCase {
 
         viewModel.onchainAccountTypeSelection = .taproot
         viewModel.handleDashboardDismiss()
-        await waitUntil(timeout: 0.2) { service.startedParams.count > 1 }
+        await waitUntil(timeout: 0.2) { service.startedCount > 1 }
 
-        XCTAssertEqual(service.startedParams.count, 1)
-        XCTAssertEqual(service.stoppedWatcherIds, [firstWatcherId])
+        XCTAssertEqual(service.startedCount, 1)
+        XCTAssertEqual(service.snapshotStoppedWatcherIds(), [firstWatcherId])
         XCTAssertNil(viewModel.activeWatcherId)
         XCTAssertNil(viewModel.watcherError)
     }
@@ -408,7 +447,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         let viewModel = makeViewModel(service: service)
 
         let startTask = Task { await viewModel.startWatcher() }
-        await waitUntil { service.startedParams.count == 1 }
+        await requireWaitUntil { service.startedCount >= 1 }
 
         viewModel.handleDashboardDismiss()
         let nativeError = AccountInfoError.WatcherError(errorDetails: "Watcher stopped during startup")
@@ -432,7 +471,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         let viewModel = makeViewModel(service: service)
 
         let startTask = Task { await viewModel.startWatcher() }
-        await waitUntil { service.startedParams.count == 1 }
+        await requireWaitUntil { service.startedCount >= 1 }
 
         service.completeStart(with: .failure(AccountInfoError.WatcherError(errorDetails: "Watcher stopped during startup")))
         await startTask.value
@@ -452,7 +491,7 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         let viewModel = makeViewModel(service: service)
 
         let startTask = Task { await viewModel.startWatcher() }
-        await waitUntil { service.startedParams.count == 1 }
+        await requireWaitUntil { service.startedCount >= 1 }
 
         let nativeError = AccountInfoError.ElectrumError(errorDetails: "connection refused")
         service.completeStart(with: .failure(AppError(error: nativeError)))
@@ -471,9 +510,9 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         let viewModel = makeViewModel(service: service)
 
         viewModel.onchainAccountTypeSelection = .taproot
-        await waitUntil(timeout: 0.2) { !service.startedParams.isEmpty }
+        await waitUntil(timeout: 0.2) { service.startedCount > 0 }
 
-        XCTAssertTrue(service.startedParams.isEmpty)
+        XCTAssertTrue(service.snapshotStartedParams().isEmpty)
         XCTAssertNil(viewModel.activeWatcherId)
     }
 }
