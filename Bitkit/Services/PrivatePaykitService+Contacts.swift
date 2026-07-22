@@ -90,12 +90,15 @@ extension PrivatePaykitService {
         let publicKeys = normalizedSavedContactKeys(publicKeys)
         guard !publicKeys.isEmpty else { return }
 
-        let linkedReceiverPaths: [String: Set<String>]
+        let linkedReceiverPathsSnapshot: [String: Set<String>]?
         do {
-            linkedReceiverPaths = try await linkedReceiverPathsByPublicKey()
+            linkedReceiverPathsSnapshot = try await linkedReceiverPathsByPublicKey()
         } catch {
-            Self.markDeletedContactCleanupPending(publicKeys)
-            throw error
+            linkedReceiverPathsSnapshot = nil
+            Logger.warn(
+                "Failed to inspect private Paykit links for cleanup; retrying per contact: \(error)",
+                context: "PrivatePaykit"
+            )
         }
 
         var firstError: Error?
@@ -103,9 +106,25 @@ extension PrivatePaykitService {
         var clearedRetryKeys = [PrivateMessageDrainRetryKey]()
         var didChangeState = false
         for publicKey in publicKeys {
+            let contactLinkedReceiverPaths: Set<String>
+            if let linkedReceiverPathsSnapshot {
+                contactLinkedReceiverPaths = linkedReceiverPathsSnapshot[publicKey, default: []]
+            } else {
+                do {
+                    contactLinkedReceiverPaths = try await linkedReceiverPaths(publicKey: publicKey)
+                } catch {
+                    contactLinkedReceiverPaths = []
+                    failedPublicKeys.insert(publicKey)
+                    firstError = firstError ?? error
+                    Logger.warn(
+                        "Failed to inspect private Paykit links for \(PubkyPublicKeyFormat.redacted(publicKey)) during cleanup: \(error)",
+                        context: "PrivatePaykit"
+                    )
+                }
+            }
             let cleanupReceiverPaths = receiverPathsForCleanup(
                 publicKey: publicKey,
-                linkedReceiverPaths: linkedReceiverPaths[publicKey, default: []]
+                linkedReceiverPaths: contactLinkedReceiverPaths
             )
             for receiverPath in cleanupReceiverPaths {
                 do {
@@ -278,14 +297,15 @@ extension PrivatePaykitService {
         var firstError: Error?
         var updates = [PrivatePaymentListReservationUpdateInput]()
         var linkRetryKeys = [PrivateMessageDrainRetryKey]()
-        let linkedReceiverPaths: [String: Set<String>]
-        let linkedReceiverPathsError: Error?
+        let linkedReceiverPathsSnapshot: [String: Set<String>]?
         do {
-            linkedReceiverPaths = try await linkedReceiverPathsByPublicKey()
-            linkedReceiverPathsError = nil
+            linkedReceiverPathsSnapshot = try await linkedReceiverPathsByPublicKey()
         } catch {
-            linkedReceiverPaths = [:]
-            linkedReceiverPathsError = error
+            linkedReceiverPathsSnapshot = nil
+            Logger.warn(
+                "Failed to inspect private Paykit links during \(reason); retrying per contact: \(error)",
+                context: "PrivatePaykit"
+            )
         }
 
         for publicKey in publicKeys {
@@ -318,21 +338,26 @@ extension PrivatePaykitService {
                     context: "PrivatePaykit"
                 )
             }
-            let cleanupReceiverPaths: [String]
-            if let linkedReceiverPathsError {
-                cleanupReceiverPaths = []
-                firstError = firstError ?? linkedReceiverPathsError
-                Logger.warn(
-                    "Failed to inspect private Paykit links for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(linkedReceiverPathsError)",
-                    context: "PrivatePaykit"
-                )
+            let contactLinkedReceiverPaths: Set<String>
+            if let linkedReceiverPathsSnapshot {
+                contactLinkedReceiverPaths = linkedReceiverPathsSnapshot[publicKey, default: []]
             } else {
-                cleanupReceiverPaths = receiverPathsForPrivateEndpointCleanup(
-                    publicKey: publicKey,
-                    excluding: publicationReceiverPaths + receiverPathSelection.cleanupProtectedReceiverPaths,
-                    linkedReceiverPaths: linkedReceiverPaths[publicKey, default: []]
-                )
+                do {
+                    contactLinkedReceiverPaths = try await linkedReceiverPaths(publicKey: publicKey)
+                } catch {
+                    contactLinkedReceiverPaths = []
+                    firstError = firstError ?? error
+                    Logger.warn(
+                        "Failed to inspect private Paykit links for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(error)",
+                        context: "PrivatePaykit"
+                    )
+                }
             }
+            let cleanupReceiverPaths = receiverPathsForPrivateEndpointCleanup(
+                publicKey: publicKey,
+                excluding: publicationReceiverPaths + receiverPathSelection.cleanupProtectedReceiverPaths,
+                linkedReceiverPaths: contactLinkedReceiverPaths
+            )
 
             for receiverPath in Set(linkableReceiverPaths).union(cleanupReceiverPaths) {
                 linkRetryKeys.append(PrivateMessageDrainRetryKey(publicKey: publicKey, receiverPath: receiverPath))
@@ -703,6 +728,11 @@ extension PrivatePaykitService {
             linkedPaths[publicKey, default: []].insert(peer.counterpartyReceiverPath)
         }
         return linkedPaths
+    }
+
+    private func linkedReceiverPaths(publicKey: String) async throws -> Set<String> {
+        guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else { return [] }
+        return try await linkedReceiverPathsByPublicKey()[publicKey, default: []]
     }
 
     private func publishedPrivatePaymentReceiverPaths(publicKey: String) -> [String] {
