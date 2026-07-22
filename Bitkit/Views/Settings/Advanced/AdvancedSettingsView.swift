@@ -68,7 +68,7 @@ struct AdvancedSettingsView: View {
                         NavigationLink(value: Route.watchOnlyAccounts) {
                             SettingsRow(
                                 title: t("watch_only_accounts__title"),
-                                iconName: "keyring",
+                                iconName: "lock-key",
                                 rightText: String(WatchOnlyAccountManager.shared.accounts(for: LightningService.shared.currentWalletIndex).count)
                             )
                         }

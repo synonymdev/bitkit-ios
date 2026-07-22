@@ -131,6 +131,16 @@ class ScannerManager: ObservableObject {
 
         Haptics.play(.scanSuccess)
 
+        guard !PubkyAuthRequest.isProtocolURL(uri) else {
+            app.toast(
+                type: .error,
+                title: t("other__qr_error_header"),
+                description: t("other__qr_error_text")
+            )
+            completion(nil)
+            return
+        }
+
         do {
             if handlePubkyRouteIfNeeded(uri, hiding: .send, reason: "Send scanner routed pubky key") {
                 completion(nil)
@@ -162,7 +172,7 @@ class ScannerManager: ObservableObject {
     }
 
     private func shouldOpenPaymentFlow(for uri: String) -> Bool {
-        !SamRockSetupRequest.isProtocolURL(uri)
+        !SamRockSetupRequest.isProtocolURL(uri) && !PubkyAuthRequest.isProtocolURL(uri)
     }
 
     private func handleElectrumScan(_ uri: String) async {

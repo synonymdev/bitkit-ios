@@ -6,6 +6,13 @@ final class PubkyAuthRequestTests: XCTestCase {
     private let relay = "https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F"
     private let secret = "e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
 
+    func testProtocolUrlRecognizesPubkyAuthSchemeCaseInsensitively() {
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL("pubkyauth://signin?caps=/pub/bitkit.to/:rw"))
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL("PUBKYAUTH://signin?caps=/pub/bitkit.to/:rw"))
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL("  pubkyauth://signin?caps=/pub/bitkit.to/:rw\n"))
+        XCTAssertFalse(PubkyAuthRequest.isProtocolURL("lightning:lnbc1example"))
+    }
+
     func testParseUrlPreservesRequestedCapabilities() throws {
         let capabilities = "/pub/bitkit.to/:rw"
         let url = "pubkyauth://signin?caps=\(capabilities)&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"

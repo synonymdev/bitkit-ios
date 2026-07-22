@@ -45,6 +45,10 @@ struct PubkyAuthRequest {
     let serviceNames: [String]
     let bitkitClaim: PubkyAuthClaim?
 
+    static func isProtocolURL(_ value: String) -> Bool {
+        URLComponents(string: value.trimmingCharacters(in: .whitespacesAndNewlines))?.scheme?.lowercased() == "pubkyauth"
+    }
+
     static func parse(url: String) throws -> PubkyAuthRequest {
         let details = try Paykit.parsePubkyAuthUrl(authUrl: url)
         let capabilities = details.capabilities ?? ""

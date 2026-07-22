@@ -666,7 +666,7 @@ struct MainNavView: View {
     }
 
     private func shouldOpenPaymentSheet(for uri: String) -> Bool {
-        !SamRockSetupRequest.isProtocolURL(uri)
+        !SamRockSetupRequest.isProtocolURL(uri) && !PubkyAuthRequest.isProtocolURL(uri)
     }
 
     private func sanitizedDeeplinkDescription(_ url: URL) -> String {
