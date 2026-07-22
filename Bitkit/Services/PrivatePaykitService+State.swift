@@ -25,12 +25,15 @@ extension PrivatePaykitService {
 
     func persistState(markWalletBackup: Bool = false) {
         do {
-            let data = try JSONEncoder().encode(state)
-            UserDefaults.standard.set(data, forKey: Self.cacheStateKey)
+            try persistStateOrThrow(markWalletBackup: markWalletBackup)
         } catch {
             Logger.error("Failed to persist private Paykit cache state: \(error)", context: "PrivatePaykit")
         }
+    }
 
+    func persistStateOrThrow(markWalletBackup: Bool = false) throws {
+        let data = try JSONEncoder().encode(state)
+        UserDefaults.standard.set(data, forKey: Self.cacheStateKey)
         if markWalletBackup {
             markWalletBackupDataChanged()
         }

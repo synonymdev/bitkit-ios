@@ -1117,6 +1117,7 @@
 "wallet__boost_recomended_button" = "Использовать рекомендованную комиссию";
 "wallet__boost_swipe" = "Ускорить";
 "wallet__payment_received" = "Получен Биткоин";
+"wallet__payment_request" = "Запрос на оплату";
 "wallet__instant_payment_received" = "Получен Мгновенный Биткоин";
 "wallet__error_create_tx" = "Ошибка создания транзакции";
 "wallet__error_create_tx_msg" = "Произошла ошибка. Пожалуйста, попробуйте снова {raw}";

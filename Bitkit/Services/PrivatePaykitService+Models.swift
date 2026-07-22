@@ -9,6 +9,7 @@ extension PrivatePaykitService {
 
     struct ContactState: Codable {
         var cachedResolvedEndpoints: [StoredPaymentEntry] = []
+        var consumedPrivatePaymentListVersionsByReceiverPath: [String: UInt64] = [:]
         var localInvoicesByReceiverPath: [String: StoredInvoice] = [:]
         var receivedInvoicePaymentHashes: [String] = []
         var publishedPrivatePaymentReceiverPaths: [String] = []
@@ -16,6 +17,7 @@ extension PrivatePaykitService {
         var hasCacheState: Bool {
             !publishedPrivatePaymentReceiverPaths.isEmpty ||
                 !cachedResolvedEndpoints.isEmpty ||
+                !consumedPrivatePaymentListVersionsByReceiverPath.isEmpty ||
                 !localInvoicesByReceiverPath.isEmpty ||
                 !receivedInvoicePaymentHashes.isEmpty
         }
@@ -40,5 +42,10 @@ extension PrivatePaykitService {
         var bolt11: String
         var paymentHash: String
         var expiresAt: Double
+    }
+
+    struct Backup: Codable {
+        let sdkState: String
+        let consumedPrivatePaymentListVersions: [String: [String: UInt64]]
     }
 }

@@ -12,6 +12,18 @@ struct SendSheetPendingResolution: Equatable {
 
 struct ContactPaymentContext: Equatable {
     let publicKey: String
+    let privatePaymentContext: PrivatePaykitPaymentContext?
+    let incomingPaymentRequest: PaykitPaymentRequest?
+
+    init(
+        publicKey: String,
+        privatePaymentContext: PrivatePaykitPaymentContext? = nil,
+        incomingPaymentRequest: PaykitPaymentRequest? = nil
+    ) {
+        self.publicKey = publicKey
+        self.privatePaymentContext = privatePaymentContext
+        self.incomingPaymentRequest = incomingPaymentRequest
+    }
 }
 
 enum ManualEntryValidationResult: Equatable {

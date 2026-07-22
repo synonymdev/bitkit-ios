@@ -108,7 +108,7 @@ extension PrivatePaykitService {
         from endpoints: [PublicPaykitService.Endpoint],
         publicKey: String,
         receiverPath: String
-    ) -> [PaymentEndpointReservationInput] {
+    ) -> [PrivatePaymentEndpointReservationInput] {
         endpoints.map { endpoint in
             let paymentHash = localInvoice(for: publicKey, receiverPath: receiverPath)?.takeIfBolt11(endpoint)?.paymentHash
             let attribution = [
@@ -117,7 +117,7 @@ extension PrivatePaykitService {
                 "receiver_path": receiverPath,
             ].merging(paymentHash.map { ["payment_hash": $0] } ?? [:]) { current, _ in current }
 
-            return PaymentEndpointReservationInput(
+            return PrivatePaymentEndpointReservationInput(
                 reservationId: reservationId(for: endpoint, publicKey: publicKey, receiverPath: receiverPath),
                 identifier: endpoint.methodId.rawValue,
                 payload: endpoint.rawPayload,

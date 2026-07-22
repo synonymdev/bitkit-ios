@@ -1101,6 +1101,7 @@
 "wallet__boost_recomended_button" = "Použít navrhovaný poplatek";
 "wallet__boost_swipe" = "Přejetím posilte";
 "wallet__payment_received" = "bitcoin přijatý";
+"wallet__payment_request" = "Žádost o platbu";
 "wallet__instant_payment_received" = "Přijatý okamžitý bitcoin";
 "wallet__error_create_tx" = "Vytvoření transakce se nezdařilo";
 "wallet__error_create_tx_msg" = "Došlo k chybě. Zkuste to prosím znovu {raw}";

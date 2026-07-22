@@ -270,9 +270,9 @@ struct ContactDetailView: View {
             let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: publicKey, wallet: wallet)
 
             switch result {
-            case let .opened(paymentRequest):
-                _ = await openContactPayment(paymentRequest: paymentRequest)
-            case .noEndpoint, .notOpened:
+            case let .opened(paymentRequest, privatePaymentContext):
+                _ = await openContactPayment(paymentRequest: paymentRequest, privatePaymentContext: privatePaymentContext)
+            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
                         type: .warning,
@@ -292,7 +292,7 @@ struct ContactDetailView: View {
     }
 
     @MainActor
-    private func openContactPayment(paymentRequest: String) async -> Bool {
+    private func openContactPayment(paymentRequest: String, privatePaymentContext: PrivatePaykitPaymentContext?) async -> Bool {
         do {
             try await app.handleScannedData(paymentRequest)
         } catch {
@@ -309,7 +309,7 @@ struct ContactDetailView: View {
             return false
         }
 
-        app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext)
         sheets.showSheet(.send, data: SendConfig(view: route))
         return true
     }

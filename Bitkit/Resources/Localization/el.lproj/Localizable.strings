@@ -823,6 +823,7 @@
 "wallet__boost_fee_recomended" = "Η συναλλαγή σας μπορεί να ολοκληρωθεί πιο γρήγορα αν συμπεριλάβετε ένα επιπλέον τέλος δικτύου. Ακολουθεί μια σύσταση:";
 "wallet__boost_swipe" = "Σύρετε για Ενίσχυση";
 "wallet__payment_received" = "Bitcoin Λήφθηκε";
+"wallet__payment_request" = "Αίτημα πληρωμής";
 "wallet__instant_payment_received" = "Άμεσο Bitcoin Λήφθηκε";
 "wallet__filter_title" = "Επιλογή Εύρους";
 "wallet__filter_clear" = "Εκκαθάριση";

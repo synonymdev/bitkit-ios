@@ -1112,6 +1112,7 @@
 "wallet__boost_recomended_button" = "Usar Tasa sugerida";
 "wallet__boost_swipe" = "Deslizar para impulsar";
 "wallet__payment_received" = "Bitcoin recibido";
+"wallet__payment_request" = "Solicitud de pago";
 "wallet__instant_payment_received" = "Bitcoin instantáneo recibido";
 "wallet__error_create_tx" = "Fallo en la creación de la transacción";
 "wallet__error_create_tx_msg" = "Se ha producido un error. Vuelva a intentarlo {raw}";

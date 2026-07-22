@@ -14,6 +14,7 @@ struct SendConfirmationView: View {
 
     @Binding var navigationPath: [SendRoute]
     let requestPinCheck: () async -> Bool
+    let acceptIncomingPaymentRequest: () async throws -> Void
 
     @State private var showDetails = false
     @State private var showingBiometricError = false
@@ -98,7 +99,7 @@ struct SendConfirmationView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
-                title: t("wallet__send_review"),
+                title: app.contactPaymentContext?.incomingPaymentRequest == nil ? t("wallet__send_review") : t("wallet__payment_request"),
                 showBackButton: !navigationPath.isEmpty,
                 action: AnyView(SendContactHeaderAvatar())
             )
@@ -486,6 +487,8 @@ struct SendConfirmationView: View {
         let contactPublicKey = app.contactPaymentContext?.publicKey
 
         do {
+            try await acceptIncomingPaymentRequest()
+
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 // Set the amount for other screens
@@ -501,28 +504,15 @@ struct SendConfirmationView: View {
                 // native millisatoshi precision instead of our truncated satoshi value.
                 let paymentSats: UInt64? = invoice.amountSatoshis == 0 ? amount : nil
                 do {
+                    try await consumePrivatePaymentListIfNeeded()
                     try await wallet.sendWithTimeout(
                         bolt11: invoice.bolt11,
                         sats: paymentSats,
                         onTimeout: {
-                            if let contactPublicKey {
-                                Task {
-                                    await PrivatePaykitService.shared.discardRemoteLightningEndpoints(
-                                        publicKey: contactPublicKey,
-                                        paymentHashes: [paymentHash]
-                                    )
-                                }
-                            }
                             app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
                             navigationPath.append(.pending(paymentHash: paymentHash))
                         }
                     )
-                    if let contactPublicKey {
-                        await PrivatePaykitService.shared.discardRemoteLightningEndpoints(
-                            publicKey: contactPublicKey,
-                            paymentHashes: [paymentHash]
-                        )
-                    }
                     await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
                     Logger.info("Lightning payment successful: \(paymentHash)")
                     navigationPath.append(.success(paymentId: paymentHash))
@@ -530,24 +520,13 @@ struct SendConfirmationView: View {
                     // onTimeout callback already navigated to .pending; suppress throw
                     return
                 } catch {
-                    if let contactPublicKey {
-                        await PrivatePaykitService.shared.discardRemoteLightningEndpoints(
-                            publicKey: contactPublicKey,
-                            paymentHashes: [paymentHash]
-                        )
-                    }
                     throw error
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
+                try await consumePrivatePaymentListIfNeeded()
                 let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: useMaxAmount)
-                if let contactPublicKey {
-                    await PrivatePaykitService.shared.discardRemoteOnchainEndpoints(
-                        publicKey: contactPublicKey,
-                        addresses: [invoice.address]
-                    )
-                }
 
                 // Create pre-activity metadata for tags and activity address
                 await createPreActivityMetadata(paymentId: txid, address: invoice.address, txId: txid, feeRate: wallet.selectedFeeRateSatsPerVByte)
@@ -588,6 +567,17 @@ struct SendConfirmationView: View {
                 navigationPath.append(.failure)
             }
         }
+    }
+
+    private func consumePrivatePaymentListIfNeeded() async throws {
+        guard let contactPaymentContext = app.contactPaymentContext,
+              let privatePaymentContext = contactPaymentContext.privatePaymentContext
+        else { return }
+
+        try await PrivatePaykitService.shared.consumePrivatePaymentList(
+            publicKey: contactPaymentContext.publicKey,
+            context: privatePaymentContext
+        )
     }
 
     private func syncContactForActivity(paymentId: String, contactPublicKey: String?) async {

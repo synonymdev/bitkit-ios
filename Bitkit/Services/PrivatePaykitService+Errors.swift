@@ -2,13 +2,19 @@ import Foundation
 import LDKNode
 
 enum PrivatePaykitError: LocalizedError {
+    case invalidPublicKey
     case privateUnavailable
+    case paymentListAlreadyConsumed
     case routeHintsUnavailable
 
     var errorDescription: String? {
         switch self {
+        case .invalidPublicKey:
+            "The contact public key is invalid."
         case .privateUnavailable:
             "Private Paykit is not available."
+        case .paymentListAlreadyConsumed:
+            "Private payment details are no longer available."
         case .routeHintsUnavailable:
             "A reachable private Lightning endpoint is not available yet."
         }

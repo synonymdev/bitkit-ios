@@ -11,6 +11,7 @@ struct LnurlPayConfirm: View {
 
     @Binding var navigationPath: [SendRoute]
     let requestPinCheck: () async -> Bool
+    let acceptIncomingPaymentRequest: () async throws -> Void
 
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
@@ -26,7 +27,7 @@ struct LnurlPayConfirm: View {
     var body: some View {
         VStack {
             SheetHeader(
-                title: t("wallet__lnurl_p_title"),
+                title: app.contactPaymentContext?.incomingPaymentRequest == nil ? t("wallet__lnurl_p_title") : t("wallet__payment_request"),
                 showBackButton: true,
                 action: AnyView(SendContactHeaderAvatar())
             )
@@ -194,6 +195,9 @@ struct LnurlPayConfirm: View {
         let contactPublicKey = app.contactPaymentContext?.publicKey
 
         do {
+            try await acceptIncomingPaymentRequest()
+            try await consumePrivatePaymentListIfNeeded()
+
             // Fetch the Lightning invoice from LNURL
             let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
                 data: lnurlPayData,
@@ -232,5 +236,16 @@ struct LnurlPayConfirm: View {
                 navigationPath.append(.failure)
             }
         }
+    }
+
+    private func consumePrivatePaymentListIfNeeded() async throws {
+        guard let contactPaymentContext = app.contactPaymentContext,
+              let privatePaymentContext = contactPaymentContext.privatePaymentContext
+        else { return }
+
+        try await PrivatePaykitService.shared.consumePrivatePaymentList(
+            publicKey: contactPaymentContext.publicKey,
+            context: privatePaymentContext
+        )
     }
 }

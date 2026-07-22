@@ -1098,6 +1098,7 @@
 "wallet__boost_recomended_button" = "Empfohlene Gebühr verwenden";
 "wallet__boost_swipe" = "Zum Beschleunigen wischen";
 "wallet__payment_received" = "Bitcoin empfangen";
+"wallet__payment_request" = "Zahlungsanforderung";
 "wallet__instant_payment_received" = "Sofortiger Bitcoin empfangen";
 "wallet__error_create_tx" = "Transaktionserstellung fehlgeschlagen";
 "wallet__error_create_tx_msg" = "Ein Fehler ist aufgetreten. Bitte versuche es erneut {raw}";

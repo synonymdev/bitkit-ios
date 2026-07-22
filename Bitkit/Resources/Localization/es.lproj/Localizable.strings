@@ -987,6 +987,7 @@
 "wallet__boost_recomended_button" = "Usar Comisión Sugerida";
 "wallet__boost_swipe" = "Deslizar para impulsar";
 "wallet__payment_received" = "Bitcoin recibido";
+"wallet__payment_request" = "Solicitud de pago";
 "wallet__instant_payment_received" = "Bitcoin Instantáneo Recibido";
 "wallet__error_create_tx_msg" = "Ocurrió un error. Por favor, intente de nuevo {raw}";
 "wallet__filter_title" = "Seleccione Rango";

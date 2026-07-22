@@ -2,6 +2,21 @@
 import XCTest
 
 final class PrivatePaykitServiceTests: XCTestCase {
+    func testReceiverNoiseDerivationMatchesCrossPlatformVector() {
+        let seed = (
+            "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e534955" +
+                "31f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04"
+        ).hexaData
+
+        let key = PaykitReceiverNoiseKeyDerivation.derive(
+            seed: seed,
+            network: "bitcoin",
+            receiverPath: PaykitReceiverPath.wallet
+        )
+
+        XCTAssertEqual(key.hex, "500f4799bbb2d02103e3b74b365ddb478a3187333c053fa9eb62f4052ba6a327")
+    }
+
     func testDuplicatePaymentErrorClassificationUsesWrappedAppErrorReason() {
         XCTAssertTrue(
             PrivatePaykitService.isDuplicatePaymentError(
@@ -192,11 +207,53 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(decodedContact.receivedInvoicePaymentHashes, ["received-hash"])
         XCTAssertEqual(decodedContact.publishedPrivatePaymentReceiverPaths, [PaykitReceiverPath.wallet])
     }
+
+    func testConsumingPrivatePaymentListClearsEndpointsAndRejectsSameVersionForPair() async throws {
+        let defaults = UserDefaults.standard
+        let previousState = defaults.data(forKey: PrivatePaykitService.cacheStateKey)
+        defaults.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        defer {
+            if let previousState {
+                defaults.set(previousState, forKey: PrivatePaykitService.cacheStateKey)
+            } else {
+                defaults.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+            }
+        }
+
+        let service = PrivatePaykitService()
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let endpoint = PublicPaykitService.Endpoint(
+            methodId: .bitcoinLightningLnurl,
+            value: "lnurl1private",
+            min: nil,
+            max: nil,
+            rawPayload: #"{"value":"lnurl1private"}"#
+        )
+        let context = PrivatePaykitPaymentContext(receiverPath: PaykitReceiverPath.wallet, paymentListVersion: 7)
+
+        await service.cacheResolvedEndpoints([endpoint], publicKey: publicKey)
+        try await service.consumePrivatePaymentList(publicKey: publicKey, context: context)
+
+        let contactState = await service.testContactState(publicKey: publicKey)
+        XCTAssertTrue(contactState?.cachedResolvedEndpoints.isEmpty == true)
+        XCTAssertEqual(contactState?.consumedPrivatePaymentListVersionsByReceiverPath[PaykitReceiverPath.wallet], 7)
+
+        do {
+            try await service.consumePrivatePaymentList(publicKey: publicKey, context: context)
+            XCTFail("Expected the private payment list to be consumed only once")
+        } catch PrivatePaykitError.paymentListAlreadyConsumed {
+            // Expected.
+        }
+    }
 }
 
 private extension PrivatePaykitService {
     func setTestLocalInvoice(_ invoice: StoredInvoice, publicKey: String) {
         state.contacts[publicKey] = ContactState()
         state.contacts[publicKey]?.localInvoicesByReceiverPath[PaykitReceiverPath.wallet] = invoice
+    }
+
+    func testContactState(publicKey: String) -> ContactState? {
+        state.contacts[publicKey]
     }
 }

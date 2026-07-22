@@ -26,16 +26,22 @@ enum PublicPaykitError: LocalizedError {
     }
 }
 
+struct PrivatePaykitPaymentContext: Equatable {
+    let receiverPath: String
+    let paymentListVersion: UInt64
+}
+
 enum PublicPaykitPaymentLaunchResult {
-    case opened(paymentRequest: String)
+    case opened(paymentRequest: String, privatePaymentContext: PrivatePaykitPaymentContext?)
     case noEndpoint
     case notOpened
+    case waitingForUpdatedPaymentList
 
     var contactPaymentFailureMessageKey: String? {
         switch self {
         case .opened:
             nil
-        case .noEndpoint:
+        case .noEndpoint, .waitingForUpdatedPaymentList:
             "slashtags__error_pay_empty_msg"
         case .notOpened:
             "slashtags__error_pay_not_opened_msg"
@@ -234,7 +240,11 @@ enum PublicPaykitService {
         parseEndpoint(methodId: identifier, endpointData: payload.exportText())
     }
 
-    static func parseEndpoint(candidate: PaymentEndpointCandidate) -> Endpoint? {
+    static func parseEndpoint(candidate: PublicPaymentEndpointCandidate) -> Endpoint? {
+        parseEndpoint(identifier: candidate.identifier, payload: candidate.payload)
+    }
+
+    static func parseEndpoint(candidate: PrivatePaymentEndpointCandidate) -> Endpoint? {
         parseEndpoint(identifier: candidate.identifier, payload: candidate.payload)
     }
 
@@ -334,7 +344,7 @@ enum PublicPaykitService {
             return endpoints.isEmpty ? .noEndpoint : .notOpened
         }
 
-        return .opened(paymentRequest: paymentRequest(from: payableEndpoints))
+        return .opened(paymentRequest: paymentRequest(from: payableEndpoints), privatePaymentContext: nil)
     }
 
     static func paymentRequest(from endpoints: [Endpoint]) -> String {
