@@ -46,13 +46,18 @@ final class PrivatePaykitServiceTests: XCTestCase {
             rawPayload: #"{"value":"lnbc1private"}"#
         )
 
-        let reservations = await service.reservations(from: [endpoint], publicKey: publicKey)
+        let reservations = await service.reservations(
+            from: [endpoint],
+            publicKey: publicKey,
+            receiverPath: PaykitReceiverPath.wallet
+        )
         XCTAssertEqual(reservations.count, 1)
         let reservation = try XCTUnwrap(reservations.first)
         let attribution = reservation.attribution
 
         XCTAssertEqual(attribution["type"], "private_paykit")
         XCTAssertEqual(attribution["counterparty"], publicKey)
+        XCTAssertEqual(attribution["receiver_path"], PaykitReceiverPath.wallet)
         XCTAssertEqual(attribution["payment_hash"], "payment-hash")
     }
 
@@ -74,17 +79,37 @@ final class PrivatePaykitServiceTests: XCTestCase {
             rawPayload: #"{"value":"bcrt1qsecond"}"#
         )
 
-        let firstReservations = await service.reservations(from: [firstEndpoint], publicKey: publicKey)
-        let repeatedReservations = await service.reservations(from: [firstEndpoint], publicKey: publicKey)
-        let secondReservations = await service.reservations(from: [secondEndpoint], publicKey: publicKey)
+        let firstReservations = await service.reservations(
+            from: [firstEndpoint],
+            publicKey: publicKey,
+            receiverPath: PaykitReceiverPath.wallet
+        )
+        let repeatedReservations = await service.reservations(
+            from: [firstEndpoint],
+            publicKey: publicKey,
+            receiverPath: PaykitReceiverPath.wallet
+        )
+        let secondReservations = await service.reservations(
+            from: [secondEndpoint],
+            publicKey: publicKey,
+            receiverPath: PaykitReceiverPath.wallet
+        )
+        let serverReservations = await service.reservations(
+            from: [firstEndpoint],
+            publicKey: publicKey,
+            receiverPath: PaykitReceiverPath.server
+        )
 
         let firstReservation = try XCTUnwrap(firstReservations.first)
         let repeatedReservation = try XCTUnwrap(repeatedReservations.first)
         let secondReservation = try XCTUnwrap(secondReservations.first)
+        let serverReservation = try XCTUnwrap(serverReservations.first)
 
         XCTAssertEqual(firstReservation.reservationId, repeatedReservation.reservationId)
         XCTAssertNotEqual(firstReservation.reservationId, secondReservation.reservationId)
-        XCTAssertTrue(firstReservation.reservationId.hasPrefix("\(publicKey):\(firstEndpoint.methodId.rawValue):"))
+        XCTAssertNotEqual(firstReservation.reservationId, serverReservation.reservationId)
+        XCTAssertEqual(serverReservation.attribution["receiver_path"], PaykitReceiverPath.server)
+        XCTAssertTrue(firstReservation.reservationId.hasPrefix("\(publicKey):\(PaykitReceiverPath.wallet):\(firstEndpoint.methodId.rawValue):"))
         XCTAssertLessThanOrEqual(firstReservation.reservationId.count, 128)
     }
 
@@ -138,9 +163,13 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 endpointData: #"{"value":"lnbc1cached"}"#
             ),
         ]
-        contactState.localInvoice = PrivatePaykitService.StoredInvoice(bolt11: "lnbc1local", paymentHash: "hash", expiresAt: 123)
+        contactState.localInvoicesByReceiverPath[PaykitReceiverPath.wallet] = PrivatePaykitService.StoredInvoice(
+            bolt11: "lnbc1local",
+            paymentHash: "hash",
+            expiresAt: 123
+        )
         contactState.receivedInvoicePaymentHashes = ["received-hash"]
-        contactState.hasPublishedPrivatePaymentList = true
+        contactState.publishedPrivatePaymentReceiverPaths = [PaykitReceiverPath.wallet]
 
         let state = PrivatePaykitService.PrivatePaykitState(contacts: [publicKey: contactState])
         let data = try JSONEncoder().encode(state)
@@ -153,17 +182,17 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let decodedContact = try XCTUnwrap(decoded.contacts[publicKey])
         XCTAssertEqual(decodedContact.cachedResolvedEndpoints.first?.methodId, PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue)
         XCTAssertEqual(decodedContact.cachedResolvedEndpoints.first?.endpointData, #"{"value":"lnbc1cached"}"#)
-        XCTAssertEqual(decodedContact.localInvoice?.bolt11, "lnbc1local")
-        XCTAssertEqual(decodedContact.localInvoice?.paymentHash, "hash")
-        XCTAssertEqual(decodedContact.localInvoice?.expiresAt, 123)
+        XCTAssertEqual(decodedContact.localInvoicesByReceiverPath[PaykitReceiverPath.wallet]?.bolt11, "lnbc1local")
+        XCTAssertEqual(decodedContact.localInvoicesByReceiverPath[PaykitReceiverPath.wallet]?.paymentHash, "hash")
+        XCTAssertEqual(decodedContact.localInvoicesByReceiverPath[PaykitReceiverPath.wallet]?.expiresAt, 123)
         XCTAssertEqual(decodedContact.receivedInvoicePaymentHashes, ["received-hash"])
-        XCTAssertTrue(decodedContact.hasPublishedPrivatePaymentList)
+        XCTAssertEqual(decodedContact.publishedPrivatePaymentReceiverPaths, [PaykitReceiverPath.wallet])
     }
 }
 
 private extension PrivatePaykitService {
     func setTestLocalInvoice(_ invoice: StoredInvoice, publicKey: String) {
         state.contacts[publicKey] = ContactState()
-        state.contacts[publicKey]?.localInvoice = invoice
+        state.contacts[publicKey]?.localInvoicesByReceiverPath[PaykitReceiverPath.wallet] = invoice
     }
 }

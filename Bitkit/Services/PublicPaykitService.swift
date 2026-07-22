@@ -195,7 +195,10 @@ enum PublicPaykitService {
 
     static func fetchPublicEndpoints(publicKey: String) async throws -> [Endpoint] {
         let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
-        let resolution = try await PaykitSdkService.shared.resolvePublicContactPayment(counterparty: normalizedKey)
+        let resolution = try await PaykitSdkService.shared.resolvePublicContactPayment(
+            counterparty: normalizedKey,
+            receiverPath: PaykitReceiverPath.wallet
+        )
         var endpointsByMethodId: [MethodId: Endpoint] = [:]
 
         for resolvedEndpoint in resolution.payableEndpoints {
@@ -250,24 +253,53 @@ enum PublicPaykitService {
     }
 
     @MainActor
-    static func syncPublishedEndpoints(wallet: WalletViewModel, publish: Bool) async throws {
+    static func syncPublishedEndpoints(
+        wallet: WalletViewModel,
+        publish: Bool
+    ) async throws {
         guard publish else {
-            try await removePublishedEndpoints()
+            var firstError: Error?
+            do {
+                try await removePublishedEndpoints()
+            } catch {
+                firstError = firstError ?? error
+            }
+            do {
+                try await syncLocalReceiverMarker(publicSharingEnabled: false)
+            } catch {
+                firstError = firstError ?? error
+            }
+            if let firstError {
+                throw firstError
+            }
             return
         }
 
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true)
+        try await syncLocalReceiverMarker(publicSharingEnabled: true)
         try await applyPublishedEndpoints(desiredEndpoints)
     }
 
     @MainActor
     static func syncCurrentPublishedEndpoints(wallet: WalletViewModel) async throws {
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false, requireEndpoint: false)
+        try await syncLocalReceiverMarker(publicSharingEnabled: true)
         try await applyPublishedEndpoints(desiredEndpoints)
     }
 
     static func removePublishedEndpoints() async throws {
         try await applyPublishedEndpoints([])
+    }
+
+    static func syncLocalReceiverMarker(
+        publicSharingEnabled: Bool? = nil,
+        privateSharingEnabled: Bool? = nil
+    ) async throws {
+        let publicSharing = publicSharingEnabled ?? UserDefaults.standard.bool(forKey: publishingEnabledKey)
+        let privateSharing = privateSharingEnabled ?? UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
+        try await PaykitSdkService.shared.syncLocalReceiverMarker(
+            isDiscoverable: publicSharing || privateSharing
+        )
     }
 
     static func hasPayablePublicEndpoint(publicKey: String) async throws -> Bool {

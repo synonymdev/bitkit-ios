@@ -346,7 +346,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func deleteProfile() async throws {
-        await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
+        try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.deleteProfile")
         do {
             try await Task.detached {
                 try await PubkyService.deletePaykitProfile()
@@ -684,13 +684,26 @@ class PubkyProfileManager: ObservableObject {
     }
 
     static func removePublicPaykitEndpoints(context: String) async throws {
+        var firstError: Error?
         do {
             try await PublicPaykitService.removePublishedEndpoints()
         } catch PubkyServiceError.sessionNotActive {
             Logger.debug("Skipping public Paykit endpoint cleanup because no session is active", context: context)
         } catch {
-            Logger.warn("Failed to remove public Paykit endpoints before clearing session: \(error)", context: context)
-            throw error
+            firstError = error
+        }
+
+        do {
+            try await PublicPaykitService.syncLocalReceiverMarker(publicSharingEnabled: false, privateSharingEnabled: false)
+        } catch PubkyServiceError.sessionNotActive {
+            Logger.debug("Skipping Paykit receiver marker cleanup because no session is active", context: context)
+        } catch {
+            firstError = firstError ?? error
+        }
+
+        if let firstError {
+            Logger.warn("Failed to remove public Paykit state before clearing session: \(firstError)", context: context)
+            throw firstError
         }
     }
 
@@ -730,7 +743,7 @@ class PubkyProfileManager: ObservableObject {
     private func signOut(cleanPrivatePaykitEndpoints: Bool) async throws {
         try await Task.detached {
             if cleanPrivatePaykitEndpoints {
-                await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
+                try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
             }
             await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
             do {
