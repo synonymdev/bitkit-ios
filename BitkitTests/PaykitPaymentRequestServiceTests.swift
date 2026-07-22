@@ -5,6 +5,23 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentRequestServiceTests: XCTestCase {
+    func testContactPaymentContextClaimIsExclusiveAndIdentityBased() {
+        let app = AppViewModel()
+        let first = ContactPaymentContext(publicKey: "pubkycontact")
+        let second = ContactPaymentContext(publicKey: "pubkycontact")
+
+        XCTAssertTrue(app.claimContactPaymentContext(first))
+        XCTAssertTrue(app.ownsContactPaymentContext(first))
+        XCTAssertFalse(app.ownsContactPaymentContext(second))
+        XCTAssertFalse(app.claimContactPaymentContext(second))
+
+        app.resetSendState(preservingContactPaymentContext: true)
+        XCTAssertTrue(app.ownsContactPaymentContext(first))
+        app.resetSendState()
+        XCTAssertFalse(app.ownsContactPaymentContext(first))
+        XCTAssertTrue(app.claimContactPaymentContext(second))
+    }
+
     func testRefreshMapsSupportedOneTimeBitcoinRequest() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let currentOnchain = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)
@@ -70,9 +87,13 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["valid"])
     }
 
-    func testRefreshConvertsExactSatoshiBoundaries() async throws {
+    func testRefreshRejectsAmountsOutsideTheAppPaymentRange() async throws {
         let records = try [
             paymentRequestRecord(id: "one-sat", amount: "0.00000001"),
+            paymentRequestRecord(id: "millisatoshi-safe-max", amount: "184467440.73709551"),
+            paymentRequestRecord(id: "millisatoshi-overflow", amount: "184467440.73709552"),
+            paymentRequestRecord(id: "int-max", amount: "92233720368.54775807"),
+            paymentRequestRecord(id: "int-overflow", amount: "92233720368.54775808"),
             paymentRequestRecord(id: "uint64-max", amount: "184467440737.09551615"),
             paymentRequestRecord(id: "uint64-overflow", amount: "184467440737.09551616"),
         ]
@@ -80,8 +101,23 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         await manager.refresh()
 
-        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["one-sat", "uint64-max"])
-        XCTAssertEqual(manager.pendingRequests.map(\.amountSats), [1, UInt64.max])
+        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["one-sat", "millisatoshi-safe-max"])
+        XCTAssertEqual(manager.pendingRequests.map(\.amountSats), [1, UInt64.max / 1000])
+    }
+
+    func testPaymentAndLightningInvoiceAmountsMustMatchRequest() throws {
+        let request = try XCTUnwrap(PaykitPaymentRequest(
+            record: paymentRequestRecord(amount: "0.000025"),
+            now: Date()
+        ))
+
+        XCTAssertTrue(request.acceptsPaymentAmount(2500))
+        XCTAssertFalse(request.acceptsPaymentAmount(0))
+        XCTAssertFalse(request.acceptsPaymentAmount(2501))
+        XCTAssertTrue(request.acceptsLightningInvoiceAmount(milliSatoshis: nil))
+        XCTAssertTrue(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_500_000))
+        XCTAssertFalse(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_499_999))
+        XCTAssertFalse(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_500_001))
     }
 
     func testRefreshContinuesWhenPendingResponseDeliveryFails() async throws {
@@ -128,13 +164,26 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
         await manager.refresh()
-        let request = try XCTUnwrap(manager.nextRequestForPresentation())
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
 
-        manager.markPresented(request)
+        XCTAssertTrue(manager.markPresentedIfPending(request))
         await manager.refresh()
 
         XCTAssertEqual(manager.pendingRequests, [request])
-        XCTAssertNil(manager.nextRequestForPresentation())
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+    }
+
+    func testExpiredRequestCannotBeMarkedPresented() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(expiresAt: timestamp(now.addingTimeInterval(60)))])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+        clock.advance(by: 61)
+
+        XCTAssertFalse(manager.markPresentedIfPending(request))
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
     }
 
     func testAcceptQueuesResponseAndRemovesRequest() async throws {

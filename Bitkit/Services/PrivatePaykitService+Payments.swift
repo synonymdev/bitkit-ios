@@ -18,10 +18,25 @@ extension PrivatePaykitService {
             return try await PublicPaykitService.beginPayment(to: publicKey)
         }
 
-        return try await beginContactPayment(to: normalizedKey, receiverPath: PaykitReceiverPath.wallet, wallet: wallet)
+        if await canPublishPrivateEndpoints(wallet: wallet) {
+            _ = await refreshSavedContactEndpointsReturningError(
+                for: [normalizedKey],
+                wallet: wallet,
+                forceRefreshLightning: false,
+                requireImmediatePublication: false
+            )
+        }
+
+        var result = try await beginContactPayment(to: normalizedKey, receiverPath: PaykitReceiverPath.wallet)
+        for delay in Self.privatePaymentResolutionRetryDelays {
+            guard case .waitingForUpdatedPaymentList = result else { return result }
+            try await Task.sleep(nanoseconds: delay)
+            result = try await beginContactPayment(to: normalizedKey, receiverPath: PaykitReceiverPath.wallet)
+        }
+        return result
     }
 
-    func beginPaymentRequest(_ request: PaykitPaymentRequest, wallet: WalletViewModel) async throws -> PublicPaykitPaymentLaunchResult {
+    func beginPaymentRequest(_ request: PaykitPaymentRequest) async throws -> PublicPaykitPaymentLaunchResult {
         guard !request.isExpired(at: Date()) else {
             throw PaykitPaymentRequestError.requestExpired
         }
@@ -32,33 +47,15 @@ extension PrivatePaykitService {
         return try await beginContactPayment(
             to: publicKey,
             receiverPath: request.counterpartyReceiverPath,
-            paymentRequest: request,
-            wallet: wallet
+            paymentRequest: request
         )
     }
 
     private func beginContactPayment(
         to publicKey: String,
         receiverPath: String,
-        paymentRequest: PaykitPaymentRequest? = nil,
-        wallet: WalletViewModel
+        paymentRequest: PaykitPaymentRequest? = nil
     ) async throws -> PublicPaykitPaymentLaunchResult {
-        guard try await hasLiveSessionForCurrentProfile() else {
-            if paymentRequest != nil {
-                throw PrivatePaykitError.privateUnavailable
-            }
-            return try await PublicPaykitService.beginPayment(to: publicKey)
-        }
-
-        if paymentRequest == nil, await canPublishPrivateEndpoints(wallet: wallet) {
-            _ = await refreshSavedContactEndpointsReturningError(
-                for: [publicKey],
-                wallet: wallet,
-                forceRefreshLightning: false,
-                requireImmediatePublication: false
-            )
-        }
-
         let consumedVersion = state.contacts[publicKey]?.consumedPrivatePaymentListVersionsByReceiverPath[receiverPath]
         let amount = paymentRequest.map {
             PaymentAmountContext(value: $0.amountValue, asset: "btc")
@@ -102,11 +99,11 @@ extension PrivatePaykitService {
             }
 
             if resolution.state == .recoveryPending {
-                schedulePrivatePaymentRecovery(for: publicKey)
+                schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
             }
 
             if resolution.status == .waitingForUpdatedPaymentList {
-                schedulePrivatePaymentRecovery(for: publicKey)
+                schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
                 return .waitingForUpdatedPaymentList
             }
 
@@ -285,5 +282,11 @@ extension PrivatePaykitService {
         resolution.payableEndpoints.compactMap {
             return PublicPaykitService.parseEndpoint(identifier: $0.identifier, payload: $0.target.payload)
         }
+    }
+}
+
+private extension PrivatePaykitService {
+    static var privatePaymentResolutionRetryDelays: ArraySlice<UInt64> {
+        privateMessageDrainRetryDelays.prefix(3)
     }
 }

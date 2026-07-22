@@ -177,7 +177,10 @@ extension PrivatePaykitService {
         let savedKeys = Set(normalizedSavedContactKeys(publicKeys))
         knownSavedContactKeys = savedKeys
 
-        let staleKeys = Set(state.contacts.keys).subtracting(savedKeys)
+        let staleKeys: Set<String> = Set(state.contacts.compactMap { publicKey, contactState in
+            guard !savedKeys.contains(publicKey), contactState.hasContactOwnedCacheState else { return nil }
+            return publicKey
+        })
         let cleanupKeys = staleKeys.union(Self.pendingDeletedContactCleanupKeys().subtracting(savedKeys))
         guard !cleanupKeys.isEmpty else { return }
 
@@ -485,11 +488,11 @@ extension PrivatePaykitService {
         }
     }
 
-    func schedulePrivatePaymentRecovery(for publicKey: String) {
+    func schedulePrivatePaymentRecovery(for publicKey: String, receiverPath: String) {
         guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
         schedulePendingPrivateMessageDrainRetries(
             reason: "payment recovery",
-            retryKeys: [PrivateMessageDrainRetryKey(publicKey: publicKey, receiverPath: PaykitReceiverPath.wallet)]
+            retryKeys: [PrivateMessageDrainRetryKey(publicKey: publicKey, receiverPath: receiverPath)]
         )
     }
 

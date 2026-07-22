@@ -88,9 +88,25 @@ struct SendContactSelectView: View {
         publicKey: String,
         privatePaymentContext: PrivatePaykitPaymentContext?
     ) async -> Bool {
+        let contactPaymentContext = ContactPaymentContext(
+            publicKey: publicKey,
+            privatePaymentContext: privatePaymentContext
+        )
+        guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
+
         do {
-            try await app.handleScannedData(paymentRequest)
+            try await app.handleScannedData(
+                paymentRequest,
+                claimedContactPaymentContext: contactPaymentContext
+            )
+        } catch is CancellationError {
+            if app.ownsContactPaymentContext(contactPaymentContext) {
+                app.resetSendState()
+            }
+            return false
         } catch {
+            guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
+            app.resetSendState()
             Logger.warn("Failed to decode contact payment request: \(error)", context: "SendContactSelectView")
             app.toast(
                 type: .warning,
@@ -100,11 +116,12 @@ struct SendContactSelectView: View {
             return false
         }
 
+        guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
         guard let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings) else {
+            app.resetSendState()
             return false
         }
 
-        app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext)
         navigationPath.append(route)
         return true
     }

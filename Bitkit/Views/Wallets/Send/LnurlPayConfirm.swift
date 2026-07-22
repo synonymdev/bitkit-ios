@@ -192,11 +192,14 @@ struct LnurlPayConfirm: View {
         }
 
         let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
-        let contactPublicKey = app.contactPaymentContext?.publicKey
+        let contactPaymentContext = app.contactPaymentContext
+        let contactPublicKey = contactPaymentContext?.publicKey
 
         do {
+            try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
             try await acceptIncomingPaymentRequest()
-            try await consumePrivatePaymentListIfNeeded()
+            try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
+            try await consumePrivatePaymentListIfNeeded(contactPaymentContext)
 
             // Fetch the Lightning invoice from LNURL
             let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
@@ -238,8 +241,20 @@ struct LnurlPayConfirm: View {
         }
     }
 
-    private func consumePrivatePaymentListIfNeeded() async throws {
-        guard let contactPaymentContext = app.contactPaymentContext,
+    private func validateIncomingPaymentRequest(_ context: ContactPaymentContext?, amountMsats: UInt64) throws {
+        guard let context, let request = context.incomingPaymentRequest else { return }
+        guard !request.isExpired(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
+        guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
+        guard let amountSats = wallet.sendAmountSats,
+              request.acceptsPaymentAmount(amountSats),
+              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats)
+        else {
+            throw LnurlPayInvoiceMismatchError()
+        }
+    }
+
+    private func consumePrivatePaymentListIfNeeded(_ contactPaymentContext: ContactPaymentContext?) async throws {
+        guard let contactPaymentContext,
               let privatePaymentContext = contactPaymentContext.privatePaymentContext
         else { return }
 

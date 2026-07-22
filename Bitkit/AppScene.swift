@@ -227,6 +227,17 @@ struct AppScene: View {
                 guard configuration == nil else { return }
                 Task { await presentNextIncomingPaykitPaymentRequest() }
             }
+            .onChange(of: paykitPaymentRequestManager.pendingRequests) { _, requests in
+                guard let request = app.contactPaymentContext?.incomingPaymentRequest,
+                      request.isExpired(at: Date()),
+                      !requests.contains(where: { $0.id == request.id }),
+                      sheets.activeSheetConfiguration?.id == .send
+                else { return }
+
+                app.resetSendState()
+                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                sheets.hideSheetIfActive(.send, reason: "Incoming payment request expired")
+            }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
                 guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
                     return
@@ -740,37 +751,71 @@ struct AppScene: View {
     private func presentNextIncomingPaykitPaymentRequest() async {
         guard !isPresentingPaykitPaymentRequest,
               sheets.activeSheetConfiguration == nil,
-              let request = paykitPaymentRequestManager.nextRequestForPresentation()
+              app.contactPaymentContext == nil
         else { return }
+
+        let requests = paykitPaymentRequestManager.requestsForPresentation()
+        guard !requests.isEmpty else { return }
 
         isPresentingPaykitPaymentRequest = true
         defer { isPresentingPaykitPaymentRequest = false }
 
-        do {
-            let result = try await PrivatePaykitService.shared.beginPaymentRequest(request, wallet: wallet)
-            guard case let .opened(paymentTarget, privatePaymentContext) = result,
-                  sheets.activeSheetConfiguration == nil
-            else { return }
+        for request in requests {
+            do {
+                let result = try await PrivatePaykitService.shared.beginPaymentRequest(request)
+                guard sheets.activeSheetConfiguration == nil, app.contactPaymentContext == nil else { return }
+                guard case let .opened(paymentTarget, privatePaymentContext) = result else { continue }
 
-            try await app.handleScannedData(paymentTarget)
-            guard sheets.activeSheetConfiguration == nil,
-                  PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil
-            else { return }
+                let contactPaymentContext = ContactPaymentContext(
+                    publicKey: request.counterparty,
+                    privatePaymentContext: privatePaymentContext,
+                    incomingPaymentRequest: request
+                )
+                guard app.claimContactPaymentContext(contactPaymentContext) else { return }
 
-            app.contactPaymentContext = ContactPaymentContext(
-                publicKey: request.counterparty,
-                privatePaymentContext: privatePaymentContext,
-                incomingPaymentRequest: request
-            )
-            wallet.sendAmountSats = request.amountSats
-            paykitPaymentRequestManager.markPresented(request)
+                do {
+                    try await app.handleScannedData(
+                        paymentTarget,
+                        claimedContactPaymentContext: contactPaymentContext
+                    )
+                    guard app.ownsContactPaymentContext(contactPaymentContext),
+                          sheets.activeSheetConfiguration == nil
+                    else { return }
+                    guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
+                        app.resetSendState()
+                        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        continue
+                    }
 
-            let route: SendRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
-            sheets.showSheet(.send, data: SendConfig(view: route))
-        } catch is CancellationError {
-            return
-        } catch {
-            Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
+                    guard paykitPaymentRequestManager.markPresentedIfPending(request) else {
+                        app.resetSendState()
+                        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        continue
+                    }
+                } catch is CancellationError {
+                    if app.ownsContactPaymentContext(contactPaymentContext) {
+                        app.resetSendState()
+                        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                    }
+                    return
+                } catch {
+                    guard app.ownsContactPaymentContext(contactPaymentContext) else { return }
+                    Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
+                    app.resetSendState()
+                    wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                    continue
+                }
+
+                wallet.sendAmountSats = request.amountSats
+
+                let route: SendRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+                sheets.showSheet(.send, data: SendConfig(view: route))
+                return
+            } catch is CancellationError {
+                return
+            } catch {
+                Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
+            }
         }
     }
 

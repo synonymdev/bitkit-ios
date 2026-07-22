@@ -296,9 +296,22 @@ struct AddContactView: View {
 
     @MainActor
     private func openContactPayment(paymentRequest: String, publicKey: String) async -> Bool {
+        let contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
+        guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
+
         do {
-            try await app.handleScannedData(paymentRequest)
+            try await app.handleScannedData(
+                paymentRequest,
+                claimedContactPaymentContext: contactPaymentContext
+            )
+        } catch is CancellationError {
+            if app.ownsContactPaymentContext(contactPaymentContext) {
+                app.resetSendState()
+            }
+            return false
         } catch {
+            guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
+            app.resetSendState()
             Logger.warn("Failed to decode contact payment request: \(error)", context: "AddContactView")
             app.toast(
                 type: .warning,
@@ -308,12 +321,13 @@ struct AddContactView: View {
             return false
         }
 
+        guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
         guard let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings) else {
+            app.resetSendState()
             return false
         }
 
         navigation.navigateBack()
-        app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
         sheets.showSheet(.send, data: SendConfig(view: route))
         return true
     }

@@ -21,6 +21,13 @@ extension PrivatePaykitService {
                 !localInvoicesByReceiverPath.isEmpty ||
                 !receivedInvoicePaymentHashes.isEmpty
         }
+
+        var hasContactOwnedCacheState: Bool {
+            !publishedPrivatePaymentReceiverPaths.isEmpty ||
+                !cachedResolvedEndpoints.isEmpty ||
+                !localInvoicesByReceiverPath.isEmpty ||
+                !receivedInvoicePaymentHashes.isEmpty
+        }
     }
 
     struct StoredPaymentEntry: Codable {

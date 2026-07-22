@@ -32,7 +32,8 @@ struct PaykitPaymentRequest: Identifiable, Equatable {
               let terms = record.terms,
               terms.recurrence == nil,
               terms.amount.asset == "btc",
-              let amountSats = Self.sats(fromBitcoinAmount: terms.amount.value)
+              let amountSats = Self.sats(fromBitcoinAmount: terms.amount.value),
+              amountSats <= UInt64.max / 1000
         else { return nil }
 
         let acceptedPaymentEndpointIdentifiers = Self.supportedEndpointIdentifiers(
@@ -63,6 +64,16 @@ struct PaykitPaymentRequest: Identifiable, Equatable {
 
     func isExpired(at date: Date) -> Bool {
         expiresAt.map { $0 <= date } ?? false
+    }
+
+    func acceptsLightningInvoiceAmount(milliSatoshis: UInt64?) -> Bool {
+        guard let milliSatoshis else { return true }
+        let (requestedMilliSatoshis, overflow) = amountSats.multipliedReportingOverflow(by: 1000)
+        return !overflow && milliSatoshis == requestedMilliSatoshis
+    }
+
+    func acceptsPaymentAmount(_ amountSats: UInt64) -> Bool {
+        amountSats == self.amountSats
     }
 
     private static func supportedEndpointIdentifiers(_ identifiers: [String]) -> [String] {
@@ -261,13 +272,15 @@ final class PaykitPaymentRequestManager {
         presentedRequestIds = []
     }
 
-    func nextRequestForPresentation() -> PaykitPaymentRequest? {
-        pendingRequests.first { !presentedRequestIds.contains($0.id) }
+    func requestsForPresentation() -> [PaykitPaymentRequest] {
+        pendingRequests.filter { !presentedRequestIds.contains($0.id) }
     }
 
-    func markPresented(_ request: PaykitPaymentRequest) {
-        guard pendingRequests.contains(where: { $0.id == request.id }) else { return }
+    func markPresentedIfPending(_ request: PaykitPaymentRequest) -> Bool {
+        discardExpiredRequests()
+        guard pendingRequests.contains(where: { $0.id == request.id }) else { return false }
         presentedRequestIds.insert(request.id)
+        return true
     }
 
     private func performRefresh(generation: Int) async {

@@ -245,6 +245,52 @@ final class PrivatePaykitServiceTests: XCTestCase {
             // Expected.
         }
     }
+
+    func testClearingContactStatePreservesConsumedPrivatePaymentListVersions() async throws {
+        let defaults = UserDefaults.standard
+        let previousState = defaults.data(forKey: PrivatePaykitService.cacheStateKey)
+        defaults.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        defer {
+            if let previousState {
+                defaults.set(previousState, forKey: PrivatePaykitService.cacheStateKey)
+            } else {
+                defaults.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+            }
+        }
+
+        let service = PrivatePaykitService()
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let endpoint = PublicPaykitService.Endpoint(
+            methodId: .bitcoinLightningLnurl,
+            value: "lnurl1private",
+            min: nil,
+            max: nil,
+            rawPayload: #"{"value":"lnurl1private"}"#
+        )
+        let context = PrivatePaykitPaymentContext(receiverPath: PaykitReceiverPath.server, paymentListVersion: 9)
+
+        await service.cacheResolvedEndpoints([endpoint], publicKey: publicKey)
+        try await service.consumePrivatePaymentList(publicKey: publicKey, context: context)
+        await service.clearContactState(publicKey: publicKey)
+
+        let contactState = await service.testContactState(publicKey: publicKey)
+        XCTAssertEqual(contactState?.consumedPrivatePaymentListVersionsByReceiverPath, [PaykitReceiverPath.server: 9])
+        XCTAssertFalse(contactState?.hasContactOwnedCacheState == true)
+    }
+
+    func testPrivatePaymentRecoveryUsesRequestedReceiverPath() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+        await service.schedulePrivatePaymentRecovery(for: publicKey, receiverPath: PaykitReceiverPath.server)
+
+        let retryKeys = await service.testPendingMessageDrainRetryKeys()
+        XCTAssertEqual(
+            retryKeys,
+            [PrivateMessageDrainRetryKey(publicKey: publicKey, receiverPath: PaykitReceiverPath.server)]
+        )
+        await service.clearTestPendingMessageDrainRetries()
+    }
 }
 
 private extension PrivatePaykitService {
@@ -255,5 +301,15 @@ private extension PrivatePaykitService {
 
     func testContactState(publicKey: String) -> ContactState? {
         state.contacts[publicKey]
+    }
+
+    func testPendingMessageDrainRetryKeys() -> Set<PrivateMessageDrainRetryKey> {
+        pendingMessageDrainRetryKeys
+    }
+
+    func clearTestPendingMessageDrainRetries() {
+        pendingMessageDrainRetryTask?.cancel()
+        pendingMessageDrainRetryTask = nil
+        pendingMessageDrainRetryKeys.removeAll()
     }
 }

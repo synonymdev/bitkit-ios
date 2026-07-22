@@ -18,7 +18,14 @@ extension PrivatePaykitService {
 
     func clearContactState(publicKey: String) async {
         guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
-        state.contacts[normalizedKey] = nil
+        let consumedVersions = state.contacts[normalizedKey]?.consumedPrivatePaymentListVersionsByReceiverPath ?? [:]
+        if consumedVersions.isEmpty {
+            state.contacts[normalizedKey] = nil
+        } else {
+            var contactState = ContactState()
+            contactState.consumedPrivatePaymentListVersionsByReceiverPath = consumedVersions
+            state.contacts[normalizedKey] = contactState
+        }
         await PrivatePaykitAddressReservationStore.shared.clearContactAssignment(publicKey: normalizedKey)
         persistState(markWalletBackup: true)
     }

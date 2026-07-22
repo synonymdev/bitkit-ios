@@ -11,15 +11,18 @@ struct SendSheetPendingResolution: Equatable {
 }
 
 struct ContactPaymentContext: Equatable {
+    let id: UUID
     let publicKey: String
     let privatePaymentContext: PrivatePaykitPaymentContext?
     let incomingPaymentRequest: PaykitPaymentRequest?
 
     init(
+        id: UUID = UUID(),
         publicKey: String,
         privatePaymentContext: PrivatePaykitPaymentContext? = nil,
         incomingPaymentRequest: PaykitPaymentRequest? = nil
     ) {
+        self.id = id
         self.publicKey = publicKey
         self.privatePaymentContext = privatePaymentContext
         self.incomingPaymentRequest = incomingPaymentRequest
@@ -100,6 +103,7 @@ class AppViewModel: ObservableObject {
     private let coreService: CoreService
     private let sheetViewModel: SheetViewModel
     private let navigationViewModel: NavigationViewModel
+    private var scannedDataHandlingId: UUID?
     private var manualEntryValidationSequence: UInt64 = 0
 
     // Combine infrastructure for debounced validation
@@ -381,9 +385,22 @@ extension AppViewModel {
 // MARK: Scanning/pasting handling
 
 extension AppViewModel {
-    func handleScannedData(_ uri: String) async throws {
+    func handleScannedData(_ uri: String, claimedContactPaymentContext: ContactPaymentContext? = nil) async throws {
+        let handlingId = claimedContactPaymentContext?.id ?? UUID()
+        if let claimedContactPaymentContext {
+            guard ownsContactPaymentContext(claimedContactPaymentContext), scannedDataHandlingId == nil else {
+                throw CancellationError()
+            }
+        }
+        scannedDataHandlingId = handlingId
+        defer {
+            if scannedDataHandlingId == handlingId {
+                scannedDataHandlingId = nil
+            }
+        }
+
         // Reset send state before handling new data
-        resetSendState()
+        resetSendState(preservingContactPaymentContext: claimedContactPaymentContext != nil)
 
         let uri = uri.removingLightningSchemes()
 
@@ -409,6 +426,7 @@ extension AppViewModel {
         }
 
         let data = try await decode(invoice: uri)
+        try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
 
         switch data {
         // BIP21 (Unified) invoice handling
@@ -428,7 +446,9 @@ extension AppViewModel {
 
             if let lnInvoice = invoice.params?["lightning"] {
                 // Lightning invoice param found, prefer lightning payment if invoice is valid
-                if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
+                let lightningData = try await decode(invoice: lnInvoice)
+                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+                if case let .lightning(lightningInvoice) = lightningData {
                     // Check lightning invoice network
                     let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
                     let lnNetworkMatch = !NetworkValidationHelper.isNetworkMismatch(addressNetwork: lnNetwork, currentNetwork: Env.network)
@@ -573,6 +593,16 @@ extension AppViewModel {
         }
     }
 
+    private func ensureScannedDataHandlingOwnership(
+        _ handlingId: UUID,
+        claimedContactPaymentContext: ContactPaymentContext?
+    ) throws {
+        guard scannedDataHandlingId == handlingId else { throw CancellationError() }
+        if let claimedContactPaymentContext {
+            guard ownsContactPaymentContext(claimedContactPaymentContext) else { throw CancellationError() }
+        }
+    }
+
     private func handleBTCPayConnection(_ setup: SamRockSetupRequest) {
         guard setup.requestsBitcoinOnchain else {
             toast(
@@ -711,13 +741,25 @@ extension AppViewModel {
         navigationViewModel.navigate(.fundManual(nodeUri: url))
     }
 
-    func resetSendState() {
+    func claimContactPaymentContext(_ context: ContactPaymentContext) -> Bool {
+        guard contactPaymentContext == nil, scannedDataHandlingId == nil else { return false }
+        contactPaymentContext = context
+        return true
+    }
+
+    func ownsContactPaymentContext(_ context: ContactPaymentContext) -> Bool {
+        contactPaymentContext?.id == context.id
+    }
+
+    func resetSendState(preservingContactPaymentContext: Bool = false) {
         scannedLightningInvoice = nil
         scannedOnchainInvoice = nil
         selectedWalletToPayFrom = .onchain // Reset to default
         lnurlPayData = nil
         lnurlWithdrawData = nil
-        contactPaymentContext = nil
+        if !preservingContactPaymentContext {
+            contactPaymentContext = nil
+        }
     }
 }
 
