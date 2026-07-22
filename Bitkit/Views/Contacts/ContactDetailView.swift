@@ -20,8 +20,11 @@ struct ContactDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t(showsDeleteAction ? "contacts__saved_title" : "contacts__detail_title"))
-                .padding(.horizontal, 16)
+            NavigationBar(
+                title: t(showsDeleteAction ? "contacts__saved_title" : "contacts__detail_title"),
+                backAccessibilityIdentifier: showsDeleteAction ? "ContactsAddButton" : "NavigationBack"
+            )
+            .padding(.horizontal, 16)
 
             if isLoading {
                 loadingContent
