@@ -87,53 +87,85 @@ extension PrivatePaykitService {
     }
 
     func removePublishedEndpoints(for publicKeys: [String]) async throws {
-        var firstError: Error?
-        var didChangeState = false
-        for publicKey in normalizedSavedContactKeys(publicKeys) {
-            var didFail = false
-            let cleanupReceiverPaths: [String]
-            do {
-                cleanupReceiverPaths = try await receiverPathsForCleanup(publicKey: publicKey)
-            } catch {
-                firstError = firstError ?? error
-                Self.markDeletedContactCleanupPending([publicKey])
-                continue
-            }
+        let publicKeys = normalizedSavedContactKeys(publicKeys)
+        guard !publicKeys.isEmpty else { return }
 
+        let linkedReceiverPathsSnapshot: [String: Set<String>]?
+        do {
+            linkedReceiverPathsSnapshot = try await linkedReceiverPathsByPublicKey()
+        } catch {
+            linkedReceiverPathsSnapshot = nil
+            Logger.warn(
+                "Failed to inspect private Paykit links for cleanup; retrying per contact: \(error)",
+                context: "PrivatePaykit"
+            )
+        }
+
+        var firstError: Error?
+        var failedPublicKeys = Set<String>()
+        var clearedRetryKeys = [PrivateMessageDrainRetryKey]()
+        var didChangeState = false
+        for publicKey in publicKeys {
+            let contactLinkedReceiverPaths: Set<String>
+            if let linkedReceiverPathsSnapshot {
+                contactLinkedReceiverPaths = linkedReceiverPathsSnapshot[publicKey, default: []]
+            } else {
+                do {
+                    contactLinkedReceiverPaths = try await linkedReceiverPaths(publicKey: publicKey)
+                } catch {
+                    contactLinkedReceiverPaths = []
+                    failedPublicKeys.insert(publicKey)
+                    firstError = firstError ?? error
+                    Logger.warn(
+                        "Failed to inspect private Paykit links for \(PubkyPublicKeyFormat.redacted(publicKey)) during cleanup: \(error)",
+                        context: "PrivatePaykit"
+                    )
+                }
+            }
+            let cleanupReceiverPaths = receiverPathsForCleanup(
+                publicKey: publicKey,
+                linkedReceiverPaths: contactLinkedReceiverPaths
+            )
             for receiverPath in cleanupReceiverPaths {
                 do {
                     let report = try await PaykitSdkService.shared.clearPrivatePaymentList(to: publicKey, receiverPath: receiverPath)
                     if !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
                         throw PrivatePaykitError.privateUnavailable
                     }
-                    let retryKey = PrivateMessageDrainRetryKey(publicKey: publicKey, receiverPath: receiverPath)
-                    await drainPendingPrivateMessages(reason: "cleanup", advancing: [retryKey])
-                    if await pendingPrivateMessageDrainKeys([retryKey]).contains(retryKey) {
-                        throw PrivatePaykitError.privateUnavailable
-                    }
+                    clearedRetryKeys.append(PrivateMessageDrainRetryKey(publicKey: publicKey, receiverPath: receiverPath))
                 } catch {
-                    didFail = true
+                    failedPublicKeys.insert(publicKey)
                     firstError = firstError ?? error
-                    Self.markDeletedContactCleanupPending([publicKey])
                 }
-            }
-
-            if !didFail {
-                if var contactState = state.contacts[publicKey] {
-                    let hadStateToClear = !contactState.cachedResolvedEndpoints.isEmpty ||
-                        !contactState.localInvoicesByReceiverPath.isEmpty ||
-                        !contactState.publishedPrivatePaymentReceiverPaths.isEmpty
-                    contactState.cachedResolvedEndpoints = []
-                    contactState.localInvoicesByReceiverPath = [:]
-                    contactState.publishedPrivatePaymentReceiverPaths = []
-                    let shouldRemoveContact = !contactState.hasCacheState
-                    state.contacts[publicKey] = shouldRemoveContact ? nil : contactState
-                    didChangeState = didChangeState || hadStateToClear || shouldRemoveContact
-                }
-
-                Self.clearDeletedContactCleanupPending([publicKey])
             }
         }
+
+        if !clearedRetryKeys.isEmpty {
+            await drainPendingPrivateMessages(reason: "cleanup", advancing: clearedRetryKeys)
+            let pendingRetryKeys = await pendingPrivateMessageDrainKeys(clearedRetryKeys)
+            if !pendingRetryKeys.isEmpty {
+                failedPublicKeys.formUnion(pendingRetryKeys.map(\.publicKey))
+                firstError = firstError ?? PrivatePaykitError.privateUnavailable
+            }
+        }
+
+        let successfulPublicKeys = Set(publicKeys).subtracting(failedPublicKeys)
+        for publicKey in successfulPublicKeys {
+            if var contactState = state.contacts[publicKey] {
+                let hadStateToClear = !contactState.cachedResolvedEndpoints.isEmpty ||
+                    !contactState.localInvoicesByReceiverPath.isEmpty ||
+                    !contactState.publishedPrivatePaymentReceiverPaths.isEmpty
+                contactState.cachedResolvedEndpoints = []
+                contactState.localInvoicesByReceiverPath = [:]
+                contactState.publishedPrivatePaymentReceiverPaths = []
+                let shouldRemoveContact = !contactState.hasCacheState
+                state.contacts[publicKey] = shouldRemoveContact ? nil : contactState
+                didChangeState = didChangeState || hadStateToClear || shouldRemoveContact
+            }
+        }
+
+        Self.markDeletedContactCleanupPending(Array(failedPublicKeys))
+        Self.clearDeletedContactCleanupPending(Array(successfulPublicKeys))
 
         if didChangeState {
             persistState(markWalletBackup: true)
@@ -265,6 +297,17 @@ extension PrivatePaykitService {
         var firstError: Error?
         var updates = [PrivatePaymentListReservationUpdateInput]()
         var linkRetryKeys = [PrivateMessageDrainRetryKey]()
+        let linkedReceiverPathsSnapshot: [String: Set<String>]?
+        do {
+            linkedReceiverPathsSnapshot = try await linkedReceiverPathsByPublicKey()
+        } catch {
+            linkedReceiverPathsSnapshot = nil
+            Logger.warn(
+                "Failed to inspect private Paykit links during \(reason); retrying per contact: \(error)",
+                context: "PrivatePaykit"
+            )
+        }
+
         for publicKey in publicKeys {
             let receiverPaths: [String]
             do {
@@ -295,20 +338,26 @@ extension PrivatePaykitService {
                     context: "PrivatePaykit"
                 )
             }
-            let cleanupReceiverPaths: [String]
-            do {
-                cleanupReceiverPaths = try await receiverPathsForPrivateEndpointCleanup(
-                    publicKey: publicKey,
-                    excluding: publicationReceiverPaths + receiverPathSelection.cleanupProtectedReceiverPaths
-                )
-            } catch {
-                cleanupReceiverPaths = []
-                firstError = firstError ?? error
-                Logger.warn(
-                    "Failed to inspect private Paykit links for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(error)",
-                    context: "PrivatePaykit"
-                )
+            let contactLinkedReceiverPaths: Set<String>
+            if let linkedReceiverPathsSnapshot {
+                contactLinkedReceiverPaths = linkedReceiverPathsSnapshot[publicKey, default: []]
+            } else {
+                do {
+                    contactLinkedReceiverPaths = try await linkedReceiverPaths(publicKey: publicKey)
+                } catch {
+                    contactLinkedReceiverPaths = []
+                    firstError = firstError ?? error
+                    Logger.warn(
+                        "Failed to inspect private Paykit links for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(error)",
+                        context: "PrivatePaykit"
+                    )
+                }
             }
+            let cleanupReceiverPaths = receiverPathsForPrivateEndpointCleanup(
+                publicKey: publicKey,
+                excluding: publicationReceiverPaths + receiverPathSelection.cleanupProtectedReceiverPaths,
+                linkedReceiverPaths: contactLinkedReceiverPaths
+            )
 
             for receiverPath in Set(linkableReceiverPaths).union(cleanupReceiverPaths) {
                 linkRetryKeys.append(PrivateMessageDrainRetryKey(publicKey: publicKey, receiverPath: receiverPath))
@@ -652,35 +701,38 @@ extension PrivatePaykitService {
 
     private func receiverPathsForPrivateEndpointCleanup(
         publicKey: String,
-        excluding publicationReceiverPaths: [String]
-    ) async throws -> [String] {
+        excluding publicationReceiverPaths: [String],
+        linkedReceiverPaths: Set<String>
+    ) -> [String] {
         let publishedPaths = publishedPrivatePaymentReceiverPaths(publicKey: publicKey)
-        let linkedPaths = try await linkedReceiverPaths(publicKey: publicKey)
         let excluded = Set(publicationReceiverPaths)
-        return Array(Set(publishedPaths).union(linkedPaths).subtracting(excluded))
+        return Array(Set(publishedPaths).union(linkedReceiverPaths).subtracting(excluded))
             .filter { PaykitReceiverPath.supported.contains($0) }
             .sorted()
     }
 
-    private func receiverPathsForCleanup(publicKey: String) async throws -> [String] {
-        let linkedPaths = try await linkedReceiverPaths(publicKey: publicKey)
+    private func receiverPathsForCleanup(publicKey: String, linkedReceiverPaths: Set<String>) -> [String] {
         let publishedPaths = publishedPrivatePaymentReceiverPaths(publicKey: publicKey)
-        return Array(Set(linkedPaths).union(publishedPaths))
+        return Array(linkedReceiverPaths.union(publishedPaths))
             .filter { PaykitReceiverPath.supported.contains($0) }
             .sorted()
     }
 
-    private func linkedReceiverPaths(publicKey: String) async throws -> [String] {
-        guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else { return [] }
+    private func linkedReceiverPathsByPublicKey() async throws -> [String: Set<String>] {
         let peers = try await PaykitSdkService.shared.linkedPeers()
-
-        let linkedPaths = peers.compactMap { peer -> String? in
-            guard PubkyPublicKeyFormat.normalized(peer.counterparty) == publicKey,
+        var linkedPaths = [String: Set<String>]()
+        for peer in peers {
+            guard let publicKey = PubkyPublicKeyFormat.normalized(peer.counterparty),
                   PaykitReceiverPath.supported.contains(peer.counterpartyReceiverPath)
-            else { return nil }
-            return peer.counterpartyReceiverPath
+            else { continue }
+            linkedPaths[publicKey, default: []].insert(peer.counterpartyReceiverPath)
         }
-        return Array(Set(linkedPaths)).sorted()
+        return linkedPaths
+    }
+
+    private func linkedReceiverPaths(publicKey: String) async throws -> Set<String> {
+        guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else { return [] }
+        return try await linkedReceiverPathsByPublicKey()[publicKey, default: []]
     }
 
     private func publishedPrivatePaymentReceiverPaths(publicKey: String) -> [String] {
