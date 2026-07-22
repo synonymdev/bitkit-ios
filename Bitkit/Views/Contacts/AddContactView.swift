@@ -37,8 +37,11 @@ struct AddContactView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("contacts__add_title"))
-                .padding(.horizontal, 16)
+            NavigationBar(
+                title: t("contacts__add_title"),
+                backAccessibilityIdentifier: "AddContactDiscard"
+            )
+            .padding(.horizontal, 16)
 
             if isLoading {
                 loadingContent
