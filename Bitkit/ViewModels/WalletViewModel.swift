@@ -434,9 +434,10 @@ class WalletViewModel: ObservableObject {
 
     /// Ensure the swap updates stream is running so pending LN -> onchain swaps are tracked and
     /// auto-claimed. A live stream is left untouched: restarting it would abort bitkit-core's
-    /// background tasks and could race an in-flight claim. Safe to call repeatedly.
+    /// background tasks and could race an in-flight claim. Safe to call repeatedly. Runs only
+    /// where swaps are supported and enabled in dev settings, see `BoltzService.isSwapEnabled`.
     func ensureSwapUpdatesRunning() {
-        guard BoltzService.shared.isSwapSupported else { return }
+        guard BoltzService.shared.isSwapEnabled else { return }
         collectSwapEventsOnce()
         guard !swapUpdatesRunning, swapUpdatesTask == nil else { return }
         swapUpdatesTask = Task { [weak self] in

@@ -180,8 +180,17 @@ class BoltzService {
 
     // MARK: - Helpers
 
+    /// Dev settings key for the savings swap gate.
+    static let savingsSwapEnabledKey = "savingsSwapEnabled"
+
     /// Whether the configured network has a reachable Boltz backend. See `Env.isSwapSupported`.
     var isSwapSupported: Bool { Env.isSwapSupported }
+
+    /// Whether swaps may run: the network needs a reachable Boltz backend and the savings swap
+    /// flow must be switched on in dev settings, since its UI is not final yet.
+    var isSwapEnabled: Bool {
+        isSwapSupported && UserDefaults.standard.bool(forKey: Self.savingsSwapEnabledKey)
+    }
 
     /// The Boltz network matching the app's configured network.
     static var boltzNetwork: BoltzNetwork {

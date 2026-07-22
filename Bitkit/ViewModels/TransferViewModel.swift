@@ -1173,9 +1173,10 @@ class TransferViewModel: ObservableObject {
     /// (defaulting to the maximum transferable) so the user sees the cost before confirming.
     /// The confirm slider then re-prices locally via `onSwapAmountChange`. A quote is the only
     /// thing that unlocks the swap, so every failure simply leaves it nil and the transfer
-    /// falls back to closing a channel.
+    /// falls back to closing a channel. Skipped entirely where swaps are unsupported or the
+    /// flow is switched off in dev settings, see `BoltzService.isSwapEnabled`.
     func loadSavingsSwapQuote(requestedSat: UInt64, spendableSats: UInt64) async {
-        guard boltzService.isSwapSupported else { return }
+        guard boltzService.isSwapEnabled else { return }
         savingsSwapState = SavingsSwapState(isLoading: true)
 
         guard let limits = await fetchReverseSwapLimits() else {

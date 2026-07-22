@@ -31,6 +31,18 @@ final class SavingsSwapTests: XCTestCase {
         XCTAssertFalse(BoltzService.shared.isSwapSupported)
     }
 
+    func testSwapsStayDisabledWithoutTheDevFlag() {
+        withSavingsSwapDevFlag(false) {
+            XCTAssertFalse(BoltzService.shared.isSwapEnabled)
+        }
+    }
+
+    func testDevFlagAloneDoesNotEnableSwapsOffMainnet() {
+        withSavingsSwapDevFlag(true) {
+            XCTAssertFalse(BoltzService.shared.isSwapEnabled)
+        }
+    }
+
     // MARK: - Transfer mode
 
     @MainActor
@@ -88,6 +100,14 @@ final class SavingsSwapTests: XCTestCase {
     }
 
     // MARK: - Fixtures
+
+    private func withSavingsSwapDevFlag(_ enabled: Bool, _ body: () -> Void) {
+        let defaults = UserDefaults.standard
+        let previous = defaults.bool(forKey: BoltzService.savingsSwapEnabledKey)
+        defaults.set(enabled, forKey: BoltzService.savingsSwapEnabledKey)
+        defer { defaults.set(previous, forKey: BoltzService.savingsSwapEnabledKey) }
+        body()
+    }
 
     private func limits(
         minimalSat: UInt64 = 25000,
