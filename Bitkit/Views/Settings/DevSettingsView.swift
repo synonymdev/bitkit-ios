@@ -6,6 +6,7 @@ struct DevSettingsView: View {
     @AppStorage("hasConfirmedPublicPaykitEndpoints") private var hasConfirmedPublicPaykitEndpoints = false
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
+    @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
@@ -57,6 +58,20 @@ struct DevSettingsView: View {
                         SettingsRow(title: "Trezor Hardware Wallet")
                     }
                     .accessibilityIdentifier("Trezor")
+
+                    SettingsSectionHeader("SWAPS")
+                        .padding(.top, 16)
+
+                    NavigationLink(value: Route.swaps) {
+                        SettingsRow(title: "Swaps")
+                    }
+
+                    SettingsRow(
+                        title: "Enable Savings Swap",
+                        rightIcon: nil,
+                        toggle: $isSavingsSwapEnabled,
+                        testIdentifier: "SavingsSwapToggle"
+                    )
 
                     SettingsSectionHeader("RECOVERY")
                         .padding(.top, 16)

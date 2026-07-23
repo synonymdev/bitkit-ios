@@ -466,6 +466,10 @@ struct AppScene: View {
             // Start watching pending orders after wallet is ready
             await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
 
+            // Open the swap updates stream so any pending LN -> onchain swaps resume
+            // and auto-claim once their lockup confirms. Retries until the stream starts.
+            wallet.ensureSwapUpdatesRunning()
+
             // Schedule full backup after wallet create/restore to prevent epoch dates in backup status
             await BackupService.shared.scheduleFullBackup()
         } catch {

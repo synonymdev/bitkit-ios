@@ -583,6 +583,8 @@ struct MainNavView: View {
                 case .probingTool: ProbingToolScreen()
                 case .legacyRnRecovery: LegacyRnRecoveryScreen()
                 case .orders: ChannelOrders()
+                case .swaps: SwapsListView()
+                case let .swapDetail(id): SwapDetailView(swapId: id)
                 case .logs: LogView()
                 case .trezor: TrezorRootView()
                 }

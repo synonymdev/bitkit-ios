@@ -413,10 +413,80 @@ class WalletViewModel: ObservableObject {
 
     func stopLightningNode(clearEventCallback: Bool = false) async throws {
         nodeLifecycleState = .stopping
+        // Stop the swap updates stream with the node; it restarts on the next wallet start.
+        await stopSwapUpdates()
         try await lightningService.stop(clearEventCallback: clearEventCallback)
         nodeLifecycleState = .stopped
         probeOutcomes.removeAll()
         syncState()
+    }
+
+    // MARK: - Boltz swap updates stream
+
+    /// Base backoff between swap updates stream attempts; scales linearly per attempt.
+    private static let swapUpdatesRetryDelay: TimeInterval = 5
+    /// Upper bound for the backoff between swap updates stream attempts.
+    private static let swapUpdatesRetryCap: TimeInterval = 60
+
+    private var swapUpdatesTask: Task<Void, Never>?
+    private var swapEventsTask: Task<Void, Never>?
+    private var swapUpdatesRunning = false
+
+    /// Ensure the swap updates stream is running so pending LN -> onchain swaps are tracked and
+    /// auto-claimed. A live stream is left untouched: restarting it would abort bitkit-core's
+    /// background tasks and could race an in-flight claim. Safe to call repeatedly. Runs only
+    /// where swaps are supported and enabled in dev settings, see `BoltzService.isSwapEnabled`.
+    func ensureSwapUpdatesRunning() {
+        guard BoltzService.shared.isSwapEnabled else { return }
+        collectSwapEventsOnce()
+        guard !swapUpdatesRunning, swapUpdatesTask == nil else { return }
+        swapUpdatesTask = Task { [weak self] in
+            await self?.startSwapUpdatesWithRetry()
+        }
+    }
+
+    /// Open the swap updates stream so any pending LN -> onchain swaps resume and auto-claim.
+    /// Uses the wallet's current fee rate for the claim tx. Retries until started: without the
+    /// stream a paid swap has nothing to broadcast its claim. Once started, bitkit-core keeps
+    /// the WebSocket alive with its own reconnect loop.
+    private func startSwapUpdatesWithRetry() async {
+        var attempt = 0
+        while !Task.isCancelled {
+            do {
+                var feeRate: Double?
+                if let rates = await feeEstimatesManager.getEstimates() {
+                    feeRate = Double(SettingsViewModel.shared.defaultTransactionSpeed.getFeeRate(from: rates))
+                }
+                try await BoltzService.shared.startUpdates(feeRateSatPerVb: feeRate, acceptZeroConf: true)
+                swapUpdatesRunning = true
+                return
+            } catch {
+                attempt += 1
+                Logger.warn("Failed to start swap updates, attempt \(attempt)", context: "WalletViewModel")
+                let delay = min(Self.swapUpdatesRetryDelay * Double(attempt), Self.swapUpdatesRetryCap)
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+        }
+    }
+
+    /// Refresh balances when a swap lands on-chain so savings reflect it without a manual sync.
+    private func collectSwapEventsOnce() {
+        guard swapEventsTask == nil else { return }
+        swapEventsTask = Task { [weak self] in
+            for await event in BoltzService.shared.events() {
+                if case let .claimed(swapId, _) = event {
+                    Logger.info("Savings swap claimed: \(swapId)", context: "WalletViewModel")
+                    await self?.syncStateAsync()
+                }
+            }
+        }
+    }
+
+    private func stopSwapUpdates() async {
+        swapUpdatesTask?.cancel()
+        swapUpdatesTask = nil
+        swapUpdatesRunning = false
+        await BoltzService.shared.stopUpdates()
     }
 
     func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
