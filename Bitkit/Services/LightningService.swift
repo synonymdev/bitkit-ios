@@ -28,12 +28,11 @@ class LightningService {
 
     static var shared = LightningService()
 
-    private static let scoringBasePenaltyMsat: UInt64 = 50000
+    private static let scoringBasePenaltyMsat: UInt64 = 40000
     private static let scoringLiquidityPenaltyMultiplierMsat: UInt64 = 10000
     private static let scoringLiquidityPenaltyAmountMultiplierMsat: UInt64 = 10000
     private static let scoringHistoricalLiquidityPenaltyAmountMultiplierMsat: UInt64 = 20000
     private static let scoringConsideredImpossiblePenaltyMsat: UInt64 = 1_000_000_000_000
-    private static let scoringProbingDiversityPenaltyMsat: UInt64 = 60000
 
     private static let defaultScoringFeeParameters = ScoringFeeParameters(
         basePenaltyMsat: 1024,
@@ -1610,7 +1609,7 @@ extension LightningService {
             antiProbingPenaltyMsat: defaultParameters.antiProbingPenaltyMsat,
             consideredImpossiblePenaltyMsat: scoringConsideredImpossiblePenaltyMsat,
             linearSuccessProbability: defaultParameters.linearSuccessProbability,
-            probingDiversityPenaltyMsat: scoringProbingDiversityPenaltyMsat
+            probingDiversityPenaltyMsat: defaultParameters.probingDiversityPenaltyMsat
         )
     }
 
