@@ -161,12 +161,26 @@ struct PaymentPreferenceView: View {
                 return
             }
 
+            if !sharesPublicPaykitEndpoints {
+                do {
+                    try await PublicPaykitService.syncLocalReceiverMarker(publicSharingEnabled: false, privateSharingEnabled: true)
+                } catch {
+                    await rollbackFailedPrivateSharingEnable(previousValue: previousValue, previousCleanupPending: previousCleanupPending)
+                    Logger.error("Failed to enable private contact payments: \(error)", context: "PaymentPreferenceView")
+                    app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
+                    return
+                }
+            }
+
             PrivatePaykitService.setContactSharingCleanupPending(false)
             hasConfirmedPublicPaykitEndpoints = true
         } else {
             do {
                 try await PrivatePaykitService.shared.removePublishedEndpoints()
                 sharesPrivatePaykitEndpoints = false
+                if !sharesPublicPaykitEndpoints {
+                    try await PublicPaykitService.syncLocalReceiverMarker(publicSharingEnabled: false, privateSharingEnabled: false)
+                }
                 hasConfirmedPublicPaykitEndpoints = true
                 PrivatePaykitService.setContactSharingCleanupPending(false)
             } catch {
@@ -177,6 +191,10 @@ struct PaymentPreferenceView: View {
                         wallet: wallet
                     )
                 }
+                await syncLocalReceiverMarkerBestEffort(
+                    publicSharingEnabled: sharesPublicPaykitEndpoints,
+                    privateSharingEnabled: previousValue
+                )
                 Logger.error("Failed to disable private contact payments: \(error)", context: "PaymentPreferenceView")
                 app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
             }
@@ -185,6 +203,9 @@ struct PaymentPreferenceView: View {
 
     private func rollbackFailedPrivateSharingEnable(previousValue: Bool, previousCleanupPending: Bool) async {
         sharesPrivatePaykitEndpoints = previousValue
+        if !sharesPublicPaykitEndpoints {
+            await syncLocalReceiverMarkerBestEffort(publicSharingEnabled: false, privateSharingEnabled: previousValue)
+        }
         guard !previousValue else { return }
 
         do {
@@ -211,9 +232,19 @@ struct PaymentPreferenceView: View {
         defer { isUpdatingPublic = false }
 
         do {
-            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: enabled)
+            try await PublicPaykitService.syncPublishedEndpoints(
+                wallet: wallet,
+                publish: enabled
+            )
         } catch {
             sharesPublicPaykitEndpoints = previousValue
+            do {
+                try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: previousValue)
+                PublicPaykitService.setCleanupPending(false)
+            } catch {
+                PublicPaykitService.setCleanupPending(true)
+                Logger.warn("Failed to restore public contact payments after rollback: \(error)", context: "PaymentPreferenceView")
+            }
             Logger.error("Failed to update public contact payments: \(error)", context: "PaymentPreferenceView")
             app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
         }
@@ -222,6 +253,7 @@ struct PaymentPreferenceView: View {
     private func reconcilePrivateSharingAvailability() async {
         guard sharesPrivatePaykitEndpoints, !canUsePrivateContactPayments else { return }
         sharesPrivatePaykitEndpoints = false
+        await syncLocalReceiverMarkerBestEffort(publicSharingEnabled: sharesPublicPaykitEndpoints, privateSharingEnabled: false)
     }
 
     private enum PaymentOption {
@@ -300,6 +332,18 @@ struct PaymentPreferenceView: View {
                 contactsManager.contacts.map(\.publicKey),
                 wallet: wallet
             )
+        }
+    }
+
+    private func syncLocalReceiverMarkerBestEffort(publicSharingEnabled: Bool, privateSharingEnabled: Bool) async {
+        do {
+            try await PublicPaykitService.syncLocalReceiverMarker(
+                publicSharingEnabled: publicSharingEnabled,
+                privateSharingEnabled: privateSharingEnabled
+            )
+        } catch {
+            PublicPaykitService.setCleanupPending(true)
+            Logger.warn("Failed to sync local Paykit receiver marker: \(error)", context: "PaymentPreferenceView")
         }
     }
 }

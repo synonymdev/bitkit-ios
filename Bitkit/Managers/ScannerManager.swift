@@ -18,6 +18,7 @@ class ScannerManager: ObservableObject {
     private var navigation: NavigationViewModel?
     private var pubkyProfile: PubkyProfileManager?
     private var sheets: SheetViewModel?
+    private var wallet: WalletViewModel?
 
     func configure(
         app: AppViewModel,
@@ -26,7 +27,8 @@ class ScannerManager: ObservableObject {
         settings: SettingsViewModel? = nil,
         navigation: NavigationViewModel? = nil,
         pubkyProfile: PubkyProfileManager? = nil,
-        sheets: SheetViewModel? = nil
+        sheets: SheetViewModel? = nil,
+        wallet: WalletViewModel? = nil
     ) {
         self.app = app
         self.contactsManager = contactsManager
@@ -35,6 +37,7 @@ class ScannerManager: ObservableObject {
         self.navigation = navigation
         self.pubkyProfile = pubkyProfile
         self.sheets = sheets
+        self.wallet = wallet
     }
 
     func handleScan(_ uri: String, context: ScannerContext) async {
@@ -109,6 +112,14 @@ class ScannerManager: ObservableObject {
             sheets?.hideSheetIfActive(sheetId, reason: reason)
         }
         navigation.navigate(route)
+        if case let .contactDetail(publicKey) = route,
+           let contactsManager,
+           let wallet
+        {
+            Task {
+                await contactsManager.refreshContactReceiverPaths(publicKey: publicKey, wallet: wallet)
+            }
+        }
         return true
     }
 

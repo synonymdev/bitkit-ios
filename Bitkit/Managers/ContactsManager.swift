@@ -280,15 +280,37 @@ class ContactsManager: ObservableObject {
             try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true)
         }
 
-        try await Task.detached {
-            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: profile.name)
-        }.value
+        let receiverPaths = try await Self.relevantReceiverPaths(for: prefixedKey)
+        _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: profile.name, receiverPaths: receiverPaths)
 
         Logger.info("Added contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
 
         let contact = PubkyContact(publicKey: prefixedKey, profile: profile)
         contacts.append(contact)
         contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+
+    func refreshContactReceiverPaths(publicKey: String, wallet: WalletViewModel) async {
+        guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey),
+              let contact = contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, prefixedKey) })
+        else { return }
+
+        do {
+            let receiverPaths = try await Self.relevantReceiverPaths(for: prefixedKey)
+            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name, receiverPaths: receiverPaths)
+            await PrivatePaykitService.shared.refreshSavedContactEndpoints(
+                for: [prefixedKey],
+                savedPublicKeys: contacts.map(\.publicKey),
+                wallet: wallet
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.warn(
+                "Failed to refresh contact receiver paths for \(PubkyPublicKeyFormat.redacted(prefixedKey)): \(error)",
+                context: "ContactsManager"
+            )
+        }
     }
 
     // MARK: - Import Contacts
@@ -302,8 +324,11 @@ class ContactsManager: ObservableObject {
                 group.addTask { [self] in
                     do {
                         let profile = try await resolveContactProfile(publicKey: key, includePlaceholder: true)
-                        _ = try await PubkyService.saveContact(publicKey: key, label: profile.name)
+                        let receiverPaths = try await Self.relevantReceiverPaths(for: key)
+                        _ = try await PubkyService.saveContact(publicKey: key, label: profile.name, receiverPaths: receiverPaths)
                         return .success(PubkyContact(publicKey: key, profile: profile))
+                    } catch is CancellationError {
+                        return .failure(CancellationError())
                     } catch {
                         Logger.warn("Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(key))': \(error)", context: "ContactsManager")
                         return .failure(error)
@@ -327,6 +352,8 @@ class ContactsManager: ObservableObject {
 
             return (results, failures, firstError)
         }
+
+        try Task.checkCancellation()
 
         if !prefixedKeys.isEmpty, loadedResult.contacts.isEmpty {
             throw loadedResult.firstError ?? PubkyServiceError.profileNotFound
@@ -379,12 +406,12 @@ class ContactsManager: ObservableObject {
         try await Task.detached {
             _ = try await PubkyService.removeContact(publicKey: prefixedKey)
         }.value
+        await PrivatePaykitService.shared.removeSavedContact(publicKey: prefixedKey)
         Self.removeContactProfileOverride(publicKey: prefixedKey)
 
         Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
 
         contacts.removeAll { $0.publicKey == prefixedKey }
-        await PrivatePaykitService.shared.removeSavedContact(publicKey: prefixedKey)
     }
 
     func deleteAllContacts() async throws {
@@ -423,13 +450,17 @@ class ContactsManager: ObservableObject {
 
         if let firstError {
             if !deletedKeys.isEmpty {
-                contacts.removeAll { deletedKeys.contains($0.publicKey) }
                 await PrivatePaykitService.shared.removeSavedContacts(publicKeys: Array(deletedKeys))
+                for publicKey in deletedKeys {
+                    Self.removeContactProfileOverride(publicKey: publicKey)
+                }
+                contacts.removeAll { deletedKeys.contains($0.publicKey) }
             }
             throw firstError
         }
 
         // All remote deletes succeeded, so clear any local-only contacts too.
+        await PrivatePaykitService.shared.removeSavedContacts(publicKeys: Array(deletedKeys))
         Self.clearContactProfileOverrides()
         await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
         contacts.removeAll()
@@ -591,6 +622,20 @@ class ContactsManager: ObservableObject {
         }
 
         throw PubkyServiceError.profileNotFound
+    }
+
+    private nonisolated static func relevantReceiverPaths(for publicKey: String) async throws -> [String] {
+        do {
+            return try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            Logger.warn(
+                "Failed to discover Paykit receivers for '\(PubkyPublicKeyFormat.redacted(publicKey))': \(error)",
+                context: "ContactsManager"
+            )
+            return [PaykitReceiverPath.wallet]
+        }
     }
 
     private nonisolated static let contactProfileOverridesKey = "pubkyContactProfileOverrides"

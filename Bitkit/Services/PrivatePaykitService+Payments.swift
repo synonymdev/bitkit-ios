@@ -8,7 +8,7 @@ extension PrivatePaykitService {
         guard !paymentHash.isEmpty else { return nil }
 
         return state.contacts.first { _, contactState in
-            contactState.localInvoice?.paymentHash == paymentHash ||
+            localInvoices(contactState).contains { $0.paymentHash == paymentHash } ||
                 contactState.receivedInvoicePaymentHashes.contains(paymentHash)
         }?.key
     }
@@ -34,7 +34,11 @@ extension PrivatePaykitService {
         }
 
         do {
-            let prepared = try await PaykitSdkService.shared.prepareAndResolveContactPayment(counterparty: publicKey, includePublicEndpoints: true)
+            let prepared = try await PaykitSdkService.shared.prepareAndResolveContactPayment(
+                counterparty: publicKey,
+                receiverPath: PaykitReceiverPath.wallet,
+                includePublicEndpoints: true
+            )
             let resolution = prepared.resolution
             let privateEndpoints = resolvedEndpoints(from: resolution, source: .privatePaymentList)
             cacheResolvedEndpoints(privateEndpoints, publicKey: publicKey)

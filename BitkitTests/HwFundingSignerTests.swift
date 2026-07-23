@@ -35,8 +35,8 @@ final class HwFundingSignerTests: XCTestCase {
     }
 
     func testFeeReserveFallbackUsesFloorWhenPercentSmaller() {
-        // 10% of 5,000 = 500, below the 1 * 1200 floor.
-        XCTAssertEqual(HwFundingSigner.feeReserve(balanceSats: 5000, satsPerVByte: nil), 1200)
+        // 10% of 5,000 = 500, below the 3 * 1200 floor.
+        XCTAssertEqual(HwFundingSigner.feeReserve(balanceSats: 5000, satsPerVByte: nil), 3600)
     }
 
     // MARK: - Availability
