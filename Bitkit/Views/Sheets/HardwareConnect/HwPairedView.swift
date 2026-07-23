@@ -58,6 +58,7 @@ struct HwPairedView: View {
                 .padding(.bottom, 16)
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareWalletPairedScreen")
     }
 }

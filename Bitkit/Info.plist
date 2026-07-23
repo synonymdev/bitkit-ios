@@ -23,6 +23,12 @@
 	<string>$(E2E_BACKEND)</string>
 	<key>E2E_NETWORK</key>
 	<string>$(E2E_NETWORK)</string>
+	<key>TREZOR_BRIDGE</key>
+	<string>$(TREZOR_BRIDGE)</string>
+	<key>TREZOR_BRIDGE_URL</key>
+	<string>$(TREZOR_BRIDGE_URL)</string>
+	<key>TREZOR_ELECTRUM_URL</key>
+	<string>$(TREZOR_ELECTRUM_URL)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>pubkyauth</string>

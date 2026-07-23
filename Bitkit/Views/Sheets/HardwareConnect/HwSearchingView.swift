@@ -19,7 +19,9 @@ struct HwSearchingView: View {
                     textColor: errorMessage != nil ? .redAccent : .textSecondary
                 )
                 .frame(minHeight: 40, alignment: .top)
-                .accessibilityIdentifier(errorMessage != nil ? "HwSearchingError" : "HwSearchingText")
+                .accessibilityIdentifier(
+                    errorMessage != nil ? "HardwareWalletSearchingError" : "HardwareWalletSearchingText"
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 32)
@@ -30,10 +32,11 @@ struct HwSearchingView: View {
             CustomButton(title: t("common__cancel"), variant: .secondary, shouldExpand: true) {
                 onCancel()
             }
-            .accessibilityIdentifier("HwSearchingCancel")
+            .accessibilityIdentifier("HardwareWalletSearchingCancel")
             .padding(.horizontal, 32)
             .padding(.bottom, 16)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareWalletSearchingScreen")
     }
 }
