@@ -418,6 +418,16 @@ class SettingsViewModel: NSObject, ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: Self.pendingRestoreAddressTypePruneKey) }
     }
 
+    private static let pendingRestoreActivitySeenKey = "pendingRestoreActivitySeen"
+
+    /// After a seed restore, suppress on-chain "Received" sheets for replayed historical txs until the
+    /// first post-restore on-chain sync completes, then mark them seen. Set when user taps Get Started;
+    /// cleared in AppViewModel's syncCompleted(.onchainWallet) handler.
+    var pendingRestoreActivitySeen: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.pendingRestoreActivitySeenKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.pendingRestoreActivitySeenKey) }
+    }
+
     /// After restore, disables monitoring for address types with zero balance.
     /// Keeps nativeSegwit as primary and monitored; only types with funds stay monitored.
     func pruneEmptyAddressTypesAfterRestore() async {
