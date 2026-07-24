@@ -9,6 +9,26 @@ enum AppReset {
         session: SessionManager,
         toastType: Toast.ToastType = .success
     ) async throws {
+        try await PubkyProfileManager.withIdentityLifecycleLock {
+            try await wipeLocked(
+                app: app,
+                wallet: wallet,
+                session: session,
+                toastType: toastType
+            )
+        }
+    }
+
+    @MainActor
+    private static func wipeLocked(
+        app: AppViewModel,
+        wallet: WalletViewModel,
+        session: SessionManager,
+        toastType: Toast.ToastType
+    ) async throws {
+        // Shared mirrors must be gone before any server or canonical private source is cleared.
+        try SharedPubkyIdentityVault.deleteAllBitkitIdentities()
+
         await PubkyProfileManager.removePublicPaykitEndpointsBestEffort(context: "AppReset.wipe")
         await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "AppReset.wipe")
 
@@ -69,6 +89,9 @@ enum AppReset {
             title: t("security__wiped_title"),
             description: t("security__wiped_message")
         )
+
+        // Re-verify while the identity lifecycle gate still excludes reconciliation.
+        try SharedPubkyIdentityVault.deleteAllBitkitIdentities()
     }
 
     private static func wipeLogs() throws {

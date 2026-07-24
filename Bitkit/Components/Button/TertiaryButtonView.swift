@@ -4,6 +4,7 @@ struct TertiaryButtonView: View {
     let title: String
     let icon: AnyView?
     let isPressed: Bool
+    let labelKerning: CGFloat
 
     var body: some View {
         HStack(spacing: 8) {
@@ -11,7 +12,7 @@ struct TertiaryButtonView: View {
                 icon
             }
 
-            BodySSBText(title, textColor: textColor)
+            BodySSBText(title, textColor: textColor, kerning: labelKerning)
         }
         .frame(maxWidth: .infinity)
         .frame(height: CustomButton.Size.large.height)

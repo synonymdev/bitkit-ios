@@ -66,6 +66,7 @@ struct CustomButton: View {
     let isDisabled: Bool
     let isLoading: Bool
     let shouldExpand: Bool
+    let labelKerning: CGFloat
     let background: AnyView?
     let action: (() async -> Void)?
     let destination: AnyView?
@@ -85,6 +86,7 @@ struct CustomButton: View {
         isDisabled: Bool = false,
         isLoading: Bool = false,
         shouldExpand: Bool = false,
+        labelKerning: CGFloat = 0.4,
         background: (any View)? = nil
     ) {
         self.title = title
@@ -94,6 +96,7 @@ struct CustomButton: View {
         self.isDisabled = isDisabled
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
+        self.labelKerning = labelKerning
         self.background = background.map { AnyView($0) }
         action = nil
         destination = nil
@@ -108,6 +111,7 @@ struct CustomButton: View {
         isDisabled: Bool = false,
         isLoading: Bool = false,
         shouldExpand: Bool = false,
+        labelKerning: CGFloat = 0.4,
         background: (any View)? = nil,
         action: @escaping () async -> Void
     ) {
@@ -118,6 +122,7 @@ struct CustomButton: View {
         self.isDisabled = isDisabled
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
+        self.labelKerning = labelKerning
         self.background = background.map { AnyView($0) }
         self.action = action
         destination = nil
@@ -132,6 +137,7 @@ struct CustomButton: View {
         isDisabled: Bool = false,
         isLoading: Bool = false,
         shouldExpand: Bool = false,
+        labelKerning: CGFloat = 0.4,
         background: (any View)? = nil,
         destination: some View
     ) {
@@ -142,6 +148,7 @@ struct CustomButton: View {
         self.isDisabled = isDisabled
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
+        self.labelKerning = labelKerning
         self.background = background.map { AnyView($0) }
         action = nil
         self.destination = AnyView(destination)
@@ -158,6 +165,7 @@ struct CustomButton: View {
                 isLoading: isLoading,
                 isPressed: isPressed,
                 shouldExpand: shouldExpand,
+                labelKerning: labelKerning,
                 background: background
             ))
         case .secondary:
@@ -167,13 +175,15 @@ struct CustomButton: View {
                 icon: icon,
                 isDisabled: effectiveIsDisabled,
                 isPressed: isPressed,
-                isLoading: isLoading
+                isLoading: isLoading,
+                labelKerning: labelKerning
             ))
         case .tertiary:
             AnyView(TertiaryButtonView(
                 title: title,
                 icon: icon,
-                isPressed: isPressed
+                isPressed: isPressed,
+                labelKerning: labelKerning
             ))
         }
     }

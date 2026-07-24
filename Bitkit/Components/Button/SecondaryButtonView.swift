@@ -7,6 +7,7 @@ struct SecondaryButtonView: View {
     let isDisabled: Bool
     let isPressed: Bool
     var isLoading: Bool = false
+    let labelKerning: CGFloat
 
     var body: some View {
         HStack(spacing: 8) {
@@ -21,7 +22,7 @@ struct SecondaryButtonView: View {
             } else if size == .small {
                 CaptionBText(title, textColor: textColor)
             } else {
-                BodySSBText(title, textColor: textColor)
+                BodySSBText(title, textColor: textColor, kerning: labelKerning)
             }
         }
         .frame(maxWidth: size == .large ? .infinity : nil)

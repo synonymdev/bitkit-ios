@@ -1039,7 +1039,7 @@
 "contacts__add_error" = "Failed to add contact";
 "contacts__add_disclaimer" = "Please note that you and {name} must add each other as contacts to pay each other privately. Otherwise, the payment will be visible publicly.";
 "contacts__import_nav_title" = "Import";
-"contacts__import_found_title" = "Found\n<accent>profile & contacts</accent>";
+"contacts__import_found_title" = "Found\n<accent>contacts</accent>";
 "contacts__import_found_description" = "Bitkit found profile and contacts data connected to pubky <accent>{key}</accent>";
 "contacts__import_select" = "Select";
 "contacts__import_all" = "Import All";
@@ -1118,8 +1118,9 @@
 "profile__sign_out_description" = "This will disconnect your Pubky profile from Bitkit. You can reconnect at any time.";
 "profile__ring_waiting" = "Waiting for authorization from Pubky Ring…";
 "profile__ring_loading" = "Loading your profile…";
-"profile__choice_title" = "Join the\n<accent>pubky web</accent>";
-"profile__choice_description" = "Create a new pubky and profile in Bitkit, or import an existing profile with Pubky Ring.";
+"profile__choice_title" = "ENTER THE\n<accent>FREEDOM WEB</accent>";
+"profile__choice_description" = "Create a new pubky and profile in Bitkit, or use an existing pubky from Pubky Ring.";
+"profile__choice_new_pubky" = "NEW PUBKY";
 "profile__choice_create" = "Create profile with Bitkit";
 "profile__choice_import" = "Import with Pubky Ring";
 "profile__deriving_keys" = "Deriving your keys…";

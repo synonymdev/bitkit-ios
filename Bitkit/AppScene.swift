@@ -3,6 +3,29 @@ import LDKNode
 import SwiftUI
 import UserNotifications
 
+enum OrphanedKeychainCleanup {
+    static func perform(
+        hasNativeKeychain: Bool,
+        hasOrphanedRNKeychain: Bool,
+        deleteBitkitSharedIdentities: () throws -> Void,
+        wipePrivateKeychain: () throws -> Void,
+        cleanupRNKeychain: () -> Void
+    ) throws {
+        guard hasNativeKeychain || hasOrphanedRNKeychain else {
+            return
+        }
+
+        // A reinstall must never orphan a shared Bitkit credential. Ring-owned
+        // accounts are outside this deletion's scope.
+        try deleteBitkitSharedIdentities()
+        try wipePrivateKeychain()
+
+        if hasOrphanedRNKeychain {
+            cleanupRNKeychain()
+        }
+    }
+}
+
 struct AppScene: View {
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject private var session: SessionManager
@@ -485,7 +508,7 @@ struct AppScene: View {
     /// Handle orphaned keychain entries from previous app installs.
     /// If the installation marker doesn't exist but keychain has data, the app was reinstalled
     /// and the keychain data is orphaned (corresponding wallet data was deleted with the app).
-    private func handleOrphanedKeychain() {
+    private func handleOrphanedKeychain() throws {
         // If marker exists, app was installed before - keychain is valid
         if InstallationMarker.exists() {
             Logger.debug("Installation marker exists, skipping orphaned keychain check", context: "AppScene")
@@ -500,26 +523,30 @@ struct AppScene: View {
 
         if hasNativeKeychain || hasOrphanedRNKeychain {
             Logger.warn("Orphaned keychain detected, wiping", context: "AppScene")
-            try? Keychain.wipeEntireKeychain()
-
-            if hasOrphanedRNKeychain {
-                MigrationsService.shared.cleanupRNKeychain()
-            }
+            try OrphanedKeychainCleanup.perform(
+                hasNativeKeychain: hasNativeKeychain,
+                hasOrphanedRNKeychain: hasOrphanedRNKeychain,
+                deleteBitkitSharedIdentities: {
+                    try SharedPubkyIdentityVault.deleteAllBitkitIdentities()
+                },
+                wipePrivateKeychain: {
+                    try Keychain.wipeEntireKeychain()
+                },
+                cleanupRNKeychain: {
+                    MigrationsService.shared.cleanupRNKeychain()
+                }
+            )
         }
 
         // Create marker for this installation
-        do {
-            try InstallationMarker.create()
-        } catch {
-            Logger.error("Failed to create installation marker: \(error)", context: "AppScene")
-        }
+        try InstallationMarker.create()
     }
 
     @Sendable
     private func setupTask() async {
         do {
             // Handle orphaned keychain before anything else
-            handleOrphanedKeychain()
+            try handleOrphanedKeychain()
 
             await checkAndPerformRNMigration()
             try wallet.setWalletExistsState()
@@ -662,6 +689,9 @@ struct AppScene: View {
         }
 
         if newPhase == .active {
+            Task {
+                await pubkyProfile.validateSharedIdentitySourceIfNeeded()
+            }
             // Reconnect a known hardware device so its connection indicator turns green again;
             if isPinVerified || !settings.pinEnabled {
                 Task { await trezorManager.autoReconnect() }
