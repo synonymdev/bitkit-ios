@@ -58,3 +58,4 @@
 "widgets__weather__condition__poor__description" = "إذا لم تكن في عجلة للتعامل، قد يكون من الأفضل الانتظار قليلاً.";
 "widgets__weather__current_fee" = "متوسط الرسوم الحالي";
 "widgets__weather__next_block" = "تضمين الكتلة التالية";
+"wallet__payment_request" = "طلب دفع";

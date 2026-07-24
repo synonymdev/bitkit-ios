@@ -48,6 +48,7 @@ struct SendSheet: View {
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var tagManager: TagManager
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
 
     let config: SendSheetItem
 
@@ -125,8 +126,15 @@ struct SendSheet: View {
         .onAppear {
             tagManager.clearSelectedTags()
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+            if let request = app.contactPaymentContext?.incomingPaymentRequest {
+                wallet.sendAmountSats = request.amountSats
+            }
             hasValidatedAfterSync = false
             syncTimedOut = false
+
+            if app.contactPaymentContext?.incomingPaymentRequest != nil, !shouldShowSyncOverlay {
+                validatePaymentAfterSync()
+            }
 
             // A plain Send open (TabBar) must not inherit invoice state from an earlier scan,
             // e.g. one abandoned behind the sync overlay. Invoice-carrying opens use other routes.
@@ -261,6 +269,47 @@ struct SendSheet: View {
     /// For onchain: validates balance and shows error if insufficient
     /// Pass `ignoreChannelWait: true` to validate even while channels are unusable (sync timeout).
     private func validatePaymentAfterSync(ignoreChannelWait: Bool = false) {
+        let requestedAmount = app.contactPaymentContext?.incomingPaymentRequest?.amountSats
+
+        if let lnurlPayData = app.lnurlPayData, let requestedAmount {
+            let minimumAmount = max(1, lnurlPayData.minSendableSat)
+            guard requestedAmount >= minimumAmount else {
+                app.toast(
+                    type: .error,
+                    title: t("wallet__lnurl_pay__error_min__title"),
+                    description: t(
+                        "wallet__lnurl_pay__error_min__description",
+                        variables: ["amount": CurrencyFormatter.formatSats(minimumAmount)]
+                    ),
+                    accessibilityIdentifier: "LnurlPayAmountTooLowToast"
+                )
+                sheets.hideSheet()
+                hasValidatedAfterSync = true
+                return
+            }
+            guard requestedAmount <= lnurlPayData.maxSendableSat else {
+                app.toast(
+                    type: .error,
+                    title: t("wallet__lnurl_pay__error_max__title"),
+                    description: t("wallet__lnurl_pay__error_max__description"),
+                    accessibilityIdentifier: "LnurlPayAmountTooHighToast"
+                )
+                sheets.hideSheet()
+                hasValidatedAfterSync = true
+                return
+            }
+            guard LightningService.shared.canSend(amountSats: requestedAmount) else {
+                let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
+                showInsufficientSpendingToast(invoiceAmount: requestedAmount, spendingBalance: spendingBalance)
+                sheets.hideSheet()
+                hasValidatedAfterSync = true
+                return
+            }
+
+            hasValidatedAfterSync = true
+            return
+        }
+
         // Validate lightning payment if present
         if let lightningInvoice = app.scannedLightningInvoice {
             // For lightning, if we have channels but none are usable yet, wait for them
@@ -274,7 +323,8 @@ struct SendSheet: View {
             }
 
             // Check if we can afford the lightning payment
-            let canSend = LightningService.shared.canSend(amountSats: lightningInvoice.amountSatoshis)
+            let paymentAmount = requestedAmount ?? lightningInvoice.amountSatoshis
+            let canSend = LightningService.shared.canSend(amountSats: paymentAmount)
 
             if !canSend {
                 // For unified invoices, fall back to onchain
@@ -287,7 +337,7 @@ struct SendSheet: View {
                     // Validate onchain balance BEFORE navigating
                     let onchainBalance = LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0
                     guard validateOnchainBalanceAndDismissIfInsufficient(
-                        invoiceAmount: onchainInvoice.amountSatoshis,
+                        invoiceAmount: requestedAmount ?? onchainInvoice.amountSatoshis,
                         onchainBalance: onchainBalance
                     ) else {
                         hasValidatedAfterSync = true
@@ -296,13 +346,15 @@ struct SendSheet: View {
 
                     // Onchain balance is sufficient → navigate to amount screen
                     // (the sheet may have opened with .confirm or .quickpay route)
-                    navigationPath = [.amount]
+                    if requestedAmount == nil {
+                        navigationPath = [.amount]
+                    }
                     hasValidatedAfterSync = true
                     return
                 } else {
                     // For pure lightning invoices, show error toast and dismiss sheet
                     let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
-                    showInsufficientSpendingToast(invoiceAmount: lightningInvoice.amountSatoshis, spendingBalance: spendingBalance)
+                    showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: spendingBalance)
                     sheets.hideSheet()
                     hasValidatedAfterSync = true
                     return
@@ -318,7 +370,7 @@ struct SendSheet: View {
         if let onchainInvoice = app.scannedOnchainInvoice {
             let onchainBalance = LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0
             guard validateOnchainBalanceAndDismissIfInsufficient(
-                invoiceAmount: onchainInvoice.amountSatoshis,
+                invoiceAmount: requestedAmount ?? onchainInvoice.amountSatoshis,
                 onchainBalance: onchainBalance
             ) else {
                 hasValidatedAfterSync = true
@@ -366,7 +418,11 @@ struct SendSheet: View {
         case .utxoSelection:
             SendUtxoSelectionView(navigationPath: $navigationPath)
         case .confirm:
-            SendConfirmationView(navigationPath: $navigationPath, requestPinCheck: requestPinCheck)
+            SendConfirmationView(
+                navigationPath: $navigationPath,
+                requestPinCheck: requestPinCheck,
+                acceptIncomingPaymentRequest: acceptIncomingPaymentRequest
+            )
         case .feeRate:
             SendFeeRate(navigationPath: $navigationPath)
         case .feeCustom:
@@ -386,7 +442,11 @@ struct SendSheet: View {
         case .lnurlPayAmount:
             LnurlPayAmount(navigationPath: $navigationPath)
         case .lnurlPayConfirm:
-            LnurlPayConfirm(navigationPath: $navigationPath, requestPinCheck: requestPinCheck)
+            LnurlPayConfirm(
+                navigationPath: $navigationPath,
+                requestPinCheck: requestPinCheck,
+                acceptIncomingPaymentRequest: acceptIncomingPaymentRequest
+            )
         case .lnurlWithdrawAmount:
             LnurlWithdrawAmount {
                 navigationPath.append(.lnurlWithdrawConfirm)
@@ -398,6 +458,11 @@ struct SendSheet: View {
         case let .lnurlWithdrawFailure(amount):
             LnurlWithdrawFailure(amount: amount)
         }
+    }
+
+    private func acceptIncomingPaymentRequest() async throws {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+        try await paykitPaymentRequestManager.accept(request)
     }
 }
 
