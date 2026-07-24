@@ -1143,7 +1143,7 @@
 "profile__edit_delete_section" = "DELETE";
 "profile__edit_public_note" = "Please note profile information is stored in public files. Changes you make in Bitkit will not update your pubky.app profile.";
 "profile__delete_title" = "Delete Profile?";
-"profile__delete_description" = "Are you sure you want to delete all of your profile information for your pubky?";
+"profile__delete_description" = "Deleting your profile removes it from Pubky. Contacts may still retain profile and payment information previously shared with them.";
 "profile__delete_confirm" = "Yes, Delete";
 "profile__delete_error_title" = "Unable to Delete Profile";
 "profile__delete_error_description" = "We couldn't delete your profile data. Retry, or disconnect this pubky from Bitkit.";
