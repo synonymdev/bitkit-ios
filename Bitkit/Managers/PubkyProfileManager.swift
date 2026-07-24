@@ -346,7 +346,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func deleteProfile() async throws {
-        try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.deleteProfile")
+        await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
         do {
             try await Task.detached {
                 try await PubkyService.deletePaykitProfile()
