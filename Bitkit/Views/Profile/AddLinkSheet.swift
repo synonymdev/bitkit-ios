@@ -58,7 +58,7 @@ struct AddLinkSheet: View {
         .sheetBackground()
         .presentationDetents([.height(460)])
         .presentationCornerRadius(32)
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .sheet(isPresented: $showSuggestionsSheet) {
             LinkSuggestionsSheet { suggestion in
                 label = suggestion

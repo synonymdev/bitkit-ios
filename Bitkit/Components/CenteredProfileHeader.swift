@@ -5,7 +5,7 @@ struct CenteredProfileHeader: View {
     let name: String
     let bio: String
     let imageUrl: String?
-    var avatarSize: CGFloat = 100
+    var avatarSize: CGFloat = 96
     var showBio: Bool = true
     var showDivider: Bool = true
     /// Set on own Profile screen for E2E; omit on contact previews so IDs stay unique.

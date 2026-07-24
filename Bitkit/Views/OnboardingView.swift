@@ -15,6 +15,7 @@ struct OnboardingView: View {
     let titleColor: Color
     let accentColor: Color
     let imagePosition: ImagePosition
+    let titleDescriptionSpacing: CGFloat
     let testID: String?
 
     enum ImagePosition {
@@ -34,6 +35,7 @@ struct OnboardingView: View {
         titleColor: Color = .textPrimary,
         accentColor: Color = .brandAccent,
         imagePosition: ImagePosition = .bottom,
+        titleDescriptionSpacing: CGFloat = 14,
         testID: String? = nil
     ) {
         self.navTitle = navTitle ?? ""
@@ -47,6 +49,7 @@ struct OnboardingView: View {
         self.titleColor = titleColor
         self.accentColor = accentColor
         self.imagePosition = imagePosition
+        self.titleDescriptionSpacing = titleDescriptionSpacing
         self.testID = testID
     }
 
@@ -75,7 +78,7 @@ struct OnboardingView: View {
                 .frame(maxHeight: .infinity)
                 .layoutPriority(1)
 
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: titleDescriptionSpacing) {
                     DisplayText(title, textColor: titleColor, accentColor: accentColor)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)

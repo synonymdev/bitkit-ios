@@ -20,7 +20,7 @@ struct ContactsListView: View {
 
             searchAndAddBar
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
+                .padding(.top, 16)
                 .padding(.bottom, 8)
 
             Group {
@@ -125,6 +125,7 @@ struct ContactsListView: View {
 
     private func myProfileSection(_ profile: PubkyProfile) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            CustomDivider()
             sectionHeader(t("contacts__my_profile"))
 
             contactRow(
@@ -180,7 +181,7 @@ struct ContactsListView: View {
                 contactAvatar(name: name, imageUrl: imageUrl)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    CaptionText(truncatedKey)
+                    CaptionText(truncatedKey.localizedUppercase)
 
                     BodyMSBText(name)
                         .lineLimit(1)
@@ -188,7 +189,7 @@ struct ContactsListView: View {
 
                 Spacer()
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 24)
         }
         .accessibilityLabel(name)
     }
@@ -262,19 +263,23 @@ struct ContactsListView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            VStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 0) {
+                sectionHeader(t("contacts__nav_title").localizedUppercase)
+                CustomDivider()
+
+                BodyMText(t("contacts__empty_state"), textColor: .white64)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 24)
+                    .padding(.bottom, 16)
+
                 CustomButton(title: t("contacts__intro_add_contact")) {
                     showAddContactSheet = true
                 }
                 .accessibilityIdentifier("ContactsEmptyAddButton")
-
-                BodyMText(t("contacts__empty_state"), textColor: .white64)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 32)
-            .padding(.top, 48)
+            .padding(.horizontal, 16)
 
             Spacer()
         }

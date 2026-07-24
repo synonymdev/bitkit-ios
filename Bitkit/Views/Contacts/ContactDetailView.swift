@@ -10,15 +10,17 @@ struct ContactDetailView: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     let publicKey: String
+    var showsDeleteAction = false
 
     @State private var profile: PubkyProfile?
     @State private var isLoading = true
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("contacts__detail_title"))
+            NavigationBar(title: t(showsDeleteAction ? "contacts__saved_title" : "contacts__detail_title"))
                 .padding(.horizontal, 16)
 
             if isLoading {
@@ -50,6 +52,17 @@ struct ContactDetailView: View {
                 navigation.path = [.contacts]
             }
         }
+        .alert(
+            t("contacts__delete_title", variables: ["name": profile?.name ?? ""]),
+            isPresented: $showDeleteConfirmation
+        ) {
+            Button(t("contacts__delete_confirm"), role: .destructive) {
+                Task { await deleteContact() }
+            }
+            Button(t("common__dialog_cancel"), role: .cancel) {}
+        } message: {
+            Text(t("contacts__delete_description", variables: ["name": profile?.name ?? ""]))
+        }
     }
 
     // MARK: - Contact Body
@@ -62,6 +75,7 @@ struct ContactDetailView: View {
                     name: profile.name,
                     bio: profile.bio,
                     imageUrl: profile.imageUrl,
+                    showDivider: false,
                     nameAccessibilityIdentifier: "ContactViewName",
                     notesAccessibilityIdentifier: "ContactViewNotes"
                 )
@@ -69,7 +83,9 @@ struct ContactDetailView: View {
                 .padding(.bottom, 24)
 
                 contactActions
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 24)
+
+                CustomDivider()
 
                 VStack(alignment: .leading, spacing: 0) {
                     if !profile.links.isEmpty {
@@ -117,10 +133,17 @@ struct ContactDetailView: View {
             }
             .accessibilityIdentifier("ContactShare")
 
-            GradientCircleButton(icon: "pencil", accessibilityLabel: t("common__edit")) {
-                navigation.navigate(.editContact(publicKey: publicKey))
+            GradientCircleButton(
+                icon: showsDeleteAction ? "trash" : "pencil",
+                accessibilityLabel: t(showsDeleteAction ? "common__delete" : "common__edit")
+            ) {
+                if showsDeleteAction {
+                    showDeleteConfirmation = true
+                } else {
+                    navigation.navigate(.editContact(publicKey: publicKey))
+                }
             }
-            .accessibilityIdentifier("ContactEdit")
+            .accessibilityIdentifier(showsDeleteAction ? "ContactDelete" : "ContactEdit")
         }
     }
 
@@ -210,6 +233,21 @@ struct ContactDetailView: View {
                 Logger.error("Failed to persist contact tags: \(error)", context: "ContactDetailView")
                 app.toast(type: .error, title: t("contacts__error_saving"))
             }
+        }
+    }
+
+    private func deleteContact() async {
+        do {
+            try await contactsManager.removeContact(publicKey: publicKey)
+            app.toast(
+                type: .success,
+                title: t("contacts__delete_success"),
+                accessibilityIdentifier: "ContactDeletedToast"
+            )
+            navigation.path = [.contacts]
+        } catch {
+            Logger.error("Failed to delete contact: \(error)", context: "ContactDetailView")
+            app.toast(type: .error, title: t("contacts__delete_error"))
         }
     }
 

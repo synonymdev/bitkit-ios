@@ -36,6 +36,7 @@ struct Tag: View {
                         .frame(width: 16, height: 16)
                 }
                 .padding(.leading, 6)
+                .accessibilityLabel("\(value), \(t("common__delete"))")
                 .accessibilityIdentifier("Tag-\(value)-delete")
             }
         }

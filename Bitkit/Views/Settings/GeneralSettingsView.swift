@@ -2,20 +2,37 @@ import SwiftUI
 
 struct GeneralSettingsView: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
-    @AppStorage(PublicPaykitService.lightningPaymentOptionEnabledKey) private var lightningPaymentOptionEnabled = true
-    @AppStorage(PublicPaykitService.onchainPaymentOptionEnabledKey) private var onchainPaymentOptionEnabled = true
+    @AppStorage(ContactPaymentsService.confirmedPreferenceKey) private var hasConfirmedContactPaymentsPreference = false
+    @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
+    @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
 
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var tagManager: TagManager
+    @EnvironmentObject var wallet: WalletViewModel
     @StateObject private var languageManager = LanguageManager.shared
+    @State private var isUpdatingContactPayments = false
+    @State private var pendingContactPaymentsValue: Bool?
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    private var contactPaymentsToggle: Binding<Bool> {
+        Binding(
+            get: {
+                pendingContactPaymentsValue ??
+                    (hasConfirmedContactPaymentsPreference && (sharesPublicPaykitEndpoints || sharesPrivatePaykitEndpoints))
+            },
+            set: { enabled in
+                Task { await updateContactPayments(enabled) }
+            }
+        )
     }
 
     var body: some View {
@@ -85,14 +102,14 @@ struct GeneralSettingsView: View {
                 .accessibilityIdentifier("TransactionSpeedSettings")
 
                 if isPaykitUIActive, pubkyProfile.isAuthenticated {
-                    NavigationLink(value: Route.paymentPreference) {
-                        SettingsRow(
-                            title: t("settings__adv__payment_preference"),
-                            iconName: "list-dashes",
-                            rightText: paymentPreferenceSummary
-                        )
-                    }
-                    .accessibilityIdentifier("PaymentPreferenceSettings")
+                    SettingsRow(
+                        title: t("profile__pay_contacts_toggle"),
+                        iconName: "list-dashes",
+                        rightIcon: nil,
+                        toggle: contactPaymentsToggle,
+                        disabled: isUpdatingContactPayments,
+                        testIdentifier: "ContactPaymentsToggle"
+                    )
                 }
 
                 NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
@@ -126,18 +143,42 @@ struct GeneralSettingsView: View {
             .padding(.horizontal, 16)
             .bottomSafeAreaPadding()
         }
+        .task {
+            ContactPaymentsService.enableAllPaymentOptions()
+            guard isPaykitUIActive,
+                  pubkyProfile.isAuthenticated,
+                  !hasConfirmedContactPaymentsPreference
+            else { return }
+
+            await updateContactPayments(true)
+        }
     }
 
-    private var paymentPreferenceSummary: String {
-        switch (lightningPaymentOptionEnabled, onchainPaymentOptionEnabled) {
-        case (true, true):
-            t("settings__adv__pp_both")
-        case (true, false):
-            t("settings__adv__pp_lightning_short")
-        case (false, true):
-            t("settings__adv__pp_onchain_short")
-        case (false, false):
-            t("common__off")
+    private func updateContactPayments(_ enabled: Bool) async {
+        guard !isUpdatingContactPayments else { return }
+
+        isUpdatingContactPayments = true
+        pendingContactPaymentsValue = enabled
+        defer {
+            pendingContactPaymentsValue = nil
+            isUpdatingContactPayments = false
+        }
+
+        do {
+            let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
+            if canUsePrivatePayments, let publicKey = pubkyProfile.publicKey {
+                try await contactsManager.loadContactsIfNeeded(for: publicKey)
+            }
+
+            try await ContactPaymentsService.setEnabled(
+                enabled,
+                wallet: wallet,
+                contactPublicKeys: contactsManager.contacts.map(\.publicKey),
+                canUsePrivatePayments: canUsePrivatePayments
+            )
+        } catch {
+            Logger.error("Failed to update contact payments: \(error)", context: "GeneralSettingsView")
+            app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
         }
     }
 }
@@ -147,8 +188,10 @@ struct GeneralSettingsView: View {
         GeneralSettingsView()
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(CurrencyViewModel())
+            .environmentObject(ContactsManager())
             .environmentObject(PubkyProfileManager())
             .environmentObject(AppViewModel())
+            .environmentObject(WalletViewModel())
             .environment(HwWalletManager())
     }
     .preferredColorScheme(.dark)
