@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
-        "revision" : "aa32dbf3934871baa1a44576afdd2a92acb6bdd0",
-        "version" : "0.4.1"
+        "revision" : "dd99b46d4b849a7716b45664136c4d1ce5e5905e",
+        "version" : "0.4.2"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
-        "revision" : "f53a13e11d74296bea82c4fb616bad79901969b5",
-        "version" : "0.7.0-rc.53"
+        "revision" : "e676d20cd2ba6277f68619dc32261f541aa3bdfe",
+        "version" : "0.7.0-rc.57"
       }
     },
     {
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pubky/paykit-rs",
       "state" : {
-        "revision" : "aa15cae9c18f7a8643162d127320aa006ffb1afd",
-        "version" : "0.1.0-rc33"
+        "revision" : "c43ccbd468adb6c3f841682dec18b2804e5aaa16",
+        "version" : "0.1.0-rc37"
       }
     },
     {

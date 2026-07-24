@@ -6,6 +6,8 @@ import LDKNode
 // TODO: catch all errors and pass a readable error message to the UI
 
 class LightningService {
+    private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
+
     private var node: Node?
     var currentWalletIndex: Int = 0
 
@@ -105,6 +107,9 @@ class LightningService {
         let (selectedAddressType, monitoredTypes) = Self.addressTypeStateFromUserDefaults()
         config.addressType = selectedAddressType
         config.addressTypesToMonitor = monitoredTypes.filter { $0 != selectedAddressType }
+        #if !BITKIT_NOTIFICATION_EXTENSION
+            config.onchainWalletAccounts = try Self.watchOnlyAccountConfigs(walletIndex: walletIndex)
+        #endif
 
         let builder = Builder.fromConfig(config: config)
         builder.setCustomLogger(logWriter: LdkLogWriter())
@@ -117,7 +122,9 @@ class LightningService {
                 lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
                 feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
             ),
-            connectionTimeoutSecs: 10
+            connectionTimeoutSecs: 10,
+            additionalWalletFullScanBatchSize: 100,
+            additionalWalletFullScanStopGap: 1000
         )
         builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
 
@@ -278,6 +285,14 @@ class LightningService {
         try await ServiceQueue.background(.ldk) {
             try node.start()
         }
+
+        #if !BITKIT_NOTIFICATION_EXTENSION
+            do {
+                try await reconcileWatchOnlyAccounts()
+            } catch {
+                Logger.error(error, context: "Failed to reconcile Paykit Server accounts during startup")
+            }
+        #endif
 
         await refreshChannelCache()
         await refreshCache()
@@ -480,6 +495,10 @@ class LightningService {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
+        #if !BITKIT_NOTIFICATION_EXTENSION
+            try await reconcileWatchOnlyAccounts()
+        #endif
+
         Logger.debug("Syncing LDK...")
         try await ServiceQueue.background(.ldk) {
             try node.syncWallets()
@@ -500,6 +519,133 @@ class LightningService {
             syncStatusChangedSubject.send(syncTimestamp)
         }
     }
+
+    func exportWatchOnlyAccountXpub(accountIndex: UInt32, addressType: LDKNode.AddressType) async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.exportOnchainWalletAccountXpub(addressType: addressType, accountIndex: accountIndex)
+        }
+    }
+
+    func setWatchOnlyAccountTracking(
+        accountIndex: UInt32,
+        addressType: LDKNode.AddressType,
+        xpub: String,
+        enabled: Bool
+    ) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        try await ServiceQueue.background(.ldk) {
+            let isTracked = node.listOnchainWalletAccounts().contains {
+                $0.addressType == addressType && $0.accountIndex == accountIndex
+            }
+
+            if enabled {
+                var didAddAccount = false
+                do {
+                    if !isTracked {
+                        try node.addOnchainWalletAccount(addressType: addressType, accountIndex: accountIndex, xpub: xpub)
+                        didAddAccount = true
+                    }
+                    try node.onchainPayment().revealReceiveAddressesToAccount(
+                        addressType: addressType,
+                        accountIndex: accountIndex,
+                        index: Self.watchOnlyAccountHighestPreRevealedAddressIndex
+                    )
+                    if didAddAccount {
+                        try node.syncWallets()
+                    }
+                } catch {
+                    if didAddAccount {
+                        do {
+                            try node.removeOnchainWalletAccount(addressType: addressType, accountIndex: accountIndex)
+                        } catch let cleanupError {
+                            Logger.error(cleanupError, context: "Failed to roll back Paykit Server account tracking")
+                        }
+                    }
+                    throw error
+                }
+            } else if !enabled, isTracked {
+                try node.removeOnchainWalletAccount(addressType: addressType, accountIndex: accountIndex)
+            }
+        }
+    }
+
+    #if !BITKIT_NOTIFICATION_EXTENSION
+        func reconcileWatchOnlyAccounts() async throws {
+            try await WatchOnlyAccountManager.shared.reconcileTracking()
+        }
+
+        func reconcileWatchOnlyAccountTracking(
+            records: [WatchOnlyAccountRecord],
+            managedRecords: [WatchOnlyAccountRecord]
+        ) async throws {
+            guard let node else {
+                throw AppError(serviceError: .nodeNotSetup)
+            }
+            let walletRecords = records.filter { $0.walletIndex == currentWalletIndex }
+            let managedWalletRecords = managedRecords.filter { $0.walletIndex == currentWalletIndex }
+            let desiredConfigs = try Self.watchOnlyAccountConfigs(records: walletRecords)
+
+            try await ServiceQueue.background(.ldk) {
+                let trackedAccounts = node.listOnchainWalletAccounts()
+                let managedKeys = Set(managedWalletRecords.map { "\($0.addressType):\($0.accountIndex)" })
+                let desiredKeys = Set(desiredConfigs.map { "\($0.addressType.stringValue):\($0.accountIndex)" })
+
+                for trackedAccount in trackedAccounts {
+                    let key = "\(trackedAccount.addressType.stringValue):\(trackedAccount.accountIndex)"
+                    if managedKeys.contains(key), !desiredKeys.contains(key) {
+                        try node.removeOnchainWalletAccount(
+                            addressType: trackedAccount.addressType,
+                            accountIndex: trackedAccount.accountIndex
+                        )
+                    }
+                }
+
+                for config in desiredConfigs {
+                    let isTracked = trackedAccounts.contains {
+                        $0.addressType == config.addressType && $0.accountIndex == config.accountIndex
+                    }
+                    if !isTracked {
+                        try node.addOnchainWalletAccount(
+                            addressType: config.addressType,
+                            accountIndex: config.accountIndex,
+                            xpub: config.xpub
+                        )
+                    }
+                    try node.onchainPayment().revealReceiveAddressesToAccount(
+                        addressType: config.addressType,
+                        accountIndex: config.accountIndex,
+                        index: Self.watchOnlyAccountHighestPreRevealedAddressIndex
+                    )
+                }
+            }
+        }
+
+        private static func watchOnlyAccountConfigs(walletIndex: Int) throws -> [OnchainWalletAccountConfig] {
+            try watchOnlyAccountConfigs(records: WatchOnlyAccountStore.enabledAccounts(for: walletIndex))
+        }
+
+        private static func watchOnlyAccountConfigs(records: [WatchOnlyAccountRecord]) throws -> [OnchainWalletAccountConfig] {
+            try records.filter {
+                ($0.setupState == .active || $0.setupState == .authorizing) && $0.isTrackingEnabled
+            }.map { record in
+                guard let addressType = LDKNode.AddressType.from(string: record.addressType) else {
+                    throw WatchOnlyAccountError.invalidExtendedPublicKey
+                }
+                return OnchainWalletAccountConfig(
+                    addressType: addressType,
+                    accountIndex: record.accountIndex,
+                    xpub: record.xpub
+                )
+            }
+        }
+    #endif
 
     func newAddress() async throws -> String {
         guard let node else {
@@ -1271,14 +1417,12 @@ extension LightningService {
                     Logger.info(
                         "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)"
                     )
-                case let .probeSuccessful(paymentId, paymentHash, routeFeeMsat):
-                    let routeFeeText = routeFeeMsat.map(String.init) ?? "unknown"
-                    Logger.info("🤑 Probe successful: paymentId: \(paymentId) paymentHash: \(paymentHash) routeFeeMsat: \(routeFeeText)")
-                case let .probeFailed(paymentId, paymentHash, shortChannelId, routeFeeMsat):
-                    let routeFeeText = routeFeeMsat.map(String.init) ?? "unknown"
+                case let .probeSuccessful(paymentId, paymentHash, _):
+                    Logger.info("🤑 Probe successful: paymentId: \(paymentId) paymentHash: \(paymentHash)")
+                case let .probeFailed(paymentId, paymentHash, shortChannelId, _):
                     Logger
                         .info(
-                            "❌ Probe failed: paymentId: \(paymentId) paymentHash: \(paymentHash) shortChannelId: \(String(describing: shortChannelId)) routeFeeMsat: \(routeFeeText)"
+                            "❌ Probe failed: paymentId: \(paymentId) paymentHash: \(paymentHash) shortChannelId: \(String(describing: shortChannelId))"
                         )
                 // Payment claimable doesn't need activity update - it's still pending
                 // The payment will be updated when it succeeds or fails via paymentSuccessful/paymentFailed events

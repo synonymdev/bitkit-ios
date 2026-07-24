@@ -231,6 +231,9 @@ struct AppError: LocalizedError {
         case let .OnchainTxCreationFailed(message: ldkMessage):
             message = "Failed to create onchain transaction"
             debugMessage = ldkMessage
+        case let .OnchainWalletAccountNotRegistered(message: ldkMessage):
+            message = "Onchain wallet account is not registered"
+            debugMessage = ldkMessage
         case let .ConnectionFailed(message: ldkMessage):
             message = "Failed to connect to node"
             debugMessage = ldkMessage

@@ -173,6 +173,7 @@
 				Services/GeoService.swift,
 				Services/LightningService.swift,
 				Services/MigrationsService.swift,
+				Services/WatchOnlyAccountService.swift,
 				Services/RNBackupClient.swift,
 				Services/ServiceQueue.swift,
 				Services/TransferStorage.swift,
@@ -182,6 +183,7 @@
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
 				Utilities/LightningAmountConversion.swift,
+				Utilities/LocalizeHelpers.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
@@ -201,12 +203,14 @@
 				Services/CoreService.swift,
 				Services/GeoService.swift,
 				Services/LightningService.swift,
+				Services/WatchOnlyAccountService.swift,
 				Services/ServiceQueue.swift,
 				Services/VssStoreIdProvider.swift,
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
 				Utilities/LightningAmountConversion.swift,
+				Utilities/LocalizeHelpers.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
@@ -570,8 +574,8 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/LDKNodeFFI.framework/_CodeSignature/CodeResources",
-				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/vss_rust_client_ffiFFI.framework/_CodeSignature/CodeResources",
+				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/LDKNodeFFI.framework/_CodeSignature",
+				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/vss_rust_client_ffiFFI.framework/_CodeSignature",
 			);
 			name = "Remove Static Framework Stubs";
 			outputFileListPaths = (
@@ -765,6 +769,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) BITKIT_NOTIFICATION_EXTENSION";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -797,6 +802,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) BITKIT_NOTIFICATION_EXTENSION";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1169,7 +1175,7 @@
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
 				kind = exactVersion;
-				version = "0.1.0-rc33";
+				version = "0.1.0-rc37";
 			};
 		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {
@@ -1193,7 +1199,7 @@
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
 			requirement = {
 				kind = exactVersion;
-				version = "0.7.0-rc.53";
+				version = "0.7.0-rc.57";
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {
@@ -1201,7 +1207,7 @@
 			repositoryURL = "https://github.com/synonymdev/bitkit-core";
 			requirement = {
 				kind = exactVersion;
-				version = 0.4.1;
+				version = 0.4.2;
 			};
 		};
 		96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */ = {
