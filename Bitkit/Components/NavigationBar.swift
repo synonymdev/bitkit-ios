@@ -10,7 +10,6 @@ struct NavigationBar: View {
     let action: AnyView?
     let icon: String?
     let onBack: (() -> Void)?
-    let backAccessibilityIdentifier: String
 
     init(
         title: String,
@@ -18,7 +17,6 @@ struct NavigationBar: View {
         showMenuButton: Bool = true,
         action: AnyView? = nil,
         icon: String? = nil,
-        backAccessibilityIdentifier: String = "NavigationBack",
         onBack: (() -> Void)? = nil
     ) {
         self.title = title
@@ -27,7 +25,6 @@ struct NavigationBar: View {
         self.action = action
         self.icon = icon
         self.onBack = onBack
-        self.backAccessibilityIdentifier = backAccessibilityIdentifier
     }
 
     var body: some View {
@@ -51,7 +48,7 @@ struct NavigationBar: View {
                         .foregroundColor(.textPrimary)
                         .frame(width: 24, height: 24)
                 }
-                .accessibilityIdentifier(backAccessibilityIdentifier)
+                .accessibilityIdentifier("NavigationBack")
             } else {
                 Spacer()
                     .frame(width: 24, height: 24)

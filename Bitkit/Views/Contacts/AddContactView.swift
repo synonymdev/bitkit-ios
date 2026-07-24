@@ -37,11 +37,8 @@ struct AddContactView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(
-                title: t("contacts__add_title"),
-                backAccessibilityIdentifier: "AddContactDiscard"
-            )
-            .padding(.horizontal, 16)
+            NavigationBar(title: t("contacts__add_title"))
+                .padding(.horizontal, 16)
 
             if isLoading {
                 loadingContent
@@ -249,7 +246,6 @@ struct AddContactView: View {
                 existingProfile: fetchedProfile,
                 ownPublicKey: pubkyProfile.publicKey
             )
-            app.toast(type: .success, title: t("contacts__add_success"), accessibilityIdentifier: "ContactSavedToast")
             navigation.path = [.contacts, .contactSaved(publicKey: normalizedPublicKey)]
         } catch {
             Logger.error("Failed to save contact: \(error)", context: "AddContactView")
