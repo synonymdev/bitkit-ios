@@ -427,6 +427,9 @@ class WalletViewModel: ObservableObject {
     private static let swapUpdatesRetryDelay: TimeInterval = 5
     /// Upper bound for the backoff between swap updates stream attempts.
     private static let swapUpdatesRetryCap: TimeInterval = 60
+    /// Ceiling on swap updates stream start attempts per run (~14 min of backoff). Giving up is
+    /// safe: the stream is retried on the next node start and when entering a swap flow.
+    private static let swapUpdatesMaxAttempts = 20
 
     private var swapUpdatesTask: Task<Void, Never>?
     private var swapEventsTask: Task<Void, Never>?
@@ -446,12 +449,13 @@ class WalletViewModel: ObservableObject {
     }
 
     /// Open the swap updates stream so any pending LN -> onchain swaps resume and auto-claim.
-    /// Uses the wallet's current fee rate for the claim tx. Retries until started: without the
-    /// stream a paid swap has nothing to broadcast its claim. Once started, bitkit-core keeps
-    /// the WebSocket alive with its own reconnect loop.
+    /// Uses the wallet's current fee rate for the claim tx. Retries up to a ceiling: without the
+    /// stream a paid swap has nothing to broadcast its claim, so give up only after
+    /// `swapUpdatesMaxAttempts` and leave the next trigger to retry. Once started, bitkit-core
+    /// keeps the WebSocket alive with its own reconnect loop.
     private func startSwapUpdatesWithRetry() async {
         var attempt = 0
-        while !Task.isCancelled {
+        while !Task.isCancelled, attempt < Self.swapUpdatesMaxAttempts {
             do {
                 var feeRate: Double?
                 if let rates = await feeEstimatesManager.getEstimates() {
@@ -466,6 +470,9 @@ class WalletViewModel: ObservableObject {
                 let delay = min(Self.swapUpdatesRetryDelay * Double(attempt), Self.swapUpdatesRetryCap)
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
+        }
+        if !Task.isCancelled {
+            Logger.warn("Gave up starting swap updates after \(attempt) attempts", context: "WalletViewModel")
         }
     }
 

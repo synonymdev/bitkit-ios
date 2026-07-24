@@ -1241,11 +1241,16 @@ class TransferViewModel: ObservableObject {
         savingsSwapState.quote = SavingsSwapQuote.build(amountSat: amount, limits: limits)
     }
 
-    /// Execute the LN -> onchain swap: derive a fresh claim address, create the swap,
-    /// pay the returned hold invoice over Lightning, then wait for the on-chain claim.
-    /// The claim is auto-broadcast by the updates stream once the lockup confirms, so a
-    /// timeout here is not a failure; the swap completes in the background.
-    func executeSavingsSwap() async -> SavingsSwapResult {
+    /// Execute the LN -> onchain swap: derive a fresh claim address, create the swap, pay the
+    /// returned hold invoice over Lightning, then wait for whichever resolves first: the on-chain
+    /// claim, a Boltz error, or a Lightning routing failure on the payment. A timeout is not a
+    /// failure; the claim is auto-broadcast by the updates stream once the lockup confirms, so the
+    /// swap completes in the background. `onEvent`/`removeEvent` register a node event listener so
+    /// an unroutable payment can be observed (see `awaitSwapOutcome`).
+    func executeSavingsSwap(
+        onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
+        removeEvent: @escaping (String) -> Void
+    ) async -> SavingsSwapResult {
         let amount = pendingSwapAmountSat
         guard amount > 0 else {
             return .failure(message: t("lightning__savings_confirm__amount_too_low"))
@@ -1260,16 +1265,18 @@ class TransferViewModel: ObservableObject {
             // not missed (events buffer from stream creation).
             let events = boltzService.events()
 
-            // Pay the hold invoice. LDK returns a payment id as soon as the payment is initiated; it
-            // does not block until the invoice settles (settlement follows the on-chain claim, which
-            // the updates stream performs), so awaiting it here does not gate the claim timeout below.
-            // A failure to initiate the payment throws and is surfaced immediately as a failure.
-            _ = try await lightningService.send(bolt11: swap.invoice)
+            // Pay the hold invoice. `send` returns a payment id as soon as the HTLC is dispatched;
+            // a hold invoice never settles until Boltz claims on-chain, so this does not block on
+            // the claim. A failure to dispatch the payment throws and is surfaced immediately.
+            let paymentId = try await lightningService.send(bolt11: swap.invoice)
 
-            // Wait (bounded) for the on-chain claim. A timeout is not a failure: the claim is
-            // auto-broadcast by the updates stream once the lockup appears, so the transfer is
-            // committed and settling in the background.
-            let result = await awaitSwapClaim(swapId: swap.id, events: events)
+            let result = await awaitSwapOutcome(
+                swapId: swap.id,
+                paymentId: paymentId,
+                events: events,
+                onEvent: onEvent,
+                removeEvent: removeEvent
+            )
             await onBalanceRefresh?()
             return result
         } catch {
@@ -1278,30 +1285,88 @@ class TransferViewModel: ObservableObject {
         }
     }
 
-    private func awaitSwapClaim(swapId: String, events: AsyncStream<BoltzSwapEvent>) async -> SavingsSwapResult {
-        let waitTask = Task {
-            for await event in events {
-                switch event {
-                case let .claimed(swapId: id, txid: txid) where id == swapId:
-                    return SavingsSwapResult.success(txid: txid)
-                case let .error(swapId: id, message: message) where id == swapId:
-                    return SavingsSwapResult.failure(message: message)
-                default:
-                    continue
+    /// Wait for whichever swap outcome resolves first. `send` returning does not mean the payment
+    /// routed, and a paid hold invoice never settles until the on-chain claim, so an unroutable
+    /// payment would otherwise idle into the claim timeout and read as a settling transfer that
+    /// never completes. Watching the node's payment-failed event alongside the claim surfaces it
+    /// as a failure instead. A timeout still resolves to `.pending`: the claim settles later.
+    private func awaitSwapOutcome(
+        swapId: String,
+        paymentId: String,
+        events: AsyncStream<BoltzSwapEvent>,
+        onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
+        removeEvent: @escaping (String) -> Void
+    ) async -> SavingsSwapResult {
+        let eventId = "savings-swap-\(swapId)"
+        let paymentFailure = SwapPaymentFailureCapture()
+
+        // LDK events are dispatched on the main actor, so this handler runs there; it records a
+        // routing failure for the paid hold invoice for the poll below to surface. The returned
+        // payment id may land in either the event's payment id or its payment hash field.
+        onEvent(eventId) { event in
+            guard case let .paymentFailed(eventPaymentId, eventPaymentHash, _) = event else { return }
+            guard [eventPaymentId, eventPaymentHash].compactMap({ $0 }).contains(paymentId) else { return }
+            Task { await paymentFailure.markFailed() }
+        }
+
+        // Capture main-actor state locally so the detached group tasks stay Sendable.
+        let claimTimeout = swapClaimTimeout
+        let paymentFailedMessage = t("wallet__toast_payment_failed_description")
+
+        let outcome = await withTaskGroup(of: SavingsSwapResult?.self) { group in
+            // On-chain claim or a Boltz-side error.
+            group.addTask {
+                for await event in events {
+                    switch event {
+                    case let .claimed(swapId: id, txid: txid) where id == swapId:
+                        return .success(txid: txid)
+                    case let .error(swapId: id, message: message) where id == swapId:
+                        return .failure(message: message)
+                    default:
+                        continue
+                    }
+                }
+                return nil
+            }
+            // Lightning routing failure on the paid hold invoice.
+            group.addTask {
+                while !Task.isCancelled {
+                    if await paymentFailure.hasFailed {
+                        return .failure(message: paymentFailedMessage)
+                    }
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                }
+                return nil
+            }
+            // Bounded wait: a timeout is not a failure, the claim settles in the background.
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(claimTimeout * 1_000_000_000))
+                return .pending
+            }
+
+            var result: SavingsSwapResult = .pending
+            for await value in group {
+                if let value {
+                    result = value
+                    break
                 }
             }
-            // No terminal event before cancellation; the claim completes in the background.
-            return SavingsSwapResult.pending
+            group.cancelAll()
+            return result
         }
 
-        let timeoutTask = Task {
-            try? await Task.sleep(nanoseconds: UInt64(swapClaimTimeout * 1_000_000_000))
-            waitTask.cancel()
-        }
+        removeEvent(eventId)
+        return outcome
+    }
+}
 
-        let result = await waitTask.value
-        timeoutTask.cancel()
-        return result
+/// Captures a Lightning routing failure for the savings swap's hold-invoice payment. The node
+/// event handler runs on the main actor; this actor lets the racing wait poll for the outcome.
+actor SwapPaymentFailureCapture {
+    private(set) var hasFailed = false
+
+    func markFailed() {
+        hasFailed = true
     }
 }
 

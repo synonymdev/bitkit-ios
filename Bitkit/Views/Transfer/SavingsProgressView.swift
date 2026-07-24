@@ -168,7 +168,10 @@ struct SavingsProgressView: View {
         // once its lockup appears, even if the launch-time start had not yet succeeded.
         wallet.ensureSwapUpdatesRunning()
 
-        let result = await transfer.executeSavingsSwap()
+        let result = await transfer.executeSavingsSwap(
+            onEvent: { id, handler in wallet.addOnEvent(id: id, handler: handler) },
+            removeEvent: { id in wallet.removeOnEvent(id: id) }
+        )
         UIApplication.shared.isIdleTimerDisabled = false
 
         switch result {
