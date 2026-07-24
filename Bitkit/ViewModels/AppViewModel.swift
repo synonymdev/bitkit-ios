@@ -984,9 +984,12 @@ extension AppViewModel {
             return
         }
 
-        guard let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
-              !secretKey.isEmpty
-        else {
+        let hasLocalSecret = (try? Keychain.loadString(key: .pubkySecretKey))?.isEmpty == false
+        let hasSharedSource = (try? SharedPubkyIdentityReferenceStore.load()) != nil
+            && PubkyProfileManager.isRingAvailable()
+
+        // A source-owned identity can approve after retrieving its key just in time.
+        guard hasLocalSecret || hasSharedSource else {
             sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity requires Ring")
             toast(type: .info, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
             return

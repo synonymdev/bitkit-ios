@@ -169,19 +169,22 @@ struct BodyMText: View {
     var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 17
+    private let kerningValue: CGFloat
 
     init(
         _ text: String,
         textColor: Color = .textSecondary,
         accentColor: Color = .white,
         accentFont: ((CGFloat) -> Font)? = nil,
-        accentAction: (() -> Void)? = nil
+        accentAction: (() -> Void)? = nil,
+        kerning: CGFloat = 0.4
     ) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
         self.accentFont = accentFont
         self.accentAction = accentAction
+        kerningValue = kerning
     }
 
     var body: some View {
@@ -193,7 +196,7 @@ struct BodyMText: View {
             accentFont: accentFont?(fontSize),
             accentAction: accentAction
         )
-        .kerning(0.4)
+        .kerning(kerningValue)
     }
 }
 

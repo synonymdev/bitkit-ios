@@ -873,6 +873,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
             },
+            deleteBitkitSharedIdentities: {},
             forgetSessionAccess: {
                 didClearSessionAccess = true
             },
@@ -898,6 +899,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             paykitSession: "stale-session",
             pubkySecretKey: "local-secret"
         )
+        var events: [String] = []
 
         try await PubkyProfileManager.restoreSessionBackupState(
             nil,
@@ -909,8 +911,16 @@ final class PubkyProfileManagerTests: XCTestCase {
             },
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
+                if case .pubkySecretKey = key {
+                    events.append("private")
+                }
             },
-            forgetSessionAccess: {},
+            deleteBitkitSharedIdentities: {
+                events.append("shared")
+            },
+            forgetSessionAccess: {
+                events.append("session")
+            },
             signInWithSecretKey: { _ in
                 XCTFail("Missing pubky state should not sign in")
                 return "unused-session"
@@ -923,6 +933,7 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         XCTAssertNil(store[KeychainEntryType.paykitSession.storageKey])
         XCTAssertNil(store[KeychainEntryType.pubkySecretKey.storageKey])
+        XCTAssertEqual(events, ["shared", "session", "private"])
     }
 
     func testRestoreSessionBackupStateReplacesSessionWhenForgetFails() async throws {
@@ -936,6 +947,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             loadKeychainString: { store[$0.storageKey] },
             persistKeychainString: { store[$0.storageKey] = $1 },
             deleteKeychainValue: { store.removeValue(forKey: $0.storageKey) },
+            deleteBitkitSharedIdentities: {},
             forgetSessionAccess: { throw PubkyServiceError.authFailed("offline") },
             signInWithSecretKey: { _ in
                 XCTFail("External session restore should not sign in with a local secret")
@@ -963,6 +975,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             loadKeychainString: { store[$0.storageKey] },
             persistKeychainString: { store[$0.storageKey] = $1 },
             deleteKeychainValue: { store.removeValue(forKey: $0.storageKey) },
+            deleteBitkitSharedIdentities: {},
             forgetSessionAccess: { throw PubkyServiceError.authFailed("offline") },
             signInWithSecretKey: { _ in
                 XCTFail("Missing pubky state should not sign in")
@@ -976,6 +989,42 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         XCTAssertNil(store[KeychainEntryType.paykitSession.storageKey])
         XCTAssertNil(store[KeychainEntryType.pubkySecretKey.storageKey])
+    }
+
+    func testRestorePreservesPrivateIdentityWhenSharedMirrorDeletionFails() async {
+        var store = makeKeychainStore(
+            paykitSession: "stale-session",
+            pubkySecretKey: "local-secret"
+        )
+        var didClearSessionAccess = false
+
+        do {
+            try await PubkyProfileManager.restoreSessionBackupState(
+                nil,
+                loadKeychainString: { key in
+                    store[key.storageKey]
+                },
+                persistKeychainString: { key, value in
+                    store[key.storageKey] = value
+                },
+                deleteKeychainValue: { key in
+                    store.removeValue(forKey: key.storageKey)
+                },
+                deleteBitkitSharedIdentities: {
+                    throw SharedPubkyIdentityError.unavailable
+                },
+                forgetSessionAccess: {
+                    didClearSessionAccess = true
+                }
+            )
+            XCTFail("Expected shared mirror deletion failure")
+        } catch {
+            XCTAssertEqual(error as? SharedPubkyIdentityError, .unavailable)
+        }
+
+        XCTAssertFalse(didClearSessionAccess)
+        XCTAssertEqual(store[KeychainEntryType.paykitSession.storageKey], "stale-session")
+        XCTAssertEqual(store[KeychainEntryType.pubkySecretKey.storageKey], "local-secret")
     }
 
     func testRestoreSessionBackupStateForLocalSeedDerivesSecretAndClearsSession() async throws {
