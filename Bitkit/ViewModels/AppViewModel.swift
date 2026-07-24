@@ -676,15 +676,16 @@ extension AppViewModel {
             return
         }
 
-        // State 2: Ring-authenticated (has session but no local secret key)
-        guard let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
-              !secretKey.isEmpty
-        else {
+        let hasLocalSecret = (try? Keychain.loadString(key: .pubkySecretKey))?.isEmpty == false
+        let hasSharedSource = (try? SharedPubkyIdentityReferenceStore.load()) != nil
+            && PubkyProfileManager.isRingAvailable()
+
+        // A source-owned identity can approve after retrieving its key just in time.
+        guard hasLocalSecret || hasSharedSource else {
             toast(type: .info, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
             return
         }
 
-        // State 3: Bitkit-generated identity — can approve
         do {
             let request = try PubkyAuthRequest.parse(url: authUrl)
             sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(authUrl: authUrl, request: request))

@@ -126,6 +126,15 @@ enum PubkyService {
         return result.sessionAccess.exportSessionSecret()
     }
 
+    /// Signs in with a source-owned shared identity without persisting its secret in Bitkit's private Keychain.
+    static func signInSharedIdentity(secretKeyHex: String) async throws -> String {
+        let result = try await PaykitSdkService.shared.signIn(
+            secretKeyHex: secretKeyHex,
+            shouldStoreLocalSecret: false
+        )
+        return result.sessionAccess.exportSessionSecret()
+    }
+
     // MARK: - File Fetching
 
     /// Fetch raw bytes from a `pubky://` URI via PKDNS resolution.
@@ -185,6 +194,10 @@ enum PubkyService {
 
     static func clearSessionAccess() async {
         await PaykitSdkService.shared.clearSessionAccess()
+    }
+
+    static func clearExternalSessionAccess() async throws {
+        try await PaykitSdkService.shared.clearExternalSessionAccess()
     }
 }
 
@@ -262,14 +275,21 @@ actor PaykitSdkService {
         }
     }
 
-    func signIn(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
+    func signIn(
+        secretKeyHex: String,
+        shouldStoreLocalSecret: Bool = true
+    ) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
             let result = try await bootstrap().signIn(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
                 requiredCapabilities: Self.requiredCapabilities()
             )
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
+            try await activateBootstrapResult(
+                result,
+                previousPublicKey: previousPublicKey,
+                shouldStoreLocalSecret: shouldStoreLocalSecret
+            )
             markWalletBackupDataChanged()
             return result
         }
@@ -614,6 +634,20 @@ actor PaykitSdkService {
         }
     }
 
+    func clearExternalSessionAccess() async throws {
+        try await operationLock.withLock {
+            try Keychain.delete(key: .paykitSession)
+            guard try Keychain.load(key: .paykitSession) == nil else {
+                throw KeychainError.failedToDelete
+            }
+            sessionProvider.clearLiveSessionAccess()
+            activeAuthRequest = nil
+            activeAuthRequestID = nil
+            resetRuntime()
+            markWalletBackupDataChanged()
+        }
+    }
+
     func clearState() async {
         await operationLock.withLock {
             clearStateLocked()
@@ -700,20 +734,46 @@ actor PaykitSdkService {
     }
 
     private func persistSessionAccess(_ access: PubkySessionAccess, shouldStoreLocalSecret: Bool) throws {
+        let localSecret = access.exportLocalSecretKey()
+        if !shouldStoreLocalSecret,
+           let existingSecret = try Keychain.loadString(key: .pubkySecretKey),
+           !existingSecret.isEmpty
+        {
+            // An external or borrowed session must never silently replace a
+            // Bitkit-owned canonical identity.
+            throw PubkyServiceError.authFailed("A local Pubky identity already exists")
+        }
+        let localSecretHex = try Self.localSecretKeyHexForPersistence(
+            localSecret,
+            shouldStoreLocalSecret: shouldStoreLocalSecret
+        )
+
         guard let sessionData = access.exportSessionSecret().data(using: .utf8) else {
             throw KeychainError.failedToSave
         }
         try Keychain.upsert(key: .paykitSession, data: sessionData)
 
-        guard shouldStoreLocalSecret, let localSecret = access.exportLocalSecretKey() else {
-            try? Keychain.delete(key: .pubkySecretKey)
+        guard let localSecretHex else {
             return
         }
 
-        guard let secretData = Self.secretKeyHex(from: localSecret).data(using: .utf8) else {
+        guard let secretData = localSecretHex.data(using: .utf8) else {
             throw KeychainError.failedToSave
         }
         try Keychain.upsert(key: .pubkySecretKey, data: secretData)
+    }
+
+    static func localSecretKeyHexForPersistence(
+        _ localSecret: PubkyLocalSecretKey?,
+        shouldStoreLocalSecret: Bool
+    ) throws -> String? {
+        guard shouldStoreLocalSecret else {
+            return nil
+        }
+        guard let localSecret else {
+            throw PubkyServiceError.authFailed("Local Pubky session did not include its secret key")
+        }
+        return secretKeyHex(from: localSecret)
     }
 
     private func activateBootstrapResult(

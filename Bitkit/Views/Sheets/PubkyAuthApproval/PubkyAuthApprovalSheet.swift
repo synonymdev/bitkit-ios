@@ -299,13 +299,7 @@ struct PubkyAuthApprovalSheet: View {
         state = .authorizing
 
         do {
-            guard let secretKey = try Keychain.loadString(key: .pubkySecretKey),
-                  !secretKey.isEmpty
-            else {
-                app.toast(type: .error, title: t("pubky_auth__no_identity"))
-                state = .authorize
-                return
-            }
+            let secretKey = try pubkyProfile.activeIdentitySecretKey()
 
             try await PubkyService.approveAuth(
                 authUrl: config.authUrl,
