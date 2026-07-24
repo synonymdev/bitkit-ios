@@ -13,7 +13,16 @@ enum PubkyPublicKeyFormat {
 
     static func normalized(_ input: String) -> String? {
         let boundedInput = bounded(input)
-        let rawKey = boundedInput.hasPrefix(prefix) ? String(boundedInput.dropFirst(prefix.count)) : boundedInput
+        let rawKey: String
+        if boundedInput.count == rawKeyLength {
+            rawKey = boundedInput
+        } else if boundedInput.count == maximumInputLength,
+                  boundedInput.hasPrefix(prefix)
+        {
+            rawKey = String(boundedInput.dropFirst(prefix.count))
+        } else {
+            return nil
+        }
 
         guard rawKey.count == rawKeyLength else {
             return nil
@@ -47,7 +56,9 @@ enum PubkyPublicKeyFormat {
 
     static func displayTruncated(_ input: String) -> String {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rawKey = trimmed.lowercased().hasPrefix(prefix) ? String(trimmed.dropFirst(prefix.count)) : trimmed
+        let rawKey = trimmed.count == maximumInputLength && trimmed.lowercased().hasPrefix(prefix)
+            ? String(trimmed.dropFirst(prefix.count))
+            : trimmed
         guard rawKey.count > 10 else { return rawKey }
 
         return "\(rawKey.prefix(4))...\(rawKey.suffix(4))"

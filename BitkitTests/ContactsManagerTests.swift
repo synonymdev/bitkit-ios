@@ -22,6 +22,15 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(PubkyPublicKeyFormat.normalized(prefixedKey), prefixedKey)
     }
 
+    func testPubkyPublicKeyFormatPreservesBareKeyBeginningWithPrefixText() {
+        let rawKey = "pubky\(String(repeating: "y", count: 47))"
+        let prefixedKey = "pubky\(rawKey)"
+
+        XCTAssertEqual(PubkyPublicKeyFormat.normalized(rawKey), prefixedKey)
+        XCTAssertEqual(PubkyPublicKeyFormat.normalized(prefixedKey), prefixedKey)
+        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated(rawKey), "pubk...yyyy")
+    }
+
     func testPubkyPublicKeyFormatRejectsInvalidLengthAndCharacters() {
         XCTAssertNil(PubkyPublicKeyFormat.normalized("pubkyshort"))
         XCTAssertNil(PubkyPublicKeyFormat.normalized("pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5x0"))
