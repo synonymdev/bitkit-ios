@@ -14,7 +14,16 @@ enum SharedPubkyKeyFormat {
 
     static func normalizedBare(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let bare = trimmed.hasPrefix(prefix) ? String(trimmed.dropFirst(prefix.count)) : trimmed
+        let bare: String
+        if trimmed.count == bareKeyLength {
+            bare = trimmed
+        } else if trimmed.count == prefix.count + bareKeyLength,
+                  trimmed.hasPrefix(prefix)
+        {
+            bare = String(trimmed.dropFirst(prefix.count))
+        } else {
+            return nil
+        }
         guard bare.count == bareKeyLength,
               bare.allSatisfy({ allowedCharacters.contains($0) })
         else {

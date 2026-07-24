@@ -25,6 +25,13 @@ final class SharedPubkyIdentityTests: XCTestCase {
         XCTAssertEqual(SharedPubkyKeyFormat.normalizedBare(bare), bare)
     }
 
+    func testWireKeyBeginningWithPubkyRemainsBare() {
+        let bare = "pubky\(String(repeating: "y", count: 47))"
+
+        XCTAssertEqual(SharedPubkyKeyFormat.normalizedBare(bare), bare)
+        XCTAssertEqual(SharedPubkyKeyFormat.normalizedBare("pubky\(bare)"), bare)
+    }
+
     func testReferenceCanonicalizesPrefixedPubkyToBareWireFormat() throws {
         let (prefixed, bare, _) = try identityFixture()
 
