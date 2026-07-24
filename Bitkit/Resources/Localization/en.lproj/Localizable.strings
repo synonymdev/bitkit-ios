@@ -1039,7 +1039,7 @@
 "contacts__add_error" = "Failed to add contact";
 "contacts__add_disclaimer" = "Please note that you and {name} must add each other as contacts to pay each other privately. Otherwise, the payment will be visible publicly.";
 "contacts__import_nav_title" = "Import";
-"contacts__import_found_title" = "Found\n<accent>profile & contacts</accent>";
+"contacts__import_found_title" = "Found\n<accent>contacts</accent>";
 "contacts__import_found_description" = "Bitkit found profile and contacts data connected to pubky <accent>{key}</accent>";
 "contacts__import_select" = "Select";
 "contacts__import_all" = "Import All";
