@@ -27,7 +27,7 @@ jobs:
       code: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         if: github.event_name == 'pull_request'
         id: filter
         with:
@@ -126,7 +126,7 @@ jobs:
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
 
       - name: Upload iOS app (local)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: e2e-app/
@@ -215,7 +215,7 @@ jobs:
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
 
       - name: Upload iOS app (regtest)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bitkit-e2e-ios-regtest_${{ github.run_number }}
           path: e2e-app/
@@ -259,7 +259,7 @@ jobs:
           ref: ${{ needs.e2e-branch.outputs.branch }}
 
       - name: Download iOS app
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
@@ -359,7 +359,7 @@ jobs:
 
       - name: Upload E2E Artifacts (${{ matrix.shard.name }})
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
@@ -399,7 +399,7 @@ jobs:
           ref: ${{ needs.e2e-branch.outputs.branch }}
 
       - name: Download iOS app (regtest)
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: bitkit-e2e-ios-regtest_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
@@ -501,7 +501,7 @@ jobs:
 
       - name: Upload E2E Artifacts (${{ matrix.shard.name }})
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts-regtest_${{ matrix.shard.name }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
