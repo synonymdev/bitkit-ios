@@ -25,16 +25,17 @@ struct ContactImportSelectView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 16)
             .padding(.top, 24)
             .padding(.bottom, 16)
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    CustomDivider()
+
                     ForEach(contacts) { contact in
                         contactSelectRow(contact)
                         CustomDivider()
-                            .padding(.leading, 72)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -68,7 +69,7 @@ struct ContactImportSelectView: View {
                 contactAvatar(name: contact.displayName, imageUrl: contact.profile.imageUrl)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    CaptionText(contact.profile.truncatedPublicKey)
+                    CaptionText(contact.profile.truncatedPublicKey.localizedUppercase)
 
                     BodyMSBText(contact.displayName)
                         .lineLimit(1)
@@ -78,7 +79,7 @@ struct ContactImportSelectView: View {
 
                 checkmark(isSelected: isSelected)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 24)
         }
         .accessibilityLabel(contact.displayName)
         .accessibilityIdentifier("ContactImportSelect_\(contact.publicKey)")
@@ -87,23 +88,11 @@ struct ContactImportSelectView: View {
     // MARK: - Checkmark
 
     private func checkmark(isSelected: Bool) -> some View {
-        ZStack {
-            if isSelected {
-                Circle()
-                    .fill(Color.pubkyGreen)
-                    .frame(width: 24, height: 24)
-                    .overlay {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-            } else {
-                Circle()
-                    .stroke(Color.white32, lineWidth: 1.5)
-                    .frame(width: 24, height: 24)
-            }
-        }
-        .accessibilityHidden(true)
+        Image(systemName: "checkmark")
+            .font(.system(size: 18, weight: .bold))
+            .foregroundColor(isSelected ? .pubkyGreen : .clear)
+            .frame(width: 24, height: 24)
+            .accessibilityHidden(true)
     }
 
     // MARK: - Contact Avatar
@@ -122,36 +111,37 @@ struct ContactImportSelectView: View {
     // MARK: - Footer Bar
 
     private var footerBar: some View {
-        VStack(spacing: 0) {
-            CustomDivider()
+        BottomActionBar(horizontalPadding: 0) {
+            VStack(spacing: 0) {
+                CustomDivider()
 
-            HStack(spacing: 12) {
-                BodySText(t("contacts__import_selected_count", variables: ["count": "\(selectedKeys.count)"]))
+                HStack(spacing: 12) {
+                    BodySText(t("contacts__import_selected_count", variables: ["count": "\(selectedKeys.count)"]))
 
-                Spacer()
+                    Spacer()
 
-                pillButton(title: t("contacts__import_select_all"), isActive: selectedKeys.count == contacts.count) {
-                    selectedKeys = Set(contacts.map(\.publicKey))
+                    pillButton(title: t("contacts__import_select_all"), isActive: selectedKeys.count == contacts.count) {
+                        selectedKeys = Set(contacts.map(\.publicKey))
+                    }
+                    .accessibilityIdentifier("ContactImportSelectAll")
+
+                    pillButton(title: t("contacts__import_select_none"), isActive: selectedKeys.isEmpty) {
+                        selectedKeys = []
+                    }
+                    .accessibilityIdentifier("ContactImportSelectNone")
                 }
-                .accessibilityIdentifier("ContactImportSelectAll")
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
 
-                pillButton(title: t("contacts__import_select_none"), isActive: selectedKeys.isEmpty) {
-                    selectedKeys = []
+                CustomButton(
+                    title: t("common__continue"),
+                    isLoading: isImporting
+                ) {
+                    await importSelectedContacts()
                 }
-                .accessibilityIdentifier("ContactImportSelectNone")
+                .padding(.horizontal, 16)
+                .accessibilityIdentifier("ContactImportSelectContinue")
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            CustomButton(
-                title: t("common__continue"),
-                isLoading: isImporting
-            ) {
-                await importSelectedContacts()
-            }
-            .padding(.horizontal, 32)
-            .padding(.bottom, 16)
-            .accessibilityIdentifier("ContactImportSelectContinue")
         }
     }
 
@@ -161,7 +151,7 @@ struct ContactImportSelectView: View {
         Button(action: action) {
             CaptionText(title, textColor: isActive ? .white64 : .textPrimary)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+                .padding(.vertical, 10)
                 .background(
                     Capsule()
                         .fill(isActive ? Color.white.opacity(0.05) : Color.white.opacity(0.1))

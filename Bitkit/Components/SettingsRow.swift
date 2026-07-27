@@ -81,6 +81,7 @@ struct SettingsRow: View {
                         .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
                         .labelsHidden()
                         .disabled(disabled ?? false)
+                        .accessibilityLabel(title)
                         .accessibilityIdentifierIfPresent(testIdentifier)
 
                 } else {
