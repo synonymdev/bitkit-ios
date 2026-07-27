@@ -31,7 +31,9 @@ struct SendSuccess: View {
 
     /// Load the confetti animation
     private var confettiAnimation: LottieAnimation? {
-        let isOnchain = app.selectedWalletToPayFrom == .onchain
+        // A swap send keeps `selectedWalletToPayFrom == .onchain` (the recipient is an address) but
+        // spends from Lightning, so it uses the spending-purple confetti like the rest of its flow.
+        let isOnchain = app.selectedWalletToPayFrom == .onchain && !app.isSwapSend
         let animationName = isOnchain ? "confetti-orange" : "confetti-purple"
 
         guard let filepathURL = Bundle.main.url(forResource: animationName, withExtension: "json") else {

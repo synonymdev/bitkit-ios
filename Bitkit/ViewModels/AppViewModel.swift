@@ -34,6 +34,14 @@ class AppViewModel: ObservableObject {
     @Published var manualEntryValidationResult: ManualEntryValidationResult = .empty
     @Published var contactPaymentContext: ContactPaymentContext?
 
+    // Swap send: paying an on-chain address out of the spending balance via a Boltz reverse swap.
+    // `selectedWalletToPayFrom` stays `.onchain` because the recipient is still an address and the
+    // whole send flow keys off `scannedOnchainInvoice`; only the funding source changes.
+    @Published var isSwapSend = false
+    @Published var sendSwapQuote: SendSwapQuote?
+    @Published var sendSwapBounds: SendSwapBounds?
+    private var swapSendUpdateSequence: UInt64 = 0
+
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
@@ -86,6 +94,7 @@ class AppViewModel: ObservableObject {
 
     private let lightningService: LightningService
     private let coreService: CoreService
+    private let swapService: SendSwapService
     private let sheetViewModel: SheetViewModel
     private let navigationViewModel: NavigationViewModel
     private var manualEntryValidationSequence: UInt64 = 0
@@ -97,11 +106,13 @@ class AppViewModel: ObservableObject {
     init(
         lightningService: LightningService = .shared,
         coreService: CoreService = .shared,
+        swapService: SendSwapService = .shared,
         sheetViewModel: SheetViewModel,
         navigationViewModel: NavigationViewModel
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
+        self.swapService = swapService
         self.sheetViewModel = sheetViewModel
         self.navigationViewModel = navigationViewModel
 
@@ -143,6 +154,12 @@ class AppViewModel: ObservableObject {
             description: description,
             accessibilityIdentifier: "InsufficientSpendingToast"
         )
+    }
+
+    /// Whether savings alone can cover the send. A zero-amount invoice only needs some balance,
+    /// since the amount screen validates what the user then enters.
+    func hasSufficientOnchainBalance(invoiceAmount: UInt64, onchainBalance: UInt64) -> Bool {
+        invoiceAmount > 0 ? onchainBalance >= invoiceAmount : onchainBalance > 0
     }
 
     /// Validates onchain balance and shows toast if insufficient. Returns true if sufficient.
@@ -447,7 +464,7 @@ extension AppViewModel {
                             // usable channels without capacity).
                             // Fall back to onchain and validate onchain balance immediately.
                             let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
-                            guard validateOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance) else {
+                            guard await canCoverOnchainSend(invoice: invoice, onchainBalance: onchainBalance) else {
                                 return
                             }
 
@@ -471,7 +488,7 @@ extension AppViewModel {
             // If node is running, validate balance immediately
             if lightningService.status?.isRunning == true {
                 let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
-                guard validateOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance) else {
+                guard await canCoverOnchainSend(invoice: invoice, onchainBalance: onchainBalance) else {
                     return
                 }
             }
@@ -594,6 +611,20 @@ extension AppViewModel {
         }
     }
 
+    /// Whether the send can go ahead, toasting only once neither rail can pay it. Savings falling
+    /// short is not a dead end while a swap can pay the address out of spending instead.
+    private func canCoverOnchainSend(invoice: OnChainInvoice, onchainBalance: UInt64) async -> Bool {
+        if hasSufficientOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance) {
+            return true
+        }
+
+        if await trySwitchToSwapSend(amountSats: invoice.amountSatoshis) {
+            return true
+        }
+
+        return validateOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance)
+    }
+
     private func handleScannedOnchainInvoice(_ invoice: OnChainInvoice) {
         selectedWalletToPayFrom = .onchain
         scannedOnchainInvoice = invoice
@@ -706,6 +737,124 @@ extension AppViewModel {
         lnurlPayData = nil
         lnurlWithdrawData = nil
         contactPaymentContext = nil
+        clearSwapSend()
+    }
+}
+
+// MARK: Swap send
+
+extension AppViewModel {
+    /// Fund the send from the spending balance instead, paying the on-chain address through a
+    /// Boltz reverse swap. Returns false when no swap can deliver `amountSats`, leaving the send
+    /// untouched so the caller keeps the pre-swap behaviour. An amount of zero is not priceable
+    /// yet, so only the bounds are established and the amount screen prices the rest.
+    @discardableResult
+    func trySwitchToSwapSend(amountSats: UInt64) async -> Bool {
+        let token = beginSwapSendUpdate()
+        guard let priced = await priceSwapSend(amountSats: amountSats) else { return false }
+        guard isCurrentSwapSendUpdate(token) else { return false }
+
+        Logger.info("Offering swap send for \(amountSats) sat, max \(priced.bounds.maxDeliverSat) sat", context: "AppViewModel")
+        isSwapSend = true
+        sendSwapBounds = priced.bounds
+        sendSwapQuote = priced.quote
+        return true
+    }
+
+    /// Whether a swap could deliver `amountSats`, without committing the send to one. Used while
+    /// an address is still being typed, where the send state must not move under the user.
+    func canSwapCoverSend(amountSats: UInt64) async -> Bool {
+        await priceSwapSend(amountSats: amountSats) != nil
+    }
+
+    /// Establish the swap bounds for a plain on-chain send without switching rails, so the amount
+    /// screen can let the user type past their savings ceiling toward what a swap could deliver.
+    /// The send stays on savings until the amount actually crosses that ceiling.
+    func primeSwapSendBounds() async {
+        guard scannedOnchainInvoice != nil, scannedLightningInvoice == nil else { return }
+        guard lnurlPayData == nil, lnurlWithdrawData == nil else { return }
+        guard !isSwapSend, sendSwapBounds == nil else { return }
+
+        let token = beginSwapSendUpdate()
+        let bounds = await swapService.bounds()
+        guard isCurrentSwapSendUpdate(token) else { return }
+        sendSwapBounds = bounds
+    }
+
+    private func priceSwapSend(amountSats: UInt64) async -> (bounds: SendSwapBounds, quote: SendSwapQuote?)? {
+        guard let bounds = await swapService.bounds() else { return nil }
+        guard amountSats > 0 else { return (bounds, nil) }
+        guard let quote = await swapService.quote(deliverSat: amountSats) else { return nil }
+        return (bounds, quote)
+    }
+
+    /// Keep a plain on-chain send on the rail that can pay it: savings while the amount fits
+    /// there, spending via a swap once it does not. Only runs while the amount is being edited,
+    /// so a send that is already committed to a rail is never revisited behind the user's back.
+    func resolveSwapSendMethod(amountSats: UInt64, onchainBalance: UInt64) async {
+        guard scannedOnchainInvoice != nil, scannedLightningInvoice == nil else { return }
+        guard lnurlPayData == nil, lnurlWithdrawData == nil else { return }
+
+        if !isSwapSend {
+            if amountSats > onchainBalance {
+                await trySwitchToSwapSend(amountSats: amountSats)
+            }
+            return
+        }
+
+        if amountSats > 0, amountSats <= onchainBalance {
+            // Fall back to savings, but keep the bounds so the amount can be raised past savings
+            // again to re-arm the swap without a fresh scan (mirrors Android keeping swapMaxSendSats).
+            revertSwapSendToSavings()
+            return
+        }
+
+        await refreshSwapQuote(amountSats: amountSats)
+    }
+
+    /// Re-price the swap for `amountSats`. Keeps the last good quote on a transient failure so the
+    /// review screen is not wedged behind a nil quote; the payment re-quotes before it commits.
+    func refreshSwapQuote(amountSats: UInt64) async {
+        guard isSwapSend else { return }
+        let token = beginSwapSendUpdate()
+        let quote = await swapService.quote(deliverSat: amountSats)
+        guard isCurrentSwapSendUpdate(token), isSwapSend else { return }
+        if let quote {
+            sendSwapQuote = quote
+        }
+    }
+
+    /// Whether a swap can still be priced for `amountSats` right now. Used by the review screen to
+    /// tell "still pricing" from "no longer available" so it does not spin forever.
+    func canStillQuoteSwapSend(amountSats: UInt64) async -> Bool {
+        await swapService.quote(deliverSat: amountSats) != nil
+    }
+
+    private func revertSwapSendToSavings() {
+        beginSwapSendUpdate()
+        isSwapSend = false
+        sendSwapQuote = nil
+    }
+
+    func clearSwapSend() {
+        beginSwapSendUpdate()
+        isSwapSend = false
+        sendSwapQuote = nil
+        sendSwapBounds = nil
+    }
+
+    /// A send edit changes the amount faster than Boltz can be re-priced, and the pricing calls run
+    /// on unstructured tasks. Bumping this token on every state change lets a slow call that resumes
+    /// late drop its stale result instead of overwriting the current one (mirrors the manual-entry
+    /// validation sequence).
+    @discardableResult
+    private func beginSwapSendUpdate() -> UInt64 {
+        swapSendUpdateSequence &+= 1
+        return swapSendUpdateSequence
+    }
+
+    private func isCurrentSwapSendUpdate(_ token: UInt64) -> Bool {
+        token == swapSendUpdateSequence
     }
 }
 
@@ -837,12 +986,13 @@ extension AppViewModel {
             }
 
             if !canPayLightning {
-                // On-chain: check savings balance
-                if invoice.amountSatoshis > 0 && savingsBalanceSats < Int(invoice.amountSatoshis) {
-                    result = .insufficientSavings
-                } else if invoice.amountSatoshis == 0 && savingsBalanceSats == 0 {
-                    // Zero-amount invoice: user must have some balance to proceed
-                    result = .insufficientSavings
+                // On-chain: check savings balance, falling back to a swap out of spending when
+                // savings cannot cover it so the Continue button is not dead-ended.
+                let savings = UInt64(max(0, savingsBalanceSats))
+                if !hasSufficientOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: savings) {
+                    let canSwap = await canSwapCoverSend(amountSats: invoice.amountSatoshis)
+                    guard currentSequence == manualEntryValidationSequence else { return }
+                    result = canSwap ? .valid : .insufficientSavings
                 }
             }
 

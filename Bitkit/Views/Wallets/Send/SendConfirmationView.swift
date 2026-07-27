@@ -24,8 +24,14 @@ struct SendConfirmationView: View {
     @State private var warningContinuation: CheckedContinuation<Bool, Error>?
     @State private var swipeProgress: CGFloat = 0
 
+    /// Paying an on-chain address out of spending through a Boltz reverse swap. The recipient and
+    /// the review layout stay on-chain; the funds and the fees are the swap's.
+    private var isSwapSend: Bool {
+        app.isSwapSend && app.selectedWalletToPayFrom == .onchain
+    }
+
     var accentColor: Color {
-        app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent
+        app.selectedWalletToPayFrom == .lightning || isSwapSend ? .purpleAccent : .brandAccent
     }
 
     var canSwitchWallet: Bool {
@@ -125,7 +131,9 @@ struct SendConfirmationView: View {
             .padding(.bottom, 44)
 
             if showDetails {
-                if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
+                if isSwapSend, let invoice = app.scannedOnchainInvoice {
+                    swapView(invoice)
+                } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                     onchainView(invoice)
                 } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                     lightningView(invoice)
@@ -146,7 +154,7 @@ struct SendConfirmationView: View {
                 CustomButton(
                     title: showDetails ? t("common__hide_details") : t("common__show_details"),
                     size: .small,
-                    icon: Image(showDetails ? "eye-slash" : app.selectedWalletToPayFrom == .lightning ? "bolt-hollow" : "speed-normal")
+                    icon: Image(showDetails ? "eye-slash" : accentColor == .purpleAccent ? "bolt-hollow" : "speed-normal")
                         .resizable()
                         .frame(width: 16, height: 16)
                         .foregroundColor(accentColor),
@@ -159,7 +167,14 @@ struct SendConfirmationView: View {
                 .accessibilityIdentifier("SendConfirmToggleDetails")
             }
 
-            SwipeButton(title: t("wallet__send_swipe"), accentColor: accentColor, swipeProgress: $swipeProgress) {
+            SwipeButton(
+                title: t("wallet__send_swipe"),
+                accentColor: accentColor,
+                // A swap cannot be paid before Boltz has priced it, so hold the swipe until the
+                // review screen is showing the real cost.
+                isLoading: isSwapSend && app.sendSwapQuote == nil,
+                swipeProgress: $swipeProgress
+            ) {
                 // Validate payment and show warnings if needed
                 let warnings = await validatePayment()
                 if !warnings.isEmpty {
@@ -200,6 +215,17 @@ struct SendConfirmationView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             ensureSendAmountFromScannedInvoicesIfNeeded()
+            // Price the swap before the user can swipe so the review never shows a half-priced send.
+            if isSwapSend {
+                await app.refreshSwapQuote(amountSats: wallet.sendAmountSats ?? 0)
+                // No cached quote means the swap is no longer available; go back rather than leave
+                // the swipe button spinning behind a nil quote with no way forward.
+                if app.sendSwapQuote == nil {
+                    app.toast(type: .error, title: t("other__try_again"))
+                    navigateToAmount()
+                    return
+                }
+            }
             await calculateTransactionFee()
             await calculateRoutingFee()
         }
@@ -266,25 +292,7 @@ struct SendConfirmationView: View {
                     .accessibilityIdentifier("SendConfirmAssetButton")
                 }
 
-                if let contact = contactPaymentContact {
-                    SendSectionView(t("wallet__send_to")) {
-                        contactRecipient(contact)
-                    }
-                } else {
-                    Button {
-                        navigateToManual(with: invoice.address)
-                    } label: {
-                        SendSectionView(t("wallet__send_to")) {
-                            BodySSBText(invoice.address.ellipsis(maxLength: 18))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .frame(height: 28)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("ReviewUri")
-                }
+                recipientSection(address: invoice.address)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -337,19 +345,103 @@ struct SendConfirmationView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            SendSectionView(t("wallet__tags")) {
-                TagsListView(
-                    tags: tagManager.selectedTagsArray,
-                    icon: .close,
-                    onAddTag: {
-                        navigationPath.append(.tag)
-                    },
-                    onTagDelete: { tag in
-                        tagManager.removeTagFromSelection(tag)
-                    },
-                    addButtonTestId: "TagsAddSend"
-                )
+            tagsSection
+        }
+    }
+
+    /// Review rows for a send that pays an on-chain address out of the spending balance through a
+    /// swap. Mirrors `onchainView`, except the fee is Boltz's rather than ours, so it is not
+    /// editable, and the confirmation estimate gives way to the swap's service fee.
+    func swapView(_ invoice: OnChainInvoice) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
+                SendSectionView(t("wallet__send_from")) {
+                    NumberPadActionButton(
+                        text: t("wallet__spending__title"),
+                        color: .purpleAccent,
+                        variant: .secondary,
+                        disabled: true
+                    ) {}
+                        .accessibilityIdentifier("SendConfirmAssetButton")
+                }
+
+                recipientSection(address: invoice.address)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(alignment: .top, spacing: 16) {
+                SendSectionView(t("wallet__send_fee_and_speed")) {
+                    HStack(spacing: 0) {
+                        Image("speed-normal")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .foregroundColor(.purpleAccent)
+                            .frame(width: 16, height: 16)
+                            .padding(.trailing, 4)
+
+                        swapFeeText(sats: app.sendSwapQuote?.networkFeeSat)
+                    }
+                }
+
+                SendSectionView(t("lightning__savings_confirm__service_fee")) {
+                    HStack(spacing: 0) {
+                        swapFeeText(sats: app.sendSwapQuote?.serviceFeeSat)
+                    }
+                    .accessibilityIdentifier("SendConfirmServiceFee")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            tagsSection
+        }
+    }
+
+    @ViewBuilder
+    private func swapFeeText(sats: UInt64?) -> some View {
+        if let sats {
+            MoneyText(sats: Int(sats), size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+        } else {
+            ActivityIndicator(size: 16)
+                .frame(height: 28)
+        }
+    }
+
+    @ViewBuilder
+    private func recipientSection(address: String) -> some View {
+        if let contact = contactPaymentContact {
+            SendSectionView(t("wallet__send_to")) {
+                contactRecipient(contact)
+            }
+        } else {
+            Button {
+                navigateToManual(with: address)
+            } label: {
+                SendSectionView(t("wallet__send_to")) {
+                    BodySSBText(address.ellipsis(maxLength: 18))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(height: 28)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("ReviewUri")
+        }
+    }
+
+    private var tagsSection: some View {
+        SendSectionView(t("wallet__tags")) {
+            TagsListView(
+                tags: tagManager.selectedTagsArray,
+                icon: .close,
+                onAddTag: {
+                    navigationPath.append(.tag)
+                },
+                onTagDelete: { tag in
+                    tagManager.removeTagFromSelection(tag)
+                },
+                addButtonTestId: "TagsAddSend"
+            )
         }
     }
 
@@ -481,9 +573,75 @@ struct SendConfirmationView: View {
         .accessibilityIdentifier("ReviewContactRecipient")
     }
 
+    /// Pay an on-chain address out of the spending balance through a Boltz reverse swap.
+    ///
+    /// The claim that pays the recipient is broadcast by the swap updates stream, which
+    /// `WalletViewModel` keeps running, so a claim we stop waiting for still lands. That makes a
+    /// timed-out (settling) outcome a success here: the invoice is paid and the payout is on its
+    /// way. A failure only toasts and shows the failure screen; it never deletes the metadata,
+    /// because by then the payment may already be committed.
+    private func performSwapPayment(invoice: OnChainInvoice, contactPublicKey: String?) async {
+        let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
+        // Show what the recipient receives, not the larger amount the swap debits.
+        wallet.sendAmountSats = amount
+
+        // Make sure the updates stream is running so the swap is tracked and its claim broadcast,
+        // even if the launch-time start had not yet succeeded.
+        wallet.ensureSwapUpdatesRunning()
+
+        do {
+            let receipt = try await SendSwapService.shared.payToAddress(
+                address: invoice.address,
+                deliverSat: amount,
+                onInvoicePrepared: { paymentHash in
+                    // The hold invoice is what the wallet records, so its hash is the id the
+                    // activity, its tags and the recipient address hang off.
+                    await createPreActivityMetadata(
+                        paymentId: paymentHash,
+                        paymentHash: paymentHash,
+                        address: invoice.address
+                    )
+                },
+                onEvent: { id, handler in wallet.addOnEvent(id: id, handler: handler) },
+                removeEvent: { id in wallet.removeOnEvent(id: id) }
+            )
+
+            if let contactPublicKey {
+                await PrivatePaykitService.shared.discardRemoteOnchainEndpoints(
+                    publicKey: contactPublicKey,
+                    addresses: [invoice.address]
+                )
+            }
+            await syncContactForActivity(paymentId: receipt.paymentHash, contactPublicKey: contactPublicKey)
+
+            // Reflect the spent balance before the next send prices against it (the swap bypasses
+            // WalletViewModel.send, which is where a normal Lightning send would sync).
+            await wallet.syncStateAsync()
+
+            Logger.info("Swap send claim txid: \(receipt.claimTxId ?? "pending")")
+
+            navigationPath.append(.success(paymentId: receipt.paymentHash))
+        } catch {
+            Logger.error("Swap send failed: \(error)")
+            app.toast(error)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                navigationPath.append(.failure)
+            }
+        }
+    }
+
     private func performPayment() async throws {
         var createdMetadataPaymentId: String? = nil
         let contactPublicKey = app.contactPaymentContext?.publicKey
+
+        // The swap send owns its error handling: once the hold invoice is paid the funds are in
+        // flight, so a later failure must not delete the activity metadata or claim the send is
+        // lost. It is handled here rather than in the shared catch below (which is safe only for
+        // sends that never dispatched).
+        if isSwapSend, let invoice = app.scannedOnchainInvoice {
+            await performSwapPayment(invoice: invoice, contactPublicKey: contactPublicKey)
+            return
+        }
 
         do {
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
@@ -616,7 +774,7 @@ struct SendConfirmationView: View {
         }
 
         // Check if amount > 50% of balance
-        if app.selectedWalletToPayFrom == .lightning {
+        if app.selectedWalletToPayFrom == .lightning || isSwapSend {
             let lightningBalance = wallet.totalLightningSats
             if amount > lightningBalance / 2 {
                 warnings.append(.balance)
@@ -637,8 +795,8 @@ struct SendConfirmationView: View {
             }
         }
 
-        // Check if fee > $10 (only for onchain)
-        if app.selectedWalletToPayFrom == .onchain {
+        // Check if fee > $10 (only for onchain, the swap's fee is Boltz's and shown separately)
+        if app.selectedWalletToPayFrom == .onchain, !isSwapSend {
             if let feeUsd = currency.convert(sats: UInt64(transactionFee), to: "USD") {
                 if feeUsd.value > 10.0 {
                     warnings.append(.fee)
@@ -812,7 +970,8 @@ struct SendConfirmationView: View {
     }
 
     private func calculateTransactionFee() async {
-        guard app.selectedWalletToPayFrom == .onchain else {
+        // A swap send spends no utxos of ours, so there is no transaction of ours to price.
+        guard app.selectedWalletToPayFrom == .onchain, !isSwapSend else {
             return
         }
 

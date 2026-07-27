@@ -20,18 +20,31 @@ struct SendAmountView: View {
         app.scannedOnchainInvoice != nil && app.scannedLightningInvoice != nil
     }
 
+    /// Paying an on-chain address out of spending through a swap: the recipient is still an
+    /// address, only the funding source and its limits differ.
+    private var isSwapSend: Bool {
+        app.isSwapSend && app.selectedWalletToPayFrom == .onchain
+    }
+
+    private var payingFromSpending: Bool {
+        app.selectedWalletToPayFrom == .lightning || isSwapSend
+    }
+
     private var assetButtonTestIdentifier: String {
         if canSwitchWallet {
             return "switch"
         }
-        return app.selectedWalletToPayFrom == .lightning ? "spending" : "savings"
+        return payingFromSpending ? "spending" : "savings"
     }
 
     /// The amount to display in the available balance section
     /// For onchain transactions, this shows the max sendable amount (balance minus fees)
     /// For lightning transactions, this shows the max sendable lightning amount minus routing fees
+    /// For swap sends, this shows what a swap can actually deliver on-chain after its fees
     var availableAmount: UInt64 {
-        if app.selectedWalletToPayFrom == .lightning {
+        if isSwapSend {
+            return app.sendSwapBounds?.maxDeliverSat ?? 0
+        } else if app.selectedWalletToPayFrom == .lightning {
             let maxSendLightning = UInt64(wallet.maxSendLightningSats)
             return maxSendLightning >= routingFee ? maxSendLightning - routingFee : 0
         } else {
@@ -40,15 +53,30 @@ struct SendAmountView: View {
         }
     }
 
-    private var isValidAmount: Bool {
-        let minAmount = app.selectedWalletToPayFrom == .lightning ? 1 : Env.dustLimit
+    private var minimumAmount: UInt64 {
+        let dustLimit = UInt64(Env.dustLimit)
+        if isSwapSend {
+            // Boltz's reverse minimum applies to the invoice, so the delivered floor is higher
+            // than the dust limit and an amount below it can never be quoted.
+            return max(dustLimit, app.sendSwapBounds?.minDeliverSat ?? dustLimit)
+        }
+        return app.selectedWalletToPayFrom == .lightning ? 1 : dustLimit
+    }
 
-        return amountSats >= minAmount && amountSats <= availableAmount
+    private var isValidAmount: Bool {
+        amountSats >= minimumAmount && amountSats <= availableAmount
+    }
+
+    /// Highest amount the number pad accepts. On a plain on-chain send this is normally the savings
+    /// max, but when a swap is on offer it is raised to what the swap can deliver so the user can
+    /// type past their savings ceiling; crossing it flips the send onto the swap rail.
+    private var inputCap: UInt64 {
+        max(availableAmount, app.sendSwapBounds?.maxDeliverSat ?? 0)
     }
 
     /// Determines if the current amount is a max amount send
     var isMaxAmountSend: Bool {
-        guard app.selectedWalletToPayFrom == .onchain else { return false }
+        guard app.selectedWalletToPayFrom == .onchain, !isSwapSend else { return false }
         return amountSats == availableAmount && amountSats > 0
     }
 
@@ -91,11 +119,11 @@ struct SendAmountView: View {
 
                     // No specific invoice, show toggle button based on selected wallet type
                     NumberPadActionButton(
-                        text: app.selectedWalletToPayFrom == .lightning
+                        text: payingFromSpending
                             ? t("wallet__spending__title")
                             : t("wallet__savings__title"),
                         imageName: canSwitchWallet ? "arrow-up-down" : nil,
-                        color: app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent,
+                        color: payingFromSpending ? .purpleAccent : .brandAccent,
                         variant: canSwitchWallet ? .primary : .secondary,
                         disabled: !canSwitchWallet
                     ) {
@@ -164,6 +192,23 @@ struct SendAmountView: View {
                 }
             }
         }
+        .task {
+            // Establish the swap ceiling up front so the pad lets the user type past their savings
+            // balance toward what a swap could deliver. No-op unless swaps are enabled and this is
+            // a plain on-chain send.
+            await app.primeSwapSendBounds()
+        }
+        .task(id: amountSats) {
+            // Keyed on the amount so a slow re-price is cancelled when the amount changes again.
+            await resolveSwapSendMethod()
+        }
+        .onChange(of: app.isSwapSend) { _, _ in
+            // Falling back to savings needs the fee-aware on-chain max, which is skipped while in
+            // swap mode; recompute it so Continue is not enabled at an amount that leaves no fee.
+            if !isSwapSend {
+                Task { await calculateMaxSendableAmount() }
+            }
+        }
         .onChange(of: app.selectedWalletToPayFrom) { _, newValue in
             // Recalculate max sendable amount when switching wallet types
             if newValue == .onchain {
@@ -186,7 +231,7 @@ struct SendAmountView: View {
                 }
             }
         }
-        .onChange(of: availableAmount, initial: true) { updateInputCap() }
+        .onChange(of: inputCap, initial: true) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
 
@@ -194,6 +239,21 @@ struct SendAmountView: View {
         do {
             wallet.sendAmountSats = amountSats
             wallet.isMaxAmountSend = isMaxAmountSend
+
+            // Swap send: the recipient is an on-chain address but the funds leave spending, so
+            // there are no UTXOs to select and nothing to coin-select over.
+            if isSwapSend {
+                await app.refreshSwapQuote(amountSats: amountSats)
+                // Bounds are cached; a nil quote here means the swap became unavailable (Boltz
+                // unreachable, or spending capacity dropped below the amount). Surface it rather
+                // than pushing the user onto a review screen that can never be swiped.
+                guard app.sendSwapQuote != nil else {
+                    app.toast(type: .error, title: t("other__try_again"))
+                    return
+                }
+                navigationPath.append(.confirm)
+                return
+            }
 
             // Lightning payment
             if app.selectedWalletToPayFrom == .lightning {
@@ -256,7 +316,7 @@ struct SendAmountView: View {
 
     private func updateInputCap() {
         // Don't cap when nothing is sendable, so the pad stays usable (Continue stays disabled instead).
-        amountViewModel.maxAmountOverride = availableAmount > 0 ? availableAmount : nil
+        amountViewModel.maxAmountOverride = inputCap > 0 ? inputCap : nil
     }
 
     private func showMaxExceededToast() {
@@ -269,9 +329,18 @@ struct SendAmountView: View {
         )
     }
 
+    /// Keep the send on the rail that can pay it as the amount is edited: savings while it fits
+    /// there, spending through a swap once it does not.
+    private func resolveSwapSendMethod() async {
+        await app.resolveSwapSendMethod(
+            amountSats: amountSats,
+            onchainBalance: maxSendableAmount ?? UInt64(max(0, wallet.spendableOnchainBalanceSats))
+        )
+    }
+
     private func calculateMaxSendableAmount() async {
         // Make sure we have everything we need to calculate the max sendable amount
-        guard app.selectedWalletToPayFrom == .onchain else { return }
+        guard app.selectedWalletToPayFrom == .onchain, !isSwapSend else { return }
         guard let address = app.scannedOnchainInvoice?.address else { return }
         guard let feeRate = wallet.selectedFeeRateSatsPerVByte else { return }
 
