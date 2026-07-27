@@ -207,6 +207,10 @@ class BackupService {
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
+                try await WatchOnlyAccountManager.shared.restore(
+                    payload.watchOnlyAccounts,
+                    allocationState: payload.watchOnlyAccountAllocationState
+                )
                 pendingPaykitSdkBackupState = payload.paykitSdkBackupState
                 didRestoreWalletBackup = true
 
@@ -362,6 +366,14 @@ class BackupService {
             .store(in: &cancellables)
 
         PaykitSdkService.walletBackupDataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .wallet)
+            }
+            .store(in: &cancellables)
+
+        WatchOnlyAccountStore.walletBackupDataChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -703,12 +715,15 @@ class BackupService {
             let transfers = try TransferStorage.shared.getAll()
             let privatePaykitHighestReservedReceiveIndexByAddressType = await PrivatePaykitAddressReservationStore.shared.backupSnapshot()
             let paykitSdkBackupState = try await PrivatePaykitService.shared.backupSnapshot()
+            let watchOnlyAccountSnapshot = try WatchOnlyAccountStore.backupSnapshot()
             let payload = WalletBackupV1(
                 version: 1,
                 createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 transfers: transfers,
                 privatePaykitHighestReservedReceiveIndexByAddressType: privatePaykitHighestReservedReceiveIndexByAddressType,
-                paykitSdkBackupState: paykitSdkBackupState
+                paykitSdkBackupState: paykitSdkBackupState,
+                watchOnlyAccounts: watchOnlyAccountSnapshot.accounts,
+                watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState
             )
             return try JSONEncoder().encode(payload)
 

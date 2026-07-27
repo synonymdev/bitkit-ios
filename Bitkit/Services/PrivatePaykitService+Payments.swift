@@ -22,9 +22,9 @@ extension PrivatePaykitService {
     }
 
     private func beginPrivateOrPublicPayment(to publicKey: String, wallet: WalletViewModel) async throws -> PublicPaykitPaymentLaunchResult {
-        let isPrivateCapable = await hasLocalSecretKeyForCurrentProfile()
+        let hasLiveSession = await hasLiveSessionForCurrentProfile()
 
-        if isPrivateCapable, await canPublishPrivateEndpoints(wallet: wallet) {
+        if hasLiveSession, await canPublishPrivateEndpoints(wallet: wallet) {
             _ = await refreshSavedContactEndpointsReturningError(
                 for: [publicKey],
                 wallet: wallet,
@@ -73,9 +73,9 @@ extension PrivatePaykitService {
         }
     }
 
-    private func hasLocalSecretKeyForCurrentProfile() async -> Bool {
+    private func hasLiveSessionForCurrentProfile() async -> Bool {
         guard let status = try? await PaykitSdkService.shared.identityStatus() else { return false }
-        return status.privateLinkCapable
+        return status.liveSessionAvailable
     }
 
     func privatePayableEndpoints(from endpoints: [PublicPaykitService.Endpoint], publicKey: String) async -> [PublicPaykitService.Endpoint] {

@@ -24,6 +24,13 @@ func resolvePubkyApprovalLocalAuthMode(
     return .none
 }
 
+func pubkyAuthDisplayPublicKey(_ publicKey: String?) -> String {
+    guard let publicKey else { return "" }
+    let rawKey = publicKey.hasPrefix("pubky") ? String(publicKey.dropFirst("pubky".count)) : publicKey
+    guard rawKey.count > 8 else { return rawKey }
+    return "\(rawKey.prefix(4))...\(rawKey.suffix(4))"
+}
+
 struct PubkyAuthApprovalConfig {
     let authUrl: String
     let request: PubkyAuthRequest
@@ -46,67 +53,124 @@ struct PubkyAuthApprovalSheet: View {
 
     let config: PubkyAuthApprovalSheetItem
 
-    @State private var state: ApprovalState = .authorize
+    @State private var state: ApprovalState
     @State private var isShowingAuthCheck = false
 
-    private enum ApprovalState {
+    enum ApprovalState: Equatable {
+        case watchOnlyConsent
         case authorize
         case authorizing
         case success
+
+        @MainActor
+        mutating func approveWatchOnlyConsent() -> Bool {
+            guard self == .watchOnlyConsent else { return false }
+            self = .authorize
+            return true
+        }
+
+        @MainActor
+        mutating func beginAuthorization() -> Bool {
+            guard self == .authorize else { return false }
+            self = .authorizing
+            return true
+        }
+    }
+
+    init(config: PubkyAuthApprovalSheetItem) {
+        self.config = config
+        _state = State(initialValue: Self.initialState(for: config.request))
+    }
+
+    static func initialState(for request: PubkyAuthRequest) -> ApprovalState {
+        request.bitkitClaim == .watchOnlyAccountV1 ? .watchOnlyConsent : .authorize
     }
 
     private var headerTitle: String {
-        state == .success ? t("pubky_auth__success_title") : t("pubky_auth__title")
+        switch state {
+        case .watchOnlyConsent:
+            t("pubky_auth__watch_only_intro_nav_title")
+        case .authorize, .authorizing:
+            t("pubky_auth__title")
+        case .success:
+            t("pubky_auth__success_title")
+        }
+    }
+
+    private var showsBackButton: Bool {
+        state == .authorize || state == .authorizing || state == .success
     }
 
     var body: some View {
         Sheet(id: .pubkyAuthApproval, data: config) {
-            VStack(alignment: .leading, spacing: 0) {
-                SheetHeader(title: headerTitle, showBackButton: true)
-
-                switch state {
-                case .authorize:
-                    authorizeContent
-                case .authorizing:
-                    authorizingContent
-                case .success:
-                    successContent
-                }
+            if state == .watchOnlyConsent {
+                watchOnlyConsentContent
+            } else {
+                authorizationFlowContent
             }
-            .padding(.horizontal, 16)
         }
         .fullScreenCover(isPresented: $isShowingAuthCheck) {
             AuthCheck(
                 onCancel: {
                     isShowingAuthCheck = false
+                    state = .authorize
                 },
                 onPinVerified: {
                     isShowingAuthCheck = false
                     Task {
-                        await confirmAuthorize()
+                        await performAuthorization()
                     }
                 }
             )
         }
     }
 
-    // MARK: - Authorize State (Screen 3)
+    // MARK: - Watch-Only Consent
+
+    private var watchOnlyConsentContent: some View {
+        SheetIntro(
+            navTitle: t("pubky_auth__watch_only_intro_nav_title"),
+            title: t("pubky_auth__watch_only_intro_title"),
+            description: t("pubky_auth__watch_only_intro_description"),
+            image: "coin-stack",
+            continueText: t("pubky_auth__watch_only_intro_approve"),
+            cancelText: t("common__cancel"),
+            accentColor: .blueAccent,
+            testID: "PubkyAuthWatchOnlyConsent",
+            cancelTestID: "PubkyAuthWatchOnlyCancel",
+            continueTestID: "PubkyAuthWatchOnlyApprove",
+            onCancel: { sheets.hideSheet() },
+            onContinue: { _ = state.approveWatchOnlyConsent() }
+        )
+    }
+
+    // MARK: - Authorization
+
+    private var authorizationFlowContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SheetHeader(
+                title: headerTitle,
+                showBackButton: showsBackButton,
+                onBack: onBack
+            )
+
+            switch state {
+            case .watchOnlyConsent:
+                EmptyView()
+            case .authorize:
+                authorizeContent
+            case .authorizing:
+                authorizingContent
+            case .success:
+                successContent
+            }
+        }
+        .padding(.horizontal, 16)
+    }
 
     private var authorizeContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            descriptionText
-                .padding(.bottom, 32)
-
-            permissionsSection
-                .padding(.bottom, 16)
-
-            Spacer()
-
-            trustWarning
-                .padding(.bottom, 16)
-
-            profileCard
-                .padding(.bottom, 24)
+            approvalDetails
 
             HStack(spacing: 16) {
                 CustomButton(title: t("common__cancel"), variant: .secondary) {
@@ -122,30 +186,19 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
-    // MARK: - Authorizing State (Screen 4)
+    // MARK: - Authorization Progress
 
     private var authorizingContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            descriptionText
-                .padding(.bottom, 32)
+            approvalDetails
 
-            permissionsSection
-                .padding(.bottom, 16)
-
-            Spacer()
-
-            trustWarning
-                .padding(.bottom, 16)
-
-            profileCard
-                .padding(.bottom, 24)
-
-            CustomButton(title: t("pubky_auth__authorizing"), isLoading: true) {}
-                .disabled(true)
+            BodyMSBText(t("pubky_auth__authorizing"), textColor: .white32)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
         }
     }
 
-    // MARK: - Success State (Screen 5)
+    // MARK: - Success
 
     private var successContent: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -171,6 +224,29 @@ struct PubkyAuthApprovalSheet: View {
 
     // MARK: - Shared Components
 
+    private var approvalDetails: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    descriptionText
+                        .padding(.bottom, 32)
+
+                    permissionsSection
+
+                    Spacer(minLength: 32)
+
+                    trustWarning
+                        .padding(.bottom, 16)
+
+                    profileCard
+                        .padding(.bottom, 16)
+                }
+                .frame(minHeight: geometry.size.height, alignment: .top)
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
     private var serviceText: String {
         config.request.serviceNames.joined(separator: " and ")
     }
@@ -184,11 +260,9 @@ struct PubkyAuthApprovalSheet: View {
         .lineSpacing(4)
     }
 
-    @ViewBuilder
     private var successDescriptionText: some View {
-        let truncatedKey = pubkyProfile.profile?.truncatedPublicKey ?? ""
         BodyMText(
-            t("pubky_auth__success_prefix") + "<accent>" + truncatedKey + "</accent>"
+            t("pubky_auth__success_prefix") + "<accent>" + truncatedPublicKey + "</accent>"
                 + t("pubky_auth__success_middle") + "<accent>" + serviceText + "</accent>"
                 + t("pubky_auth__success_suffix"),
             accentColor: .textPrimary,
@@ -215,7 +289,7 @@ struct PubkyAuthApprovalSheet: View {
                 .font(.system(size: 14))
                 .foregroundColor(.white)
 
-            BodySSBText(permission.path)
+            BodySSBText(permission.displayPath)
                 .lineLimit(1)
 
             Spacer()
@@ -230,33 +304,32 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var profileCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 16) {
             CaptionMText(
-                pubkyProfile.profile?.truncatedPublicKey ?? "",
+                truncatedPublicKey.localizedUppercase,
                 textColor: .white64
             )
 
-            HStack(alignment: .top, spacing: 16) {
-                HeadlineText(pubkyProfile.displayName ?? "")
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if let imageUri = pubkyProfile.displayImageUri {
-                    PubkyImage(uri: imageUri, size: 64)
-                } else {
-                    Circle()
-                        .fill(Color.pubkyGreen)
-                        .frame(width: 64, height: 64)
-                        .overlay {
-                            Image("user-square")
-                                .resizable()
-                                .scaledToFit()
-                                .foregroundColor(.white32)
-                                .frame(width: 32, height: 32)
-                        }
-                }
+            if let imageUri = pubkyProfile.displayImageUri {
+                PubkyImage(uri: imageUri, size: 96)
+            } else {
+                Circle()
+                    .fill(Color.pubkyGreen)
+                    .frame(width: 96, height: 96)
+                    .overlay {
+                        Image("user-square")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundColor(.white32)
+                            .frame(width: 48, height: 48)
+                    }
             }
+
+            HeadlineText(pubkyProfile.displayName ?? "")
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity)
         .padding(24)
         .background(Color.gray6)
         .cornerRadius(16)
@@ -266,6 +339,8 @@ struct PubkyAuthApprovalSheet: View {
 
     @MainActor
     private func onAuthorize() async {
+        guard state.beginAuthorization() else { return }
+
         switch resolvePubkyApprovalLocalAuthMode(
             isPinEnabled: settings.pinEnabled,
             isBiometricEnabled: settings.useBiometrics,
@@ -276,7 +351,7 @@ struct PubkyAuthApprovalSheet: View {
         case .biometrics:
             await authorizeWithBiometrics()
         case .none:
-            await confirmAuthorize()
+            await performAuthorization()
         }
     }
 
@@ -286,18 +361,18 @@ struct PubkyAuthApprovalSheet: View {
 
         switch biometricResult {
         case .success:
-            await confirmAuthorize()
+            await performAuthorization()
         case .cancelled:
-            return
+            state = .authorize
         case let .failed(message):
             app.toast(type: .error, title: t("pubky_auth__biometric_failed"), description: message)
+            state = .authorize
         }
     }
 
     @MainActor
-    private func confirmAuthorize() async {
-        state = .authorizing
-
+    private func performAuthorization() async {
+        guard state == .authorizing else { return }
         do {
             guard let secretKey = try Keychain.loadString(key: .pubkySecretKey),
                   !secretKey.isEmpty
@@ -307,9 +382,10 @@ struct PubkyAuthApprovalSheet: View {
                 return
             }
 
-            try await PubkyService.approveAuth(
+            try await PubkyService.approveAuthRequest(
+                request: config.request,
                 authUrl: config.authUrl,
-                expectedCapabilities: config.request.capabilities,
+                accountName: watchOnlyAccountName,
                 secretKeyHex: secretKey
             )
 
@@ -318,6 +394,24 @@ struct PubkyAuthApprovalSheet: View {
             Logger.error("Failed to approve pubky auth: \(error)", context: "PubkyAuthApprovalSheet")
             app.toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
             state = .authorize
+        }
+    }
+
+    private var watchOnlyAccountName: String {
+        return config.request.serviceNames.first.map {
+            t("pubky_auth__watch_only_account_default_name", variables: ["service": $0])
+        } ?? t("pubky_auth__watch_only_account_fallback_name")
+    }
+
+    private var truncatedPublicKey: String {
+        pubkyAuthDisplayPublicKey(pubkyProfile.publicKey ?? pubkyProfile.profile?.publicKey)
+    }
+
+    private func onBack() {
+        if state == .authorize, config.request.bitkitClaim == .watchOnlyAccountV1 {
+            state = .watchOnlyConsent
+        } else {
+            sheets.hideSheet()
         }
     }
 }

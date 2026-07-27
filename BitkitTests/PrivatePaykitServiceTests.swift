@@ -120,6 +120,8 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(payload.transfers.isEmpty)
         XCTAssertNil(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
         XCTAssertNil(payload.paykitSdkBackupState)
+        XCTAssertNil(payload.watchOnlyAccounts)
+        XCTAssertNil(payload.watchOnlyAccountAllocationState)
     }
 
     func testWalletBackupRoundTripsPrivateReservationCeilingAndSdkState() throws {
@@ -128,7 +130,9 @@ final class PrivatePaykitServiceTests: XCTestCase {
             createdAt: 123,
             transfers: [],
             privatePaykitHighestReservedReceiveIndexByAddressType: ["nativeSegwit": 5],
-            paykitSdkBackupState: "AQID"
+            paykitSdkBackupState: "AQID",
+            watchOnlyAccounts: nil,
+            watchOnlyAccountAllocationState: nil
         )
 
         let data = try JSONEncoder().encode(backup)

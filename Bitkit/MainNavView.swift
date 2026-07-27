@@ -574,6 +574,7 @@ struct MainNavView: View {
                 case .electrumSettings: ElectrumSettingsScreen()
                 case .rgsSettings: RgsSettingsScreen()
                 case .addressViewer: AddressViewer()
+                case .watchOnlyAccounts: WatchOnlyAccountsView()
                 case .devSettings: DevSettingsView()
 
                 // Dev settings
@@ -665,7 +666,7 @@ struct MainNavView: View {
     }
 
     private func shouldOpenPaymentSheet(for uri: String) -> Bool {
-        !SamRockSetupRequest.isProtocolURL(uri)
+        !SamRockSetupRequest.isProtocolURL(uri) && !PubkyAuthRequest.isProtocolURL(uri)
     }
 
     private func sanitizedDeeplinkDescription(_ url: URL) -> String {
