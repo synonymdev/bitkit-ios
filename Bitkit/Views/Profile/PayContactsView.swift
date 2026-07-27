@@ -75,7 +75,22 @@ struct PayContactsView: View {
 
         do {
             if publish {
-                try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: true)
+                let previousSharesPrivate = sharesPrivatePaykitEndpoints
+                let previousSharesPublic = sharesPublicPaykitEndpoints
+                let previousConfirmed = hasConfirmedPublicPaykitEndpoints
+                do {
+                    try await PublicPaykitService.syncPublishedEndpoints(
+                        wallet: wallet,
+                        publish: true
+                    )
+                } catch {
+                    await rollbackFailedContactPaymentEnable(
+                        previousSharesPublic: previousSharesPublic,
+                        previousSharesPrivate: previousSharesPrivate,
+                        previousConfirmed: previousConfirmed
+                    )
+                    throw error
+                }
                 let canUsePrivateContactPayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
                 sharesPrivatePaykitEndpoints = canUsePrivateContactPayments
                 sharesPublicPaykitEndpoints = true
@@ -112,6 +127,15 @@ struct PayContactsView: View {
 
                 if publicCleanupError != nil {
                     sharesPublicPaykitEndpoints = previousSharesPublic
+                    if previousSharesPublic {
+                        do {
+                            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: true)
+                            PublicPaykitService.setCleanupPending(false)
+                        } catch {
+                            PublicPaykitService.setCleanupPending(true)
+                            Logger.warn("Failed to restore public Paykit endpoints after cleanup failure: \(error)", context: "PayContactsView")
+                        }
+                    }
                 }
 
                 if let privateCleanupError {
@@ -133,13 +157,24 @@ struct PayContactsView: View {
                         }
                     }
                     PrivatePaykitService.setContactSharingCleanupPending(!restoredPrivateSharing)
-                    throw publicCleanupError ?? privateCleanupError
+                }
+
+                if let cleanupError = publicCleanupError ?? privateCleanupError {
+                    do {
+                        try await PublicPaykitService.syncLocalReceiverMarker(
+                            publicSharingEnabled: sharesPublicPaykitEndpoints,
+                            privateSharingEnabled: sharesPrivatePaykitEndpoints
+                        )
+                    } catch {
+                        Logger.warn(
+                            "Failed to restore Paykit receiver marker after cleanup failure: \(error)",
+                            context: "PayContactsView"
+                        )
+                    }
+                    throw cleanupError
                 }
 
                 PrivatePaykitService.setContactSharingCleanupPending(false)
-                if let publicCleanupError {
-                    throw publicCleanupError
-                }
             }
             navigation.path = [.profile]
         } catch {
@@ -150,6 +185,24 @@ struct PayContactsView: View {
                 title: t("common__error"),
                 description: error.localizedDescription
             )
+        }
+    }
+
+    private func rollbackFailedContactPaymentEnable(
+        previousSharesPublic: Bool,
+        previousSharesPrivate: Bool,
+        previousConfirmed: Bool
+    ) async {
+        sharesPublicPaykitEndpoints = previousSharesPublic
+        sharesPrivatePaykitEndpoints = previousSharesPrivate
+        hasConfirmedPublicPaykitEndpoints = previousConfirmed
+
+        do {
+            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: previousSharesPublic)
+            PublicPaykitService.setCleanupPending(false)
+        } catch {
+            PublicPaykitService.setCleanupPending(true)
+            Logger.warn("Failed to roll back public Paykit endpoints after enabling contact payments failed: \(error)", context: "PayContactsView")
         }
     }
 }

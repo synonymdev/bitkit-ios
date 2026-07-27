@@ -23,6 +23,7 @@ enum SettingsRowRightIcon {
 
 struct SettingsRow: View {
     let title: String
+    let subtitle: String?
     let iconName: String?
     let iconColor: Color?
     let rightText: String?
@@ -33,6 +34,7 @@ struct SettingsRow: View {
 
     init(
         title: String,
+        subtitle: String? = nil,
         iconName: String? = nil,
         iconColor: Color? = .brandAccent,
         rightText: String? = nil,
@@ -42,6 +44,7 @@ struct SettingsRow: View {
         testIdentifier: String? = nil
     ) {
         self.title = title
+        self.subtitle = subtitle
         self.iconName = iconName
         self.iconColor = iconColor
         self.rightText = rightText
@@ -59,9 +62,17 @@ struct SettingsRow: View {
                         .padding(.trailing, 8)
                 }
 
-                BodyMText(title, textColor: .textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                VStack(alignment: .leading, spacing: 4) {
+                    BodyMText(title, textColor: .textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    if let subtitle {
+                        BodySText(subtitle, textColor: .textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
 
                 Spacer()
 
@@ -98,7 +109,7 @@ struct SettingsRow: View {
                     }
                 }
             }
-            .frame(height: 50)
+            .frame(minHeight: subtitle == nil ? 50 : 66)
 
             CustomDivider()
         }

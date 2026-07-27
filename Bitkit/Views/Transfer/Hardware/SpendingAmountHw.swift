@@ -102,6 +102,8 @@ struct SpendingAmountHw: View {
             }
             .accessibilityIdentifier("HardwareTransferAmountContinue")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("HardwareTransferAmount")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()

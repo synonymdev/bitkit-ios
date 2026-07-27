@@ -8,7 +8,7 @@ extension PrivatePaykitService {
         guard !paymentHash.isEmpty else { return nil }
 
         return state.contacts.first { _, contactState in
-            contactState.localInvoice?.paymentHash == paymentHash ||
+            localInvoices(contactState).contains { $0.paymentHash == paymentHash } ||
                 contactState.receivedInvoicePaymentHashes.contains(paymentHash)
         }?.key
     }
@@ -22,9 +22,9 @@ extension PrivatePaykitService {
     }
 
     private func beginPrivateOrPublicPayment(to publicKey: String, wallet: WalletViewModel) async throws -> PublicPaykitPaymentLaunchResult {
-        let isPrivateCapable = await hasLocalSecretKeyForCurrentProfile()
+        let hasLiveSession = await hasLiveSessionForCurrentProfile()
 
-        if isPrivateCapable, await canPublishPrivateEndpoints(wallet: wallet) {
+        if hasLiveSession, await canPublishPrivateEndpoints(wallet: wallet) {
             _ = await refreshSavedContactEndpointsReturningError(
                 for: [publicKey],
                 wallet: wallet,
@@ -34,7 +34,11 @@ extension PrivatePaykitService {
         }
 
         do {
-            let prepared = try await PaykitSdkService.shared.prepareAndResolveContactPayment(counterparty: publicKey, includePublicEndpoints: true)
+            let prepared = try await PaykitSdkService.shared.prepareAndResolveContactPayment(
+                counterparty: publicKey,
+                receiverPath: PaykitReceiverPath.wallet,
+                includePublicEndpoints: true
+            )
             let resolution = prepared.resolution
             let privateEndpoints = resolvedEndpoints(from: resolution, source: .privatePaymentList)
             cacheResolvedEndpoints(privateEndpoints, publicKey: publicKey)
@@ -69,9 +73,9 @@ extension PrivatePaykitService {
         }
     }
 
-    private func hasLocalSecretKeyForCurrentProfile() async -> Bool {
+    private func hasLiveSessionForCurrentProfile() async -> Bool {
         guard let status = try? await PaykitSdkService.shared.identityStatus() else { return false }
-        return status.privateLinkCapable
+        return status.liveSessionAvailable
     }
 
     func privatePayableEndpoints(from endpoints: [PublicPaykitService.Endpoint], publicKey: String) async -> [PublicPaykitService.Endpoint] {

@@ -104,7 +104,7 @@ jobs:
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
 
       - name: Upload iOS app (regtest)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: e2e-app/
@@ -171,13 +171,13 @@ jobs:
           ref: ${{ needs.e2e-branch.outputs.branch }}
 
       - name: Download iOS app
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
 
       - name: Download migration env
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: migration-env_${{ matrix.rn_version }}_${{ matrix.scenario.name }}
           path: bitkit-e2e-tests/artifacts
@@ -316,7 +316,7 @@ jobs:
 
       - name: Upload E2E Artifacts (${{ matrix.scenario.name }})
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts_${{ matrix.scenario.name }}_${{ matrix.rn_version }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/

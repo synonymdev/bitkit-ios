@@ -104,11 +104,22 @@ struct ReceiveQr: View {
                                 navigationPath.append(.cjitGeoBlocked)
                             }
                         }
-                    } else {
-                        CustomButton(title: showDetails ? t("common__qr_code") : t("common__show_details")) {
+                    } else if showDetails {
+                        CustomButton(
+                            title: t("wallet__receive_show_qr"),
+                            icon: Image("qr")
+                                .resizable()
+                                .frame(width: 16, height: 16)
+                                .foregroundColor(.textPrimary)
+                        ) {
                             showDetails.toggle()
                         }
-                        .accessibilityIdentifier(showDetails ? "QRCode" : "ShowDetails")
+                        .accessibilityIdentifier("QRCode")
+                    } else {
+                        CustomButton(title: t("common__show_details"), variant: .tertiary) {
+                            showDetails.toggle()
+                        }
+                        .accessibilityIdentifier("ShowDetails")
                     }
                 }
                 .padding(.horizontal, 16)
