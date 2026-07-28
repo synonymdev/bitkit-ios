@@ -473,6 +473,9 @@ class WalletViewModel: ObservableObject {
         }
         if !Task.isCancelled {
             Logger.warn("Gave up starting swap updates after \(attempt) attempts", context: "WalletViewModel")
+            // Free the slot so the next trigger (node start or entering a swap flow) can retry;
+            // a parked spent task would keep ensureSwapUpdatesRunning from ever starting one.
+            swapUpdatesTask = nil
         }
     }
 

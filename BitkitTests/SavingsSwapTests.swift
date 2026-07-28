@@ -1,4 +1,5 @@
 import BitkitCore
+import LDKNode
 import XCTest
 
 @testable import Bitkit
@@ -71,6 +72,88 @@ final class SavingsSwapTests: XCTestCase {
 
         transfer.onTransferToSavingsConfirm(channels: [], mode: .close)
         XCTAssertEqual(transfer.savingsTransferMode, .close)
+    }
+
+    // MARK: - Quote loading state
+
+    @MainActor
+    func testBeginSavingsSwapQuoteLoadIsANoOpWhereSwapsAreUnavailable() {
+        // Unit tests run on regtest, so the swap gate is closed and the confirm screen's
+        // pre-sync loading marker must leave the state idle: the swipe stays immediately
+        // usable on the unchanged channel-close path.
+        let transfer = TransferViewModel()
+
+        transfer.beginSavingsSwapQuoteLoad()
+
+        XCTAssertFalse(transfer.savingsSwapState.isLoading)
+        XCTAssertNil(transfer.savingsSwapState.quote)
+    }
+
+    // MARK: - Payment failure messages
+
+    func testPaymentFailureReasonsMapToTheirUserMessages() {
+        XCTAssertEqual(
+            PaymentFailureReason.userMessage(for: .recipientRejected),
+            t("wallet__toast_payment_failed_recipient_rejected")
+        )
+        XCTAssertEqual(
+            PaymentFailureReason.userMessage(for: .retriesExhausted),
+            t("wallet__toast_payment_failed_retries_exhausted")
+        )
+        XCTAssertEqual(
+            PaymentFailureReason.userMessage(for: .routeNotFound),
+            t("wallet__toast_payment_failed_route_not_found")
+        )
+        XCTAssertEqual(
+            PaymentFailureReason.userMessage(for: .paymentExpired),
+            t("wallet__toast_payment_failed_timeout")
+        )
+    }
+
+    func testUnmappedAndAbsentPaymentFailureReasonsFallBackToTheGenericMessage() {
+        XCTAssertEqual(
+            PaymentFailureReason.userMessage(for: .unexpectedError),
+            t("wallet__toast_payment_failed_description")
+        )
+        XCTAssertEqual(
+            PaymentFailureReason.userMessage(for: nil),
+            t("wallet__toast_payment_failed_description")
+        )
+    }
+
+    // MARK: - Payment failure capture
+
+    func testWaitForFailureResumesWithTheReportedReason() async {
+        let capture = SwapPaymentFailureCapture()
+
+        async let wait = capture.waitForFailure()
+        await capture.markFailed(reason: .routeNotFound)
+
+        let outcome = await wait
+        XCTAssertEqual(outcome, .failed(reason: .routeNotFound))
+    }
+
+    func testWaitForFailureReturnsTheMemoizedOutcomeToLateWaiters() async {
+        let capture = SwapPaymentFailureCapture()
+        await capture.markFailed(reason: nil)
+
+        let outcome = await capture.waitForFailure()
+
+        XCTAssertEqual(outcome, .failed(reason: nil))
+    }
+
+    func testCancelWaitsUnblocksTheWaitAndAppliesToLaterWaiters() async {
+        let capture = SwapPaymentFailureCapture()
+
+        async let wait = capture.waitForFailure()
+        await capture.cancelWaits()
+        let outcome = await wait
+        XCTAssertEqual(outcome, .cancelled)
+
+        // The race is over; a failure arriving afterwards must not reopen it.
+        await capture.markFailed(reason: .routeNotFound)
+        let after = await capture.waitForFailure()
+        XCTAssertEqual(after, .cancelled)
     }
 
     // MARK: - Claim gating

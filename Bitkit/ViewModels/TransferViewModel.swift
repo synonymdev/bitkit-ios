@@ -149,6 +149,10 @@ class TransferViewModel: ObservableObject {
     private var coopCloseRetryTask: Task<Void, Never>?
 
     private let boltzService: BoltzService = .shared
+    /// The in-flight or completed swap execution for the current transfer commit. Held here so
+    /// SwiftUI cancelling and re-running the progress screen's `.task` neither cancels the swap
+    /// nor creates and pays a second one: re-entry awaits the same run and its memoized result.
+    private var savingsSwapRun: Task<SavingsSwapResult, Never>?
     /// The amount (sat) that will actually be swapped out; adjustable via the confirm slider.
     private var pendingSwapAmountSat: UInt64 = 0
     /// Cached swap limits so the slider can re-price locally without hitting the network.
@@ -972,6 +976,8 @@ class TransferViewModel: ObservableObject {
         savingsTransferMode = mode ?? resolvedSavingsTransferMode
         selectedChannelIds = []
         channelsToClose = channels
+        // Each swipe commit is a new transfer; the previous run's memo must not satisfy it.
+        savingsSwapRun = nil
     }
 
     private var resolvedSavingsTransferMode: SavingsTransferMode {
@@ -1175,11 +1181,28 @@ class TransferViewModel: ObservableObject {
     /// thing that unlocks the swap, so every failure simply leaves it nil and the transfer
     /// falls back to closing a channel. Skipped entirely where swaps are unsupported or the
     /// flow is switched off in dev settings, see `BoltzService.isSwapEnabled`.
-    func loadSavingsSwapQuote(requestedSat: UInt64, spendableSats: UInt64) async {
+    /// Show the quote's loading state ahead of `loadSavingsSwapQuote`, covering work that runs
+    /// before the fetch (the confirm screen's balance sync) so the swipe cannot briefly land in
+    /// the channel-close fallback while a quote is still on its way.
+    func beginSavingsSwapQuoteLoad() {
         guard boltzService.isSwapEnabled else { return }
         savingsSwapState = SavingsSwapState(isLoading: true)
+    }
 
-        guard let limits = await fetchReverseSwapLimits() else {
+    func loadSavingsSwapQuote(requestedSat: UInt64, spendableSats: UInt64) async {
+        guard boltzService.isSwapEnabled else { return }
+        guard requestedSat > 0 else {
+            savingsSwapState = SavingsSwapState()
+            return
+        }
+        savingsSwapState = SavingsSwapState(isLoading: true)
+
+        let fetchedLimits = await fetchReverseSwapLimits()
+        // The confirm screen restarts this whenever the amount changes; a superseded invocation
+        // must not clobber the state its replacement is about to publish.
+        guard !Task.isCancelled else { return }
+
+        guard let limits = fetchedLimits else {
             reverseSwapLimits = nil
             savingsSwapState = SavingsSwapState()
             return
@@ -1247,7 +1270,23 @@ class TransferViewModel: ObservableObject {
     /// failure; the claim is auto-broadcast by the updates stream once the lockup confirms, so the
     /// swap completes in the background. `onEvent`/`removeEvent` register a node event listener so
     /// an unroutable payment can be observed (see `awaitSwapOutcome`).
+    ///
+    /// At most one swap runs per confirm commit: the run is owned by the view model, so the
+    /// progress screen's `.task` being cancelled and re-entered joins the same run instead of
+    /// creating and paying a second swap.
     func executeSavingsSwap(
+        onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
+        removeEvent: @escaping (String) -> Void
+    ) async -> SavingsSwapResult {
+        if let run = savingsSwapRun {
+            return await run.value
+        }
+        let run = Task { await performSavingsSwap(onEvent: onEvent, removeEvent: removeEvent) }
+        savingsSwapRun = run
+        return await run.value
+    }
+
+    private func performSavingsSwap(
         onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
         removeEvent: @escaping (String) -> Void
     ) async -> SavingsSwapResult {
@@ -1301,17 +1340,16 @@ class TransferViewModel: ObservableObject {
         let paymentFailure = SwapPaymentFailureCapture()
 
         // LDK events are dispatched on the main actor, so this handler runs there; it records a
-        // routing failure for the paid hold invoice for the poll below to surface. The returned
-        // payment id may land in either the event's payment id or its payment hash field.
+        // routing failure for the paid hold invoice and resumes the failure wait below. The
+        // returned payment id may land in either the event's payment id or its payment hash field.
         onEvent(eventId) { event in
-            guard case let .paymentFailed(eventPaymentId, eventPaymentHash, _) = event else { return }
+            guard case let .paymentFailed(eventPaymentId, eventPaymentHash, reason) = event else { return }
             guard [eventPaymentId, eventPaymentHash].compactMap({ $0 }).contains(paymentId) else { return }
-            Task { await paymentFailure.markFailed() }
+            Task { await paymentFailure.markFailed(reason: reason) }
         }
 
         // Capture main-actor state locally so the detached group tasks stay Sendable.
         let claimTimeout = swapClaimTimeout
-        let paymentFailedMessage = t("wallet__toast_payment_failed_description")
 
         let outcome = await withTaskGroup(of: SavingsSwapResult?.self) { group in
             // On-chain claim or a Boltz-side error.
@@ -1328,15 +1366,16 @@ class TransferViewModel: ObservableObject {
                 }
                 return nil
             }
-            // Lightning routing failure on the paid hold invoice.
+            // Lightning routing failure on the paid hold invoice, surfaced the moment the node
+            // reports it, with the failure reason mapped to a user-facing message.
             group.addTask {
-                while !Task.isCancelled {
-                    if await paymentFailure.hasFailed {
-                        return .failure(message: paymentFailedMessage)
-                    }
-                    try? await Task.sleep(nanoseconds: 200_000_000)
+                let wait = await withTaskCancellationHandler {
+                    await paymentFailure.waitForFailure()
+                } onCancel: {
+                    Task { await paymentFailure.cancelWaits() }
                 }
-                return nil
+                guard case let .failed(reason) = wait else { return nil }
+                return .failure(message: PaymentFailureReason.userMessage(for: reason))
             }
             // Bounded wait: a timeout is not a failure, the claim settles in the background.
             group.addTask {
@@ -1361,12 +1400,40 @@ class TransferViewModel: ObservableObject {
 }
 
 /// Captures a Lightning routing failure for the savings swap's hold-invoice payment. The node
-/// event handler runs on the main actor; this actor lets the racing wait poll for the outcome.
+/// event handler runs on the main actor and resumes the waiting continuation, so the racing
+/// wait in `awaitSwapOutcome` surfaces the failure the moment it is reported instead of polling.
 actor SwapPaymentFailureCapture {
-    private(set) var hasFailed = false
+    enum Wait: Equatable {
+        case failed(reason: PaymentFailureReason?)
+        case cancelled
+    }
 
-    func markFailed() {
-        hasFailed = true
+    private var outcome: Wait?
+    private var waiters: [CheckedContinuation<Wait, Never>] = []
+
+    func markFailed(reason: PaymentFailureReason?) {
+        finish(with: .failed(reason: reason))
+    }
+
+    /// Unblocks the wait when its surrounding task is cancelled (another branch of the race
+    /// won); a continuation left pending would keep the task group from ever finishing.
+    func cancelWaits() {
+        finish(with: .cancelled)
+    }
+
+    func waitForFailure() async -> Wait {
+        if let outcome { return outcome }
+        return await withCheckedContinuation { waiters.append($0) }
+    }
+
+    private func finish(with wait: Wait) {
+        guard outcome == nil else { return }
+        outcome = wait
+        let pending = waiters
+        waiters = []
+        for waiter in pending {
+            waiter.resume(returning: wait)
+        }
     }
 }
 

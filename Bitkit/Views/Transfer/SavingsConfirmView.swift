@@ -135,8 +135,10 @@ struct SavingsConfirmView: View {
         .task(id: totalSats) {
             // Pull the latest node balances so a just-received payment is reflected, then
             // present the swap fee before the user commits. Recomputed when the amount changes.
+            // The quote reads as loading across the sync too, so the swipe cannot land in the
+            // channel-close fallback while a quote is still on its way.
+            transfer.beginSavingsSwapQuoteLoad()
             await wallet.syncStateAsync()
-            guard totalSats > 0 else { return }
             await transfer.loadSavingsSwapQuote(
                 requestedSat: totalSats,
                 spendableSats: UInt64(max(0, wallet.maxSendLightningSats))
