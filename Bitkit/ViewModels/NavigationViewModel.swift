@@ -13,6 +13,7 @@ enum Route: Hashable {
     case contacts
     case contactsIntro
     case contactDetail(publicKey: String)
+    case contactSaved(publicKey: String)
     case contactActivity(publicKey: String)
     case assignActivityContact(activityId: String)
     case contactImportOverview
@@ -79,7 +80,6 @@ enum Route: Hashable {
     case quickpayIntro
     case notifications
     case notificationsIntro
-    case paymentPreference
     case hardwareWalletsSettings
 
     // Security

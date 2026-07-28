@@ -14,7 +14,7 @@ final class PubkyModelTests: XCTestCase {
             status: nil
         )
 
-        XCTAssertEqual(profile.truncatedPublicKey, "pubk...2doK")
+        XCTAssertEqual(profile.truncatedPublicKey, "z6Mk...2doK")
     }
 
     func testTruncatedPublicKeyShortKey() {
@@ -65,7 +65,7 @@ final class PubkyModelTests: XCTestCase {
         let placeholder = PubkyProfile.placeholder(publicKey: "pubkyz6MkhaXgBZDvotDk")
 
         XCTAssertEqual(placeholder.publicKey, "pubkyz6MkhaXgBZDvotDk")
-        XCTAssertEqual(placeholder.name, "pubk...otDk")
+        XCTAssertEqual(placeholder.name, "z6Mk...otDk")
         XCTAssertTrue(placeholder.bio.isEmpty)
         XCTAssertNil(placeholder.imageUrl)
         XCTAssertTrue(placeholder.links.isEmpty)

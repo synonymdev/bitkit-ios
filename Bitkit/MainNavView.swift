@@ -471,6 +471,8 @@ struct MainNavView: View {
                     if isPaykitUIActive { ContactsIntroView() } else { ComingSoonScreen() }
                 case let .contactDetail(publicKey):
                     if isPaykitUIActive { ContactDetailView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                case let .contactSaved(publicKey):
+                    if isPaykitUIActive { ContactDetailView(publicKey: publicKey, showsDeleteAction: true) } else { paykitDisabledRedirectView }
                 case let .contactActivity(publicKey):
                     if isPaykitUIActive { ContactActivityView(publicKey: publicKey) } else { paykitDisabledRedirectView }
                 case let .assignActivityContact(activityId):
@@ -549,8 +551,6 @@ struct MainNavView: View {
                 case .widgetsSettings: WidgetsSettingsScreen()
                 case .notifications: NotificationsSettings()
                 case .notificationsIntro: NotificationsIntro()
-                case .paymentPreference:
-                    if isPaykitUIActive { PaymentPreferenceView() } else { paykitDisabledRedirectView }
                 case .hardwareWalletsSettings: HardwareWalletsSettingsScreen()
 
                 // Security settings

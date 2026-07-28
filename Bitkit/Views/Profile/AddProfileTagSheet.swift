@@ -37,7 +37,7 @@ struct AddProfileTagSheet: View {
         .sheetBackground()
         .presentationDetents([.height(300)])
         .presentationCornerRadius(32)
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .sheet(isPresented: $showSuggestionsSheet) {
             TagSuggestionsSheet { suggestion in
                 tag = suggestion
