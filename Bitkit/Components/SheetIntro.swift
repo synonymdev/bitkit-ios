@@ -10,6 +10,7 @@ struct SheetIntro: View {
     let accentColor: Color
     let accentFont: ((CGFloat) -> Font)?
     let testID: String?
+    let cancelTestID: String?
     let continueTestID: String?
     let onCancel: (() -> Void)?
     let onContinue: () -> Void
@@ -27,6 +28,7 @@ struct SheetIntro: View {
         accentColor: Color = .brandAccent,
         accentFont: ((CGFloat) -> Font)? = nil,
         testID: String? = nil,
+        cancelTestID: String? = nil,
         continueTestID: String? = nil,
         onCancel: (() -> Void)? = nil,
         onContinue: @escaping () -> Void
@@ -40,6 +42,7 @@ struct SheetIntro: View {
         self.accentColor = accentColor
         self.accentFont = accentFont
         self.testID = testID
+        self.cancelTestID = cancelTestID
         self.continueTestID = continueTestID
         self.onCancel = onCancel
         self.onContinue = onContinue
@@ -88,7 +91,7 @@ struct SheetIntro: View {
                 CustomButton(title: cancelText, variant: .secondary) {
                     onCancel()
                 }
-                .accessibilityIdentifier("\(baseTestID)Cancel")
+                .accessibilityIdentifier(cancelTestID ?? "\(baseTestID)Cancel")
 
                 CustomButton(title: continueText) {
                     onContinue()

@@ -574,6 +574,7 @@ struct MainNavView: View {
                 case .electrumSettings: ElectrumSettingsScreen()
                 case .rgsSettings: RgsSettingsScreen()
                 case .addressViewer: AddressViewer()
+                case .watchOnlyAccounts: WatchOnlyAccountsView()
                 case .devSettings: DevSettingsView()
 
                 // Dev settings
@@ -632,6 +633,9 @@ struct MainNavView: View {
                     contacts: contactsManager.contacts
                 ) {
                     navigation.navigate(route)
+                    if case let .contactDetail(publicKey) = route {
+                        await contactsManager.refreshContactReceiverPaths(publicKey: publicKey, wallet: wallet)
+                    }
                     clipboardUri = nil
                     return
                 }
@@ -664,7 +668,7 @@ struct MainNavView: View {
     }
 
     private func shouldOpenPaymentSheet(for uri: String) -> Bool {
-        !SamRockSetupRequest.isProtocolURL(uri)
+        !SamRockSetupRequest.isProtocolURL(uri) && !PubkyAuthRequest.isProtocolURL(uri)
     }
 
     private func sanitizedDeeplinkDescription(_ url: URL) -> String {

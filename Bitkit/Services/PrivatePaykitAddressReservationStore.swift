@@ -69,14 +69,6 @@ actor PrivatePaykitAddressReservationStore {
 
     // MARK: - Contact Assignments
 
-    func hasContactAssignment(for publicKey: String) -> Bool {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey),
-              let assignment = ledger.contactAssignments[normalizedKey]
-        else { return false }
-
-        return LDKNode.AddressType.from(string: assignment.addressType) != nil
-    }
-
     func contactPublicKey(forReservedAddress address: String) async -> String? {
         guard !address.isEmpty else { return nil }
 
@@ -84,7 +76,7 @@ actor PrivatePaykitAddressReservationStore {
             return publicKey
         }
 
-        for (publicKey, history) in ledger.contactAssignmentHistory {
+        for (assignmentKey, history) in ledger.contactAssignmentHistory {
             for assignment in history {
                 guard let addressType = LDKNode.AddressType.from(string: assignment.addressType),
                       addressType.matchesAddressFormat(address, network: Env.network),
@@ -92,7 +84,7 @@ actor PrivatePaykitAddressReservationStore {
                       reservedAddress == address
                 else { continue }
 
-                return publicKey
+                return Self.publicKey(fromAssignmentKey: assignmentKey)
             }
         }
 
@@ -102,24 +94,25 @@ actor PrivatePaykitAddressReservationStore {
     func currentContactPublicKey(forReservedAddress address: String) async -> String? {
         guard !address.isEmpty else { return nil }
 
-        for (publicKey, assignment) in ledger.contactAssignments {
+        for (assignmentKey, assignment) in ledger.contactAssignments {
             guard let addressType = LDKNode.AddressType.from(string: assignment.addressType),
                   addressType.matchesAddressFormat(address, network: Env.network),
                   let reservedAddress = try? await self.address(for: addressType, receiveIndex: assignment.receiveIndex),
                   reservedAddress == address
             else { continue }
 
-            return publicKey
+            return Self.publicKey(fromAssignmentKey: assignmentKey)
         }
 
         return nil
     }
 
-    func currentOrRotatedAddress(for publicKey: String) async throws -> String {
-        if let existing = try await reservedAddressDetails(for: publicKey) {
+    func currentOrRotatedAddress(for publicKey: String, receiverPath: String) async throws -> String {
+        let assignmentKey = try Self.contactAssignmentKey(publicKey: publicKey, receiverPath: receiverPath)
+        if let existing = try await reservedAddressDetails(forAssignmentKey: assignmentKey) {
             guard isAddressTypeMonitored(existing.addressType) else {
-                clearCurrentContactAssignment(publicKey: publicKey)
-                return try await allocateAddress(for: publicKey)
+                clearCurrentContactAssignment(assignmentKey: assignmentKey)
+                return try await allocateAddress(forAssignmentKey: assignmentKey)
             }
 
             do {
@@ -136,16 +129,11 @@ actor PrivatePaykitAddressReservationStore {
             }
         }
 
-        return try await allocateAddress(for: publicKey)
+        return try await allocateAddress(forAssignmentKey: assignmentKey)
     }
 
-    func rotateAddress(for publicKey: String) async throws -> String {
-        return try await allocateAddress(for: publicKey)
-    }
-
-    private func reservedAddressDetails(for publicKey: String) async throws -> (address: String, addressType: LDKNode.AddressType)? {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey),
-              let assignment = ledger.contactAssignments[normalizedKey],
+    private func reservedAddressDetails(forAssignmentKey assignmentKey: String) async throws -> (address: String, addressType: LDKNode.AddressType)? {
+        guard let assignment = ledger.contactAssignments[assignmentKey],
               let addressType = LDKNode.AddressType.from(string: assignment.addressType)
         else { return nil }
 
@@ -165,17 +153,17 @@ actor PrivatePaykitAddressReservationStore {
         var seenAssignmentKeys = Set<String>()
         var assignments: [(publicKey: String, assignment: StoredAssignment)] = []
 
-        for (publicKey, assignment) in ledger.contactAssignments {
+        for (assignmentKey, assignment) in ledger.contactAssignments {
             let key = Self.assignmentKey(assignment)
             guard seenAssignmentKeys.insert(key).inserted else { continue }
-            assignments.append((publicKey: publicKey, assignment: assignment))
+            assignments.append((publicKey: Self.publicKey(fromAssignmentKey: assignmentKey), assignment: assignment))
         }
 
-        for (publicKey, history) in ledger.contactAssignmentHistory {
+        for (assignmentKey, history) in ledger.contactAssignmentHistory {
             for assignment in history {
                 let key = Self.assignmentKey(assignment)
                 guard seenAssignmentKeys.insert(key).inserted else { continue }
-                assignments.append((publicKey: publicKey, assignment: assignment))
+                assignments.append((publicKey: Self.publicKey(fromAssignmentKey: assignmentKey), assignment: assignment))
             }
         }
 
@@ -187,24 +175,24 @@ actor PrivatePaykitAddressReservationStore {
     func contactsWithUsedReservedAddresses() async -> [String] {
         var publicKeys: [String] = []
 
-        for (publicKey, assignment) in ledger.contactAssignments {
+        for (assignmentKey, assignment) in ledger.contactAssignments {
             guard let addressType = LDKNode.AddressType.from(string: assignment.addressType),
                   let address = try? await address(for: addressType, receiveIndex: assignment.receiveIndex)
             else { continue }
 
             do {
                 if try await CoreService.shared.utility.isAddressUsed(address: address) {
-                    publicKeys.append(publicKey)
+                    publicKeys.append(Self.publicKey(fromAssignmentKey: assignmentKey))
                 }
             } catch {
                 Logger.warn(
-                    "Unable to check private Paykit reserved address usage for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
+                    "Unable to check private Paykit reserved address usage for \(PubkyPublicKeyFormat.redacted(Self.publicKey(fromAssignmentKey: assignmentKey))): \(error)",
                     context: "PrivatePaykit"
                 )
             }
         }
 
-        return publicKeys
+        return Array(Set(publicKeys)).sorted()
     }
 
     // MARK: - Reusable Receive Protection
@@ -311,8 +299,12 @@ actor PrivatePaykitAddressReservationStore {
     func clearContactAssignment(publicKey: String) {
         guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
 
-        let removedCurrent = ledger.contactAssignments.removeValue(forKey: normalizedKey) != nil
-        let removedHistory = ledger.contactAssignmentHistory.removeValue(forKey: normalizedKey) != nil
+        let previousCount = ledger.contactAssignments.count
+        let previousHistoryCount = ledger.contactAssignmentHistory.count
+        ledger.contactAssignments = ledger.contactAssignments.filter { Self.publicKey(fromAssignmentKey: $0.key) != normalizedKey }
+        ledger.contactAssignmentHistory = ledger.contactAssignmentHistory.filter { Self.publicKey(fromAssignmentKey: $0.key) != normalizedKey }
+        let removedCurrent = ledger.contactAssignments.count != previousCount
+        let removedHistory = ledger.contactAssignmentHistory.count != previousHistoryCount
         guard removedCurrent || removedHistory else { return }
 
         persist()
@@ -322,28 +314,23 @@ actor PrivatePaykitAddressReservationStore {
         let normalizedKeys = Set(publicKeys.compactMap(PubkyPublicKeyFormat.normalized))
         let previousCount = ledger.contactAssignments.count
         let previousHistoryCount = ledger.contactAssignmentHistory.count
-        ledger.contactAssignments = ledger.contactAssignments.filter { normalizedKeys.contains($0.key) }
-        ledger.contactAssignmentHistory = ledger.contactAssignmentHistory.filter { normalizedKeys.contains($0.key) }
+        ledger.contactAssignments = ledger.contactAssignments.filter { normalizedKeys.contains(Self.publicKey(fromAssignmentKey: $0.key)) }
+        ledger.contactAssignmentHistory = ledger.contactAssignmentHistory
+            .filter { normalizedKeys.contains(Self.publicKey(fromAssignmentKey: $0.key)) }
         guard ledger.contactAssignments.count != previousCount || ledger.contactAssignmentHistory.count != previousHistoryCount else { return }
 
         persist()
     }
 
-    private func clearCurrentContactAssignment(publicKey: String) {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey),
-              ledger.contactAssignments.removeValue(forKey: normalizedKey) != nil
-        else { return }
+    private func clearCurrentContactAssignment(assignmentKey: String) {
+        guard ledger.contactAssignments.removeValue(forKey: assignmentKey) != nil else { return }
 
         persist()
     }
 
     // MARK: - Private Address Allocation
 
-    private func allocateAddress(for publicKey: String) async throws -> String {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
-            throw PrivatePaykitError.privateUnavailable
-        }
-
+    private func allocateAddress(forAssignmentKey assignmentKey: String) async throws -> String {
         let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
         let addressTypeKey = addressType.stringValue
 
@@ -365,8 +352,8 @@ actor PrivatePaykitAddressReservationStore {
             addressType: addressTypeKey,
             receiveIndex: addressInfo.index
         )
-        ledger.contactAssignments[normalizedKey] = assignment
-        rememberContactAssignmentForAttribution(publicKey: normalizedKey, assignment: assignment)
+        ledger.contactAssignments[assignmentKey] = assignment
+        rememberContactAssignmentForAttribution(assignmentKey: assignmentKey, assignment: assignment)
         persist()
         markWalletBackupDataChanged()
         await ensureReusableOnchainAddress(afterReserving: addressInfo.address, addressType: addressType)
@@ -374,12 +361,12 @@ actor PrivatePaykitAddressReservationStore {
         return addressInfo.address
     }
 
-    private func rememberContactAssignmentForAttribution(publicKey: String, assignment: StoredAssignment) {
-        var history = ledger.contactAssignmentHistory[publicKey] ?? []
+    private func rememberContactAssignmentForAttribution(assignmentKey: String, assignment: StoredAssignment) {
+        var history = ledger.contactAssignmentHistory[assignmentKey] ?? []
         guard !history.contains(assignment) else { return }
 
         history.append(assignment)
-        ledger.contactAssignmentHistory[publicKey] = history
+        ledger.contactAssignmentHistory[assignmentKey] = history
     }
 
     // MARK: - LDK Address Index APIs
@@ -395,6 +382,20 @@ actor PrivatePaykitAddressReservationStore {
 
     private static func assignmentKey(_ assignment: StoredAssignment) -> String {
         "\(assignment.addressType):\(assignment.receiveIndex)"
+    }
+
+    private static func contactAssignmentKey(publicKey: String, receiverPath: String) throws -> String {
+        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
+            throw PrivatePaykitError.privateUnavailable
+        }
+        guard receiverPath != PaykitReceiverPath.wallet else {
+            return normalizedKey
+        }
+        return "\(normalizedKey)#\(receiverPath)"
+    }
+
+    private static func publicKey(fromAssignmentKey assignmentKey: String) -> String {
+        assignmentKey.components(separatedBy: "#").first ?? assignmentKey
     }
 
     // MARK: - Cached Receive Address

@@ -9,16 +9,14 @@ extension PrivatePaykitService {
 
     struct ContactState: Codable {
         var cachedResolvedEndpoints: [StoredPaymentEntry] = []
-        var localInvoice: StoredInvoice?
+        var localInvoicesByReceiverPath: [String: StoredInvoice] = [:]
         var receivedInvoicePaymentHashes: [String] = []
-        var hasPublishedPrivatePaymentList = false
-
-        init() {}
+        var publishedPrivatePaymentReceiverPaths: [String] = []
 
         var hasCacheState: Bool {
-            hasPublishedPrivatePaymentList ||
+            !publishedPrivatePaymentReceiverPaths.isEmpty ||
                 !cachedResolvedEndpoints.isEmpty ||
-                localInvoice != nil ||
+                !localInvoicesByReceiverPath.isEmpty ||
                 !receivedInvoicePaymentHashes.isEmpty
         }
     }

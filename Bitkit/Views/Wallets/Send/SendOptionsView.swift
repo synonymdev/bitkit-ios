@@ -85,7 +85,8 @@ struct SendOptionsView: View {
                 settings: settings,
                 navigation: navigation,
                 pubkyProfile: pubkyProfile,
-                sheets: sheets
+                sheets: sheets,
+                wallet: wallet
             )
         }
     }

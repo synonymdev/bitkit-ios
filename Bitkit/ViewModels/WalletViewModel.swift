@@ -778,7 +778,7 @@ class WalletViewModel: ObservableObject {
         var pendingPaymentIds = paymentIds
         var lastFailure: ProbeOutcome?
 
-        return await withCheckedContinuation { continuation in
+        return await withCheckedContinuation { (continuation: CheckedContinuation<ProbeOutcome, Never>) in
             var resumed = false
 
             addOnEvent(id: eventId) { event in

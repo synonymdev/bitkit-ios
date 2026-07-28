@@ -41,6 +41,8 @@ struct SpendingHwSign: View {
                 belowNav(order: order)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("HardwareTransferSign")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
