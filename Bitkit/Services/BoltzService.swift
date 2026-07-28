@@ -237,12 +237,16 @@ extension BoltzSwap {
     /// after Boltz has locked up on-chain and the funds are claimable. The chain, not the cached
     /// status, is the source of truth here, so offer the claim and let `boltzClaimReverseSwap`
     /// decide; when there is nothing to claim it fails harmlessly and the error surfaces.
+    ///
+    /// `.invoiceSettled` is not terminal without a local claim txid: a cooperative claim can
+    /// disclose the preimage before the broadcast lands, so Boltz settles the invoice while the
+    /// funds still sit in the lockup. bitkit-core 0.5.3 keeps that swap pending and retries the
+    /// claim; the manual claim stays reachable for it too.
     var isClaimable: Bool {
         guard swapType == .reverse, claimTxId == nil else { return false }
         switch status {
         case .invoiceExpired,
              .invoiceFailedToPay,
-             .invoiceSettled,
              .swapExpired,
              .transactionClaimed,
              .transactionFailed,

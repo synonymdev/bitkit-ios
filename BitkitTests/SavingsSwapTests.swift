@@ -167,6 +167,11 @@ final class SavingsSwapTests: XCTestCase {
         // A stalled updates stream leaves the swap at swapCreated locally even once Boltz has
         // locked up on-chain, so the claim must stay reachable: this is the recovery case.
         XCTAssertTrue(swap(status: .swapCreated).isClaimable)
+
+        // A cooperative claim can disclose the preimage before the broadcast lands, so Boltz
+        // settles the invoice while the funds still sit in the lockup. bitkit-core 0.5.3 keeps
+        // that swap pending and retries the claim; the manual claim stays reachable too.
+        XCTAssertTrue(swap(status: .invoiceSettled).isClaimable)
     }
 
     func testIsClaimableFalseForTerminalAlreadyClaimedAndSubmarineSwaps() {
@@ -175,10 +180,10 @@ final class SavingsSwapTests: XCTestCase {
         XCTAssertFalse(swap(status: .transactionLockupFailed).isClaimable)
         XCTAssertFalse(swap(status: .transactionRefunded).isClaimable)
         XCTAssertFalse(swap(status: .transactionClaimed).isClaimable)
-        XCTAssertFalse(swap(status: .invoiceSettled).isClaimable)
         XCTAssertFalse(swap(status: .invoiceExpired).isClaimable)
         XCTAssertFalse(swap(status: .invoiceFailedToPay).isClaimable)
         XCTAssertFalse(swap(status: .transactionConfirmed, claimTxId: "txid1").isClaimable)
+        XCTAssertFalse(swap(status: .invoiceSettled, claimTxId: "txid1").isClaimable)
         XCTAssertFalse(swap(swapType: .submarine, status: .transactionConfirmed).isClaimable)
     }
 
