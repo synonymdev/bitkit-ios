@@ -1219,30 +1219,6 @@ class ActivityService {
         }
     }
 
-    /// Update an existing hardware-wallet on-chain activity from watcher data (confirmation, fee),
-    /// preserving any transfer metadata already set on it. No-op when no matching activity exists.
-    func syncHardwareOnchainActivity(_ activity: OnchainActivity) async {
-        do {
-            try await ServiceQueue.background(.core) {
-                guard let existing = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: activity.txId) else { return }
-                let confirmTimestamp = existing.confirmTimestamp
-                    ?? (activity.confirmed ? (activity.confirmTimestamp ?? activity.timestamp) : nil)
-                var updated = existing
-                updated.confirmed = existing.confirmed || activity.confirmed
-                updated.confirmTimestamp = confirmTimestamp
-                updated.doesExist = activity.confirmed ? true : existing.doesExist
-                updated.fee = (existing.fee == 0 && activity.fee > 0) ? activity.fee : existing.fee
-                updated.updatedAt = max(existing.updatedAt ?? 0, activity.updatedAt ?? activity.timestamp)
-                guard updated != existing else { return }
-                try updateActivity(activityId: existing.id, activity: .onchain(updated))
-                self.activitiesChangedSubject.send()
-                Logger.debug("Synced hardware onchain activity '\(activity.txId)'", context: "ActivityService")
-            }
-        } catch {
-            Logger.error("Failed to sync hardware activity '\(activity.txId)': \(error)", context: "ActivityService")
-        }
-    }
-
     /// Atomically mark the on-chain activity for `txId` as a transfer associated with `channelId`,
     /// in a single core-queue transaction so a concurrent watcher sync can't clobber it. No-op when
     /// no matching activity exists or it is already correctly tagged.

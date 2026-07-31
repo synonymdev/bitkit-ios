@@ -43,9 +43,8 @@ final class HwWalletManager {
     private let monitoredTypesProvider: () -> Set<String>
     private let electrumUrlProvider: () -> String
     private let networkProvider: () -> TrezorCoinType
-    private let persistActivities: ([Activity]) -> Void
+    private let persistSnapshot: (String, [Activity], [TransactionDetails]) -> Void
     private let deleteActivities: (String) -> Void
-    private let syncHardwareActivity: (OnchainActivity) -> Void
 
     // MARK: - Internal state
 
@@ -77,9 +76,9 @@ final class HwWalletManager {
     /// event and sync. Pruned to the live device set on `updateDevices`/`removeDevice`.
     private var walletIdCache: [String: String] = [:]
 
-    /// Last activity set persisted per group wallet id, so an unchanged watcher event doesn't
-    /// re-upsert the whole history to core and fire a redundant activity-list reload.
-    private var lastPersisted: [String: [Activity]] = [:]
+    /// Cache key of the last snapshot persisted per group wallet id, so an unchanged watcher event
+    /// doesn't re-write the whole history to core and fire a redundant activity-list reload.
+    private var lastPersisted: [String: HwSnapshot] = [:]
 
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
@@ -89,9 +88,8 @@ final class HwWalletManager {
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
-        persistActivities: (([Activity]) -> Void)? = nil,
-        deleteActivities: ((String) -> Void)? = nil,
-        syncHardwareActivity: ((OnchainActivity) -> Void)? = nil
+        persistSnapshot: ((String, [Activity], [TransactionDetails]) -> Void)? = nil,
+        deleteActivities: ((String) -> Void)? = nil
     ) {
         self.watcherService = watcherService
         networkProvider = network ?? { OnChainHwService.appDefaultCoinType }
@@ -99,25 +97,19 @@ final class HwWalletManager {
             Set(SettingsViewModel.shared.addressTypesToMonitor.map(\.stringValue))
         }
         electrumUrlProvider = electrumUrl ?? { OnChainHwService.getElectrumUrl() }
-        self.persistActivities = persistActivities ?? { activities in
-            guard !activities.isEmpty else { return }
+        self.persistSnapshot = persistSnapshot ?? { walletId, activities, transactionDetails in
             Task {
-                try? await ServiceQueue.background(.core) {
-                    try BitkitCore.upsertActivities(activities: activities)
-                    CoreService.shared.activity.notifyActivitiesChanged()
-                }
+                try? await CoreService.shared.activity.replaceHwSnapshot(
+                    walletId: walletId,
+                    activities: activities,
+                    transactionDetails: transactionDetails
+                )
             }
         }
         self.deleteActivities = deleteActivities ?? { walletId in
             Task {
-                try? await ServiceQueue.background(.core) {
-                    _ = try BitkitCore.deleteActivitiesByWalletId(walletId: walletId)
-                    CoreService.shared.activity.notifyActivitiesChanged()
-                }
+                try? await CoreService.shared.activity.deleteByWalletId(walletId)
             }
-        }
-        self.syncHardwareActivity = syncHardwareActivity ?? { activity in
-            Task { await CoreService.shared.activity.syncHardwareOnchainActivity(activity) }
         }
     }
 
@@ -173,6 +165,16 @@ final class HwWalletManager {
         for deviceId in wallet.deviceIds {
             await forgetDevice(deviceId)
         }
+    }
+
+    /// The bitkit-core wallet id scoping a paired device's activities. Throws when the device is
+    /// unknown or has no captured xpubs, so callers that must write wallet-scoped data (e.g. the
+    /// pending Transfer To Spending activity) fail loudly rather than writing to the wrong wallet.
+    func walletId(forDevice deviceId: String) throws -> String {
+        guard let group = deviceGroups().first(where: { $0.ids.contains(deviceId) }) else {
+            throw AppError(message: "Unknown hardware wallet", debugMessage: "No wallet id for device '\(deviceId)'")
+        }
+        return group.walletId
     }
 
     // MARK: - Watcher orchestration
@@ -333,24 +335,18 @@ final class HwWalletManager {
     /// Core builds the persistence-ready activities (core 0.3.4 watch-only watcher); the manager
     /// stores, aggregates, and scopes them to the device.
     func handleWatcherEvent(watcherId: String, event: WatcherEvent) {
-        guard case let .transactionsChanged(activities, _, balance, _, _, _) = event else { return }
+        guard case let .transactionsChanged(activities, transactionDetails, balance, _, _, _) = event else { return }
         let deviceId = deviceId(fromWatcherId: watcherId)
         let previous = watcherData[watcherId]
         watcherData[watcherId] = HwWatcherData(
             deviceId: deviceId,
             balanceSats: balance.total,
-            activities: activities
+            activities: activities,
+            transactionDetails: transactionDetails
         )
         let groups = deviceGroups()
         recomputeDerivedState(groups: groups)
-        persistGroupActivities(forDevice: deviceId, groups: groups)
-        // Bridge watcher confirmation data to any matching main-wallet transfer activity (e.g. the
-        // funding tx of a transfer to spending), without clobbering its transfer metadata.
-        for activity in activities {
-            if case let .onchain(onchain) = activity {
-                syncHardwareActivity(onchain)
-            }
-        }
+        persistGroupSnapshot(forDevice: deviceId, groups: groups)
         emitReceivedTxs(previous: previous, activities: activities)
     }
 
@@ -374,33 +370,59 @@ final class HwWalletManager {
 
     // MARK: - Persistence
 
-    private func persistGroupActivities(forDevice deviceId: String, groups: [DeviceGroup]? = nil) {
+    private func persistGroupSnapshot(forDevice deviceId: String, groups: [DeviceGroup]? = nil) {
         let groups = groups ?? deviceGroups()
         guard let group = groups.first(where: { $0.ids.contains(deviceId) }) else { return }
-        let merged = mergedActivities(for: group)
-        // Skip the core upsert + activity-list reload when nothing changed for this group.
-        guard lastPersisted[group.walletId] != merged else { return }
-        lastPersisted[group.walletId] = merged
-        persistActivities(merged)
+        let snapshot = mergedSnapshot(for: group)
+        // Skip the core write + activity-list reload when nothing meaningful changed for this group.
+        let cacheKey = snapshotCacheKey(for: snapshot)
+        guard lastPersisted[group.walletId] != cacheKey else { return }
+        lastPersisted[group.walletId] = cacheKey
+        persistSnapshot(group.walletId, snapshot.activities, snapshot.transactionDetails)
     }
 
-    /// Aggregate the activities core emitted across a device-group's watchers, scoping each to the
-    /// group's wallet id and deduping by activity id (so the same tx seen by two address-type
-    /// watchers persists once). Watchers are walked in sorted `watcherId` order and the result is
-    /// sorted by activity id, so a tx observed by multiple address-type watchers (which can carry
+    /// An unconfirmed activity's timestamp is "now" from the watcher's perspective, so it ticks on
+    /// every poll even when nothing about the transaction changed. Zeroing it keeps a mempool
+    /// transaction from re-writing the whole group to core on each event.
+    private func snapshotCacheKey(for snapshot: HwSnapshot) -> HwSnapshot {
+        HwSnapshot(
+            activities: snapshot.activities.map { activity in
+                guard case var .onchain(onchain) = activity, !onchain.confirmed else { return activity }
+                onchain.timestamp = 0
+                return .onchain(onchain)
+            },
+            transactionDetails: snapshot.transactionDetails
+        )
+    }
+
+    /// Aggregate what core emitted across a device-group's watchers, scoping each activity and
+    /// transaction-details row to the group's wallet id and deduping (so the same tx seen by two
+    /// address-type watchers persists once). Watchers are walked in sorted `watcherId` order and the
+    /// results are sorted by id, so a tx observed by multiple address-type watchers (which can carry
     /// different wallet-perspective directions) resolves to a deterministic winner — the
     /// highest-ordered watcherId — rather than depending on dictionary iteration order.
-    private func mergedActivities(for group: DeviceGroup) -> [Activity] {
+    private func mergedSnapshot(for group: DeviceGroup) -> HwSnapshot {
         let watchers = watcherData
             .filter { group.ids.contains($0.value.deviceId) }
             .sorted { $0.key < $1.key }
             .map(\.value)
-        var byId: [String: Activity] = [:]
+
+        var activitiesById: [String: Activity] = [:]
         for activity in watchers.flatMap(\.activities) {
             let scoped = scopedToWallet(activity, walletId: group.walletId)
-            byId[activityId(of: scoped)] = scoped
+            activitiesById[scoped.activityId] = scoped
         }
-        return byId.values.sorted { activityId(of: $0) < activityId(of: $1) }
+
+        var detailsByTxId: [String: TransactionDetails] = [:]
+        for var details in watchers.flatMap(\.transactionDetails) {
+            details.walletId = group.walletId
+            detailsByTxId[details.txId] = details
+        }
+
+        return HwSnapshot(
+            activities: activitiesById.values.sorted { $0.activityId < $1.activityId },
+            transactionDetails: detailsByTxId.values.sorted { $0.txId < $1.txId }
+        )
     }
 
     private func scopedToWallet(_ activity: Activity, walletId: String) -> Activity {
@@ -411,13 +433,6 @@ final class HwWalletManager {
         case var .lightning(lightning):
             lightning.walletId = walletId
             return .lightning(lightning)
-        }
-    }
-
-    private func activityId(of activity: Activity) -> String {
-        switch activity {
-        case let .onchain(onchain): return onchain.id
-        case let .lightning(lightning): return lightning.id
         }
     }
 
@@ -690,5 +705,13 @@ final class HwWalletManager {
         let deviceId: String
         let balanceSats: UInt64
         let activities: [Activity]
+        let transactionDetails: [TransactionDetails]
+    }
+
+    /// The wallet-scoped set core last stored for a device group, plus the cache key that produced
+    /// it. See `HwWalletManager.snapshotCacheKey(for:)` for why the key is not the snapshot itself.
+    private struct HwSnapshot: Equatable {
+        let activities: [Activity]
+        let transactionDetails: [TransactionDetails]
     }
 }
