@@ -475,8 +475,12 @@ struct MainNavView: View {
                     if isPaykitUIActive { ContactDetailView(publicKey: publicKey, showsDeleteAction: true) } else { paykitDisabledRedirectView }
                 case let .contactActivity(publicKey):
                     if isPaykitUIActive { ContactActivityView(publicKey: publicKey) } else { paykitDisabledRedirectView }
-                case let .assignActivityContact(activityId):
-                    if isPaykitUIActive { AssignActivityContactView(activityId: activityId) } else { paykitDisabledRedirectView }
+                case let .assignActivityContact(activityId, walletId):
+                    if isPaykitUIActive {
+                        AssignActivityContactView(activityId: activityId, walletId: walletId)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .contactImportOverview:
                     if !isPaykitUIActive {
                         paykitDisabledRedirectView

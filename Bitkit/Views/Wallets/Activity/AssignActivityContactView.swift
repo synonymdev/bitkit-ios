@@ -7,6 +7,7 @@ struct AssignActivityContactView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
 
     let activityId: String
+    var walletId: String = WalletScope.default
     @State private var selectedContactKey: String?
 
     private var contacts: [PubkyContact] {
@@ -59,7 +60,7 @@ struct AssignActivityContactView: View {
         defer { selectedContactKey = nil }
 
         do {
-            try await activityList.setContact(contact.publicKey, forPaymentId: activityId)
+            try await activityList.setContact(contact.publicKey, forPaymentId: activityId, walletId: walletId)
             navigation.navigateBack()
         } catch {
             Logger.error("Failed to assign contact to activity \(activityId): \(error)", context: "AssignActivityContactView")

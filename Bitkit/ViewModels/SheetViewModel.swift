@@ -110,9 +110,8 @@ class SheetViewModel: ObservableObject {
     var addTagSheetItem: AddTagSheetItem? {
         get {
             guard let config = activeSheetConfiguration, config.id == .addTag else { return nil }
-            let addTagConfig = config.data as? AddTagConfig
-            guard let activityId = addTagConfig?.activityId else { return nil }
-            return AddTagSheetItem(activityId: activityId)
+            guard let addTagConfig = config.data as? AddTagConfig else { return nil }
+            return AddTagSheetItem(activityId: addTagConfig.activityId, walletId: addTagConfig.walletId)
         }
         set {
             if newValue == nil {

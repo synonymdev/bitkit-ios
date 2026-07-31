@@ -23,9 +23,8 @@ extension Activity {
     }
 
     /// Whether this activity belongs to a watch-only hardware wallet (not the normal Bitkit wallet).
-    // TODO: Used as an interim feature gate (see ActivityItemView.isHardwareActivity). The
-    // wallet-id shorthand holds only while CoreService activity mutations are default-scoped;
-    // replace with a real capability check when wallet_id mutation support lands.
+    /// Drives the blue hardware icon and the boost gate — a watch-only wallet has no signing keys,
+    /// so RBF/CPFP is impossible for it.
     var isHardwareWallet: Bool {
         walletId != WalletScope.default
     }

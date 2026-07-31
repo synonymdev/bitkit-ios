@@ -1403,6 +1403,7 @@
 "wallet__activity_address" = "Address";
 "wallet__activity_input" = "{count, plural, one {INPUT} other {INPUTS (#)}}";
 "wallet__activity_output" = "{count, plural, one {OUTPUT} other {OUTPUTS (#)}}";
+"wallet__activity_details_unavailable" = "Transaction details are not available.";
 "wallet__activity_boosted_cpfp" = "BOOSTED TRANSACTION {num} (CPFP)";
 "wallet__activity_boosted_rbf" = "BOOSTED TRANSACTION {num} (RBF)";
 "wallet__activity_boost_fee" = "Boost Fee";
