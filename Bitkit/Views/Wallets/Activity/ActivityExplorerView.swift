@@ -63,7 +63,7 @@ struct ActivityExplorerView: View {
     private func loadBoostTxDoesExist() async {
         guard let onchain else { return }
 
-        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: onchain.boostTxIds)
+        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: onchain.boostTxIds, walletId: onchain.walletId)
         await MainActor.run {
             boostTxDoesExist = doesExistMap
         }

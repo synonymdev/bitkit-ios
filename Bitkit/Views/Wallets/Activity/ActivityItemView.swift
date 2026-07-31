@@ -177,7 +177,7 @@ struct ActivityItemView: View {
     private func loadBoostTxDoesExist() async {
         guard case let .onchain(activity) = viewModel.activity else { return }
 
-        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: activity.boostTxIds)
+        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: activity.boostTxIds, walletId: activity.walletId)
         await MainActor.run {
             boostTxDoesExist = doesExistMap
         }
@@ -261,7 +261,7 @@ struct ActivityItemView: View {
         .task {
             // Check if this is a CPFP child transaction
             if case let .onchain(activity) = viewModel.activity {
-                isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: activity.txId)
+                isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: activity.txId, walletId: activity.walletId)
             }
 
             // Load boostTxIds doesExist status to determine RBF vs CPFP

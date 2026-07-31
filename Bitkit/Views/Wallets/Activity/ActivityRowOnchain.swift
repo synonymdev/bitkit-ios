@@ -97,7 +97,7 @@ struct ActivityRowOnchain: View {
             MoneyCell(sats: amount, prefix: amountPrefix, enableHide: true)
         }
         .task {
-            isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: item.txId)
+            isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: item.txId, walletId: item.walletId)
         }
     }
 }
