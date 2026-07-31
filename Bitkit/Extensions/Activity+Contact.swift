@@ -1,6 +1,16 @@
 import BitkitCore
 
 extension Activity {
+    /// The activity's own id, unique only within its `walletId` scope.
+    var activityId: String {
+        switch self {
+        case let .lightning(lightning):
+            return lightning.id
+        case let .onchain(onchain):
+            return onchain.id
+        }
+    }
+
     /// bitkit-core wallet id scoping this activity (`"bitkit"` for the normal wallet, a derived
     /// id for watch-only hardware wallets — see `HwWalletId`).
     var walletId: String {

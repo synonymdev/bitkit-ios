@@ -380,6 +380,80 @@ class ActivityService {
         }
     }
 
+    /// Replace the complete stored on-chain snapshot for a watch-only hardware wallet, and return
+    /// the resulting stored set.
+    ///
+    /// The caller must merge every watcher belonging to the wallet before calling this: anything
+    /// scoped to `walletId` that the snapshot no longer contains is deleted, which is how a reorged
+    /// or replaced transaction stops showing. Locally written transfer metadata survives (see
+    /// `HwSnapshotMerge`).
+    @discardableResult
+    func replaceHwSnapshot(
+        walletId: String,
+        activities: [Activity],
+        transactionDetails: [BitkitCore.TransactionDetails]
+    ) async throws -> [Activity] {
+        try await ServiceQueue.background(.core) {
+            let plan = try HwSnapshotMerge.plan(existing: Self.storedOnchainActivities(walletId: walletId), incoming: activities)
+
+            for activity in plan.toDelete {
+                _ = try deleteActivityById(walletId: walletId, activityId: activity.id)
+                _ = try deleteTransactionDetails(walletId: walletId, txId: activity.txId)
+            }
+
+            if !plan.toUpsert.isEmpty {
+                try upsertActivities(activities: plan.toUpsert)
+            }
+
+            if !transactionDetails.isEmpty {
+                try upsertTransactionDetails(detailsList: transactionDetails)
+            }
+
+            await self.refreshBoostTxIdsCache()
+            self.activitiesChangedSubject.send()
+
+            return try getActivities(
+                walletId: walletId,
+                filter: .onchain,
+                txType: nil,
+                tags: nil,
+                search: nil,
+                minDate: nil,
+                maxDate: nil,
+                limit: nil,
+                sortDirection: nil
+            )
+        }
+    }
+
+    private static func storedOnchainActivities(walletId: String) throws -> [OnchainActivity] {
+        try getActivities(
+            walletId: walletId,
+            filter: .onchain,
+            txType: nil,
+            tags: nil,
+            search: nil,
+            minDate: nil,
+            maxDate: nil,
+            limit: nil,
+            sortDirection: nil
+        ).compactMap { activity in
+            guard case let .onchain(onchain) = activity else { return nil }
+            return onchain
+        }
+    }
+
+    /// Delete every activity scoped to a watch-only hardware wallet, e.g. when the device is
+    /// unpaired. Returns the number of rows removed.
+    @discardableResult
+    func deleteByWalletId(_ walletId: String) async throws -> UInt32 {
+        try await ServiceQueue.background(.core) {
+            let deleted = try deleteActivitiesByWalletId(walletId: walletId)
+            self.activitiesChangedSubject.send()
+            return deleted
+        }
+    }
+
     func closedChannels(sortDirection: SortDirection = .asc) async throws -> [ClosedChannelDetails] {
         try await ServiceQueue.background(.core) {
             try getAllClosedChannels(sortDirection: sortDirection)
