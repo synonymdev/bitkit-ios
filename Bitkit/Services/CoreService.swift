@@ -412,7 +412,7 @@ class ActivityService {
                 try upsertTransactionDetails(detailsList: transactionDetails)
             }
 
-            await self.refreshBoostTxIdsCache()
+            await self.refreshBoostTxIdsCache(walletId: walletId)
             self.activitiesChangedSubject.send()
 
             return try getActivities(
