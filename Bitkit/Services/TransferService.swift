@@ -75,8 +75,15 @@ class TransferService {
 
     /// Create the pending on-chain activity for a hardware-wallet transfer to spending. The funding
     /// tx is broadcast externally (on-device signing), so LDK's own activity sync won't surface it;
-    /// this makes it appear immediately, marked as a transfer.
-    func createPendingToSpendingActivity(order: IBtOrder, txId: String, fee: UInt64, feeRate: UInt64) async {
+    /// this makes it appear immediately, marked as a transfer and scoped to the hardware wallet that
+    /// funded it, so it reads as one hardware-owned transfer row.
+    func createPendingToSpendingActivity(
+        order: IBtOrder,
+        txId: String,
+        fee: UInt64,
+        feeRate: UInt64,
+        walletId: String = WalletScope.default
+    ) async {
         guard let address = order.payment?.onchain?.address, !address.isEmpty else {
             Logger.error("Order '\(order.id)' has no on-chain payment address", context: "TransferService")
             return
@@ -87,7 +94,8 @@ class TransferService {
             amount: order.feeSat,
             fee: fee,
             feeRate: UInt32(feeRate),
-            isTransfer: true
+            isTransfer: true,
+            walletId: walletId
         )
     }
 

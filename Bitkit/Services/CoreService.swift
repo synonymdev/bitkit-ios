@@ -1170,6 +1170,10 @@ class ActivityService {
     }
 
     /// Create sent onchain activity from send result so it appears immediately; LDK events update it later (e.g. confirmation).
+    ///
+    /// `walletId` scopes the row: a transfer funded from a watch-only hardware wallet is written
+    /// under that wallet's id, so the merged activity list shows one hardware-owned transfer row
+    /// rather than a main-wallet row plus a hardware duplicate.
     func createSentOnchainActivityFromSendResult(
         txid: String,
         address: String,
@@ -1177,17 +1181,26 @@ class ActivityService {
         fee: UInt64,
         feeRate: UInt32,
         isTransfer: Bool = false,
-        contact: String? = nil
+        contact: String? = nil,
+        walletId: String = WalletScope.default
     ) async {
         do {
             try await ServiceQueue.background(.core) {
-                if let _ = try? BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txid) {
+                if let existing = try? BitkitCore.getActivityByTxId(walletId: walletId, txId: txid) {
+                    // The watcher can persist a hardware transaction before this call lands, so the
+                    // transfer flag still has to be applied to the row it already created.
+                    if isTransfer, !existing.isTransfer {
+                        var updated = existing
+                        updated.isTransfer = true
+                        try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                        self.activitiesChangedSubject.send()
+                    }
                     Logger.debug("Activity already exists for txid \(txid), skipping immediate creation", context: "ActivityService")
                     return
                 }
                 let now = UInt64(Date().timeIntervalSince1970)
                 let onchain = OnchainActivity(
-                    walletId: WalletScope.default,
+                    walletId: walletId,
                     id: txid,
                     txType: .sent,
                     txId: txid,
@@ -1219,13 +1232,24 @@ class ActivityService {
         }
     }
 
+    /// Every wallet id that currently owns at least one stored activity: the normal Bitkit wallet
+    /// plus one per paired watch-only hardware wallet.
+    func getWalletIds() async throws -> Set<String> {
+        try await ServiceQueue.background(.core) {
+            try Self.storedWalletIds()
+        }
+    }
+
     /// Atomically mark the on-chain activity for `txId` as a transfer associated with `channelId`,
     /// in a single core-queue transaction so a concurrent watcher sync can't clobber it. No-op when
     /// no matching activity exists or it is already correctly tagged.
+    ///
+    /// The funding transaction can live under the normal wallet or, when it was signed on a
+    /// hardware wallet, under that device's wallet id, so every scope is searched.
     func markOnchainActivityAsTransfer(txId: String, channelId: String) async {
         do {
             try await ServiceQueue.background(.core) {
-                guard let existing = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txId) else { return }
+                guard let existing = try Self.findOnchainActivityAcrossWallets(txId: txId) else { return }
                 if existing.isTransfer, existing.channelId == channelId { return }
                 var updated = existing
                 updated.isTransfer = true
@@ -1237,6 +1261,40 @@ class ActivityService {
         } catch {
             Logger.error("Failed to mark activity as transfer for \(txId): \(error)", context: "ActivityService")
         }
+    }
+
+    /// Resolve the on-chain activity for `txId`, preferring the row that most likely represents the
+    /// transfer: one already flagged as a transfer, then a hardware-wallet send (the hardware
+    /// funding path), then whatever else matches.
+    private static func findOnchainActivityAcrossWallets(txId: String) throws -> OnchainActivity? {
+        let walletIds = try [WalletScope.default] + storedWalletIds().subtracting([WalletScope.default]).sorted()
+        let matches = walletIds.compactMap { try? BitkitCore.getActivityByTxId(walletId: $0, txId: txId) }
+
+        return matches.first { $0.isTransfer }
+            ?? matches.first { $0.walletId != WalletScope.default && $0.txType == .sent }
+            ?? matches.first
+    }
+
+    private static func storedWalletIds() throws -> Set<String> {
+        let activities = try getActivities(
+            walletId: nil,
+            filter: .all,
+            txType: nil,
+            tags: nil,
+            search: nil,
+            minDate: nil,
+            maxDate: nil,
+            limit: nil,
+            sortDirection: nil
+        )
+        // Not `Activity.walletId`: this file is compiled into the notification and test targets,
+        // which do not build `Extensions/`.
+        return Set(activities.map { activity in
+            switch activity {
+            case let .lightning(lightning): return lightning.walletId
+            case let .onchain(onchain): return onchain.walletId
+            }
+        })
     }
 
     func setContact(_ publicKey: String?, forActivity id: String) async throws {

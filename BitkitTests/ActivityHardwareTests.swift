@@ -61,24 +61,14 @@ final class ActivityHardwareTests: XCTestCase {
         XCTAssertFalse(lightning(walletId: WalletScope.default).isHardwareWallet)
     }
 
-    func testWithoutHardwareDuplicatesCollapsesSharedTx() {
-        let mainTransfer = onchain(walletId: WalletScope.default, txId: "tx1")
-        let hwDuplicate = onchain(walletId: "trezor:abc", txId: "tx1")
-        let hwOnly = onchain(walletId: "trezor:abc", txId: "tx2")
-        let ln = lightning(walletId: WalletScope.default)
+    /// A hardware transfer's funding tx is now stored only under the hardware wallet id, so the
+    /// merged list no longer collapses same-txid rows: activity identity is (walletId, activityId).
+    func testSameTxIdInTwoWalletScopesAreDistinctActivities() {
+        let main = onchain(walletId: WalletScope.default, txId: "tx1")
+        let hardware = onchain(walletId: "trezor:abc", txId: "tx1")
 
-        let result = [mainTransfer, hwDuplicate, hwOnly, ln].withoutHardwareDuplicates()
-
-        func txIds(hardware: Bool) -> [String] {
-            result.compactMap { activity in
-                guard activity.isHardwareWallet == hardware, case let .onchain(onchain) = activity else { return nil }
-                return onchain.txId
-            }
-        }
-
-        XCTAssertEqual(result.count, 3, "the hardware duplicate of tx1 is dropped")
-        XCTAssertEqual(txIds(hardware: false), ["tx1"], "the main-wallet transfer row is kept")
-        XCTAssertEqual(txIds(hardware: true), ["tx2"], "hardware-only tx2 is kept, tx1 duplicate removed")
-        XCTAssertTrue(result.contains { if case .lightning = $0 { return true }; return false }, "lightning rows are untouched")
+        XCTAssertNotEqual(main, hardware)
+        XCTAssertEqual(main.activityId, hardware.activityId)
+        XCTAssertEqual(Set([main, hardware]).count, 2)
     }
 }

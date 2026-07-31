@@ -96,6 +96,23 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertTrue(connecting.staleDisconnects.isEmpty)
     }
 
+    func testUnresolvableWalletIdFailsBeforeSigningOrBroadcasting() async {
+        let funding = MockHwFunding()
+        funding.walletIdError = MockHwFunding.TestError()
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        await awaitSigningComplete(vm)
+
+        // Recording the transfer against the wrong wallet is worse than not transferring at all,
+        // so the flow aborts before the device is asked to sign.
+        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error, got \(String(describing: vm.hwTransferError))") }
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(funding.broadcastCalls, 0)
+        XCTAssertFalse(vm.hwFundingComplete)
+    }
+
     func testBroadcastFailureRetainsSignedTransactionForRetry() async {
         let funding = MockHwFunding()
         funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
