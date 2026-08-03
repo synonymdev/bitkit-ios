@@ -15,7 +15,9 @@ enum Route: Hashable {
     case contactDetail(publicKey: String)
     case contactSaved(publicKey: String)
     case contactActivity(publicKey: String)
-    case assignActivityContact(activityId: String, walletId: String = WalletScope.default)
+    /// `walletId` is required: an activity id is only unique within its wallet, so a defaulted
+    /// scope would silently address the normal wallet for a hardware activity.
+    case assignActivityContact(activityId: String, walletId: String)
     case contactImportOverview
     case contactImportSelect
     case addContact(publicKey: String)

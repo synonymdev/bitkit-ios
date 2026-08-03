@@ -7,7 +7,8 @@ struct AssignActivityContactView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
 
     let activityId: String
-    var walletId: String = WalletScope.default
+    /// Wallet scoping `activityId` — an activity id is only unique within its wallet.
+    let walletId: String
     @State private var selectedContactKey: String?
 
     private var contacts: [PubkyContact] {

@@ -2,13 +2,9 @@ import SwiftUI
 
 struct AddTagConfig {
     let activityId: String
-    /// Wallet scoping the activity — an activity id is only unique within its wallet.
+    /// Wallet scoping the activity — an activity id is only unique within its wallet, so this is
+    /// required rather than defaulted: a defaulted scope would silently address the normal wallet.
     let walletId: String
-
-    init(activityId: String, walletId: String = WalletScope.default) {
-        self.activityId = activityId
-        self.walletId = walletId
-    }
 }
 
 struct AddTagSheetItem: SheetItem, Equatable {
@@ -16,11 +12,6 @@ struct AddTagSheetItem: SheetItem, Equatable {
     let size: SheetSize = .small
     let activityId: String
     let walletId: String
-
-    init(activityId: String, walletId: String = WalletScope.default) {
-        self.activityId = activityId
-        self.walletId = walletId
-    }
 
     static func == (lhs: AddTagSheetItem, rhs: AddTagSheetItem) -> Bool {
         return lhs.activityId == rhs.activityId && lhs.walletId == rhs.walletId

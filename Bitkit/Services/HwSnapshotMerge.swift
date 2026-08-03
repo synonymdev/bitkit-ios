@@ -1,5 +1,24 @@
 import BitkitCore
 
+/// Activity accessors shared by the files that cannot use the `Activity` extensions in
+/// `Extensions/Activity+Contact.swift`: this file and `CoreService` are compiled into the
+/// notification and test targets, which do not build `Extensions/`.
+enum ActivityScope {
+    static func id(of activity: Activity) -> String {
+        switch activity {
+        case let .lightning(lightning): return lightning.id
+        case let .onchain(onchain): return onchain.id
+        }
+    }
+
+    static func walletId(of activity: Activity) -> String {
+        switch activity {
+        case let .lightning(lightning): return lightning.walletId
+        case let .onchain(onchain): return onchain.walletId
+        }
+    }
+}
+
 /// Plans how a hardware-wallet watcher snapshot should replace what bitkit-core already stores for
 /// that wallet. Kept pure and free of the core FFI so the reconciliation rules can be unit tested;
 /// `ActivityService.replaceHwSnapshot` applies the plan. Adapts bitkit-android's `mergeHwSnapshot`.
@@ -15,7 +34,7 @@ enum HwSnapshotMerge {
     ///   `delete_activity_by_id` cascades into `activity_tags`, so pruning one destroys user tags
     ///   that are no longer carried in the backup payload. Upserting is always safe.
     static func plan(existing: [OnchainActivity], incoming: [Activity], pruneMissing: Bool) -> Plan {
-        let incomingIds = Set(incoming.map(id(of:)))
+        let incomingIds = Set(incoming.map(ActivityScope.id(of:)))
 
         // Transfers are never dropped: the pending Transfer To Spending row is written when the
         // funding tx is broadcast, before any watcher poll can report it, so a snapshot that does
@@ -39,14 +58,5 @@ enum HwSnapshotMerge {
         }
 
         return Plan(toDelete: toDelete, toUpsert: toUpsert)
-    }
-
-    /// Deliberately not the `Activity.activityId` extension: this file is compiled into the
-    /// notification and test targets alongside `CoreService`, which do not build `Extensions/`.
-    private static func id(of activity: Activity) -> String {
-        switch activity {
-        case let .lightning(lightning): return lightning.id
-        case let .onchain(onchain): return onchain.id
-        }
     }
 }

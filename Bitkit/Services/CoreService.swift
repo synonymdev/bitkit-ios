@@ -85,6 +85,10 @@ class ActivityService {
 
     private func updateBoostTxIdsCache(for activity: Activity) {
         guard case let .onchain(onchain) = activity, !onchain.boostTxIds.isEmpty else { return }
+        // Only merge into an already-warmed wallet. Seeding a cold one would make
+        // `getTxIdsInBoostTxIds` treat this single activity's ids as the whole set and skip its
+        // refresh, so the rest of the wallet's boost chain would be invisible.
+        guard cachedTxIdsInBoostTxIds[onchain.walletId] != nil else { return }
         cachedTxIdsInBoostTxIds[onchain.walletId, default: []].formUnion(onchain.boostTxIds)
     }
 
@@ -353,12 +357,10 @@ class ActivityService {
                 sortDirection: nil
             )
             for activity in activities {
-                let (id, walletId): (String, String) = switch activity {
-                case let .lightning(ln): (ln.id, ln.walletId)
-                case let .onchain(on): (on.id, on.walletId)
-                }
-
-                _ = try deleteActivityById(walletId: walletId, activityId: id)
+                _ = try deleteActivityById(
+                    walletId: ActivityScope.walletId(of: activity),
+                    activityId: ActivityScope.id(of: activity)
+                )
             }
 
             // Clear cache since all activities are deleted
@@ -1252,14 +1254,6 @@ class ActivityService {
         }
     }
 
-    /// Every wallet id that currently owns at least one stored activity: the normal Bitkit wallet
-    /// plus one per paired watch-only hardware wallet.
-    func getWalletIds() async throws -> Set<String> {
-        try await ServiceQueue.background(.core) {
-            try Self.storedWalletIds()
-        }
-    }
-
     /// Atomically mark the on-chain activity for `txId` as a transfer associated with `channelId`,
     /// in a single core-queue transaction so a concurrent watcher sync can't clobber it. No-op when
     /// no matching activity exists or it is already correctly tagged.
@@ -1287,8 +1281,18 @@ class ActivityService {
     /// transfer: one already flagged as a transfer, then a hardware-wallet send (the hardware
     /// funding path), then whatever else matches.
     private static func findOnchainActivityAcrossWallets(txId: String) throws -> OnchainActivity? {
-        let walletIds = try [WalletScope.default] + storedWalletIds().subtracting([WalletScope.default]).sorted()
-        let matches = walletIds.compactMap { try? BitkitCore.getActivityByTxId(walletId: $0, txId: txId) }
+        let defaultMatch = try? BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txId)
+        // The normal wallet sorts first in the preference order below, so a row it already flags as
+        // a transfer is the answer. Skip the cross-wallet scan, which has to read every stored
+        // activity in every wallet — core exposes no wallet-id enumeration. This is the common
+        // path: the normal transfer flow writes the row through
+        // `createSentOnchainActivityFromSendResult(isTransfer: true)` before this runs.
+        if let defaultMatch, defaultMatch.isTransfer { return defaultMatch }
+
+        var matches: [OnchainActivity] = []
+        if let defaultMatch { matches.append(defaultMatch) }
+        matches += try storedWalletIds().subtracting([WalletScope.default]).sorted()
+            .compactMap { try? BitkitCore.getActivityByTxId(walletId: $0, txId: txId) }
 
         return matches.first { $0.isTransfer }
             ?? matches.first { $0.walletId != WalletScope.default && $0.txType == .sent }
@@ -1307,14 +1311,7 @@ class ActivityService {
             limit: nil,
             sortDirection: nil
         )
-        // Not `Activity.walletId`: this file is compiled into the notification and test targets,
-        // which do not build `Extensions/`.
-        return Set(activities.map { activity in
-            switch activity {
-            case let .lightning(lightning): return lightning.walletId
-            case let .onchain(onchain): return onchain.walletId
-            }
-        })
+        return Set(activities.map(ActivityScope.walletId(of:)))
     }
 
     func setContact(_ publicKey: String?, forActivity id: String, walletId: String = WalletScope.default) async throws {
