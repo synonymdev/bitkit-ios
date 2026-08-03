@@ -4,7 +4,7 @@ import SwiftUI
 import UserNotifications
 
 struct AppScene: View {
-    private static let paykitPaymentRequestRefreshInterval: Duration = .seconds(30)
+    private static let paykitPaymentRequestRefreshIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
 
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject private var session: SessionManager
@@ -725,26 +725,35 @@ struct AppScene: View {
         }
     }
 
-    private func refreshIncomingPaykitPaymentRequests() async {
+    @discardableResult
+    private func refreshIncomingPaykitPaymentRequests() async -> Bool {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
               pubkyProfile.authState == .authenticated
-        else { return }
+        else { return false }
 
+        let previousRequests = paykitPaymentRequestManager.pendingRequests
         await paykitPaymentRequestManager.refresh()
         await presentNextIncomingPaykitPaymentRequest()
+        return paykitPaymentRequestManager.pendingRequests != previousRequests
     }
 
     private func pollIncomingPaykitPaymentRequests() async {
         guard scenePhase == .active else { return }
 
+        var refreshIntervalIndex = 0
         while !Task.isCancelled {
             do {
-                try await Task.sleep(for: Self.paykitPaymentRequestRefreshInterval)
+                try await Task.sleep(for: Self.paykitPaymentRequestRefreshIntervals[refreshIntervalIndex])
             } catch {
                 return
             }
-            await refreshIncomingPaykitPaymentRequests()
+            let requestsChanged = await refreshIncomingPaykitPaymentRequests()
+            if requestsChanged {
+                refreshIntervalIndex = 0
+            } else {
+                refreshIntervalIndex = min(refreshIntervalIndex + 1, Self.paykitPaymentRequestRefreshIntervals.count - 1)
+            }
         }
     }
 
@@ -764,7 +773,10 @@ struct AppScene: View {
             do {
                 let result = try await PrivatePaykitService.shared.beginPaymentRequest(request)
                 guard sheets.activeSheetConfiguration == nil, app.contactPaymentContext == nil else { return }
-                guard case let .opened(paymentTarget, privatePaymentContext) = result else { continue }
+                guard case let .opened(paymentTarget, privatePaymentContext) = result else {
+                    paykitPaymentRequestManager.deferPresentation(request)
+                    continue
+                }
 
                 let contactPaymentContext = ContactPaymentContext(
                     publicKey: request.counterparty,
@@ -784,6 +796,7 @@ struct AppScene: View {
                     guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        paykitPaymentRequestManager.deferPresentation(request)
                         continue
                     }
 
@@ -803,6 +816,7 @@ struct AppScene: View {
                     Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
                     app.resetSendState()
                     wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                    paykitPaymentRequestManager.deferPresentation(request)
                     continue
                 }
 
@@ -815,6 +829,7 @@ struct AppScene: View {
                 return
             } catch {
                 Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
+                paykitPaymentRequestManager.deferPresentation(request)
             }
         }
     }

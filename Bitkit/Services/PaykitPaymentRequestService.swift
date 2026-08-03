@@ -213,6 +213,8 @@ struct PaykitPaymentRequestService {
 @Observable
 @MainActor
 final class PaykitPaymentRequestManager {
+    private static let presentationRetryDelays: [TimeInterval] = [30, 60, 120, 300]
+
     private(set) var pendingRequests: [PaykitPaymentRequest] = []
 
     private let service: PaykitPaymentRequestService
@@ -220,6 +222,8 @@ final class PaykitPaymentRequestManager {
     private let logWarning: @Sendable (String) -> Void
     private var processingRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentedRequestIds: Set<PaykitPaymentRequest.ID> = []
+    private var presentationRetryAttempts: [PaykitPaymentRequest.ID: Int] = [:]
+    private var presentationRetryDates: [PaykitPaymentRequest.ID: Date] = [:]
     private var refreshTask: Task<Void, Never>?
     private var expirationTask: Task<Void, Never>?
     private var refreshGeneration = 0
@@ -270,16 +274,33 @@ final class PaykitPaymentRequestManager {
         pendingRequests = []
         processingRequestIds = []
         presentedRequestIds = []
+        presentationRetryAttempts = [:]
+        presentationRetryDates = [:]
     }
 
     func requestsForPresentation() -> [PaykitPaymentRequest] {
-        pendingRequests.filter { !presentedRequestIds.contains($0.id) }
+        let date = now()
+        return pendingRequests.filter {
+            !presentedRequestIds.contains($0.id) && (presentationRetryDates[$0.id].map { $0 <= date } ?? true)
+        }
+    }
+
+    func deferPresentation(_ request: PaykitPaymentRequest) {
+        discardExpiredRequests()
+        guard pendingRequests.contains(where: { $0.id == request.id }) else { return }
+
+        let attempt = presentationRetryAttempts[request.id, default: 0]
+        let delay = Self.presentationRetryDelays[min(attempt, Self.presentationRetryDelays.count - 1)]
+        presentationRetryAttempts[request.id] = attempt + 1
+        presentationRetryDates[request.id] = now().addingTimeInterval(delay)
     }
 
     func markPresentedIfPending(_ request: PaykitPaymentRequest) -> Bool {
         discardExpiredRequests()
         guard pendingRequests.contains(where: { $0.id == request.id }) else { return false }
         presentedRequestIds.insert(request.id)
+        presentationRetryAttempts.removeValue(forKey: request.id)
+        presentationRetryDates.removeValue(forKey: request.id)
         return true
     }
 
@@ -288,7 +309,10 @@ final class PaykitPaymentRequestManager {
             let requests = try await service.synchronize()
             guard generation == refreshGeneration else { return }
             pendingRequests = requests
-            presentedRequestIds.formIntersection(requests.map(\.id))
+            let requestIds = Set(requests.map(\.id))
+            presentedRequestIds.formIntersection(requestIds)
+            presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
+            presentationRetryDates = presentationRetryDates.filter { requestIds.contains($0.key) }
             discardExpiredRequests()
         } catch is CancellationError {
             return
@@ -325,6 +349,8 @@ final class PaykitPaymentRequestManager {
             guard actionGeneration == stateGeneration else { return }
             invalidateRefresh()
             pendingRequests.removeAll { $0.id == request.id }
+            presentationRetryAttempts.removeValue(forKey: request.id)
+            presentationRetryDates.removeValue(forKey: request.id)
             discardExpiredRequests()
         } catch is CancellationError {
             throw CancellationError()
@@ -344,7 +370,10 @@ final class PaykitPaymentRequestManager {
 
     private func discardExpiredRequests() {
         pendingRequests.removeAll { $0.isExpired(at: now()) }
-        presentedRequestIds.formIntersection(pendingRequests.map(\.id))
+        let requestIds = Set(pendingRequests.map(\.id))
+        presentedRequestIds.formIntersection(requestIds)
+        presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
+        presentationRetryDates = presentationRetryDates.filter { requestIds.contains($0.key) }
         scheduleExpiration()
     }
 

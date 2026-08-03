@@ -176,11 +176,6 @@ extension PrivatePaykitService {
         }
     }
 
-    private func hasLiveSessionForCurrentProfile() async throws -> Bool {
-        guard let status = try await PaykitSdkService.shared.identityStatus() else { return false }
-        return status.liveSessionAvailable
-    }
-
     func privatePayableEndpoints(from endpoints: [PublicPaykitService.Endpoint], publicKey: String) async -> [PublicPaykitService.Endpoint] {
         let payableEndpoints = await PublicPaykitService.payableEndpoints(from: endpoints)
         var reusableEndpoints: [PublicPaykitService.Endpoint] = []
@@ -251,29 +246,6 @@ extension PrivatePaykitService {
         guard filteredEntries.count != previousCount else { return }
 
         contactState.cachedResolvedEndpoints = filteredEntries
-        state.contacts[normalizedKey] = contactState
-        persistState(markWalletBackup: true)
-    }
-
-    func discardRemoteOnchainEndpoints(publicKey: String, addresses: Set<String>) async {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey),
-              var contactState = state.contacts[normalizedKey],
-              !addresses.isEmpty
-        else { return }
-
-        let previousCount = contactState.cachedResolvedEndpoints.count
-        contactState.cachedResolvedEndpoints = contactState.cachedResolvedEndpoints.filter { entry in
-            guard PublicPaykitService.MethodId.onchainPreferenceOrder.contains(where: { $0.rawValue == entry.methodId }),
-                  let endpoint = PublicPaykitService.parseEndpoint(methodId: entry.methodId, endpointData: entry.endpointData)
-            else {
-                return true
-            }
-
-            return !addresses.contains(endpoint.value)
-        }
-
-        guard contactState.cachedResolvedEndpoints.count != previousCount else { return }
-
         state.contacts[normalizedKey] = contactState
         persistState(markWalletBackup: true)
     }

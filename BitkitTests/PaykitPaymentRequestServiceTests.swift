@@ -173,6 +173,28 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
 
+    func testDeferredRequestUsesIncreasingPresentationBackoff() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+
+        manager.deferPresentation(request)
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+
+        clock.advance(by: 30)
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+
+        manager.deferPresentation(request)
+        clock.advance(by: 59)
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+
+        clock.advance(by: 1)
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+    }
+
     func testExpiredRequestCannotBeMarkedPresented() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let clock = PaymentRequestTestClock(now)
