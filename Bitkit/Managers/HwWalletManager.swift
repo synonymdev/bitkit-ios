@@ -43,8 +43,8 @@ final class HwWalletManager {
     private let monitoredTypesProvider: () -> Set<String>
     private let electrumUrlProvider: () -> String
     private let networkProvider: () -> TrezorCoinType
-    private let persistSnapshot: (HwWalletSnapshot) -> Void
-    private let deleteActivities: (String) -> Void
+    private let persistSnapshot: @MainActor (HwWalletSnapshot) -> Void
+    private let deleteActivities: @MainActor (String) -> Void
 
     // MARK: - Internal state
 
@@ -90,8 +90,8 @@ final class HwWalletManager {
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
-        persistSnapshot: ((HwWalletSnapshot) -> Void)? = nil,
-        deleteActivities: ((String) -> Void)? = nil
+        persistSnapshot: (@MainActor (HwWalletSnapshot) -> Void)? = nil,
+        deleteActivities: (@MainActor (String) -> Void)? = nil
     ) {
         self.watcherService = watcherService
         networkProvider = network ?? { OnChainHwService.appDefaultCoinType }
@@ -99,19 +99,33 @@ final class HwWalletManager {
             Set(SettingsViewModel.shared.addressTypesToMonitor.map(\.stringValue))
         }
         electrumUrlProvider = electrumUrl ?? { OnChainHwService.getElectrumUrl() }
+        // One chain per wallet id, shared by both closures: a snapshot landing after the delete it
+        // was racing would resurrect the wallet `removeDevice` just wiped.
+        let persistQueue = SnapshotPersistQueue()
         self.persistSnapshot = persistSnapshot ?? { snapshot in
-            Task {
-                try? await CoreService.shared.activity.replaceHwSnapshot(
-                    walletId: snapshot.walletId,
-                    activities: snapshot.activities,
-                    transactionDetails: snapshot.transactionDetails,
-                    pruneMissing: snapshot.isComplete
-                )
+            persistQueue.enqueue(walletId: snapshot.walletId) {
+                do {
+                    try await CoreService.shared.activity.replaceHwSnapshot(
+                        walletId: snapshot.walletId,
+                        activities: snapshot.activities,
+                        transactionDetails: snapshot.transactionDetails,
+                        pruneMissing: snapshot.isComplete
+                    )
+                } catch {
+                    // `lastPersisted` already recorded this snapshot, so a swallowed failure would
+                    // leave the manager believing it landed and skip its deletions until the
+                    // group's content changes again.
+                    Logger.error("Failed to persist HW snapshot for '\(snapshot.walletId)': \(error)", context: "HwWalletManager")
+                }
             }
         }
         self.deleteActivities = deleteActivities ?? { walletId in
-            Task {
-                try? await CoreService.shared.activity.deleteByWalletId(walletId)
+            persistQueue.enqueue(walletId: walletId) {
+                do {
+                    _ = try await CoreService.shared.activity.deleteByWalletId(walletId)
+                } catch {
+                    Logger.error("Failed to delete activities for HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
+                }
             }
         }
     }
@@ -737,5 +751,21 @@ final class HwWalletManager {
         let balanceSats: UInt64
         let activities: [Activity]
         let transactionDetails: [TransactionDetails]
+    }
+}
+
+/// Serialises hardware-wallet writes per wallet id. Each snapshot supersedes the previous one, so a
+/// write that lands out of order would resurrect rows a later snapshot pruned — or a whole wallet
+/// that `removeDevice` just deleted. MainActor-isolated, so the chaining itself is race-free.
+@MainActor
+private final class SnapshotPersistQueue {
+    private var tails: [String: Task<Void, Never>] = [:]
+
+    func enqueue(walletId: String, _ work: @escaping () async -> Void) {
+        let previous = tails[walletId]
+        tails[walletId] = Task { @MainActor in
+            await previous?.value
+            await work()
+        }
     }
 }
