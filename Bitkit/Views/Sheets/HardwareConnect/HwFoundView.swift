@@ -38,7 +38,7 @@ struct HwFoundView: View {
                 CustomButton(title: t("common__cancel"), variant: .secondary, shouldExpand: true) {
                     onCancel()
                 }
-                .accessibilityIdentifier("HwFoundCancel")
+                .accessibilityIdentifier("HardwareWalletFoundCancel")
 
                 CustomButton(
                     title: t("common__connect"),
@@ -48,11 +48,12 @@ struct HwFoundView: View {
                 ) {
                     onConnect()
                 }
-                .accessibilityIdentifier("HwFoundConnect")
+                .accessibilityIdentifier("HardwareWalletFoundConnect")
             }
             .padding(.horizontal, 32)
             .padding(.bottom, 16)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareWalletFoundScreen")
     }
 }

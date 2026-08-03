@@ -346,7 +346,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func deleteProfile() async throws {
-        try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.deleteProfile")
+        await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
         do {
             try await Task.detached {
                 try await PubkyService.deletePaykitProfile()
@@ -676,7 +676,7 @@ class PubkyProfileManager: ObservableObject {
     private static func clearPublicPaykitSharingState() {
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
-        UserDefaults.standard.set(false, forKey: "hasConfirmedPublicPaykitEndpoints")
+        UserDefaults.standard.set(false, forKey: ContactPaymentsService.confirmedPreferenceKey)
         PrivatePaykitService.setContactSharingCleanupPending(false)
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")

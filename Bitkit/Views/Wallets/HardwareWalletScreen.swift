@@ -35,6 +35,8 @@ struct HardwareWalletScreen: View {
             }
         }
         .navigationBarHidden(true)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("HardwareWalletScreen")
         .task(id: wallet?.walletId) {
             await loadActivities()
         }

@@ -151,6 +151,18 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Load Contacts
 
+    func loadContactsIfNeeded(for publicKey: String) async throws {
+        while !hasLoaded {
+            if isLoading {
+                for await isLoading in $isLoading.values where !isLoading {
+                    break
+                }
+            } else {
+                try await loadContacts(for: publicKey)
+            }
+        }
+    }
+
     func loadContacts(for publicKey: String) async throws {
         guard !isLoading else {
             Logger.debug("loadContacts skipped — already loading", context: "ContactsManager")
