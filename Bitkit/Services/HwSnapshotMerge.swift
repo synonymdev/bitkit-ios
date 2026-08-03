@@ -9,13 +9,20 @@ enum HwSnapshotMerge {
         let toUpsert: [Activity]
     }
 
-    static func plan(existing: [OnchainActivity], incoming: [Activity]) -> Plan {
+    /// - Parameter pruneMissing: whether stored rows absent from `incoming` may be deleted. False
+    ///   when the caller could only merge some of the wallet's watchers — a partial snapshot cannot
+    ///   mention the rows owned by a watcher that has not reported yet, and core's
+    ///   `delete_activity_by_id` cascades into `activity_tags`, so pruning one destroys user tags
+    ///   that are no longer carried in the backup payload. Upserting is always safe.
+    static func plan(existing: [OnchainActivity], incoming: [Activity], pruneMissing: Bool) -> Plan {
         let incomingIds = Set(incoming.map(id(of:)))
 
         // Transfers are never dropped: the pending Transfer To Spending row is written when the
         // funding tx is broadcast, before any watcher poll can report it, so a snapshot that does
         // not mention it yet must not delete it.
-        let toDelete = existing.filter { !$0.isTransfer && !incomingIds.contains($0.id) }
+        let toDelete = pruneMissing
+            ? existing.filter { !$0.isTransfer && !incomingIds.contains($0.id) }
+            : []
 
         let storedByTxId = Dictionary(existing.map { ($0.txId, $0) }, uniquingKeysWith: { first, _ in first })
         let toUpsert = incoming.map { activity -> Activity in

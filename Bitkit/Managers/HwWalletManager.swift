@@ -43,7 +43,7 @@ final class HwWalletManager {
     private let monitoredTypesProvider: () -> Set<String>
     private let electrumUrlProvider: () -> String
     private let networkProvider: () -> TrezorCoinType
-    private let persistSnapshot: (String, [Activity], [TransactionDetails]) -> Void
+    private let persistSnapshot: (HwWalletSnapshot) -> Void
     private let deleteActivities: (String) -> Void
 
     // MARK: - Internal state
@@ -77,8 +77,10 @@ final class HwWalletManager {
     private var walletIdCache: [String: String] = [:]
 
     /// Cache key of the last snapshot persisted per group wallet id, so an unchanged watcher event
-    /// doesn't re-write the whole history to core and fire a redundant activity-list reload.
-    private var lastPersisted: [String: HwSnapshot] = [:]
+    /// doesn't re-write the whole history to core and fire a redundant activity-list reload. The key
+    /// carries `isComplete`, so a group that just became complete re-persists even when its merged
+    /// content is byte-identical — that write is what applies the deletions the partial ones deferred.
+    private var lastPersisted: [String: HwWalletSnapshot] = [:]
 
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
@@ -88,7 +90,7 @@ final class HwWalletManager {
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
-        persistSnapshot: ((String, [Activity], [TransactionDetails]) -> Void)? = nil,
+        persistSnapshot: ((HwWalletSnapshot) -> Void)? = nil,
         deleteActivities: ((String) -> Void)? = nil
     ) {
         self.watcherService = watcherService
@@ -97,12 +99,13 @@ final class HwWalletManager {
             Set(SettingsViewModel.shared.addressTypesToMonitor.map(\.stringValue))
         }
         electrumUrlProvider = electrumUrl ?? { OnChainHwService.getElectrumUrl() }
-        self.persistSnapshot = persistSnapshot ?? { walletId, activities, transactionDetails in
+        self.persistSnapshot = persistSnapshot ?? { snapshot in
             Task {
                 try? await CoreService.shared.activity.replaceHwSnapshot(
-                    walletId: walletId,
-                    activities: activities,
-                    transactionDetails: transactionDetails
+                    walletId: snapshot.walletId,
+                    activities: snapshot.activities,
+                    transactionDetails: snapshot.transactionDetails,
+                    pruneMissing: snapshot.isComplete
                 )
             }
         }
@@ -373,25 +376,51 @@ final class HwWalletManager {
     private func persistGroupSnapshot(forDevice deviceId: String, groups: [DeviceGroup]? = nil) {
         let groups = groups ?? deviceGroups()
         guard let group = groups.first(where: { $0.ids.contains(deviceId) }) else { return }
-        let snapshot = mergedSnapshot(for: group)
+
+        let missing = missingWatcherIds(for: group)
+        let snapshot = mergedSnapshot(for: group, isComplete: missing.isEmpty)
         // Skip the core write + activity-list reload when nothing meaningful changed for this group.
         let cacheKey = snapshotCacheKey(for: snapshot)
         guard lastPersisted[group.walletId] != cacheKey else { return }
         lastPersisted[group.walletId] = cacheKey
-        persistSnapshot(group.walletId, snapshot.activities, snapshot.transactionDetails)
+
+        if !missing.isEmpty {
+            Logger.debug(
+                "Partial HW snapshot for '\(group.walletId)': deletions deferred until \(missing.sorted()) report",
+                context: "HwWalletManager"
+            )
+        }
+        persistSnapshot(snapshot)
+    }
+
+    /// Watcher ids the current device/settings snapshot wants for this group that have not reported
+    /// yet. Non-empty means a merged snapshot covers only part of the wallet, so it must not prune:
+    /// deleting a row the silent watcher owns would take its tags with it (core cascades the delete
+    /// into `activity_tags`, and hardware tags are left out of the backup payload).
+    ///
+    /// Deliberately `desiredWatcherSpecs()` and not `activeWatchers`: on cold start the sibling
+    /// watcher is still mid-`startWatcher`, and a not-yet-active watcher still owns stored rows.
+    /// A watcher that never manages to start therefore suspends pruning for its wallet — a lingering
+    /// replaced row is cosmetic and self-heals on the first successful sync, which is the cheaper
+    /// failure than destroying tags.
+    private func missingWatcherIds(for group: DeviceGroup) -> Set<String> {
+        Set(desiredWatcherSpecs().lazy.filter { $0.walletId == group.walletId }.map(\.watcherId))
+            .subtracting(watcherData.keys)
     }
 
     /// An unconfirmed activity's timestamp is "now" from the watcher's perspective, so it ticks on
     /// every poll even when nothing about the transaction changed. Zeroing it keeps a mempool
     /// transaction from re-writing the whole group to core on each event.
-    private func snapshotCacheKey(for snapshot: HwSnapshot) -> HwSnapshot {
-        HwSnapshot(
+    private func snapshotCacheKey(for snapshot: HwWalletSnapshot) -> HwWalletSnapshot {
+        HwWalletSnapshot(
+            walletId: snapshot.walletId,
             activities: snapshot.activities.map { activity in
                 guard case var .onchain(onchain) = activity, !onchain.confirmed else { return activity }
                 onchain.timestamp = 0
                 return .onchain(onchain)
             },
-            transactionDetails: snapshot.transactionDetails
+            transactionDetails: snapshot.transactionDetails,
+            isComplete: snapshot.isComplete
         )
     }
 
@@ -401,7 +430,7 @@ final class HwWalletManager {
     /// results are sorted by id, so a tx observed by multiple address-type watchers (which can carry
     /// different wallet-perspective directions) resolves to a deterministic winner — the
     /// highest-ordered watcherId — rather than depending on dictionary iteration order.
-    private func mergedSnapshot(for group: DeviceGroup) -> HwSnapshot {
+    private func mergedSnapshot(for group: DeviceGroup, isComplete: Bool) -> HwWalletSnapshot {
         let watchers = watcherData
             .filter { group.ids.contains($0.value.deviceId) }
             .sorted { $0.key < $1.key }
@@ -419,9 +448,11 @@ final class HwWalletManager {
             detailsByTxId[details.txId] = details
         }
 
-        return HwSnapshot(
+        return HwWalletSnapshot(
+            walletId: group.walletId,
             activities: activitiesById.values.sorted { $0.activityId < $1.activityId },
-            transactionDetails: detailsByTxId.values.sorted { $0.txId < $1.txId }
+            transactionDetails: detailsByTxId.values.sorted { $0.txId < $1.txId },
+            isComplete: isComplete
         )
     }
 
@@ -704,13 +735,6 @@ final class HwWalletManager {
     private struct HwWatcherData {
         let deviceId: String
         let balanceSats: UInt64
-        let activities: [Activity]
-        let transactionDetails: [TransactionDetails]
-    }
-
-    /// The wallet-scoped set core last stored for a device group, plus the cache key that produced
-    /// it. See `HwWalletManager.snapshotCacheKey(for:)` for why the key is not the snapshot itself.
-    private struct HwSnapshot: Equatable {
         let activities: [Activity]
         let transactionDetails: [TransactionDetails]
     }
