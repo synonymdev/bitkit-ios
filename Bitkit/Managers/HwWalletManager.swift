@@ -43,8 +43,12 @@ final class HwWalletManager {
     private let monitoredTypesProvider: () -> Set<String>
     private let electrumUrlProvider: () -> String
     private let networkProvider: () -> TrezorCoinType
-    private let persistSnapshot: @MainActor (HwWalletSnapshot) -> Void
-    private let deleteActivities: @MainActor (String) -> Void
+    private let persistSnapshot: @MainActor (HwWalletSnapshot) async throws -> Void
+    private let deleteActivities: @MainActor (String) async throws -> Void
+
+    /// One chain per wallet id, shared by both writes: a snapshot landing after the delete it was
+    /// racing would resurrect the wallet `removeDevice` just wiped.
+    private let persistQueue = SnapshotPersistQueue()
 
     // MARK: - Internal state
 
@@ -90,8 +94,8 @@ final class HwWalletManager {
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
-        persistSnapshot: (@MainActor (HwWalletSnapshot) -> Void)? = nil,
-        deleteActivities: (@MainActor (String) -> Void)? = nil
+        persistSnapshot: (@MainActor (HwWalletSnapshot) async throws -> Void)? = nil,
+        deleteActivities: (@MainActor (String) async throws -> Void)? = nil
     ) {
         self.watcherService = watcherService
         networkProvider = network ?? { OnChainHwService.appDefaultCoinType }
@@ -99,34 +103,18 @@ final class HwWalletManager {
             Set(SettingsViewModel.shared.addressTypesToMonitor.map(\.stringValue))
         }
         electrumUrlProvider = electrumUrl ?? { OnChainHwService.getElectrumUrl() }
-        // One chain per wallet id, shared by both closures: a snapshot landing after the delete it
-        // was racing would resurrect the wallet `removeDevice` just wiped.
-        let persistQueue = SnapshotPersistQueue()
+        // Both seams are plain writes: queueing, failure handling and cache repair live in
+        // `persist(_:)` / `delete(walletId:)`, so an injected seam exercises them too.
         self.persistSnapshot = persistSnapshot ?? { snapshot in
-            persistQueue.enqueue(walletId: snapshot.walletId) {
-                do {
-                    try await CoreService.shared.activity.replaceHwSnapshot(
-                        walletId: snapshot.walletId,
-                        activities: snapshot.activities,
-                        transactionDetails: snapshot.transactionDetails,
-                        pruneMissing: snapshot.isComplete
-                    )
-                } catch {
-                    // `lastPersisted` already recorded this snapshot, so a swallowed failure would
-                    // leave the manager believing it landed and skip its deletions until the
-                    // group's content changes again.
-                    Logger.error("Failed to persist HW snapshot for '\(snapshot.walletId)': \(error)", context: "HwWalletManager")
-                }
-            }
+            try await CoreService.shared.activity.replaceHwSnapshot(
+                walletId: snapshot.walletId,
+                activities: snapshot.activities,
+                transactionDetails: snapshot.transactionDetails,
+                pruneMissing: snapshot.isComplete
+            )
         }
         self.deleteActivities = deleteActivities ?? { walletId in
-            persistQueue.enqueue(walletId: walletId) {
-                do {
-                    _ = try await CoreService.shared.activity.deleteByWalletId(walletId)
-                } catch {
-                    Logger.error("Failed to delete activities for HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
-                }
-            }
+            _ = try await CoreService.shared.activity.deleteByWalletId(walletId)
         }
     }
 
@@ -147,7 +135,7 @@ final class HwWalletManager {
         // every wallet id. syncWatchers already stopped its watcher above; delete its persisted
         // activities too. Cleans up on any removal path, keeping us decoupled from TrezorManager.
         for walletId in previousWalletIds.subtracting(hwWalletIds) {
-            deleteActivities(walletId)
+            delete(walletId: walletId)
         }
         pruneCaches()
     }
@@ -164,7 +152,7 @@ final class HwWalletManager {
             _ = stopActiveWatcher(watcherId)
         }
         if let group {
-            deleteActivities(group.walletId)
+            delete(walletId: group.walletId)
             lastPersisted[group.walletId] = nil
         }
         if let device = knownDevices.first(where: { $0.id == deviceId }) {
@@ -404,7 +392,47 @@ final class HwWalletManager {
                 context: "HwWalletManager"
             )
         }
-        persistSnapshot(snapshot)
+        persist(snapshot)
+    }
+
+    private func persist(_ snapshot: HwWalletSnapshot) {
+        let cacheKey = snapshotCacheKey(for: snapshot)
+        persistQueue.enqueue(walletId: snapshot.walletId) { [weak self] in
+            guard let self else { return }
+            do {
+                try await persistSnapshot(snapshot)
+            } catch {
+                // `persistGroupSnapshot` recorded this snapshot as persisted before the write was
+                // queued, so leaving the entry in place would dedupe away every identical retry and
+                // strand the wallet — including a complete snapshot's pending deletions.
+                invalidatePersistCache(walletId: snapshot.walletId, ifStill: cacheKey)
+                Logger.error("Failed to persist HW snapshot for '\(snapshot.walletId)': \(error)", context: "HwWalletManager")
+            }
+        }
+    }
+
+    private func delete(walletId: String) {
+        persistQueue.enqueue(walletId: walletId) { [weak self] in
+            do {
+                try await self?.deleteActivities(walletId)
+            } catch {
+                Logger.error("Failed to delete activities for HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
+            }
+        }
+    }
+
+    /// Drop a failed write's dedupe entry so an identical watcher snapshot retries instead of being
+    /// skipped. Only when a later snapshot has not already replaced it: that one supersedes this
+    /// failure, so clearing its key would just force a redundant re-write.
+    private func invalidatePersistCache(walletId: String, ifStill cacheKey: HwWalletSnapshot) {
+        guard lastPersisted[walletId] == cacheKey else { return }
+        lastPersisted[walletId] = nil
+    }
+
+    /// Await every queued write. Test seam — assertions on persisted state would otherwise race the
+    /// per-wallet chain.
+    func drainPendingPersists() async {
+        await persistQueue.drainAll()
     }
 
     /// Watcher ids the current device/settings snapshot wants for this group that have not reported
@@ -761,11 +789,18 @@ final class HwWalletManager {
 final class SnapshotPersistQueue {
     private var tails: [String: Task<Void, Never>] = [:]
 
-    func enqueue(walletId: String, _ work: @escaping () async -> Void) {
+    func enqueue(walletId: String, _ work: @escaping @MainActor () async -> Void) {
         let previous = tails[walletId]
         tails[walletId] = Task { @MainActor in
             await previous?.value
             await work()
+        }
+    }
+
+    /// Await every write queued so far. Test seam — see `HwWalletManager.drainPendingPersists()`.
+    func drainAll() async {
+        for task in tails.values {
+            await task.value
         }
     }
 }
