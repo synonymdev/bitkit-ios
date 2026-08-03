@@ -383,49 +383,66 @@ class ActivityService {
         }
     }
 
-    /// Replace the complete stored on-chain snapshot for a watch-only hardware wallet, and return
-    /// the resulting stored set.
+    /// Replace the complete stored on-chain snapshot for a watch-only hardware wallet.
     ///
-    /// The caller must merge every watcher belonging to the wallet before calling this: anything
-    /// scoped to `walletId` that the snapshot no longer contains is deleted, which is how a reorged
-    /// or replaced transaction stops showing. Locally written transfer metadata survives (see
-    /// `HwSnapshotMerge`).
-    @discardableResult
+    /// `pruneMissing` must be false unless `activities` merges *every* watcher belonging to the
+    /// wallet: anything scoped to `walletId` that a prunable snapshot no longer contains is deleted,
+    /// which is how a reorged or replaced transaction stops showing. Locally written transfer
+    /// metadata survives either way (see `HwSnapshotMerge`).
     func replaceHwSnapshot(
         walletId: String,
         activities: [Activity],
-        transactionDetails: [BitkitCore.TransactionDetails]
-    ) async throws -> [Activity] {
+        transactionDetails: [BitkitCore.TransactionDetails],
+        pruneMissing: Bool
+    ) async throws {
+        // The closure must stay non-async. `ServiceQueue.background`'s async overload is
+        // `queue.async { Task { … } }`, whose Task hops straight off the core queue — the
+        // read → delete → upsert below would then run unserialized, and a concurrent
+        // `markOnchainActivityAsTransfer` could interleave with it. Anything needing `await` runs
+        // after this returns.
         try await ServiceQueue.background(.core) {
-            let plan = try HwSnapshotMerge.plan(existing: Self.storedOnchainActivities(walletId: walletId), incoming: activities)
-
-            for activity in plan.toDelete {
-                _ = try deleteActivityById(walletId: walletId, activityId: activity.id)
-                _ = try deleteTransactionDetails(walletId: walletId, txId: activity.txId)
-            }
-
-            if !plan.toUpsert.isEmpty {
-                try upsertActivities(activities: plan.toUpsert)
-            }
-
-            if !transactionDetails.isEmpty {
-                try upsertTransactionDetails(detailsList: transactionDetails)
-            }
-
-            await self.refreshBoostTxIdsCache(walletId: walletId)
-            self.activitiesChangedSubject.send()
-
-            return try getActivities(
+            try Self.applyHwSnapshot(
                 walletId: walletId,
-                filter: .onchain,
-                txType: nil,
-                tags: nil,
-                search: nil,
-                minDate: nil,
-                maxDate: nil,
-                limit: nil,
-                sortDirection: nil
+                activities: activities,
+                transactionDetails: transactionDetails,
+                pruneMissing: pruneMissing
             )
+        }
+
+        // Rows may have been pruned, so drop the cached set rather than rebuilding it here: a
+        // rebuild is a full-wallet scan on every watcher poll, hardware rows never carry boostTxIds
+        // (boosting is gated off for watch-only wallets), and `getTxIdsInBoostTxIds` rebuilds
+        // lazily on the next read. Rebuilding inside the block above would also deadlock — it
+        // re-enters the core queue.
+        await MainActor.run { self.cachedTxIdsInBoostTxIds[walletId] = nil }
+        activitiesChangedSubject.send()
+    }
+
+    /// One core-queue transaction: read what is stored, then apply the plan. Deliberately non-async
+    /// and static, so it cannot reach instance state and reintroduce an `await` in the queue block.
+    private static func applyHwSnapshot(
+        walletId: String,
+        activities: [Activity],
+        transactionDetails: [BitkitCore.TransactionDetails],
+        pruneMissing: Bool
+    ) throws {
+        let plan = try HwSnapshotMerge.plan(
+            existing: storedOnchainActivities(walletId: walletId),
+            incoming: activities,
+            pruneMissing: pruneMissing
+        )
+
+        for activity in plan.toDelete {
+            _ = try deleteActivityById(walletId: walletId, activityId: activity.id)
+            _ = try deleteTransactionDetails(walletId: walletId, txId: activity.txId)
+        }
+
+        if !plan.toUpsert.isEmpty {
+            try upsertActivities(activities: plan.toUpsert)
+        }
+
+        if !transactionDetails.isEmpty {
+            try upsertTransactionDetails(detailsList: transactionDetails)
         }
     }
 
