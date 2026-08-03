@@ -291,9 +291,56 @@ final class PrivatePaykitServiceTests: XCTestCase {
         )
         await service.clearTestPendingMessageDrainRetries()
     }
+
+    func testPublishedEndpointCleanupPreservesFailedContactStateAndRetryMarker() async {
+        let successfulPublicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let failedPublicKey = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let previousPendingKeys = PrivatePaykitService.pendingDeletedContactCleanupKeys()
+        PrivatePaykitService.clearDeletedContactCleanupPending()
+        defer {
+            PrivatePaykitService.clearDeletedContactCleanupPending()
+            PrivatePaykitService.markDeletedContactCleanupPending(Array(previousPendingKeys))
+        }
+
+        let service = PrivatePaykitService()
+        var contactState = PrivatePaykitService.ContactState()
+        contactState.cachedResolvedEndpoints = [
+            PrivatePaykitService.StoredPaymentEntry(
+                methodId: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                endpointData: #"{"value":"lnbc1private"}"#
+            ),
+        ]
+        contactState.localInvoicesByReceiverPath = [
+            PaykitReceiverPath.wallet: PrivatePaykitService.StoredInvoice(
+                bolt11: "lnbc1private",
+                paymentHash: "payment-hash",
+                expiresAt: 123
+            ),
+        ]
+        contactState.publishedPrivatePaymentReceiverPaths = [PaykitReceiverPath.wallet]
+        await service.setTestContactState(contactState, publicKey: successfulPublicKey)
+        await service.setTestContactState(contactState, publicKey: failedPublicKey)
+        PrivatePaykitService.markDeletedContactCleanupPending([successfulPublicKey, failedPublicKey])
+
+        let didChangeState = await service.applyPublishedEndpointCleanupResults(
+            successfulPublicKeys: [successfulPublicKey],
+            failedPublicKeys: [failedPublicKey]
+        )
+
+        XCTAssertTrue(didChangeState)
+        let successfulContactState = await service.testContactState(publicKey: successfulPublicKey)
+        let failedContactState = await service.testContactState(publicKey: failedPublicKey)
+        XCTAssertNil(successfulContactState)
+        XCTAssertNotNil(failedContactState)
+        XCTAssertEqual(PrivatePaykitService.pendingDeletedContactCleanupKeys(), [failedPublicKey])
+    }
 }
 
 private extension PrivatePaykitService {
+    func setTestContactState(_ contactState: ContactState, publicKey: String) {
+        state.contacts[publicKey] = contactState
+    }
+
     func setTestLocalInvoice(_ invoice: StoredInvoice, publicKey: String) {
         state.contacts[publicKey] = ContactState()
         state.contacts[publicKey]?.localInvoicesByReceiverPath[PaykitReceiverPath.wallet] = invoice

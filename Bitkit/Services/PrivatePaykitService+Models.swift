@@ -30,7 +30,7 @@ extension PrivatePaykitService {
         }
     }
 
-    struct StoredPaymentEntry: Codable {
+    struct StoredPaymentEntry: Codable, Equatable {
         var methodId: String
         var endpointData: String
 
@@ -45,7 +45,7 @@ extension PrivatePaykitService {
         }
     }
 
-    struct StoredInvoice: Codable {
+    struct StoredInvoice: Codable, Equatable {
         var bolt11: String
         var paymentHash: String
         var expiresAt: Double
