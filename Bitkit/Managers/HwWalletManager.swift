@@ -758,7 +758,7 @@ final class HwWalletManager {
 /// write that lands out of order would resurrect rows a later snapshot pruned — or a whole wallet
 /// that `removeDevice` just deleted. MainActor-isolated, so the chaining itself is race-free.
 @MainActor
-private final class SnapshotPersistQueue {
+final class SnapshotPersistQueue {
     private var tails: [String: Task<Void, Never>] = [:]
 
     func enqueue(walletId: String, _ work: @escaping () async -> Void) {

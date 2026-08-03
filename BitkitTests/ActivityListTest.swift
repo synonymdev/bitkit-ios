@@ -487,6 +487,175 @@ final class ActivityTests: XCTestCase {
         XCTAssertNil(deletedActivity)
     }
 
+    // MARK: - Hardware wallet snapshots
+
+    private let hwWalletId = "trezor:testwallet"
+
+    private func hwOnchain(
+        id: String,
+        txId: String? = nil,
+        txType: PaymentType = .received,
+        walletId: String? = nil,
+        isTransfer: Bool = false,
+        contact: String? = nil
+    ) -> Activity {
+        .onchain(OnchainActivity(
+            walletId: walletId ?? hwWalletId,
+            id: id,
+            txType: txType,
+            txId: txId ?? id,
+            value: 50000,
+            fee: 100,
+            feeRate: 1,
+            address: "bcrt1qhw",
+            confirmed: true,
+            timestamp: 1_700_000_000,
+            isBoosted: false,
+            boostTxIds: [],
+            isTransfer: isTransfer,
+            doesExist: true,
+            confirmTimestamp: 1_700_000_000,
+            channelId: nil,
+            transferTxId: nil,
+            contact: contact,
+            createdAt: nil,
+            updatedAt: nil,
+            seenAt: nil
+        ))
+    }
+
+    private func hwDetails(txId: String) -> BitkitCore.TransactionDetails {
+        BitkitCore.TransactionDetails(
+            walletId: hwWalletId,
+            txId: txId,
+            amountSats: 50000,
+            inputs: [TxInput(txid: "prev-\(txId)", vout: 0, scriptsig: "", witness: [], sequence: 0)],
+            outputs: [TxOutput(scriptpubkey: "", scriptpubkeyType: "v0_p2wpkh", scriptpubkeyAddress: "bcrt1qout", value: 50000, n: 0)]
+        )
+    }
+
+    private func storedHwActivityIds() async throws -> [String] {
+        try await service.get(filter: .onchain, walletId: hwWalletId).map(ActivityScope.id(of:)).sorted()
+    }
+
+    func testReplaceHwSnapshotPrunesMissingRowsWhenComplete() async throws {
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "keep"), hwOnchain(id: "reorged")],
+            transactionDetails: [hwDetails(txId: "keep"), hwDetails(txId: "reorged")],
+            pruneMissing: true
+        )
+        var stored = try await storedHwActivityIds()
+        XCTAssertEqual(stored, ["keep", "reorged"])
+
+        // The watcher no longer reports "reorged", and this snapshot covers the whole wallet.
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "keep")],
+            transactionDetails: [hwDetails(txId: "keep")],
+            pruneMissing: true
+        )
+
+        stored = try await storedHwActivityIds()
+        XCTAssertEqual(stored, ["keep"])
+        let details = try await service.getTransactionDetails(txid: "reorged", walletId: hwWalletId)
+        XCTAssertNil(details, "a pruned row's transaction details go with it")
+    }
+
+    func testReplaceHwSnapshotKeepsRowsAndTagsWhenNotPruning() async throws {
+        // The end-to-end proof for the partial-snapshot bug: core's delete cascades into
+        // activity_tags, and hardware tags are excluded from the backup payload, so a partial
+        // snapshot that pruned would destroy them irrecoverably.
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "fromWatcherA"), hwOnchain(id: "fromWatcherB")],
+            transactionDetails: [],
+            pruneMissing: true
+        )
+        try await service.appendTags(toActivity: "fromWatcherB", ["holiday"], walletId: hwWalletId)
+
+        // Watcher A reports before watcher B has, so the snapshot omits B's row.
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "fromWatcherA")],
+            transactionDetails: [],
+            pruneMissing: false
+        )
+
+        let stored = try await storedHwActivityIds()
+        XCTAssertEqual(stored, ["fromWatcherA", "fromWatcherB"], "the silent watcher's row survives")
+        let tags = try await service.tags(forActivity: "fromWatcherB", walletId: hwWalletId)
+        XCTAssertEqual(tags, ["holiday"], "and so does its tag")
+    }
+
+    func testReplaceHwSnapshotPreservesSeenAtAndContactOnUpsert() async throws {
+        // The design leans on core's upsert merge semantics: `contact` is COALESCEd, and `seen_at`
+        // is only ever written by `mark_activity_as_seen` (never by insert or upsert), so a
+        // re-reported row keeps both even though the watcher reports neither.
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "tx1", contact: "pk-contact")],
+            transactionDetails: [],
+            pruneMissing: true
+        )
+        await service.markActivityAsSeen(id: "tx1", walletId: hwWalletId, seenAt: 1_699_000_000)
+
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "tx1")], // watcher rows carry no contact and no seenAt
+            transactionDetails: [],
+            pruneMissing: true
+        )
+
+        let stored = try await service.getActivity(id: "tx1", walletId: hwWalletId)
+        guard case let .onchain(onchain) = stored else {
+            return XCTFail("expected the hardware row to still be stored")
+        }
+        XCTAssertEqual(onchain.contact, "pk-contact")
+        XCTAssertEqual(onchain.seenAt, 1_699_000_000, "seen state survives a watcher re-report")
+    }
+
+    func testMarkOnchainActivityAsTransferFindsHardwareScopedRow() async throws {
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "hwfunding", txType: .sent)],
+            transactionDetails: [],
+            pruneMissing: true
+        )
+
+        await service.markOnchainActivityAsTransfer(txId: "hwfunding", channelId: "channel-9")
+
+        guard case let .onchain(onchain) = try await service.getActivity(id: "hwfunding", walletId: hwWalletId) else {
+            return XCTFail("expected the hardware row to still be stored")
+        }
+        XCTAssertTrue(onchain.isTransfer)
+        XCTAssertEqual(onchain.channelId, "channel-9")
+    }
+
+    func testMarkOnchainActivityAsTransferPrefersAlreadyFlaggedDefaultWalletRow() async throws {
+        // Same txid in both scopes. The normal wallet's row is already flagged, so it wins — which
+        // is also the case the cross-wallet scan short-circuits on.
+        try await service.insert(hwOnchain(
+            id: "shared", txType: .sent, walletId: WalletScope.default, isTransfer: true
+        ))
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "shared", txType: .sent)],
+            transactionDetails: [],
+            pruneMissing: true
+        )
+
+        await service.markOnchainActivityAsTransfer(txId: "shared", channelId: "channel-main")
+
+        guard case let .onchain(main) = try await service.getActivity(id: "shared", walletId: WalletScope.default),
+              case let .onchain(hardware) = try await service.getActivity(id: "shared", walletId: hwWalletId)
+        else {
+            return XCTFail("expected both scoped rows to be stored")
+        }
+        XCTAssertEqual(main.channelId, "channel-main")
+        XCTAssertNil(hardware.channelId, "the hardware row is untouched")
+    }
+
     func testGetAllActivitiesWithLimit() async throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
 

@@ -5,11 +5,16 @@ import XCTest
 /// Covers the `Activity` walletId helpers that drive the merged activity list + the blue
 /// hardware-wallet icon variant.
 final class ActivityHardwareTests: XCTestCase {
-    private func onchain(walletId: String, txId: String = "tx1") -> Activity {
+    private func onchain(
+        walletId: String,
+        txId: String = "tx1",
+        txType: PaymentType = .received,
+        doesExist: Bool = true
+    ) -> Activity {
         .onchain(OnchainActivity(
             walletId: walletId,
             id: txId,
-            txType: .received,
+            txType: txType,
             txId: txId,
             value: 1000,
             fee: 0,
@@ -20,7 +25,7 @@ final class ActivityHardwareTests: XCTestCase {
             isBoosted: false,
             boostTxIds: [],
             isTransfer: false,
-            doesExist: true,
+            doesExist: doesExist,
             confirmTimestamp: nil,
             channelId: nil,
             transferTxId: nil,
@@ -63,12 +68,24 @@ final class ActivityHardwareTests: XCTestCase {
 
     /// A hardware transfer's funding tx is now stored only under the hardware wallet id, so the
     /// merged list no longer collapses same-txid rows: activity identity is (walletId, activityId).
-    func testSameTxIdInTwoWalletScopesAreDistinctActivities() {
-        let main = onchain(walletId: WalletScope.default, txId: "tx1")
-        let hardware = onchain(walletId: "trezor:abc", txId: "tx1")
+    /// Replacement filtering therefore has to be evaluated against each row's *own* wallet — a boost
+    /// chain never crosses wallets, so the normal wallet's replaced-txid set says nothing about a
+    /// hardware row that happens to share a txid.
+    func testReplacementFilteringIsScopedToTheRowsOwnWallet() {
+        let main = onchain(walletId: WalletScope.default, txId: "tx1", txType: .sent, doesExist: false)
+        let hardware = onchain(walletId: "trezor:abc", txId: "tx1", txType: .sent, doesExist: false)
 
-        XCTAssertNotEqual(main, hardware)
-        XCTAssertEqual(main.activityId, hardware.activityId)
-        XCTAssertEqual(Set([main, hardware]).count, 2)
+        // As `ActivityListViewModel.filterOutReplacedSentTransactions` does it: each row checked
+        // against the boost set of the wallet that owns it.
+        let boostTxIdsByWallet: [String: Set<String>] = [WalletScope.default: ["tx1"], "trezor:abc": []]
+
+        XCTAssertTrue(main.isReplacedSentTransaction(txIdsInBoostTxIds: boostTxIdsByWallet[main.walletId] ?? []))
+        XCTAssertFalse(
+            hardware.isReplacedSentTransaction(txIdsInBoostTxIds: boostTxIdsByWallet[hardware.walletId] ?? []),
+            "the hardware row survives: it was not replaced in its own wallet"
+        )
+
+        // Using one global set — the pre-PR behaviour — would wrongly drop the hardware row too.
+        XCTAssertTrue(hardware.isReplacedSentTransaction(txIdsInBoostTxIds: ["tx1"]))
     }
 }
