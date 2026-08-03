@@ -928,6 +928,10 @@ enum WatchOnlyAccountClaimCodec {
         }
 
         // A BIP32 xpub is version(4) ‖ depth(1) ‖ fingerprint(4) ‖ child(4) ‖ chaincode(32) ‖ key(33).
+        guard xpubVersionBytes.contains(Array(payload.prefix(4))) else {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
+        }
+
         // Reject anything whose key is not a point on the curve, matching rust-bitcoin's Xpub parse.
         let compressedKey = payload.suffix(33)
         guard isValidCompressedPublicKey(compressedKey) else {
@@ -936,6 +940,16 @@ enum WatchOnlyAccountClaimCodec {
 
         return payload
     }
+
+    /// The BIP32 public-key versions rust-bitcoin's `Xpub::decode` accepts — mainnet `xpub` and the
+    /// shared testnet/regtest/signet `tpub`. It fails anything else with `UnknownVersion`, so a
+    /// SLIP-132 `ypub`/`zpub`/`vpub` (or an `xprv`, whose key byte is 0x00) was already rejected by
+    /// the core FFI this decoder replaced. Checking here keeps that contract: without it a
+    /// wrong-version key decodes cleanly and only fails later, at the counterparty.
+    private static let xpubVersionBytes: Set<[UInt8]> = [
+        [0x04, 0x88, 0xB2, 0x1E],
+        [0x04, 0x35, 0x87, 0xCF],
+    ]
 
     private static let base58Alphabet = Array("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".utf8)
 
@@ -981,15 +995,6 @@ enum WatchOnlyAccountClaimCodec {
     }
 
     private static func isValidCompressedPublicKey(_ key: Data) -> Bool {
-        guard key.count == 33, let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_NONE)) else {
-            return false
-        }
-        defer { secp256k1_context_destroy(context) }
-
-        var parsed = secp256k1_pubkey()
-        return Array(key).withUnsafeBufferPointer { buffer in
-            guard let baseAddress = buffer.baseAddress else { return false }
-            return secp256k1_ec_pubkey_parse(context, &parsed, baseAddress, buffer.count) == 1
-        }
+        (try? secp256k1.KeyAgreement.PublicKey(dataRepresentation: key, format: .compressed)) != nil
     }
 }
