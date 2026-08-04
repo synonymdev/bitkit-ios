@@ -68,9 +68,12 @@ struct SendSheet: View {
         guard wallet.nodeLifecycleState == .running else { return true }
 
         // For lightning payments, also need usable channels (peer connected)
+        // A swap send pays a bolt11 too, so it needs usable channels even though its recipient is
+        // an on-chain address.
         let isLightningPayment = app.scannedLightningInvoice != nil
             || app.lnurlPayData != nil
             || app.selectedWalletToPayFrom == .lightning
+            || app.isSwapSend
 
         if isLightningPayment {
             // If there are no channels at all, don't show the sync overlay –
@@ -223,7 +226,7 @@ struct SendSheet: View {
                     ),
                     accessibilityIdentifier: "InsufficientSavingsToast"
                 )
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.send)
                 return false
             }
         } else {
@@ -235,7 +238,7 @@ struct SendSheet: View {
                     description: t("other__pay_insufficient_savings_description"),
                     accessibilityIdentifier: "InsufficientSavingsToast"
                 )
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.send)
                 return false
             }
         }
@@ -317,11 +320,26 @@ struct SendSheet: View {
         // Validate onchain payment balance (for pure onchain invoices)
         if let onchainInvoice = app.scannedOnchainInvoice {
             let onchainBalance = LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0
-            guard validateOnchainBalanceAndDismissIfInsufficient(
-                invoiceAmount: onchainInvoice.amountSatoshis,
-                onchainBalance: onchainBalance
-            ) else {
+
+            // Savings falling short is not a dead end while a swap can pay the address out of
+            // spending. The node was not running at scan time in this path, so this is the first
+            // chance to ask Boltz.
+            guard app.hasSufficientOnchainBalance(invoiceAmount: onchainInvoice.amountSatoshis, onchainBalance: onchainBalance) else {
                 hasValidatedAfterSync = true
+                Task {
+                    let switched = await app.trySwitchToSwapSend(amountSats: onchainInvoice.amountSatoshis)
+                    // The Boltz round trip can outlast the sheet; do nothing if the user has since
+                    // moved on to a different send or closed the sheet.
+                    guard app.scannedOnchainInvoice?.address == onchainInvoice.address else { return }
+                    guard switched else {
+                        _ = validateOnchainBalanceAndDismissIfInsufficient(
+                            invoiceAmount: onchainInvoice.amountSatoshis,
+                            onchainBalance: onchainBalance
+                        )
+                        return
+                    }
+                    navigationPath = [.amount]
+                }
                 return
             }
         }
