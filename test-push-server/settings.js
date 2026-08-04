@@ -22,7 +22,7 @@ const config = {
         badge: 0
     },
     push: {
-        priority: 'high',
+        priority: 10,
         contentAvailable: 1,
         mutableContent: 1
     }
@@ -35,16 +35,13 @@ if (!fs.existsSync(config.apn.keyFile)) {
     process.exit(1);
 }
 
-const pushSettings = {
-    apn: {
-        token: {
-            key: fs.readFileSync(config.apn.keyFile),
-            keyId: config.apn.keyId,
-            teamId: config.apn.teamId,
-        },
-        production: config.apn.production
+const providerOptions = {
+    token: {
+        key: fs.readFileSync(config.apn.keyFile),
+        keyId: config.apn.keyId,
+        teamId: config.apn.teamId,
     },
-    isAlwaysUseFCM: false
+    production: config.apn.production
 };
 
 const defaultPaymentAlert = {
@@ -53,7 +50,7 @@ const defaultPaymentAlert = {
 };
 
 module.exports = {
-    pushSettings,
+    providerOptions,
     defaultPaymentAlert,
     appBundleID: config.app.bundleId,
     config
