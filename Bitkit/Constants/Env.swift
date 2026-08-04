@@ -71,7 +71,7 @@ enum Env {
         (infoPlistValue("E2E_BACKEND") ?? "local").lowercased()
     }
 
-    private static var isLocalE2EBackend: Bool {
+    static var isLocalE2EBackend: Bool {
         isE2E && e2eBackend == "local"
     }
 
