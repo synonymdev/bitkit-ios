@@ -129,10 +129,14 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
+        case .requestUnavailable:
+            t("wallet__payment_request_unavailable")
+        case .requestExpired:
+            t("wallet__payment_request_expired")
+        case .operationInProgress:
+            t("wallet__payment_request_in_progress")
         case .amountMismatch:
             t("wallet__payment_request_mismatch")
-        case .requestUnavailable, .requestExpired, .operationInProgress:
-            nil
         }
     }
 }

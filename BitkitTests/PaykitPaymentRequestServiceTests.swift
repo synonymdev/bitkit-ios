@@ -5,6 +5,19 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentRequestServiceTests: XCTestCase {
+    func testPaymentRequestErrorsHaveUserFacingDescriptions() {
+        let errors: [PaykitPaymentRequestError] = [
+            .requestUnavailable,
+            .requestExpired,
+            .operationInProgress,
+            .amountMismatch,
+        ]
+
+        for error in errors {
+            XCTAssertNotNil(error.errorDescription)
+        }
+    }
+
     func testContactPaymentContextClaimIsExclusiveAndIdentityBased() {
         let app = AppViewModel()
         let first = ContactPaymentContext(publicKey: "pubkycontact")

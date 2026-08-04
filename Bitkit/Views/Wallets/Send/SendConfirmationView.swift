@@ -493,6 +493,7 @@ struct SendConfirmationView: View {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
             try validateIncomingPaymentRequestAmounts(contactPaymentContext)
             try await prepareIncomingPaymentRequest()
+            try validateIncomingPaymentRequestContext(contactPaymentContext)
 
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis

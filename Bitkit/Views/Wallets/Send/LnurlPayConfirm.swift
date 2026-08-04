@@ -198,6 +198,7 @@ struct LnurlPayConfirm: View {
         do {
             try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
             try await prepareIncomingPaymentRequest()
+            try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
 
             // Fetch the Lightning invoice from LNURL
             let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
