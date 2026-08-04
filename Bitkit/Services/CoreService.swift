@@ -2,6 +2,7 @@ import BitkitCore
 import Combine
 import Foundation
 import LDKNode
+import os
 
 /// Wallet scoping for bitkit-core's wallet-scoped activity storage (added in core 0.3.x).
 /// The app's normal on-chain/Lightning wallet uses the core default (`"bitkit"`); paired
@@ -73,23 +74,31 @@ class ActivityService {
 
     /// Cached transaction IDs that appear in boostTxIds, per wallet id (for filtering replaced
     /// transactions). Scoped because a boost chain only ever exists within one wallet.
-    private var cachedTxIdsInBoostTxIds: [String: Set<String>] = [:]
+    ///
+    /// Lock-guarded rather than actor- or `MainActor`-isolated: `updateBoostTxIdsCache` is called
+    /// from inside the synchronous `ServiceQueue.background(.core)` blocks below, which must stay
+    /// non-async (see `replaceHwSnapshot`), while readers run on whichever executor calls
+    /// `getTxIdsInBoostTxIds`. Never hold the lock across an `await`.
+    private let cachedTxIdsInBoostTxIds = OSAllocatedUnfairLock(initialState: [String: Set<String>]())
 
     /// Get the set of transaction IDs that appear in boostTxIds (cached for performance)
     func getTxIdsInBoostTxIds(walletId: String = WalletScope.default) async -> Set<String> {
-        if cachedTxIdsInBoostTxIds[walletId] == nil {
-            await refreshBoostTxIdsCache(walletId: walletId)
+        if let cached = cachedTxIdsInBoostTxIds.withLock({ $0[walletId] }) {
+            return cached
         }
-        return cachedTxIdsInBoostTxIds[walletId] ?? []
+        await refreshBoostTxIdsCache(walletId: walletId)
+        return cachedTxIdsInBoostTxIds.withLock { $0[walletId] ?? [] }
     }
 
     private func updateBoostTxIdsCache(for activity: Activity) {
         guard case let .onchain(onchain) = activity, !onchain.boostTxIds.isEmpty else { return }
-        // Only merge into an already-warmed wallet. Seeding a cold one would make
-        // `getTxIdsInBoostTxIds` treat this single activity's ids as the whole set and skip its
-        // refresh, so the rest of the wallet's boost chain would be invisible.
-        guard cachedTxIdsInBoostTxIds[onchain.walletId] != nil else { return }
-        cachedTxIdsInBoostTxIds[onchain.walletId, default: []].formUnion(onchain.boostTxIds)
+        cachedTxIdsInBoostTxIds.withLock {
+            // Only merge into an already-warmed wallet. Seeding a cold one would make
+            // `getTxIdsInBoostTxIds` treat this single activity's ids as the whole set and skip its
+            // refresh, so the rest of the wallet's boost chain would be invisible.
+            guard $0[onchain.walletId] != nil else { return }
+            $0[onchain.walletId, default: []].formUnion(onchain.boostTxIds)
+        }
     }
 
     private func refreshBoostTxIdsCache(walletId: String = WalletScope.default) async {
@@ -102,9 +111,7 @@ class ActivityService {
                 }
             }
             let txIdsToCache = txIds
-            await MainActor.run {
-                self.cachedTxIdsInBoostTxIds[walletId] = txIdsToCache
-            }
+            cachedTxIdsInBoostTxIds.withLock { $0[walletId] = txIdsToCache }
         } catch {
             Logger.error("Failed to refresh boostTxIds cache for '\(walletId)': \(error)", context: "ActivityService")
         }
@@ -364,7 +371,7 @@ class ActivityService {
             }
 
             // Clear cache since all activities are deleted
-            self.cachedTxIdsInBoostTxIds.removeAll()
+            self.cachedTxIdsInBoostTxIds.withLock { $0.removeAll() }
             self.activitiesChangedSubject.send()
         }
     }
@@ -416,7 +423,7 @@ class ActivityService {
         // (boosting is gated off for watch-only wallets), and `getTxIdsInBoostTxIds` rebuilds
         // lazily on the next read. Rebuilding inside the block above would also deadlock — it
         // re-enters the core queue.
-        await MainActor.run { self.cachedTxIdsInBoostTxIds[walletId] = nil }
+        cachedTxIdsInBoostTxIds.withLock { $0[walletId] = nil }
         activitiesChangedSubject.send()
     }
 
