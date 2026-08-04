@@ -129,6 +129,11 @@ enum Env {
         return .bitcoin
     }()
 
+    /// Whether LN -> onchain swaps can reach a Boltz backend. Boltz only serves a public API on
+    /// mainnet: its testnet deployment is deprecated and regtest resolves to a local backend that
+    /// no build of ours can reach. Elsewhere the transfer to savings closes a channel instead.
+    static var isSwapSupported: Bool { network == .bitcoin }
+
     static let ldkLogLevel = LDKNode.LogLevel.trace
 
     static let walletSyncIntervalSecs: UInt64 = 10 // TODO: play around with this

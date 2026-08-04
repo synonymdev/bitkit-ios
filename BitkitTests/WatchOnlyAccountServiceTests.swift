@@ -11,6 +11,16 @@ private let alternateTestXpub =
 private let testSerializedXpubHex =
     "043587cf03caafd489800000004b5fcc4a5fe210d9fba6616b4db1d025237dd7f035101f11f562401bc7104699" +
     "02e0bf22b51a6a49e0b149b995670d0ed9bb1fd99417748bacefba88fae655572d"
+private let mainnetTestXpub =
+    "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8" +
+    "YtGqsefD265TMg7usUDFdp6W1EGMcet8"
+private let mainnetSerializedXpubHex =
+    "0488b21e000000000000000000873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508" +
+    "0339a36013301597daef41fbe593a02cc513d0b55527ec2df1050e2e8ff49c85c2"
+/// Base58check over version(4) ‖ 74 zero bytes: decodes cleanly, but its key is not on the curve.
+private let offCurveKeyXpub =
+    "xpub661MyMwAqRbcEYS8w7XLSVeEsBXy79zSzH1J8vCdxAZningWLdN3zgtU6LBpB85b3D2yc8sfvZU" +
+    "521AAwdZafEz7mnzBBsz4wKY5e4cp9LB"
 
 final class WatchOnlyAccountServiceTests: XCTestCase {
     func testUnsignedClaimContainsExactAccountMetadata() throws {
@@ -33,6 +43,56 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         let invalidXpub = String(testXpub.dropLast()) + (testXpub.last == "1" ? "2" : "1")
 
         XCTAssertThrowsError(try WatchOnlyAccountClaimCodec.encode(record: makeRecord(accountIndex: 1, xpub: invalidXpub))) {
+            XCTAssertEqual($0 as? WatchOnlyAccountError, .invalidExtendedPublicKey)
+        }
+    }
+
+    // MARK: - serializedXpub
+
+    /// Vectors below are bitkit-core's own, from `src/modules/onchain/extended_pubkey.rs` @ v0.4.2,
+    /// so the local decode stays byte-compatible with the FFI it replaces.
+    func testSerializedXpubMatchesCoreVectorForMainnetXpub() throws {
+        let serialized = try WatchOnlyAccountClaimCodec.serializedXpub(mainnetTestXpub)
+
+        XCTAssertEqual(serialized.count, WatchOnlyAccountClaimCodec.serializedXpubLength)
+        XCTAssertEqual(serialized, mainnetSerializedXpubHex.hexaData)
+    }
+
+    func testSerializedXpubMatchesCoreVectorForTestnetTpub() throws {
+        let serialized = try WatchOnlyAccountClaimCodec.serializedXpub(testXpub)
+
+        XCTAssertEqual(serialized.count, WatchOnlyAccountClaimCodec.serializedXpubLength)
+        XCTAssertEqual(serialized, testSerializedXpubHex.hexaData)
+    }
+
+    func testSerializedXpubRejectsInvalidBase58Character() throws {
+        // '0' is not in the base58 alphabet.
+        let invalidXpub = "0" + mainnetTestXpub.dropFirst()
+
+        XCTAssertThrowsError(try WatchOnlyAccountClaimCodec.serializedXpub(invalidXpub)) {
+            XCTAssertEqual($0 as? WatchOnlyAccountError, .invalidExtendedPublicKey)
+        }
+    }
+
+    func testSerializedXpubRejectsInvalidChecksum() throws {
+        let invalidXpub = String(mainnetTestXpub.dropLast()) + "1"
+
+        XCTAssertThrowsError(try WatchOnlyAccountClaimCodec.serializedXpub(invalidXpub)) {
+            XCTAssertEqual($0 as? WatchOnlyAccountError, .invalidExtendedPublicKey)
+        }
+    }
+
+    func testSerializedXpubRejectsWellFormedPayloadWithKeyOffTheCurve() throws {
+        // Valid base58check over a 78-byte payload whose 33-byte key is all zeros, so it decodes
+        // cleanly but is not a point on secp256k1. Guards the parse step, not just the checksum.
+        XCTAssertThrowsError(try WatchOnlyAccountClaimCodec.serializedXpub(offCurveKeyXpub)) {
+            XCTAssertEqual($0 as? WatchOnlyAccountError, .invalidExtendedPublicKey)
+        }
+    }
+
+    func testSerializedXpubRejectsPayloadOfTheWrongLength() throws {
+        // Base58check over 4 bytes: correct checksum, but nowhere near 78 bytes.
+        XCTAssertThrowsError(try WatchOnlyAccountClaimCodec.serializedXpub("kz9795HmHu")) {
             XCTAssertEqual($0 as? WatchOnlyAccountError, .invalidExtendedPublicKey)
         }
     }

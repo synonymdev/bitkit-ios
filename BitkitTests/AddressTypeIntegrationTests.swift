@@ -309,17 +309,18 @@ final class AddressTypeIntegrationTests: XCTestCase {
             XCTAssertTrue(success, "Enabling \(type.stringValue) monitoring should succeed")
         }
 
-        let expectations: [(LDKNode.AddressType, String, String)] = [
-            (.legacy, "m", "Legacy address should start with m or n on regtest"),
-            (.nestedSegwit, "2", "Nested SegWit address should start with 2 on regtest"),
-            (.nativeSegwit, "bcrt1q", "Native SegWit address should start with bcrt1q on regtest"),
-            (.taproot, "bcrt1p", "Taproot address should start with bcrt1p on regtest"),
+        // Regtest P2PKH addresses start with m or n depending on the hash, so legacy accepts both.
+        let expectations: [(LDKNode.AddressType, [String], String)] = [
+            (.legacy, ["m", "n"], "Legacy address should start with m or n on regtest"),
+            (.nestedSegwit, ["2"], "Nested SegWit address should start with 2 on regtest"),
+            (.nativeSegwit, ["bcrt1q"], "Native SegWit address should start with bcrt1q on regtest"),
+            (.taproot, ["bcrt1p"], "Taproot address should start with bcrt1p on regtest"),
         ]
 
-        for (type, prefix, message) in expectations {
+        for (type, prefixes, message) in expectations {
             let address = try await settings.lightningService.newAddressForType(type)
             Logger.test("\(type.stringValue) address: \(address)", context: "AddressTypeIntegrationTests")
-            XCTAssertTrue(address.hasPrefix(prefix), "\(message), got: \(address)")
+            XCTAssertTrue(prefixes.contains(where: address.hasPrefix), "\(message), got: \(address)")
         }
     }
 }

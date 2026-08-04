@@ -3,6 +3,7 @@ import Combine
 import CryptoKit
 import Foundation
 import LDKNode
+import secp256k1
 
 enum WatchOnlyAccountSetupState: String, Codable {
     case pendingDelivery
@@ -904,19 +905,91 @@ enum WatchOnlyAccountClaimCodec {
         return claim
     }
 
+    /// Decode a BIP32 extended public key into its canonical 78-byte payload.
+    ///
+    /// This used to call `BitkitCore.serializedExtendedPubkey`, but that symbol only ever shipped
+    /// in bitkit-core v0.4.2, a tag cut from a branch that never merged to bitkit-core `master`,
+    /// so no later release (0.4.3, any 0.5.x, or master) contains it. Depending on it pinned this
+    /// repo to a dead-end tag and blocked every bitkit-core upgrade. Decoding locally removes that
+    /// constraint.
+    ///
+    /// TODO: revert to `BitkitCore.serializedExtendedPubkey` once bitkit-core lands
+    /// `dd99b46d "feat: expose serialized extended public keys"` on `master` and cuts a release
+    /// carrying both it and the Boltz module. Delete this decoder and its helpers at that point;
+    /// the `testSerializedXpub*` cases pin the behaviour either way.
     static func serializedXpub(_ xpub: String) throws -> Data {
         guard xpub.count > 4 else {
             throw WatchOnlyAccountError.invalidExtendedPublicKey
         }
 
-        do {
-            let serialized = try BitkitCore.serializedExtendedPubkey(xpub: xpub)
-            guard serialized.count == serializedXpubLength else {
+        let payload = try base58CheckDecode(xpub)
+        guard payload.count == serializedXpubLength else {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
+        }
+
+        // A BIP32 xpub is version(4) ‖ depth(1) ‖ fingerprint(4) ‖ child(4) ‖ chaincode(32) ‖ key(33).
+        // Reject anything whose key is not a point on the curve, matching rust-bitcoin's Xpub parse.
+        let compressedKey = payload.suffix(33)
+        guard isValidCompressedPublicKey(compressedKey) else {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
+        }
+
+        return payload
+    }
+
+    private static let base58Alphabet = Array("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".utf8)
+
+    private static func base58CheckDecode(_ string: String) throws -> Data {
+        let decoded = try base58Decode(string)
+        guard decoded.count > 4 else {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
+        }
+
+        let payload = decoded.prefix(decoded.count - 4)
+        let checksum = decoded.suffix(4)
+        let expected = Data(SHA256.hash(data: Data(SHA256.hash(data: payload)))).prefix(4)
+        guard checksum.elementsEqual(expected) else {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
+        }
+
+        return Data(payload)
+    }
+
+    private static func base58Decode(_ string: String) throws -> Data {
+        var bytes: [UInt8] = [0]
+        for character in string.utf8 {
+            guard let digit = base58Alphabet.firstIndex(of: character) else {
                 throw WatchOnlyAccountError.invalidExtendedPublicKey
             }
-            return serialized
-        } catch {
-            throw WatchOnlyAccountError.invalidExtendedPublicKey
+
+            var carry = digit
+            for index in bytes.indices.reversed() {
+                carry += 58 * Int(bytes[index])
+                bytes[index] = UInt8(carry & 0xFF)
+                carry >>= 8
+            }
+            while carry > 0 {
+                bytes.insert(UInt8(carry & 0xFF), at: 0)
+                carry >>= 8
+            }
+        }
+
+        // Each leading '1' encodes a leading zero byte that the arithmetic above cannot represent.
+        let leadingZeros = string.utf8.prefix { $0 == base58Alphabet[0] }.count
+        let significant = bytes.drop { $0 == 0 }
+        return Data(repeating: 0, count: leadingZeros) + Data(significant)
+    }
+
+    private static func isValidCompressedPublicKey(_ key: Data) -> Bool {
+        guard key.count == 33, let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_NONE)) else {
+            return false
+        }
+        defer { secp256k1_context_destroy(context) }
+
+        var parsed = secp256k1_pubkey()
+        return Array(key).withUnsafeBufferPointer { buffer in
+            guard let baseAddress = buffer.baseAddress else { return false }
+            return secp256k1_ec_pubkey_parse(context, &parsed, baseAddress, buffer.count) == 1
         }
     }
 }
