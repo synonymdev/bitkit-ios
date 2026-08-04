@@ -18,6 +18,9 @@
     "url": "https://github.com/Jasonvdb/lightning-mobile-push-payments/issues"
   },
   "homepage": "https://github.com/Jasonvdb/lightning-mobile-push-payments#readme",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@parse/node-apn": "^8.1.0",
     "dotenv": "^16.3.1"
