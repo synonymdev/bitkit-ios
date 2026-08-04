@@ -43,8 +43,18 @@ final class HwSnapshotMergeTests: XCTestCase {
     /// Pruning is the normal case, so it is the default here; the cases that exercise a partial
     /// snapshot pass `pruneMissing: false` explicitly. The production signature deliberately has no
     /// default — see `HwSnapshotMerge.plan`.
-    private func makePlan(existing: [OnchainActivity], incoming: [Activity], pruneMissing: Bool = true) -> HwSnapshotMerge.Plan {
-        HwSnapshotMerge.plan(existing: existing, incoming: incoming, pruneMissing: pruneMissing)
+    private func makePlan(
+        existing: [OnchainActivity],
+        incoming: [Activity],
+        pruneMissing: Bool = true,
+        transferChannelIdsByFundingTxId: [String: String] = [:]
+    ) -> HwSnapshotMerge.Plan {
+        HwSnapshotMerge.plan(
+            existing: existing,
+            incoming: incoming,
+            pruneMissing: pruneMissing,
+            transferChannelIdsByFundingTxId: transferChannelIdsByFundingTxId
+        )
     }
 
     private func upserted(_ plan: HwSnapshotMerge.Plan, id: String) -> OnchainActivity? {
@@ -158,5 +168,84 @@ final class HwSnapshotMergeTests: XCTestCase {
 
         XCTAssertEqual(plan.toDelete.map(\.id).sorted(), ["tx1", "tx2"])
         XCTAssertTrue(plan.toUpsert.isEmpty)
+    }
+
+    // MARK: - Transfer recovery after remove + re-add
+
+    /// The re-pair case: removal deleted the wallet's activities, so the watcher's rediscovered
+    /// funding tx arrives with no stored row to carry `isTransfer` forward from. Without recovery it
+    /// would display as a plain send.
+    func testTransferRecoveredFromKnownFundingTxWhenNoStoredRowRemains() {
+        let plan = makePlan(
+            existing: [],
+            incoming: [.onchain(onchain(id: "fundingTx"))],
+            transferChannelIdsByFundingTxId: ["fundingTx": "channel-1"]
+        )
+
+        let recovered = upserted(plan, id: "fundingTx")
+        XCTAssertEqual(recovered?.isTransfer, true)
+        XCTAssertEqual(recovered?.channelId, "channel-1")
+    }
+
+    func testUnrelatedTransactionIsNotMarkedAsTransfer() {
+        let plan = makePlan(
+            existing: [],
+            incoming: [.onchain(onchain(id: "someOtherTx"))],
+            transferChannelIdsByFundingTxId: ["fundingTx": "channel-1"]
+        )
+
+        let untouched = upserted(plan, id: "someOtherTx")
+        XCTAssertEqual(untouched?.isTransfer, false)
+        XCTAssertNil(untouched?.channelId)
+    }
+
+    /// Recovery must not overwrite metadata the app already wrote — the stored row wins, so a
+    /// transfer whose channel was since re-negotiated keeps the channel id it was tagged with.
+    func testStoredChannelIdSurvivesRecovery() {
+        let plan = makePlan(
+            existing: [onchain(id: "fundingTx", isTransfer: true, channelId: "stored-channel")],
+            incoming: [.onchain(onchain(id: "fundingTx"))],
+            transferChannelIdsByFundingTxId: ["fundingTx": "channel-1"]
+        )
+
+        let merged = upserted(plan, id: "fundingTx")
+        XCTAssertEqual(merged?.isTransfer, true)
+        XCTAssertEqual(merged?.channelId, "stored-channel")
+    }
+
+    /// A stored row that lost its channel id still gets one back from the transfer record.
+    func testRecoveryFillsMissingChannelIdOnStoredTransfer() {
+        let plan = makePlan(
+            existing: [onchain(id: "fundingTx", isTransfer: false, channelId: nil)],
+            incoming: [.onchain(onchain(id: "fundingTx"))],
+            transferChannelIdsByFundingTxId: ["fundingTx": "channel-1"]
+        )
+
+        let merged = upserted(plan, id: "fundingTx")
+        XCTAssertEqual(merged?.isTransfer, true)
+        XCTAssertEqual(merged?.channelId, "channel-1")
+    }
+
+    /// Recovery is keyed on the transaction id, not the activity id, so a re-paired wallet that
+    /// rebuilt its rows under different activity ids still resolves.
+    func testRecoveryMatchesOnTransactionIdNotActivityId() {
+        let plan = makePlan(
+            existing: [],
+            incoming: [.onchain(onchain(id: "rebuilt-activity-id", txId: "fundingTx"))],
+            transferChannelIdsByFundingTxId: ["fundingTx": "channel-1"]
+        )
+
+        let recovered = upserted(plan, id: "rebuilt-activity-id")
+        XCTAssertEqual(recovered?.isTransfer, true)
+        XCTAssertEqual(recovered?.channelId, "channel-1")
+    }
+
+    /// Passing no transfer records must leave the existing merge rules exactly as they were.
+    func testNoKnownTransfersLeavesActivitiesUnchanged() {
+        let plan = makePlan(existing: [], incoming: [.onchain(onchain(id: "fundingTx"))])
+
+        let untouched = upserted(plan, id: "fundingTx")
+        XCTAssertEqual(untouched?.isTransfer, false)
+        XCTAssertNil(untouched?.channelId)
     }
 }

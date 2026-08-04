@@ -110,7 +110,8 @@ final class HwWalletManager {
                 walletId: snapshot.walletId,
                 activities: snapshot.activities,
                 transactionDetails: snapshot.transactionDetails,
-                pruneMissing: snapshot.isComplete
+                pruneMissing: snapshot.isComplete,
+                transferChannelIdsByFundingTxId: Self.transferChannelIdsByFundingTxId()
             )
         }
         self.deleteActivities = deleteActivities ?? { walletId in
@@ -159,6 +160,25 @@ final class HwWalletManager {
             walletIdCache[xpubsSignature(device.xpubs)] = nil
         }
         recomputeDerivedState()
+    }
+
+    /// Funding tx id → channel id for transfers the app recorded itself. `removeDevice` deletes a
+    /// hardware wallet's activities but never touches these, so they are what lets a re-paired
+    /// wallet's rediscovered funding tx read as a transfer again instead of a plain send. Only
+    /// transfers that resolved a channel are usable; the rest are still unsettled, so
+    /// `TransferService.syncTransferStates` re-marks those itself.
+    ///
+    /// Nothing hardware-specific is retained to make this work: the tx id comes back from the
+    /// device's own watcher on re-pair, and these records belong to the still-open channel.
+    private static func transferChannelIdsByFundingTxId() -> [String: String] {
+        guard let transfers = try? TransferStorage.shared.getAll() else { return [:] }
+        return Dictionary(
+            transfers.compactMap { transfer -> (String, String)? in
+                guard let fundingTxId = transfer.fundingTxId, let channelId = transfer.channelId else { return nil }
+                return (fundingTxId, channelId)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     /// Removes a hardware wallet and forgets every device entry that belongs to its wallet identity.

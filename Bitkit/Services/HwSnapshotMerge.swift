@@ -33,7 +33,14 @@ enum HwSnapshotMerge {
     ///   mention the rows owned by a watcher that has not reported yet, and core's
     ///   `delete_activity_by_id` cascades into `activity_tags`, so pruning one destroys user tags
     ///   that are no longer carried in the backup payload. Upserting is always safe.
-    static func plan(existing: [OnchainActivity], incoming: [Activity], pruneMissing: Bool) -> Plan {
+    /// - Parameter transferChannelIdsByFundingTxId: funding tx id → channel id for transfers the app
+    ///   recorded itself, used to recover transfer metadata that has no stored row to come from.
+    static func plan(
+        existing: [OnchainActivity],
+        incoming: [Activity],
+        pruneMissing: Bool,
+        transferChannelIdsByFundingTxId: [String: String] = [:]
+    ) -> Plan {
         let incomingIds = Set(incoming.map(ActivityScope.id(of:)))
 
         // Transfers are never dropped: the pending Transfer To Spending row is written when the
@@ -45,15 +52,26 @@ enum HwSnapshotMerge {
 
         let storedByTxId = Dictionary(existing.map { ($0.txId, $0) }, uniquingKeysWith: { first, _ in first })
         let toUpsert = incoming.map { activity -> Activity in
-            guard case var .onchain(onchain) = activity, let stored = storedByTxId[onchain.txId] else {
-                return activity
+            guard case var .onchain(onchain) = activity else { return activity }
+
+            if let stored = storedByTxId[onchain.txId] {
+                // The watcher only knows what is on chain, so transfer metadata the app wrote locally
+                // would otherwise be erased on every snapshot.
+                onchain.isTransfer = onchain.isTransfer || stored.isTransfer
+                onchain.channelId = onchain.channelId ?? stored.channelId
+                onchain.transferTxId = onchain.transferTxId ?? stored.transferTxId
             }
 
-            // The watcher only knows what is on chain, so transfer metadata the app wrote locally
-            // would otherwise be erased on every snapshot.
-            onchain.isTransfer = onchain.isTransfer || stored.isTransfer
-            onchain.channelId = onchain.channelId ?? stored.channelId
-            onchain.transferTxId = onchain.transferTxId ?? stored.transferTxId
+            // Re-pairing a wallet that was removed leaves nothing to carry forward — removal deleted
+            // its activities — and `TransferService` only re-marks transfers that are still
+            // unsettled, so a completed transfer would return from the watcher as a plain send. The
+            // funding tx id is still recorded against the Bitkit-side transfer, which removal does
+            // not touch, so recover the flag from there.
+            if !onchain.isTransfer, let channelId = transferChannelIdsByFundingTxId[onchain.txId] {
+                onchain.isTransfer = true
+                onchain.channelId = onchain.channelId ?? channelId
+            }
+
             return .onchain(onchain)
         }
 

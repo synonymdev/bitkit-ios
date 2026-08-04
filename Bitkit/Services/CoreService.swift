@@ -402,7 +402,8 @@ class ActivityService {
         walletId: String,
         activities: [Activity],
         transactionDetails: [BitkitCore.TransactionDetails],
-        pruneMissing: Bool
+        pruneMissing: Bool,
+        transferChannelIdsByFundingTxId: [String: String] = [:]
     ) async throws {
         // The closure must stay non-async. `ServiceQueue.background`'s async overload is
         // `queue.async { Task { … } }`, whose Task hops straight off the core queue — the
@@ -414,7 +415,8 @@ class ActivityService {
                 walletId: walletId,
                 activities: activities,
                 transactionDetails: transactionDetails,
-                pruneMissing: pruneMissing
+                pruneMissing: pruneMissing,
+                transferChannelIdsByFundingTxId: transferChannelIdsByFundingTxId
             )
         }
 
@@ -433,12 +435,14 @@ class ActivityService {
         walletId: String,
         activities: [Activity],
         transactionDetails: [BitkitCore.TransactionDetails],
-        pruneMissing: Bool
+        pruneMissing: Bool,
+        transferChannelIdsByFundingTxId: [String: String]
     ) throws {
         let plan = try HwSnapshotMerge.plan(
             existing: storedOnchainActivities(walletId: walletId),
             incoming: activities,
-            pruneMissing: pruneMissing
+            pruneMissing: pruneMissing,
+            transferChannelIdsByFundingTxId: transferChannelIdsByFundingTxId
         )
 
         for activity in plan.toDelete {
