@@ -13,10 +13,8 @@ struct PaykitPaymentRequest: Identifiable, Equatable {
     let counterpartyReceiverPath: String
     let amountValue: String
     let amountSats: UInt64
-    let paymentReference: String
     let expiresAt: Date?
     let acceptedPaymentEndpointIdentifiers: [String]
-    let metadata: String
 
     var id: ID {
         ID(
@@ -56,10 +54,8 @@ struct PaykitPaymentRequest: Identifiable, Equatable {
         counterpartyReceiverPath = record.counterpartyReceiverPath
         amountValue = terms.amount.value
         self.amountSats = amountSats
-        paymentReference = terms.paymentReference.exportText()
         self.expiresAt = expiresAt
         self.acceptedPaymentEndpointIdentifiers = acceptedPaymentEndpointIdentifiers
-        metadata = terms.metadata.exportText()
     }
 
     func isExpired(at date: Date) -> Bool {
@@ -125,10 +121,20 @@ struct PaykitPaymentRequest: Identifiable, Equatable {
     }
 }
 
-enum PaykitPaymentRequestError: Error, Equatable {
+enum PaykitPaymentRequestError: LocalizedError, Equatable {
     case requestUnavailable
     case requestExpired
     case operationInProgress
+    case amountMismatch
+
+    var errorDescription: String? {
+        switch self {
+        case .amountMismatch:
+            t("wallet__payment_request_mismatch")
+        case .requestUnavailable, .requestExpired, .operationInProgress:
+            nil
+        }
+    }
 }
 
 protocol PaykitPaymentRequestSdkHandling: Sendable {
@@ -224,6 +230,7 @@ final class PaykitPaymentRequestManager {
     private var presentedRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentationRetryAttempts: [PaykitPaymentRequest.ID: Int] = [:]
     private var presentationRetryDates: [PaykitPaymentRequest.ID: Date] = [:]
+    private var isPresentingRequests = false
     private var refreshTask: Task<Void, Never>?
     private var expirationTask: Task<Void, Never>?
     private var refreshGeneration = 0
@@ -260,9 +267,20 @@ final class PaykitPaymentRequestManager {
         refreshTask = nil
     }
 
-    func accept(_ request: PaykitPaymentRequest) async throws {
-        try await perform(request) {
-            try await service.accept($0)
+    func prepareForPayment(
+        _ request: PaykitPaymentRequest,
+        consumePrivatePaymentList: () async throws -> Void = {}
+    ) async throws {
+        do {
+            try await perform(request) {
+                try await consumePrivatePaymentList()
+                try await service.accept($0)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            deferPresentation(request)
+            throw error
         }
     }
 
@@ -276,22 +294,41 @@ final class PaykitPaymentRequestManager {
         presentedRequestIds = []
         presentationRetryAttempts = [:]
         presentationRetryDates = [:]
+        isPresentingRequests = false
     }
 
     func requestsForPresentation() -> [PaykitPaymentRequest] {
         let date = now()
         return pendingRequests.filter {
-            !presentedRequestIds.contains($0.id) && (presentationRetryDates[$0.id].map { $0 <= date } ?? true)
+            !presentedRequestIds.contains($0.id) &&
+                presentationRetryAttempts[$0.id, default: 0] <= Self.presentationRetryDelays.count &&
+                (presentationRetryDates[$0.id].map { $0 <= date } ?? true)
         }
+    }
+
+    func presentRequests(_ operation: ([PaykitPaymentRequest]) async -> Void) async {
+        guard !isPresentingRequests else { return }
+        let requests = requestsForPresentation()
+        guard !requests.isEmpty else { return }
+
+        isPresentingRequests = true
+        defer { isPresentingRequests = false }
+        await operation(requests)
     }
 
     func deferPresentation(_ request: PaykitPaymentRequest) {
         discardExpiredRequests()
         guard pendingRequests.contains(where: { $0.id == request.id }) else { return }
 
+        presentedRequestIds.remove(request.id)
         let attempt = presentationRetryAttempts[request.id, default: 0]
-        let delay = Self.presentationRetryDelays[min(attempt, Self.presentationRetryDelays.count - 1)]
         presentationRetryAttempts[request.id] = attempt + 1
+        guard attempt < Self.presentationRetryDelays.count else {
+            presentationRetryDates.removeValue(forKey: request.id)
+            logWarning("Stopped retrying incoming Paykit payment request after \(attempt + 1) presentation attempts")
+            return
+        }
+        let delay = Self.presentationRetryDelays[attempt]
         presentationRetryDates[request.id] = now().addingTimeInterval(delay)
     }
 

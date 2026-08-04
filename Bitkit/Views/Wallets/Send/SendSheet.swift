@@ -421,7 +421,7 @@ struct SendSheet: View {
             SendConfirmationView(
                 navigationPath: $navigationPath,
                 requestPinCheck: requestPinCheck,
-                acceptIncomingPaymentRequest: acceptIncomingPaymentRequest
+                prepareIncomingPaymentRequest: prepareIncomingPaymentRequest
             )
         case .feeRate:
             SendFeeRate(navigationPath: $navigationPath)
@@ -445,7 +445,7 @@ struct SendSheet: View {
             LnurlPayConfirm(
                 navigationPath: $navigationPath,
                 requestPinCheck: requestPinCheck,
-                acceptIncomingPaymentRequest: acceptIncomingPaymentRequest
+                prepareIncomingPaymentRequest: prepareIncomingPaymentRequest
             )
         case .lnurlWithdrawAmount:
             LnurlWithdrawAmount {
@@ -460,9 +460,18 @@ struct SendSheet: View {
         }
     }
 
-    private func acceptIncomingPaymentRequest() async throws {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
-        try await paykitPaymentRequestManager.accept(request)
+    private func prepareIncomingPaymentRequest() async throws {
+        guard let context = app.contactPaymentContext,
+              let request = context.incomingPaymentRequest
+        else { return }
+
+        try await paykitPaymentRequestManager.prepareForPayment(request) {
+            guard let privatePaymentContext = context.privatePaymentContext else { return }
+            try await PrivatePaykitService.shared.consumePrivatePaymentList(
+                publicKey: context.publicKey,
+                context: privatePaymentContext
+            )
+        }
     }
 }
 

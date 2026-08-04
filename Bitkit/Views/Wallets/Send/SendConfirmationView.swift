@@ -15,7 +15,7 @@ struct SendConfirmationView: View {
 
     @Binding var navigationPath: [SendRoute]
     let requestPinCheck: () async -> Bool
-    let acceptIncomingPaymentRequest: () async throws -> Void
+    let prepareIncomingPaymentRequest: () async throws -> Void
 
     @State private var showDetails = false
     @State private var showingBiometricError = false
@@ -492,8 +492,7 @@ struct SendConfirmationView: View {
         do {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
             try validateIncomingPaymentRequestAmounts(contactPaymentContext)
-            try await acceptIncomingPaymentRequest()
-            try validateIncomingPaymentRequestContext(contactPaymentContext)
+            try await prepareIncomingPaymentRequest()
 
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
@@ -510,7 +509,6 @@ struct SendConfirmationView: View {
                 // native millisatoshi precision instead of our truncated satoshi value.
                 let paymentSats: UInt64? = invoice.amountSatoshis == 0 ? amount : nil
                 do {
-                    try await consumePrivatePaymentListIfNeeded(contactPaymentContext)
                     try await wallet.sendWithTimeout(
                         bolt11: invoice.bolt11,
                         sats: paymentSats,
@@ -531,7 +529,6 @@ struct SendConfirmationView: View {
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
-                try await consumePrivatePaymentListIfNeeded(contactPaymentContext)
                 let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: useMaxAmount)
 
                 // Create pre-activity metadata for tags and activity address
@@ -592,28 +589,17 @@ struct SendConfirmationView: View {
         }
 
         guard let paymentAmount, request.acceptsPaymentAmount(paymentAmount) else {
-            throw LnurlPayInvoiceMismatchError()
+            throw PaykitPaymentRequestError.amountMismatch
         }
         guard app.selectedWalletToPayFrom == .lightning else { return }
         guard let invoice = app.scannedLightningInvoice else {
-            throw LnurlPayInvoiceMismatchError()
+            throw PaykitPaymentRequestError.amountMismatch
         }
         let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: invoice.bolt11)
         guard request.acceptsLightningInvoiceAmount(milliSatoshis: parsedInvoice.amountMilliSatoshis())
         else {
-            throw LnurlPayInvoiceMismatchError()
+            throw PaykitPaymentRequestError.amountMismatch
         }
-    }
-
-    private func consumePrivatePaymentListIfNeeded(_ contactPaymentContext: ContactPaymentContext?) async throws {
-        guard let contactPaymentContext,
-              let privatePaymentContext = contactPaymentContext.privatePaymentContext
-        else { return }
-
-        try await PrivatePaykitService.shared.consumePrivatePaymentList(
-            publicKey: contactPaymentContext.publicKey,
-            context: privatePaymentContext
-        )
     }
 
     private func syncContactForActivity(paymentId: String, contactPublicKey: String?) async {

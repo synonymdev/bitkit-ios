@@ -11,7 +11,7 @@ struct LnurlPayConfirm: View {
 
     @Binding var navigationPath: [SendRoute]
     let requestPinCheck: () async -> Bool
-    let acceptIncomingPaymentRequest: () async throws -> Void
+    let prepareIncomingPaymentRequest: () async throws -> Void
 
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
@@ -197,9 +197,7 @@ struct LnurlPayConfirm: View {
 
         do {
             try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
-            try await acceptIncomingPaymentRequest()
-            try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
-            try await consumePrivatePaymentListIfNeeded(contactPaymentContext)
+            try await prepareIncomingPaymentRequest()
 
             // Fetch the Lightning invoice from LNURL
             let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
@@ -249,18 +247,7 @@ struct LnurlPayConfirm: View {
               request.acceptsPaymentAmount(amountSats),
               request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats)
         else {
-            throw LnurlPayInvoiceMismatchError()
+            throw PaykitPaymentRequestError.amountMismatch
         }
-    }
-
-    private func consumePrivatePaymentListIfNeeded(_ contactPaymentContext: ContactPaymentContext?) async throws {
-        guard let contactPaymentContext,
-              let privatePaymentContext = contactPaymentContext.privatePaymentContext
-        else { return }
-
-        try await PrivatePaykitService.shared.consumePrivatePaymentList(
-            publicKey: contactPaymentContext.publicKey,
-            context: privatePaymentContext
-        )
     }
 }

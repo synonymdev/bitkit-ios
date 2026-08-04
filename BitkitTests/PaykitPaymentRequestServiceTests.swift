@@ -49,8 +49,6 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(request.paymentRequestId, record.paymentRequestId)
         XCTAssertEqual(request.amountValue, "0.00100000000")
         XCTAssertEqual(request.amountSats, 100_000)
-        XCTAssertEqual(request.paymentReference, "invoice-123")
-        XCTAssertEqual(request.metadata, #"{"order":"123"}"#)
         XCTAssertEqual(
             request.acceptedPaymentEndpointIdentifiers,
             [PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue, currentOnchain.rawValue]
@@ -195,6 +193,98 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.requestsForPresentation(), [request])
     }
 
+    func testDeferredRequestStopsAfterConfiguredRetries() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+
+        for delay in [30.0, 60.0, 120.0, 300.0] {
+            manager.deferPresentation(request)
+            XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+            clock.advance(by: delay)
+            XCTAssertEqual(manager.requestsForPresentation(), [request])
+        }
+
+        manager.deferPresentation(request)
+        clock.advance(by: 300)
+
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        XCTAssertEqual(manager.pendingRequests, [request])
+    }
+
+    func testPreparationConsumesBeforeAccepting() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        var didConsume = false
+
+        try await manager.prepareForPayment(request) {
+            let snapshot = await sdk.snapshot()
+            XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+            didConsume = true
+        }
+
+        XCTAssertTrue(didConsume)
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.acceptedRequests.map(\.paymentRequestId), [request.paymentRequestId])
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testPreparationFailureDefersPresentedRequest() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.markPresentedIfPending(request))
+
+        do {
+            try await manager.prepareForPayment(request) {
+                throw PaymentRequestSdkMockError.preparation
+            }
+            XCTFail("Expected payment preparation to fail")
+        } catch {
+            XCTAssertEqual(error as? PaymentRequestSdkMockError, .preparation)
+        }
+
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        let snapshot = await sdk.snapshot()
+        XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+
+        clock.advance(by: 30)
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+    }
+
+    func testPresentationOperationIsNotReentered() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        var presentationCount = 0
+        var continuation: CheckedContinuation<Void, Never>?
+
+        let presentationTask = Task {
+            await manager.presentRequests { _ in
+                presentationCount += 1
+                await withCheckedContinuation { continuation = $0 }
+            }
+        }
+        try await waitUntil { continuation != nil }
+
+        await manager.presentRequests { _ in presentationCount += 1 }
+        XCTAssertEqual(presentationCount, 1)
+
+        continuation?.resume()
+        await presentationTask.value
+        await manager.presentRequests { _ in presentationCount += 1 }
+        XCTAssertEqual(presentationCount, 2)
+    }
+
     func testExpiredRequestCannotBeMarkedPresented() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let clock = PaymentRequestTestClock(now)
@@ -233,7 +323,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 $0.counterpartyReceiverPath == firstRecord.counterpartyReceiverPath
         }))
 
-        try await manager.accept(request)
+        try await manager.prepareForPayment(request)
 
         XCTAssertEqual(manager.pendingRequests.map(\.id), remainingIds)
         let snapshot = await sdk.snapshot()
@@ -257,7 +347,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         clock.advance(by: 61)
 
         do {
-            try await manager.accept(request)
+            try await manager.prepareForPayment(request)
             XCTFail("Expected the expired request to be rejected locally")
         } catch {
             XCTAssertEqual(error as? PaykitPaymentRequestError, .requestExpired)
@@ -275,7 +365,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let request = try XCTUnwrap(manager.pendingRequests.first)
         await sdk.failNextProcess()
 
-        try await manager.accept(request)
+        try await manager.prepareForPayment(request)
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         let snapshot = await sdk.snapshot()
@@ -290,7 +380,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let request = try XCTUnwrap(manager.pendingRequests.first)
         await sdk.cancelNextProcess()
 
-        try await manager.accept(request)
+        try await manager.prepareForPayment(request)
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         let snapshot = await sdk.snapshot()
@@ -307,7 +397,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         let refreshTask = Task { await manager.refresh() }
         try await waitUntil { await sdk.paymentRequestListIsPaused() }
-        try await manager.accept(request)
+        try await manager.prepareForPayment(request)
         await sdk.resumePaymentRequestList()
         await refreshTask.value
 
@@ -321,7 +411,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let request = try XCTUnwrap(manager.pendingRequests.first)
         await sdk.pauseNextAccept()
 
-        let acceptTask = Task { try await manager.accept(request) }
+        let acceptTask = Task { try await manager.prepareForPayment(request) }
         try await waitUntil { await sdk.acceptIsPaused() }
         manager.clear()
         await sdk.resumeAccept()
@@ -549,7 +639,8 @@ private struct PaymentRequestInvocation: Equatable {
     let paymentRequestId: String
 }
 
-private enum PaymentRequestSdkMockError: Error {
+private enum PaymentRequestSdkMockError: Error, Equatable {
+    case preparation
     case process
     case receive
     case requestMissing
