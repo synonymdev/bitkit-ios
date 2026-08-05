@@ -1,0 +1,51 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /test-push-server
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+    groups:
+      test-push-server:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # Synonym-owned FFI packages are pinned to pre-release tags or branch revisions and must be
+  # bumped in lockstep with native code, so an unattended bump breaks the build.
+  - package-ecosystem: swift
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+    ignore:
+      - dependency-name: "*bitkit-core*"
+      - dependency-name: "*ldk-node*"
+      - dependency-name: "*vss-rust-client-ffi*"
+      - dependency-name: "*paykit-rs*"
+    groups:
+      swift:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
