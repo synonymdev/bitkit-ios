@@ -149,12 +149,19 @@ Xcode's **File ▸ Packages ▸ Reset Package Caches** does *not* clear these. N
 
 Same message, different cause: the downloaded binary artifact genuinely lacks the symbol, because a re-cut tag reuses a URL that SPM has already cached. Check which one you have before reaching for the heavier fix:
 
+Packages are resolved into a different root depending on how you built, so use the one that matches:
+
 ```bash
-grep -c uniffi_bitkitcore_checksum_func_<name> \
-  ~/Library/Developer/Xcode/DerivedData/Bitkit-*/SourcePackages/artifacts/bitkit-core/BitkitCoreFFI/BitkitCore.xcframework/ios-arm64-simulator/Headers/bitkitcoreFFI.h
+# Built in Xcode
+grep -rl uniffi_bitkitcore_checksum_func_<name> \
+  ~/Library/Developer/Xcode/DerivedData/Bitkit-*/SourcePackages/artifacts/bitkit-core
+
+# Built with `just run` / `./run.sh` (resolves into the repo-local build/)
+grep -rl uniffi_bitkitcore_checksum_func_<name> \
+  build/SourcePackages/artifacts/bitkit-core
 ```
 
-Non-zero → module cache problem, `just clean modules` is enough. Zero → the artifact really is stale:
+Prints one or more header paths → the artifact has the symbol, so this is the module cache and `just clean modules` is enough. Prints nothing → the artifact really is stale:
 
 ```bash
 just clean spm
