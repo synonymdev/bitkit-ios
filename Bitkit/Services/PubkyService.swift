@@ -602,7 +602,7 @@ actor PaykitSdkService {
 
     func syncPublicEndpoints(_ endpoints: [PublicPaykitService.Endpoint]) async throws -> EndpointSyncReport {
         try await withStateRevisionTracking { sdk in
-            try await sdk.syncPublicEndpointsWithReceivingDetails(receivingDetails: endpoints.map(\.paykitReceivingDetail))
+            try await sdk.syncPublicEndpointsWithReceivingDetails(receivingDetails: endpoints.map(\.paykitPublicReceivingDetail))
         }
     }
 
@@ -637,15 +637,37 @@ actor PaykitSdkService {
         }
     }
 
-    func receivePrivateMessagesFromLinkedPeers() async throws {
+    @discardableResult
+    func receivePrivateMessagesFromLinkedPeers() async throws -> [PrivateStreamCounterpartyIntakeReport] {
         try await withStateRevisionTracking { sdk in
-            _ = try await sdk.receivePrivateMessagesFromLinkedPeers()
+            try await sdk.receivePrivateMessagesFromLinkedPeers()
         }
     }
 
-    func processPendingPrivateMessages() async throws {
+    @discardableResult
+    func processPendingPrivateMessages() async throws -> [OutboundPrivateCounterpartySendReport] {
         try await withStateRevisionTracking { sdk in
-            _ = try await sdk.processPendingPrivateMessages()
+            try await sdk.processPendingPrivateMessages()
+        }
+    }
+
+    func actionableReceivedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord] {
+        try await operationLock.withLock {
+            try await handle().actionableReceivedPaymentRequests()
+        }
+    }
+
+    func acceptPaymentRequest(
+        counterparty: String,
+        counterpartyReceiverPath: String,
+        paymentRequestId: String
+    ) async throws -> Paykit.PaymentRequestRecord {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.acceptPaymentRequest(
+                counterparty: counterparty,
+                counterpartyReceiverPath: counterpartyReceiverPath,
+                paymentRequestId: paymentRequestId
+            )
         }
     }
 
@@ -661,17 +683,18 @@ actor PaykitSdkService {
         }
     }
 
-    func prepareAndResolveContactPayment(
+    func prepareAndResolvePrivateContactPayment(
         counterparty: String,
         receiverPath: String,
-        includePublicEndpoints: Bool
-    ) async throws -> PreparedContactPayment {
+        amount: PaymentAmountContext? = nil,
+        afterPrivatePaymentListVersion: UInt64?
+    ) async throws -> PreparedPrivateContactPayment {
         try await withStateRevisionTracking { sdk in
-            try await sdk.prepareAndResolveContactPayment(
+            try await sdk.prepareAndResolvePrivateContactPayment(
                 counterparty: counterparty,
                 counterpartyReceiverPath: receiverPath,
-                amount: nil,
-                includePublicEndpoints: includePublicEndpoints,
+                amount: amount,
+                afterPrivatePaymentListVersion: afterPrivatePaymentListVersion,
                 maxAdvanceSteps: 8
             )
         }
@@ -680,7 +703,7 @@ actor PaykitSdkService {
     func resolvePublicContactPayment(
         counterparty: String,
         receiverPath: String
-    ) async throws -> ContactPaymentResolution {
+    ) async throws -> PublicContactPaymentResolution {
         try await operationLock.withLock {
             try await handle().resolvePublicContactPayment(counterparty: counterparty, counterpartyReceiverPath: receiverPath, amount: nil)
         }
@@ -860,7 +883,7 @@ actor PaykitSdkService {
         let status = try await sdk.identityStatus()
         return Paykit.PaykitReceiverCapabilities(
             privatePayments: status?.liveSessionAvailable == true,
-            paymentRequests: false,
+            paymentRequests: status?.liveSessionAvailable == true,
             receipts: false,
             outgoingPayments: true
         )
@@ -958,8 +981,8 @@ private final class PaykitSdkOperationLock: @unchecked Sendable {
 }
 
 extension PublicPaykitService.Endpoint {
-    var paykitReceivingDetail: ReceivingDetail {
-        ReceivingDetail(
+    var paykitPublicReceivingDetail: PublicReceivingDetail {
+        PublicReceivingDetail(
             identifier: methodId.rawValue,
             payload: PaymentPayload(text: rawPayload)
         )
@@ -1172,19 +1195,26 @@ final class PaykitReceiverNoiseKeyStore: @unchecked Sendable {
 }
 
 private final class PaykitSdkPaymentAdapter: SdkPaymentAdapter, @unchecked Sendable {
-    func currentReceivingDetails(scope: ReceivingDetailScope) throws -> [ReceivingDetail] {
+    func currentPublicReceivingDetails() throws -> [PublicReceivingDetail] {
         []
     }
 
-    func reserveReceivingDetails(counterparty _: String, counterpartyReceiverPath _: String) throws -> ReceivingDetailReservationResponse {
-        ReceivingDetailReservationResponse(kind: .useCurrentReceivingDetails, reservations: [])
+    func currentPrivateReceivingDetails(counterparty _: String, counterpartyReceiverPath _: String) throws -> [PrivateReceivingDetail] {
+        []
     }
 
-    func cancelReceivingDetailReservation(cancellation _: PaymentEndpointReservationCancellation) throws {
+    func reservePrivateReceivingDetails(
+        counterparty _: String,
+        counterpartyReceiverPath _: String
+    ) throws -> PrivateReceivingDetailReservationResponse {
+        PrivateReceivingDetailReservationResponse(kind: .useCurrentReceivingDetails, reservations: [])
+    }
+
+    func cancelPrivateReceivingDetailReservation(cancellation _: PrivatePaymentEndpointReservationCancellation) throws {
         // Keeping unused reserved addresses/invoices out of reusable receive pools is safer than reusing leaked details.
     }
 
-    func selectPaymentEndpointIds(request: PaymentEndpointSelectionRequest) throws -> [String] {
+    func selectPublicPaymentEndpointIds(request: PublicPaymentEndpointSelectionRequest) throws -> [String] {
         let parsed = request.candidates.compactMap { candidate -> (id: String, endpoint: PublicPaykitService.Endpoint)? in
             guard let endpoint = PublicPaykitService.parseEndpoint(candidate: candidate) else {
                 return nil
@@ -1197,7 +1227,24 @@ private final class PaykitSdkPaymentAdapter: SdkPaymentAdapter, @unchecked Senda
         }
     }
 
-    func buildPaymentTarget(endpoint: PaymentEndpointCandidate) throws -> PaymentTarget {
+    func buildPublicPaymentTarget(endpoint: PublicPaymentEndpointCandidate) throws -> PaymentTarget {
+        PaymentTarget(payload: endpoint.payload)
+    }
+
+    func selectPrivatePaymentEndpointIds(request: PrivatePaymentEndpointSelectionRequest) throws -> [String] {
+        let parsed = request.candidates.compactMap { candidate -> (id: String, endpoint: PublicPaykitService.Endpoint)? in
+            guard let endpoint = PublicPaykitService.parseEndpoint(candidate: candidate) else {
+                return nil
+            }
+            return (candidate.candidateId, endpoint)
+        }
+
+        return PublicPaykitService.MethodId.payablePreferenceOrder.flatMap { methodId in
+            parsed.compactMap { $0.endpoint.methodId == methodId ? $0.id : nil }
+        }
+    }
+
+    func buildPrivatePaymentTarget(endpoint: PrivatePaymentEndpointCandidate) throws -> PaymentTarget {
         PaymentTarget(payload: endpoint.payload)
     }
 }

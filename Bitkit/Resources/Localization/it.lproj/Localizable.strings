@@ -1083,6 +1083,7 @@
 "wallet__boost_recomended_button" = "Utilizza la tariffa suggerita";
 "wallet__boost_swipe" = "Scorri per Potenziare";
 "wallet__payment_received" = "Bitcoin ricevuti";
+"wallet__payment_request" = "Richiesta di pagamento";
 "wallet__instant_payment_received" = "Ricevuti Bitcoin istantanei";
 "wallet__error_create_tx" = "Creazione della transazione non riuscita";
 "wallet__error_create_tx_msg" = "Si è verificato un errore. Per favore riprova {raw}";

@@ -11,6 +11,7 @@ struct LnurlPayConfirm: View {
 
     @Binding var navigationPath: [SendRoute]
     let requestPinCheck: () async -> Bool
+    let prepareIncomingPaymentRequest: () async throws -> Void
 
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
@@ -26,7 +27,7 @@ struct LnurlPayConfirm: View {
     var body: some View {
         VStack {
             SheetHeader(
-                title: t("wallet__lnurl_p_title"),
+                title: app.contactPaymentContext?.incomingPaymentRequest == nil ? t("wallet__lnurl_p_title") : t("wallet__payment_request"),
                 showBackButton: true,
                 action: AnyView(SendContactHeaderAvatar())
             )
@@ -191,9 +192,14 @@ struct LnurlPayConfirm: View {
         }
 
         let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
-        let contactPublicKey = app.contactPaymentContext?.publicKey
+        let contactPaymentContext = app.contactPaymentContext
+        let contactPublicKey = contactPaymentContext?.publicKey
 
         do {
+            try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
+            try await prepareIncomingPaymentRequest()
+            try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
+
             // Fetch the Lightning invoice from LNURL
             let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
                 data: lnurlPayData,
@@ -231,6 +237,18 @@ struct LnurlPayConfirm: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 navigationPath.append(.failure)
             }
+        }
+    }
+
+    private func validateIncomingPaymentRequest(_ context: ContactPaymentContext?, amountMsats: UInt64) throws {
+        guard let context, let request = context.incomingPaymentRequest else { return }
+        guard !request.isExpired(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
+        guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
+        guard let amountSats = wallet.sendAmountSats,
+              request.acceptsPaymentAmount(amountSats),
+              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats)
+        else {
+            throw PaykitPaymentRequestError.amountMismatch
         }
     }
 }
