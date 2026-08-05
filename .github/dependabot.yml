@@ -24,9 +24,17 @@ updates:
     commit-message:
       prefix: ci
     groups:
-      github-actions:
+      github-actions-minor:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
+      github-actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
 
   # Synonym-owned FFI packages are pinned to pre-release tags or branch revisions and must be
   # bumped in lockstep with native code, so an unattended bump breaks the build.
