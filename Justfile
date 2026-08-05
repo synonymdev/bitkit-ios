@@ -111,6 +111,10 @@ clean *targets:
         for build_root in "$derived_data/Build" "$derived_data/Index.noindex/Build"; do
             remove_path "$build_root/Intermediates.noindex/SwiftExplicitPrecompiledModules"
             remove_path "$build_root/Intermediates.noindex/ExplicitPrecompiledModules"
+            # The build database records the .pcm paths above by hash. Left behind, a
+            # target that is not rebuilt immediately fails with "module file not found"
+            # instead of re-planning the module it needs.
+            remove_path "$build_root/Intermediates.noindex/XCBuildData"
         done
 
         remove_path "$derived_data/ModuleCache.noindex"

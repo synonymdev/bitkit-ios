@@ -143,7 +143,7 @@ followed by a cascade of misleading `cannot find 'uniffi_bitkitcore_checksum_fun
 just clean modules
 ```
 
-Xcode's **File ▸ Packages ▸ Reset Package Caches** does *not* clear these. Note that `vss-rust-client-ffi` tracks `master`, so this can bite after a plain re-resolve with no version change in the diff.
+Xcode's **File ▸ Packages ▸ Reset Package Caches** does *not* clear these.
 
 ### `cannot find checksum func` with no "has been modified" error
 
