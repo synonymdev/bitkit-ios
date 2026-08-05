@@ -6,14 +6,12 @@ final class PaykitSdkClientConfigTests: XCTestCase {
     func testProductionUsesDefaultPubkyClient() {
         let config = PaykitSdkService.pubkyClientConfig(isLocalE2EBackend: false)
 
-        XCTAssertEqual(config.environment, .production)
-        XCTAssertNil(config.testnetHost)
+        XCTAssertNil(config.localTestnetHost)
     }
 
     func testLocalE2EUsesLocalPubkyTestnet() {
         let config = PaykitSdkService.pubkyClientConfig(isLocalE2EBackend: true)
 
-        XCTAssertEqual(config.environment, .localTestnet)
-        XCTAssertNil(config.testnetHost)
+        XCTAssertEqual(config.localTestnetHost, "localhost")
     }
 }

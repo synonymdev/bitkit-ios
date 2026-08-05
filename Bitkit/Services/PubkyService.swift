@@ -932,7 +932,7 @@ actor PaykitSdkService {
     nonisolated static func pubkyClientConfig(isLocalE2EBackend: Bool = Env.isLocalE2EBackend) -> PubkyClientConfig {
         var config = Paykit.defaultPubkyClientConfig()
         if isLocalE2EBackend {
-            config.environment = .localTestnet
+            config.localTestnetHost = "localhost"
         }
         return config
     }
