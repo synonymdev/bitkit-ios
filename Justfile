@@ -8,7 +8,7 @@ default:
 list:
     @printf "%s\n" \
         "run [release] [logs]" \
-        "clean [build|derived-data|spm|all]..."
+        "clean [build|derived-data|modules|spm|all]..."
 
 run mode="" logs="":
     #!/usr/bin/env sh
@@ -59,6 +59,7 @@ clean *targets:
 
     clean_build=false
     clean_derived_data=false
+    clean_modules=false
     clean_spm=false
 
     for target in "$@"; do
@@ -69,16 +70,20 @@ clean *targets:
             derived-data | derived)
                 clean_derived_data=true
                 ;;
+            modules | module-cache)
+                clean_modules=true
+                ;;
             spm | swiftpm)
                 clean_spm=true
                 ;;
             all)
                 clean_build=true
                 clean_derived_data=true
+                clean_modules=true
                 clean_spm=true
                 ;;
             *)
-                echo "usage: just clean [build|derived-data|spm|all]..." >&2
+                echo "usage: just clean [build|derived-data|modules|spm|all]..." >&2
                 exit 1
                 ;;
         esac
@@ -100,6 +105,17 @@ clean *targets:
         fi
     }
 
+    remove_module_caches() {
+        derived_data="$1"
+
+        for build_root in "$derived_data/Build" "$derived_data/Index.noindex/Build"; do
+            remove_path "$build_root/Intermediates.noindex/SwiftExplicitPrecompiledModules"
+            remove_path "$build_root/Intermediates.noindex/ExplicitPrecompiledModules"
+        done
+
+        remove_path "$derived_data/ModuleCache.noindex"
+    }
+
     if [ "$clean_build" = "true" ]; then
         remove_path "${BITKIT_DERIVED_DATA_PATH:-build}"
     fi
@@ -109,6 +125,17 @@ clean *targets:
         for path in "$xcode_derived_data_root"/Bitkit-*; do
             remove_path "$path"
         done
+    fi
+
+    if [ "$clean_modules" = "true" ]; then
+        remove_module_caches "${BITKIT_DERIVED_DATA_PATH:-build}"
+        xcode_derived_data_root="${BITKIT_XCODE_DERIVED_DATA_ROOT:-$HOME/Library/Developer/Xcode/DerivedData}"
+        for path in "$xcode_derived_data_root"/Bitkit-*; do
+            remove_module_caches "$path"
+        done
+        # MODULE_CACHE_DIR points at the DerivedData root, so this one is shared with
+        # every other Xcode project; they will just rebuild it.
+        remove_path "$xcode_derived_data_root/ModuleCache.noindex"
     fi
 
     if [ "$clean_spm" = "true" ]; then
