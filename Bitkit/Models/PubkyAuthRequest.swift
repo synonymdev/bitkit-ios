@@ -9,8 +9,16 @@ enum PubkyAuthClaim: String, Equatable {
     private static let watchOnlyAccountCapabilitySet = Set(watchOnlyAccountCapabilities.split(separator: ",").map(String.init))
 
     static func matchesWatchOnlyAccountCapabilities(_ capabilities: String) -> Bool {
-        let requestedCapabilitySet = Set(capabilities.split(separator: ",").map(String.init))
+        guard let requestedCapabilitySet = capabilitySet(capabilities) else { return false }
         return requestedCapabilitySet == watchOnlyAccountCapabilitySet
+    }
+
+    private static func capabilitySet(_ capabilities: String) -> Set<String>? {
+        let entries = capabilities
+            .split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        guard !entries.contains(where: \.isEmpty) else { return nil }
+        return Set(entries)
     }
 }
 
