@@ -26,7 +26,7 @@ jobs:
     outputs:
       code: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
         if: github.event_name == 'pull_request'
         id: filter
@@ -48,7 +48,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -69,7 +69,7 @@ jobs:
           brew install xcbeautify
 
       - name: Cache Swift Package Manager
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
@@ -138,7 +138,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -159,7 +159,7 @@ jobs:
           brew install xcbeautify
 
       - name: Cache Swift Package Manager
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
@@ -252,14 +252,14 @@ jobs:
         run: echo $E2E_BRANCH
 
       - name: Clone E2E tests
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
           path: bitkit-e2e-tests
           ref: ${{ needs.e2e-branch.outputs.branch }}
 
       - name: Download iOS app
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
@@ -268,12 +268,12 @@ jobs:
         run: ls -l bitkit-e2e-tests/aut
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
       - name: Cache npm cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -392,14 +392,14 @@ jobs:
         run: echo $E2E_BRANCH
 
       - name: Clone E2E tests
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
           path: bitkit-e2e-tests
           ref: ${{ needs.e2e-branch.outputs.branch }}
 
       - name: Download iOS app (regtest)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: bitkit-e2e-ios-regtest_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
@@ -408,12 +408,12 @@ jobs:
         run: ls -l bitkit-e2e-tests/aut
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
       - name: Cache npm cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
