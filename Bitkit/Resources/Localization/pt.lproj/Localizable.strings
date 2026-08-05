@@ -36,3 +36,4 @@
 "widgets__weather__condition__poor__description" = "Se você não estiver com pressa para fazer uma transação, talvez seja melhor esperar um pouco.";
 "widgets__weather__current_fee" = "Tarifa média atual";
 "widgets__weather__next_block" = "Inclusão no próximo bloco";
+"wallet__payment_request" = "Pedido de pagamento";
