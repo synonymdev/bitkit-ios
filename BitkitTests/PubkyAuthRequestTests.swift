@@ -24,6 +24,24 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertEqual(request.permissions[0].path, "/pub/bitkit.to/")
     }
 
+    func testParseUrlDeduplicatesServiceNameAcrossPublicAndPrivateCapabilities() throws {
+        let capabilities = "/pub/locks.app/:rw,/priv/locks.app/:rw"
+
+        let request = try PubkyAuthRequest.parse(url: authUrl(capabilities: capabilities))
+
+        XCTAssertEqual(request.permissions.map(\.path), ["/pub/locks.app/", "/priv/locks.app/"])
+        XCTAssertEqual(request.serviceNames, ["locks.app"])
+    }
+
+    func testParseUrlDeduplicatesServiceNamesAcrossMultiplePathsInFirstSeenOrder() throws {
+        let capabilities = "/pub/locks.app/posts/:r,/pub/example.app/:r,/priv/locks.app/settings/:w,/priv/example.app/cache/:r"
+
+        let request = try PubkyAuthRequest.parse(url: authUrl(capabilities: capabilities))
+
+        XCTAssertEqual(request.permissions.count, 4)
+        XCTAssertEqual(request.serviceNames, ["locks.app", "example.app"])
+    }
+
     func testParseUrlRecognizesWatchOnlyAccountClaim() throws {
         let capabilities = PubkyAuthClaim.watchOnlyAccountCapabilities
         let url = authUrl(capabilities: capabilities, claimValues: [PubkyAuthClaim.watchOnlyAccountV1.rawValue])

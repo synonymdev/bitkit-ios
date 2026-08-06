@@ -67,7 +67,10 @@ struct PubkyAuthRequest {
         let details = try Paykit.parsePubkyAuthUrl(authUrl: url)
         let capabilities = details.capabilities ?? ""
         let permissions = parseCapabilities(capabilities)
-        let serviceNames = permissions.compactMap { extractServiceName($0.path) }
+        var seenServiceNames = Set<String>()
+        let serviceNames = permissions
+            .compactMap { extractServiceName($0.path) }
+            .filter { seenServiceNames.insert($0).inserted }
         let bitkitClaim = try parseBitkitClaim(url: url, capabilities: capabilities)
         return PubkyAuthRequest(
             rawUrl: url,
