@@ -1442,6 +1442,11 @@
 "wallet__boost_recomended_button" = "Use Suggested Fee";
 "wallet__boost_swipe" = "Swipe To Boost";
 "wallet__payment_received" = "Received Bitcoin";
+"wallet__payment_request" = "Payment Request";
+"wallet__payment_request_unavailable" = "The payment request is no longer available.";
+"wallet__payment_request_expired" = "The payment request has expired.";
+"wallet__payment_request_in_progress" = "The payment request is already being processed.";
+"wallet__payment_request_mismatch" = "The payment details did not match the request. Payment cancelled.";
 "wallet__instant_payment_received" = "Received Instant Bitcoin";
 "wallet__error_create_tx" = "Transaction Creation Failed";
 "wallet__error_create_tx_msg" = "An error occurred. Please try again {raw}";

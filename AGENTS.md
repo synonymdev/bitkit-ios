@@ -69,6 +69,15 @@ xcrun devicectl device process launch --device $DEVICE_ID to.bitkit --console
 
 **Note:** The project includes a "Remove Static Framework Stubs" build phase that removes empty `LDKNodeFFI.framework` and `vss_rust_client_ffiFFI.framework` from the app bundle. These are static UniFFI libraries (linked at compile time), not dynamic frameworks; leaving the stubs breaks install and TestFlight validation.
 
+### After Bumping a Rust/UniFFI Dependency
+
+```bash
+# Clear the explicit precompiled module caches, then rebuild
+just clean modules
+```
+
+Bumping `bitkit-core`, `ldk-node`, `paykit` or `vss-rust-client-ffi` changes the size of the generated FFI header, which invalidates Xcode's `.pcm` cache and fails the build with `file '...FFI.h' has been modified since the module file '....pcm' was built`, cascading into misleading `cannot find 'uniffi_*_checksum_func_*' in scope` errors. See the README Troubleshooting section for how to tell this apart from a genuinely stale SPM binary artifact — the two produce the same `cannot find checksum func` symptom but need very different fixes.
+
 ### Code Formatting
 ```bash
 # Install SwiftFormat

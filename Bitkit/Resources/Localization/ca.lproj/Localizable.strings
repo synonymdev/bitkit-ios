@@ -961,6 +961,7 @@
 "wallet__boost_fee_recomended" = "La teva transacció pot liquidar-se més ràpid si incloues una comissió de xarxa addicional. Aquí tens una recomanació:";
 "wallet__boost_swipe" = "Llisca per impulsar";
 "wallet__payment_received" = "Rebut Bitcoin";
+"wallet__payment_request" = "Sol·licitud de pagament";
 "wallet__instant_payment_received" = "Rebut Bitcoin instantani";
 "wallet__filter_title" = "Selecciona rang";
 "wallet__filter_clear" = "Neteja";
