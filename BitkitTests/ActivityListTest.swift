@@ -449,6 +449,80 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(activity.txId, replacementTxId)
     }
 
+    /// A contact can be assigned to a hardware activity, so the contact's screen has to show it.
+    /// Scoping the query to the default wallet let the assignment succeed and then hid the row.
+    func testGetContactActivitiesIncludesHardwareWallets() async throws {
+        let contactPublicKey = "pubky4rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let hwWalletId = "trezor:contact-scope"
+
+        try await service.insert(
+            makeOnchainActivity(
+                id: "contact-scope-default",
+                txId: "contact-scope-default-tx",
+                contact: contactPublicKey
+            )
+        )
+        try await service.insert(
+            makeOnchainActivity(
+                id: "contact-scope-hw",
+                txId: "contact-scope-hw-tx",
+                contact: contactPublicKey,
+                walletId: hwWalletId
+            )
+        )
+
+        let activities = try await service.get(contact: contactPublicKey)
+
+        XCTAssertEqual(
+            Set(activities.map(ActivityScope.walletId(of:))),
+            [WalletScope.default, hwWalletId],
+            "Contact activity must merge the normal wallet with hardware wallets"
+        )
+    }
+
+    /// Replacement filtering is per wallet: boost chains never cross wallets, so one wallet's boost
+    /// ids must not suppress an identically-numbered tx in another.
+    func testGetContactActivitiesDoesNotApplyBoostIdsAcrossWallets() async throws {
+        let contactPublicKey = "pubky5rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let hwWalletId = "trezor:contact-boost-scope"
+        let sharedTxId = "contact-boost-shared-tx"
+
+        // Replaced in the normal wallet, and boosted there — so it is filtered out of that wallet.
+        try await service.insert(
+            makeOnchainActivity(
+                id: "contact-boost-replaced",
+                txId: sharedTxId,
+                doesExist: false,
+                contact: contactPublicKey
+            )
+        )
+        try await service.insert(
+            makeOnchainActivity(
+                id: "contact-boost-replacement",
+                txId: "contact-boost-replacement-tx",
+                boostTxIds: [sharedTxId],
+                contact: contactPublicKey
+            )
+        )
+        // Same tx id under a hardware wallet, which has no boost chain of its own: must survive.
+        try await service.insert(
+            makeOnchainActivity(
+                id: "contact-boost-hw",
+                txId: sharedTxId,
+                doesExist: false,
+                contact: contactPublicKey,
+                walletId: hwWalletId
+            )
+        )
+
+        let activities = try await service.get(contact: contactPublicKey)
+        let hwActivityIds = activities
+            .filter { ActivityScope.walletId(of: $0) == hwWalletId }
+            .map(ActivityScope.id(of:))
+
+        XCTAssertEqual(hwActivityIds, ["contact-boost-hw"], "The normal wallet's boost ids must not filter a hardware row")
+    }
+
     func testDeleteActivity() async throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
 
@@ -819,12 +893,13 @@ final class ActivityTests: XCTestCase {
         txId: String,
         boostTxIds: [String] = [],
         doesExist: Bool = true,
-        contact: String?
+        contact: String?,
+        walletId: String = WalletScope.default
     ) -> Activity {
         let timestamp = UInt64(Date().timeIntervalSince1970)
         return Activity.onchain(
             OnchainActivity(
-                walletId: WalletScope.default,
+                walletId: walletId,
                 id: id,
                 txType: .sent,
                 txId: txId,

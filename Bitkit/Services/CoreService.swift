@@ -1165,12 +1165,10 @@ class ActivityService {
 
     func get(contact publicKey: String, sortDirection: SortDirection = .desc) async throws -> [Activity] {
         let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
-        let txIdsInBoostTxIds = await getTxIdsInBoostTxIds()
         // TODO: push contact filtering into BitkitCore once the activity store exposes it.
-        let activities = try await get(filter: .all, sortDirection: sortDirection)
-
-        return activities
-            .filter { !isReplacedSentTransaction($0, txIdsInBoostTxIds: txIdsInBoostTxIds) }
+        // walletId nil → global. Contacts can be assigned to hardware activities, so scoping this to
+        // the default wallet would let the assignment succeed and then hide the row it was made on.
+        let matches = try await get(filter: .all, sortDirection: sortDirection, walletId: nil)
             .filter { activity in
                 switch activity {
                 case let .lightning(lightning):
@@ -1179,6 +1177,18 @@ class ActivityService {
                     return PubkyPublicKeyFormat.matches(onchain.contact, normalizedKey)
                 }
             }
+
+        // Boost chains never cross wallets, so each wallet is checked against its own cached set —
+        // one shared set would test a hardware row against the normal wallet's boost ids. Resolved
+        // after contact filtering so only the wallets that actually matched are warmed.
+        var txIdsInBoostTxIdsByWallet: [String: Set<String>] = [:]
+        for walletId in Set(matches.map(ActivityScope.walletId(of:))) {
+            txIdsInBoostTxIdsByWallet[walletId] = await getTxIdsInBoostTxIds(walletId: walletId)
+        }
+
+        return matches.filter {
+            !isReplacedSentTransaction($0, txIdsInBoostTxIds: txIdsInBoostTxIdsByWallet[ActivityScope.walletId(of: $0)] ?? [])
+        }
     }
 
     private func isReplacedSentTransaction(_ activity: Activity, txIdsInBoostTxIds: Set<String>) -> Bool {
