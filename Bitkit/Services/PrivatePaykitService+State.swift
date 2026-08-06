@@ -4,6 +4,10 @@ import Foundation
 
 extension PrivatePaykitService {
     func closeAndClear() async {
+        initialLinkBurstTask?.cancel()
+        initialLinkBurstTask = nil
+        initialLinkBurstPublicKeys.removeAll()
+        initialLinkBurstGeneration += 1
         pendingMessageDrainRetryTask?.cancel()
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()

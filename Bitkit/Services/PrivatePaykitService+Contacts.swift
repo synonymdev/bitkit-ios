@@ -57,6 +57,50 @@ extension PrivatePaykitService {
         )
     }
 
+    func startInitialLinkBurst(
+        for publicKeys: [String],
+        savedPublicKeys: [String]? = nil,
+        wallet: WalletViewModel,
+        reason: String
+    ) {
+        if let savedPublicKeys {
+            _ = rememberSavedContacts(savedPublicKeys + publicKeys, replacing: false)
+        }
+
+        let publicKeys = normalizedSavedContactKeys(publicKeys)
+        guard !publicKeys.isEmpty else { return }
+
+        initialLinkBurstPublicKeys.formUnion(publicKeys)
+        initialLinkBurstGeneration += 1
+        let generation = initialLinkBurstGeneration
+        initialLinkBurstTask?.cancel()
+        Self.initialLinkBurstStartedSubject.send()
+
+        initialLinkBurstTask = Task { [reason, generation] in
+            for delay in [UInt64(0)] + Self.initialLinkBurstRetryDelays {
+                if delay > 0 {
+                    try? await Task.sleep(nanoseconds: delay)
+                }
+                guard !Task.isCancelled,
+                      generation == initialLinkBurstGeneration
+                else { return }
+
+                let publicKeys = Array(initialLinkBurstPublicKeys)
+                _ = await refreshSavedContactEndpointsReturningError(
+                    for: publicKeys,
+                    wallet: wallet,
+                    forceRefreshLightning: false,
+                    requireImmediatePublication: false,
+                    reason: "\(reason) initial link burst"
+                )
+            }
+
+            guard generation == initialLinkBurstGeneration else { return }
+            initialLinkBurstTask = nil
+            initialLinkBurstPublicKeys.removeAll()
+        }
+    }
+
     @discardableResult
     func refreshSavedContactEndpointsReturningError(
         for publicKeys: [String],
@@ -652,11 +696,39 @@ extension PrivatePaykitService {
     }
 
     private func receiverPathsForSavedContact(publicKey: String) async throws -> [String] {
-        guard let record = try await PaykitSdkService.shared.contactRecord(publicKey: publicKey) else {
-            return [PaykitReceiverPath.wallet]
-        }
+        let record = try await PaykitSdkService.shared.contactRecord(publicKey: publicKey)
+        let savedPaths = supportedReceiverPaths(record?.receiverPaths ?? [])
 
-        let paths = record.receiverPaths.filter { PaykitReceiverPath.supported.contains($0) }
+        do {
+            let discoveredPaths = try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey)
+            let mergedPaths = supportedReceiverPaths(savedPaths + discoveredPaths)
+            guard mergedPaths != savedPaths else { return savedPaths }
+
+            let updatedRecord = try await PubkyService.saveContact(
+                publicKey: publicKey,
+                label: record?.label,
+                receiverPaths: mergedPaths
+            )
+            Self.initialLinkBurstStartedSubject.send()
+            Logger.info(
+                "Discovered new Paykit receiver paths for \(PubkyPublicKeyFormat.redacted(publicKey))",
+                context: "PrivatePaykit"
+            )
+            return supportedReceiverPaths(updatedRecord.receiverPaths)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            Logger.warn(
+                "Failed to refresh Paykit receiver paths for \(PubkyPublicKeyFormat.redacted(publicKey)); using saved paths: \(error)",
+                context: "PrivatePaykit"
+            )
+            return savedPaths
+        }
+    }
+
+    func supportedReceiverPaths(_ receiverPaths: [String]) -> [String] {
+        let savedPaths = Set(receiverPaths)
+        let paths = PaykitReceiverPath.supported.filter { savedPaths.contains($0) }
         return paths.isEmpty ? [PaykitReceiverPath.wallet] : paths
     }
 

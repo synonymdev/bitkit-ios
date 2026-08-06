@@ -2,6 +2,17 @@
 import XCTest
 
 final class PrivatePaykitServiceTests: XCTestCase {
+    func testSupportedReceiverPathsIncludeServerPublishedAfterContactWasSaved() async {
+        let service = PrivatePaykitService()
+
+        let initiallySavedPaths = await service.supportedReceiverPaths([PaykitReceiverPath.wallet])
+        let rediscoveredPaths = await service.supportedReceiverPaths(initiallySavedPaths + [PaykitReceiverPath.server])
+
+        XCTAssertEqual(initiallySavedPaths, [PaykitReceiverPath.wallet])
+        XCTAssertEqual(rediscoveredPaths, [PaykitReceiverPath.wallet, PaykitReceiverPath.server])
+        XCTAssertEqual(PrivatePaykitService.initialLinkBurstRetryDelays.count, 14)
+    }
+
     func testReceiverNoiseDerivationMatchesCrossPlatformVector() {
         let seed = (
             "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e534955" +
