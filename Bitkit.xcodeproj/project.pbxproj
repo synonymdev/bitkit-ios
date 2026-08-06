@@ -1215,7 +1215,7 @@
 			repositoryURL = "https://github.com/twostraws/CodeScanner";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.5.1;
+				minimumVersion = 2.5.2;
 			};
 		};
 		96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */ = {
