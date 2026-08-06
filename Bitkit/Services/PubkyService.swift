@@ -297,6 +297,7 @@ actor PaykitSdkService {
     private let sessionProvider = PaykitSdkSessionProvider()
     private let paymentAdapter = PaykitSdkPaymentAdapter()
     private let operationLock = PaykitSdkOperationLock()
+    private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
     private var sdk: PaykitSdk?
     private var activeAuthRequest: Paykit.PubkyAuthRequest?
     private var activeAuthRequestID: UUID?
@@ -794,7 +795,7 @@ actor PaykitSdkService {
             sessionProvider: sessionProvider,
             paymentAdapter: paymentAdapter,
             config: Self.config(),
-            pubkyClient: Self.pubkyClientConfig()
+            pubkyClient: pubkyClientConfig
         )
         sdk = created
         return created
@@ -926,14 +927,12 @@ actor PaykitSdkService {
     }
 
     private func bootstrap() throws -> PubkySessionBootstrap {
-        try PubkySessionBootstrap.withPubkyClientConfig(pubkyClient: Self.pubkyClientConfig())
+        try PubkySessionBootstrap.withPubkyClientConfig(pubkyClient: pubkyClientConfig)
     }
 
-    nonisolated static func pubkyClientConfig(isLocalE2EBackend: Bool = Env.isLocalE2EBackend) -> PubkyClientConfig {
+    nonisolated static func makePubkyClientConfig(localTestnetHost: String?) -> PubkyClientConfig {
         var config = Paykit.defaultPubkyClientConfig()
-        if isLocalE2EBackend {
-            config.localTestnetHost = "localhost"
-        }
+        config.localTestnetHost = localTestnetHost
         return config
     }
 

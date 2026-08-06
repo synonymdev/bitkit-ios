@@ -48,6 +48,10 @@ E2E_BACKEND=network E2E_NETWORK=bitcoin \
   build
 ```
 
+Local E2E builds use `127.0.0.1` for Electrum, Homegate, and the Pubky/Paykit testnet when running in the simulator. Set `E2E_LOCAL_HOST`
+to the development machine's LAN address when running on a physical device. `E2E_HOMEGATE_URL` remains available when Homegate needs a
+different host or port.
+
 ## Localization
 
 ### Pulling Translations
