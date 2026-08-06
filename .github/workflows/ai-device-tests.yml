@@ -37,10 +37,10 @@ jobs:
 
     steps:
       - name: Checkout Bitkit iOS
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Checkout bitkit-docker
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-docker
           ref: main
