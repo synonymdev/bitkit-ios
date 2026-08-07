@@ -1,5 +1,19 @@
 import SwiftUI
 
+enum SendRetryRoute: Hashable {
+    case confirm
+    case quickpay
+    case lnurlPayConfirm
+
+    var sendRoute: SendRoute {
+        switch self {
+        case .confirm: .confirm
+        case .quickpay: .quickpay
+        case .lnurlPayConfirm: .lnurlPayConfirm
+        }
+    }
+}
+
 enum SendRoute: Hashable {
     case options
     case contact
@@ -13,9 +27,9 @@ enum SendRoute: Hashable {
     case tag
     case quickpay
     case pin
-    case pending(paymentHash: String)
+    case pending(paymentHash: String, retryRoute: SendRetryRoute)
     case success(paymentId: String)
-    case failure
+    case failure(message: String?, retryRoute: SendRetryRoute)
     case lnurlPayAmount
     case lnurlPayConfirm
     case lnurlWithdrawAmount
@@ -433,12 +447,16 @@ struct SendSheet: View {
             SendQuickpay(navigationPath: $navigationPath)
         case .pin:
             SendPinScreen(onCancel: { resolvePinCheck(false) }, onPinVerified: { resolvePinCheck(true) })
-        case let .pending(paymentHash):
-            SendPendingScreen(paymentHash: paymentHash, navigationPath: $navigationPath)
+        case let .pending(paymentHash, retryRoute):
+            SendPendingScreen(paymentHash: paymentHash, retryRoute: retryRoute, navigationPath: $navigationPath)
         case let .success(paymentId):
             SendSuccess(paymentId: paymentId)
-        case .failure:
-            SendFailure()
+        case let .failure(message, retryRoute):
+            SendFailure(
+                message: message,
+                retryRoute: retryRoute,
+                onRetryReady: { resetNavigationForRetry(retryRoute) }
+            )
         case .lnurlPayAmount:
             LnurlPayAmount(navigationPath: $navigationPath)
         case .lnurlPayConfirm:
@@ -472,6 +490,11 @@ struct SendSheet: View {
                 context: privatePaymentContext
             )
         }
+    }
+
+    private func resetNavigationForRetry(_ retryRoute: SendRetryRoute) {
+        let route = retryRoute.sendRoute
+        navigationPath = route == config.initialRoute ? [] : [route]
     }
 }
 

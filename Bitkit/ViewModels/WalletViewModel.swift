@@ -91,6 +91,7 @@ class WalletViewModel: ObservableObject {
     @Published var balanceInTransferToSpending: Int = 0
     @Published var forceCloseClaimableAtHeight: UInt32?
     @Published var currentBlockHeight: UInt32 = 0
+    @Published var isRetryingLightningPayment = false
 
     init(
         lightningService: LightningService = .shared,
@@ -137,6 +138,11 @@ class WalletViewModel: ObservableObject {
     }
 
     func start(walletIndex: Int = 0) async throws {
+        if !lightningService.hasNode, nodeLifecycleState == .running {
+            Logger.warn("Node lifecycle was running but service node is missing, restarting", context: "WalletViewModel")
+            nodeLifecycleState = .stopped
+        }
+
         // Guard against concurrent starts - only allow start from stopped, initializing, or error states
         switch nodeLifecycleState {
         case .stopped, .initializing, .errorStarting:
@@ -415,7 +421,16 @@ class WalletViewModel: ObservableObject {
         nodeLifecycleState = .stopping
         // Stop the swap updates stream with the node; it restarts on the next wallet start.
         await stopSwapUpdates()
-        try await lightningService.stop(clearEventCallback: clearEventCallback)
+
+        do {
+            try await lightningService.stop(clearEventCallback: clearEventCallback)
+        } catch {
+            Logger.warn("Failed to stop Lightning node: \(error)", context: "WalletViewModel")
+            nodeLifecycleState = lightningService.hasNode ? .running : .stopped
+            syncState()
+            throw error
+        }
+
         nodeLifecycleState = .stopped
         probeOutcomes.removeAll()
         syncState()
@@ -887,14 +902,9 @@ class WalletViewModel: ObservableObject {
                         continuation.resume(returning: paymentHash)
                     }
                 case .paymentFailed(paymentId: _, let paymentHash, let reason):
-                    // TODO: this is not working for routeNotFound
                     if paymentHash == hash {
                         self.removeOnEvent(id: eventId)
-                        continuation.resume(throwing: NSError(
-                            domain: "Lightning",
-                            code: -1,
-                            userInfo: [NSLocalizedDescriptionKey: reason.debugDescription]
-                        ))
+                        continuation.resume(throwing: AppError(paymentFailureReason: reason))
                     }
                 default:
                     break
@@ -967,6 +977,59 @@ class WalletViewModel: ObservableObject {
             try await stopLightningNode()
         }
         try await clearNetworkGraph()
+    }
+
+    func resetPaymentRoutingCaches() async throws {
+        Logger.warn("Resetting payment routing caches", context: "WalletViewModel")
+        var resetErrors: [Error] = []
+
+        do {
+            try await resetNetworkGraph()
+        } catch {
+            resetErrors.append(error)
+        }
+
+        do {
+            try await VssBackupClient.shared.deleteLdkScorerCache()
+        } catch {
+            resetErrors.append(error)
+        }
+
+        if let firstError = resetErrors.first {
+            throw firstError
+        }
+    }
+
+    func waitForPaymentRoutingDataRefresh(startedAt: Date, timeoutSeconds: Double = 20.0) async throws {
+        let startedAtTimestamp = UInt64(startedAt.timeIntervalSince1970)
+        let requiresRgsRefresh = Env.network != .regtest && !rgsConfigService.getCurrentServerUrl().isEmpty
+        let requiresScorerRefresh = Env.ldkScorerUrl != nil
+
+        guard requiresRgsRefresh || requiresScorerRefresh else { return }
+
+        let startTime = Date()
+
+        while Date().timeIntervalSince(startTime) <= timeoutSeconds {
+            await lightningService.refreshCache()
+            if let status = lightningService.status {
+                let graphCacheModificationDate = lightningService.networkGraphCacheModificationDate()
+                let rgsFresh = !requiresRgsRefresh || (graphCacheModificationDate ?? .distantPast) > startedAt
+
+                let scorerFresh = !requiresScorerRefresh || (status.latestPathfindingScoresSyncTimestamp ?? 0) >= startedAtTimestamp
+
+                if rgsFresh, scorerFresh {
+                    Logger.info("Payment routing data refreshed", context: "WalletViewModel")
+                    return
+                }
+            }
+
+            try await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        throw AppError(
+            message: "wallet__payment_failed_description",
+            debugMessage: "Timed out waiting for RGS and scorer data before retrying payment"
+        )
     }
 
     /// Clears the cached Lightning network graph: the local cache file and the VSS backup copy.

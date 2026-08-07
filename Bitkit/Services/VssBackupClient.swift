@@ -257,6 +257,12 @@ class VssBackupClient {
         }
     }
 
+    func deleteLdkScorerCache() async throws {
+        _ = try await deleteObjectLdk(key: "scorer", namespace: .default)
+        _ = try await deleteObjectLdk(key: "external_pathfinding_scores_cache", namespace: .default)
+        Logger.info("Cleared LDK scorer cache from VSS", context: "VssBackupClient")
+    }
+
     private func awaitSetup() async throws {
         try await setupCoordinator.awaitSetup { [self] in
             try await setup()

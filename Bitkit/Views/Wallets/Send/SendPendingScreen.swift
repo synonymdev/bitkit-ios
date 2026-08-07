@@ -25,6 +25,7 @@ struct HourglassLoadingView: View {
 
 struct SendPendingScreen: View {
     let paymentHash: String
+    let retryRoute: SendRetryRoute
     @Binding var navigationPath: [SendRoute]
 
     @EnvironmentObject private var activityList: ActivityListViewModel
@@ -87,7 +88,7 @@ struct SendPendingScreen: View {
                 }
             } else {
                 app.consumeContactPaymentContext(forPendingPaymentHash: paymentHash)
-                navigationPath.append(.failure)
+                navigationPath.append(.failure(message: t("wallet__payment_failed_description"), retryRoute: retryRoute))
             }
         }
     }

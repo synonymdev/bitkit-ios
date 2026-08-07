@@ -66,15 +66,10 @@ enum PaymentTimeoutError: Error {
     case timedOut
 }
 
-enum BlocktankError_deprecated: Error {
-    case missingResponse
-    case invalidResponse
-    case invalidJson
-    case missingDeviceToken
-}
-
 /// Translates LDK and BDK error messages into translated messages that can be displayed to end users
 struct AppError: LocalizedError {
+    static let genericMessage = "App Error"
+
     let message: String
     let debugMessage: String?
     /// The original error this was wrapped from, when known. Preserved so callers can unwrap and
@@ -83,7 +78,11 @@ struct AppError: LocalizedError {
     let underlyingError: Error?
 
     var errorDescription: String? {
-        return NSLocalizedString(message, comment: "")
+        return t(message)
+    }
+
+    var isGeneric: Bool {
+        return message == Self.genericMessage
     }
 
     /// Pass any LDK or BDK error to get a translated error message
@@ -106,13 +105,19 @@ struct AppError: LocalizedError {
         // EsploraError
         // PersistenceError
 
-        self.init(message: "App Error", debugMessage: error.localizedDescription, underlyingError: error)
+        self.init(message: Self.genericMessage, debugMessage: error.localizedDescription, underlyingError: error)
     }
 
     init(message: String, debugMessage: String?, underlyingError: Error? = nil) {
         self.message = message
         self.debugMessage = debugMessage
         self.underlyingError = underlyingError
+    }
+
+    init(paymentFailureReason reason: PaymentFailureReason?) {
+        underlyingError = nil
+        debugMessage = reason.map { String(describing: $0) } ?? "Unknown payment failure reason"
+        message = PaymentFailureReason.userMessageKey(for: reason, context: .send)
     }
 
     init(serviceError: CustomServiceError) {

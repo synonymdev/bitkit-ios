@@ -374,6 +374,15 @@ class LightningService {
         Logger.info("Deleted network graph cache at: \(graphPath.path)")
     }
 
+    func networkGraphCacheModificationDate() -> Date? {
+        let graphPath = Env.ldkStorage(walletIndex: currentWalletIndex).appendingPathComponent("network_graph_cache")
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: graphPath.path),
+              let modificationDate = attributes[.modificationDate] as? Date
+        else { return nil }
+
+        return modificationDate
+    }
+
     func connectToTrustedPeers(remotePeers: [LnPeer]? = nil) async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)

@@ -73,7 +73,7 @@ struct SendQuickpay: View {
                 sats: nil,
                 onTimeout: {
                     app.addPendingPaymentHash(paymentHash)
-                    navigationPath.append(.pending(paymentHash: paymentHash))
+                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .quickpay))
                 }
             )
             Logger.info("Quickpay payment successful: \(paymentHash)")
@@ -89,12 +89,6 @@ struct SendQuickpay: View {
     private func handlePaymentError(_ error: Error) {
         Logger.error("Quickpay payment failed: \(error)")
 
-        // TODO: remove toast and use failure screen instead
-        app.toast(error)
-
-        // TODO: this is a hack to make sure the navigation binding is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            navigationPath.append(.failure)
-        }
+        navigationPath.append(.failure(message: sendFailureMessage(for: error), retryRoute: .quickpay))
     }
 }
