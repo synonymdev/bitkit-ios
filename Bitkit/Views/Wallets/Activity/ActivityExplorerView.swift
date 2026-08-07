@@ -10,6 +10,9 @@ struct ActivityExplorerView: View {
 
     @State private var item: Activity
     @State private var txDetails: BitkitCore.TransactionDetails?
+    /// Distinguishes "still fetching" from "core has no details for this transaction", so the
+    /// inputs/outputs section reads as pending rather than silently absent.
+    @State private var isLoadingTxDetails = true
     @State private var boostTxDoesExist: [String: Bool] = [:] // Maps boostTxId -> doesExist
 
     init(item: Activity) {
@@ -54,16 +57,18 @@ struct ActivityExplorerView: View {
             )
             await MainActor.run {
                 txDetails = details
+                isLoadingTxDetails = false
             }
         } catch {
             Logger.error("Failed to load transaction details for \(onchain.txId): \(error)", context: "ActivityExplorerView")
+            await MainActor.run { isLoadingTxDetails = false }
         }
     }
 
     private func loadBoostTxDoesExist() async {
         guard let onchain else { return }
 
-        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: onchain.boostTxIds)
+        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: onchain.boostTxIds, walletId: onchain.walletId)
         await MainActor.run {
             boostTxDoesExist = doesExistMap
         }
@@ -208,6 +213,13 @@ struct ActivityExplorerView: View {
                         }
                     }
                     .padding(.bottom, 16)
+                } else if isLoadingTxDetails {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 16)
+                } else {
+                    BodySSBText(t("wallet__activity_details_unavailable"), textColor: .white64)
+                        .padding(.bottom, 16)
                 }
 
                 if !onchain.boostTxIds.isEmpty {

@@ -63,6 +63,9 @@ enum HwTransferError: Error, Equatable {
 /// declared as a protocol so the flow stays testable.
 @MainActor
 protocol HwTransferFunding: Sendable {
+    /// bitkit-core wallet id scoping the device's activities, so a transfer funded from it is
+    /// recorded against that wallet rather than the normal Bitkit wallet.
+    func walletId(forDevice deviceId: String) throws -> String
     func getFundingAccount(deviceId: String, addressType: AddressScriptType) throws -> HwFundingAccount
     func maxSpendableFunding(
         deviceId: String,
@@ -366,7 +369,8 @@ class TransferViewModel: ObservableObject {
         fee: UInt64 = 0,
         feeRate: UInt64 = 0,
         txTotalSats: UInt64? = nil,
-        preTransferOnchainSats: UInt64? = nil
+        preTransferOnchainSats: UInt64? = nil,
+        activityWalletId: String = WalletScope.default
     ) async {
         do {
             let transferId = try await transferService.createTransfer(
@@ -384,7 +388,13 @@ class TransferViewModel: ObservableObject {
         }
 
         if createTransferActivity {
-            await transferService.createPendingToSpendingActivity(order: order, txId: txId, fee: fee, feeRate: feeRate)
+            await transferService.createPendingToSpendingActivity(
+                order: order,
+                txId: txId,
+                fee: fee,
+                feeRate: feeRate,
+                walletId: activityWalletId
+            )
         }
 
         lightningSetupStep = 0
@@ -602,6 +612,10 @@ class TransferViewModel: ObservableObject {
             }
 
             do {
+                // Resolved before signing: without it the transfer activity would be recorded
+                // against the wrong wallet, so fail before anything is broadcast.
+                let activityWalletId = try hwSigner.funding.walletId(forDevice: deviceId)
+
                 let signedTx: HwFundingSignedTx
                 if let pending = pendingHwFundingBroadcast, pending.matches(order: order, deviceId: deviceId, address: address) {
                     signedTx = pending.signedTx
@@ -630,7 +644,8 @@ class TransferViewModel: ObservableObject {
                     txId: result.txId,
                     createTransferActivity: true,
                     fee: result.miningFeeSats,
-                    feeRate: result.feeRate
+                    feeRate: result.feeRate,
+                    activityWalletId: activityWalletId
                 )
                 activeHwTransferDeviceId = nil
                 hwFundingComplete = true

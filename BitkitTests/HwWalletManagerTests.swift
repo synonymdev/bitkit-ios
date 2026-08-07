@@ -20,17 +20,24 @@ final class HwWalletManagerTests: XCTestCase {
         /// When set, keeps the native start call in flight until `completeStart()` resolves it,
         /// mirroring the gate used in `TrezorViewModelWatcherTests`.
         var holdStart = false
+
+        /// Watcher ids whose native start always fails, so the manager retries them and they never
+        /// report — the "watcher that can't start" case the completeness gate has to tolerate.
+        var startFailures: Set<String> = []
         private var startContinuation: CheckedContinuation<Void, Error>?
         private var pendingStartResult: Result<Void, Error>?
 
         struct StopError: Error {}
+        struct StartError: Error {}
 
         func startWatcher(params: WatcherParams, listener _: EventListener) async throws {
             lock.lock()
             startedParams.append(params)
+            let shouldFail = startFailures.contains(params.watcherId)
             let shouldHold = holdStart
             lock.unlock()
 
+            if shouldFail { throw StartError() }
             guard shouldHold else { return }
             try await withCheckedThrowingContinuation { continuation in
                 lock.lock()
@@ -65,14 +72,19 @@ final class HwWalletManagerTests: XCTestCase {
         func stopAllWatchers() {}
     }
 
-    private var persisted: [[Activity]] = []
+    private var persistedSnapshots: [HwWalletSnapshot] = []
     private var deleted: [String] = []
     private var receivedTxs: [HwWalletReceivedTx] = []
     private var cancellables: Set<AnyCancellable> = []
 
+    /// The activity sets handed to core, oldest first — most assertions only care about these.
+    private var persisted: [[Activity]] {
+        persistedSnapshots.map(\.activities)
+    }
+
     override func setUp() {
         super.setUp()
-        persisted = []
+        persistedSnapshots = []
         deleted = []
         receivedTxs = []
         cancellables = []
@@ -89,7 +101,7 @@ final class HwWalletManagerTests: XCTestCase {
             monitoredTypes: { monitored },
             electrumUrl: { "ssl://test:1" },
             network: { .regtest },
-            persistActivities: { [weak self] in self?.persisted.append($0) },
+            persistSnapshot: { [weak self] in self?.persistedSnapshots.append($0) },
             deleteActivities: { [weak self] in self?.deleted.append($0) }
         )
         vm.receivedTxPublisher
@@ -151,13 +163,45 @@ final class HwWalletManagerTests: XCTestCase {
         ))
     }
 
-    private func makeEvent(_ activities: [Activity], total: UInt64) -> WatcherEvent {
+    /// Mirrors the unconfirmed rows core emits while a transaction sits in the mempool: the
+    /// timestamp advances on every poll even though nothing about the transaction changed.
+    private func makeUnconfirmedActivity(txId: String, value: UInt64, timestamp: UInt64) -> Activity {
+        guard case var .onchain(onchain) = makeActivity(txId: txId, value: value, txType: .received) else {
+            fatalError("makeActivity must produce an onchain activity")
+        }
+        onchain.confirmed = false
+        onchain.confirmTimestamp = nil
+        onchain.timestamp = timestamp
+        return .onchain(onchain)
+    }
+
+    private func makeTransactionDetails(txId: String, walletId: String = "") -> TransactionDetails {
+        TransactionDetails(
+            walletId: walletId,
+            txId: txId,
+            amountSats: 50000,
+            inputs: [TxInput(txid: "prev-\(txId)", vout: 0, scriptsig: "", witness: [], sequence: 0)],
+            outputs: [TxOutput(
+                scriptpubkey: "",
+                scriptpubkeyType: "v0_p2wpkh",
+                scriptpubkeyAddress: "bcrt1qout-\(txId)",
+                value: 50000,
+                n: 0
+            )]
+        )
+    }
+
+    private func makeEvent(
+        _ activities: [Activity],
+        total: UInt64,
+        transactionDetails: [TransactionDetails] = []
+    ) -> WatcherEvent {
         let balance = WalletBalance(
             confirmed: total, immature: 0, trustedPending: 0, untrustedPending: 0, spendable: total, total: total
         )
         return .transactionsChanged(
             activities: activities,
-            transactionDetails: [],
+            transactionDetails: transactionDetails,
             balance: balance,
             txCount: UInt32(activities.count),
             blockHeight: 100,
@@ -228,7 +272,7 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(vm.hwWalletIds.count, 1)
     }
 
-    func testActivityPersistedWithDeviceWalletId() throws {
+    func testActivityPersistedWithDeviceWalletId() async throws {
         let xpubs = ["nativeSegwit": "zpubNS"]
         let device = makeDevice(id: "dev1", xpubs: xpubs)
         let vm = makeViewModel()
@@ -240,6 +284,7 @@ final class HwWalletManagerTests: XCTestCase {
 
         // The manager re-scopes core's emitted activity to the device's derived wallet id.
         let expectedWalletId = try HwWalletId.derive(xpubs: xpubs)
+        await vm.drainPendingPersists()
         XCTAssertEqual(persisted.count, 1)
         let activities = persisted[0]
         XCTAssertEqual(activities.count, 1)
@@ -250,7 +295,84 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(onchain.value, 40000)
     }
 
-    func testUnchangedWatcherEventDoesNotRepersist() {
+    func testTransactionDetailsPersistedScopedToDeviceWalletId() async throws {
+        let xpubs = ["nativeSegwit": "zpubNS"]
+        let device = makeDevice(id: "dev1", xpubs: xpubs)
+        let vm = makeViewModel()
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeActivity(txId: "txABC", value: 50000, txType: .received)],
+            total: 50000,
+            transactionDetails: [makeTransactionDetails(txId: "txABC")]
+        ))
+
+        // Without these, Explore has no inputs/outputs to show for a hardware row.
+        let expectedWalletId = try HwWalletId.derive(xpubs: xpubs)
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.count, 1)
+        XCTAssertEqual(persistedSnapshots[0].walletId, expectedWalletId)
+        XCTAssertEqual(persistedSnapshots[0].transactionDetails.map(\.txId), ["txABC"])
+        XCTAssertEqual(persistedSnapshots[0].transactionDetails.map(\.walletId), [expectedWalletId])
+    }
+
+    func testTransactionDetailsDedupedAcrossAddressTypeWatchers() async {
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+        let vm = makeViewModel()
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        let shared = makeActivity(txId: "shared", value: 50000, txType: .received)
+        let details = makeTransactionDetails(txId: "shared")
+
+        vm.handleWatcherEvent(
+            watcherId: watcherId("dev1", "nativeSegwit"),
+            event: makeEvent([shared], total: 50000, transactionDetails: [details])
+        )
+        vm.handleWatcherEvent(
+            watcherId: watcherId("dev1", "taproot"),
+            event: makeEvent([shared], total: 50000, transactionDetails: [details])
+        )
+
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.last?.transactionDetails.map(\.txId), ["shared"])
+    }
+
+    func testMempoolTimestampDriftDoesNotRepersist() async {
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
+        let vm = makeViewModel()
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        let wid = watcherId("dev1", "nativeSegwit")
+
+        vm.handleWatcherEvent(watcherId: wid, event: makeEvent(
+            [makeUnconfirmedActivity(txId: "tx1", value: 40000, timestamp: 1_700_000_000)], total: 40000
+        ))
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.count, 1)
+
+        // Same mempool transaction, later poll: only the timestamp moved, so nothing is re-written.
+        vm.handleWatcherEvent(watcherId: wid, event: makeEvent(
+            [makeUnconfirmedActivity(txId: "tx1", value: 40000, timestamp: 1_700_000_030)], total: 40000
+        ))
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.count, 1)
+
+        // Confirmation is a real change, so it persists.
+        vm.handleWatcherEvent(watcherId: wid, event: makeEvent(
+            [makeActivity(txId: "tx1", value: 40000, txType: .received)], total: 40000
+        ))
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.count, 2)
+    }
+
+    func testWalletIdForDeviceMatchesDerivedIdAndThrowsForUnknownDevice() throws {
+        let xpubs = ["nativeSegwit": "zpubNS"]
+        let vm = makeViewModel()
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: xpubs)], connectedDeviceId: nil)
+
+        XCTAssertEqual(try vm.walletId(forDevice: "dev1"), try HwWalletId.derive(xpubs: xpubs))
+        XCTAssertThrowsError(try vm.walletId(forDevice: "unknown"))
+    }
+
+    func testUnchangedWatcherEventDoesNotRepersist() async {
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
         let vm = makeViewModel()
         vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
@@ -258,10 +380,12 @@ final class HwWalletManagerTests: XCTestCase {
         let event = makeEvent([makeActivity(txId: "tx1", value: 40000, txType: .received)], total: 40000)
 
         vm.handleWatcherEvent(watcherId: wid, event: event)
+        await vm.drainPendingPersists()
         XCTAssertEqual(persisted.count, 1)
 
         // Identical event again → no re-upsert / no redundant activity-list reload.
         vm.handleWatcherEvent(watcherId: wid, event: event)
+        await vm.drainPendingPersists()
         XCTAssertEqual(persisted.count, 1)
 
         // A changed event (new tx) → persists again.
@@ -270,6 +394,7 @@ final class HwWalletManagerTests: XCTestCase {
             makeActivity(txId: "tx2", value: 10000, txType: .received),
         ], total: 50000)
         vm.handleWatcherEvent(watcherId: wid, event: changed)
+        await vm.drainPendingPersists()
         XCTAssertEqual(persisted.count, 2)
     }
 
@@ -398,7 +523,7 @@ final class HwWalletManagerTests: XCTestCase {
     /// The same tx seen by two address-type watchers persists once (deduped by activity id).
     /// Value composition is core's job now (core 0.3.4 watch-only watcher), so this only checks
     /// dedup, not summing.
-    func testDuplicateTxAcrossAddressTypesPersistsOnce() {
+    func testDuplicateTxAcrossAddressTypesPersistsOnce() async {
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
         let vm = makeViewModel()
         vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
@@ -410,17 +535,18 @@ final class HwWalletManagerTests: XCTestCase {
             [makeActivity(txId: "shared", value: 30000, txType: .received)], total: 30000
         ))
 
+        await vm.drainPendingPersists()
         let lastPersisted = persisted.last ?? []
         XCTAssertEqual(lastPersisted.count, 1)
         guard case let .onchain(onchain) = lastPersisted[0] else { return XCTFail("expected onchain") }
         XCTAssertEqual(onchain.txId, "shared")
     }
 
-    func testMixedDirectionDuplicateResolvesDeterministically() {
+    func testMixedDirectionDuplicateResolvesDeterministically() async {
         /// The same txid seen by two address-type watchers can carry different wallet-perspective
         /// directions; the merge must resolve to the same winner regardless of arrival order.
-        func mergedTxType(nativeSegwitFirst: Bool) -> PaymentType? {
-            persisted = []
+        func mergedTxType(nativeSegwitFirst: Bool) async -> PaymentType? {
+            persistedSnapshots = []
             let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
             let vm = makeViewModel()
             vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
@@ -435,6 +561,7 @@ final class HwWalletManagerTests: XCTestCase {
                 vm.handleWatcherEvent(watcherId: tr, event: trEvent)
                 vm.handleWatcherEvent(watcherId: ns, event: nsEvent)
             }
+            await vm.drainPendingPersists()
             let shared = (persisted.last ?? []).first {
                 if case let .onchain(onchain) = $0 { return onchain.txId == "shared" }
                 return false
@@ -443,8 +570,8 @@ final class HwWalletManagerTests: XCTestCase {
             return onchain.txType
         }
 
-        let nsFirst = mergedTxType(nativeSegwitFirst: true)
-        let trFirst = mergedTxType(nativeSegwitFirst: false)
+        let nsFirst = await mergedTxType(nativeSegwitFirst: true)
+        let trFirst = await mergedTxType(nativeSegwitFirst: false)
 
         XCTAssertEqual(nsFirst, trFirst)
         // 'dev1|taproot' sorts after 'dev1|nativeSegwit', so the taproot perspective wins.
@@ -498,7 +625,7 @@ final class HwWalletManagerTests: XCTestCase {
             monitoredTypes: { monitored },
             electrumUrl: { electrumCalls += 1; return electrum },
             network: { .regtest },
-            persistActivities: { _ in },
+            persistSnapshot: { _ in },
             deleteActivities: { _ in }
         )
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
@@ -530,7 +657,7 @@ final class HwWalletManagerTests: XCTestCase {
             monitoredTypes: { monitored },
             electrumUrl: { "ssl://test:1" },
             network: { .regtest },
-            persistActivities: { _ in },
+            persistSnapshot: { _ in },
             deleteActivities: { _ in }
         )
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS"])
@@ -637,6 +764,7 @@ final class HwWalletManagerTests: XCTestCase {
         vm.removeDevice(id: "dev1")
 
         XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId("dev1", "nativeSegwit")))
+        await vm.drainPendingPersists()
         XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])
     }
 
@@ -654,6 +782,7 @@ final class HwWalletManagerTests: XCTestCase {
         await vm.removeWallet(wallet) { forgottenDeviceIds.append($0) }
 
         XCTAssertEqual(Set(forgottenDeviceIds), wallet.deviceIds)
+        await vm.drainPendingPersists()
         XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])
     }
 
@@ -674,6 +803,7 @@ final class HwWalletManagerTests: XCTestCase {
         // Device forgotten → the next snapshot no longer includes it.
         vm.updateDevices(knownDevices: [], connectedDeviceId: nil)
 
+        await vm.drainPendingPersists()
         XCTAssertEqual(deleted, [walletId])
         XCTAssertTrue(vm.wallets.isEmpty)
         XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId("dev1", "nativeSegwit")))
@@ -689,6 +819,7 @@ final class HwWalletManagerTests: XCTestCase {
         // Same device pushed again (e.g. connection toggled) → no deletion.
         vm.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
 
+        await vm.drainPendingPersists()
         XCTAssertTrue(deleted.isEmpty)
         XCTAssertEqual(vm.wallets.count, 1)
     }
@@ -708,6 +839,245 @@ final class HwWalletManagerTests: XCTestCase {
         // Give any erroneous second start a chance to land before asserting.
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(mock.startedParams.count, 1)
+    }
+
+    // MARK: - Snapshot completeness
+
+    // A snapshot may only prune stored rows it does not mention once every watcher the wallet
+    // wants has reported. Pruning a partial snapshot deletes the rows the silent watcher owns —
+    // and core cascades that delete into `activity_tags`, so the user's tags go with them.
+
+    func testSingleMonitoredTypeIsCompleteOnFirstEvent() async {
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS"])], connectedDeviceId: nil)
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeActivity(txId: "tx1", value: 40000, txType: .received)], total: 40000
+        ))
+
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.count, 1)
+        XCTAssertEqual(persistedSnapshots.last?.isComplete, true, "the common single-watcher case must still prune")
+    }
+
+    func testPartialSnapshotIsMarkedIncompleteUntilEveryMonitoredWatcherReports() async {
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+        let vm = makeViewModel()
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeActivity(txId: "txNS", value: 40000, txType: .received)], total: 40000
+        ))
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.count, 1)
+        XCTAssertEqual(persistedSnapshots.last?.isComplete, false, "taproot has not reported, so txTR must not be pruned")
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "taproot"), event: makeEvent(
+            [makeActivity(txId: "txTR", value: 10000, txType: .received)], total: 10000
+        ))
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.last?.isComplete, true)
+        XCTAssertEqual(
+            persistedSnapshots.last?.activities.map(\.activityId).sorted(),
+            ["txNS", "txTR"]
+        )
+    }
+
+    func testGroupBecomingCompleteRepersistsEvenWhenContentUnchanged() async {
+        // Both watchers see the same transaction, so the merged content never changes — but the
+        // second event is what makes the group complete, and therefore what applies the deletions
+        // the first (partial) one deferred. Without `isComplete` in the cache key it is swallowed.
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+        let vm = makeViewModel()
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        let shared = makeActivity(txId: "tx1", value: 40000, txType: .received)
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent([shared], total: 40000))
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "taproot"), event: makeEvent([shared], total: 40000))
+
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.count, 2)
+        XCTAssertEqual(persistedSnapshots.first?.isComplete, false)
+        XCTAssertEqual(persistedSnapshots.last?.isComplete, true)
+    }
+
+    func testWatcherRestartMakesGroupIncompleteAgain() async {
+        // Stopping a watcher clears its cached data, so the group is partial again until it
+        // re-reports — the other half of the same hazard.
+        let mock = MockWatcherService()
+        var electrum = "ssl://a:1"
+        let vm = HwWalletManager(
+            watcherService: mock,
+            monitoredTypes: { ["nativeSegwit", "taproot"] },
+            electrumUrl: { electrum },
+            network: { .regtest },
+            persistSnapshot: { [weak self] in self?.persistedSnapshots.append($0) },
+            deleteActivities: { _ in }
+        )
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 2 }
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeActivity(txId: "txNS", value: 40000, txType: .received)], total: 40000
+        ))
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "taproot"), event: makeEvent(
+            [makeActivity(txId: "txTR", value: 10000, txType: .received)], total: 10000
+        ))
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.last?.isComplete, true)
+
+        electrum = "ssl://b:2"
+        vm.reconcileForSettingsChange()
+        await waitUntil { mock.startedParams.count == 4 }
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeActivity(txId: "txNS", value: 50000, txType: .received)], total: 50000
+        ))
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.last?.isComplete, false)
+    }
+
+    func testUnmonitoringAddressTypeKeepsGroupComplete() async {
+        // Dropping an address type removes its spec, so the group is complete without it and its
+        // rows are pruned. Intended — and the only remaining path that deletes hardware tags.
+        let mock = MockWatcherService()
+        var monitored: Set = ["nativeSegwit", "taproot"]
+        let vm = HwWalletManager(
+            watcherService: mock,
+            monitoredTypes: { monitored },
+            electrumUrl: { "ssl://test:1" },
+            network: { .regtest },
+            persistSnapshot: { [weak self] in self?.persistedSnapshots.append($0) },
+            deleteActivities: { _ in }
+        )
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 2 }
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeActivity(txId: "txNS", value: 40000, txType: .received)], total: 40000
+        ))
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "taproot"), event: makeEvent(
+            [makeActivity(txId: "txTR", value: 10000, txType: .received)], total: 10000
+        ))
+
+        monitored = ["nativeSegwit"]
+        vm.reconcileForSettingsChange()
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeActivity(txId: "txNS", value: 50000, txType: .received)], total: 50000
+        ))
+
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.last?.isComplete, true)
+        XCTAssertEqual(persistedSnapshots.last?.activities.map(\.activityId), ["txNS"])
+    }
+
+    func testWatcherThatFailsToStartKeepsSnapshotsIncomplete() async {
+        // Accepted degradation: a watcher that cannot start suspends pruning for its wallet. A
+        // lingering replaced row is cosmetic and self-heals; destroying tags does not.
+        let mock = MockWatcherService()
+        mock.startFailures = [watcherId("dev1", "taproot")]
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS", "taproot": "zTR"])
+        let vm = makeViewModel(watcherService: mock)
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 2 }
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+            [makeActivity(txId: "txNS", value: 40000, txType: .received)], total: 40000
+        ))
+
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.last?.isComplete, false)
+    }
+
+    func testEmptySnapshotFromTheOnlyWatcherIsComplete() async {
+        // Core only emits `transactionsChanged` after a successful sync, so an empty snapshot from
+        // the wallet's only watcher genuinely means "no transactions" and must prune.
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS"])], connectedDeviceId: nil)
+
+        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent([], total: 0))
+
+        await vm.drainPendingPersists()
+        XCTAssertEqual(persistedSnapshots.count, 1)
+        XCTAssertTrue(persistedSnapshots[0].activities.isEmpty)
+        XCTAssertEqual(persistedSnapshots[0].isComplete, true)
+    }
+
+    // MARK: - Persist failure recovery
+
+    private final class PersistSpy {
+        struct WriteError: Error {}
+
+        var snapshots: [HwWalletSnapshot] = []
+        var failNextWrite = false
+
+        func record(_ snapshot: HwWalletSnapshot) throws {
+            snapshots.append(snapshot)
+            if failNextWrite {
+                failNextWrite = false
+                throw WriteError()
+            }
+        }
+    }
+
+    func testFailedPersistIsRetriedByTheNextIdenticalSnapshot() async {
+        // `persistGroupSnapshot` records a snapshot as persisted before the write is queued, so a
+        // transient core failure must drop that entry — otherwise the dedupe check swallows every
+        // identical retry and the wallet stays stale until its content happens to change.
+        let spy = PersistSpy()
+        spy.failNextWrite = true
+        let vm = HwWalletManager(
+            watcherService: MockWatcherService(),
+            monitoredTypes: { ["nativeSegwit"] },
+            electrumUrl: { "ssl://test:1" },
+            network: { .regtest },
+            persistSnapshot: { try spy.record($0) },
+            deleteActivities: { _ in }
+        )
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zNS"])], connectedDeviceId: nil)
+        let wid = watcherId("dev1", "nativeSegwit")
+        let event = makeEvent([makeActivity(txId: "tx1", value: 40000, txType: .received)], total: 40000)
+
+        vm.handleWatcherEvent(watcherId: wid, event: event)
+        await vm.drainPendingPersists()
+        XCTAssertEqual(spy.snapshots.count, 1)
+
+        vm.handleWatcherEvent(watcherId: wid, event: event)
+        await vm.drainPendingPersists()
+        XCTAssertEqual(spy.snapshots.count, 2, "the identical snapshot retries because the failed write cleared the cache")
+
+        // Now that a write has succeeded, the dedupe check is back in force.
+        vm.handleWatcherEvent(watcherId: wid, event: event)
+        await vm.drainPendingPersists()
+        XCTAssertEqual(spy.snapshots.count, 2)
+    }
+
+    // MARK: - Persist ordering
+
+    func testSnapshotPersistQueueSerializesPerWallet() async {
+        // Writes for one wallet must land in enqueue order: a stale partial snapshot landing after
+        // a complete one would resurrect the rows the complete one pruned.
+        let queue = SnapshotPersistQueue()
+        var order: [String] = []
+
+        queue.enqueue(walletId: "walletA") {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            order.append("A1")
+        }
+        queue.enqueue(walletId: "walletA") { order.append("A2") }
+        queue.enqueue(walletId: "walletB") { order.append("B1") }
+
+        await waitUntil { order.count == 3 }
+        XCTAssertEqual(order.count, 3)
+        XCTAssertLessThan(
+            order.firstIndex(of: "A1") ?? .max,
+            order.firstIndex(of: "A2") ?? .min,
+            "the slow first write for walletA must still land before the fast second one"
+        )
+        // walletB has its own chain, so it is not held up behind walletA's slow write.
+        XCTAssertEqual(order.first, "B1")
     }
 
     // MARK: - Helpers

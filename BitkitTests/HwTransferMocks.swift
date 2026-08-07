@@ -20,12 +20,19 @@ final class MockHwFunding: HwTransferFunding {
     var funding = HwFundingTransaction(psbt: "psbt", miningFeeSats: 141, feeRate: 1, totalSpent: 43186, satsPerVByte: 1)
     var signedTx = HwFundingSignedTx(serializedTx: "rawtx", miningFeeSats: 141, feeRate: 1, totalSpent: 43186)
     var broadcastTxId = "txid"
+    var walletId = "trezor:wallet"
+    var walletIdError: Error?
 
     private(set) var composeCalls: [(address: String, sats: UInt64, satsPerVByte: UInt64)] = []
     private(set) var estimateCalls: [(address: String, sats: UInt64, satsPerVByte: UInt64)] = []
     private(set) var maxSpendableCalls: [(address: String, satsPerVByte: UInt64)] = []
     private(set) var signCalls = 0
     private(set) var broadcastCalls = 0
+
+    func walletId(forDevice _: String) throws -> String {
+        if let walletIdError { throw walletIdError }
+        return walletId
+    }
 
     func getFundingAccount(deviceId _: String, addressType _: AddressScriptType) throws -> HwFundingAccount {
         if let accountError { throw accountError }

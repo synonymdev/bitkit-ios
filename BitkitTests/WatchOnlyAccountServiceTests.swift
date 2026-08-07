@@ -1,4 +1,5 @@
 @testable import Bitkit
+import CryptoKit
 import LDKNode
 import XCTest
 
@@ -88,6 +89,52 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         XCTAssertThrowsError(try WatchOnlyAccountClaimCodec.serializedXpub(offCurveKeyXpub)) {
             XCTAssertEqual($0 as? WatchOnlyAccountError, .invalidExtendedPublicKey)
         }
+    }
+
+    func testSerializedXpubRejectsUnknownVersionBytes() throws {
+        // Self-check the helper first: re-encoding under the original version must reproduce the
+        // input exactly, so a failure below can only be the version bytes.
+        let mainnetVersion: [UInt8] = [0x04, 0x88, 0xB2, 0x1E]
+        XCTAssertEqual(reversioned(mainnetTestXpub, to: mainnetVersion), mainnetTestXpub)
+
+        // A SLIP-132 zpub: well-formed base58check over 78 bytes with the same on-curve key,
+        // differing *only* in its version bytes. rust-bitcoin's `Xpub::decode` — the FFI this
+        // decoder replaced — fails it with `UnknownVersion`, so the local decode must too, rather
+        // than emitting a claim the counterparty will reject.
+        let zpub = try XCTUnwrap(reversioned(mainnetTestXpub, to: [0x04, 0xB2, 0x47, 0x46]))
+        XCTAssertNotEqual(zpub, mainnetTestXpub)
+
+        XCTAssertThrowsError(try WatchOnlyAccountClaimCodec.serializedXpub(zpub)) {
+            XCTAssertEqual($0 as? WatchOnlyAccountError, .invalidExtendedPublicKey)
+        }
+    }
+
+    /// Re-encode an extended key under different version bytes, keeping the rest of the payload and
+    /// recomputing the base58check checksum, so the result differs only in version.
+    private func reversioned(_ xpub: String, to version: [UInt8]) -> String? {
+        guard let payload = try? WatchOnlyAccountClaimCodec.serializedXpub(xpub) else { return nil }
+        let body = Data(version) + payload.dropFirst(4)
+        let checksum = Data(SHA256.hash(data: Data(SHA256.hash(data: body)))).prefix(4)
+        return base58Encode(body + checksum)
+    }
+
+    private func base58Encode(_ data: Data) -> String {
+        let alphabet = Array("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+        var digits: [Int] = []
+        for byte in data {
+            var carry = Int(byte)
+            for index in digits.indices {
+                carry += digits[index] << 8
+                digits[index] = carry % 58
+                carry /= 58
+            }
+            while carry > 0 {
+                digits.append(carry % 58)
+                carry /= 58
+            }
+        }
+        let leadingZeros = String(repeating: "1", count: data.prefix { $0 == 0 }.count)
+        return leadingZeros + String(digits.reversed().map { alphabet[$0] })
     }
 
     func testSerializedXpubRejectsPayloadOfTheWrongLength() throws {

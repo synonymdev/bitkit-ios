@@ -1,6 +1,16 @@
 import BitkitCore
 
 extension Activity {
+    /// The activity's own id, unique only within its `walletId` scope.
+    var activityId: String {
+        switch self {
+        case let .lightning(lightning):
+            return lightning.id
+        case let .onchain(onchain):
+            return onchain.id
+        }
+    }
+
     /// bitkit-core wallet id scoping this activity (`"bitkit"` for the normal wallet, a derived
     /// id for watch-only hardware wallets — see `HwWalletId`).
     var walletId: String {
@@ -13,9 +23,8 @@ extension Activity {
     }
 
     /// Whether this activity belongs to a watch-only hardware wallet (not the normal Bitkit wallet).
-    // TODO: Used as an interim feature gate (see ActivityItemView.isHardwareActivity). The
-    // wallet-id shorthand holds only while CoreService activity mutations are default-scoped;
-    // replace with a real capability check when wallet_id mutation support lands.
+    /// Drives the blue hardware icon and the boost gate — a watch-only wallet has no signing keys,
+    /// so RBF/CPFP is impossible for it.
     var isHardwareWallet: Bool {
         walletId != WalletScope.default
     }
@@ -37,22 +46,6 @@ extension Activity {
 
         case let .onchain(onchain):
             return onchain.contact
-        }
-    }
-}
-
-extension [Activity] {
-    /// Drop hardware-wallet on-chain rows whose tx already exists as a main-wallet activity, so a
-    /// transfer shows a single (main-wallet) row in the merged home / All Activity lists. The HW row
-    /// still appears on the hardware wallet detail screen (which fetches scoped to the device).
-    func withoutHardwareDuplicates() -> [Activity] {
-        let localTxIds = Set(compactMap { activity -> String? in
-            guard !activity.isHardwareWallet, case let .onchain(onchain) = activity else { return nil }
-            return onchain.txId
-        })
-        return filter { activity in
-            guard activity.isHardwareWallet, case let .onchain(onchain) = activity else { return true }
-            return !localTxIds.contains(onchain.txId)
         }
     }
 }
