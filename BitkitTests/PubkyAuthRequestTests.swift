@@ -24,8 +24,47 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertEqual(request.permissions[0].path, "/pub/bitkit.to/")
     }
 
+    func testParseUrlDeduplicatesServiceNameAcrossPublicAndPrivateCapabilities() throws {
+        let capabilities = "/pub/locks.app/:rw,/priv/locks.app/:rw"
+
+        let request = try PubkyAuthRequest.parse(url: authUrl(capabilities: capabilities))
+
+        XCTAssertEqual(request.permissions.map(\.path), ["/pub/locks.app/", "/priv/locks.app/"])
+        XCTAssertEqual(request.serviceNames, ["locks.app"])
+    }
+
+    func testParseUrlDeduplicatesServiceNamesAcrossMultiplePathsInFirstSeenOrder() throws {
+        let capabilities = "/pub/locks.app/posts/:r,/pub/example.app/:r,/priv/locks.app/settings/:w,/priv/example.app/cache/:r"
+
+        let request = try PubkyAuthRequest.parse(url: authUrl(capabilities: capabilities))
+
+        XCTAssertEqual(request.permissions.count, 4)
+        XCTAssertEqual(request.serviceNames, ["locks.app", "example.app"])
+    }
+
     func testParseUrlRecognizesWatchOnlyAccountClaim() throws {
         let capabilities = PubkyAuthClaim.watchOnlyAccountCapabilities
+        let url = authUrl(capabilities: capabilities, claimValues: [PubkyAuthClaim.watchOnlyAccountV1.rawValue])
+
+        let request = try PubkyAuthRequest.parse(url: url)
+
+        XCTAssertEqual(request.bitkitClaim, .watchOnlyAccountV1)
+    }
+
+    func testParseUrlRecognizesWatchOnlyAccountClaimWithReorderedCapabilities() throws {
+        let capabilities = PubkyAuthClaim.watchOnlyAccountCapabilities
+            .split(separator: ",")
+            .reversed()
+            .joined(separator: ",")
+        let url = authUrl(capabilities: capabilities, claimValues: [PubkyAuthClaim.watchOnlyAccountV1.rawValue])
+
+        let request = try PubkyAuthRequest.parse(url: url)
+
+        XCTAssertEqual(request.bitkitClaim, .watchOnlyAccountV1)
+    }
+
+    func testParseUrlRecognizesWatchOnlyAccountClaimWithCapabilityWhitespace() throws {
+        let capabilities = PubkyAuthClaim.watchOnlyAccountCapabilities.replacingOccurrences(of: ",", with: " , ")
         let url = authUrl(capabilities: capabilities, claimValues: [PubkyAuthClaim.watchOnlyAccountV1.rawValue])
 
         let request = try PubkyAuthRequest.parse(url: url)
@@ -72,6 +111,21 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url)) {
             XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidBitkitClaimCapabilities)
         }
+    }
+
+    func testParseUrlRejectsWatchOnlyClaimWithoutPrivateCapability() {
+        let capabilities = "/pub/paykit/v0/bitkit/server/:rw"
+        let url = authUrl(capabilities: capabilities, claimValues: [PubkyAuthClaim.watchOnlyAccountV1.rawValue])
+
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url)) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidBitkitClaimCapabilities)
+        }
+    }
+
+    func testWatchOnlyCapabilityMatcherRejectsEmptyCapability() {
+        let capabilities = "\(PubkyAuthClaim.watchOnlyAccountCapabilities),"
+
+        XCTAssertFalse(PubkyAuthClaim.matchesWatchOnlyAccountCapabilities(capabilities))
     }
 
     // MARK: - parseCapabilities

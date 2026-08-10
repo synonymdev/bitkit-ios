@@ -141,7 +141,7 @@ class ActivityListViewModel: ObservableObject {
             // Fetch extra to account for potential filtering of replaced transactions.
             // walletId nil → global: merges the Bitkit wallet with watch-only hardware wallets.
             let latest = try await coreService.activity.get(filter: .all, limit: limitLatest * 3, walletId: nil)
-            let filtered = await filterOutReplacedSentTransactions(latest).withoutHardwareDuplicates()
+            let filtered = await filterOutReplacedSentTransactions(latest)
             latestActivities = Array(filtered.prefix(Int(limitLatest)))
 
             // Fetch all activities
@@ -190,8 +190,7 @@ class ActivityListViewModel: ObservableObject {
             }
 
             // Apply base filtering. walletId nil → global so the All Activity list merges the
-            // Bitkit wallet with watch-only hardware wallets (tag filters exclude hw items, which
-            // carry no tags, matching bitkit-android).
+            // Bitkit wallet with watch-only hardware wallets.
             let baseFilteredActivities = try await coreService.activity.get(
                 filter: .all,
                 tags: selectedTags.isEmpty ? nil : Array(selectedTags),
@@ -201,9 +200,8 @@ class ActivityListViewModel: ObservableObject {
                 walletId: nil
             )
 
-            // Filter out replaced sent transactions that appear in another transaction's boostTxIds,
-            // then collapse hardware-wallet duplicates of the same funding tx into the main-wallet row.
-            let filteredOutReplaced = await filterOutReplacedSentTransactions(baseFilteredActivities).withoutHardwareDuplicates()
+            // Filter out replaced sent transactions that appear in another transaction's boostTxIds.
+            let filteredOutReplaced = await filterOutReplacedSentTransactions(baseFilteredActivities)
 
             // Apply tab filtering
             filteredActivities = filterActivitiesByTab(filteredOutReplaced, selectedTab: selectedTab)
@@ -281,12 +279,17 @@ class ActivityListViewModel: ObservableObject {
         try await coreService.activity.get(contact: publicKey, sortDirection: .desc)
     }
 
-    func setContact(_ contactPublicKey: String?, forPaymentId paymentId: String, syncLdkPayments: Bool = true) async throws {
+    func setContact(
+        _ contactPublicKey: String?,
+        forPaymentId paymentId: String,
+        walletId: String = WalletScope.default,
+        syncLdkPayments: Bool = true
+    ) async throws {
         if syncLdkPayments {
             try? await syncLdkNodePayments()
         }
 
-        try await coreService.activity.setContact(contactPublicKey, forActivity: paymentId)
+        try await coreService.activity.setContact(contactPublicKey, forActivity: paymentId, walletId: walletId)
         await syncState()
     }
 
@@ -294,8 +297,8 @@ class ActivityListViewModel: ObservableObject {
         try await coreService.activity.allPossibleTags()
     }
 
-    func appendTags(toActivity activityId: String, tags: [String]) async throws {
-        try await coreService.activity.appendTags(toActivity: activityId, tags)
+    func appendTags(toActivity activityId: String, tags: [String], walletId: String = WalletScope.default) async throws {
+        try await coreService.activity.appendTags(toActivity: activityId, tags, walletId: walletId)
         // Refresh the activities after adding a tag
         await syncState()
     }
@@ -471,10 +474,15 @@ extension ActivityListViewModel {
 
     /// Filter out replaced sent transactions that appear in another transaction's boostTxIds
     private func filterOutReplacedSentTransactions(_ activities: [Activity]) async -> [Activity] {
-        // Get cached set of txIds that appear in boostTxIds
-        let txIdsInBoostTxIds = await coreService.activity.getTxIdsInBoostTxIds()
+        // Boost chains never cross wallets, so each wallet is checked against its own cached set.
+        var txIdsInBoostTxIdsByWallet: [String: Set<String>] = [:]
+        for walletId in Set(activities.map(\.walletId)) {
+            txIdsInBoostTxIdsByWallet[walletId] = await coreService.activity.getTxIdsInBoostTxIds(walletId: walletId)
+        }
 
-        return activities.filter { !$0.isReplacedSentTransaction(txIdsInBoostTxIds: txIdsInBoostTxIds) }
+        return activities.filter {
+            !$0.isReplacedSentTransaction(txIdsInBoostTxIds: txIdsInBoostTxIdsByWallet[$0.walletId] ?? [])
+        }
     }
 
     /// Filter activities based on the selected tab

@@ -7,6 +7,12 @@ private let approvalTestXpub =
     "tpubDDWohsp5dx2iMJ9N7iHbgAEDhH4BJB9NWW1fEW3yA3AFNDREmpzteCXNqppMLUmKFY5q5e3" +
     "PXtS5CuqWCQbYcGhpPqYAgQSYdwknW9J6sQv"
 
+private func approvalTestAuthUrl(secret: String = "e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s") -> String {
+    "pubkyauth://signin?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+        "&relay=https://httprelay.pubky.app/inbox/&secret=\(secret)" +
+        "&x-bitkit-claim=watch-only-account-v1"
+}
+
 final class PubkyAuthApprovalSheetTests: XCTestCase {
     func testAuthDisplayPublicKeyOmitsPubkyPrefix() {
         XCTAssertEqual(pubkyAuthDisplayPublicKey("pubky3rsd123456789w5xg"), "3rsd...w5xg")
@@ -16,7 +22,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
 
     @MainActor
     func testWatchOnlyRequestStartsWithSeparateConsentBeforeAuthorization() throws {
-        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let authUrl = approvalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
         var state = PubkyAuthApprovalSheet.initialState(for: request)
 
@@ -97,7 +103,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let authUrl = approvalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
         let node = ApprovalFakeWatchOnlyAccountNode()
         let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
@@ -134,7 +140,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let authUrl = approvalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
         let node = ApprovalFakeWatchOnlyAccountNode()
         let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
@@ -168,8 +174,8 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let firstAuthUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
-        let secondAuthUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=f3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let firstAuthUrl = approvalTestAuthUrl()
+        let secondAuthUrl = approvalTestAuthUrl(secret: "f3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s")
         let firstRequest = try PubkyAuthRequest.parse(url: firstAuthUrl)
         let secondRequest = try PubkyAuthRequest.parse(url: secondAuthUrl)
         let node = ApprovalFakeWatchOnlyAccountNode()
@@ -229,7 +235,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let authUrl = approvalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
         let node = ApprovalFakeWatchOnlyAccountNode()
         let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
@@ -258,7 +264,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let authUrl = approvalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
         let node = ApprovalFakeWatchOnlyAccountNode()
         let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
@@ -298,7 +304,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let authUrl = approvalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
         let node = ApprovalFakeWatchOnlyAccountNode()
         let initialManager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
@@ -349,7 +355,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let authUrl = approvalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
         let node = ApprovalFakeWatchOnlyAccountNode()
         node.failNextTrackingPreparation = true
@@ -379,7 +385,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let authUrl = "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        let authUrl = approvalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
         let node = ApprovalFakeWatchOnlyAccountNode()
         node.checkCancellationWhenDisabling = true

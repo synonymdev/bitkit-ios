@@ -23,6 +23,10 @@ extension PrivatePaykitService {
     }
 
     func restoreBackup(_ backup: String?) async throws {
+        initialLinkBurstTask?.cancel()
+        initialLinkBurstTask = nil
+        initialLinkBurstPublicKeys.removeAll()
+        initialLinkBurstGeneration += 1
         pendingMessageDrainRetryTask?.cancel()
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()

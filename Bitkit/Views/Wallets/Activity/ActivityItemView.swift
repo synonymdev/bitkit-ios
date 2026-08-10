@@ -135,11 +135,6 @@ struct ActivityItemView: View {
         return DateFormatterHelpers.formatActivityDetail(activity.timestamp)
     }
 
-    // TODO: Interim feature-gating. Tag/contact/boost are hidden for hardware activities
-    // because CoreService's activity-mutation methods (markActivityAsSeen, setContact, delete,
-    // tag, boost) still hardcode WalletScope.default and can't address a non-default wallet id.
-    // Revisit once those methods are wallet_id-scoped (and wallet_id / hardware activities ship
-    // to production) so this becomes a real capability check rather than a wallet-id shorthand.
     private var isHardwareActivity: Bool {
         viewModel.activity.isHardwareWallet
     }
@@ -177,7 +172,7 @@ struct ActivityItemView: View {
     private func loadBoostTxDoesExist() async {
         guard case let .onchain(activity) = viewModel.activity else { return }
 
-        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: activity.boostTxIds)
+        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: activity.boostTxIds, walletId: activity.walletId)
         await MainActor.run {
             boostTxDoesExist = doesExistMap
         }
@@ -261,7 +256,7 @@ struct ActivityItemView: View {
         .task {
             // Check if this is a CPFP child transaction
             if case let .onchain(activity) = viewModel.activity {
-                isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: activity.txId)
+                isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: activity.txId, walletId: activity.walletId)
             }
 
             // Load boostTxIds doesExist status to determine RBF vs CPFP
@@ -527,45 +522,41 @@ struct ActivityItemView: View {
 
     private var buttons: some View {
         VStack(spacing: 16) {
-            // Contact and tag actions are hidden for watch-only hardware wallets.
-            if !isHardwareActivity {
-                HStack(spacing: 16) {
-                    if isPaykitUIActive {
-                        CustomButton(
-                            title: assignedContact == nil ? t("wallet__activity_assign") : t("wallet__activity_detach"), size: .small,
-                            icon: Image(assignedContact == nil ? "user-plus" : "user-minus")
-                                .foregroundColor(accentColor),
-                            shouldExpand: true
-                        ) {
-                            if assignedContact == nil {
-                                navigation.navigate(.assignActivityContact(activityId: viewModel.activityId))
-                            } else {
-                                Task {
-                                    await detachContact()
-                                }
-                            }
-                        }
-                        .accessibilityIdentifier(assignedContact == nil ? "ActivityAssignContact" : "ActivityDetachContact")
-                    }
-
+            HStack(spacing: 16) {
+                if isPaykitUIActive {
                     CustomButton(
-                        title: t("wallet__activity_tag"), size: .small,
-                        icon: Image("tag")
+                        title: assignedContact == nil ? t("wallet__activity_assign") : t("wallet__activity_detach"), size: .small,
+                        icon: Image(assignedContact == nil ? "user-plus" : "user-minus")
                             .foregroundColor(accentColor),
                         shouldExpand: true
                     ) {
-                        let activityId: String = switch viewModel.activity {
-                        case let .lightning(activity):
-                            activity.id
-                        case let .onchain(activity):
-                            activity.id
+                        if assignedContact == nil {
+                            navigation.navigate(
+                                .assignActivityContact(activityId: viewModel.activityId, walletId: viewModel.activity.walletId)
+                            )
+                        } else {
+                            Task {
+                                await detachContact()
+                            }
                         }
-                        sheets.showSheet(.addTag, data: AddTagConfig(activityId: activityId))
                     }
-                    .accessibilityIdentifier("ActivityTag")
+                    .accessibilityIdentifier(assignedContact == nil ? "ActivityAssignContact" : "ActivityDetachContact")
                 }
-                .frame(maxWidth: .infinity)
+
+                CustomButton(
+                    title: t("wallet__activity_tag"), size: .small,
+                    icon: Image("tag")
+                        .foregroundColor(accentColor),
+                    shouldExpand: true
+                ) {
+                    sheets.showSheet(
+                        .addTag,
+                        data: AddTagConfig(activityId: viewModel.activityId, walletId: viewModel.activity.walletId)
+                    )
+                }
+                .accessibilityIdentifier("ActivityTag")
             }
+            .frame(maxWidth: .infinity)
 
             HStack(spacing: 16) {
                 CustomButton(
@@ -615,7 +606,7 @@ struct ActivityItemView: View {
 
     private func detachContact() async {
         do {
-            try await activityList.setContact(nil, forPaymentId: viewModel.activityId)
+            try await activityList.setContact(nil, forPaymentId: viewModel.activityId, walletId: viewModel.activity.walletId)
             await viewModel.refreshActivity()
         } catch {
             Logger.error("Failed to detach contact from activity \(viewModel.activityId): \(error)", context: "ActivityItemView")

@@ -297,6 +297,7 @@ actor PaykitSdkService {
     private let sessionProvider = PaykitSdkSessionProvider()
     private let paymentAdapter = PaykitSdkPaymentAdapter()
     private let operationLock = PaykitSdkOperationLock()
+    private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
     private var sdk: PaykitSdk?
     private var activeAuthRequest: Paykit.PubkyAuthRequest?
     private var activeAuthRequestID: UUID?
@@ -789,11 +790,12 @@ actor PaykitSdkService {
             return sdk
         }
 
-        let created = try PaykitSdk.withPaymentAdapter(
+        let created = try PaykitSdk.withPaymentAdapterAndPubkyClientConfig(
             stateStore: stateStore,
             sessionProvider: sessionProvider,
             paymentAdapter: paymentAdapter,
-            config: Self.config()
+            config: Self.config(),
+            pubkyClient: pubkyClientConfig
         )
         sdk = created
         return created
@@ -925,7 +927,13 @@ actor PaykitSdkService {
     }
 
     private func bootstrap() throws -> PubkySessionBootstrap {
-        try PubkySessionBootstrap()
+        try PubkySessionBootstrap.withPubkyClientConfig(pubkyClient: pubkyClientConfig)
+    }
+
+    nonisolated static func makePubkyClientConfig(localTestnetHost: String?) -> PubkyClientConfig {
+        var config = Paykit.defaultPubkyClientConfig()
+        config.localTestnetHost = localTestnetHost
+        return config
     }
 
     private nonisolated static func config() throws -> PaykitSdkConfig {

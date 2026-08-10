@@ -21,6 +21,10 @@
 	</array>
 	<key>E2E_BACKEND</key>
 	<string>$(E2E_BACKEND)</string>
+	<key>E2E_HOMEGATE_URL</key>
+	<string>$(E2E_HOMEGATE_URL)</string>
+	<key>E2E_LOCAL_HOST</key>
+	<string>$(E2E_LOCAL_HOST)</string>
 	<key>E2E_NETWORK</key>
 	<string>$(E2E_NETWORK)</string>
 	<key>TREZOR_BRIDGE</key>

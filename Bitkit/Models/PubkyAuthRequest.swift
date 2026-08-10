@@ -5,7 +5,21 @@ enum PubkyAuthClaim: String, Equatable {
     case watchOnlyAccountV1 = "watch-only-account-v1"
 
     static let queryParameter = "x-bitkit-claim"
-    static let watchOnlyAccountCapabilities = "/pub/paykit/v0/bitkit/server/:rw"
+    static let watchOnlyAccountCapabilities = "/pub/paykit/v0/bitkit/server/:rw,/pub/paykit/v0/private/bitkit/server/:rw"
+    private static let watchOnlyAccountCapabilitySet = Set(watchOnlyAccountCapabilities.split(separator: ",").map(String.init))
+
+    static func matchesWatchOnlyAccountCapabilities(_ capabilities: String) -> Bool {
+        guard let requestedCapabilitySet = capabilitySet(capabilities) else { return false }
+        return requestedCapabilitySet == watchOnlyAccountCapabilitySet
+    }
+
+    private static func capabilitySet(_ capabilities: String) -> Set<String>? {
+        let entries = capabilities
+            .split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        guard !entries.contains(where: \.isEmpty) else { return nil }
+        return Set(entries)
+    }
 }
 
 enum PubkyAuthRequestError: Error, Equatable {
@@ -53,7 +67,10 @@ struct PubkyAuthRequest {
         let details = try Paykit.parsePubkyAuthUrl(authUrl: url)
         let capabilities = details.capabilities ?? ""
         let permissions = parseCapabilities(capabilities)
-        let serviceNames = permissions.compactMap { extractServiceName($0.path) }
+        var seenServiceNames = Set<String>()
+        let serviceNames = permissions
+            .compactMap { extractServiceName($0.path) }
+            .filter { seenServiceNames.insert($0).inserted }
         let bitkitClaim = try parseBitkitClaim(url: url, capabilities: capabilities)
         return PubkyAuthRequest(
             rawUrl: url,
@@ -79,7 +96,7 @@ struct PubkyAuthRequest {
             throw PubkyAuthRequestError.duplicateBitkitClaim
         }
         guard let claimValue = claimValues.first else {
-            if capabilities == PubkyAuthClaim.watchOnlyAccountCapabilities {
+            if PubkyAuthClaim.matchesWatchOnlyAccountCapabilities(capabilities) {
                 throw PubkyAuthRequestError.missingBitkitClaim
             }
             return nil
@@ -87,7 +104,7 @@ struct PubkyAuthRequest {
         guard let claim = PubkyAuthClaim(rawValue: claimValue) else {
             throw PubkyAuthRequestError.unsupportedBitkitClaim(claimValue)
         }
-        guard capabilities == PubkyAuthClaim.watchOnlyAccountCapabilities else {
+        guard PubkyAuthClaim.matchesWatchOnlyAccountCapabilities(capabilities) else {
             throw PubkyAuthRequestError.invalidBitkitClaimCapabilities
         }
 

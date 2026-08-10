@@ -22,9 +22,8 @@ final class HwWalletManagerFundingTests: XCTestCase {
             monitoredTypes: { monitored },
             electrumUrl: { "ssl://test:1" },
             network: { .regtest },
-            persistActivities: { _ in },
-            deleteActivities: { _ in },
-            syncHardwareActivity: { _ in }
+            persistSnapshot: { _ in },
+            deleteActivities: { _ in }
         )
     }
 

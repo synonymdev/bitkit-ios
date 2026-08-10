@@ -46,6 +46,17 @@ struct HwWalletBalance: Codable, Equatable, Identifiable {
     let sats: UInt64
 }
 
+/// A device group's wallet-scoped watcher snapshot, ready to hand to bitkit-core.
+struct HwWalletSnapshot: Equatable {
+    let walletId: String
+    let activities: [Activity]
+    let transactionDetails: [TransactionDetails]
+    /// True when every watcher the current device/settings snapshot wants for this wallet has
+    /// reported at least once, so these rows cover the whole wallet. Only a complete snapshot may
+    /// prune stored rows it does not mention — see `HwSnapshotMerge.plan(pruneMissing:)`.
+    let isComplete: Bool
+}
+
 /// A newly detected inbound transaction to a watched hardware wallet.
 struct HwWalletReceivedTx: Equatable {
     let txid: String

@@ -449,6 +449,80 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(activity.txId, replacementTxId)
     }
 
+    /// A contact can be assigned to a hardware activity, so the contact's screen has to show it.
+    /// Scoping the query to the default wallet let the assignment succeed and then hid the row.
+    func testGetContactActivitiesIncludesHardwareWallets() async throws {
+        let contactPublicKey = "pubky4rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let hwWalletId = "trezor:contact-scope"
+
+        try await service.insert(
+            makeOnchainActivity(
+                id: "contact-scope-default",
+                txId: "contact-scope-default-tx",
+                contact: contactPublicKey
+            )
+        )
+        try await service.insert(
+            makeOnchainActivity(
+                id: "contact-scope-hw",
+                txId: "contact-scope-hw-tx",
+                contact: contactPublicKey,
+                walletId: hwWalletId
+            )
+        )
+
+        let activities = try await service.get(contact: contactPublicKey)
+
+        XCTAssertEqual(
+            Set(activities.map(ActivityScope.walletId(of:))),
+            [WalletScope.default, hwWalletId],
+            "Contact activity must merge the normal wallet with hardware wallets"
+        )
+    }
+
+    /// Replacement filtering is per wallet: boost chains never cross wallets, so one wallet's boost
+    /// ids must not suppress an identically-numbered tx in another.
+    func testGetContactActivitiesDoesNotApplyBoostIdsAcrossWallets() async throws {
+        let contactPublicKey = "pubky5rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let hwWalletId = "trezor:contact-boost-scope"
+        let sharedTxId = "contact-boost-shared-tx"
+
+        // Replaced in the normal wallet, and boosted there — so it is filtered out of that wallet.
+        try await service.insert(
+            makeOnchainActivity(
+                id: "contact-boost-replaced",
+                txId: sharedTxId,
+                doesExist: false,
+                contact: contactPublicKey
+            )
+        )
+        try await service.insert(
+            makeOnchainActivity(
+                id: "contact-boost-replacement",
+                txId: "contact-boost-replacement-tx",
+                boostTxIds: [sharedTxId],
+                contact: contactPublicKey
+            )
+        )
+        // Same tx id under a hardware wallet, which has no boost chain of its own: must survive.
+        try await service.insert(
+            makeOnchainActivity(
+                id: "contact-boost-hw",
+                txId: sharedTxId,
+                doesExist: false,
+                contact: contactPublicKey,
+                walletId: hwWalletId
+            )
+        )
+
+        let activities = try await service.get(contact: contactPublicKey)
+        let hwActivityIds = activities
+            .filter { ActivityScope.walletId(of: $0) == hwWalletId }
+            .map(ActivityScope.id(of:))
+
+        XCTAssertEqual(hwActivityIds, ["contact-boost-hw"], "The normal wallet's boost ids must not filter a hardware row")
+    }
+
     func testDeleteActivity() async throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
 
@@ -485,6 +559,175 @@ final class ActivityTests: XCTestCase {
         // Verify activity no longer exists
         let deletedActivity = try await service.getActivity(id: "test-delete-1")
         XCTAssertNil(deletedActivity)
+    }
+
+    // MARK: - Hardware wallet snapshots
+
+    private let hwWalletId = "trezor:testwallet"
+
+    private func hwOnchain(
+        id: String,
+        txId: String? = nil,
+        txType: PaymentType = .received,
+        walletId: String? = nil,
+        isTransfer: Bool = false,
+        contact: String? = nil
+    ) -> Activity {
+        .onchain(OnchainActivity(
+            walletId: walletId ?? hwWalletId,
+            id: id,
+            txType: txType,
+            txId: txId ?? id,
+            value: 50000,
+            fee: 100,
+            feeRate: 1,
+            address: "bcrt1qhw",
+            confirmed: true,
+            timestamp: 1_700_000_000,
+            isBoosted: false,
+            boostTxIds: [],
+            isTransfer: isTransfer,
+            doesExist: true,
+            confirmTimestamp: 1_700_000_000,
+            channelId: nil,
+            transferTxId: nil,
+            contact: contact,
+            createdAt: nil,
+            updatedAt: nil,
+            seenAt: nil
+        ))
+    }
+
+    private func hwDetails(txId: String) -> BitkitCore.TransactionDetails {
+        BitkitCore.TransactionDetails(
+            walletId: hwWalletId,
+            txId: txId,
+            amountSats: 50000,
+            inputs: [TxInput(txid: "prev-\(txId)", vout: 0, scriptsig: "", witness: [], sequence: 0)],
+            outputs: [TxOutput(scriptpubkey: "", scriptpubkeyType: "v0_p2wpkh", scriptpubkeyAddress: "bcrt1qout", value: 50000, n: 0)]
+        )
+    }
+
+    private func storedHwActivityIds() async throws -> [String] {
+        try await service.get(filter: .onchain, walletId: hwWalletId).map(ActivityScope.id(of:)).sorted()
+    }
+
+    func testReplaceHwSnapshotPrunesMissingRowsWhenComplete() async throws {
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "keep"), hwOnchain(id: "reorged")],
+            transactionDetails: [hwDetails(txId: "keep"), hwDetails(txId: "reorged")],
+            pruneMissing: true
+        )
+        var stored = try await storedHwActivityIds()
+        XCTAssertEqual(stored, ["keep", "reorged"])
+
+        // The watcher no longer reports "reorged", and this snapshot covers the whole wallet.
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "keep")],
+            transactionDetails: [hwDetails(txId: "keep")],
+            pruneMissing: true
+        )
+
+        stored = try await storedHwActivityIds()
+        XCTAssertEqual(stored, ["keep"])
+        let details = try await service.getTransactionDetails(txid: "reorged", walletId: hwWalletId)
+        XCTAssertNil(details, "a pruned row's transaction details go with it")
+    }
+
+    func testReplaceHwSnapshotKeepsRowsAndTagsWhenNotPruning() async throws {
+        // The end-to-end proof for the partial-snapshot bug: core's delete cascades into
+        // activity_tags, and hardware tags are excluded from the backup payload, so a partial
+        // snapshot that pruned would destroy them irrecoverably.
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "fromWatcherA"), hwOnchain(id: "fromWatcherB")],
+            transactionDetails: [],
+            pruneMissing: true
+        )
+        try await service.appendTags(toActivity: "fromWatcherB", ["holiday"], walletId: hwWalletId)
+
+        // Watcher A reports before watcher B has, so the snapshot omits B's row.
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "fromWatcherA")],
+            transactionDetails: [],
+            pruneMissing: false
+        )
+
+        let stored = try await storedHwActivityIds()
+        XCTAssertEqual(stored, ["fromWatcherA", "fromWatcherB"], "the silent watcher's row survives")
+        let tags = try await service.tags(forActivity: "fromWatcherB", walletId: hwWalletId)
+        XCTAssertEqual(tags, ["holiday"], "and so does its tag")
+    }
+
+    func testReplaceHwSnapshotPreservesSeenAtAndContactOnUpsert() async throws {
+        // The design leans on core's upsert merge semantics: `contact` is COALESCEd, and `seen_at`
+        // is only ever written by `mark_activity_as_seen` (never by insert or upsert), so a
+        // re-reported row keeps both even though the watcher reports neither.
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "tx1", contact: "pk-contact")],
+            transactionDetails: [],
+            pruneMissing: true
+        )
+        await service.markActivityAsSeen(id: "tx1", walletId: hwWalletId, seenAt: 1_699_000_000)
+
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "tx1")], // watcher rows carry no contact and no seenAt
+            transactionDetails: [],
+            pruneMissing: true
+        )
+
+        let stored = try await service.getActivity(id: "tx1", walletId: hwWalletId)
+        guard case let .onchain(onchain) = stored else {
+            return XCTFail("expected the hardware row to still be stored")
+        }
+        XCTAssertEqual(onchain.contact, "pk-contact")
+        XCTAssertEqual(onchain.seenAt, 1_699_000_000, "seen state survives a watcher re-report")
+    }
+
+    func testMarkOnchainActivityAsTransferFindsHardwareScopedRow() async throws {
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "hwfunding", txType: .sent)],
+            transactionDetails: [],
+            pruneMissing: true
+        )
+
+        await service.markOnchainActivityAsTransfer(txId: "hwfunding", channelId: "channel-9")
+
+        guard case let .onchain(onchain) = try await service.getActivity(id: "hwfunding", walletId: hwWalletId) else {
+            return XCTFail("expected the hardware row to still be stored")
+        }
+        XCTAssertTrue(onchain.isTransfer)
+        XCTAssertEqual(onchain.channelId, "channel-9")
+    }
+
+    func testMarkOnchainActivityAsTransferPrefersAlreadyFlaggedDefaultWalletRow() async throws {
+        // Same txid in both scopes. The normal wallet's row is already flagged, so it wins — which
+        // is also the case the cross-wallet scan short-circuits on.
+        try await service.insert(hwOnchain(
+            id: "shared", txType: .sent, walletId: WalletScope.default, isTransfer: true
+        ))
+        try await service.replaceHwSnapshot(
+            walletId: hwWalletId,
+            activities: [hwOnchain(id: "shared", txType: .sent)],
+            transactionDetails: [],
+            pruneMissing: true
+        )
+
+        await service.markOnchainActivityAsTransfer(txId: "shared", channelId: "channel-main")
+
+        guard case let .onchain(main) = try await service.getActivity(id: "shared", walletId: WalletScope.default),
+              case let .onchain(hardware) = try await service.getActivity(id: "shared", walletId: hwWalletId)
+        else {
+            return XCTFail("expected both scoped rows to be stored")
+        }
+        XCTAssertEqual(main.channelId, "channel-main")
+        XCTAssertNil(hardware.channelId, "the hardware row is untouched")
     }
 
     func testGetAllActivitiesWithLimit() async throws {
@@ -569,17 +812,94 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(allActivities.count, 3)
     }
 
+    /// Regression for a crash on the boostTxIds cache.
+    ///
+    /// `getTxIdsInBoostTxIds` reads that cache from whichever executor calls it, while
+    /// `insert`/`upsert` mutate it from the core queue. While it was an unsynchronized
+    /// `[String: Set<String>]`, a lookup racing a keyed write tore the dictionary and segfaulted in
+    /// `Dictionary._Variant.lookup`. Reading many cold wallet ids concurrently is what forces the
+    /// storage to grow and rehash, which is the window that crashed; the writers then mutate the
+    /// same wallets the readers are warming.
+    ///
+    /// A hang here means the lock re-entered itself: fulfillment is driven by the main runloop, so
+    /// a deadlock on the cooperative pool fails this test rather than wedging the whole suite.
+    func testConcurrentBoostCacheAccessIsSafe() async throws {
+        let boostedTxId = "concurrency-boosted-tx"
+        let seededWalletIds = (0 ..< 8).map { "trezor:concurrency-seeded-\($0)" }
+        let coldWalletIds = (0 ..< 64).map { "trezor:concurrency-cold-\($0)" }
+
+        // Upsert rather than insert: a run aborted by a sanitizer report skips `tearDown`, so the
+        // shared temp database can still hold these rows.
+        for (index, walletId) in seededWalletIds.enumerated() {
+            try await service.upsert(
+                makeScopedOnchainActivity(
+                    walletId: walletId,
+                    id: "concurrency-parent-\(index)",
+                    txId: "concurrency-parent-tx-\(index)",
+                    boostTxIds: [boostedTxId]
+                )
+            )
+        }
+
+        let service = service
+        let finished = expectation(description: "concurrent boost cache access finished")
+
+        Task.detached {
+            await withTaskGroup(of: Void.self) { group in
+                for walletId in coldWalletIds + seededWalletIds {
+                    for _ in 0 ..< 4 {
+                        group.addTask { _ = await service.getTxIdsInBoostTxIds(walletId: walletId) }
+                    }
+                }
+
+                // Writers reach `updateBoostTxIdsCache` on the core queue, which only merges into a
+                // wallet the readers above have already warmed — so the two interleave by design.
+                for (index, walletId) in seededWalletIds.enumerated() {
+                    group.addTask {
+                        try? await service.upsert(
+                            makeScopedOnchainActivity(
+                                walletId: walletId,
+                                id: "concurrency-parent-\(index)",
+                                txId: "concurrency-parent-tx-\(index)",
+                                boostTxIds: [boostedTxId, "concurrency-extra-tx-\(index)"]
+                            )
+                        )
+                    }
+                }
+            }
+            finished.fulfill()
+        }
+
+        await fulfillment(of: [finished], timeout: 60)
+
+        for walletId in seededWalletIds {
+            let txIds = await service.getTxIdsInBoostTxIds(walletId: walletId)
+            XCTAssertTrue(
+                txIds.contains(boostedTxId),
+                "boostTxIds cache lost '\(boostedTxId)' for '\(walletId)' under concurrent access"
+            )
+        }
+
+        // A wallet that only ever saw cold reads must stay empty rather than picking up another
+        // wallet's ids through a torn write.
+        for walletId in coldWalletIds {
+            let txIds = await service.getTxIdsInBoostTxIds(walletId: walletId)
+            XCTAssertTrue(txIds.isEmpty, "boostTxIds cache leaked ids into unrelated wallet '\(walletId)'")
+        }
+    }
+
     private func makeOnchainActivity(
         id: String,
         txId: String,
         boostTxIds: [String] = [],
         doesExist: Bool = true,
-        contact: String?
+        contact: String?,
+        walletId: String = WalletScope.default
     ) -> Activity {
         let timestamp = UInt64(Date().timeIntervalSince1970)
         return Activity.onchain(
             OnchainActivity(
-                walletId: WalletScope.default,
+                walletId: walletId,
                 id: id,
                 txType: .sent,
                 txId: txId,
@@ -603,4 +923,39 @@ final class ActivityTests: XCTestCase {
             )
         )
     }
+}
+
+/// Free function rather than a method so `testConcurrentBoostCacheAccessIsSafe`'s detached writers
+/// can build activities without capturing the test case.
+private func makeScopedOnchainActivity(
+    walletId: String,
+    id: String,
+    txId: String,
+    boostTxIds: [String]
+) -> Activity {
+    .onchain(
+        OnchainActivity(
+            walletId: walletId,
+            id: id,
+            txType: .sent,
+            txId: txId,
+            value: 1000,
+            fee: 10,
+            feeRate: 1,
+            address: "bcrt1...",
+            confirmed: false,
+            timestamp: UInt64(Date().timeIntervalSince1970),
+            isBoosted: !boostTxIds.isEmpty,
+            boostTxIds: boostTxIds,
+            isTransfer: false,
+            doesExist: true,
+            confirmTimestamp: nil,
+            channelId: nil,
+            transferTxId: nil,
+            contact: nil,
+            createdAt: nil,
+            updatedAt: nil,
+            seenAt: nil
+        )
+    )
 }

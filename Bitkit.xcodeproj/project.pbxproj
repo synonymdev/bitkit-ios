@@ -171,14 +171,15 @@
 				Models/TransferType.swift,
 				Services/CoreService.swift,
 				Services/GeoService.swift,
+				Services/HwSnapshotMerge.swift,
 				Services/LightningService.swift,
 				Services/MigrationsService.swift,
-				Services/WatchOnlyAccountService.swift,
 				Services/RNBackupClient.swift,
 				Services/ServiceQueue.swift,
 				Services/TransferStorage.swift,
 				Services/VssBackupClient.swift,
 				Services/VssStoreIdProvider.swift,
+				Services/WatchOnlyAccountService.swift,
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
@@ -202,10 +203,11 @@
 				Models/Toast.swift,
 				Services/CoreService.swift,
 				Services/GeoService.swift,
+				Services/HwSnapshotMerge.swift,
 				Services/LightningService.swift,
-				Services/WatchOnlyAccountService.swift,
 				Services/ServiceQueue.swift,
 				Services/VssStoreIdProvider.swift,
+				Services/WatchOnlyAccountService.swift,
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
@@ -1175,7 +1177,7 @@
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
 				kind = exactVersion;
-				version = "0.1.0-rc39";
+				version = "0.1.0-rc43";
 			};
 		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {

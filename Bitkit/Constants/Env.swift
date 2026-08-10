@@ -75,8 +75,16 @@ enum Env {
         isE2E && e2eBackend == "local"
     }
 
+    private static var e2eLocalHost: String {
+        infoPlistValue("E2E_LOCAL_HOST") ?? "127.0.0.1"
+    }
+
     private static var e2eHomegateUrl: String {
-        infoPlistValue("E2E_HOMEGATE_URL") ?? "http://127.0.0.1:6288"
+        infoPlistValue("E2E_HOMEGATE_URL") ?? "http://\(e2eLocalHost):6288"
+    }
+
+    static var pubkyLocalTestnetHost: String? {
+        isLocalE2EBackend ? e2eLocalHost : nil
     }
 
     private static var e2eNetwork: LDKNode.Network {
@@ -132,7 +140,9 @@ enum Env {
     /// Whether LN -> onchain swaps can reach a Boltz backend. Boltz only serves a public API on
     /// mainnet: its testnet deployment is deprecated and regtest resolves to a local backend that
     /// no build of ours can reach. Elsewhere the transfer to savings closes a channel instead.
-    static var isSwapSupported: Bool { network == .bitcoin }
+    static var isSwapSupported: Bool {
+        network == .bitcoin
+    }
 
     static let ldkLogLevel = LDKNode.LogLevel.trace
 
@@ -180,7 +190,7 @@ enum Env {
 
     static var electrumServerUrl: String {
         if isE2E, e2eBackend == "local" {
-            return "tcp://127.0.0.1:60001"
+            return "tcp://\(e2eLocalHost):60001"
         }
         return electrumServerUrl(for: network)
     }
