@@ -1192,8 +1192,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/airbnb/lottie-ios";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 4.5.2;
+				kind = exactVersion;
+				version = 4.6.1;
 			};
 		};
 		968FE13E2DFB016B0053CD7F /* XCRemoteSwiftPackageReference "ldk-node" */ = {
@@ -1216,16 +1216,16 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/twostraws/CodeScanner";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.5.1;
+				kind = exactVersion;
+				version = 2.5.2;
 			};
 		};
 		96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/21-DOT-DEV/swift-secp256k1";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.17.0;
+				kind = exactVersion;
+				version = 0.17.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
