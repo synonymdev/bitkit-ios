@@ -175,15 +175,12 @@ struct HardwareWalletScreen: View {
         }
     }
 
-    /// Stop watching and forget every entry for this wallet (the same device may be paired over
-    /// multiple transports). `removeDevice` stops the watchers and deletes the persisted activities;
-    /// `forgetDevice` clears credentials and drops the known-device entry, which re-pushes the device
-    /// snapshot and removes the tile. The reactive auto-pop above then leaves the screen.
+    /// Stop watching this wallet and forget its stored entries, leaving the device paired for any
+    /// other wallet it holds. Dropping the entries re-pushes the device snapshot and removes the
+    /// tile, and the reactive auto-pop above then leaves the screen.
     private func removeWallet() async {
         guard let wallet else { return }
-        await hwWalletManager.removeWallet(wallet) { deviceId in
-            await trezorManager.forgetDevice(id: deviceId)
-        }
+        await hwWalletManager.removeWallet(walletId: wallet.id)
     }
 }
 

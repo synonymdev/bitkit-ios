@@ -102,6 +102,10 @@ protocol HwTransferConnecting: Sendable {
     /// Best-effort pre-connect when the sign screen appears, so tapping Open Trezor Connect is less
     /// likely to hit a cold reconnect. Fire-and-forget.
     func warmUpConnection(walletId: String)
+    /// Whether the wallet's passphrase has to be collected again before the device can sign for it.
+    func needsPassphrase(walletId: String) -> Bool
+    /// Reopens a hidden wallet for signing, refusing a session that resolves to a different wallet.
+    func reconnectWithPassphrase(walletId: String, passphrase: String) async throws
 }
 
 @MainActor
@@ -1507,3 +1511,4 @@ actor ChannelPendingCapture {
 // MARK: - Hardware transfer capability conformances
 
 extension HwWalletManager: HwTransferFunding {}
+extension HwWalletManager: HwTransferConnecting {}

@@ -834,7 +834,10 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])
     }
 
-    func testRemoveWalletForgetsEveryDeviceEntry() async throws {
+    /// The same wallet stored under two entries is one identity, so removing it deletes its
+    /// activities once. Forgetting the stored entries is the session's job — see
+    /// `HwWalletManagerPassphraseTests`.
+    func testRemoveWalletDeletesTheIdentitysActivitiesOnce() async throws {
         let xpubs = ["nativeSegwit": "z"]
         let devices = [
             makeDevice(id: "dev1", xpubs: xpubs),
@@ -843,11 +846,9 @@ final class HwWalletManagerTests: XCTestCase {
         let vm = makeViewModel(monitored: ["nativeSegwit"])
         vm.updateDevices(knownDevices: devices, connectedDeviceId: nil)
         let wallet = try XCTUnwrap(vm.wallets.first)
-        var forgottenDeviceIds: [String] = []
 
-        await vm.removeWallet(wallet) { forgottenDeviceIds.append($0) }
+        await vm.removeWallet(walletId: wallet.id)
 
-        XCTAssertEqual(Set(forgottenDeviceIds), wallet.deviceIds)
         await vm.drainPendingPersists()
         XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])
     }

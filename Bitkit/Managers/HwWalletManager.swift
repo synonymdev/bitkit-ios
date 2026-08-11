@@ -10,10 +10,15 @@ import Foundation
 /// Keyed by wallet identity, not by device: a Trezor with passphrase protection holds its standard
 /// wallet plus one identity per hidden wallet, all reached over the same transport id.
 ///
-/// Fully decoupled from `TrezorManager`: it receives the paired-wallet snapshot through
-/// `updateDevices(...)`, fed by the composition root (`AppScene`). Adapts bitkit-android's
-/// `HwWalletRepo`. iOS supports Bluetooth only, so the cross-transport (BLE+USB) dedup is reduced
-/// to a plain xpub-based identity and USB-specific reconnect handling is omitted.
+/// Tile and watcher state come solely from `updateDevices(...)`, fed by the composition root
+/// (`AppScene`). The identity-aware session operations — opening a passphrase wallet, proving the
+/// live session belongs to the wallet being spent from — additionally read the device through the
+/// injected `HwDeviceSessioning` seam, and read the stored entries fresh from it: a connect that
+/// just wrote one lands there before the push does. Never references `TrezorManager` concretely.
+///
+/// Adapts bitkit-android's `HwWalletRepo`. iOS supports Bluetooth only, so the cross-transport
+/// (BLE+USB) dedup is reduced to a plain xpub-based identity and USB-specific reconnect handling
+/// is omitted.
 @Observable
 @MainActor
 final class HwWalletManager {
@@ -48,6 +53,11 @@ final class HwWalletManager {
     private let networkProvider: () -> TrezorCoinType
     private let persistSnapshot: @MainActor (HwWalletSnapshot) async throws -> Void
     private let deleteActivities: @MainActor (String) async throws -> Void
+
+    /// The live device session. Only the identity-aware operations need it; tile and watcher state
+    /// still come solely from `updateDevices(...)`. Nil in previews and in tests that don't reach
+    /// the device.
+    private weak var session: HwDeviceSessioning?
 
     /// One chain per wallet id, shared by both writes: a snapshot landing after the delete it was
     /// racing would resurrect the wallet `removeDevice` just wiped.
@@ -87,6 +97,7 @@ final class HwWalletManager {
     private var listeners: [String: TrezorEventListener] = [:]
 
     init(
+        session: HwDeviceSessioning? = nil,
         watcherService: OnChainWatcherServicing = OnChainHwService.shared,
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
@@ -94,6 +105,7 @@ final class HwWalletManager {
         persistSnapshot: (@MainActor (HwWalletSnapshot) async throws -> Void)? = nil,
         deleteActivities: (@MainActor (String) async throws -> Void)? = nil
     ) {
+        self.session = session
         self.watcherService = watcherService
         networkProvider = network ?? { OnChainHwService.appDefaultCoinType }
         monitoredTypesProvider = monitoredTypes ?? {
@@ -184,14 +196,139 @@ final class HwWalletManager {
     }
 
     /// Removes a hardware wallet and forgets every stored entry that belongs to its wallet identity.
-    func removeWallet(
-        _ wallet: HwWallet,
-        forgetDevice: (String) async -> Void
-    ) async {
-        removeDevice(walletId: wallet.id)
-        for deviceId in wallet.deviceIds {
-            await forgetDevice(deviceId)
+    /// Other wallets of the same physical device stay paired.
+    func removeWallet(walletId: String) async {
+        removeDevice(walletId: walletId)
+        await session?.forgetWallet(walletId: walletId)
+    }
+
+    // MARK: - Wallet identity & the device session
+
+    /// Stored entries tracking one wallet identity, read fresh: a connect that just wrote one lands
+    /// there before the `updateDevices(...)` push does.
+    private func entries(for walletId: String) -> [TrezorKnownDevice] {
+        (session?.storedDevices ?? knownDevices).filter { $0.resolvedWalletId == walletId }
+    }
+
+    /// Transport id to reach `walletId` with: the connected entry, else the most recently used one.
+    private func transportDeviceId(for walletId: String) -> String? {
+        let entries = entries(for: walletId)
+        if let connected = entries.first(where: { $0.id == session?.connectedDeviceId }) { return connected.id }
+        return entries.max(by: { $0.lastConnectedAt < $1.lastConnectedAt })?.id
+    }
+
+    private func requireTransportDeviceId(for walletId: String) throws -> String {
+        guard let deviceId = transportDeviceId(for: walletId) else {
+            throw AppError(message: "Unknown hardware wallet", debugMessage: "No paired device for wallet '\(walletId)'")
         }
+        return deviceId
+    }
+
+    /// A session opened before its identity could be resolved reports none and stays usable.
+    private func isIdentity(_ sessionWalletId: String?, of walletId: String) -> Bool {
+        sessionWalletId == nil || sessionWalletId == walletId
+    }
+
+    private func watchedWalletIds() -> Set<String> {
+        Set((session?.storedDevices ?? knownDevices).compactMap(\.resolvedWalletId))
+    }
+
+    /// Opens the passphrase (hidden) wallet of an already paired device and starts watching it as
+    /// its own identity, returning its wallet id. The passphrase is bound to a fresh Trezor session
+    /// and is never persisted; re-entering it is what makes the wallet reachable again.
+    func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String {
+        guard let session else {
+            throw AppError(message: "Unavailable", debugMessage: "No device session to open a passphrase wallet with")
+        }
+        // A device with passphrase protection turned off ignores the passphrase and simply reopens
+        // the standard wallet, which would surface as "already added" and leave the user retyping a
+        // passphrase that can never take effect.
+        guard session.connectedFeatures?.passphraseProtection == true else {
+            throw HwPassphraseError.protectionDisabled
+        }
+
+        let watchedBefore = watchedWalletIds()
+        try await session.connectWithWalletMode(deviceId: deviceId, mode: .passphraseHost, passphrase: passphrase)
+        guard let opened = session.connectedWalletId else {
+            throw AppError(
+                message: "Couldn't read the passphrase wallet",
+                debugMessage: "No accounts resolved for the passphrase wallet on '\(deviceId)'"
+            )
+        }
+        guard !watchedBefore.contains(opened) else { throw HwPassphraseError.alreadyAdded }
+        return opened
+    }
+
+    /// Makes the device session belong to `walletId`, not merely to its transport. A device holds one
+    /// identity open at a time, so a session opened for another wallet on the same device would
+    /// otherwise be accepted and sign with the wrong seed. The standard wallet needs no secret to
+    /// reopen; a passphrase wallet does, which the caller has to collect.
+    func ensureConnected(walletId: String) async throws {
+        guard let session else {
+            throw AppError(message: "Unavailable", debugMessage: "No device session for wallet '\(walletId)'")
+        }
+        let deviceId = try requireTransportDeviceId(for: walletId)
+        try await session.ensureConnected(deviceId: deviceId)
+        if isIdentity(session.connectedWalletId, of: walletId) { return }
+
+        Logger.info("Reopening '\(walletId)': session belongs to another identity", context: "HwWalletManager")
+        guard !entries(for: walletId).contains(where: \.passphraseProtected) else {
+            throw HwPassphraseError.required
+        }
+        try await session.connectWithWalletMode(deviceId: deviceId, mode: .standard, passphrase: "")
+        guard isIdentity(session.connectedWalletId, of: walletId) else { throw HwPassphraseError.required }
+    }
+
+    /// Whether reaching `walletId` needs the passphrase again. The device only holds one hidden
+    /// wallet open at a time and forgets the passphrase with the session, so a passphrase wallet that
+    /// is not the live session cannot be reconnected — or signed with — without it.
+    func needsPassphrase(walletId: String) -> Bool {
+        entries(for: walletId).contains(where: \.passphraseProtected) && session?.connectedWalletId != walletId
+    }
+
+    func disconnectStaleSession(walletId: String) async {
+        guard let deviceId = transportDeviceId(for: walletId) else { return }
+        await session?.disconnectStaleSession(deviceId: deviceId)
+    }
+
+    func isKnownBluetoothDevice(walletId: String) -> Bool {
+        guard let deviceId = transportDeviceId(for: walletId) else { return false }
+        return session?.isKnownBluetoothDevice(deviceId: deviceId) ?? false
+    }
+
+    func warmUpConnection(walletId: String) {
+        guard let deviceId = transportDeviceId(for: walletId) else { return }
+        session?.warmUpConnection(deviceId: deviceId)
+    }
+
+    /// Reopens a watched passphrase wallet for signing. A wrong passphrase is not rejected by the
+    /// device — it silently derives a different wallet — so the reopened session is only accepted when
+    /// its accounts resolve back to `walletId`; anything else is torn down again and reported as
+    /// `HwPassphraseError.mismatch` rather than signing from the wrong wallet.
+    func reconnectWithPassphrase(walletId: String, passphrase: String) async throws {
+        guard let session else {
+            throw AppError(message: "Unavailable", debugMessage: "No device session for wallet '\(walletId)'")
+        }
+        let deviceId = try requireTransportDeviceId(for: walletId)
+        let watchedBefore = watchedWalletIds()
+        // Not `ensureConnected`: the session this reopens is usually already gone, either because the
+        // app restarted or because a wrong passphrase closed it.
+        try await session.connectWithWalletMode(deviceId: deviceId, mode: .passphraseHost, passphrase: passphrase)
+
+        let opened = session.connectedWalletId
+        if opened == walletId { return }
+
+        Logger.warn(
+            "Rejected hardware session for '\(walletId)': opened wallet '\(opened ?? "unknown")'",
+            context: "HwWalletManager"
+        )
+        // Reading the accounts of the wrong wallet already stored it; a mistyped passphrase must not
+        // leave a stray watch-only wallet behind.
+        if let opened, !watchedBefore.contains(opened) {
+            await removeWallet(walletId: opened)
+        }
+        await session.disconnectStaleSession(deviceId: deviceId)
+        throw HwPassphraseError.mismatch
     }
 
     // MARK: - Watcher orchestration
@@ -737,9 +874,12 @@ final class HwWalletManager {
     /// `TrezorManager.disconnectStaleSession`). Broadcasting is a separate step so a device-signing
     /// timeout is never conflated with an in-flight broadcast.
     func signFunding(
-        walletId _: String,
+        walletId: String,
         funding: HwFundingTransaction
     ) async throws -> HwFundingSignedTx {
+        // The session can change between connecting and signing, and signing from the wrong seed
+        // would produce signatures that do not match the inputs being spent.
+        guard isIdentity(session?.connectedWalletId, of: walletId) else { throw HwPassphraseError.required }
         let network = networkProvider()
         let signed = try await TrezorService.shared.signTxFromPsbt(psbtBase64: funding.psbt, network: network)
         return HwFundingSignedTx(
@@ -827,4 +967,17 @@ final class SnapshotPersistQueue {
             await task.value
         }
     }
+}
+
+/// Failures specific to passphrase (hidden) wallets, mirroring bitkit-android's `HwPassphrase*Error`
+/// types. The passphrase itself never appears in any of them.
+enum HwPassphraseError: Error, Equatable {
+    /// The device has passphrase protection turned off, so it cannot open a hidden wallet at all.
+    case protectionDisabled
+    /// The entered passphrase resolves to a wallet Bitkit already watches.
+    case alreadyAdded
+    /// The session belongs to another identity, and only this wallet's passphrase reopens it.
+    case required
+    /// The entered passphrase opened a different wallet than the one being signed from.
+    case mismatch
 }

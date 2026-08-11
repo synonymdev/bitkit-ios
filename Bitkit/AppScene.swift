@@ -84,13 +84,13 @@ struct AppScene: View {
         // Created ahead of `transfer` so the hardware-wallet transfer flow can reach the funding
         // (compose/sign/broadcast) and device-session (reconnect) capabilities.
         let trezorManager = TrezorManager()
-        let hwWalletManager = HwWalletManager()
+        let hwWalletManager = HwWalletManager(session: trezorManager)
 
         _transfer = StateObject(wrappedValue: TransferViewModel(
             transferService: transferService,
             sheetViewModel: sheetViewModel,
             hwFunding: hwWalletManager,
-            hwConnecting: trezorManager,
+            hwConnecting: hwWalletManager,
             hwFeeRateProvider: {
                 guard let rates = await feeEstimatesManager.getEstimates() else { return nil }
                 return UInt64(TransactionSpeed.fast.getFeeRate(from: rates))

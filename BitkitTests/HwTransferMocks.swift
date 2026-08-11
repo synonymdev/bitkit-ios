@@ -87,13 +87,27 @@ final class MockHwFunding: HwTransferFunding {
 final class MockHwConnecting: HwTransferConnecting {
     var connectError: Error?
     var isBluetooth = false
+    /// Wallets whose passphrase the device no longer holds, so signing has to ask for it again.
+    var walletsNeedingPassphrase: Set<String> = []
+    var reconnectError: Error?
     private(set) var ensureCalls = 0
     private(set) var staleDisconnects: [String] = []
     private(set) var warmUpCalls: [String] = []
+    private(set) var reconnectCalls: [(walletId: String, passphrase: String)] = []
 
     func ensureConnected(walletId _: String) async throws {
         ensureCalls += 1
         if let connectError { throw connectError }
+    }
+
+    func needsPassphrase(walletId: String) -> Bool {
+        walletsNeedingPassphrase.contains(walletId)
+    }
+
+    func reconnectWithPassphrase(walletId: String, passphrase: String) async throws {
+        reconnectCalls.append((walletId, passphrase))
+        if let reconnectError { throw reconnectError }
+        walletsNeedingPassphrase.remove(walletId)
     }
 
     func isKnownBluetoothDevice(walletId _: String) -> Bool {
