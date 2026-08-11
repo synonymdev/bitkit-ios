@@ -61,6 +61,17 @@
 "hardware__paired_text" = "Bitkit found funds on your device and added these to your balance.";
 "hardware__paired_label" = "Label Funds";
 "hardware__paired_finish" = "Finish";
+"hardware__passphrase_title" = "Passphrase";
+"hardware__passphrase_button" = "Passphrase";
+"hardware__passphrase_header" = "Enter <accent>passphrase</accent>";
+"hardware__passphrase_text" = "If you have funds protected by a passphrase, enter it below to add these funds to your wallet balance as well.";
+"hardware__passphrase_paired_header" = "Passphrase <accent>funds found</accent>";
+"hardware__passphrase_paired_text" = "Bitkit found funds behind a passphrase, and added these to your wallet balance.";
+"hardware__passphrase_sign_text" = "Enter the passphrase of this wallet so your hardware device can sign the transfer.";
+"hardware__passphrase_disabled" = "Passphrase protection is turned off on this hardware device. Enable it in Trezor Suite, then try again.";
+"hardware__passphrase_duplicate" = "You are already watching this passphrase wallet.";
+"hardware__passphrase_error" = "Could not open the passphrase wallet. Make sure your hardware device is unlocked and try again.";
+"hardware__passphrase_mismatch" = "That passphrase opens a different wallet. Enter the one you paired this wallet with.";
 "hardware__pairing_title" = "Pair Device";
 "hardware__pairing_text" = "Enter the 6-digit code shown on your hardware device.";
 "hardware__remove_button" = "Remove {name}";
