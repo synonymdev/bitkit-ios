@@ -34,22 +34,22 @@ struct HwFundingSigner {
     /// Resolve the device balance and the amount available to fund. Prefers the real max-sendable
     /// (same coin-selection fee as the software wallet), falling back to the reserve estimate.
     func availability(
-        deviceId: String,
+        walletId: String,
         addressType: AddressScriptType = hwFundingDefaultAddressType
     ) async throws -> Availability {
-        let account = try funding.getFundingAccount(deviceId: deviceId, addressType: addressType)
-        let available = await maxSpendable(deviceId: deviceId, balanceSats: account.balanceSats, addressType: addressType)
+        let account = try funding.getFundingAccount(walletId: walletId, addressType: addressType)
+        let available = await maxSpendable(walletId: walletId, balanceSats: account.balanceSats, addressType: addressType)
         return Availability(balanceSats: account.balanceSats, available: available)
     }
 
     /// The amount available to fund. Computes the exact max-sendable via a `sendMax` compose at the
     /// target fee rate; when the fee rate, address, or compose is unavailable, falls back to the
     /// conservative reserve clamp.
-    private func maxSpendable(deviceId: String, balanceSats: UInt64, addressType: AddressScriptType) async -> UInt64 {
+    private func maxSpendable(walletId: String, balanceSats: UInt64, addressType: AddressScriptType) async -> UInt64 {
         if let satsPerVByte = await feeRateProvider(),
            let address = try? await addressProvider(),
            let spendable = try? await funding.maxSpendableFunding(
-               deviceId: deviceId,
+               walletId: walletId,
                destinationAddress: address,
                satsPerVByte: satsPerVByte,
                addressType: addressType
@@ -70,15 +70,15 @@ struct HwFundingSigner {
     /// Reconnects, composes and signs the funding transaction without broadcasting it.
     func prepareSignedFunding(
         order: IBtOrder,
-        deviceId: String,
+        walletId: String,
         address: String,
         onComposed: (HwFundingTransaction) -> Void = { _ in }
     ) async throws -> HwFundingSignedTx {
-        try await ensureConnected(deviceId: deviceId)
+        try await ensureConnected(walletId: walletId)
         let satsPerVByte = await resolvedSatsPerVByte()
-        let tx = try await compose(deviceId: deviceId, address: address, sats: order.feeSat, satsPerVByte: satsPerVByte)
+        let tx = try await compose(walletId: walletId, address: address, sats: order.feeSat, satsPerVByte: satsPerVByte)
         onComposed(tx)
-        return try await signStep(deviceId: deviceId, funding: tx)
+        return try await signStep(walletId: walletId, funding: tx)
     }
 
     /// Broadcasts a signed funding transaction without requiring the hardware device.
@@ -94,15 +94,15 @@ struct HwFundingSigner {
 
     /// Best-effort pre-connect of the device before signing (fire-and-forget). Delegates to the
     /// device-session capability, which no-ops unless it's a known BLE device that isn't connected.
-    func warmUp(deviceId: String) {
-        connecting.warmUpConnection(deviceId: deviceId)
+    func warmUp(walletId: String) {
+        connecting.warmUpConnection(walletId: walletId)
     }
 
     /// Offline compose for the exact order amount; does not require a connected device.
-    func estimateOfflineFundingMiningFee(deviceId: String, address: String, sats: UInt64) async throws -> UInt64 {
+    func estimateOfflineFundingMiningFee(walletId: String, address: String, sats: UInt64) async throws -> UInt64 {
         let satsPerVByte = await resolvedSatsPerVByte()
         return try await funding.estimateOfflineFundingMiningFee(
-            deviceId: deviceId,
+            walletId: walletId,
             address: address,
             sats: sats,
             satsPerVByte: satsPerVByte,
@@ -110,22 +110,22 @@ struct HwFundingSigner {
         )
     }
 
-    private func ensureConnected(deviceId: String) async throws {
+    private func ensureConnected(walletId: String) async throws {
         do {
             try await withTimeout(timeouts.reconnect) {
-                try await connecting.ensureConnected(deviceId: deviceId)
+                try await connecting.ensureConnected(walletId: walletId)
             }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
             if error.isTrezorUserCancellation() { throw error }
             if error.isTrezorDeviceBusy() { throw HwTransferError.deviceBusy }
-            throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(deviceId: deviceId))
+            throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(walletId: walletId))
         }
     }
 
     private func compose(
-        deviceId: String,
+        walletId: String,
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64
@@ -133,7 +133,7 @@ struct HwFundingSigner {
         do {
             return try await withTimeout(timeouts.compose) {
                 try await funding.composeFundingTransaction(
-                    deviceId: deviceId,
+                    walletId: walletId,
                     address: address,
                     sats: sats,
                     satsPerVByte: satsPerVByte,
@@ -143,7 +143,7 @@ struct HwFundingSigner {
         } catch is CancellationError {
             throw CancellationError()
         } catch is Timeout {
-            await connecting.disconnectStaleSession(deviceId: deviceId)
+            await connecting.disconnectStaleSession(walletId: walletId)
             throw HwTransferError.signingTimeout
         } catch {
             let message = (error as? AppError)?.debugMessage ?? (error as? AppError)?.message ?? error.localizedDescription
@@ -151,15 +151,15 @@ struct HwFundingSigner {
         }
     }
 
-    private func signStep(deviceId: String, funding tx: HwFundingTransaction) async throws -> HwFundingSignedTx {
+    private func signStep(walletId: String, funding tx: HwFundingTransaction) async throws -> HwFundingSignedTx {
         do {
             return try await withTimeout(timeouts.sign) {
-                try await funding.signFunding(deviceId: deviceId, funding: tx)
+                try await funding.signFunding(walletId: walletId, funding: tx)
             }
         } catch is CancellationError {
             throw CancellationError()
         } catch is Timeout {
-            await connecting.disconnectStaleSession(deviceId: deviceId)
+            await connecting.disconnectStaleSession(walletId: walletId)
             throw HwTransferError.signingTimeout
         }
         // Any other (real signing) error propagates to the caller's generic handler.

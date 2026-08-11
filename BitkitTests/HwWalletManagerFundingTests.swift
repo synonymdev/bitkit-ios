@@ -28,7 +28,8 @@ final class HwWalletManagerFundingTests: XCTestCase {
     }
 
     private func makeDevice(id: String, xpubs: [String: String]) -> TrezorKnownDevice {
-        TrezorKnownDevice(
+        xpubsByDeviceId[id] = xpubs
+        return TrezorKnownDevice(
             id: id,
             name: id,
             path: "ble:\(id)",
@@ -54,8 +55,16 @@ final class HwWalletManagerFundingTests: XCTestCase {
         )
     }
 
+    /// Watcher ids are keyed by wallet identity, so they are derived from the device's xpubs.
+    /// `makeDevice` records them here so tests can keep naming devices by their transport id.
+    private var xpubsByDeviceId: [String: [String: String]] = [:]
+
     private func watcherId(_ deviceId: String, _ addressType: String) -> String {
-        "\(deviceId)|\(addressType)"
+        "\(walletId(deviceId))|\(addressType)"
+    }
+
+    private func walletId(_ deviceId: String) -> String {
+        (try? HwWalletId.derive(xpubs: xpubsByDeviceId[deviceId] ?? [:])) ?? deviceId
     }
 
     func testFundingBalanceIsNativeSegwitOnly() throws {
@@ -69,8 +78,8 @@ final class HwWalletManagerFundingTests: XCTestCase {
         let wallet = try XCTUnwrap(manager.wallets.first)
         XCTAssertEqual(wallet.balanceSats, 80000, "aggregate balance spans all address types")
         XCTAssertEqual(wallet.fundingBalanceSats, 50000, "funding balance is native-segwit only")
-        XCTAssertEqual(manager.fundingBalance(deviceId: "dev1"), 50000)
-        XCTAssertEqual(manager.fundingBalance(deviceId: "dev1", addressType: .taproot), 30000)
+        XCTAssertEqual(manager.fundingBalance(walletId: walletId("dev1")), 50000)
+        XCTAssertEqual(manager.fundingBalance(walletId: walletId("dev1"), addressType: .taproot), 30000)
     }
 
     func testGetFundingAccountReturnsNativeSegwitXpubAndBalance() throws {
@@ -79,7 +88,7 @@ final class HwWalletManagerFundingTests: XCTestCase {
         manager.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
         manager.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(total: 42000))
 
-        let account = try manager.getFundingAccount(deviceId: "dev1")
+        let account = try manager.getFundingAccount(walletId: walletId("dev1"))
         XCTAssertEqual(account.xpub, "zpubNS")
         XCTAssertEqual(account.addressType, .nativeSegwit)
         XCTAssertEqual(account.accountType, .nativeSegwit)
@@ -89,13 +98,13 @@ final class HwWalletManagerFundingTests: XCTestCase {
     func testGetFundingAccountThrowsForUnknownDevice() {
         let manager = makeManager()
         manager.updateDevices(knownDevices: [], connectedDeviceId: nil)
-        XCTAssertThrowsError(try manager.getFundingAccount(deviceId: "nope"))
+        XCTAssertThrowsError(try manager.getFundingAccount(walletId: walletId("nope")))
     }
 
     func testGetFundingAccountThrowsWhenNativeSegwitAccountMissing() {
         let device = makeDevice(id: "dev1", xpubs: ["taproot": "zpubTR"])
         let manager = makeManager()
         manager.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
-        XCTAssertThrowsError(try manager.getFundingAccount(deviceId: "dev1"))
+        XCTAssertThrowsError(try manager.getFundingAccount(walletId: walletId("dev1")))
     }
 }

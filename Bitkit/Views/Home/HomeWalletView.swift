@@ -54,7 +54,7 @@ struct HomeWalletView: View {
 
             if !hwWalletManager.wallets.isEmpty {
                 HardwareWalletsGrid(wallets: hwWalletManager.wallets) { hwWallet in
-                    navigation.navigate(.hardwareWallet(deviceId: hwWallet.id))
+                    navigation.navigate(.hardwareWallet(walletId: hwWallet.id))
                 }
                 .padding(.bottom, 32)
             }

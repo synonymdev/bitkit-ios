@@ -5,7 +5,7 @@ import SwiftUI
 enum Route: Hashable {
     case savingsWallet
     case spendingWallet
-    case hardwareWallet(deviceId: String)
+    case hardwareWallet(walletId: String)
     case activityList
     case activityDetail(Activity)
     case activityExplorer(Activity)
@@ -31,10 +31,10 @@ enum Route: Hashable {
     case transferIntro
     case fundingOptions
     case spendingIntro
-    case spendingIntroHw(deviceId: String)
+    case spendingIntroHw(walletId: String)
     case spendingAmount
-    case spendingAmountHw(deviceId: String)
-    case spendingHwSign(deviceId: String)
+    case spendingAmountHw(walletId: String)
+    case spendingHwSign(walletId: String)
     case spendingHwSigned
     case spendingConfirm(order: IBtOrder)
     case spendingAdvanced(order: IBtOrder)

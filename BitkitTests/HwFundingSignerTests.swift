@@ -47,7 +47,7 @@ final class HwFundingSignerTests: XCTestCase {
         funding.maxSpendable = 990_000
         let signer = makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: 2)
 
-        let availability = try await signer.availability(deviceId: "dev1")
+        let availability = try await signer.availability(walletId: "trezor:wallet")
 
         XCTAssertEqual(availability.balanceSats, 1_000_000)
         XCTAssertEqual(availability.available, 990_000, "available comes from the real sendMax estimate")
@@ -61,7 +61,7 @@ final class HwFundingSignerTests: XCTestCase {
         funding.maxSpendable = 990_000
         let signer = makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: 2)
 
-        let availability = try await signer.availability(deviceId: "dev1")
+        let availability = try await signer.availability(walletId: "trezor:wallet")
 
         XCTAssertEqual(availability.available, 800_000, "available is clamped to the device balance")
     }
@@ -72,7 +72,7 @@ final class HwFundingSignerTests: XCTestCase {
         funding.maxSpendableError = MockHwFunding.TestError()
         let signer = makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: 2)
 
-        let availability = try await signer.availability(deviceId: "dev1")
+        let availability = try await signer.availability(walletId: "trezor:wallet")
 
         XCTAssertEqual(availability.available, 1_000_000 - 2 * 1200, "falls back to the reserve estimate")
     }
@@ -82,7 +82,7 @@ final class HwFundingSignerTests: XCTestCase {
         funding.account = HwFundingAccount(xpub: "zpubNS", addressType: .nativeSegwit, balanceSats: 1_000_000)
         let signer = makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: 2, address: nil)
 
-        let availability = try await signer.availability(deviceId: "dev1")
+        let availability = try await signer.availability(walletId: "trezor:wallet")
 
         XCTAssertTrue(funding.maxSpendableCalls.isEmpty, "no estimate without a destination address")
         XCTAssertEqual(availability.available, 1_000_000 - 2 * 1200)
@@ -98,7 +98,7 @@ final class HwFundingSignerTests: XCTestCase {
 
         let signed = try await signer.prepareSignedFunding(
             order: order,
-            deviceId: "dev1",
+            walletId: "trezor:wallet",
             address: XCTUnwrap(order.payment?.onchain?.address),
             onComposed: { composedMiningFee = $0.miningFeeSats }
         )
@@ -119,7 +119,7 @@ final class HwFundingSignerTests: XCTestCase {
         let signer = makeSigner(funding: funding, connecting: connecting)
 
         await assertThrowsAsync {
-            _ = try await signer.prepareSignedFunding(order: .mock(), deviceId: "dev1", address: "bc1q...")
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")
         } _: { error in
             XCTAssertEqual(error as? HwTransferError, .reconnect(isBluetooth: false))
         }
@@ -133,7 +133,7 @@ final class HwFundingSignerTests: XCTestCase {
         let signer = makeSigner(funding: funding, connecting: MockHwConnecting())
 
         await assertThrowsAsync {
-            _ = try await signer.prepareSignedFunding(order: .mock(), deviceId: "dev1", address: "bc1q...")
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")
         } _: { error in
             if case .funding = error as? HwTransferError {} else { XCTFail("expected .funding, got \(error)") }
         }
@@ -147,11 +147,11 @@ final class HwFundingSignerTests: XCTestCase {
         let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 5, sign: 0.05, broadcast: 5))
 
         await assertThrowsAsync {
-            _ = try await signer.prepareSignedFunding(order: .mock(), deviceId: "dev1", address: "bc1q...")
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")
         } _: { error in
             XCTAssertEqual(error as? HwTransferError, .signingTimeout)
         }
-        XCTAssertEqual(connecting.staleDisconnects, ["dev1"])
+        XCTAssertEqual(connecting.staleDisconnects, ["trezor:wallet"])
         XCTAssertEqual(funding.signCalls, 1)
     }
 
@@ -209,11 +209,11 @@ final class HwFundingSignerTests: XCTestCase {
         let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 0.05, sign: 5, broadcast: 5))
 
         await assertThrowsAsync {
-            _ = try await signer.prepareSignedFunding(order: .mock(), deviceId: "dev1", address: "bc1q...")
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")
         } _: { error in
             XCTAssertEqual(error as? HwTransferError, .signingTimeout)
         }
-        XCTAssertEqual(connecting.staleDisconnects, ["dev1"], "a compose timeout must tear down the stale session")
+        XCTAssertEqual(connecting.staleDisconnects, ["trezor:wallet"], "a compose timeout must tear down the stale session")
         XCTAssertEqual(funding.signCalls, 0, "signing must not run after a compose timeout")
     }
 
@@ -224,7 +224,7 @@ final class HwFundingSignerTests: XCTestCase {
         let signer = makeSigner(funding: funding, connecting: connecting)
 
         await assertThrowsAsync {
-            _ = try await signer.prepareSignedFunding(order: .mock(), deviceId: "dev1", address: "bc1q...")
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")
         } _: { error in
             XCTAssertTrue(error is MockHwFunding.TestError, "a real signing error must propagate unwrapped")
             XCTAssertNil(error as? HwTransferError)

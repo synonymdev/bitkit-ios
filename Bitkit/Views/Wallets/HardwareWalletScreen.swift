@@ -6,7 +6,7 @@ import SwiftUI
 /// device's on-chain activity grouped by date (blue hardware icons), a Transfer-To-Spending
 /// placeholder on funded devices, and a Remove action. Ports bitkit-android's `HardwareWalletScreen`.
 struct HardwareWalletScreen: View {
-    let deviceId: String
+    let walletId: String
 
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
@@ -18,7 +18,7 @@ struct HardwareWalletScreen: View {
     @State private var showRemoveDialog = false
 
     private var wallet: HwWallet? {
-        hwWalletManager.wallets.first { $0.deviceIds.contains(deviceId) }
+        hwWalletManager.wallets.first { $0.id == walletId }
     }
 
     var body: some View {
@@ -133,9 +133,9 @@ struct HardwareWalletScreen: View {
             isDisabled: GeoService.shared.isGeoBlocked
         ) {
             if app.hasSeenTransferToSpendingIntro {
-                navigation.navigate(.spendingAmountHw(deviceId: deviceId))
+                navigation.navigate(.spendingAmountHw(walletId: walletId))
             } else {
-                navigation.navigate(.spendingIntroHw(deviceId: deviceId))
+                navigation.navigate(.spendingIntroHw(walletId: walletId))
             }
         }
         .accessibilityIdentifier("HardwareTransferToSpending")

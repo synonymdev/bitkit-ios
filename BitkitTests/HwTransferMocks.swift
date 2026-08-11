@@ -20,8 +20,6 @@ final class MockHwFunding: HwTransferFunding {
     var funding = HwFundingTransaction(psbt: "psbt", miningFeeSats: 141, feeRate: 1, totalSpent: 43186, satsPerVByte: 1)
     var signedTx = HwFundingSignedTx(serializedTx: "rawtx", miningFeeSats: 141, feeRate: 1, totalSpent: 43186)
     var broadcastTxId = "txid"
-    var walletId = "trezor:wallet"
-    var walletIdError: Error?
 
     private(set) var composeCalls: [(address: String, sats: UInt64, satsPerVByte: UInt64)] = []
     private(set) var estimateCalls: [(address: String, sats: UInt64, satsPerVByte: UInt64)] = []
@@ -29,18 +27,13 @@ final class MockHwFunding: HwTransferFunding {
     private(set) var signCalls = 0
     private(set) var broadcastCalls = 0
 
-    func walletId(forDevice _: String) throws -> String {
-        if let walletIdError { throw walletIdError }
-        return walletId
-    }
-
-    func getFundingAccount(deviceId _: String, addressType _: AddressScriptType) throws -> HwFundingAccount {
+    func getFundingAccount(walletId _: String, addressType _: AddressScriptType) throws -> HwFundingAccount {
         if let accountError { throw accountError }
         return account
     }
 
     func maxSpendableFunding(
-        deviceId _: String,
+        walletId _: String,
         destinationAddress: String,
         satsPerVByte: UInt64,
         addressType _: AddressScriptType
@@ -51,7 +44,7 @@ final class MockHwFunding: HwTransferFunding {
     }
 
     func composeFundingTransaction(
-        deviceId _: String,
+        walletId _: String,
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
@@ -64,7 +57,7 @@ final class MockHwFunding: HwTransferFunding {
     }
 
     func estimateOfflineFundingMiningFee(
-        deviceId _: String,
+        walletId _: String,
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
@@ -75,7 +68,7 @@ final class MockHwFunding: HwTransferFunding {
         return funding.miningFeeSats
     }
 
-    func signFunding(deviceId _: String, funding _: HwFundingTransaction) async throws -> HwFundingSignedTx {
+    func signFunding(walletId _: String, funding _: HwFundingTransaction) async throws -> HwFundingSignedTx {
         signCalls += 1
         if signDelay > 0 { try await Task.sleep(nanoseconds: UInt64(signDelay * 1_000_000_000)) }
         if let signError { throw signError }
@@ -98,20 +91,20 @@ final class MockHwConnecting: HwTransferConnecting {
     private(set) var staleDisconnects: [String] = []
     private(set) var warmUpCalls: [String] = []
 
-    func ensureConnected(deviceId _: String) async throws {
+    func ensureConnected(walletId _: String) async throws {
         ensureCalls += 1
         if let connectError { throw connectError }
     }
 
-    func isKnownBluetoothDevice(deviceId _: String) -> Bool {
+    func isKnownBluetoothDevice(walletId _: String) -> Bool {
         isBluetooth
     }
 
-    func warmUpConnection(deviceId: String) {
-        warmUpCalls.append(deviceId)
+    func warmUpConnection(walletId: String) {
+        warmUpCalls.append(walletId)
     }
 
-    func disconnectStaleSession(deviceId: String) async {
-        staleDisconnects.append(deviceId)
+    func disconnectStaleSession(walletId: String) async {
+        staleDisconnects.append(walletId)
     }
 }

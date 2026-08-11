@@ -470,19 +470,38 @@ final class TrezorManager {
         let devices = TrezorKnownDeviceStorage.loadAll()
         guard let target = devices.first(where: { $0.id == id }) else { return }
 
+        applyCustomLabel(newName, to: devices) { device in
+            device.id == id || (!target.xpubs.isEmpty && device.xpubs == target.xpubs)
+        }
+        trezorLog("Renamed device \(id)")
+    }
+
+    /// Set the Bitkit-side custom name for one wallet identity. The label belongs to the wallet, not
+    /// to the device: renaming a passphrase wallet must leave its device's other wallets alone.
+    func renameWallet(walletId: String, newName: String) {
+        let devices = TrezorKnownDeviceStorage.loadAll()
+        guard devices.contains(where: { $0.resolvedWalletId == walletId }) else { return }
+
+        applyCustomLabel(newName, to: devices) { $0.resolvedWalletId == walletId }
+        trezorLog("Renamed hardware wallet \(walletId)")
+    }
+
+    private func applyCustomLabel(
+        _ newName: String,
+        to devices: [TrezorKnownDevice],
+        matching isTarget: (TrezorKnownDevice) -> Bool
+    ) {
         let trimmed = String(newName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.deviceLabelMaxLength))
         let customLabel = trimmed.isEmpty ? nil : trimmed
 
         let updated = devices.map { device -> TrezorKnownDevice in
-            let sameGroup = device.id == id || (!target.xpubs.isEmpty && device.xpubs == target.xpubs)
-            guard sameGroup else { return device }
+            guard isTarget(device) else { return device }
             var copy = device
             copy.customLabel = customLabel
             return copy
         }
         TrezorKnownDeviceStorage.saveAll(updated)
         loadKnownDevices()
-        trezorLog("Renamed device \(id) to \(customLabel ?? "<default>")")
     }
 
     /// Captures the connected device's account xpubs so watch-only balances/activity stay available
@@ -789,5 +808,46 @@ final class TrezorManager {
 
     private func errorMessage(from error: Error) -> String {
         TrezorErrorPresenter.userMessage(from: error)
+    }
+}
+
+// MARK: - Wallet-addressed session access
+
+/// The transfer flow addresses a hardware wallet by its identity, not by the transport it happens to
+/// be reachable over: one device can hold a standard wallet plus its passphrase wallets, all sharing
+/// a transport id. Resolving the identity to a transport id happens here so the session APIs stay
+/// device-level.
+extension TrezorManager: HwTransferConnecting {
+    func ensureConnected(walletId: String) async throws {
+        try await ensureConnected(deviceId: requireTransportDeviceId(forWallet: walletId))
+    }
+
+    func disconnectStaleSession(walletId: String) async {
+        guard let deviceId = transportDeviceId(forWallet: walletId) else { return }
+        await disconnectStaleSession(deviceId: deviceId)
+    }
+
+    func isKnownBluetoothDevice(walletId: String) -> Bool {
+        guard let deviceId = transportDeviceId(forWallet: walletId) else { return false }
+        return isKnownBluetoothDevice(deviceId: deviceId)
+    }
+
+    func warmUpConnection(walletId: String) {
+        guard let deviceId = transportDeviceId(forWallet: walletId) else { return }
+        warmUpConnection(deviceId: deviceId)
+    }
+
+    /// Transport id to reach `walletId` with: the connected entry, else the most recently used one.
+    private func transportDeviceId(forWallet walletId: String) -> String? {
+        let entries = knownDevices.filter { $0.resolvedWalletId == walletId }
+        if let connected = entries.first(where: { $0.id == connectedDevice?.id }) { return connected.id }
+        return entries.max(by: { $0.lastConnectedAt < $1.lastConnectedAt })?.id
+    }
+
+    private func requireTransportDeviceId(forWallet walletId: String) throws -> String {
+        guard let deviceId = transportDeviceId(forWallet: walletId) else {
+            throw AppError(message: "Unknown hardware wallet", debugMessage: "No paired device for wallet '\(walletId)'")
+        }
+        return deviceId
     }
 }

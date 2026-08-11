@@ -5,7 +5,7 @@ import SwiftUI
 /// transaction on the Trezor. Reuses the existing Learn More / Advanced controls; on-device signing
 /// replaces the local swipe-to-pay. Advances to the Signed screen on success.
 struct SpendingHwSign: View {
-    let deviceId: String
+    let walletId: String
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
@@ -47,8 +47,8 @@ struct SpendingHwSign: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .task(id: order.id) {
-            transfer.warmUpHardwareConnection(deviceId: deviceId)
-            await transfer.updateHwFundingFeeEstimate(order: order, deviceId: deviceId)
+            transfer.warmUpHardwareConnection(walletId: walletId)
+            await transfer.updateHwFundingFeeEstimate(order: order, walletId: walletId)
         }
         .onChange(of: transfer.hwSignedEvent) {
             navigation.navigate(.spendingHwSigned)
@@ -126,7 +126,7 @@ struct SpendingHwSign: View {
                 isDisabled: transfer.hwSpending.isSigning,
                 isLoading: transfer.hwSpending.isSigning
             ) {
-                transfer.onTransferToSpendingHwConfirm(order: order, deviceId: deviceId)
+                transfer.onTransferToSpendingHwConfirm(order: order, walletId: walletId)
             }
             .accessibilityIdentifier("HardwareTransferOpenTrezorConnect")
         }

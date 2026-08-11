@@ -80,7 +80,7 @@ struct HardwareWalletsSettingsScreen: View {
                         onRename: {
                             sheets.showSheet(
                                 .renameHardwareWallet,
-                                data: RenameHardwareWalletConfig(deviceId: wallet.id, currentName: wallet.name)
+                                data: RenameHardwareWalletConfig(walletId: wallet.id, currentName: wallet.name)
                             )
                         },
                         onRemove: { pendingRemoval = wallet }
