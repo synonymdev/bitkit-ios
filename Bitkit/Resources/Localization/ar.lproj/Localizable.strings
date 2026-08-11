@@ -1,4 +1,13 @@
 "common__delete_yes" = "نعم، احذف";
+"wallet__payment_recipient_rejected" = "رفض المستلم دفعة Lightning هذه. تحقق من الفاتورة وحاول مرة أخرى.";
+"wallet__payment_abandoned" = "تم إيقاف دفعة Lightning قبل اكتمالها.";
+"wallet__payment_expired" = "انتهت صلاحية دفعة Lightning هذه. اطلب فاتورة جديدة.";
+"wallet__payment_timeout" = "انتهت مهلة الدفع. حاول مرة أخرى.";
+"wallet__payment_route_not_found" = "لم يتمكن Bitkit من العثور على مسار Lightning لهذه الدفعة.";
+"wallet__payment_retries_exhausted" = "جرّب Bitkit عدة مسارات Lightning، لكن تعذر إكمال الدفعة.";
+"wallet__payment_unknown_required_features" = "تستخدم فاتورة Lightning هذه ميزات لا يدعمها Bitkit بعد.";
+"wallet__payment_invoice_request_expired" = "انتهت صلاحية طلب فاتورة Lightning هذا. اطلب فاتورة جديدة.";
+"wallet__payment_invoice_request_rejected" = "رفض المستلم طلب فاتورة Lightning هذا.";
 "settings__backup__category_contacts" = "جهات الاتصال";
 "slashtags__your_name" = "اسمك";
 "slashtags__your_name_capital" = "اسمك";
@@ -59,3 +68,4 @@
 "widgets__weather__current_fee" = "متوسط الرسوم الحالي";
 "widgets__weather__next_block" = "تضمين الكتلة التالية";
 "wallet__payment_request" = "طلب دفع";
+"wallet__send_error_support" = "الدعم";

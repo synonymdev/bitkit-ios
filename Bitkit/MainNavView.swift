@@ -565,7 +565,7 @@ struct MainNavView: View {
                 case .reset: ResetScreen()
 
                 // Support settings
-                case .reportIssue: ReportIssue()
+                case let .reportIssue(prefill): ReportIssue(prefill: prefill)
                 case .appStatus: AppStatusView()
 
                 // Advanced settings

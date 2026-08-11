@@ -960,6 +960,7 @@
 "wallet__send_error_slash_ln" = "Nie udało się wykonać szybkiej płatności. Możesz spróbować regularnej płatności (droższej, wolniejszej).";
 "wallet__send_error_tx_failed" = "Transakcja nie powiodła się";
 "wallet__send_error_create_tx" = "Nie udało się wysłać transakcji. Proszę spróbować ponownie.";
+"wallet__send_error_support" = "Skontaktuj się z pomocą techniczną";
 "wallet__tag_remove_error_title" = "Usunięcie tagu nie powiodło się";
 "wallet__tag_remove_error_description" = "Bitkit nie był w stanie znaleźć danych transakcji.";
 "wallet__error_no_invoice" = "Nie znaleziono faktury Lightning.";
@@ -1003,7 +1004,16 @@
 "wallet__toast_payment_success_title" = "Płatność wysłana";
 "wallet__toast_payment_success_description" = "Twoja płatność natychmiastowa została wysłana pomyślnie.";
 "wallet__toast_payment_failed_title" = "Płatność nie powiodła się";
-"wallet__toast_payment_failed_description" = "Natychmiastowa płatność nie powiodła się. Proszę spróbować ponownie.";
+"wallet__payment_failed_description" = "Natychmiastowa płatność nie powiodła się. Proszę spróbować ponownie.";
+"wallet__payment_recipient_rejected" = "Odbiorca odrzucił tę płatność Lightning. Sprawdź fakturę i spróbuj ponownie.";
+"wallet__payment_abandoned" = "Płatność Lightning została zatrzymana przed zakończeniem.";
+"wallet__payment_expired" = "Ta płatność Lightning wygasła. Poproś o nową fakturę.";
+"wallet__payment_timeout" = "Przekroczono limit czasu płatności. Spróbuj ponownie.";
+"wallet__payment_route_not_found" = "Bitkit nie znalazł trasy Lightning dla tej płatności.";
+"wallet__payment_retries_exhausted" = "Bitkit wypróbował kilka tras Lightning, ale płatności nie udało się ukończyć.";
+"wallet__payment_unknown_required_features" = "Ta faktura Lightning używa funkcji, których Bitkit jeszcze nie obsługuje.";
+"wallet__payment_invoice_request_expired" = "To żądanie faktury Lightning wygasło. Poproś o nową fakturę.";
+"wallet__payment_invoice_request_rejected" = "Odbiorca odrzucił to żądanie faktury Lightning.";
 "wallet__toast_received_transaction_replaced_title" = "Zastąpiono otrzymaną transakcję";
 "wallet__toast_received_transaction_replaced_description" = "Twoja otrzymana transakcja została zastąpiona przez zwiększenie opłaty";
 "wallet__toast_transaction_replaced_title" = "Transakcja zastąpiona";

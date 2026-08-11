@@ -5,17 +5,38 @@ extension PaymentFailureReason {
     /// `PaymentFailureReason.toUserMessage`; reasons without a dedicated string fall back to
     /// the generic payment-failed description.
     static func userMessage(for reason: PaymentFailureReason?) -> String {
+        t(userMessageKey(for: reason))
+    }
+
+    static func userMessageKey(for reason: PaymentFailureReason?) -> String {
         switch reason {
         case .recipientRejected:
-            return t("wallet__toast_payment_failed_recipient_rejected")
+            return "wallet__payment_recipient_rejected"
+        case .userAbandoned:
+            return "wallet__payment_abandoned"
         case .retriesExhausted:
-            return t("wallet__toast_payment_failed_retries_exhausted")
-        case .routeNotFound:
-            return t("wallet__toast_payment_failed_route_not_found")
+            return "wallet__payment_retries_exhausted"
         case .paymentExpired:
-            return t("wallet__toast_payment_failed_timeout")
+            return "wallet__payment_expired"
+        case .routeNotFound:
+            return "wallet__payment_route_not_found"
+        case .unknownRequiredFeatures:
+            return "wallet__payment_unknown_required_features"
+        case .invoiceRequestExpired:
+            return "wallet__payment_invoice_request_expired"
+        case .invoiceRequestRejected:
+            return "wallet__payment_invoice_request_rejected"
         default:
-            return t("wallet__toast_payment_failed_description")
+            return "wallet__payment_failed_description"
+        }
+    }
+
+    var shouldResetRoutingCachesOnRetry: Bool {
+        switch self {
+        case .routeNotFound, .retriesExhausted:
+            return true
+        default:
+            return false
         }
     }
 }

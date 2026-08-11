@@ -936,6 +936,7 @@
 "wallet__send_error_slash_ln" = "Bohužel kontakt nemohl obdržet okamžitou platbu. Můžete zkusit běžnou platbu (dražší, pomalejší).";
 "wallet__send_error_tx_failed" = "Transakce selhala";
 "wallet__send_error_create_tx" = "Transakci se nepodařilo provést. Zkuste to prosím znovu.";
+"wallet__send_error_support" = "Kontaktovat podporu";
 "wallet__tag_remove_error_title" = "Odstranění značky se nezdařilo";
 "wallet__tag_remove_error_description" = "Bitkit se nepodařilo najít data transakce.";
 "wallet__error_no_invoice" = "Nebyla nalezena žádná lightningová faktura.";
@@ -979,7 +980,16 @@
 "wallet__toast_payment_success_title" = "Platba odeslána";
 "wallet__toast_payment_success_description" = "Vaše okamžitá platba byla úspěšně odeslána.";
 "wallet__toast_payment_failed_title" = "Platba se nezdařila";
-"wallet__toast_payment_failed_description" = "Vaše okamžitá platba se nezdařila. Zkuste to prosím znovu.";
+"wallet__payment_failed_description" = "Vaše okamžitá platba se nezdařila. Zkuste to prosím znovu.";
+"wallet__payment_recipient_rejected" = "Příjemce tuto Lightning platbu odmítl. Zkontrolujte fakturu a zkuste to znovu.";
+"wallet__payment_abandoned" = "Lightning platba byla zastavena před dokončením.";
+"wallet__payment_expired" = "Platnost této Lightning platby vypršela. Vyžádejte si novou fakturu.";
+"wallet__payment_timeout" = "Časový limit platby vypršel. Zkuste to znovu.";
+"wallet__payment_route_not_found" = "Bitkit nenašel pro tuto platbu žádnou Lightning trasu.";
+"wallet__payment_retries_exhausted" = "Bitkit vyzkoušel několik Lightning tras, ale platbu se nepodařilo dokončit.";
+"wallet__payment_unknown_required_features" = "Tato Lightning faktura používá funkce, které Bitkit zatím nepodporuje.";
+"wallet__payment_invoice_request_expired" = "Platnost této žádosti o Lightning fakturu vypršela. Vyžádejte si novou fakturu.";
+"wallet__payment_invoice_request_rejected" = "Příjemce tuto žádost o Lightning fakturu odmítl.";
 "wallet__toast_received_transaction_replaced_title" = "Přijatá transakce nahrazena";
 "wallet__toast_received_transaction_replaced_description" = "Vaše přijatá transakce byla nahrazena navýšením poplatku";
 "wallet__toast_transaction_replaced_title" = "Transakce nahrazena";

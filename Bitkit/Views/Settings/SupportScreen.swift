@@ -84,7 +84,7 @@ struct SupportScreen: View {
                             .padding(.bottom, 16)
 
                         VStack(spacing: 0) {
-                            NavigationLink(value: Route.reportIssue) {
+                            NavigationLink(value: Route.reportIssue()) {
                                 SettingsRow(title: t("settings__support__report"), iconName: "warning")
                             }
 

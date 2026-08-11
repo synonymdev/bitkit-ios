@@ -7,6 +7,7 @@ struct SendQuickpay: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     @Binding var navigationPath: [SendRoute]
+    let routingCacheResetAttempted: Bool
 
     var body: some View {
         VStack {
@@ -40,9 +41,9 @@ struct SendQuickpay: View {
     }
 
     private func performPayment() async {
-        do {
-            var bolt11Invoice: String?
+        var bolt11Invoice: String?
 
+        do {
             // Handle LNURL Pay
             if let lnurlPayData = app.lnurlPayData {
                 // Set the amount in sats for the success screen
@@ -73,7 +74,7 @@ struct SendQuickpay: View {
                 sats: nil,
                 onTimeout: {
                     app.addPendingPaymentHash(paymentHash)
-                    navigationPath.append(.pending(paymentHash: paymentHash))
+                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .quickpay))
                 }
             )
             Logger.info("Quickpay payment successful: \(paymentHash)")
@@ -82,19 +83,18 @@ struct SendQuickpay: View {
             // onTimeout callback already navigated to .pending; suppress throw
             return
         } catch {
-            handlePaymentError(error)
+            handlePaymentError(error, paymentRequest: bolt11Invoice)
         }
     }
 
-    private func handlePaymentError(_ error: Error) {
+    private func handlePaymentError(_ error: Error, paymentRequest: String?) {
         Logger.error("Quickpay payment failed: \(error)")
 
-        // TODO: remove toast and use failure screen instead
-        app.toast(error)
-
-        // TODO: this is a hack to make sure the navigation binding is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            navigationPath.append(.failure)
-        }
+        navigationPath.append(.failure(SendFailureContext(
+            error: error,
+            retryRoute: .quickpay,
+            routingCacheResetAttempted: routingCacheResetAttempted,
+            paymentRequest: paymentRequest
+        )))
     }
 }
