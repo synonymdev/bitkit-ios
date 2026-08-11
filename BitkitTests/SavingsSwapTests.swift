@@ -97,11 +97,11 @@ final class SavingsSwapTests: XCTestCase {
         )
         XCTAssertEqual(
             AppError(paymentFailureReason: .retriesExhausted).localizedDescription,
-            t("wallet__send_payment_retries_exhausted")
+            t("wallet__payment_retries_exhausted")
         )
         XCTAssertEqual(
             AppError(paymentFailureReason: .routeNotFound).localizedDescription,
-            t("wallet__send_payment_route_not_found")
+            t("wallet__payment_route_not_found")
         )
         XCTAssertEqual(
             AppError(paymentFailureReason: .paymentExpired).localizedDescription,
