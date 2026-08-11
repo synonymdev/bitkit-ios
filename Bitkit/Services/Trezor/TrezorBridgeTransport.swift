@@ -93,6 +93,13 @@ final class TrezorBridgeTransport {
     func closeDevice(path: String) -> TrezorTransportWriteResult {
         sessionLock.lock()
         let session = openSessions.removeValue(forKey: path)
+        // The enumerated session is the one being released here, so leaving it cached would offer a
+        // released id as the previous session on the next acquire and the bridge answers "wrong
+        // previous session". Switching to a passphrase wallet closes and reopens the session, so
+        // that would block every passphrase pairing after the first.
+        if let session, enumeratedSessions[path] == session {
+            enumeratedSessions.removeValue(forKey: path)
+        }
         sessionLock.unlock()
 
         guard let session else {

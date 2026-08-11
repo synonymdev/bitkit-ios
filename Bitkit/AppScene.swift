@@ -903,7 +903,8 @@ struct AppScene: View {
     private func pushHardwareDevices() {
         hwWalletManager.updateDevices(
             knownDevices: trezorManager.knownDevices,
-            connectedDeviceId: trezorManager.connectedDevice?.id
+            connectedDeviceId: trezorManager.connectedDevice?.id,
+            connectedWalletId: trezorManager.connectedWalletId
         )
     }
 
