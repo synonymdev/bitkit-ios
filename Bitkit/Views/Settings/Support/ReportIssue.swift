@@ -8,6 +8,10 @@ struct ReportIssue: View {
     @State private var showingSuccess: Bool = false
     @State private var showingError: Bool = false
 
+    init(prefill: ReportIssuePrefill? = nil) {
+        _message = State(initialValue: prefill?.message ?? "")
+    }
+
     private func validateEmail(_ emailText: String) -> Bool {
         if emailText.contains("@") {
             let parts = emailText.split(separator: "@")

@@ -12,7 +12,9 @@ struct SwipeButton: View {
     @State private var offset: CGFloat = 0
     @State private var isSubmitting = false
 
-    private var isBusy: Bool { isLoading || isSubmitting }
+    private var isBusy: Bool {
+        isLoading || isSubmitting
+    }
 
     private let buttonHeight: CGFloat = 76
     private let innerPadding: CGFloat = 16
@@ -94,17 +96,9 @@ struct SwipeButton: View {
                                         Task { @MainActor in
                                             do {
                                                 try await onComplete()
+                                                reset()
                                             } catch {
-                                                // Reset the slider back to the start on error
-                                                withAnimation(.spring(duration: 0.3)) {
-                                                    offset = 0
-                                                    swipeProgress?.wrappedValue = 0
-                                                }
-
-                                                // Adjust the delay to match animation duration
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                                    isSubmitting = false
-                                                }
+                                                reset()
                                             }
                                         }
                                     } else {
@@ -118,6 +112,17 @@ struct SwipeButton: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: buttonHeight)
+    }
+
+    private func reset() {
+        withAnimation(.spring(duration: 0.3)) {
+            offset = 0
+            swipeProgress?.wrappedValue = 0
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            isSubmitting = false
+        }
     }
 
     private var backgroundGradient: LinearGradient {

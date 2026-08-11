@@ -1257,11 +1257,12 @@
 "wallet__send_quickpay__nav_title" = "QuickPay";
 "wallet__send_quickpay__title" = "Paying\n<accent>invoice...</accent>";
 "wallet__send_pending_note" = "This payment is taking a bit longer than expected. You can continue using Bitkit.";
-"wallet__send_instant_failed" = "Instant Payment Failed";
+"wallet__send_instant_failed" = "Payment Failed";
 "wallet__send_regular" = "Regular Payment";
 "wallet__send_error_slash_ln" = "Unfortunately contact could not be paid instantly. You can try a regular payment (more expensive, slower).";
 "wallet__send_error_tx_failed" = "Transaction Failed";
 "wallet__send_error_create_tx" = "Unable to broadcast the transaction. Please try again.";
+"wallet__send_error_support" = "Contact Support";
 "wallet__tag_remove_error_title" = "Removing Tag Failed";
 "wallet__tag_remove_error_description" = "Bitkit was unable to find the transaction data.";
 "wallet__error_no_invoice" = "No lightning invoice found.";
@@ -1310,8 +1311,6 @@
 "wallet__payment_abandoned" = "The Lightning payment was stopped before it completed.";
 "wallet__payment_expired" = "This Lightning payment expired. Please request a new invoice.";
 "wallet__payment_timeout" = "Payment timed out. Please try again.";
-"wallet__send_payment_route_not_found" = "Bitkit couldn't find a Lightning route for this payment. Tap Retry to update payment routing and check for a new path.";
-"wallet__send_payment_retries_exhausted" = "Bitkit tried several Lightning routes, but the payment could not be completed. Tap Retry to update payment routing and try a new path.";
 "wallet__payment_route_not_found" = "Bitkit couldn't find a Lightning route for this payment.";
 "wallet__payment_retries_exhausted" = "Bitkit tried several Lightning routes, but the payment could not be completed.";
 "wallet__payment_unknown_required_features" = "This Lightning invoice uses features Bitkit does not support yet.";

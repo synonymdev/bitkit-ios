@@ -950,6 +950,7 @@
 "wallet__send_error_slash_ln" = "К сожалению, мгновенный платеж к контакту не выполнен. Можно попробовать обычный платеж (дороже, медленнее).";
 "wallet__send_error_tx_failed" = "Транзакция не удалась";
 "wallet__send_error_create_tx" = "Не удалось отправить транзакцию. Пожалуйста, попробуйте снова.";
+"wallet__send_error_support" = "Связаться с Поддержкой";
 "wallet__tag_remove_error_title" = "Ошибка удаления тега";
 "wallet__tag_remove_error_description" = "Bitkit не удалось найти данные транзакции.";
 "wallet__error_no_invoice" = "Лайтнинг инвойс не найден.";
@@ -997,8 +998,6 @@
 "wallet__payment_abandoned" = "Платеж Lightning был остановлен до завершения.";
 "wallet__payment_expired" = "Срок действия этого платежа Lightning истек. Запросите новый счет.";
 "wallet__payment_timeout" = "Время ожидания платежа истекло. Попробуйте еще раз.";
-"wallet__send_payment_route_not_found" = "Bitkit не смог найти маршрут Lightning для этого платежа. Нажмите Повторить, чтобы обновить маршрутизацию платежей и найти новый путь.";
-"wallet__send_payment_retries_exhausted" = "Bitkit попробовал несколько маршрутов Lightning, но платеж не удалось завершить. Нажмите Повторить, чтобы обновить маршрутизацию платежей и попробовать новый путь.";
 "wallet__payment_route_not_found" = "Bitkit не смог найти маршрут Lightning для этого платежа.";
 "wallet__payment_retries_exhausted" = "Bitkit попробовал несколько маршрутов Lightning, но платеж не удалось завершить.";
 "wallet__payment_unknown_required_features" = "Этот счет Lightning использует функции, которые Bitkit пока не поддерживает.";

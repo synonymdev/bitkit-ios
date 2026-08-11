@@ -876,8 +876,6 @@
 "wallet__payment_abandoned" = "El pago Lightning se detuvo antes de completarse.";
 "wallet__payment_expired" = "Este pago Lightning ha caducado. Solicita una factura nueva.";
 "wallet__payment_timeout" = "El pago agotó el tiempo de espera. Inténtalo de nuevo.";
-"wallet__send_payment_route_not_found" = "Bitkit no ha podido encontrar una ruta Lightning para este pago. Toca Reintentar para actualizar el enrutamiento de pagos y buscar una ruta nueva.";
-"wallet__send_payment_retries_exhausted" = "Bitkit ha probado varias rutas Lightning, pero el pago no se ha podido completar. Toca Reintentar para actualizar el enrutamiento de pagos y probar una ruta nueva.";
 "wallet__payment_route_not_found" = "Bitkit no ha podido encontrar una ruta Lightning para este pago.";
 "wallet__payment_retries_exhausted" = "Bitkit ha probado varias rutas Lightning, pero el pago no se ha podido completar.";
 "wallet__payment_unknown_required_features" = "Esta factura Lightning usa funciones que Bitkit aún no admite.";
@@ -1055,3 +1053,4 @@
 "widgets__weather__condition__good__short_title" = "Favorables";
 "widgets__weather__condition__average__short_title" = "Promedio";
 "widgets__weather__condition__poor__short_title" = "Desfavorables";
+"wallet__send_error_support" = "Contactar con el servicio de asistencia";

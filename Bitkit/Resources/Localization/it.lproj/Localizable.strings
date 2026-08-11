@@ -921,6 +921,7 @@
 "wallet__send_error_slash_ln" = "Purtroppo il contatto non può essere pagato istantaneamente. Puoi provare con un pagamento regolare (più costoso, più lento).";
 "wallet__send_error_tx_failed" = "Transazione Fallita";
 "wallet__send_error_create_tx" = "Impossibile trasmettere la transazione. Per favore riprova.";
+"wallet__send_error_support" = "Contatta l'Assistenza";
 "wallet__tag_remove_error_title" = "Rimozione del tag non riuscita";
 "wallet__tag_remove_error_description" = "Bitkit non è riuscito a trovare i dati della transazione.";
 "wallet__error_no_invoice" = "Nessuna invoice lightning trovata.";
@@ -968,8 +969,6 @@
 "wallet__payment_abandoned" = "Il pagamento Lightning è stato interrotto prima del completamento.";
 "wallet__payment_expired" = "Questo pagamento Lightning è scaduto. Richiedi una nuova fattura.";
 "wallet__payment_timeout" = "Il pagamento è scaduto. Riprova.";
-"wallet__send_payment_route_not_found" = "Bitkit non ha trovato una rotta Lightning per questo pagamento. Tocca Riprova per aggiornare l'instradamento dei pagamenti e cercare un nuovo percorso.";
-"wallet__send_payment_retries_exhausted" = "Bitkit ha provato diverse rotte Lightning, ma il pagamento non è stato completato. Tocca Riprova per aggiornare l'instradamento dei pagamenti e provare un nuovo percorso.";
 "wallet__payment_route_not_found" = "Bitkit non ha trovato una rotta Lightning per questo pagamento.";
 "wallet__payment_retries_exhausted" = "Bitkit ha provato diverse rotte Lightning, ma il pagamento non è stato completato.";
 "wallet__payment_unknown_required_features" = "Questa fattura Lightning usa funzionalità che Bitkit non supporta ancora.";

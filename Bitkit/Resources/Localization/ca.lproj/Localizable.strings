@@ -855,8 +855,6 @@
 "wallet__payment_abandoned" = "El pagament Lightning s'ha aturat abans de completar-se.";
 "wallet__payment_expired" = "Aquest pagament Lightning ha caducat. Demana una factura nova.";
 "wallet__payment_timeout" = "El pagament ha esgotat el temps d'espera. Torna-ho a provar.";
-"wallet__send_payment_route_not_found" = "Bitkit no ha pogut trobar cap ruta Lightning per a aquest pagament. Toca Torna-ho a provar per actualitzar l'encaminament de pagaments i buscar una ruta nova.";
-"wallet__send_payment_retries_exhausted" = "Bitkit ha provat diverses rutes Lightning, però el pagament no s'ha pogut completar. Toca Torna-ho a provar per actualitzar l'encaminament de pagaments i provar una ruta nova.";
 "wallet__payment_route_not_found" = "Bitkit no ha pogut trobar cap ruta Lightning per a aquest pagament.";
 "wallet__payment_retries_exhausted" = "Bitkit ha provat diverses rutes Lightning, però el pagament no s'ha pogut completar.";
 "wallet__payment_unknown_required_features" = "Aquesta factura Lightning utilitza funcions que Bitkit encara no admet.";
@@ -1026,3 +1024,4 @@
 "widgets__weather__condition__good__short_title" = "Favorables";
 "widgets__weather__condition__average__short_title" = "Mitjanes";
 "widgets__weather__condition__poor__short_title" = "Dolentes";
+"wallet__send_error_support" = "Contacta amb el suport";

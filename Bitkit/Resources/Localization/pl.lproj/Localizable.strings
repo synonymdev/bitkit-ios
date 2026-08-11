@@ -960,6 +960,7 @@
 "wallet__send_error_slash_ln" = "Nie udało się wykonać szybkiej płatności. Możesz spróbować regularnej płatności (droższej, wolniejszej).";
 "wallet__send_error_tx_failed" = "Transakcja nie powiodła się";
 "wallet__send_error_create_tx" = "Nie udało się wysłać transakcji. Proszę spróbować ponownie.";
+"wallet__send_error_support" = "Skontaktuj się z pomocą techniczną";
 "wallet__tag_remove_error_title" = "Usunięcie tagu nie powiodło się";
 "wallet__tag_remove_error_description" = "Bitkit nie był w stanie znaleźć danych transakcji.";
 "wallet__error_no_invoice" = "Nie znaleziono faktury Lightning.";
@@ -1008,8 +1009,6 @@
 "wallet__payment_abandoned" = "Płatność Lightning została zatrzymana przed zakończeniem.";
 "wallet__payment_expired" = "Ta płatność Lightning wygasła. Poproś o nową fakturę.";
 "wallet__payment_timeout" = "Przekroczono limit czasu płatności. Spróbuj ponownie.";
-"wallet__send_payment_route_not_found" = "Bitkit nie znalazł trasy Lightning dla tej płatności. Stuknij Ponów, aby zaktualizować routing płatności i wyszukać nową ścieżkę.";
-"wallet__send_payment_retries_exhausted" = "Bitkit wypróbował kilka tras Lightning, ale płatności nie udało się ukończyć. Stuknij Ponów, aby zaktualizować routing płatności i spróbować nowej ścieżki.";
 "wallet__payment_route_not_found" = "Bitkit nie znalazł trasy Lightning dla tej płatności.";
 "wallet__payment_retries_exhausted" = "Bitkit wypróbował kilka tras Lightning, ale płatności nie udało się ukończyć.";
 "wallet__payment_unknown_required_features" = "Ta faktura Lightning używa funkcji, których Bitkit jeszcze nie obsługuje.";

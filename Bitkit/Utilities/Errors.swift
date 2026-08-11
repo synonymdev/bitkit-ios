@@ -124,7 +124,7 @@ struct AppError: LocalizedError {
     init(paymentFailureReason reason: PaymentFailureReason?) {
         underlyingError = nil
         debugMessage = reason.map { String(describing: $0) } ?? "Unknown payment failure reason"
-        message = PaymentFailureReason.userMessageKey(for: reason, context: .send)
+        message = PaymentFailureReason.userMessageKey(for: reason)
         paymentFailureReason = reason
     }
 

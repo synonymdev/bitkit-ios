@@ -954,6 +954,7 @@
 "wallet__send_error_slash_ln" = "Helaas kon het contact niet direct worden betaald. U kunt proberen een normale betaling te doen (deze is langzamer en duurder). ";
 "wallet__send_error_tx_failed" = "Transactie Mislukt";
 "wallet__send_error_create_tx" = "De transactie niet verzonden worden. Probeer het opnieuw.";
+"wallet__send_error_support" = "Contact Opnemen";
 "wallet__tag_remove_error_title" = "Tag Verwijderen Mislukt";
 "wallet__tag_remove_error_description" = "Bitkit kon de transactiegegevens niet vinden.";
 "wallet__error_no_invoice" = "Geen lightning factuur gedetecteerd";
@@ -1002,8 +1003,6 @@
 "wallet__payment_abandoned" = "De Lightning-betaling is gestopt voordat deze was voltooid.";
 "wallet__payment_expired" = "Deze Lightning-betaling is verlopen. Vraag een nieuwe factuur aan.";
 "wallet__payment_timeout" = "Time-out voor betaling. Probeer het opnieuw.";
-"wallet__send_payment_route_not_found" = "Bitkit kon geen Lightning-route voor deze betaling vinden. Tik op Opnieuw proberen om betalingsroutering bij te werken en naar een nieuw pad te zoeken.";
-"wallet__send_payment_retries_exhausted" = "Bitkit heeft meerdere Lightning-routes geprobeerd, maar de betaling kon niet worden voltooid. Tik op Opnieuw proberen om betalingsroutering bij te werken en een nieuw pad te proberen.";
 "wallet__payment_route_not_found" = "Bitkit kon geen Lightning-route voor deze betaling vinden.";
 "wallet__payment_retries_exhausted" = "Bitkit heeft meerdere Lightning-routes geprobeerd, maar de betaling kon niet worden voltooid.";
 "wallet__payment_unknown_required_features" = "Deze Lightning-factuur gebruikt functies die Bitkit nog niet ondersteunt.";

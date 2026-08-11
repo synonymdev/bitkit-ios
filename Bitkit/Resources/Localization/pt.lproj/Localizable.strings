@@ -3,8 +3,7 @@
 "wallet__payment_abandoned" = "O pagamento Lightning foi interrompido antes de ser concluído.";
 "wallet__payment_expired" = "Este pagamento Lightning expirou. Peça uma nova fatura.";
 "wallet__payment_timeout" = "O pagamento expirou. Tente novamente.";
-"wallet__send_payment_route_not_found" = "O Bitkit não conseguiu encontrar uma rota Lightning para este pagamento. Toque em Tentar novamente para atualizar o encaminhamento de pagamentos e procurar um novo caminho.";
-"wallet__send_payment_retries_exhausted" = "O Bitkit tentou várias rotas Lightning, mas o pagamento não pôde ser concluído. Toque em Tentar novamente para atualizar o encaminhamento de pagamentos e tentar um novo caminho.";
+"wallet__send_error_support" = "Suporte";
 "wallet__payment_route_not_found" = "O Bitkit não conseguiu encontrar uma rota Lightning para este pagamento.";
 "wallet__payment_retries_exhausted" = "O Bitkit tentou várias rotas Lightning, mas o pagamento não pôde ser concluído.";
 "wallet__payment_unknown_required_features" = "Esta fatura Lightning usa funcionalidades que o Bitkit ainda não suporta.";

@@ -728,8 +728,6 @@
 "wallet__payment_abandoned" = "Η πληρωμή Lightning σταμάτησε πριν ολοκληρωθεί.";
 "wallet__payment_expired" = "Αυτή η πληρωμή Lightning έληξε. Ζητήστε νέο τιμολόγιο.";
 "wallet__payment_timeout" = "Το χρονικό όριο πληρωμής έληξε. Δοκιμάστε ξανά.";
-"wallet__send_payment_route_not_found" = "Το Bitkit δεν μπόρεσε να βρει διαδρομή Lightning για αυτήν την πληρωμή. Πατήστε Επανάληψη για να ενημερωθεί η δρομολόγηση πληρωμών και να αναζητηθεί νέα διαδρομή.";
-"wallet__send_payment_retries_exhausted" = "Το Bitkit δοκίμασε αρκετές διαδρομές Lightning, αλλά η πληρωμή δεν μπόρεσε να ολοκληρωθεί. Πατήστε Επανάληψη για να ενημερωθεί η δρομολόγηση πληρωμών και να δοκιμαστεί νέα διαδρομή.";
 "wallet__payment_route_not_found" = "Το Bitkit δεν μπόρεσε να βρει διαδρομή Lightning για αυτήν την πληρωμή.";
 "wallet__payment_retries_exhausted" = "Το Bitkit δοκίμασε αρκετές διαδρομές Lightning, αλλά η πληρωμή δεν μπόρεσε να ολοκληρωθεί.";
 "wallet__payment_unknown_required_features" = "Αυτό το τιμολόγιο Lightning χρησιμοποιεί λειτουργίες που το Bitkit δεν υποστηρίζει ακόμη.";
@@ -888,3 +886,4 @@
 "widgets__weather__condition__good__short_title" = "Ευνοϊκές";
 "widgets__weather__condition__average__short_title" = "Μέσες";
 "widgets__weather__condition__poor__short_title" = "Κακές";
+"wallet__send_error_support" = "Επικοινωνία με Υποστήριξη";

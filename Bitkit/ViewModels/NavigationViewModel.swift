@@ -2,6 +2,10 @@ import BitkitCore
 import LDKNode
 import SwiftUI
 
+struct ReportIssuePrefill: Hashable {
+    let message: String
+}
+
 enum Route: Hashable {
     case savingsWallet
     case spendingWallet
@@ -61,7 +65,7 @@ enum Route: Hashable {
     case widgetsIntro
 
     // Support
-    case reportIssue
+    case reportIssue(ReportIssuePrefill? = nil)
     case appStatus
 
     // Settings

@@ -16,6 +16,7 @@ struct SendConfirmationView: View {
     @Binding var navigationPath: [SendRoute]
     let requestPinCheck: () async -> Bool
     let prepareIncomingPaymentRequest: () async throws -> Void
+    let routingCacheResetAttempted: Bool
 
     @State private var showDetails = false
     @State private var showingBiometricError = false
@@ -567,7 +568,12 @@ struct SendConfirmationView: View {
                 try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
             }
 
-            navigationPath.append(.failure(SendFailureContext(error: error, retryRoute: .confirm)))
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: app.selectedWalletToPayFrom == .lightning ? app.scannedLightningInvoice?.bolt11 : nil
+            )))
         }
     }
 

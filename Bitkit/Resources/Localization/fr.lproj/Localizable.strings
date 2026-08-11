@@ -959,6 +959,7 @@
 "wallet__send_error_slash_ln" = "Malheureusement, le contact ne peut pas être payé instantanément. Vous pouvez essayer un paiement On-Chain (plus cher, plus lent).";
 "wallet__send_error_tx_failed" = "Échec de la transaction";
 "wallet__send_error_create_tx" = "Impossible de diffuser la transaction. Veuillez réessayer.";
+"wallet__send_error_support" = "Contacter le support";
 "wallet__tag_remove_error_title" = "Échec du retrait de l\'étiquette";
 "wallet__tag_remove_error_description" = "Bitkit n\'a pas pu trouver les données de la transaction.";
 "wallet__error_no_invoice" = "Aucune facture Lightning n\'a été trouvée.";
@@ -1007,8 +1008,6 @@
 "wallet__payment_abandoned" = "Le paiement Lightning a été arrêté avant d'être terminé.";
 "wallet__payment_expired" = "Ce paiement Lightning a expiré. Demandez une nouvelle facture.";
 "wallet__payment_timeout" = "Le paiement a expiré. Veuillez réessayer.";
-"wallet__send_payment_route_not_found" = "Bitkit n'a pas trouvé de route Lightning pour ce paiement. Touchez Réessayer pour mettre à jour le routage des paiements et rechercher un nouveau chemin.";
-"wallet__send_payment_retries_exhausted" = "Bitkit a essayé plusieurs routes Lightning, mais le paiement n'a pas pu être terminé. Touchez Réessayer pour mettre à jour le routage des paiements et essayer un nouveau chemin.";
 "wallet__payment_route_not_found" = "Bitkit n'a pas trouvé de route Lightning pour ce paiement.";
 "wallet__payment_retries_exhausted" = "Bitkit a essayé plusieurs routes Lightning, mais le paiement n'a pas pu être terminé.";
 "wallet__payment_unknown_required_features" = "Cette facture Lightning utilise des fonctionnalités que Bitkit ne prend pas encore en charge.";

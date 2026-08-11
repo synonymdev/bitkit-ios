@@ -12,6 +12,7 @@ struct LnurlPayConfirm: View {
     @Binding var navigationPath: [SendRoute]
     let requestPinCheck: () async -> Bool
     let prepareIncomingPaymentRequest: () async throws -> Void
+    let routingCacheResetAttempted: Bool
 
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
@@ -198,6 +199,7 @@ struct LnurlPayConfirm: View {
         let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
         let contactPaymentContext = app.contactPaymentContext
         let contactPublicKey = contactPaymentContext?.publicKey
+        var bolt11Invoice: String?
 
         do {
             try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
@@ -210,6 +212,7 @@ struct LnurlPayConfirm: View {
                 amountMsats: amountMsats,
                 comment: comment.isEmpty ? nil : comment
             )
+            bolt11Invoice = bolt11
 
             let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
             let paymentHash = String(describing: parsedInvoice.paymentHash())
@@ -234,7 +237,12 @@ struct LnurlPayConfirm: View {
         } catch {
             Logger.error("LNURL payment failed: \(error)")
 
-            navigationPath.append(.failure(SendFailureContext(error: error, retryRoute: .lnurlPayConfirm)))
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .lnurlPayConfirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: bolt11Invoice ?? "LNURL: \(lnurlPayData.uri)"
+            )))
         }
     }
 

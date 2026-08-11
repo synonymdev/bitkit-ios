@@ -933,6 +933,7 @@
 "wallet__send_error_slash_ln" = "Dieser Kontakt konnte leider nicht sofort bezahlt werden. Du kannst eine reguläre Zahlung versuchen (teurer, langsamer).";
 "wallet__send_error_tx_failed" = "Transaktion fehlgeschlagen";
 "wallet__send_error_create_tx" = "Die Transaktion konnte nicht gesendet werden. Bitte versuche es erneut.";
+"wallet__send_error_support" = "Support kontaktieren";
 "wallet__tag_remove_error_title" = "Tag entfernen fehlgeschlagen";
 "wallet__tag_remove_error_description" = "Bitkit konnte die Transaktionsdaten nicht finden.";
 "wallet__error_no_invoice" = "Keine Lightning-Rechnung gefunden.";
@@ -981,8 +982,6 @@
 "wallet__payment_abandoned" = "Die Lightning-Zahlung wurde gestoppt, bevor sie abgeschlossen wurde.";
 "wallet__payment_expired" = "Diese Lightning-Zahlung ist abgelaufen. Bitte fordere eine neue Rechnung an.";
 "wallet__payment_timeout" = "Zeitüberschreitung bei der Zahlung. Bitte versuche es erneut.";
-"wallet__send_payment_route_not_found" = "Bitkit konnte keine Lightning-Route für diese Zahlung finden. Tippe auf Wiederholen, um das Zahlungsrouting zu aktualisieren und nach einem neuen Pfad zu suchen.";
-"wallet__send_payment_retries_exhausted" = "Bitkit hat mehrere Lightning-Routen ausprobiert, aber die Zahlung konnte nicht abgeschlossen werden. Tippe auf Wiederholen, um das Zahlungsrouting zu aktualisieren und einen neuen Pfad zu probieren.";
 "wallet__payment_route_not_found" = "Bitkit konnte keine Lightning-Route für diese Zahlung finden.";
 "wallet__payment_retries_exhausted" = "Bitkit hat mehrere Lightning-Routen ausprobiert, aber die Zahlung konnte nicht abgeschlossen werden.";
 "wallet__payment_unknown_required_features" = "Diese Lightning-Rechnung verwendet Funktionen, die Bitkit noch nicht unterstützt.";

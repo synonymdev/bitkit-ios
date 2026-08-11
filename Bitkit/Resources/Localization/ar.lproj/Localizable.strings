@@ -3,8 +3,6 @@
 "wallet__payment_abandoned" = "تم إيقاف دفعة Lightning قبل اكتمالها.";
 "wallet__payment_expired" = "انتهت صلاحية دفعة Lightning هذه. اطلب فاتورة جديدة.";
 "wallet__payment_timeout" = "انتهت مهلة الدفع. حاول مرة أخرى.";
-"wallet__send_payment_route_not_found" = "لم يتمكن Bitkit من العثور على مسار Lightning لهذه الدفعة. اضغط على إعادة المحاولة لتحديث توجيه المدفوعات والبحث عن مسار جديد.";
-"wallet__send_payment_retries_exhausted" = "جرّب Bitkit عدة مسارات Lightning، لكن تعذر إكمال الدفعة. اضغط على إعادة المحاولة لتحديث توجيه المدفوعات وتجربة مسار جديد.";
 "wallet__payment_route_not_found" = "لم يتمكن Bitkit من العثور على مسار Lightning لهذه الدفعة.";
 "wallet__payment_retries_exhausted" = "جرّب Bitkit عدة مسارات Lightning، لكن تعذر إكمال الدفعة.";
 "wallet__payment_unknown_required_features" = "تستخدم فاتورة Lightning هذه ميزات لا يدعمها Bitkit بعد.";
@@ -70,3 +68,4 @@
 "widgets__weather__current_fee" = "متوسط الرسوم الحالي";
 "widgets__weather__next_block" = "تضمين الكتلة التالية";
 "wallet__payment_request" = "طلب دفع";
+"wallet__send_error_support" = "الدعم";
