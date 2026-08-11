@@ -234,7 +234,7 @@ struct LnurlPayConfirm: View {
         } catch {
             Logger.error("LNURL payment failed: \(error)")
 
-            navigationPath.append(.failure(message: sendFailureMessage(for: error), retryRoute: .lnurlPayConfirm))
+            navigationPath.append(.failure(SendFailureContext(error: error, retryRoute: .lnurlPayConfirm)))
         }
     }
 

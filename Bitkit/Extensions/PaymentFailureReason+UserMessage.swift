@@ -48,4 +48,13 @@ extension PaymentFailureReason {
             }
         }
     }
+
+    var shouldResetRoutingCachesOnRetry: Bool {
+        switch self {
+        case .routeNotFound, .retriesExhausted:
+            return true
+        default:
+            return false
+        }
+    }
 }

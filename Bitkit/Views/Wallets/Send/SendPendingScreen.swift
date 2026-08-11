@@ -88,7 +88,11 @@ struct SendPendingScreen: View {
                 }
             } else {
                 app.consumeContactPaymentContext(forPendingPaymentHash: paymentHash)
-                navigationPath.append(.failure(message: t("wallet__payment_failed_description"), retryRoute: retryRoute))
+                navigationPath.append(.failure(SendFailureContext(
+                    message: t("wallet__payment_failed_description"),
+                    retryRoute: retryRoute,
+                    resetRoutingCachesOnRetry: false
+                )))
             }
         }
     }

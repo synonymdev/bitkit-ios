@@ -72,6 +72,7 @@ struct AppError: LocalizedError {
 
     let message: String
     let debugMessage: String?
+    let paymentFailureReason: PaymentFailureReason?
     /// The original error this was wrapped from, when known. Preserved so callers can unwrap and
     /// inspect the underlying error (e.g. `isTrezorUserCancellation()`) after it has been boxed by
     /// `ServiceQueue` into a generic `AppError`.
@@ -88,6 +89,11 @@ struct AppError: LocalizedError {
     /// Pass any LDK or BDK error to get a translated error message
     /// - Parameter error: any error
     init(error: Error) {
+        if let appError = error as? AppError {
+            self = appError
+            return
+        }
+
         if let ldkBuildError = error as? BuildError {
             self.init(ldkBuildError: ldkBuildError)
             return
@@ -108,20 +114,23 @@ struct AppError: LocalizedError {
         self.init(message: Self.genericMessage, debugMessage: error.localizedDescription, underlyingError: error)
     }
 
-    init(message: String, debugMessage: String?, underlyingError: Error? = nil) {
+    init(message: String, debugMessage: String?, underlyingError: Error? = nil, paymentFailureReason: PaymentFailureReason? = nil) {
         self.message = message
         self.debugMessage = debugMessage
         self.underlyingError = underlyingError
+        self.paymentFailureReason = paymentFailureReason
     }
 
     init(paymentFailureReason reason: PaymentFailureReason?) {
         underlyingError = nil
         debugMessage = reason.map { String(describing: $0) } ?? "Unknown payment failure reason"
         message = PaymentFailureReason.userMessageKey(for: reason, context: .send)
+        paymentFailureReason = reason
     }
 
     init(serviceError: CustomServiceError) {
         underlyingError = serviceError
+        paymentFailureReason = nil
         switch serviceError {
         case .nodeNotSetup:
             message = "Node is not setup"
@@ -169,6 +178,7 @@ struct AppError: LocalizedError {
 
     private init(ldkBuildError: BuildError) {
         underlyingError = ldkBuildError
+        paymentFailureReason = nil
         switch ldkBuildError as BuildError {
         case let .InvalidSeedBytes(message: ldkMessage):
             message = "Invalid seed bytes"
@@ -226,6 +236,7 @@ struct AppError: LocalizedError {
 
     private init(ldkError: NodeError) {
         underlyingError = ldkError
+        paymentFailureReason = nil
         switch ldkError as NodeError {
         case let .AlreadyRunning(message: ldkMessage):
             message = "Node is already running"

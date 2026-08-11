@@ -567,7 +567,7 @@ struct SendConfirmationView: View {
                 try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
             }
 
-            navigationPath.append(.failure(message: sendFailureMessage(for: error), retryRoute: .confirm))
+            navigationPath.append(.failure(SendFailureContext(error: error, retryRoute: .confirm)))
         }
     }
 

@@ -89,6 +89,6 @@ struct SendQuickpay: View {
     private func handlePaymentError(_ error: Error) {
         Logger.error("Quickpay payment failed: \(error)")
 
-        navigationPath.append(.failure(message: sendFailureMessage(for: error), retryRoute: .quickpay))
+        navigationPath.append(.failure(SendFailureContext(error: error, retryRoute: .quickpay)))
     }
 }

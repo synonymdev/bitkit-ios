@@ -1,13 +1,26 @@
+import LDKNode
 import SwiftUI
 
 func sendFailureMessage(for error: Error) -> String {
     let fallbackMessage = t("wallet__payment_failed_description")
-    if let appError = error as? AppError, appError.isGeneric {
-        return fallbackMessage
+
+    if let reason = (error as? AppError)?.paymentFailureReason {
+        return PaymentFailureReason.userMessage(for: reason, context: .send)
     }
 
-    let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-    return message.isEmpty ? fallbackMessage : message
+    if let requestError = error as? PaykitPaymentRequestError {
+        return requestError.localizedDescription
+    }
+
+    return fallbackMessage
+}
+
+func shouldResetRoutingCachesOnRetry(for error: Error) -> Bool {
+    guard let reason = (error as? AppError)?.paymentFailureReason else {
+        return false
+    }
+
+    return reason.shouldResetRoutingCachesOnRetry
 }
 
 struct SendFailure: View {
@@ -15,12 +28,11 @@ struct SendFailure: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
-    let message: String?
-    let retryRoute: SendRetryRoute
+    let context: SendFailureContext
     let onRetryReady: () -> Void
 
     private var title: String {
-        switch retryRoute {
+        switch context.retryRoute {
         case .confirm:
             return app.selectedWalletToPayFrom == .lightning ? t("wallet__send_instant_failed") : t("wallet__send_error_tx_failed")
         case .quickpay, .lnurlPayConfirm:
@@ -35,7 +47,7 @@ struct SendFailure: View {
                     SheetHeader(title: title, showBackButton: false)
                         .accessibilityIdentifier("SendFailure")
 
-                    BodyMText(message ?? t("wallet__payment_failed_description"))
+                    BodyMText(context.message ?? t("wallet__payment_failed_description"))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityIdentifier("SendFailureMessage")
 
@@ -71,6 +83,11 @@ struct SendFailure: View {
     }
 
     private func retryPayment() {
+        guard context.resetRoutingCachesOnRetry else {
+            onRetryReady()
+            return
+        }
+
         guard !wallet.isRetryingLightningPayment else { return }
         wallet.isRetryingLightningPayment = true
 

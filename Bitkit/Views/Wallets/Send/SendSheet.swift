@@ -14,6 +14,24 @@ enum SendRetryRoute: Hashable {
     }
 }
 
+struct SendFailureContext: Hashable {
+    let message: String?
+    let retryRoute: SendRetryRoute
+    let resetRoutingCachesOnRetry: Bool
+
+    init(message: String?, retryRoute: SendRetryRoute, resetRoutingCachesOnRetry: Bool) {
+        self.message = message
+        self.retryRoute = retryRoute
+        self.resetRoutingCachesOnRetry = resetRoutingCachesOnRetry
+    }
+
+    init(error: Error, retryRoute: SendRetryRoute) {
+        message = sendFailureMessage(for: error)
+        self.retryRoute = retryRoute
+        resetRoutingCachesOnRetry = shouldResetRoutingCachesOnRetry(for: error)
+    }
+}
+
 enum SendRoute: Hashable {
     case options
     case contact
@@ -29,7 +47,7 @@ enum SendRoute: Hashable {
     case pin
     case pending(paymentHash: String, retryRoute: SendRetryRoute)
     case success(paymentId: String)
-    case failure(message: String?, retryRoute: SendRetryRoute)
+    case failure(SendFailureContext)
     case lnurlPayAmount
     case lnurlPayConfirm
     case lnurlWithdrawAmount
@@ -451,11 +469,10 @@ struct SendSheet: View {
             SendPendingScreen(paymentHash: paymentHash, retryRoute: retryRoute, navigationPath: $navigationPath)
         case let .success(paymentId):
             SendSuccess(paymentId: paymentId)
-        case let .failure(message, retryRoute):
+        case let .failure(context):
             SendFailure(
-                message: message,
-                retryRoute: retryRoute,
-                onRetryReady: { resetNavigationForRetry(retryRoute) }
+                context: context,
+                onRetryReady: { resetNavigationForRetry(context.retryRoute) }
             )
         case .lnurlPayAmount:
             LnurlPayAmount(navigationPath: $navigationPath)
