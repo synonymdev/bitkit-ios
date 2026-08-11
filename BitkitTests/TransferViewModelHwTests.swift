@@ -28,6 +28,111 @@ final class TransferViewModelHwTests: XCTestCase {
         }
     }
 
+    // MARK: - Passphrase (hidden) wallets
+
+    func testConfirmAsksForThePassphraseWhenTheSessionIsGone() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired)
+        XCTAssertFalse(vm.hwSpending.isSigning)
+        XCTAssertEqual(connecting.ensureCalls, 0, "the device is not reached before the passphrase is known")
+        XCTAssertEqual(funding.signCalls, 0)
+    }
+
+    /// The reopen can also be demanded mid-flight, when the session turns out to hold another wallet.
+    func testAPassphraseDemandedDuringSigningRaisesThePromptInsteadOfToasting() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = HwPassphraseError.required
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired)
+        XCTAssertNil(vm.hwTransferError, "the user can act on this, so it is a prompt and not an error")
+        XCTAssertEqual(funding.signCalls, 0)
+    }
+
+    func testSubmittingTheRightPassphraseReopensTheWalletAndSigns() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+
+        vm.onHwPassphraseSubmit(order: order, walletId: "trezor:wallet", passphrase: "correct horse")
+        await awaitPassphraseVerified(vm)
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(connecting.reconnectCalls.first?.passphrase, "correct horse")
+        XCTAssertFalse(vm.hwSpending.isPassphraseRequired)
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+    }
+
+    func testAPassphraseThatOpensAnotherWalletIsRejectedWithoutSigning() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        connecting.reconnectError = HwPassphraseError.mismatch
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+
+        vm.onHwPassphraseSubmit(order: order, walletId: "trezor:wallet", passphrase: "wrong")
+        await awaitPassphraseVerified(vm)
+
+        XCTAssertEqual(vm.hwTransferError, .passphraseMismatch)
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(funding.broadcastCalls, 0)
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired, "the prompt stays up so the user can retry")
+    }
+
+    /// The prompt can be swiped away while the device is still reopening the wallet.
+    func testDismissingThePromptStopsTheReopenFromRequestingASignature() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+
+        vm.onHwPassphraseSubmit(order: order, walletId: "trezor:wallet", passphrase: "correct horse")
+        vm.onHwPassphraseDismiss()
+        await awaitPassphraseVerified(vm)
+        await awaitSigningComplete(vm)
+
+        XCTAssertFalse(vm.hwSpending.isPassphraseRequired)
+        XCTAssertEqual(funding.signCalls, 0, "nothing is signed after the user backs out")
+        XCTAssertEqual(funding.broadcastCalls, 0)
+    }
+
+    func testAnEmptyPassphraseIsNotSubmitted() {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onHwPassphraseSubmit(order: .mock(), walletId: "trezor:wallet", passphrase: "")
+
+        XCTAssertTrue(connecting.reconnectCalls.isEmpty)
+        XCTAssertFalse(vm.hwSpending.isVerifyingPassphrase)
+    }
+
+    private func awaitPassphraseVerified(_ vm: TransferViewModel, timeout: Double = 3) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while vm.hwSpending.isVerifyingPassphrase, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
     func testConfirmWithoutHwCapabilitiesSurfacesGenericError() {
         let vm = TransferViewModel() // no signer injected
         vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")

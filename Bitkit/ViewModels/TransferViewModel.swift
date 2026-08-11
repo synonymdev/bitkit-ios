@@ -20,6 +20,9 @@ struct HwSpendingState: Equatable {
     var isLoading = false
     var isSigning = false
     var hasPendingBroadcast = false
+    /// The hidden wallet needs its passphrase before the device can sign for it.
+    var isPassphraseRequired = false
+    var isVerifyingPassphrase = false
     var miningFeeSats: UInt64 = 0
     var maxAllowedToSend: UInt64 = 0
     var balanceAfterFee: UInt64 = 0
@@ -55,6 +58,8 @@ enum HwTransferError: Error, Equatable {
     case deviceBusy
     /// Firmware error (code 99) — user must reconnect the device.
     case firmwareReconnect
+    /// The entered passphrase opened a different wallet than the one being spent from.
+    case passphraseMismatch
     case funding(String?)
     case generic(String?)
 }
@@ -146,6 +151,7 @@ class TransferViewModel: ObservableObject {
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
     private var hwSignTask: Task<Void, Never>?
+    private var hwPassphraseTask: Task<Void, Never>?
     private var pendingHwFundingBroadcast: PendingHwFundingBroadcast?
     private var activeHwTransferWalletId: String?
 
@@ -601,6 +607,12 @@ class TransferViewModel: ObservableObject {
             hwTransferError = .generic(t("common__error"))
             return
         }
+        // A hidden wallet whose session is gone can only be reopened with its passphrase, and the
+        // device would otherwise sign from whichever wallet the current session holds.
+        if hwConnecting?.needsPassphrase(walletId: walletId) == true {
+            hwSpending.isPassphraseRequired = true
+            return
+        }
 
         activeHwTransferWalletId = walletId
         hwSpending.isSigning = true
@@ -663,6 +675,49 @@ class TransferViewModel: ObservableObject {
         }
     }
 
+    /// Reopens the hidden wallet with the entered passphrase and, once its accounts prove it is the
+    /// wallet the transfer is for, continues into signing. The passphrase is passed straight through
+    /// to the device session; it is never kept in view state.
+    func onHwPassphraseSubmit(order: IBtOrder, walletId: String, passphrase: String) {
+        guard !passphrase.isEmpty, let hwConnecting, hwPassphraseTask == nil else { return }
+
+        hwSpending.isVerifyingPassphrase = true
+        hwTransferError = nil
+
+        // Tracked separately from `hwSignTask`: on success this hands over to the confirm below,
+        // which installs its own signing task that this one's cleanup must not tear down.
+        hwPassphraseTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.hwSpending.isVerifyingPassphrase = false
+                self.hwPassphraseTask = nil
+            }
+            do {
+                try await hwConnecting.reconnectWithPassphrase(walletId: walletId, passphrase: passphrase)
+                // The prompt can be dismissed while the device is still reopening the wallet, and
+                // the confirm below would start a signing task a late dismiss could not reach.
+                guard hwSpending.isPassphraseRequired else { return }
+                hwSpending.isPassphraseRequired = false
+                onTransferToSpendingHwConfirm(order: order, walletId: walletId)
+            } catch is CancellationError {
+                // User dismissed the prompt — no toast.
+            } catch HwPassphraseError.mismatch {
+                Logger.warn("Rejected wrong passphrase for hardware wallet '\(walletId)'", context: "TransferViewModel")
+                hwTransferError = .passphraseMismatch
+            } catch {
+                handleRawHardwareTransferFailure(error, walletId: walletId)
+            }
+        }
+    }
+
+    /// Backing out of the prompt also drops the reopen it started, so no signature is requested.
+    func onHwPassphraseDismiss() {
+        hwPassphraseTask?.cancel()
+        hwPassphraseTask = nil
+        hwSpending.isPassphraseRequired = false
+        hwSpending.isVerifyingPassphrase = false
+    }
+
     /// Pre-connect the hardware device when the sign screen appears, mirroring Android's warm-up, so
     /// tapping Open Trezor Connect is less likely to hit a cold reconnect. Best-effort no-op without
     /// the HW capabilities.
@@ -711,6 +766,8 @@ class TransferViewModel: ObservableObject {
             Logger.warn("Blocked hardware transfer for locked or busy Trezor '\(walletId)'", context: "TransferViewModel")
         case .firmwareReconnect:
             Logger.warn("Received Trezor firmware error for '\(walletId)'", context: "TransferViewModel")
+        case .passphraseMismatch:
+            Logger.warn("Rejected wrong passphrase for hardware wallet '\(walletId)'", context: "TransferViewModel")
         case let .funding(message):
             Logger.warn("Failed to compose hardware funding for '\(walletId)': \(message ?? "")", context: "TransferViewModel")
         case .generic:
@@ -720,6 +777,17 @@ class TransferViewModel: ObservableObject {
     }
 
     private func handleRawHardwareTransferFailure(_ error: Error, walletId: String) {
+        // The device is open on another identity and only this wallet's passphrase reopens it, so
+        // raise the prompt instead of reporting a failure the user can do nothing about.
+        if case HwPassphraseError.required = error {
+            Logger.info("Asking for the passphrase to reopen hardware wallet '\(walletId)'", context: "TransferViewModel")
+            hwSpending.isPassphraseRequired = true
+            return
+        }
+        if case HwPassphraseError.mismatch = error {
+            hwTransferError = .passphraseMismatch
+            return
+        }
         if error.isTrezorDeviceBusy() {
             hwTransferError = .deviceBusy
             return

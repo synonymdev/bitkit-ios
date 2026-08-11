@@ -58,6 +58,15 @@ struct SpendingHwSign: View {
             app.toast(error)
             transfer.hwTransferError = nil
         }
+        // A local sheet, not a route: it belongs to this order and this wallet, and swiping it away
+        // must take the same path as Cancel.
+        .sheet(isPresented: passphrasePromptBinding) {
+            HwPassphrasePromptSheet(
+                isVerifying: transfer.hwSpending.isVerifyingPassphrase,
+                onSubmit: { transfer.onHwPassphraseSubmit(order: order, walletId: walletId, passphrase: $0) },
+                onCancel: { transfer.onHwPassphraseDismiss() }
+            )
+        }
         .onDisappear {
             // Cancel an in-flight sign only when the user truly leaves the flow (back/reset), not when
             // pushing deeper (Learn More / Advanced / Signed) which keeps this route in the path.
@@ -66,6 +75,13 @@ struct SpendingHwSign: View {
             }
             if !stillInFlow { transfer.cancelHwSigning() }
         }
+    }
+
+    private var passphrasePromptBinding: Binding<Bool> {
+        Binding(
+            get: { transfer.hwSpending.isPassphraseRequired },
+            set: { if !$0 { transfer.onHwPassphraseDismiss() } }
+        )
     }
 
     private func belowNav(order: IBtOrder) -> some View {

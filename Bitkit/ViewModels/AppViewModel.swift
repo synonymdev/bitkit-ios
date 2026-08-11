@@ -339,6 +339,8 @@ extension AppViewModel {
                 title: t("lightning__transfer_hw__reconnect_error_title"),
                 description: t("lightning__transfer_hw__reconnect_error_description")
             )
+        case .passphraseMismatch:
+            toast(type: .error, title: t("common__error"), description: t("hardware__passphrase_mismatch"))
         case let .funding(message):
             toast(type: .error, title: t("common__error"), description: message ?? t("common__error_body"))
         case let .generic(message):
