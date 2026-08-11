@@ -41,7 +41,7 @@ struct TrezorDeviceListView: View {
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(.white.opacity(0.6))
 
-                            ForEach(trezorManager.knownDevices) { device in
+                            ForEach(trezorManager.knownDevices, id: \.entryId) { device in
                                 KnownDeviceRow(
                                     device: device,
                                     isConnecting: connectingDevicePath == device.path
