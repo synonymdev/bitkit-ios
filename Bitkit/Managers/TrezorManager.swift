@@ -453,13 +453,15 @@ final class TrezorManager {
         uiHandler.setWalletMode(mode, hostPassphrase: passphrase)
         walletMode = mode
 
-        if hadSession, let target = connectedDevice ?? knownDeviceInfo(deviceId) {
-            // Reconnect by path without a scan: a scan right after a disconnect usually finds
-            // nothing, whereas the cached handle still works.
-            await connect(device: target, mode: nil)
+        // Only the device just disconnected can be reopened from its cached handle, and only when it
+        // is the one being asked for: a scan right after a disconnect usually finds nothing, whereas
+        // that handle still works. Reaching for whatever held the session would open a *different*
+        // device with the selection recorded above — handing it a passphrase meant for another one.
+        // Any other device has no such handle, so it takes the known-device path with its scan and
+        // bluetooth fallback.
+        if hadSession, let reopening = connectedDevice, reopening.id == deviceId {
+            await connect(device: reopening, mode: nil)
         } else {
-            // Nothing cached to reconnect to, so take the known-device path with its scan and
-            // bluetooth fallback.
             try await reconnectKnownDevice(deviceId: deviceId, mode: nil)
         }
 
@@ -474,10 +476,6 @@ final class TrezorManager {
         }
         trezorLog("Opened \(mode) session for \(deviceId)")
         return features
-    }
-
-    private func knownDeviceInfo(_ deviceId: String) -> TrezorDeviceInfo? {
-        knownDevices.first { $0.id == deviceId }.map { deviceInfo(from: $0) }
     }
 
     func submitPairingCode(_ code: String) {
