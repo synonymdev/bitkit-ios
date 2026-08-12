@@ -195,16 +195,7 @@ final class HwConnectViewModel {
     /// The paired wallet's aggregated balance/name landed; reflect it on the Paired step.
     func onWalletsUpdated(_ wallets: [HwWallet]) {
         guard let deviceId = pairedDeviceId else { return }
-        let wallet: HwWallet? = if let pairedWalletId {
-            // The store publishes a newly watched identity asynchronously: wait for it rather than
-            // falling back to another wallet of the same device and reporting its name, balance and
-            // label as this one's.
-            wallets.first { $0.id == pairedWalletId }
-        } else {
-            wallets.first { $0.deviceIds.contains(deviceId) && $0.isConnected }
-                ?? wallets.first { $0.deviceIds.contains(deviceId) }
-        }
-        guard let wallet else { return }
+        guard let wallet = pairedWallet(in: wallets, deviceId: deviceId) else { return }
 
         pairedWalletId = wallet.id
         deviceName = wallet.name
@@ -213,6 +204,25 @@ final class HwConnectViewModel {
             labelInput = wallet.name
         }
         labelInitialized = true
+    }
+
+    /// The wallet the paired step is showing.
+    private func pairedWallet(in wallets: [HwWallet], deviceId: String) -> HwWallet? {
+        if let pairedWalletId {
+            // The store publishes a newly watched identity asynchronously: wait for it rather than
+            // falling back to another wallet of the same device and reporting its name, balance and
+            // label as this one's.
+            return wallets.first { $0.id == pairedWalletId }
+        }
+        // The connect could not resolve which identity it opened. One wallet reading as connected
+        // means it resolved afterwards; failing that, a device holding a single identity is
+        // unambiguous. Anything else is a guess, and guessing here shows a sibling wallet's balance
+        // and renames that wallet on Finish — a device with an unresolved session reports every one
+        // of its identities as connected, so there is nothing to tell them apart by.
+        let onDevice = wallets.filter { $0.deviceIds.contains(deviceId) }
+        let connected = onDevice.filter(\.isConnected)
+        if connected.count == 1 { return connected.first }
+        return onDevice.count == 1 ? onDevice.first : nil
     }
 
     func onLabelChange(_ value: String) {

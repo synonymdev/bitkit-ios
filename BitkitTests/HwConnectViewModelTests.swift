@@ -120,6 +120,52 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertEqual(sut.deviceName, "Trezor Safe 3")
     }
 
+    /// A device whose session did not resolve reports every one of its identities as connected, so
+    /// adopting one would show a sibling's balance and rename it on Finish.
+    func testDoesNotAdoptAnIdentityWhenTheDeviceHoldsSeveralAndTheSessionIsUnresolved() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(deviceId: "dev1", walletId: nil, name: "Trezor Safe 3"))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+
+        sut.onWalletsUpdated([
+            makeWallet(id: standardWalletId, name: "Standard", balance: 30000),
+            makeWallet(id: hiddenWalletId, name: "Hidden", balance: 20000),
+        ])
+
+        XCTAssertNil(sut.pairedWalletId)
+        XCTAssertEqual(sut.balanceSats, 0)
+        XCTAssertEqual(sut.deviceName, "Trezor Safe 3", "the device's own name stands until an identity resolves")
+    }
+
+    func testAdoptsTheOnlyIdentityOfTheDeviceWhenTheSessionIsUnresolved() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(deviceId: "dev1", walletId: nil, name: "Trezor Safe 3"))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+
+        sut.onWalletsUpdated([makeWallet(id: standardWalletId, name: "Standard", balance: 30000)])
+
+        XCTAssertEqual(sut.pairedWalletId, standardWalletId)
+        XCTAssertEqual(sut.balanceSats, 30000)
+    }
+
+    /// One identity reading as connected means the session resolved after the connect returned.
+    func testAdoptsTheIdentityThatResolvedAfterTheConnect() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(deviceId: "dev1", walletId: nil, name: "Trezor Safe 3"))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+
+        sut.onWalletsUpdated([
+            makeWallet(id: standardWalletId, name: "Standard", balance: 30000, isConnected: false),
+            makeWallet(id: hiddenWalletId, name: "Hidden", balance: 20000, isConnected: true),
+        ])
+
+        XCTAssertEqual(sut.pairedWalletId, hiddenWalletId)
+        XCTAssertEqual(sut.balanceSats, 20000)
+    }
+
     func testOnLabelChangeCapsTheLabelInput() {
         sut.onLabelChange(String(repeating: "a", count: 51))
         XCTAssertEqual(sut.labelInput, String(repeating: "a", count: 50))
