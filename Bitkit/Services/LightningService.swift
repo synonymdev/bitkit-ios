@@ -75,6 +75,12 @@ class LightningService {
 
         Logger.debug("Checking lightning process lock...")
         try await StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
+        var shouldReleaseLightningLock = true
+        defer {
+            if shouldReleaseLightningLock {
+                try? StateLocker.unlock(.lightning)
+            }
+        }
 
         guard var mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
@@ -112,6 +118,7 @@ class LightningService {
 
         let builder = Builder.fromConfig(config: config)
         builder.setCustomLogger(logWriter: LdkLogWriter())
+        builder.setAcceptStaleChannelMonitors(accept: false)
 
         let resolvedElectrumServerUrl = electrumServerUrl ?? Env.electrumServerUrl
 
@@ -169,6 +176,7 @@ class LightningService {
                 )
             }
         }
+        shouldReleaseLightningLock = false
 
         Logger.info("LDK node setup")
 
