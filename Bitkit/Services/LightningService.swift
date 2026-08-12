@@ -149,7 +149,7 @@ class LightningService {
         let storeId = try await VssStoreIdProvider.shared.getVssStoreId(walletIndex: walletIndex)
 
         let vssUrl = Env.vssServerUrl
-        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl
+        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         Logger.debug("Building ldk-node with vssUrl: '\(vssUrl)'")
         Logger.debug("Building ldk-node with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)'")
 

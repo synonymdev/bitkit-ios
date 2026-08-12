@@ -69,7 +69,7 @@ class VssBackupClient {
     private func getLnurlAuthParams(walletIndex: Int) async throws
         -> (vssUrl: String, storeId: String, mnemonic: String, passphrase: String?, lnurlAuthServerUrl: String)?
     {
-        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl
+        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !lnurlAuthServerUrl.isEmpty else { return nil }
         guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
