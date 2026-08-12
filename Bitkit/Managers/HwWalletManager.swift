@@ -325,6 +325,11 @@ final class HwWalletManager {
     }
 
     func warmUpConnection(walletId: String) {
+        // There is nothing to warm up for a hidden wallet whose session is gone: opening it needs the
+        // passphrase, which a warm-up has no way to ask for, and connecting without one opens the
+        // standard wallet instead — a session the user did not ask for, on the device the transfer is
+        // about to need. The prompt reopens it properly a moment later.
+        guard !needsPassphrase(walletId: walletId) else { return }
         guard let deviceId = transportDeviceId(for: walletId) else { return }
         session?.warmUpConnection(deviceId: deviceId)
     }

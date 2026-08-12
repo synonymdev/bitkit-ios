@@ -271,6 +271,32 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         XCTAssertFalse(manager.needsPassphrase(walletId: hiddenWalletId), "its session is already open")
     }
 
+    // MARK: - warmUpConnection
+
+    /// A warm-up cannot ask for a passphrase, so warming up a hidden wallet would open the standard
+    /// wallet on the very device the transfer is about to need.
+    func testDoesNotWarmUpAHiddenWalletWhoseSessionIsGone() {
+        session.storedDevices = [
+            makeDevice(walletId: standardWalletId),
+            makeDevice(xpubs: ["nativeSegwit": "zHidden"], walletId: hiddenWalletId, passphraseProtected: true),
+        ]
+        session.connectedWalletId = nil
+        let manager = makeManager()
+
+        manager.warmUpConnection(walletId: hiddenWalletId)
+
+        XCTAssertTrue(session.warmUpCalls.isEmpty)
+    }
+
+    func testWarmsUpAWalletThatNeedsNoPassphrase() {
+        session.storedDevices = [makeDevice(walletId: standardWalletId)]
+        let manager = makeManager()
+
+        manager.warmUpConnection(walletId: standardWalletId)
+
+        XCTAssertEqual(session.warmUpCalls, ["dev1"])
+    }
+
     // MARK: - reconnectWithPassphrase
 
     func testReopensAHiddenWalletWithNoLiveSession() async throws {
