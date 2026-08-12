@@ -160,21 +160,17 @@ class LightningService {
 
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
+        guard !lnurlAuthServerUrl.isEmpty else {
+            throw CustomServiceError.vssAuthRequired
+        }
+
         try await ServiceQueue.background(.ldk) {
-            if !lnurlAuthServerUrl.isEmpty {
-                self.node = try builder.buildWithVssStore(
-                    vssUrl: vssUrl,
-                    storeId: storeId,
-                    lnurlAuthServerUrl: lnurlAuthServerUrl,
-                    fixedHeaders: [:]
-                )
-            } else {
-                self.node = try builder.buildWithVssStoreAndFixedHeaders(
-                    vssUrl: vssUrl,
-                    storeId: storeId,
-                    fixedHeaders: [:]
-                )
-            }
+            self.node = try builder.buildWithVssStore(
+                vssUrl: vssUrl,
+                storeId: storeId,
+                lnurlAuthServerUrl: lnurlAuthServerUrl,
+                fixedHeaders: [:]
+            )
         }
         shouldReleaseLightningLock = false
 
