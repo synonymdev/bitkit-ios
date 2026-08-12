@@ -336,13 +336,21 @@ final class HwWalletManager {
         let opened = session.connectedWalletId
         if opened == walletId { return }
 
-        Logger.warn(
-            "Rejected hardware session for '\(walletId)': opened wallet '\(opened ?? "unknown")'",
-            context: "HwWalletManager"
-        )
+        guard let opened else {
+            // Not a mismatch: the session opened but its accounts could not be read, so nothing is
+            // known about which wallet it holds. Reporting a wrong passphrase would send the user to
+            // re-enter one that may well have been right.
+            await session.disconnectStaleSession(deviceId: deviceId)
+            throw AppError(
+                message: "Couldn't read the passphrase wallet",
+                debugMessage: "No accounts resolved for the wallet reopened on '\(deviceId)'"
+            )
+        }
+
+        Logger.warn("Rejected hardware session for '\(walletId)': opened wallet '\(opened)'", context: "HwWalletManager")
         // Reading the accounts of the wrong wallet already stored it; a mistyped passphrase must not
         // leave a stray watch-only wallet behind.
-        if let opened, !watchedBefore.contains(opened) {
+        if !watchedBefore.contains(opened) {
             await removeWallet(walletId: opened)
         }
         await session.disconnectStaleSession(deviceId: deviceId)

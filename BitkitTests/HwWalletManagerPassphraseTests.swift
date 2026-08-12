@@ -289,6 +289,26 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         XCTAssertEqual(session.staleDisconnects, ["dev1"], "the session it opened is torn down")
     }
 
+    /// An account read that failed says nothing about which wallet the session holds, so calling it a
+    /// wrong passphrase would send the user to re-enter one that may well have been right.
+    func testAnUnreadableReopenIsNotReportedAsAWrongPassphrase() async {
+        session.storedDevices = [
+            makeDevice(xpubs: ["nativeSegwit": "zHidden"], walletId: hiddenWalletId, passphraseProtected: true),
+        ]
+        session.openedWalletIdOnHidden = nil // the open succeeded, its accounts did not resolve
+        let manager = makeManager()
+
+        do {
+            try await manager.reconnectWithPassphrase(walletId: hiddenWalletId, passphrase: "correct horse")
+            XCTFail("expected the read failure to be reported")
+        } catch is HwPassphraseError {
+            XCTFail("an unreadable session must not be reported as a wrong passphrase")
+        } catch {
+            XCTAssertEqual(session.staleDisconnects, ["dev1"], "the unusable session is torn down")
+            XCTAssertTrue(session.forgottenWalletIds.isEmpty, "there is no stray wallet to drop")
+        }
+    }
+
     /// A wallet that was already watched before the reopen is not a stray, so it must survive.
     func testKeepsAnAlreadyWatchedWalletWhenThePassphraseOpensIt() async {
         session.storedDevices = [
