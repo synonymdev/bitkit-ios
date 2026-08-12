@@ -74,7 +74,7 @@ struct SendQuickpay: View {
                 sats: nil,
                 onTimeout: {
                     app.addPendingPaymentHash(paymentHash)
-                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .quickpay))
+                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .quickpay, paymentRequest: bolt11))
                 }
             )
             Logger.info("Quickpay payment successful: \(paymentHash)")

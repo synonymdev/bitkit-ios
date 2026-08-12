@@ -63,7 +63,7 @@ enum SendRoute: Hashable {
     case tag
     case quickpay
     case pin
-    case pending(paymentHash: String, retryRoute: SendRetryRoute)
+    case pending(paymentHash: String, retryRoute: SendRetryRoute, paymentRequest: String? = nil)
     case success(paymentId: String)
     case failure(SendFailureContext)
     case lnurlPayAmount
@@ -485,8 +485,14 @@ struct SendSheet: View {
             SendQuickpay(navigationPath: $navigationPath, routingCacheResetAttempted: routingCacheResetAttempted)
         case .pin:
             SendPinScreen(onCancel: { resolvePinCheck(false) }, onPinVerified: { resolvePinCheck(true) })
-        case let .pending(paymentHash, retryRoute):
-            SendPendingScreen(paymentHash: paymentHash, retryRoute: retryRoute, navigationPath: $navigationPath)
+        case let .pending(paymentHash, retryRoute, paymentRequest):
+            SendPendingScreen(
+                paymentHash: paymentHash,
+                retryRoute: retryRoute,
+                paymentRequest: paymentRequest,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                navigationPath: $navigationPath
+            )
         case let .success(paymentId):
             SendSuccess(paymentId: paymentId)
         case let .failure(context):

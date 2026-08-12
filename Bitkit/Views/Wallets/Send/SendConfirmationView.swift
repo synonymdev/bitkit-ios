@@ -520,7 +520,7 @@ struct SendConfirmationView: View {
                         sats: paymentSats,
                         onTimeout: {
                             app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
-                            navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .confirm))
+                            navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
                         }
                     )
                     await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
