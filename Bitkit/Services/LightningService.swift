@@ -118,7 +118,6 @@ class LightningService {
 
         let builder = Builder.fromConfig(config: config)
         builder.setCustomLogger(logWriter: LdkLogWriter())
-        builder.setAcceptStaleChannelMonitors(accept: false)
 
         let resolvedElectrumServerUrl = electrumServerUrl ?? Env.electrumServerUrl
 
