@@ -125,6 +125,25 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         XCTAssertTrue(session.openCalls.isEmpty, "the device is never asked to open a hidden wallet")
     }
 
+    /// A session that dropped between pairing and this call is a reconnect problem; telling the user
+    /// to enable passphrase protection they already have on would send them to Trezor Suite for
+    /// nothing.
+    func testASessionThatDroppedIsNotReportedAsProtectionBeingOff() async {
+        session.storedDevices = [makeDevice(walletId: standardWalletId)]
+        session.connectedDeviceId = "dev1"
+        session.connectedFeatures = nil
+        let manager = makeManager()
+
+        do {
+            _ = try await manager.connectWithPassphrase(deviceId: "dev1", passphrase: "correct horse")
+            XCTFail("expected a reconnect failure")
+        } catch is HwPassphraseError {
+            XCTFail("a missing session must not be reported as passphrase protection being off")
+        } catch {
+            XCTAssertTrue(session.openCalls.isEmpty, "the device is never asked to open a hidden wallet")
+        }
+    }
+
     func testReportsAPassphraseWalletThatIsAlreadyWatched() async {
         session.storedDevices = [
             makeDevice(walletId: standardWalletId),

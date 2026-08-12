@@ -248,10 +248,20 @@ final class HwWalletManager {
         guard let session else {
             throw AppError(message: "Unavailable", debugMessage: "No device session to open a passphrase wallet with")
         }
+        // Absent features mean there is nothing to read the setting from — a session that dropped
+        // between pairing and this call — which is a reconnect problem and not a device that refuses
+        // hidden wallets.
+        guard let features = session.connectedFeatures else {
+            throw AppError(
+                message: "Reconnect Hardware Device",
+                debugMessage: "No live session on '\(deviceId)' to open a passphrase wallet with"
+            )
+        }
         // A device with passphrase protection turned off ignores the passphrase and simply reopens
         // the standard wallet, which would surface as "already added" and leave the user retyping a
-        // passphrase that can never take effect.
-        guard session.connectedFeatures?.passphraseProtection == true else {
+        // passphrase that can never take effect. A device that does not report the setting at all is
+        // treated the same way, since attempting the open would fail just as silently.
+        guard features.passphraseProtection == true else {
             throw HwPassphraseError.protectionDisabled
         }
 
