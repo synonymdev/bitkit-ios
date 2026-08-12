@@ -16,6 +16,7 @@ struct SendConfirmationView: View {
     @Binding var navigationPath: [SendRoute]
     let requestPinCheck: () async -> Bool
     let prepareIncomingPaymentRequest: () async throws -> Void
+    let routingCacheResetAttempted: Bool
 
     @State private var showDetails = false
     @State private var showingBiometricError = false
@@ -163,38 +164,7 @@ struct SendConfirmationView: View {
             }
 
             SwipeButton(title: t("wallet__send_swipe"), accentColor: accentColor, swipeProgress: $swipeProgress) {
-                // Validate payment and show warnings if needed
-                let warnings = await validatePayment()
-                if !warnings.isEmpty {
-                    let shouldProceed = try await showWarnings(warnings)
-                    if !shouldProceed {
-                        throw CancellationError()
-                    }
-                }
-
-                // Check if authentication is required for payments
-                if settings.requirePinForPayments && settings.pinEnabled {
-                    if settings.useBiometrics && BiometricAuth.isAvailable {
-                        let result = await BiometricAuth.authenticate()
-                        switch result {
-                        case .success:
-                            break
-                        case .cancelled:
-                            throw CancellationError()
-                        case let .failed(message):
-                            biometricErrorMessage = message
-                            showingBiometricError = true
-                            throw CancellationError()
-                        }
-                    } else {
-                        let shouldProceed = await requestPinCheck()
-                        guard shouldProceed else {
-                            throw CancellationError()
-                        }
-                    }
-                }
-
-                try await performPayment()
+                try await submitPayment()
             }
         }
         .navigationBarHidden(true)
@@ -473,6 +443,41 @@ struct SendConfirmationView: View {
         }
     }
 
+    private func submitPayment() async throws {
+        // Validate payment and show warnings if needed
+        let warnings = await validatePayment()
+        if !warnings.isEmpty {
+            let shouldProceed = try await showWarnings(warnings)
+            if !shouldProceed {
+                throw CancellationError()
+            }
+        }
+
+        // Check if authentication is required for payments
+        if settings.requirePinForPayments && settings.pinEnabled {
+            if settings.useBiometrics && BiometricAuth.isAvailable {
+                let result = await BiometricAuth.authenticate()
+                switch result {
+                case .success:
+                    break
+                case .cancelled:
+                    throw CancellationError()
+                case let .failed(message):
+                    biometricErrorMessage = message
+                    showingBiometricError = true
+                    throw CancellationError()
+                }
+            } else {
+                let shouldProceed = await requestPinCheck()
+                guard shouldProceed else {
+                    throw CancellationError()
+                }
+            }
+        }
+
+        try await performPayment()
+    }
+
     private func contactRecipient(_ contact: PubkyContact) -> some View {
         HStack(spacing: 8) {
             PubkyContactAvatar(contact: contact, size: 24)
@@ -515,7 +520,7 @@ struct SendConfirmationView: View {
                         sats: paymentSats,
                         onTimeout: {
                             app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
-                            navigationPath.append(.pending(paymentHash: paymentHash))
+                            navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .confirm))
                         }
                     )
                     await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
@@ -563,13 +568,12 @@ struct SendConfirmationView: View {
                 try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
             }
 
-            // TODO: remove toast and use failure screen instead
-            app.toast(error)
-
-            // TODO: this is a hack to make sure the navigation binding is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                navigationPath.append(.failure)
-            }
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: app.selectedWalletToPayFrom == .lightning ? app.scannedLightningInvoice?.bolt11 : nil
+            )))
         }
     }
 

@@ -12,6 +12,7 @@ struct LnurlPayConfirm: View {
     @Binding var navigationPath: [SendRoute]
     let requestPinCheck: () async -> Bool
     let prepareIncomingPaymentRequest: () async throws -> Void
+    let routingCacheResetAttempted: Bool
 
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
@@ -105,52 +106,7 @@ struct LnurlPayConfirm: View {
                 title: t("wallet__send_swipe"),
                 accentColor: .greenAccent
             ) {
-                // Check if we need to show warning for amounts over $100 USD
-                if settings.warnWhenSendingOver100 {
-                    let sats: UInt64 = if let invoice = app.scannedLightningInvoice {
-                        wallet.sendAmountSats ?? invoice.amountSatoshis
-                    } else {
-                        0
-                    }
-
-                    // Convert to USD to check if over $100
-                    if let usdAmount = currency.convert(sats: sats, to: "USD") {
-                        if usdAmount.value > 100.0 {
-                            showWarningAlert = true
-                            // Wait for the alert to be dismissed
-                            let shouldProceed = try await waitForAlertDismissal()
-                            if !shouldProceed {
-                                // User cancelled, throw error to reset SwipeButton
-                                throw CancellationError()
-                            }
-                            // User confirmed, continue with authentication if needed
-                        }
-                    }
-                }
-
-                // Check if authentication is required for payments
-                if settings.requirePinForPayments && settings.pinEnabled {
-                    if settings.useBiometrics && BiometricAuth.isAvailable {
-                        let result = await BiometricAuth.authenticate()
-                        switch result {
-                        case .success:
-                            break
-                        case .cancelled:
-                            throw CancellationError()
-                        case let .failed(message):
-                            biometricErrorMessage = message
-                            showingBiometricError = true
-                            throw CancellationError()
-                        }
-                    } else {
-                        let shouldProceed = await requestPinCheck()
-                        guard shouldProceed else {
-                            throw CancellationError()
-                        }
-                    }
-                }
-
-                try await performPayment()
+                try await submitPayment()
             }
         }
         .navigationBarHidden(true)
@@ -180,6 +136,55 @@ struct LnurlPayConfirm: View {
         }
     }
 
+    private func submitPayment() async throws {
+        // Check if we need to show warning for amounts over $100 USD
+        if settings.warnWhenSendingOver100 {
+            let sats: UInt64 = if let invoice = app.scannedLightningInvoice {
+                wallet.sendAmountSats ?? invoice.amountSatoshis
+            } else {
+                0
+            }
+
+            // Convert to USD to check if over $100
+            if let usdAmount = currency.convert(sats: sats, to: "USD") {
+                if usdAmount.value > 100.0 {
+                    showWarningAlert = true
+                    // Wait for the alert to be dismissed
+                    let shouldProceed = try await waitForAlertDismissal()
+                    if !shouldProceed {
+                        // User cancelled, throw error to reset SwipeButton
+                        throw CancellationError()
+                    }
+                    // User confirmed, continue with authentication if needed
+                }
+            }
+        }
+
+        // Check if authentication is required for payments
+        if settings.requirePinForPayments && settings.pinEnabled {
+            if settings.useBiometrics && BiometricAuth.isAvailable {
+                let result = await BiometricAuth.authenticate()
+                switch result {
+                case .success:
+                    break
+                case .cancelled:
+                    throw CancellationError()
+                case let .failed(message):
+                    biometricErrorMessage = message
+                    showingBiometricError = true
+                    throw CancellationError()
+                }
+            } else {
+                let shouldProceed = await requestPinCheck()
+                guard shouldProceed else {
+                    throw CancellationError()
+                }
+            }
+        }
+
+        try await performPayment()
+    }
+
     private func waitForAlertDismissal() async throws -> Bool {
         return try await withCheckedThrowingContinuation { continuation in
             alertContinuation = continuation
@@ -194,6 +199,7 @@ struct LnurlPayConfirm: View {
         let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
         let contactPaymentContext = app.contactPaymentContext
         let contactPublicKey = contactPaymentContext?.publicKey
+        var bolt11Invoice: String?
 
         do {
             try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
@@ -206,6 +212,7 @@ struct LnurlPayConfirm: View {
                 amountMsats: amountMsats,
                 comment: comment.isEmpty ? nil : comment
             )
+            bolt11Invoice = bolt11
 
             let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
             let paymentHash = String(describing: parsedInvoice.paymentHash())
@@ -218,7 +225,7 @@ struct LnurlPayConfirm: View {
                 sats: nil,
                 onTimeout: {
                     app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
-                    navigationPath.append(.pending(paymentHash: paymentHash))
+                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .lnurlPayConfirm))
                 }
             )
             app.addPendingContactPaymentContext(paymentHash, contactPublicKey: contactPublicKey)
@@ -230,13 +237,12 @@ struct LnurlPayConfirm: View {
         } catch {
             Logger.error("LNURL payment failed: \(error)")
 
-            // TODO: remove toast and use failure screen instead
-            app.toast(error)
-
-            // TODO: this is a hack to make sure the navigation binding is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                navigationPath.append(.failure)
-            }
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .lnurlPayConfirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: bolt11Invoice ?? "LNURL: \(lnurlPayData.uri)"
+            )))
         }
     }
 

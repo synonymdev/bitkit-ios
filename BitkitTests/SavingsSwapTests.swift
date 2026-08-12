@@ -1,8 +1,7 @@
+@testable import Bitkit
 import BitkitCore
 import LDKNode
 import XCTest
-
-@testable import Bitkit
 
 final class SavingsSwapTests: XCTestCase {
     // MARK: - Quote math
@@ -91,33 +90,33 @@ final class SavingsSwapTests: XCTestCase {
 
     // MARK: - Payment failure messages
 
-    func testPaymentFailureReasonsMapToTheirUserMessages() {
+    func testPaymentFailureReasonsMapToSendFailureMessages() {
         XCTAssertEqual(
-            PaymentFailureReason.userMessage(for: .recipientRejected),
-            t("wallet__toast_payment_failed_recipient_rejected")
+            AppError(paymentFailureReason: .recipientRejected).localizedDescription,
+            t("wallet__payment_recipient_rejected")
         )
         XCTAssertEqual(
-            PaymentFailureReason.userMessage(for: .retriesExhausted),
-            t("wallet__toast_payment_failed_retries_exhausted")
+            AppError(paymentFailureReason: .retriesExhausted).localizedDescription,
+            t("wallet__payment_retries_exhausted")
         )
         XCTAssertEqual(
-            PaymentFailureReason.userMessage(for: .routeNotFound),
-            t("wallet__toast_payment_failed_route_not_found")
+            AppError(paymentFailureReason: .routeNotFound).localizedDescription,
+            t("wallet__payment_route_not_found")
         )
         XCTAssertEqual(
-            PaymentFailureReason.userMessage(for: .paymentExpired),
-            t("wallet__toast_payment_failed_timeout")
+            AppError(paymentFailureReason: .paymentExpired).localizedDescription,
+            t("wallet__payment_expired")
         )
     }
 
     func testUnmappedAndAbsentPaymentFailureReasonsFallBackToTheGenericMessage() {
         XCTAssertEqual(
-            PaymentFailureReason.userMessage(for: .unexpectedError),
-            t("wallet__toast_payment_failed_description")
+            AppError(paymentFailureReason: .unexpectedError).localizedDescription,
+            t("wallet__payment_failed_description")
         )
         XCTAssertEqual(
-            PaymentFailureReason.userMessage(for: nil),
-            t("wallet__toast_payment_failed_description")
+            AppError(paymentFailureReason: nil).localizedDescription,
+            t("wallet__payment_failed_description")
         )
     }
 

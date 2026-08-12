@@ -318,7 +318,7 @@ extension AppViewModel {
                 )
             }
         case .signingTimeout:
-            toast(type: .error, title: t("common__error"), description: t("wallet__toast_payment_failed_timeout"))
+            toast(type: .error, title: t("common__error"), description: t("wallet__payment_timeout"))
         case .broadcastUncertain:
             toast(
                 type: .warning,
@@ -1020,7 +1020,7 @@ extension AppViewModel {
                 toast(
                     type: .error,
                     title: t("wallet__toast_payment_failed_title"),
-                    description: t("wallet__toast_payment_failed_description"),
+                    description: t("wallet__payment_failed_description"),
                     accessibilityIdentifier: "PaymentFailedToast"
                 )
             }

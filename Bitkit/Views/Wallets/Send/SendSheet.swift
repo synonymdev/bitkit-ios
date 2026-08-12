@@ -1,5 +1,55 @@
 import SwiftUI
 
+enum SendRetryRoute: Hashable {
+    case confirm
+    case quickpay
+    case lnurlPayConfirm
+
+    var sendRoute: SendRoute {
+        switch self {
+        case .confirm: .confirm
+        case .quickpay: .quickpay
+        case .lnurlPayConfirm: .lnurlPayConfirm
+        }
+    }
+}
+
+struct SendFailureContext: Hashable {
+    let message: String?
+    let retryRoute: SendRetryRoute
+    let resetRoutingCachesOnRetry: Bool
+    let failureType: String
+    let paymentRequest: String?
+    let routingCacheResetAttempted: Bool
+
+    init(
+        message: String?,
+        retryRoute: SendRetryRoute,
+        resetRoutingCachesOnRetry: Bool,
+        failureType: String = "Unknown",
+        paymentRequest: String? = nil,
+        routingCacheResetAttempted: Bool = false
+    ) {
+        self.message = message
+        self.retryRoute = retryRoute
+        self.resetRoutingCachesOnRetry = resetRoutingCachesOnRetry
+        self.failureType = failureType
+        self.paymentRequest = paymentRequest
+        self.routingCacheResetAttempted = routingCacheResetAttempted
+    }
+
+    init(error: Error, retryRoute: SendRetryRoute, routingCacheResetAttempted: Bool = false, paymentRequest: String? = nil) {
+        let shouldResetRoutingCaches = shouldResetRoutingCachesOnRetry(for: error)
+
+        message = sendFailureMessage(for: error)
+        self.retryRoute = retryRoute
+        resetRoutingCachesOnRetry = shouldResetRoutingCaches && !routingCacheResetAttempted
+        failureType = sendFailureType(for: error)
+        self.paymentRequest = paymentRequest
+        self.routingCacheResetAttempted = routingCacheResetAttempted
+    }
+}
+
 enum SendRoute: Hashable {
     case options
     case contact
@@ -13,9 +63,9 @@ enum SendRoute: Hashable {
     case tag
     case quickpay
     case pin
-    case pending(paymentHash: String)
+    case pending(paymentHash: String, retryRoute: SendRetryRoute)
     case success(paymentId: String)
-    case failure
+    case failure(SendFailureContext)
     case lnurlPayAmount
     case lnurlPayConfirm
     case lnurlWithdrawAmount
@@ -54,6 +104,7 @@ struct SendSheet: View {
 
     @State private var navigationPath: [SendRoute] = []
     @State private var hasValidatedAfterSync = false
+    @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
 
@@ -421,7 +472,8 @@ struct SendSheet: View {
             SendConfirmationView(
                 navigationPath: $navigationPath,
                 requestPinCheck: requestPinCheck,
-                prepareIncomingPaymentRequest: prepareIncomingPaymentRequest
+                prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
+                routingCacheResetAttempted: routingCacheResetAttempted
             )
         case .feeRate:
             SendFeeRate(navigationPath: $navigationPath)
@@ -430,22 +482,31 @@ struct SendSheet: View {
         case .tag:
             SendTagScreen(navigationPath: $navigationPath)
         case .quickpay:
-            SendQuickpay(navigationPath: $navigationPath)
+            SendQuickpay(navigationPath: $navigationPath, routingCacheResetAttempted: routingCacheResetAttempted)
         case .pin:
             SendPinScreen(onCancel: { resolvePinCheck(false) }, onPinVerified: { resolvePinCheck(true) })
-        case let .pending(paymentHash):
-            SendPendingScreen(paymentHash: paymentHash, navigationPath: $navigationPath)
+        case let .pending(paymentHash, retryRoute):
+            SendPendingScreen(paymentHash: paymentHash, retryRoute: retryRoute, navigationPath: $navigationPath)
         case let .success(paymentId):
             SendSuccess(paymentId: paymentId)
-        case .failure:
-            SendFailure()
+        case let .failure(context):
+            SendFailure(
+                context: context,
+                onRetryReady: { didResetRoutingCaches in
+                    if didResetRoutingCaches {
+                        routingCacheResetAttempted = true
+                    }
+                    resetNavigationForRetry(context.retryRoute)
+                }
+            )
         case .lnurlPayAmount:
             LnurlPayAmount(navigationPath: $navigationPath)
         case .lnurlPayConfirm:
             LnurlPayConfirm(
                 navigationPath: $navigationPath,
                 requestPinCheck: requestPinCheck,
-                prepareIncomingPaymentRequest: prepareIncomingPaymentRequest
+                prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
+                routingCacheResetAttempted: routingCacheResetAttempted
             )
         case .lnurlWithdrawAmount:
             LnurlWithdrawAmount {
@@ -472,6 +533,11 @@ struct SendSheet: View {
                 context: privatePaymentContext
             )
         }
+    }
+
+    private func resetNavigationForRetry(_ retryRoute: SendRetryRoute) {
+        let route = retryRoute.sendRoute
+        navigationPath = route == config.initialRoute ? [] : [route]
     }
 }
 

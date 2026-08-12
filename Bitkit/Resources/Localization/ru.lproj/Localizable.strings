@@ -950,6 +950,7 @@
 "wallet__send_error_slash_ln" = "К сожалению, мгновенный платеж к контакту не выполнен. Можно попробовать обычный платеж (дороже, медленнее).";
 "wallet__send_error_tx_failed" = "Транзакция не удалась";
 "wallet__send_error_create_tx" = "Не удалось отправить транзакцию. Пожалуйста, попробуйте снова.";
+"wallet__send_error_support" = "Связаться с Поддержкой";
 "wallet__tag_remove_error_title" = "Ошибка удаления тега";
 "wallet__tag_remove_error_description" = "Bitkit не удалось найти данные транзакции.";
 "wallet__error_no_invoice" = "Лайтнинг инвойс не найден.";
@@ -992,7 +993,16 @@
 "wallet__toast_payment_success_title" = "Платеж отправлен";
 "wallet__toast_payment_success_description" = "Ваш мгновенный платеж был успешно отправлен.";
 "wallet__toast_payment_failed_title" = "Платеж не выполнен";
-"wallet__toast_payment_failed_description" = "Ваш мгновенный платеж не удался. Пожалуйста, попробуйте снова.";
+"wallet__payment_failed_description" = "Ваш мгновенный платеж не удался. Пожалуйста, попробуйте снова.";
+"wallet__payment_recipient_rejected" = "Получатель отклонил этот платеж Lightning. Проверьте счет и попробуйте снова.";
+"wallet__payment_abandoned" = "Платеж Lightning был остановлен до завершения.";
+"wallet__payment_expired" = "Срок действия этого платежа Lightning истек. Запросите новый счет.";
+"wallet__payment_timeout" = "Время ожидания платежа истекло. Попробуйте еще раз.";
+"wallet__payment_route_not_found" = "Bitkit не смог найти маршрут Lightning для этого платежа.";
+"wallet__payment_retries_exhausted" = "Bitkit попробовал несколько маршрутов Lightning, но платеж не удалось завершить.";
+"wallet__payment_unknown_required_features" = "Этот счет Lightning использует функции, которые Bitkit пока не поддерживает.";
+"wallet__payment_invoice_request_expired" = "Срок действия этого запроса счета Lightning истек. Запросите новый счет.";
+"wallet__payment_invoice_request_rejected" = "Получатель отклонил этот запрос счета Lightning.";
 "wallet__toast_received_transaction_replaced_title" = "Полученная Транзакция Заменена";
 "wallet__toast_received_transaction_replaced_description" = "Ваша полученная транзакция была заменена из-за повышения комиссии";
 "wallet__toast_transaction_replaced_title" = "Транзакция Заменена";

@@ -954,6 +954,7 @@
 "wallet__send_error_slash_ln" = "Helaas kon het contact niet direct worden betaald. U kunt proberen een normale betaling te doen (deze is langzamer en duurder). ";
 "wallet__send_error_tx_failed" = "Transactie Mislukt";
 "wallet__send_error_create_tx" = "De transactie niet verzonden worden. Probeer het opnieuw.";
+"wallet__send_error_support" = "Contact Opnemen";
 "wallet__tag_remove_error_title" = "Tag Verwijderen Mislukt";
 "wallet__tag_remove_error_description" = "Bitkit kon de transactiegegevens niet vinden.";
 "wallet__error_no_invoice" = "Geen lightning factuur gedetecteerd";
@@ -997,7 +998,16 @@
 "wallet__toast_payment_success_title" = "Betaling Verzonden";
 "wallet__toast_payment_success_description" = "Uw directe betaling is succesvol verzonden.";
 "wallet__toast_payment_failed_title" = "Betaling Mislukt";
-"wallet__toast_payment_failed_description" = "Uw directe betaling is mislukt. Probeer het opnieuw.";
+"wallet__payment_failed_description" = "Uw directe betaling is mislukt. Probeer het opnieuw.";
+"wallet__payment_recipient_rejected" = "De ontvanger heeft deze Lightning-betaling geweigerd. Controleer de factuur en probeer het opnieuw.";
+"wallet__payment_abandoned" = "De Lightning-betaling is gestopt voordat deze was voltooid.";
+"wallet__payment_expired" = "Deze Lightning-betaling is verlopen. Vraag een nieuwe factuur aan.";
+"wallet__payment_timeout" = "Time-out voor betaling. Probeer het opnieuw.";
+"wallet__payment_route_not_found" = "Bitkit kon geen Lightning-route voor deze betaling vinden.";
+"wallet__payment_retries_exhausted" = "Bitkit heeft meerdere Lightning-routes geprobeerd, maar de betaling kon niet worden voltooid.";
+"wallet__payment_unknown_required_features" = "Deze Lightning-factuur gebruikt functies die Bitkit nog niet ondersteunt.";
+"wallet__payment_invoice_request_expired" = "Deze Lightning-factuuraanvraag is verlopen. Vraag een nieuwe factuur aan.";
+"wallet__payment_invoice_request_rejected" = "De ontvanger heeft deze Lightning-factuuraanvraag geweigerd.";
 "wallet__toast_received_transaction_replaced_title" = "Ontvangen Transactie Vervangen";
 "wallet__toast_received_transaction_replaced_description" = "Uw ontvangen transactie is vervangen door een vergoedingsverhoging";
 "wallet__toast_transaction_replaced_title" = "Transactie Vervangen";

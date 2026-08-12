@@ -921,6 +921,7 @@
 "wallet__send_error_slash_ln" = "Purtroppo il contatto non può essere pagato istantaneamente. Puoi provare con un pagamento regolare (più costoso, più lento).";
 "wallet__send_error_tx_failed" = "Transazione Fallita";
 "wallet__send_error_create_tx" = "Impossibile trasmettere la transazione. Per favore riprova.";
+"wallet__send_error_support" = "Contatta l'Assistenza";
 "wallet__tag_remove_error_title" = "Rimozione del tag non riuscita";
 "wallet__tag_remove_error_description" = "Bitkit non è riuscito a trovare i dati della transazione.";
 "wallet__error_no_invoice" = "Nessuna invoice lightning trovata.";
@@ -963,7 +964,16 @@
 "wallet__toast_payment_success_title" = "Pagamento inviato";
 "wallet__toast_payment_success_description" = "Il tuo pagamento istantaneo è stato inviato con successo.";
 "wallet__toast_payment_failed_title" = "Pagamento fallito";
-"wallet__toast_payment_failed_description" = "Il tuo pagamento istantaneo non è riuscito. Per favore riprova.";
+"wallet__payment_failed_description" = "Il tuo pagamento istantaneo non è riuscito. Per favore riprova.";
+"wallet__payment_recipient_rejected" = "Il destinatario ha rifiutato questo pagamento Lightning. Controlla la fattura e riprova.";
+"wallet__payment_abandoned" = "Il pagamento Lightning è stato interrotto prima del completamento.";
+"wallet__payment_expired" = "Questo pagamento Lightning è scaduto. Richiedi una nuova fattura.";
+"wallet__payment_timeout" = "Il pagamento è scaduto. Riprova.";
+"wallet__payment_route_not_found" = "Bitkit non ha trovato una rotta Lightning per questo pagamento.";
+"wallet__payment_retries_exhausted" = "Bitkit ha provato diverse rotte Lightning, ma il pagamento non è stato completato.";
+"wallet__payment_unknown_required_features" = "Questa fattura Lightning usa funzionalità che Bitkit non supporta ancora.";
+"wallet__payment_invoice_request_expired" = "Questa richiesta di fattura Lightning è scaduta. Richiedi una nuova fattura.";
+"wallet__payment_invoice_request_rejected" = "Il destinatario ha rifiutato questa richiesta di fattura Lightning.";
 "wallet__toast_received_transaction_replaced_title" = "Transazione Ricevuta Sostituita";
 "wallet__toast_received_transaction_replaced_description" = "La tua transazione ricevuta è stata sostituita da un aumento commissione";
 "wallet__toast_transaction_replaced_title" = "Transazione Sostituita";

@@ -871,7 +871,16 @@
 "wallet__tags_no" = "Aún no hay etiquetas disponibles";
 "wallet__toast_payment_success_title" = "Pago Enviado";
 "wallet__toast_payment_failed_title" = "Pago Fallido";
-"wallet__toast_payment_failed_description" = "Tu pago instantáneo falló. Por favor, inténtalo de nuevo.";
+"wallet__payment_failed_description" = "Tu pago instantáneo falló. Por favor, inténtalo de nuevo.";
+"wallet__payment_recipient_rejected" = "El destinatario ha rechazado este pago Lightning. Comprueba la factura e inténtalo de nuevo.";
+"wallet__payment_abandoned" = "El pago Lightning se detuvo antes de completarse.";
+"wallet__payment_expired" = "Este pago Lightning ha caducado. Solicita una factura nueva.";
+"wallet__payment_timeout" = "El pago agotó el tiempo de espera. Inténtalo de nuevo.";
+"wallet__payment_route_not_found" = "Bitkit no ha podido encontrar una ruta Lightning para este pago.";
+"wallet__payment_retries_exhausted" = "Bitkit ha probado varias rutas Lightning, pero el pago no se ha podido completar.";
+"wallet__payment_unknown_required_features" = "Esta factura Lightning usa funciones que Bitkit aún no admite.";
+"wallet__payment_invoice_request_expired" = "Esta solicitud de factura Lightning ha caducado. Solicita una factura nueva.";
+"wallet__payment_invoice_request_rejected" = "El destinatario ha rechazado esta solicitud de factura Lightning.";
 "wallet__toast_received_transaction_replaced_title" = "Transacción Recibida Reemplazada";
 "wallet__toast_received_transaction_replaced_description" = "Tu transacción recibida fue reemplazada por un aumento de comisión";
 "wallet__toast_transaction_replaced_title" = "Transacción Reemplazada";
@@ -1044,3 +1053,4 @@
 "widgets__weather__condition__good__short_title" = "Favorables";
 "widgets__weather__condition__average__short_title" = "Promedio";
 "widgets__weather__condition__poor__short_title" = "Desfavorables";
+"wallet__send_error_support" = "Contactar con el servicio de asistencia";
