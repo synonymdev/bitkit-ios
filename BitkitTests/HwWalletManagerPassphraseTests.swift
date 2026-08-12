@@ -154,8 +154,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         XCTAssertTrue(session.openCalls.isEmpty, "no reopen is needed")
     }
 
-    /// A session opened before its identity could be resolved reports none and stays usable.
-    func testAcceptsASessionWhoseIdentityIsNotYetResolved() async throws {
+    /// The standard wallet needs no secret, so refusing an unresolved session would demand a
+    /// passphrase that does not exist.
+    func testAcceptsAnUnresolvedSessionForTheStandardWallet() async throws {
         session.storedDevices = [makeDevice(walletId: standardWalletId)]
         session.connectedDeviceId = "dev1"
         session.connectedWalletId = nil
@@ -164,6 +165,22 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         try await manager.ensureConnected(walletId: standardWalletId)
 
         XCTAssertTrue(session.openCalls.isEmpty)
+    }
+
+    /// A hidden wallet is only ever opened by proving its identity, so a session that resolved to
+    /// none is never one — accepting it would compose and sign against whichever seed is loaded.
+    func testDemandsThePassphraseWhenTheSessionResolvedToNoIdentity() async {
+        session.storedDevices = [
+            makeDevice(walletId: standardWalletId),
+            makeDevice(xpubs: ["nativeSegwit": "zHidden"], walletId: hiddenWalletId, passphraseProtected: true),
+        ]
+        session.connectedDeviceId = "dev1"
+        session.connectedWalletId = nil
+        let manager = makeManager()
+
+        await assertThrows(HwPassphraseError.required) {
+            try await manager.ensureConnected(walletId: hiddenWalletId)
+        }
     }
 
     func testReopensTheStandardWalletWhenAnotherIdentityHoldsTheSession() async throws {
@@ -279,6 +296,21 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         ]
         session.connectedDeviceId = "dev1"
         session.connectedWalletId = standardWalletId
+        let manager = makeManager()
+
+        await assertThrows(HwPassphraseError.required) {
+            _ = try await manager.signFunding(walletId: hiddenWalletId, funding: makeFunding())
+        }
+    }
+
+    /// An account read that failed leaves a live session reporting no identity. Signing then would
+    /// hand the device a transaction derived from another wallet's keys.
+    func testRefusesToSignForAHiddenWalletWhenTheSessionResolvedToNoIdentity() async {
+        session.storedDevices = [
+            makeDevice(xpubs: ["nativeSegwit": "zHidden"], walletId: hiddenWalletId, passphraseProtected: true),
+        ]
+        session.connectedDeviceId = "dev1"
+        session.connectedWalletId = nil
         let manager = makeManager()
 
         await assertThrows(HwPassphraseError.required) {

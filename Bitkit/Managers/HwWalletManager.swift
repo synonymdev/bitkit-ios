@@ -224,9 +224,17 @@ final class HwWalletManager {
         return deviceId
     }
 
-    /// A session opened before its identity could be resolved reports none and stays usable.
+    /// Whether the live session can be treated as `walletId`'s.
+    ///
+    /// A session whose accounts could not be read reports no identity. The standard wallet tolerates
+    /// that: it is reachable without a secret, so refusing would demand a passphrase that does not
+    /// exist. A hidden wallet is only ever opened by proving its identity — `connectWithPassphrase`
+    /// and `reconnectWithPassphrase` both require the open to resolve — so an unresolved session is
+    /// never one of them, and accepting it would compose and sign against whichever seed is loaded.
     private func isIdentity(_ sessionWalletId: String?, of walletId: String) -> Bool {
-        sessionWalletId == nil || sessionWalletId == walletId
+        if sessionWalletId == walletId { return true }
+        guard sessionWalletId == nil else { return false }
+        return !entries(for: walletId).contains(where: \.passphraseProtected)
     }
 
     private func watchedWalletIds() -> Set<String> {
