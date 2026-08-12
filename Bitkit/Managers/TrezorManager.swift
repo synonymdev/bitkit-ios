@@ -463,7 +463,11 @@ final class TrezorManager {
             try await reconnectKnownDevice(deviceId: deviceId, mode: nil)
         }
 
-        guard connectedDevice?.id == deviceId, let features = deviceFeatures else {
+        // `connect(device:)` reports failure on `error` and leaves the previous session's device and
+        // features in place, so identity alone would accept a failed reopen and let the caller read
+        // the wallet the old session had opened. The live session is the only proof.
+        let isLive = await trezorService.isConnected()
+        guard connectedDevice?.id == deviceId, isLive, let features = deviceFeatures else {
             let message = error ?? "Failed to open wallet on '\(deviceId)'"
             clearDisconnectedDeviceState(errorMessage: message)
             throw AppError(message: "Reconnect Hardware Device", debugMessage: message)

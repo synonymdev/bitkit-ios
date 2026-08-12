@@ -156,6 +156,30 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertEqual(sut.balanceSats, 0, "the new identity starts empty until its watcher reports")
     }
 
+    /// A brand-new identity has no label of its own, and the label of whichever wallet happened to be
+    /// open before it is not its name.
+    func testPassphraseWalletIsPrefilledWithTheDeviceNameNotTheRenamedWalletsLabel() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(
+            deviceId: "dev1",
+            walletId: standardWalletId,
+            name: "Standard Funds", // the standard wallet was renamed by the user
+            deviceDefaultName: "Trezor Safe 3"
+        ))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+        XCTAssertEqual(sut.labelInput, "Standard Funds", "the paired wallet keeps its own label")
+
+        service.passphraseResult = .success(hiddenWalletId)
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("correct horse")
+        sut.onPassphraseSubmit()
+        await waitUntil { self.sut.phase == .passphrasePaired }
+
+        XCTAssertEqual(sut.deviceName, "Trezor Safe 3")
+        XCTAssertEqual(sut.labelInput, "Trezor Safe 3")
+    }
+
     func testPassphraseFailureReportsInlineAndKeepsNoPassphrase() async {
         await givenDevicePaired()
         service.passphraseResult = .failure(HwPassphraseError.alreadyAdded)

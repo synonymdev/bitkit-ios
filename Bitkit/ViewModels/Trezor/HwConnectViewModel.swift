@@ -6,7 +6,19 @@ import Foundation
 struct HwConnectResult: Equatable {
     let deviceId: String
     let walletId: String?
+    /// Name of the identity this session opened — its Bitkit-side label once it has one.
     let name: String
+    /// The device's own name, from its label/model. A passphrase wallet has no label of its own
+    /// until the user gives it one, so this is what its step is prefilled with — the label of the
+    /// identity that happened to be open before it is not its name.
+    let deviceDefaultName: String
+
+    init(deviceId: String, walletId: String?, name: String, deviceDefaultName: String? = nil) {
+        self.deviceId = deviceId
+        self.walletId = walletId
+        self.name = name
+        self.deviceDefaultName = deviceDefaultName ?? name
+    }
 }
 
 /// Device discovery/connection seam the Connect Hardware flow drives. `TrezorHwConnectService` is
@@ -59,6 +71,9 @@ final class HwConnectViewModel {
     /// Identity paired on `pairedDeviceId`; resolved once its watch-only wallet is known.
     private(set) var pairedWalletId: String?
     private(set) var deviceName = ""
+    /// The paired device's own name, kept apart from `deviceName` so a wallet the user renamed does
+    /// not lend its label to the next identity opened on the same device.
+    private(set) var deviceDefaultName = ""
     private(set) var balanceSats: UInt64 = 0
     private(set) var labelInput = ""
     /// Held only until the device answers; the passphrase is never persisted or logged.
@@ -153,6 +168,7 @@ final class HwConnectViewModel {
         // any wallet sharing its transport id.
         pairedWalletId = result.walletId
         deviceName = result.name
+        deviceDefaultName = result.deviceDefaultName
         labelInput = result.name
         // Until the identity resolves, the prefill is only the device's own name; let a wallet
         // emission refine it.
@@ -256,10 +272,12 @@ final class HwConnectViewModel {
         passphraseInput = ""
         pairedWalletId = walletId
         balanceSats = 0
-        // Fall back to the device name until the new wallet is published, and let that emission
-        // refine the prefill; once it resolves the field is the user's to edit.
+        // A brand-new identity carries no label of its own, so it shows the device's name until the
+        // wallet is published and that emission refines the prefill; once it resolves the field is
+        // the user's to edit.
+        deviceName = deviceDefaultName
         labelInitialized = false
-        labelInput = deviceName
+        labelInput = deviceDefaultName
         phase = .passphrasePaired
     }
 
@@ -339,13 +357,18 @@ struct TrezorHwConnectService: HwConnectServicing {
             throw AppError(message: trezorManager.error ?? t("hardware__connect_error"), debugMessage: nil)
         }
         let walletId = trezorManager.connectedWalletId
-        // Show the name it was already saved under, so re-pairing doesn't appear to rename it.
-        let stored = walletId.flatMap { id in hwWalletManager.wallets.first { $0.id == id } }
-        let name = stored?.name ?? resolveHwWalletName(
+        let deviceDefaultName = resolveHwWalletName(
             label: connected.label ?? trezorManager.deviceFeatures?.label,
             model: connected.model ?? trezorManager.deviceFeatures?.model
         )
-        return HwConnectResult(deviceId: connected.id, walletId: walletId, name: name)
+        // Show the name it was already saved under, so re-pairing doesn't appear to rename it.
+        let stored = walletId.flatMap { id in hwWalletManager.wallets.first { $0.id == id } }
+        return HwConnectResult(
+            deviceId: connected.id,
+            walletId: walletId,
+            name: stored?.name ?? deviceDefaultName,
+            deviceDefaultName: deviceDefaultName
+        )
     }
 
     func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String {
