@@ -284,7 +284,17 @@ final class HwWalletManager {
             throw HwPassphraseError.required
         }
         try await session.connectWithWalletMode(deviceId: deviceId, mode: .standard, passphrase: "")
-        guard isIdentity(session.connectedWalletId, of: walletId) else { throw HwPassphraseError.required }
+        guard isIdentity(session.connectedWalletId, of: walletId) else {
+            // Deliberately not `.required`: this wallet is reachable without a secret, so the prompt
+            // that error raises would ask for a passphrase that cannot open it and every entry would
+            // come back a mismatch. The device is simply not holding this wallet — a different seed,
+            // or accounts that no longer resolve to it — which is a reconnect failure.
+            throw AppError(
+                message: "Reconnect Hardware Device",
+                debugMessage: "Standard session on '\(deviceId)' opened "
+                    + "'\(session.connectedWalletId ?? "no wallet")', not '\(walletId)'"
+            )
+        }
     }
 
     /// Whether reaching `walletId` needs the passphrase again. The device only holds one hidden

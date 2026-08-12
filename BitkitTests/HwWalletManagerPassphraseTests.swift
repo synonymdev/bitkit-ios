@@ -214,6 +214,26 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         XCTAssertTrue(session.openCalls.isEmpty)
     }
 
+    /// The device is not holding this wallet at all — a different seed, or accounts that no longer
+    /// resolve to it. Reporting it as a missing passphrase would raise a prompt that cannot open a
+    /// wallet which needs no secret, and every entry would come back a mismatch.
+    func testReportsAReconnectFailureWhenTheStandardWalletCannotBeReopened() async {
+        session.storedDevices = [makeDevice(walletId: standardWalletId)]
+        session.connectedDeviceId = "dev1"
+        session.connectedWalletId = strayWalletId
+        session.openedWalletIdOnStandard = strayWalletId
+        let manager = makeManager()
+
+        do {
+            try await manager.ensureConnected(walletId: standardWalletId)
+            XCTFail("expected a reconnect failure")
+        } catch is HwPassphraseError {
+            XCTFail("a wallet with no passphrase must not be reported as needing one")
+        } catch {
+            XCTAssertEqual(session.openCalls.map(\.mode), [.standard], "the standard reopen was attempted first")
+        }
+    }
+
     // MARK: - needsPassphrase
 
     func testNeedsThePassphraseOnlyWhileTheHiddenWalletIsNotTheLiveSession() {
