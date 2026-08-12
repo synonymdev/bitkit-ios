@@ -115,6 +115,52 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertEqual(funding.broadcastCalls, 0)
     }
 
+    /// Broadcasting never reaches the device, so a signed transaction awaiting retry must not be held
+    /// behind a passphrase — the session it would reopen is not needed to send it.
+    func testBroadcastRetryIsNotBlockedByTheRequiredPassphrase() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
+
+        // The device session is gone by the time the user retries.
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        funding.broadcastError = nil
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertFalse(vm.hwSpending.isPassphraseRequired)
+        XCTAssertEqual(funding.signCalls, 1, "the retry reuses the signed transaction")
+        XCTAssertEqual(funding.broadcastCalls, 2)
+        XCTAssertTrue(vm.hwFundingComplete)
+    }
+
+    /// Only the transaction already signed for this order is exempt; anything else needs the device.
+    func testADifferentOrderStillAsksForThePassphraseWhileABroadcastIsPending() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
+
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        var other = IBtOrder.mock()
+        other.id = "another-order"
+        vm.onTransferToSpendingHwConfirm(order: other, walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired)
+        XCTAssertEqual(funding.signCalls, 1, "nothing new is signed while the passphrase is unknown")
+    }
+
     func testAnEmptyPassphraseIsNotSubmitted() {
         let funding = MockHwFunding()
         let connecting = MockHwConnecting()

@@ -608,8 +608,12 @@ class TransferViewModel: ObservableObject {
             return
         }
         // A hidden wallet whose session is gone can only be reopened with its passphrase, and the
-        // device would otherwise sign from whichever wallet the current session holds.
-        if hwConnecting?.needsPassphrase(walletId: walletId) == true {
+        // device would otherwise sign from whichever wallet the current session holds. A signed
+        // transaction awaiting a broadcast retry is the exception: broadcasting never reaches the
+        // device, so holding the retry behind a passphrase would strand funds the user already
+        // approved — the same reason `cancelHwSigning` leaves the device alone while one is pending.
+        let isBroadcastRetry = pendingHwFundingBroadcast?.matches(order: order, walletId: walletId, address: address) == true
+        if !isBroadcastRetry, hwConnecting?.needsPassphrase(walletId: walletId) == true {
             hwSpending.isPassphraseRequired = true
             return
         }
