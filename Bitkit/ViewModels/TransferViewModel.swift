@@ -734,6 +734,11 @@ class TransferViewModel: ObservableObject {
     /// on-device approval can't still sign/broadcast/record. Idempotent. No-op while a signed tx
     /// is awaiting broadcast retry.
     func cancelHwSigning() {
+        // The prompt and the reopen it started belong to the screen being left. Neither touches a
+        // signed transaction waiting to be broadcast, so they are dropped before the guard below —
+        // otherwise leaving mid-verify would leave the reopen running and the prompt set to reappear.
+        onHwPassphraseDismiss()
+
         guard pendingHwFundingBroadcast == nil else { return }
         let walletId = activeHwTransferWalletId
         hwSignTask?.cancel()

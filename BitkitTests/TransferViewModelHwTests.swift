@@ -161,6 +161,49 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertEqual(funding.signCalls, 1, "nothing new is signed while the passphrase is unknown")
     }
 
+    /// Leaving the sign flow has to drop the reopen too, or a device answering afterwards would run
+    /// into a signature request for a screen the user already left.
+    func testLeavingTheSignFlowCancelsAnInFlightReopen() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+        vm.onHwPassphraseSubmit(order: order, walletId: "trezor:wallet", passphrase: "correct horse")
+
+        vm.cancelHwSigning()
+        await awaitPassphraseVerified(vm)
+        await awaitSigningComplete(vm)
+
+        XCTAssertFalse(vm.hwSpending.isPassphraseRequired)
+        XCTAssertFalse(vm.hwSpending.isVerifyingPassphrase)
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(funding.broadcastCalls, 0)
+    }
+
+    /// The prompt is dropped even while a signed transaction is held for retry, which the guard in
+    /// `cancelHwSigning` otherwise returns before reaching.
+    func testLeavingTheSignFlowClearsThePromptWhileABroadcastIsPending() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        var other = IBtOrder.mock()
+        other.id = "another-order"
+        vm.onTransferToSpendingHwConfirm(order: other, walletId: "trezor:wallet")
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired)
+
+        vm.cancelHwSigning()
+
+        XCTAssertFalse(vm.hwSpending.isPassphraseRequired)
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast, "the signed transaction is still retained")
+    }
+
     func testAnEmptyPassphraseIsNotSubmitted() {
         let funding = MockHwFunding()
         let connecting = MockHwConnecting()
