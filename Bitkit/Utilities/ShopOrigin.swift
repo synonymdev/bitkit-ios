@@ -15,6 +15,15 @@ enum ShopOrigin {
         return isAllowedHost(url.host)
     }
 
+    static func shouldRestrictNavigation(initialUrl: String) -> Bool {
+        isAllowed(URL(string: initialUrl))
+    }
+
+    static func shouldAllowMainFrameNavigation(to url: URL?, initialUrl: String) -> Bool {
+        guard shouldRestrictNavigation(initialUrl: initialUrl) else { return true }
+        return isAllowed(url)
+    }
+
     static var messageBridgeScript: String {
         """
         window.addEventListener('message', function(event) {

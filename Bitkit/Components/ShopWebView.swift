@@ -75,7 +75,10 @@ struct ShopWebView: UIViewRepresentable {
                 decisionHandler(.allow)
                 return
             }
-            if ShopOrigin.isAllowed(navigationAction.request.url) {
+            if ShopOrigin.shouldAllowMainFrameNavigation(
+                to: navigationAction.request.url,
+                initialUrl: parent.url
+            ) {
                 decisionHandler(.allow)
                 return
             }
@@ -99,7 +102,10 @@ struct ShopWebView: UIViewRepresentable {
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            guard ShopOrigin.isAllowed(navigationAction.request.url) else {
+            guard ShopOrigin.shouldAllowMainFrameNavigation(
+                to: navigationAction.request.url,
+                initialUrl: parent.url
+            ) else {
                 Logger.warn(
                     "Blocked shop window navigation to untrusted origin '\(navigationAction.request.url?.absoluteString ?? "")'",
                     context: "ShopWebView"
