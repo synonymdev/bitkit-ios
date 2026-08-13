@@ -75,6 +75,7 @@ class LightningService {
 
         Logger.debug("Checking lightning process lock...")
         try await StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
+        // Unlock if setup fails before a node exists. After a successful build the node keeps the lock until stop.
         var shouldReleaseLightningLock = true
         defer {
             if shouldReleaseLightningLock {
