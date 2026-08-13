@@ -128,7 +128,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
             if await settings.setMonitoring(addressType, enabled: true, wallet: nil) { return }
 
             Logger.test(
-                "Enabling \(addressType.stringValue) monitoring failed on attempt \(attempt)/\(attempts): \(monitoringFailureCause)",
+                "Enabling \(addressType.stringValue) monitoring failed on attempt \(attempt)/\(attempts): \(addressTypeFailureCause)",
                 context: "AddressTypeIntegrationTests"
             )
             guard attempt < attempts else { break }
@@ -136,15 +136,41 @@ final class AddressTypeIntegrationTests: XCTestCase {
         }
 
         XCTFail(
-            "Enabling \(addressType.stringValue) monitoring failed after \(attempts) attempts: \(monitoringFailureCause)",
+            "Enabling \(addressType.stringValue) monitoring failed after \(attempts) attempts: \(addressTypeFailureCause)",
+            file: file,
+            line: line
+        )
+    }
+
+    /// Same collapse-to-`false` problem as `setMonitoring`, on the primary address type.
+    @MainActor
+    private func selectAddressType(
+        _ addressType: LDKNode.AddressType,
+        attempts: Int = 3,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for attempt in 1 ... attempts {
+            if await settings.updateAddressType(addressType, wallet: nil) { return }
+
+            Logger.test(
+                "Selecting \(addressType.stringValue) failed on attempt \(attempt)/\(attempts): \(addressTypeFailureCause)",
+                context: "AddressTypeIntegrationTests"
+            )
+            guard attempt < attempts else { break }
+            try? await Task.sleep(nanoseconds: Self.retryDelayNanoseconds)
+        }
+
+        XCTFail(
+            "Selecting \(addressType.stringValue) failed after \(attempts) attempts: \(addressTypeFailureCause)",
             file: file,
             line: line
         )
     }
 
     @MainActor
-    private var monitoringFailureCause: String {
-        settings.lastMonitoringError.map { "\($0)" } ?? "no error recorded"
+    private var addressTypeFailureCause: String {
+        settings.lastAddressTypeError.map { "\($0)" } ?? "no error recorded"
     }
 
     @MainActor
@@ -173,8 +199,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         try await setupWalletAndNode()
 
         Logger.test("Updating address type to taproot", context: "AddressTypeIntegrationTests")
-        let success = await settings.updateAddressType(.taproot, wallet: nil)
-        XCTAssertTrue(success, "updateAddressType should succeed")
+        await selectAddressType(.taproot)
 
         XCTAssertEqual(UserDefaults.standard.string(forKey: "selectedAddressType"), "taproot")
         XCTAssertTrue(settings.addressTypesToMonitor.contains(.taproot))
@@ -186,8 +211,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         try await setupWalletAndNode()
 
         Logger.test("Updating address type to legacy", context: "AddressTypeIntegrationTests")
-        let success = await settings.updateAddressType(.legacy, wallet: nil)
-        XCTAssertTrue(success, "updateAddressType to legacy should succeed")
+        await selectAddressType(.legacy)
 
         XCTAssertEqual(UserDefaults.standard.string(forKey: "selectedAddressType"), "legacy")
         XCTAssertTrue(settings.addressTypesToMonitor.contains(.legacy))
@@ -241,8 +265,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
         await enableMonitoring(.taproot)
-        let updateSuccess = await settings.updateAddressType(.taproot, wallet: nil)
-        XCTAssertTrue(updateSuccess, "Taproot should be selected")
+        await selectAddressType(.taproot)
 
         Logger.test("Attempting to disable selected type (taproot)", context: "AddressTypeIntegrationTests")
         let success = await settings.setMonitoring(.taproot, enabled: false, wallet: nil)
@@ -279,8 +302,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
         Logger.test("Testing updateAddressType mutex guard", context: "AddressTypeIntegrationTests")
         // First call should succeed
-        let success = await settings.updateAddressType(.taproot, wallet: nil)
-        XCTAssertTrue(success)
+        await selectAddressType(.taproot)
 
         // Same type returns true (guard: addressType == selectedAddressType)
         let sameTypeResult = await settings.updateAddressType(.taproot, wallet: nil)
@@ -298,8 +320,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         // Enable legacy monitoring and switch to legacy
         settings.addressTypesToMonitor = [.nativeSegwit, .legacy]
         UserDefaults.standard.synchronize()
-        let updateSuccess = await settings.updateAddressType(.legacy, wallet: nil)
-        XCTAssertTrue(updateSuccess)
+        await selectAddressType(.legacy)
 
         let legacyAddress = try await settings.lightningService.newAddressForType(.legacy)
         Logger.test("Funding legacy address: \(legacyAddress)", context: "AddressTypeIntegrationTests")
