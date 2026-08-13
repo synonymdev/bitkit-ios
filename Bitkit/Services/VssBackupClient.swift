@@ -65,7 +65,7 @@ class VssBackupClient {
         await ldkSetupCoordinator.reset()
     }
 
-    /// Returns lnurl auth params when lnurl is configured; nil otherwise.
+    /// Returns LNURL-auth params when configured. Callers fail closed if this returns nil.
     private func getLnurlAuthParams(walletIndex: Int) async throws
         -> (vssUrl: String, storeId: String, mnemonic: String, passphrase: String?, lnurlAuthServerUrl: String)?
     {
