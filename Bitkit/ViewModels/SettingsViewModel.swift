@@ -49,6 +49,8 @@ class SettingsViewModel: NSObject, ObservableObject {
     private let defaults = UserDefaults.standard
 
     @Published private(set) var isChangingAddressType = false
+    /// `setMonitoring` collapses failures into `false`; this keeps the cause available for diagnostics.
+    private(set) var lastMonitoringError: Error?
     /// Set during restore when backup contained explicit monitored address types.
     private(set) var restoredMonitoredTypesFromBackup = false
     private var observedKeys: Set<String> = []
@@ -335,6 +337,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         guard !isChangingAddressType else { return false }
 
         isChangingAddressType = true
+        lastMonitoringError = nil
         defer { isChangingAddressType = false }
 
         let previousAddressTypesToMonitor = addressTypesToMonitor
@@ -350,6 +353,7 @@ class SettingsViewModel: NSObject, ObservableObject {
                     try await lightningService.sync()
                 } catch {
                     Logger.error("Failed to add address type to monitor: \(error)")
+                    lastMonitoringError = error
                     addressTypesToMonitor = previousAddressTypesToMonitor
                     return false
                 }
@@ -362,6 +366,7 @@ class SettingsViewModel: NSObject, ObservableObject {
                 if balance > 0 { return false }
             } catch {
                 Logger.error("Failed to check balance for \(addressType), preventing disable: \(error)")
+                lastMonitoringError = error
                 return false
             }
 
@@ -378,6 +383,7 @@ class SettingsViewModel: NSObject, ObservableObject {
                 try await lightningService.sync()
             } catch {
                 Logger.error("Failed to remove address type from monitor: \(error)")
+                lastMonitoringError = error
                 addressTypesToMonitor = previousAddressTypesToMonitor
                 return false
             }
