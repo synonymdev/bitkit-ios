@@ -75,6 +75,13 @@ class LightningService {
 
         Logger.debug("Checking lightning process lock...")
         try await StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
+        // Unlock if setup fails before a node exists. After a successful build the node keeps the lock until stop.
+        var shouldReleaseLightningLock = true
+        defer {
+            if shouldReleaseLightningLock {
+                try? StateLocker.unlock(.lightning)
+            }
+        }
 
         guard var mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
@@ -154,48 +161,22 @@ class LightningService {
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
         try await ServiceQueue.background(.ldk) {
-            do {
-                if !lnurlAuthServerUrl.isEmpty {
-                    self.node = try builder.buildWithVssStore(
-                        vssUrl: vssUrl,
-                        storeId: storeId,
-                        lnurlAuthServerUrl: lnurlAuthServerUrl,
-                        fixedHeaders: [:]
-                    )
-                } else {
-                    self.node = try builder.buildWithVssStoreAndFixedHeaders(
-                        vssUrl: vssUrl,
-                        storeId: storeId,
-                        fixedHeaders: [:]
-                    )
-                }
-            } catch let error as BuildError {
-                guard case .DangerousValue = error else { throw error }
-
-                // Stale ChannelMonitor vs ChannelManager — retry with accept_stale to recover.
-                Logger.warn(
-                    "Build failed with DangerousValue. Retrying with accept_stale_channel_monitors for recovery.",
-                    context: "Recovery"
+            if !lnurlAuthServerUrl.isEmpty {
+                self.node = try builder.buildWithVssStore(
+                    vssUrl: vssUrl,
+                    storeId: storeId,
+                    lnurlAuthServerUrl: lnurlAuthServerUrl,
+                    fixedHeaders: [:]
                 )
-                builder.setAcceptStaleChannelMonitors(accept: true)
-
-                if !lnurlAuthServerUrl.isEmpty {
-                    self.node = try builder.buildWithVssStore(
-                        vssUrl: vssUrl,
-                        storeId: storeId,
-                        lnurlAuthServerUrl: lnurlAuthServerUrl,
-                        fixedHeaders: [:]
-                    )
-                } else {
-                    self.node = try builder.buildWithVssStoreAndFixedHeaders(
-                        vssUrl: vssUrl,
-                        storeId: storeId,
-                        fixedHeaders: [:]
-                    )
-                }
-                Logger.info("Stale monitor recovery: build succeeded with accept_stale", context: "Recovery")
+            } else {
+                self.node = try builder.buildWithVssStoreAndFixedHeaders(
+                    vssUrl: vssUrl,
+                    storeId: storeId,
+                    fixedHeaders: [:]
+                )
             }
         }
+        shouldReleaseLightningLock = false
 
         Logger.info("LDK node setup")
 
