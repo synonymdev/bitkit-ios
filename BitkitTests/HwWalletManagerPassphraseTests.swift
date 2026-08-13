@@ -173,17 +173,19 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         XCTAssertTrue(session.openCalls.isEmpty, "no reopen is needed")
     }
 
-    /// The standard wallet needs no secret, so refusing an unresolved session would demand a
-    /// passphrase that does not exist.
-    func testAcceptsAnUnresolvedSessionForTheStandardWallet() async throws {
+    /// A session reporting no identity may be holding any seed the device has open, so it is not
+    /// accepted on trust. A wallet that needs no secret can simply be reopened, which re-reads the
+    /// accounts that failed to resolve.
+    func testReopensTheStandardWalletWhenTheSessionReportedNoIdentity() async throws {
         session.storedDevices = [makeDevice(walletId: standardWalletId)]
         session.connectedDeviceId = "dev1"
         session.connectedWalletId = nil
+        session.openedWalletIdOnStandard = standardWalletId
         let manager = makeManager()
 
         try await manager.ensureConnected(walletId: standardWalletId)
 
-        XCTAssertTrue(session.openCalls.isEmpty)
+        XCTAssertEqual(session.openCalls.map(\.mode), [.standard])
     }
 
     /// A hidden wallet is only ever opened by proving its identity, so a session that resolved to
@@ -385,6 +387,25 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
 
         await assertThrows(HwPassphraseError.required) {
             _ = try await manager.signFunding(walletId: hiddenWalletId, funding: makeFunding())
+        }
+    }
+
+    /// The device may have opened a hidden wallet and then failed the account read, which looks
+    /// exactly like a session that opened nothing — so signing for the standard wallet on an
+    /// unresolved session would hand the device a transaction derived from another seed's keys.
+    func testRefusesToSignForTheStandardWalletWhenTheSessionResolvedToNoIdentity() async {
+        session.storedDevices = [makeDevice(walletId: standardWalletId)]
+        session.connectedDeviceId = "dev1"
+        session.connectedWalletId = nil
+        let manager = makeManager()
+
+        do {
+            _ = try await manager.signFunding(walletId: standardWalletId, funding: makeFunding())
+            XCTFail("expected the unprovable session to be refused")
+        } catch is HwPassphraseError {
+            XCTFail("a wallet with no passphrase must not be reported as needing one")
+        } catch {
+            // A reconnect failure: the device is not provably holding this wallet.
         }
     }
 

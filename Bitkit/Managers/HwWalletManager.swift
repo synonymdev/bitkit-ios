@@ -224,17 +224,25 @@ final class HwWalletManager {
         return deviceId
     }
 
-    /// Whether the live session can be treated as `walletId`'s.
+    /// Fails unless the live session is provably `walletId`'s.
     ///
-    /// A session whose accounts could not be read reports no identity. The standard wallet tolerates
-    /// that: it is reachable without a secret, so refusing would demand a passphrase that does not
-    /// exist. A hidden wallet is only ever opened by proving its identity — `connectWithPassphrase`
-    /// and `reconnectWithPassphrase` both require the open to resolve — so an unresolved session is
-    /// never one of them, and accepting it would compose and sign against whichever seed is loaded.
-    private func isIdentity(_ sessionWalletId: String?, of walletId: String) -> Bool {
-        if sessionWalletId == walletId { return true }
-        guard sessionWalletId == nil else { return false }
-        return !entries(for: walletId).contains(where: \.passphraseProtected)
+    /// A session reports no identity precisely when its accounts could not be read, which says
+    /// nothing about which seed it holds — a device that opened a hidden wallet and then failed the
+    /// read looks exactly like one that opened nothing. So an unresolved session is refused rather
+    /// than tolerated, and the caller either reopens the wallet or reports that it is out of reach.
+    ///
+    /// Only the passphrase reopens a hidden wallet, so that is what a hidden target asks for. For any
+    /// other wallet the device is simply not holding it, which no passphrase can fix.
+    private func requireIdentity(of walletId: String) throws {
+        let opened = session?.connectedWalletId
+        guard opened != walletId else { return }
+        guard !entries(for: walletId).contains(where: \.passphraseProtected) else {
+            throw HwPassphraseError.required
+        }
+        throw AppError(
+            message: "Reconnect Hardware Device",
+            debugMessage: "The live session holds '\(opened ?? "no resolved wallet")', not '\(walletId)'"
+        )
     }
 
     private func watchedWalletIds() -> Set<String> {
@@ -287,24 +295,17 @@ final class HwWalletManager {
         }
         let deviceId = try requireTransportDeviceId(for: walletId)
         try await session.ensureConnected(deviceId: deviceId)
-        if isIdentity(session.connectedWalletId, of: walletId) { return }
+        if session.connectedWalletId == walletId { return }
 
-        Logger.info("Reopening '\(walletId)': session belongs to another identity", context: "HwWalletManager")
+        Logger.info("Reopening '\(walletId)': the session is not provably this wallet's", context: "HwWalletManager")
         guard !entries(for: walletId).contains(where: \.passphraseProtected) else {
             throw HwPassphraseError.required
         }
+        // A wallet that needs no secret can simply be reopened, including when the session reported
+        // no identity at all — reopening is what makes it provable, and it re-reads the accounts that
+        // failed to resolve in the first place.
         try await session.connectWithWalletMode(deviceId: deviceId, mode: .standard, passphrase: "")
-        guard isIdentity(session.connectedWalletId, of: walletId) else {
-            // Deliberately not `.required`: this wallet is reachable without a secret, so the prompt
-            // that error raises would ask for a passphrase that cannot open it and every entry would
-            // come back a mismatch. The device is simply not holding this wallet — a different seed,
-            // or accounts that no longer resolve to it — which is a reconnect failure.
-            throw AppError(
-                message: "Reconnect Hardware Device",
-                debugMessage: "Standard session on '\(deviceId)' opened "
-                    + "'\(session.connectedWalletId ?? "no wallet")', not '\(walletId)'"
-            )
-        }
+        try requireIdentity(of: walletId)
     }
 
     /// Whether reaching `walletId` needs the passphrase again. The device only holds one hidden
@@ -920,7 +921,7 @@ final class HwWalletManager {
     ) async throws -> HwFundingSignedTx {
         // The session can change between connecting and signing, and signing from the wrong seed
         // would produce signatures that do not match the inputs being spent.
-        guard isIdentity(session?.connectedWalletId, of: walletId) else { throw HwPassphraseError.required }
+        try requireIdentity(of: walletId)
         let network = networkProvider()
         let signed = try await TrezorService.shared.signTxFromPsbt(psbtBase64: funding.psbt, network: network)
         return HwFundingSignedTx(
