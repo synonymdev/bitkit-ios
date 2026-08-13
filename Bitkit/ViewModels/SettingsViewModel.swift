@@ -333,6 +333,21 @@ class SettingsViewModel: NSObject, ObservableObject {
         return balance.totalSats
     }
 
+    /// ldk-node can commit an address-type change and still surface a timeout. Re-running the
+    /// change then reports the node is already in the desired state, which is not a failure —
+    /// treating it as one strands the persisted list permanently out of sync with the node.
+    private static func nodeAlreadyInDesiredState(_ error: Error, enabled: Bool) -> Bool {
+        guard let nodeError = error as? NodeError ?? (error as? AppError)?.underlyingError as? NodeError else {
+            return false
+        }
+
+        switch nodeError {
+        case .AddressTypeAlreadyMonitored: return enabled
+        case .AddressTypeNotMonitored: return !enabled
+        default: return false
+        }
+    }
+
     func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
         guard !isChangingAddressType else { return false }
 
@@ -350,12 +365,21 @@ class SettingsViewModel: NSObject, ObservableObject {
 
                 do {
                     try await lightningService.addAddressTypeToMonitor(addressType)
+                } catch {
+                    guard Self.nodeAlreadyInDesiredState(error, enabled: true) else {
+                        Logger.error("Failed to add address type to monitor: \(error)")
+                        lastMonitoringError = error
+                        addressTypesToMonitor = previousAddressTypesToMonitor
+                        return false
+                    }
+                    Logger.info("Node already monitors \(addressType); keeping it in the persisted list")
+                }
+
+                // The type is monitored at this point, so a failed sync only delays balances.
+                do {
                     try await lightningService.sync()
                 } catch {
-                    Logger.error("Failed to add address type to monitor: \(error)")
-                    lastMonitoringError = error
-                    addressTypesToMonitor = previousAddressTypesToMonitor
-                    return false
+                    Logger.warn("Added \(addressType) to monitoring but sync failed: \(error)")
                 }
             }
         } else {
@@ -380,12 +404,21 @@ class SettingsViewModel: NSObject, ObservableObject {
 
             do {
                 try await lightningService.removeAddressTypeFromMonitor(addressType)
+            } catch {
+                guard Self.nodeAlreadyInDesiredState(error, enabled: false) else {
+                    Logger.error("Failed to remove address type from monitor: \(error)")
+                    lastMonitoringError = error
+                    addressTypesToMonitor = previousAddressTypesToMonitor
+                    return false
+                }
+                Logger.info("Node already stopped monitoring \(addressType); keeping it out of the persisted list")
+            }
+
+            // The type is no longer monitored at this point, so a failed sync only delays balances.
+            do {
                 try await lightningService.sync()
             } catch {
-                Logger.error("Failed to remove address type from monitor: \(error)")
-                lastMonitoringError = error
-                addressTypesToMonitor = previousAddressTypesToMonitor
-                return false
+                Logger.warn("Removed \(addressType) from monitoring but sync failed: \(error)")
             }
         }
 
