@@ -39,7 +39,8 @@ struct ShopMain: View {
               let json = try? JSONSerialization.jsonObject(with: innerData) as? [String: Any],
               let event = json["event"] as? String,
               event == "payment_intent",
-              let paymentUri = json["paymentUri"] as? String
+              let paymentUri = (json["paymentUri"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !paymentUri.isEmpty
         else {
             return
         }

@@ -55,9 +55,15 @@ struct ShopWebView: UIViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "messageHandler", let body = message.body as? String {
-                parent.onMessage?(body)
+            guard message.name == "messageHandler", let body = message.body as? String else { return }
+            guard ShopOrigin.isAllowed(message.webView?.url) else {
+                Logger.warn(
+                    "Rejected shop payment_intent from untrusted origin '\(message.webView?.url?.absoluteString ?? "")'",
+                    context: "ShopWebView"
+                )
+                return
             }
+            parent.onMessage?(body)
         }
 
         func webView(
@@ -65,18 +71,25 @@ struct ShopWebView: UIViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            decisionHandler(.allow)
+            if navigationAction.targetFrame?.isMainFrame == false {
+                decisionHandler(.allow)
+                return
+            }
+            if ShopOrigin.isAllowed(navigationAction.request.url) {
+                decisionHandler(.allow)
+                return
+            }
+            Logger.warn(
+                "Blocked shop navigation to untrusted origin '\(navigationAction.request.url?.absoluteString ?? "")'",
+                context: "ShopWebView"
+            )
+            decisionHandler(.cancel)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             // Inject JavaScript to capture postMessage events if message handler is configured
             if parent.onMessage != nil {
-                let script = """
-                    window.addEventListener('message', function(event) {
-                        window.webkit.messageHandlers.messageHandler.postMessage(JSON.stringify(event.data));
-                    });
-                """
-                webView.evaluateJavaScript(script)
+                webView.evaluateJavaScript(ShopOrigin.messageBridgeScript)
             }
         }
 
@@ -86,9 +99,15 @@ struct ShopWebView: UIViewRepresentable {
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            // Load the navigation request in the current WebView instead of opening a new window
+            guard ShopOrigin.isAllowed(navigationAction.request.url) else {
+                Logger.warn(
+                    "Blocked shop window navigation to untrusted origin '\(navigationAction.request.url?.absoluteString ?? "")'",
+                    context: "ShopWebView"
+                )
+                return nil
+            }
             webView.load(navigationAction.request)
-            return nil // Return nil to use the current WebView
+            return nil
         }
     }
 }
