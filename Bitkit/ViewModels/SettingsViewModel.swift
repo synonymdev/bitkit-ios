@@ -49,6 +49,8 @@ class SettingsViewModel: NSObject, ObservableObject {
     private let defaults = UserDefaults.standard
 
     @Published private(set) var isChangingAddressType = false
+    /// The address type calls collapse failures into `false`; this keeps the cause available for diagnostics.
+    private(set) var lastAddressTypeError: Error?
     /// Set during restore when backup contained explicit monitored address types.
     private(set) var restoredMonitoredTypesFromBackup = false
     private var observedKeys: Set<String> = []
@@ -331,10 +333,26 @@ class SettingsViewModel: NSObject, ObservableObject {
         return balance.totalSats
     }
 
+    /// ldk-node can commit an address-type change and still surface a timeout. Re-running the
+    /// change then reports the node is already in the desired state, which is not a failure —
+    /// treating it as one strands the persisted list permanently out of sync with the node.
+    private static func nodeAlreadyInDesiredState(_ error: Error, enabled: Bool) -> Bool {
+        guard let nodeError = error as? NodeError ?? (error as? AppError)?.underlyingError as? NodeError else {
+            return false
+        }
+
+        switch nodeError {
+        case .AddressTypeAlreadyMonitored: return enabled
+        case .AddressTypeNotMonitored: return !enabled
+        default: return false
+        }
+    }
+
     func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
         guard !isChangingAddressType else { return false }
 
         isChangingAddressType = true
+        lastAddressTypeError = nil
         defer { isChangingAddressType = false }
 
         let previousAddressTypesToMonitor = addressTypesToMonitor
@@ -347,11 +365,21 @@ class SettingsViewModel: NSObject, ObservableObject {
 
                 do {
                     try await lightningService.addAddressTypeToMonitor(addressType)
+                } catch {
+                    guard Self.nodeAlreadyInDesiredState(error, enabled: true) else {
+                        Logger.error("Failed to add address type to monitor: \(error)")
+                        lastAddressTypeError = error
+                        addressTypesToMonitor = previousAddressTypesToMonitor
+                        return false
+                    }
+                    Logger.info("Node already monitors \(addressType); keeping it in the persisted list")
+                }
+
+                // The type is monitored at this point, so a failed sync only delays balances.
+                do {
                     try await lightningService.sync()
                 } catch {
-                    Logger.error("Failed to add address type to monitor: \(error)")
-                    addressTypesToMonitor = previousAddressTypesToMonitor
-                    return false
+                    Logger.warn("Added \(addressType) to monitoring but sync failed: \(error)")
                 }
             }
         } else {
@@ -362,6 +390,7 @@ class SettingsViewModel: NSObject, ObservableObject {
                 if balance > 0 { return false }
             } catch {
                 Logger.error("Failed to check balance for \(addressType), preventing disable: \(error)")
+                lastAddressTypeError = error
                 return false
             }
 
@@ -375,11 +404,21 @@ class SettingsViewModel: NSObject, ObservableObject {
 
             do {
                 try await lightningService.removeAddressTypeFromMonitor(addressType)
+            } catch {
+                guard Self.nodeAlreadyInDesiredState(error, enabled: false) else {
+                    Logger.error("Failed to remove address type from monitor: \(error)")
+                    lastAddressTypeError = error
+                    addressTypesToMonitor = previousAddressTypesToMonitor
+                    return false
+                }
+                Logger.info("Node already stopped monitoring \(addressType); keeping it out of the persisted list")
+            }
+
+            // The type is no longer monitored at this point, so a failed sync only delays balances.
+            do {
                 try await lightningService.sync()
             } catch {
-                Logger.error("Failed to remove address type from monitor: \(error)")
-                addressTypesToMonitor = previousAddressTypesToMonitor
-                return false
+                Logger.warn("Removed \(addressType) from monitoring but sync failed: \(error)")
             }
         }
 
@@ -495,6 +534,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         guard addressType != selectedAddressType else { return true }
 
         isChangingAddressType = true
+        lastAddressTypeError = nil
         defer { isChangingAddressType = false }
 
         let previousSelectedAddressType = selectedAddressType
@@ -507,11 +547,9 @@ class SettingsViewModel: NSObject, ObservableObject {
 
         do {
             try await lightningService.setPrimaryAddressType(addressType)
-            syncMonitoredTypesFromNode()
-            try await lightningService.sync()
-            await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
         } catch {
             Logger.error("Failed to set primary address type: \(error)")
+            lastAddressTypeError = error
             selectedAddressType = previousSelectedAddressType
             addressTypesToMonitor = previousAddressTypesToMonitor
             UserDefaults.standard.set(previousOnchainAddress, forKey: "onchainAddress")
@@ -523,6 +561,17 @@ class SettingsViewModel: NSObject, ObservableObject {
             wallet?.syncState()
             return false
         }
+
+        syncMonitoredTypesFromNode()
+
+        // The node's primary type is already changed, so a failed sync only delays balances.
+        do {
+            try await lightningService.sync()
+        } catch {
+            Logger.warn("Set primary address type to \(addressType) but sync failed: \(error)")
+        }
+
+        await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
 
         wallet?.syncState()
         return true
