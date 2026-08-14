@@ -26,6 +26,8 @@ struct HourglassLoadingView: View {
 struct SendPendingScreen: View {
     let paymentHash: String
     let retryRoute: SendRetryRoute
+    let paymentRequest: String?
+    let routingCacheResetAttempted: Bool
     @Binding var navigationPath: [SendRoute]
 
     @EnvironmentObject private var activityList: ActivityListViewModel
@@ -89,9 +91,10 @@ struct SendPendingScreen: View {
             } else {
                 app.consumeContactPaymentContext(forPendingPaymentHash: paymentHash)
                 navigationPath.append(.failure(SendFailureContext(
-                    message: t("wallet__payment_failed_description"),
+                    error: AppError(paymentFailureReason: resolution.failureReason),
                     retryRoute: retryRoute,
-                    resetRoutingCachesOnRetry: false
+                    routingCacheResetAttempted: routingCacheResetAttempted,
+                    paymentRequest: paymentRequest
                 )))
             }
         }
