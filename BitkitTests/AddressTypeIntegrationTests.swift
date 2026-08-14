@@ -73,8 +73,22 @@ final class AddressTypeIntegrationTests: XCTestCase {
     @MainActor
     private func addAddressTypeToMonitorWithRetry(_ addressType: LDKNode.AddressType) async throws {
         try await withRetry("Add \(addressType.stringValue) to monitor") {
-            try await settings.lightningService.addAddressTypeToMonitor(addressType)
+            do {
+                try await settings.lightningService.addAddressTypeToMonitor(addressType)
+            } catch {
+                // A retry after a partially applied add lands here; the node is already where we want it.
+                guard Self.isAlreadyMonitored(error) else { throw error }
+            }
         }
+    }
+
+    private static func isAlreadyMonitored(_ error: Error) -> Bool {
+        guard let nodeError = error as? NodeError ?? (error as? Bitkit.AppError)?.underlyingError as? NodeError else {
+            return false
+        }
+
+        if case .AddressTypeAlreadyMonitored = nodeError { return true }
+        return false
     }
 
     /// Waits for funds to show up for an address type rather than assuming a fixed confirmation
