@@ -22,22 +22,6 @@ struct SendFailureContext: Hashable {
     let paymentRequest: String?
     let routingCacheResetAttempted: Bool
 
-    init(
-        message: String?,
-        retryRoute: SendRetryRoute,
-        resetRoutingCachesOnRetry: Bool,
-        failureType: String = "Unknown",
-        paymentRequest: String? = nil,
-        routingCacheResetAttempted: Bool = false
-    ) {
-        self.message = message
-        self.retryRoute = retryRoute
-        self.resetRoutingCachesOnRetry = resetRoutingCachesOnRetry
-        self.failureType = failureType
-        self.paymentRequest = paymentRequest
-        self.routingCacheResetAttempted = routingCacheResetAttempted
-    }
-
     init(error: Error, retryRoute: SendRetryRoute, routingCacheResetAttempted: Bool = false, paymentRequest: String? = nil) {
         let shouldResetRoutingCaches = shouldResetRoutingCachesOnRetry(for: error)
 
@@ -63,7 +47,7 @@ enum SendRoute: Hashable {
     case tag
     case quickpay
     case pin
-    case pending(paymentHash: String, retryRoute: SendRetryRoute, paymentRequest: String? = nil)
+    case pending(paymentHash: String, retryRoute: SendRetryRoute, paymentRequest: String?)
     case success(paymentId: String)
     case failure(SendFailureContext)
     case lnurlPayAmount
