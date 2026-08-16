@@ -8,6 +8,13 @@ import SwiftUI
 struct SendSheetPendingResolution: Equatable {
     let paymentHash: String
     let success: Bool
+    let failureReason: PaymentFailureReason?
+
+    init(paymentHash: String, success: Bool, failureReason: PaymentFailureReason? = nil) {
+        self.paymentHash = paymentHash
+        self.success = success
+        self.failureReason = failureReason
+    }
 }
 
 struct ContactPaymentContext: Equatable {
@@ -1010,11 +1017,11 @@ extension AppViewModel {
                     accessibilityIdentifier: "PaymentSuccessToast"
                 )
             }
-        case let .paymentFailed(paymentId, paymentHash, _):
+        case let .paymentFailed(paymentId, paymentHash, reason):
             let hash = paymentId ?? paymentHash
             if let hash, pendingPaymentHashes.contains(hash) {
                 pendingPaymentHashes.remove(hash)
-                sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false)
+                sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: reason)
                 toast(
                     type: .error,
                     title: t("wallet__toast_payment_failed_title"),

@@ -225,7 +225,7 @@ struct LnurlPayConfirm: View {
                 sats: nil,
                 onTimeout: {
                     app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
-                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .lnurlPayConfirm))
+                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .lnurlPayConfirm, paymentRequest: bolt11))
                 }
             )
             app.addPendingContactPaymentContext(paymentHash, contactPublicKey: contactPublicKey)

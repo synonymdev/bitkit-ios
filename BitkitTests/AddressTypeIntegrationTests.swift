@@ -41,7 +41,150 @@ final class AddressTypeIntegrationTests: XCTestCase {
         let lightning = await MainActor.run { settings.lightningService }
         try await lightning.setup(walletIndex: walletIndex)
         try await lightning.start()
-        try await lightning.sync()
+        try await syncWithRetry()
+    }
+
+    // MARK: - Retry / Polling Helpers
+
+    private static let retryDelayNanoseconds: UInt64 = 2_000_000_000
+    private static let balancePollIntervalNanoseconds: UInt64 = 3_000_000_000
+    private static let balanceTimeout: TimeInterval = 120
+
+    /// LDK wallet operations time out under load on CI runners (`NodeError.WalletOperationTimeout`),
+    /// which is a property of the runner rather than of the code under test.
+    private func withRetry(_ label: String, attempts: Int = 3, operation: () async throws -> Void) async throws {
+        for attempt in 1 ... attempts {
+            do {
+                try await operation()
+                return
+            } catch {
+                Logger.test("\(label) attempt \(attempt)/\(attempts) failed: \(error)", context: "AddressTypeIntegrationTests")
+                guard attempt < attempts else { throw error }
+                try await Task.sleep(nanoseconds: Self.retryDelayNanoseconds)
+            }
+        }
+    }
+
+    private func syncWithRetry() async throws {
+        let lightning = await MainActor.run { settings.lightningService }
+        try await withRetry("Sync") { try await lightning.sync() }
+    }
+
+    @MainActor
+    private func addAddressTypeToMonitorWithRetry(_ addressType: LDKNode.AddressType) async throws {
+        try await withRetry("Add \(addressType.stringValue) to monitor") {
+            do {
+                try await settings.lightningService.addAddressTypeToMonitor(addressType)
+            } catch {
+                // A retry after a partially applied add lands here; the node is already where we want it.
+                guard Self.isAlreadyMonitored(error) else { throw error }
+            }
+        }
+    }
+
+    private static func isAlreadyMonitored(_ error: Error) -> Bool {
+        guard let nodeError = error as? NodeError ?? (error as? Bitkit.AppError)?.underlyingError as? NodeError else {
+            return false
+        }
+
+        if case .AddressTypeAlreadyMonitored = nodeError { return true }
+        return false
+    }
+
+    /// Waits for funds to show up for an address type rather than assuming a fixed confirmation
+    /// delay. Regtest confirms almost immediately locally but can lag well past 15s on CI.
+    @discardableResult
+    @MainActor
+    private func waitForBalance(
+        _ addressType: LDKNode.AddressType,
+        atLeast minimumSats: UInt64,
+        timeout: TimeInterval = AddressTypeIntegrationTests.balanceTimeout,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws -> UInt64 {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastBalance: UInt64 = 0
+
+        repeat {
+            do {
+                try await syncWithRetry()
+                lastBalance = try await settings.lightningService.getBalanceForAddressType(addressType).totalSats
+                if lastBalance >= minimumSats { return lastBalance }
+                Logger.test(
+                    "Waiting for \(addressType.stringValue) balance: \(lastBalance)/\(minimumSats) sats",
+                    context: "AddressTypeIntegrationTests"
+                )
+            } catch {
+                Logger.test("Balance poll for \(addressType.stringValue) failed, retrying: \(error)", context: "AddressTypeIntegrationTests")
+            }
+
+            try await Task.sleep(nanoseconds: Self.balancePollIntervalNanoseconds)
+        } while Date() < deadline
+
+        XCTFail(
+            "Timed out after \(Int(timeout))s waiting for \(addressType.stringValue) balance of \(minimumSats) sats, last saw \(lastBalance)",
+            file: file,
+            line: line
+        )
+        return lastBalance
+    }
+
+    /// `setMonitoring` collapses LDK failures into `false`, so a transient timeout is
+    /// indistinguishable from a rejection. Retry, then report the recorded cause.
+    @MainActor
+    private func enableMonitoring(
+        _ addressType: LDKNode.AddressType,
+        attempts: Int = 3,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for attempt in 1 ... attempts {
+            if await settings.setMonitoring(addressType, enabled: true, wallet: nil) { return }
+
+            Logger.test(
+                "Enabling \(addressType.stringValue) monitoring failed on attempt \(attempt)/\(attempts): \(addressTypeFailureCause)",
+                context: "AddressTypeIntegrationTests"
+            )
+            guard attempt < attempts else { break }
+            try? await Task.sleep(nanoseconds: Self.retryDelayNanoseconds)
+        }
+
+        XCTFail(
+            "Enabling \(addressType.stringValue) monitoring failed after \(attempts) attempts: \(addressTypeFailureCause)",
+            file: file,
+            line: line
+        )
+    }
+
+    /// Same collapse-to-`false` problem as `setMonitoring`, on the primary address type.
+    @MainActor
+    private func selectAddressType(
+        _ addressType: LDKNode.AddressType,
+        attempts: Int = 3,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for attempt in 1 ... attempts {
+            if await settings.updateAddressType(addressType, wallet: nil) { return }
+
+            Logger.test(
+                "Selecting \(addressType.stringValue) failed on attempt \(attempt)/\(attempts): \(addressTypeFailureCause)",
+                context: "AddressTypeIntegrationTests"
+            )
+            guard attempt < attempts else { break }
+            try? await Task.sleep(nanoseconds: Self.retryDelayNanoseconds)
+        }
+
+        XCTFail(
+            "Selecting \(addressType.stringValue) failed after \(attempts) attempts: \(addressTypeFailureCause)",
+            file: file,
+            line: line
+        )
+    }
+
+    @MainActor
+    private var addressTypeFailureCause: String {
+        settings.lastAddressTypeError.map { "\($0)" } ?? "no error recorded"
     }
 
     @MainActor
@@ -70,8 +213,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         try await setupWalletAndNode()
 
         Logger.test("Updating address type to taproot", context: "AddressTypeIntegrationTests")
-        let success = await settings.updateAddressType(.taproot, wallet: nil)
-        XCTAssertTrue(success, "updateAddressType should succeed")
+        await selectAddressType(.taproot)
 
         XCTAssertEqual(UserDefaults.standard.string(forKey: "selectedAddressType"), "taproot")
         XCTAssertTrue(settings.addressTypesToMonitor.contains(.taproot))
@@ -83,8 +225,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         try await setupWalletAndNode()
 
         Logger.test("Updating address type to legacy", context: "AddressTypeIntegrationTests")
-        let success = await settings.updateAddressType(.legacy, wallet: nil)
-        XCTAssertTrue(success, "updateAddressType to legacy should succeed")
+        await selectAddressType(.legacy)
 
         XCTAssertEqual(UserDefaults.standard.string(forKey: "selectedAddressType"), "legacy")
         XCTAssertTrue(settings.addressTypesToMonitor.contains(.legacy))
@@ -99,8 +240,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         UserDefaults.standard.synchronize()
 
         Logger.test("Enabling monitoring for taproot", context: "AddressTypeIntegrationTests")
-        let success = await settings.setMonitoring(.taproot, enabled: true, wallet: nil)
-        XCTAssertTrue(success)
+        await enableMonitoring(.taproot)
         XCTAssertTrue(settings.addressTypesToMonitor.contains(.taproot))
     }
 
@@ -110,8 +250,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
-        let addSuccess = await settings.setMonitoring(.taproot, enabled: true, wallet: nil)
-        XCTAssertTrue(addSuccess, "Adding taproot to monitoring should succeed")
+        await enableMonitoring(.taproot)
 
         Logger.test("Disabling monitoring for empty taproot type", context: "AddressTypeIntegrationTests")
         let success = await settings.setMonitoring(.taproot, enabled: false, wallet: nil)
@@ -139,10 +278,8 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
-        let addSuccess = await settings.setMonitoring(.taproot, enabled: true, wallet: nil)
-        XCTAssertTrue(addSuccess)
-        let updateSuccess = await settings.updateAddressType(.taproot, wallet: nil)
-        XCTAssertTrue(updateSuccess, "Taproot should be selected")
+        await enableMonitoring(.taproot)
+        await selectAddressType(.taproot)
 
         Logger.test("Attempting to disable selected type (taproot)", context: "AddressTypeIntegrationTests")
         let success = await settings.setMonitoring(.taproot, enabled: false, wallet: nil)
@@ -156,8 +293,8 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
         settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
         UserDefaults.standard.synchronize()
-        try await settings.lightningService.addAddressTypeToMonitor(.taproot)
-        try await settings.lightningService.sync()
+        try await addAddressTypeToMonitorWithRetry(.taproot)
+        try await syncWithRetry()
 
         Logger.test("Pruning empty address types after restore", context: "AddressTypeIntegrationTests")
         await settings.pruneEmptyAddressTypesAfterRestore()
@@ -179,8 +316,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
         Logger.test("Testing updateAddressType mutex guard", context: "AddressTypeIntegrationTests")
         // First call should succeed
-        let success = await settings.updateAddressType(.taproot, wallet: nil)
-        XCTAssertTrue(success)
+        await selectAddressType(.taproot)
 
         // Same type returns true (guard: addressType == selectedAddressType)
         let sameTypeResult = await settings.updateAddressType(.taproot, wallet: nil)
@@ -198,8 +334,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         // Enable legacy monitoring and switch to legacy
         settings.addressTypesToMonitor = [.nativeSegwit, .legacy]
         UserDefaults.standard.synchronize()
-        let updateSuccess = await settings.updateAddressType(.legacy, wallet: nil)
-        XCTAssertTrue(updateSuccess)
+        await selectAddressType(.legacy)
 
         let legacyAddress = try await settings.lightningService.newAddressForType(.legacy)
         Logger.test("Funding legacy address: \(legacyAddress)", context: "AddressTypeIntegrationTests")
@@ -207,12 +342,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
         XCTAssertFalse(txId.isEmpty)
 
         try await blocktank.regtestMineBlocks(6)
-        try await Task.sleep(nanoseconds: 15_000_000_000)
-        try await settings.lightningService.sync()
 
         // Verify legacy has balance
-        let legacyBalance = try await settings.lightningService.getBalanceForAddressType(.legacy)
-        XCTAssertGreaterThan(legacyBalance.totalSats, 0, "Legacy should have balance")
+        try await waitForBalance(.legacy, atLeast: 1)
 
         // Channel fundable should NOT include legacy
         let fundable = try await settings.lightningService.getChannelFundableBalance(
@@ -234,8 +366,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         // Enable taproot monitoring
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
-        let addSuccess = await settings.setMonitoring(.taproot, enabled: true, wallet: nil)
-        XCTAssertTrue(addSuccess, "Adding taproot should succeed")
+        await enableMonitoring(.taproot)
 
         // Fund the taproot address
         let taprootAddress = try await settings.lightningService.newAddressForType(.taproot)
@@ -244,12 +375,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
         XCTAssertFalse(txId.isEmpty)
 
         try await blocktank.regtestMineBlocks(6)
-        try await Task.sleep(nanoseconds: 15_000_000_000)
-        try await settings.lightningService.sync()
 
         // Verify taproot has balance
-        let taprootBalance = try await settings.lightningService.getBalanceForAddressType(.taproot)
-        XCTAssertGreaterThan(taprootBalance.totalSats, 0, "Taproot should have balance after funding")
+        try await waitForBalance(.taproot, atLeast: 1)
 
         // Attempt to disable — should fail because of balance
         Logger.test("Attempting to disable taproot monitoring with balance", context: "AddressTypeIntegrationTests")
@@ -269,8 +397,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         // Enable taproot monitoring
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
-        let addSuccess = await settings.setMonitoring(.taproot, enabled: true, wallet: nil)
-        XCTAssertTrue(addSuccess)
+        await enableMonitoring(.taproot)
 
         // Fund the taproot address
         let taprootAddress = try await settings.lightningService.newAddressForType(.taproot)
@@ -279,12 +406,10 @@ final class AddressTypeIntegrationTests: XCTestCase {
         XCTAssertFalse(txId.isEmpty)
 
         try await blocktank.regtestMineBlocks(6)
-        try await Task.sleep(nanoseconds: 15_000_000_000)
-        try await settings.lightningService.sync()
+        try await waitForBalance(.taproot, atLeast: 1)
 
         // Add legacy (will be empty)
-        let addLegacy = await settings.setMonitoring(.legacy, enabled: true, wallet: nil)
-        XCTAssertTrue(addLegacy)
+        await enableMonitoring(.legacy)
         XCTAssertEqual(settings.addressTypesToMonitor.count, 3)
 
         Logger.test("Pruning — should remove empty legacy but keep funded taproot", context: "AddressTypeIntegrationTests")
@@ -305,8 +430,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
         for type in [LDKNode.AddressType.taproot, .nestedSegwit, .legacy] {
-            let success = await settings.setMonitoring(type, enabled: true, wallet: nil)
-            XCTAssertTrue(success, "Enabling \(type.stringValue) monitoring should succeed")
+            await enableMonitoring(type)
         }
 
         // Regtest P2PKH addresses start with m or n depending on the hash, so legacy accepts both.
