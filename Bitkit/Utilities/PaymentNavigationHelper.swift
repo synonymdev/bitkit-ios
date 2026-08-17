@@ -19,10 +19,6 @@ struct PaymentNavigationHelper {
             return false
         }
 
-        if isBlockedByPaymentPin(pinEnabled: settings.pinEnabled, requirePinForPayments: settings.requirePinForPayments) {
-            return false
-        }
-
         // We need a lightning invoice or LNURL pay data to use quickpay
         guard app.scannedLightningInvoice != nil || app.lnurlPayData != nil else {
             return false
@@ -41,10 +37,6 @@ struct PaymentNavigationHelper {
 
         // Check regular lightning invoice
         return app.scannedLightningInvoice!.amountSatoshis <= quickpayAmountSats
-    }
-
-    nonisolated static func isBlockedByPaymentPin(pinEnabled: Bool, requirePinForPayments: Bool) -> Bool {
-        pinEnabled && requirePinForPayments
     }
 
     /// Centralized method to open the appropriate sheet based on the current state

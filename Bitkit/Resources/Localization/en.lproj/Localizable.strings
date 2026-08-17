@@ -541,6 +541,7 @@
 "other__shop__discover__travel__title" = "Travel";
 "other__shop__discover__travel__description" = "Book your ₿ holiday";
 "other__shop__main__nav_title" = "Shop";
+"other__shop__external_link_blocked" = "This link can’t be opened from the shop.";
 "security__backup_wallet" = "Wallet Backup";
 "security__backup_title" = "<accent>Safely store</accent> your Bitcoin";
 "security__backup_funds" = "Now that you have some funds in your wallet, it is time to back up your money!";

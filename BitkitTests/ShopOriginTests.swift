@@ -24,9 +24,61 @@ final class ShopOriginTests: XCTestCase {
 
     func testBridgeScriptChecksMessageOrigin() {
         let script = ShopOrigin.messageBridgeScript
+        XCTAssertTrue(script.contains("if (!window.__bitkitShopBridgeInstalled)"))
         XCTAssertTrue(script.contains("addEventListener('message'"))
-        XCTAssertTrue(script.contains("bitrefill.com"))
+        XCTAssertTrue(script.contains("event.origin !== 'https://embed.bitrefill.com'"))
         XCTAssertFalse(script.contains("window.postMessage ="))
+    }
+
+    func testMessageSenderRequiresExactPaymentOriginInMainFrame() {
+        XCTAssertTrue(
+            ShopOrigin.isAllowedMessageSender(
+                isMainFrame: true,
+                scheme: "https",
+                host: "embed.bitrefill.com",
+                port: 0
+            )
+        )
+        XCTAssertTrue(
+            ShopOrigin.isAllowedMessageSender(
+                isMainFrame: true,
+                scheme: "HTTPS",
+                host: "EMBED.BITREFILL.COM",
+                port: 443
+            )
+        )
+        XCTAssertFalse(
+            ShopOrigin.isAllowedMessageSender(
+                isMainFrame: false,
+                scheme: "https",
+                host: "embed.bitrefill.com",
+                port: 0
+            )
+        )
+        XCTAssertFalse(
+            ShopOrigin.isAllowedMessageSender(
+                isMainFrame: true,
+                scheme: "http",
+                host: "embed.bitrefill.com",
+                port: 0
+            )
+        )
+        XCTAssertFalse(
+            ShopOrigin.isAllowedMessageSender(
+                isMainFrame: true,
+                scheme: "https",
+                host: "www.bitrefill.com",
+                port: 0
+            )
+        )
+        XCTAssertFalse(
+            ShopOrigin.isAllowedMessageSender(
+                isMainFrame: true,
+                scheme: "https",
+                host: "embed.bitrefill.com",
+                port: 8443
+            )
+        )
     }
 
     func testBitrefillCheckoutRestrictsMainFrameNavigation() {

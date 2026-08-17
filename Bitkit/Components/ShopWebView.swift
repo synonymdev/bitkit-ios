@@ -6,11 +6,18 @@ struct ShopWebView: UIViewRepresentable {
     let url: String
     var webView: Binding<WKWebView?>?
     var onMessage: ((String) -> Void)?
+    var onBlockedNavigation: (() -> Void)?
 
-    init(url: String, webView: Binding<WKWebView?>? = nil, onMessage: ((String) -> Void)? = nil) {
+    init(
+        url: String,
+        webView: Binding<WKWebView?>? = nil,
+        onMessage: ((String) -> Void)? = nil,
+        onBlockedNavigation: (() -> Void)? = nil
+    ) {
         self.url = url
         self.webView = webView
         self.onMessage = onMessage
+        self.onBlockedNavigation = onBlockedNavigation
     }
 
     func makeCoordinator() -> Coordinator {
@@ -56,9 +63,16 @@ struct ShopWebView: UIViewRepresentable {
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard message.name == "messageHandler", let body = message.body as? String else { return }
-            guard ShopOrigin.isAllowed(message.webView?.url) else {
+            let frameInfo = message.frameInfo
+            let securityOrigin = frameInfo.securityOrigin
+            guard ShopOrigin.isAllowedMessageSender(
+                isMainFrame: frameInfo.isMainFrame,
+                scheme: securityOrigin.protocol,
+                host: securityOrigin.host,
+                port: securityOrigin.port
+            ) else {
                 Logger.warn(
-                    "Rejected shop payment_intent from untrusted origin '\(message.webView?.url?.absoluteString ?? "")'",
+                    "Rejected shop payment_intent from untrusted sender '\(securityOrigin.protocol)://\(securityOrigin.host):\(securityOrigin.port)'",
                     context: "ShopWebView"
                 )
                 return
@@ -86,6 +100,7 @@ struct ShopWebView: UIViewRepresentable {
                 "Blocked shop navigation to untrusted origin '\(navigationAction.request.url?.absoluteString ?? "")'",
                 context: "ShopWebView"
             )
+            parent.onBlockedNavigation?()
             decisionHandler(.cancel)
         }
 
@@ -110,6 +125,7 @@ struct ShopWebView: UIViewRepresentable {
                     "Blocked shop window navigation to untrusted origin '\(navigationAction.request.url?.absoluteString ?? "")'",
                     context: "ShopWebView"
                 )
+                parent.onBlockedNavigation?()
                 return nil
             }
             webView.load(navigationAction.request)
