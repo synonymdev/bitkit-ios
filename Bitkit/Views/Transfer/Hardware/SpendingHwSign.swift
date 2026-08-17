@@ -5,7 +5,7 @@ import SwiftUI
 /// transaction on the Trezor. Reuses the existing Learn More / Advanced controls; on-device signing
 /// replaces the local swipe-to-pay. Advances to the Signed screen on success.
 struct SpendingHwSign: View {
-    let deviceId: String
+    let walletId: String
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
@@ -47,8 +47,8 @@ struct SpendingHwSign: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .task(id: order.id) {
-            transfer.warmUpHardwareConnection(deviceId: deviceId)
-            await transfer.updateHwFundingFeeEstimate(order: order, deviceId: deviceId)
+            transfer.warmUpHardwareConnection(walletId: walletId)
+            await transfer.updateHwFundingFeeEstimate(order: order, walletId: walletId)
         }
         .onChange(of: transfer.hwSignedEvent) {
             navigation.navigate(.spendingHwSigned)
@@ -58,6 +58,15 @@ struct SpendingHwSign: View {
             app.toast(error)
             transfer.hwTransferError = nil
         }
+        // A local sheet, not a route: it belongs to this order and this wallet, and swiping it away
+        // must take the same path as Cancel.
+        .sheet(isPresented: passphrasePromptBinding) {
+            HwPassphrasePromptSheet(
+                isVerifying: transfer.hwSpending.isVerifyingPassphrase,
+                onSubmit: { transfer.onHwPassphraseSubmit(order: order, walletId: walletId, passphrase: $0) },
+                onCancel: { transfer.onHwPassphraseDismiss() }
+            )
+        }
         .onDisappear {
             // Cancel an in-flight sign only when the user truly leaves the flow (back/reset), not when
             // pushing deeper (Learn More / Advanced / Signed) which keeps this route in the path.
@@ -66,6 +75,13 @@ struct SpendingHwSign: View {
             }
             if !stillInFlow { transfer.cancelHwSigning() }
         }
+    }
+
+    private var passphrasePromptBinding: Binding<Bool> {
+        Binding(
+            get: { transfer.hwSpending.isPassphraseRequired },
+            set: { if !$0 { transfer.onHwPassphraseDismiss() } }
+        )
     }
 
     private func belowNav(order: IBtOrder) -> some View {
@@ -126,7 +142,7 @@ struct SpendingHwSign: View {
                 isDisabled: transfer.hwSpending.isSigning,
                 isLoading: transfer.hwSpending.isSigning
             ) {
-                transfer.onTransferToSpendingHwConfirm(order: order, deviceId: deviceId)
+                transfer.onTransferToSpendingHwConfirm(order: order, walletId: walletId)
             }
             .accessibilityIdentifier("HardwareTransferOpenTrezorConnect")
         }

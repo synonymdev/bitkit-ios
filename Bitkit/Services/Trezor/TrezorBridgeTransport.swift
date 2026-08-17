@@ -17,6 +17,10 @@ final class TrezorBridgeTransport {
     /// tied to a single message type, so every `/call` gets the long window. Bridge is dev/E2E-only
     /// and management calls return immediately regardless.
     private static let callReadTimeout: TimeInterval = 120
+    /// What the bridge calls the absence of a held session in an acquire path.
+    private static let noSession = "null"
+    /// The bridge's answer when the session offered as the previous one is not the one it holds.
+    private static let wrongPreviousSession = "wrong previous session"
 
     private let decoder = JSONDecoder()
     private let sessionLock = NSLock()
@@ -71,28 +75,52 @@ final class TrezorBridgeTransport {
         let rawPath = Self.rawBridgePath(path)
 
         sessionLock.lock()
-        let previousSession = openSessions.removeValue(forKey: path) ?? enumeratedSessions[path] ?? "null"
+        let previousSession = openSessions.removeValue(forKey: path) ?? enumeratedSessions[path] ?? Self.noSession
         sessionLock.unlock()
 
         do {
-            let response = try post(path: "/acquire/\(Self.encode(rawPath))/\(Self.encode(previousSession))")
-            let bridgeSession = try decoder.decode(BridgeSession.self, from: Data(response.utf8))
-
-            sessionLock.lock()
-            openSessions[path] = bridgeSession.session
-            sessionLock.unlock()
-
-            debugLog("openDevice: \(path)")
-            return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
+            try acquire(path: path, rawPath: rawPath, previousSession: previousSession)
         } catch {
-            debugLog("openDevice FAILED: \(error.localizedDescription)")
-            return TrezorTransportWriteResult(success: false, error: error.localizedDescription, errorCode: nil)
+            // The remembered session goes stale in both directions: a release the bridge applied but
+            // never confirmed, and one that never reached it at all. Rather than trust the cache,
+            // ask which session it holds and try once more.
+            guard error.localizedDescription.localizedCaseInsensitiveContains(Self.wrongPreviousSession) else {
+                debugLog("openDevice FAILED: \(error.localizedDescription)")
+                return TrezorTransportWriteResult(success: false, error: error.localizedDescription, errorCode: nil)
+            }
+            debugLog("openDevice: refreshing the session held for \(path) after a stale acquire")
+            _ = enumerateDevices()
+            sessionLock.lock()
+            let held = enumeratedSessions[path] ?? Self.noSession
+            sessionLock.unlock()
+            do {
+                try acquire(path: path, rawPath: rawPath, previousSession: held)
+            } catch {
+                debugLog("openDevice FAILED: \(error.localizedDescription)")
+                return TrezorTransportWriteResult(success: false, error: error.localizedDescription, errorCode: nil)
+            }
         }
+
+        debugLog("openDevice: \(path)")
+        return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
+    }
+
+    private func acquire(path: String, rawPath: String, previousSession: String) throws {
+        let response = try post(path: "/acquire/\(Self.encode(rawPath))/\(Self.encode(previousSession))")
+        let bridgeSession = try decoder.decode(BridgeSession.self, from: Data(response.utf8))
+        sessionLock.lock()
+        openSessions[path] = bridgeSession.session
+        sessionLock.unlock()
     }
 
     func closeDevice(path: String) -> TrezorTransportWriteResult {
         sessionLock.lock()
         let session = openSessions.removeValue(forKey: path)
+        // Whatever was cached from the last enumerate is stale once a release is attempted: offering
+        // it as the previous session makes the bridge answer "wrong previous session". Cleared even
+        // when the release below fails, since a failed release leaves it just as untrustworthy — the
+        // retry in `openDevice` re-reads the session the bridge actually holds either way.
+        enumeratedSessions.removeValue(forKey: path)
         sessionLock.unlock()
 
         guard let session else {

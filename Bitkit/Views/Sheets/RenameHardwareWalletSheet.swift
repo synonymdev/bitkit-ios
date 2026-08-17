@@ -1,19 +1,19 @@
 import SwiftUI
 
 struct RenameHardwareWalletConfig {
-    let deviceId: String
+    let walletId: String
     let currentName: String
 }
 
 struct RenameHardwareWalletSheetItem: SheetItem, Equatable {
     let id: SheetID = .renameHardwareWallet
     let size: SheetSize = .small
-    let deviceId: String
+    let walletId: String
     let currentName: String
 }
 
 /// Renames a paired hardware wallet: a single NAME field pre-filled with the current name and a Save
-/// button. Persists the custom name via `TrezorManager.renameDevice`, which re-pushes the device
+/// button. Persists the custom name via `TrezorManager.renameWallet`, which re-pushes the device
 /// snapshot so `HwWallet.name` updates everywhere.
 struct RenameHardwareWalletSheet: View {
     @Environment(TrezorManager.self) private var trezorManager
@@ -67,7 +67,7 @@ struct RenameHardwareWalletSheet: View {
 
     private func save() {
         guard !trimmedName.isEmpty else { return }
-        trezorManager.renameDevice(id: config.deviceId, newName: trimmedName)
+        trezorManager.renameWallet(walletId: config.walletId, newName: trimmedName)
         sheets.hideSheet()
     }
 }

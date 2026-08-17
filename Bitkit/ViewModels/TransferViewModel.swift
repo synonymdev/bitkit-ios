@@ -20,6 +20,9 @@ struct HwSpendingState: Equatable {
     var isLoading = false
     var isSigning = false
     var hasPendingBroadcast = false
+    /// The hidden wallet needs its passphrase before the device can sign for it.
+    var isPassphraseRequired = false
+    var isVerifyingPassphrase = false
     var miningFeeSats: UInt64 = 0
     var maxAllowedToSend: UInt64 = 0
     var balanceAfterFee: UInt64 = 0
@@ -28,14 +31,14 @@ struct HwSpendingState: Equatable {
 
 private struct PendingHwFundingBroadcast {
     let orderId: String
-    let deviceId: String
+    let walletId: String
     let address: String
     let amountSats: UInt64
     let signedTx: HwFundingSignedTx
 
-    func matches(order: IBtOrder, deviceId: String, address: String) -> Bool {
+    func matches(order: IBtOrder, walletId: String, address: String) -> Bool {
         orderId == order.id &&
-            self.deviceId == deviceId &&
+            self.walletId == walletId &&
             self.address == address &&
             amountSats == order.feeSat
     }
@@ -55,6 +58,8 @@ enum HwTransferError: Error, Equatable {
     case deviceBusy
     /// Firmware error (code 99) — user must reconnect the device.
     case firmwareReconnect
+    /// The entered passphrase opened a different wallet than the one being spent from.
+    case passphraseMismatch
     case funding(String?)
     case generic(String?)
 }
@@ -63,18 +68,15 @@ enum HwTransferError: Error, Equatable {
 /// declared as a protocol so the flow stays testable.
 @MainActor
 protocol HwTransferFunding: Sendable {
-    /// bitkit-core wallet id scoping the device's activities, so a transfer funded from it is
-    /// recorded against that wallet rather than the normal Bitkit wallet.
-    func walletId(forDevice deviceId: String) throws -> String
-    func getFundingAccount(deviceId: String, addressType: AddressScriptType) throws -> HwFundingAccount
+    func getFundingAccount(walletId: String, addressType: AddressScriptType) throws -> HwFundingAccount
     func maxSpendableFunding(
-        deviceId: String,
+        walletId: String,
         destinationAddress: String,
         satsPerVByte: UInt64,
         addressType: AddressScriptType
     ) async throws -> UInt64
     func composeFundingTransaction(
-        deviceId: String,
+        walletId: String,
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
@@ -82,28 +84,33 @@ protocol HwTransferFunding: Sendable {
     ) async throws -> HwFundingTransaction
     /// Offline coin-selection estimate for the exact funding amount (`fingerprint: nil`); fee only.
     func estimateOfflineFundingMiningFee(
-        deviceId: String,
+        walletId: String,
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
         addressType: AddressScriptType
     ) async throws -> UInt64
-    func signFunding(deviceId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
+    func signFunding(walletId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
     func broadcastFunding(serializedTx: String) async throws -> String
 }
 
-/// The device-session capability the transfer flow needs for on-device signing. Implemented by
-/// `TrezorManager`.
+/// The device-session capability the transfer flow needs for on-device signing, addressed by wallet
+/// identity: a device holds one wallet open at a time, so reaching a given wallet is more than
+/// reaching its transport. Implemented by `TrezorManager`.
 @MainActor
 protocol HwTransferConnecting: Sendable {
-    func ensureConnected(deviceId: String) async throws
-    func disconnectStaleSession(deviceId: String) async
-    /// Whether the device is a known Bluetooth device, so a reconnect failure can show the softer
-    /// BLE "check that it is unlocked and try again" toast instead of the generic reconnect error.
-    func isKnownBluetoothDevice(deviceId: String) -> Bool
+    func ensureConnected(walletId: String) async throws
+    func disconnectStaleSession(walletId: String) async
+    /// Whether the wallet is reachable over a known Bluetooth device, so a reconnect failure can show
+    /// the softer BLE "check that it is unlocked and try again" toast instead of the generic error.
+    func isKnownBluetoothDevice(walletId: String) -> Bool
     /// Best-effort pre-connect when the sign screen appears, so tapping Open Trezor Connect is less
     /// likely to hit a cold reconnect. Fire-and-forget.
-    func warmUpConnection(deviceId: String)
+    func warmUpConnection(walletId: String)
+    /// Whether the wallet's passphrase has to be collected again before the device can sign for it.
+    func needsPassphrase(walletId: String) -> Bool
+    /// Reopens a hidden wallet for signing, refusing a session that resolves to a different wallet.
+    func reconnectWithPassphrase(walletId: String, passphrase: String) async throws
 }
 
 @MainActor
@@ -144,8 +151,9 @@ class TransferViewModel: ObservableObject {
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
     private var hwSignTask: Task<Void, Never>?
+    private var hwPassphraseTask: Task<Void, Never>?
     private var pendingHwFundingBroadcast: PendingHwFundingBroadcast?
-    private var activeHwTransferDeviceId: String?
+    private var activeHwTransferWalletId: String?
 
     private let retryInterval: TimeInterval = 60 // 1 min
     private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
@@ -534,7 +542,7 @@ class TransferViewModel: ObservableObject {
     /// the device's native-segwit balance minus an on-chain fee reserve, then the shared
     /// spending-limit calculation clamps it to the LSP receiving cap.
     func updateHwLimits(
-        deviceId: String,
+        walletId: String,
         blocktankInfo: IBtInfo?,
         estimateOrderFee: @escaping (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws
             -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
@@ -545,7 +553,7 @@ class TransferViewModel: ObservableObject {
 
         let availability: HwFundingSigner.Availability
         do {
-            availability = try await hwSigner.availability(deviceId: deviceId)
+            availability = try await hwSigner.availability(walletId: walletId)
         } catch {
             hwSpending = HwSpendingState(isLoading: false)
             hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
@@ -572,24 +580,24 @@ class TransferViewModel: ObservableObject {
     }
 
     /// Best-effort offline mining-fee estimate for the Sign screen (`fingerprint: nil` compose).
-    func updateHwFundingFeeEstimate(order: IBtOrder, deviceId: String) async {
+    func updateHwFundingFeeEstimate(order: IBtOrder, walletId: String) async {
         guard let hwSigner else { return }
         guard !hwSpending.hasPendingBroadcast else { return }
         guard let address = order.payment?.onchain?.address, !address.isEmpty else { return }
         do {
             hwSpending.miningFeeSats = try await hwSigner.estimateOfflineFundingMiningFee(
-                deviceId: deviceId,
+                walletId: walletId,
                 address: address,
                 sats: order.feeSat
             )
         } catch {
-            Logger.debug("Skipped offline hardware funding fee estimate for '\(deviceId)'", context: "TransferViewModel")
+            Logger.debug("Skipped offline hardware funding fee estimate for '\(walletId)'", context: "TransferViewModel")
         }
     }
 
     /// Pay for the order by composing and signing the funding send on the Trezor (via the signer),
     /// then record and watch it. Coordination only — the device orchestration lives in `HwFundingSigner`.
-    func onTransferToSpendingHwConfirm(order: IBtOrder, deviceId: String) {
+    func onTransferToSpendingHwConfirm(order: IBtOrder, walletId: String) {
         guard !hwSpending.isSigning else { return }
         guard let hwSigner else {
             hwTransferError = .generic(t("common__error"))
@@ -599,8 +607,18 @@ class TransferViewModel: ObservableObject {
             hwTransferError = .generic(t("common__error"))
             return
         }
+        // A hidden wallet whose session is gone can only be reopened with its passphrase, and the
+        // device would otherwise sign from whichever wallet the current session holds. A signed
+        // transaction awaiting a broadcast retry is the exception: broadcasting never reaches the
+        // device, so holding the retry behind a passphrase would strand funds the user already
+        // approved — the same reason `cancelHwSigning` leaves the device alone while one is pending.
+        let isBroadcastRetry = pendingHwFundingBroadcast?.matches(order: order, walletId: walletId, address: address) == true
+        if !isBroadcastRetry, hwConnecting?.needsPassphrase(walletId: walletId) == true {
+            hwSpending.isPassphraseRequired = true
+            return
+        }
 
-        activeHwTransferDeviceId = deviceId
+        activeHwTransferWalletId = walletId
         hwSpending.isSigning = true
         hwTransferError = nil
 
@@ -612,25 +630,21 @@ class TransferViewModel: ObservableObject {
             }
 
             do {
-                // Resolved before signing: without it the transfer activity would be recorded
-                // against the wrong wallet, so fail before anything is broadcast.
-                let activityWalletId = try hwSigner.funding.walletId(forDevice: deviceId)
-
                 let signedTx: HwFundingSignedTx
-                if let pending = pendingHwFundingBroadcast, pending.matches(order: order, deviceId: deviceId, address: address) {
+                if let pending = pendingHwFundingBroadcast, pending.matches(order: order, walletId: walletId, address: address) {
                     signedTx = pending.signedTx
                     hwSpending.miningFeeSats = signedTx.miningFeeSats
                 } else {
                     signedTx = try await hwSigner.prepareSignedFunding(
                         order: order,
-                        deviceId: deviceId,
+                        walletId: walletId,
                         address: address
                     ) { [weak self] funding in
                         self?.hwSpending.miningFeeSats = funding.miningFeeSats
                     }
                     pendingHwFundingBroadcast = PendingHwFundingBroadcast(
                         orderId: order.id,
-                        deviceId: deviceId,
+                        walletId: walletId,
                         address: address,
                         amountSats: order.feeSat,
                         signedTx: signedTx
@@ -645,46 +659,95 @@ class TransferViewModel: ObservableObject {
                     createTransferActivity: true,
                     fee: result.miningFeeSats,
                     feeRate: result.feeRate,
-                    activityWalletId: activityWalletId
+                    // The wallet being spent from is the wallet the transfer is recorded against.
+                    activityWalletId: walletId
                 )
-                activeHwTransferDeviceId = nil
+                activeHwTransferWalletId = nil
                 hwFundingComplete = true
                 hwSignedEvent += 1
             } catch is CancellationError {
                 // User dismissed the flow — no toast.
             } catch let error as HwTransferError {
-                self.handleHardwareTransferFailure(error, deviceId: deviceId)
+                self.handleHardwareTransferFailure(error, walletId: walletId)
             } catch {
                 if error.isTrezorUserCancellation() {
-                    Logger.info("Hardware transfer cancelled on device '\(deviceId)'", context: "TransferViewModel")
+                    Logger.info("Hardware transfer cancelled on device for '\(walletId)'", context: "TransferViewModel")
                     return
                 }
-                handleRawHardwareTransferFailure(error, deviceId: deviceId)
+                handleRawHardwareTransferFailure(error, walletId: walletId)
             }
         }
+    }
+
+    /// Reopens the hidden wallet with the entered passphrase and, once its accounts prove it is the
+    /// wallet the transfer is for, continues into signing. The passphrase is passed straight through
+    /// to the device session; it is never kept in view state.
+    func onHwPassphraseSubmit(order: IBtOrder, walletId: String, passphrase: String) {
+        guard !passphrase.isEmpty, let hwConnecting, hwPassphraseTask == nil else { return }
+
+        hwSpending.isVerifyingPassphrase = true
+        hwTransferError = nil
+
+        // Tracked separately from `hwSignTask`: on success this hands over to the confirm below,
+        // which installs its own signing task that this one's cleanup must not tear down.
+        hwPassphraseTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.hwSpending.isVerifyingPassphrase = false
+                self.hwPassphraseTask = nil
+            }
+            do {
+                try await hwConnecting.reconnectWithPassphrase(walletId: walletId, passphrase: passphrase)
+                // The prompt can be dismissed while the device is still reopening the wallet, and
+                // the confirm below would start a signing task a late dismiss could not reach.
+                guard hwSpending.isPassphraseRequired else { return }
+                hwSpending.isPassphraseRequired = false
+                onTransferToSpendingHwConfirm(order: order, walletId: walletId)
+            } catch is CancellationError {
+                // User dismissed the prompt — no toast.
+            } catch HwPassphraseError.mismatch {
+                Logger.warn("Rejected wrong passphrase for hardware wallet '\(walletId)'", context: "TransferViewModel")
+                hwTransferError = .passphraseMismatch
+            } catch {
+                handleRawHardwareTransferFailure(error, walletId: walletId)
+            }
+        }
+    }
+
+    /// Backing out of the prompt also drops the reopen it started, so no signature is requested.
+    func onHwPassphraseDismiss() {
+        hwPassphraseTask?.cancel()
+        hwPassphraseTask = nil
+        hwSpending.isPassphraseRequired = false
+        hwSpending.isVerifyingPassphrase = false
     }
 
     /// Pre-connect the hardware device when the sign screen appears, mirroring Android's warm-up, so
     /// tapping Open Trezor Connect is less likely to hit a cold reconnect. Best-effort no-op without
     /// the HW capabilities.
-    func warmUpHardwareConnection(deviceId: String) {
+    func warmUpHardwareConnection(walletId: String) {
         guard !hwSpending.hasPendingBroadcast else { return }
-        hwSigner?.warmUp(deviceId: deviceId)
+        hwSigner?.warmUp(walletId: walletId)
     }
 
     /// Cancel an in-flight hardware signing task when the user abandons the sign flow, so a later
     /// on-device approval can't still sign/broadcast/record. Idempotent. No-op while a signed tx
     /// is awaiting broadcast retry.
     func cancelHwSigning() {
+        // The prompt and the reopen it started belong to the screen being left. Neither touches a
+        // signed transaction waiting to be broadcast, so they are dropped before the guard below —
+        // otherwise leaving mid-verify would leave the reopen running and the prompt set to reappear.
+        onHwPassphraseDismiss()
+
         guard pendingHwFundingBroadcast == nil else { return }
-        let deviceId = activeHwTransferDeviceId
+        let walletId = activeHwTransferWalletId
         hwSignTask?.cancel()
         hwSignTask = nil
         hwSpending.isSigning = false
-        activeHwTransferDeviceId = nil
-        if let deviceId, let hwConnecting {
+        activeHwTransferWalletId = nil
+        if let walletId, let hwConnecting {
             Task {
-                await hwConnecting.disconnectStaleSession(deviceId: deviceId)
+                await hwConnecting.disconnectStaleSession(walletId: walletId)
             }
         }
     }
@@ -698,29 +761,42 @@ class TransferViewModel: ObservableObject {
         hwSpending.hasPendingBroadcast = false
     }
 
-    private func handleHardwareTransferFailure(_ error: HwTransferError, deviceId: String) {
+    private func handleHardwareTransferFailure(_ error: HwTransferError, walletId: String) {
         switch error {
         case .reconnect:
-            Logger.error("Failed to reconnect hardware device '\(deviceId)'", context: "TransferViewModel")
+            Logger.error("Failed to reconnect hardware device '\(walletId)'", context: "TransferViewModel")
         case .signingTimeout:
-            Logger.warn("Timed out hardware transfer signing for '\(deviceId)'", context: "TransferViewModel")
+            Logger.warn("Timed out hardware transfer signing for '\(walletId)'", context: "TransferViewModel")
         case .broadcastUncertain:
-            Logger.warn("Hardware funding broadcast timed out (uncertain) for '\(deviceId)'", context: "TransferViewModel")
+            Logger.warn("Hardware funding broadcast timed out (uncertain) for '\(walletId)'", context: "TransferViewModel")
         case .broadcastConnectivity:
-            Logger.warn("Hardware funding broadcast connectivity failure for '\(deviceId)'", context: "TransferViewModel")
+            Logger.warn("Hardware funding broadcast connectivity failure for '\(walletId)'", context: "TransferViewModel")
         case .deviceBusy:
-            Logger.warn("Blocked hardware transfer for locked or busy Trezor '\(deviceId)'", context: "TransferViewModel")
+            Logger.warn("Blocked hardware transfer for locked or busy Trezor '\(walletId)'", context: "TransferViewModel")
         case .firmwareReconnect:
-            Logger.warn("Received Trezor firmware error for '\(deviceId)'", context: "TransferViewModel")
+            Logger.warn("Received Trezor firmware error for '\(walletId)'", context: "TransferViewModel")
+        case .passphraseMismatch:
+            Logger.warn("Rejected wrong passphrase for hardware wallet '\(walletId)'", context: "TransferViewModel")
         case let .funding(message):
-            Logger.warn("Failed to compose hardware funding for '\(deviceId)': \(message ?? "")", context: "TransferViewModel")
+            Logger.warn("Failed to compose hardware funding for '\(walletId)': \(message ?? "")", context: "TransferViewModel")
         case .generic:
             break
         }
         hwTransferError = error
     }
 
-    private func handleRawHardwareTransferFailure(_ error: Error, deviceId: String) {
+    private func handleRawHardwareTransferFailure(_ error: Error, walletId: String) {
+        // The device is open on another identity and only this wallet's passphrase reopens it, so
+        // raise the prompt instead of reporting a failure the user can do nothing about.
+        if case HwPassphraseError.required = error {
+            Logger.info("Asking for the passphrase to reopen hardware wallet '\(walletId)'", context: "TransferViewModel")
+            hwSpending.isPassphraseRequired = true
+            return
+        }
+        if case HwPassphraseError.mismatch = error {
+            hwTransferError = .passphraseMismatch
+            return
+        }
         if error.isTrezorDeviceBusy() {
             hwTransferError = .deviceBusy
             return
@@ -1512,4 +1588,4 @@ actor ChannelPendingCapture {
 // MARK: - Hardware transfer capability conformances
 
 extension HwWalletManager: HwTransferFunding {}
-extension TrezorManager: HwTransferConnecting {}
+extension HwWalletManager: HwTransferConnecting {}

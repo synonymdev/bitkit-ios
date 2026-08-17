@@ -80,7 +80,7 @@ struct HardwareWalletsSettingsScreen: View {
                         onRename: {
                             sheets.showSheet(
                                 .renameHardwareWallet,
-                                data: RenameHardwareWalletConfig(deviceId: wallet.id, currentName: wallet.name)
+                                data: RenameHardwareWalletConfig(walletId: wallet.id, currentName: wallet.name)
                             )
                         },
                         onRemove: { pendingRemoval = wallet }
@@ -102,9 +102,7 @@ struct HardwareWalletsSettingsScreen: View {
 
     private func remove(_ wallet: HwWallet) async {
         pendingRemoval = nil
-        await hwWalletManager.removeWallet(wallet) { deviceId in
-            await trezorManager.forgetDevice(id: deviceId)
-        }
+        await hwWalletManager.removeWallet(walletId: wallet.id)
     }
 }
 

@@ -6,7 +6,7 @@ import SwiftUI
 /// `SpendingAmount`, but the available/MAX/quarter limits come from the device's native-segwit
 /// balance via `TransferViewModel.updateHwLimits`, and Continue advances to the on-device Sign step.
 struct SpendingAmountHw: View {
-    let deviceId: String
+    let walletId: String
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
@@ -29,14 +29,14 @@ struct SpendingAmountHw: View {
     /// Inputs the limit calculation depends on. Keying the `.task` on this reruns `updateHwLimits`
     /// when Blocktank info arrives after the screen opens (the LSP caps are otherwise nil → 0 limits).
     private struct HwLimitInputs: Equatable {
-        let deviceId: String
+        let walletId: String
         let maxChannelSizeSat: UInt64?
         let maxClientBalanceSat: UInt64?
     }
 
     private var hwLimitInputs: HwLimitInputs {
         HwLimitInputs(
-            deviceId: deviceId,
+            walletId: walletId,
             maxChannelSizeSat: blocktank.info?.options.maxChannelSizeSat,
             maxClientBalanceSat: blocktank.info?.options.maxClientBalanceSat
         )
@@ -110,7 +110,7 @@ struct SpendingAmountHw: View {
         .offlineOverlay(title: t("lightning__transfer__nav_title"))
         .task(id: hwLimitInputs) {
             await transfer.updateHwLimits(
-                deviceId: deviceId,
+                walletId: walletId,
                 blocktankInfo: blocktank.info,
                 estimateOrderFee: { clientBalance, lspBalance in
                     let estimate = try await blocktank.estimateOrderFee(clientBalance: clientBalance, lspBalance: lspBalance)
@@ -190,7 +190,7 @@ struct SpendingAmountHw: View {
             let order = try await blocktank.createOrder(clientBalance: amountSats, lspBalance: lspBalance)
 
             transfer.onOrderCreated(order: order)
-            navigation.navigate(.spendingHwSign(deviceId: deviceId))
+            navigation.navigate(.spendingHwSign(walletId: walletId))
         } catch {
             let appError = AppError(error: error)
             app.toast(type: .error, title: appError.message, description: appError.debugMessage)

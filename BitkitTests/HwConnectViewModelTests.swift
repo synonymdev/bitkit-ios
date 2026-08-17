@@ -48,7 +48,7 @@ final class HwConnectViewModelTests: XCTestCase {
 
     func testOnConnectConnectsFoundDeviceAndAdvancesToPaired() async {
         await givenDeviceFound()
-        service.connectResult = .success(HwConnectResult(deviceId: "dev1", name: "Trezor Safe 3"))
+        service.connectResult = .success(HwConnectResult(deviceId: "dev1", walletId: standardWalletId, name: "Trezor Safe 3"))
 
         sut.onConnect()
 
@@ -93,7 +93,7 @@ final class HwConnectViewModelTests: XCTestCase {
 
     func testPairingCodeRequestSurfacesInlinePairCodeStepWhileConnecting() async {
         await givenDeviceFound()
-        service.connectResult = .success(HwConnectResult(deviceId: "dev1", name: "Trezor Safe 3"))
+        service.connectResult = .success(HwConnectResult(deviceId: "dev1", walletId: standardWalletId, name: "Trezor Safe 3"))
 
         // onConnect flips isConnecting synchronously; the connect Task is queued but not yet run,
         // so the pairing-code request lands mid-connect exactly as it would on device.
@@ -114,10 +114,56 @@ final class HwConnectViewModelTests: XCTestCase {
     func testConnectedWalletUpdatesBalanceOnPairedStep() async {
         await givenDevicePaired()
 
-        sut.onWalletsUpdated([makeWallet(id: "dev1", name: "Trezor Safe 3", balance: 10_562_411)])
+        sut.onWalletsUpdated([makeWallet(id: standardWalletId, name: "Trezor Safe 3", balance: 10_562_411)])
 
         XCTAssertEqual(sut.balanceSats, 10_562_411)
         XCTAssertEqual(sut.deviceName, "Trezor Safe 3")
+    }
+
+    /// A device whose session did not resolve reports every one of its identities as connected, so
+    /// adopting one would show a sibling's balance and rename it on Finish.
+    func testDoesNotAdoptAnIdentityWhenTheDeviceHoldsSeveralAndTheSessionIsUnresolved() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(deviceId: "dev1", walletId: nil, name: "Trezor Safe 3"))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+
+        sut.onWalletsUpdated([
+            makeWallet(id: standardWalletId, name: "Standard", balance: 30000),
+            makeWallet(id: hiddenWalletId, name: "Hidden", balance: 20000),
+        ])
+
+        XCTAssertNil(sut.pairedWalletId)
+        XCTAssertEqual(sut.balanceSats, 0)
+        XCTAssertEqual(sut.deviceName, "Trezor Safe 3", "the device's own name stands until an identity resolves")
+    }
+
+    func testAdoptsTheOnlyIdentityOfTheDeviceWhenTheSessionIsUnresolved() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(deviceId: "dev1", walletId: nil, name: "Trezor Safe 3"))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+
+        sut.onWalletsUpdated([makeWallet(id: standardWalletId, name: "Standard", balance: 30000)])
+
+        XCTAssertEqual(sut.pairedWalletId, standardWalletId)
+        XCTAssertEqual(sut.balanceSats, 30000)
+    }
+
+    /// One identity reading as connected means the session resolved after the connect returned.
+    func testAdoptsTheIdentityThatResolvedAfterTheConnect() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(deviceId: "dev1", walletId: nil, name: "Trezor Safe 3"))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+
+        sut.onWalletsUpdated([
+            makeWallet(id: standardWalletId, name: "Standard", balance: 30000, isConnected: false),
+            makeWallet(id: hiddenWalletId, name: "Hidden", balance: 20000, isConnected: true),
+        ])
+
+        XCTAssertEqual(sut.pairedWalletId, hiddenWalletId)
+        XCTAssertEqual(sut.balanceSats, 20000)
     }
 
     func testOnLabelChangeCapsTheLabelInput() {
@@ -134,8 +180,171 @@ final class HwConnectViewModelTests: XCTestCase {
         sut.onFinish()
 
         XCTAssertEqual(service.setLabelCalls.count, 1)
-        XCTAssertEqual(service.setLabelCalls.first?.id, "dev1")
+        XCTAssertEqual(service.setLabelCalls.first?.walletId, standardWalletId)
         XCTAssertEqual(service.setLabelCalls.first?.label, "My Cold Wallet")
+        XCTAssertTrue(finished)
+    }
+
+    // MARK: - Passphrase wallets
+
+    func testPassphraseSubmitWatchesTheHiddenWalletAndAdvances() async {
+        await givenDevicePaired()
+        service.passphraseResult = .success(hiddenWalletId)
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("correct horse")
+
+        sut.onPassphraseSubmit()
+
+        await waitUntil { self.sut.phase == .passphrasePaired }
+        XCTAssertEqual(service.passphraseCalls.first?.passphrase, "correct horse")
+        XCTAssertEqual(sut.pairedWalletId, hiddenWalletId)
+        XCTAssertTrue(sut.passphraseInput.isEmpty, "the passphrase lives in the device session, never in Bitkit")
+        XCTAssertEqual(sut.balanceSats, 0, "the new identity starts empty until its watcher reports")
+    }
+
+    /// A brand-new identity has no label of its own, and the label of whichever wallet happened to be
+    /// open before it is not its name.
+    func testPassphraseWalletIsPrefilledWithTheDeviceNameNotTheRenamedWalletsLabel() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(
+            deviceId: "dev1",
+            walletId: standardWalletId,
+            name: "Standard Funds", // the standard wallet was renamed by the user
+            deviceDefaultName: "Trezor Safe 3"
+        ))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+        XCTAssertEqual(sut.labelInput, "Standard Funds", "the paired wallet keeps its own label")
+
+        service.passphraseResult = .success(hiddenWalletId)
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("correct horse")
+        sut.onPassphraseSubmit()
+        await waitUntil { self.sut.phase == .passphrasePaired }
+
+        XCTAssertEqual(sut.deviceName, "Trezor Safe 3")
+        XCTAssertEqual(sut.labelInput, "Trezor Safe 3")
+    }
+
+    func testPassphraseFailureReportsInlineAndKeepsNoPassphrase() async {
+        await givenDevicePaired()
+        service.passphraseResult = .failure(HwPassphraseError.alreadyAdded)
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("already used")
+
+        sut.onPassphraseSubmit()
+
+        await waitUntil { self.sut.errorMessage != nil }
+        XCTAssertEqual(sut.phase, .passphrase)
+        XCTAssertEqual(sut.errorMessage, t("hardware__passphrase_duplicate"))
+        XCTAssertTrue(sut.passphraseInput.isEmpty)
+        XCTAssertFalse(sut.isSubmittingPassphrase)
+    }
+
+    func testPassphraseProtectionDisabledIsReportedInItsOwnWords() async {
+        await givenDevicePaired()
+        service.passphraseResult = .failure(HwPassphraseError.protectionDisabled)
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("anything")
+
+        sut.onPassphraseSubmit()
+
+        await waitUntil { self.sut.errorMessage != nil }
+        XCTAssertEqual(sut.errorMessage, t("hardware__passphrase_disabled"))
+    }
+
+    /// Each identity is labelled on its own paired step, so the one being left must be saved first.
+    func testMovingToThePassphraseStepPersistsTheLabelOfTheWalletBeingLeft() async {
+        await givenDevicePaired()
+        sut.onLabelChange("Standard Funds")
+
+        sut.onPassphraseClick()
+
+        XCTAssertEqual(sut.phase, .passphrase)
+        XCTAssertEqual(service.setLabelCalls.count, 1)
+        XCTAssertEqual(service.setLabelCalls.first?.walletId, standardWalletId)
+        XCTAssertEqual(service.setLabelCalls.first?.label, "Standard Funds")
+    }
+
+    func testBackFromThePassphraseStepDropsWhatWasTyped() async {
+        await givenDevicePaired()
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("secret")
+
+        sut.onPassphraseBack()
+
+        XCTAssertEqual(sut.phase, .paired)
+        XCTAssertTrue(sut.passphraseInput.isEmpty)
+    }
+
+    func testDismissingTheSheetDropsTheEnteredPassphrase() async {
+        await givenDevicePaired()
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("secret")
+
+        sut.reset()
+
+        XCTAssertTrue(sut.passphraseInput.isEmpty)
+    }
+
+    /// A device holding several wallets shares one transport id, so the paired step must follow the
+    /// identity being paired and wait for it rather than adopting a sibling's name and balance.
+    func testPairedStepWaitsForTheIdentityBeingPaired() async {
+        await givenDevicePaired()
+        service.passphraseResult = .success(hiddenWalletId)
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("correct horse")
+        sut.onPassphraseSubmit()
+        await waitUntil { self.sut.phase == .passphrasePaired }
+
+        // The standard wallet is still the only one published.
+        sut.onWalletsUpdated([makeWallet(id: standardWalletId, name: "Standard", balance: 30000)])
+        XCTAssertEqual(sut.balanceSats, 0, "a sibling wallet's balance is not this wallet's")
+
+        sut.onWalletsUpdated([
+            makeWallet(id: standardWalletId, name: "Standard", balance: 30000),
+            makeWallet(id: hiddenWalletId, name: "Hidden", balance: 20000, isConnected: true),
+        ])
+        XCTAssertEqual(sut.balanceSats, 20000)
+        XCTAssertEqual(sut.deviceName, "Hidden")
+    }
+
+    func testTypedLabelSurvivesAWalletEmissionArrivingAfterwards() async {
+        await givenDevicePaired()
+        sut.onLabelChange("My Cold Wallet")
+
+        sut.onWalletsUpdated([makeWallet(id: standardWalletId, name: "Trezor Safe 3", balance: 42000)])
+
+        XCTAssertEqual(sut.labelInput, "My Cold Wallet")
+    }
+
+    func testFinishingLabelsTheIdentityThatWasPaired() async {
+        await givenDevicePaired()
+        service.passphraseResult = .success(hiddenWalletId)
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("correct horse")
+        sut.onPassphraseSubmit()
+        await waitUntil { self.sut.phase == .passphrasePaired }
+        sut.onLabelChange("Hidden Funds")
+
+        sut.onFinish()
+
+        XCTAssertEqual(service.setLabelCalls.last?.walletId, hiddenWalletId)
+        XCTAssertEqual(service.setLabelCalls.last?.label, "Hidden Funds")
+    }
+
+    /// The device is paired either way, so the flow finishes instead of dropping out of it.
+    func testFinishingCompletesEvenWhenNoIdentityResolved() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(deviceId: "dev1", walletId: nil, name: "Trezor Safe 3"))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+        var finished = false
+        sut.onFinished = { finished = true }
+
+        sut.onFinish()
+
+        XCTAssertTrue(service.setLabelCalls.isEmpty)
         XCTAssertTrue(finished)
     }
 
@@ -149,7 +358,7 @@ final class HwConnectViewModelTests: XCTestCase {
 
     private func givenDevicePaired() async {
         await givenDeviceFound()
-        service.connectResult = .success(HwConnectResult(deviceId: "dev1", name: "Trezor Safe 3"))
+        service.connectResult = .success(HwConnectResult(deviceId: "dev1", walletId: standardWalletId, name: "Trezor Safe 3"))
         sut.onConnect()
         await waitUntil { self.sut.phase == .paired }
     }
@@ -166,8 +375,25 @@ final class HwConnectViewModelTests: XCTestCase {
         )
     }
 
-    private func makeWallet(id: String, name: String, balance: UInt64) -> HwWallet {
-        HwWallet(id: id, walletId: "trezor:\(id)", name: name, model: nil, isConnected: true, balanceSats: balance)
+    private let standardWalletId = "trezor:standard"
+    private let hiddenWalletId = "trezor:hidden"
+
+    private func makeWallet(
+        id: String,
+        name: String,
+        balance: UInt64,
+        deviceIds: Set<String> = ["dev1"],
+        isConnected: Bool = true
+    ) -> HwWallet {
+        HwWallet(
+            id: id,
+            walletId: id,
+            name: name,
+            model: nil,
+            isConnected: isConnected,
+            balanceSats: balance,
+            deviceIds: deviceIds
+        )
     }
 
     private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async {
@@ -187,13 +413,15 @@ private final class FakeHwConnectService: HwConnectServicing {
     var nearbyDevices: [TrezorDeviceInfo] = []
     var scanError: Error?
     var connectResult: Result<HwConnectResult, Error> = .failure(TestError.stub)
+    var passphraseResult: Result<String, Error> = .failure(TestError.stub)
 
     private(set) var scanCount = 0
     private(set) var connectedDeviceIds: [String] = []
-    private(set) var setLabelCalls: [(id: String, label: String)] = []
+    private(set) var passphraseCalls: [(deviceId: String, passphrase: String)] = []
+    private(set) var setLabelCalls: [(walletId: String, label: String)] = []
     private(set) var cancelPairingCount = 0
 
-    func scanForUnpairedDevices() async throws -> [TrezorDeviceInfo] {
+    func scanForDevices() async throws -> [TrezorDeviceInfo] {
         scanCount += 1
         if let scanError { throw scanError }
         return nearbyDevices
@@ -204,8 +432,13 @@ private final class FakeHwConnectService: HwConnectServicing {
         return try connectResult.get()
     }
 
-    func setDeviceLabel(id: String, label: String) {
-        setLabelCalls.append((id, label))
+    func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String {
+        passphraseCalls.append((deviceId, passphrase))
+        return try passphraseResult.get()
+    }
+
+    func setWalletLabel(walletId: String, label: String) {
+        setLabelCalls.append((walletId, label))
     }
 
     func cancelPairingCode() {

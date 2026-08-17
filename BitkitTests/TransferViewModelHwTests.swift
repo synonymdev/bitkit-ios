@@ -28,9 +28,203 @@ final class TransferViewModelHwTests: XCTestCase {
         }
     }
 
+    // MARK: - Passphrase (hidden) wallets
+
+    func testConfirmAsksForThePassphraseWhenTheSessionIsGone() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired)
+        XCTAssertFalse(vm.hwSpending.isSigning)
+        XCTAssertEqual(connecting.ensureCalls, 0, "the device is not reached before the passphrase is known")
+        XCTAssertEqual(funding.signCalls, 0)
+    }
+
+    /// The reopen can also be demanded mid-flight, when the session turns out to hold another wallet.
+    func testAPassphraseDemandedDuringSigningRaisesThePromptInsteadOfToasting() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = HwPassphraseError.required
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired)
+        XCTAssertNil(vm.hwTransferError, "the user can act on this, so it is a prompt and not an error")
+        XCTAssertEqual(funding.signCalls, 0)
+    }
+
+    func testSubmittingTheRightPassphraseReopensTheWalletAndSigns() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+
+        vm.onHwPassphraseSubmit(order: order, walletId: "trezor:wallet", passphrase: "correct horse")
+        await awaitPassphraseVerified(vm)
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(connecting.reconnectCalls.first?.passphrase, "correct horse")
+        XCTAssertFalse(vm.hwSpending.isPassphraseRequired)
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+    }
+
+    func testAPassphraseThatOpensAnotherWalletIsRejectedWithoutSigning() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        connecting.reconnectError = HwPassphraseError.mismatch
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+
+        vm.onHwPassphraseSubmit(order: order, walletId: "trezor:wallet", passphrase: "wrong")
+        await awaitPassphraseVerified(vm)
+
+        XCTAssertEqual(vm.hwTransferError, .passphraseMismatch)
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(funding.broadcastCalls, 0)
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired, "the prompt stays up so the user can retry")
+    }
+
+    /// The prompt can be swiped away while the device is still reopening the wallet.
+    func testDismissingThePromptStopsTheReopenFromRequestingASignature() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+
+        vm.onHwPassphraseSubmit(order: order, walletId: "trezor:wallet", passphrase: "correct horse")
+        vm.onHwPassphraseDismiss()
+        await awaitPassphraseVerified(vm)
+        await awaitSigningComplete(vm)
+
+        XCTAssertFalse(vm.hwSpending.isPassphraseRequired)
+        XCTAssertEqual(funding.signCalls, 0, "nothing is signed after the user backs out")
+        XCTAssertEqual(funding.broadcastCalls, 0)
+    }
+
+    /// Broadcasting never reaches the device, so a signed transaction awaiting retry must not be held
+    /// behind a passphrase — the session it would reopen is not needed to send it.
+    func testBroadcastRetryIsNotBlockedByTheRequiredPassphrase() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
+
+        // The device session is gone by the time the user retries.
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        funding.broadcastError = nil
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertFalse(vm.hwSpending.isPassphraseRequired)
+        XCTAssertEqual(funding.signCalls, 1, "the retry reuses the signed transaction")
+        XCTAssertEqual(funding.broadcastCalls, 2)
+        XCTAssertTrue(vm.hwFundingComplete)
+    }
+
+    /// Only the transaction already signed for this order is exempt; anything else needs the device.
+    func testADifferentOrderStillAsksForThePassphraseWhileABroadcastIsPending() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
+
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        var other = IBtOrder.mock()
+        other.id = "another-order"
+        vm.onTransferToSpendingHwConfirm(order: other, walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired)
+        XCTAssertEqual(funding.signCalls, 1, "nothing new is signed while the passphrase is unknown")
+    }
+
+    /// Leaving the sign flow has to drop the reopen too, or a device answering afterwards would run
+    /// into a signature request for a screen the user already left.
+    func testLeavingTheSignFlowCancelsAnInFlightReopen() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let order = IBtOrder.mock()
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
+        vm.onHwPassphraseSubmit(order: order, walletId: "trezor:wallet", passphrase: "correct horse")
+
+        vm.cancelHwSigning()
+        await awaitPassphraseVerified(vm)
+        await awaitSigningComplete(vm)
+
+        XCTAssertFalse(vm.hwSpending.isPassphraseRequired)
+        XCTAssertFalse(vm.hwSpending.isVerifyingPassphrase)
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(funding.broadcastCalls, 0)
+    }
+
+    /// The prompt is dropped even while a signed transaction is held for retry, which the guard in
+    /// `cancelHwSigning` otherwise returns before reaching.
+    func testLeavingTheSignFlowClearsThePromptWhileABroadcastIsPending() async {
+        let funding = MockHwFunding()
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
+        await awaitSigningComplete(vm)
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        var other = IBtOrder.mock()
+        other.id = "another-order"
+        vm.onTransferToSpendingHwConfirm(order: other, walletId: "trezor:wallet")
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired)
+
+        vm.cancelHwSigning()
+
+        XCTAssertFalse(vm.hwSpending.isPassphraseRequired)
+        XCTAssertTrue(vm.hwSpending.hasPendingBroadcast, "the signed transaction is still retained")
+    }
+
+    func testAnEmptyPassphraseIsNotSubmitted() {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onHwPassphraseSubmit(order: .mock(), walletId: "trezor:wallet", passphrase: "")
+
+        XCTAssertTrue(connecting.reconnectCalls.isEmpty)
+        XCTAssertFalse(vm.hwSpending.isVerifyingPassphrase)
+    }
+
+    private func awaitPassphraseVerified(_ vm: TransferViewModel, timeout: Double = 3) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while vm.hwSpending.isVerifyingPassphrase, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
     func testConfirmWithoutHwCapabilitiesSurfacesGenericError() {
         let vm = TransferViewModel() // no signer injected
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
         XCTAssertFalse(vm.hwSpending.isSigning)
     }
@@ -40,7 +234,7 @@ final class TransferViewModelHwTests: XCTestCase {
         funding.accountError = MockHwFunding.TestError()
         let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
 
-        await vm.updateHwLimits(deviceId: "dev1", blocktankInfo: nil, estimateOrderFee: { _, _ in (0, 0) })
+        await vm.updateHwLimits(walletId: "trezor:wallet", blocktankInfo: nil, estimateOrderFee: { _, _ in (0, 0) })
 
         if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
         XCTAssertFalse(vm.hwSpending.isLoading)
@@ -52,7 +246,7 @@ final class TransferViewModelHwTests: XCTestCase {
         let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
         vm.hwSpending.maxAllowedToSend = 999_999 // stale cap from a previously-selected device
 
-        await vm.updateHwLimits(deviceId: "dev1", blocktankInfo: nil, estimateOrderFee: { _, _ in (0, 0) })
+        await vm.updateHwLimits(walletId: "trezor:wallet", blocktankInfo: nil, estimateOrderFee: { _, _ in (0, 0) })
 
         XCTAssertEqual(vm.hwSpending.maxAllowedToSend, 0, "a reload must not keep the previous device's cap")
     }
@@ -63,7 +257,7 @@ final class TransferViewModelHwTests: XCTestCase {
         connecting.connectError = MockHwFunding.TestError()
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertEqual(vm.hwTransferError, .reconnect(isBluetooth: false))
@@ -77,7 +271,7 @@ final class TransferViewModelHwTests: XCTestCase {
         connecting.isBluetooth = true
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertEqual(vm.hwTransferError, .reconnect(isBluetooth: true), "a known BLE device gets the softer INFO reconnect toast")
@@ -89,28 +283,11 @@ final class TransferViewModelHwTests: XCTestCase {
         let connecting = MockHwConnecting()
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error, got \(String(describing: vm.hwTransferError))") }
         XCTAssertTrue(connecting.staleDisconnects.isEmpty)
-    }
-
-    func testUnresolvableWalletIdFailsBeforeSigningOrBroadcasting() async {
-        let funding = MockHwFunding()
-        funding.walletIdError = MockHwFunding.TestError()
-        let connecting = MockHwConnecting()
-        let vm = makeViewModel(funding: funding, connecting: connecting)
-
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
-        await awaitSigningComplete(vm)
-
-        // Recording the transfer against the wrong wallet is worse than not transferring at all,
-        // so the flow aborts before the device is asked to sign.
-        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error, got \(String(describing: vm.hwTransferError))") }
-        XCTAssertEqual(funding.signCalls, 0)
-        XCTAssertEqual(funding.broadcastCalls, 0)
-        XCTAssertFalse(vm.hwFundingComplete)
     }
 
     func testBroadcastFailureRetainsSignedTransactionForRetry() async {
@@ -120,7 +297,7 @@ final class TransferViewModelHwTests: XCTestCase {
         let vm = makeViewModel(funding: funding, connecting: connecting)
         let order = IBtOrder.mock()
 
-        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
@@ -129,7 +306,7 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertEqual(funding.broadcastCalls, 1)
         XCTAssertEqual(vm.hwTransferError, .broadcastConnectivity)
 
-        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
@@ -150,11 +327,11 @@ final class TransferViewModelHwTests: XCTestCase {
         let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
         var order = IBtOrder.mock()
 
-        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         order.payment?.onchain?.address = "bc1qnewdestination"
-        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertEqual(funding.signCalls, 2)
@@ -167,7 +344,7 @@ final class TransferViewModelHwTests: XCTestCase {
         let connecting = MockHwConnecting()
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertNil(vm.hwTransferError, "a device cancel must not surface a toast")
@@ -186,7 +363,7 @@ final class TransferViewModelHwTests: XCTestCase {
         let connecting = MockHwConnecting()
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertNil(vm.hwTransferError, "a wrapped device cancel must not surface a toast")
@@ -200,7 +377,7 @@ final class TransferViewModelHwTests: XCTestCase {
         connecting.connectError = TrezorError.UserCancelled
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertNil(vm.hwTransferError, "a reconnect-step cancel must not surface a toast")
@@ -213,9 +390,9 @@ final class TransferViewModelHwTests: XCTestCase {
         let connecting = MockHwConnecting()
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.warmUpHardwareConnection(deviceId: "dev1")
+        vm.warmUpHardwareConnection(walletId: "trezor:wallet")
 
-        XCTAssertEqual(connecting.warmUpCalls, ["dev1"])
+        XCTAssertEqual(connecting.warmUpCalls, ["trezor:wallet"])
     }
 
     func testCancelHwSigningStopsInFlightSign() async {
@@ -224,7 +401,7 @@ final class TransferViewModelHwTests: XCTestCase {
         let connecting = MockHwConnecting()
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         while !vm.hwSpending.isSigning {
             await Task.yield()
         }
@@ -236,7 +413,7 @@ final class TransferViewModelHwTests: XCTestCase {
 
         XCTAssertFalse(vm.hwSpending.isSigning)
         XCTAssertEqual(vm.hwSignedEvent, 0, "a cancelled sign must not advance the flow")
-        XCTAssertEqual(connecting.staleDisconnects, ["dev1"], "cancelling during sign must tear down the stale session")
+        XCTAssertEqual(connecting.staleDisconnects, ["trezor:wallet"], "cancelling during sign must tear down the stale session")
     }
 
     func testDeviceBusyMapsToDeviceBusyError() async {
@@ -245,7 +422,7 @@ final class TransferViewModelHwTests: XCTestCase {
         connecting.connectError = TrezorError.DeviceBusy
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertEqual(vm.hwTransferError, .deviceBusy)
@@ -260,7 +437,7 @@ final class TransferViewModelHwTests: XCTestCase {
         let connecting = MockHwConnecting()
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertEqual(vm.hwTransferError, .firmwareReconnect)
@@ -272,7 +449,7 @@ final class TransferViewModelHwTests: XCTestCase {
         let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
         let order = IBtOrder.mock()
 
-        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
@@ -284,7 +461,7 @@ final class TransferViewModelHwTests: XCTestCase {
         funding.broadcastError = Bitkit.AppError(message: "rejected", debugMessage: "invalid tx")
         let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertFalse(vm.hwSpending.hasPendingBroadcast)
@@ -298,7 +475,7 @@ final class TransferViewModelHwTests: XCTestCase {
         )
         let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertFalse(vm.hwSpending.hasPendingBroadcast)
@@ -312,11 +489,11 @@ final class TransferViewModelHwTests: XCTestCase {
         funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
         let order = IBtOrder.mock()
 
-        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
         XCTAssertTrue(vm.hwSpending.hasPendingBroadcast)
 
-        await vm.updateHwLimits(deviceId: "dev1", blocktankInfo: nil, estimateOrderFee: { _, _ in (0, 0) })
+        await vm.updateHwLimits(walletId: "trezor:wallet", blocktankInfo: nil, estimateOrderFee: { _, _ in (0, 0) })
 
         XCTAssertFalse(vm.hwSpending.hasPendingBroadcast)
         vm.cancelHwSigning()
@@ -328,7 +505,7 @@ final class TransferViewModelHwTests: XCTestCase {
         let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
         let order = IBtOrder.mock()
 
-        await vm.updateHwFundingFeeEstimate(order: order, deviceId: "dev1")
+        await vm.updateHwFundingFeeEstimate(order: order, walletId: "trezor:wallet")
 
         XCTAssertEqual(vm.hwSpending.miningFeeSats, funding.funding.miningFeeSats)
         XCTAssertEqual(funding.estimateCalls.count, 1)
@@ -341,9 +518,9 @@ final class TransferViewModelHwTests: XCTestCase {
         let connecting = MockHwConnecting()
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         // Second call while the first is still signing must be ignored.
-        vm.onTransferToSpendingHwConfirm(order: .mock(), deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
         XCTAssertEqual(connecting.ensureCalls, 1, "only the first confirm should run")
@@ -357,7 +534,7 @@ final class TransferViewModelHwTests: XCTestCase {
         var order = IBtOrder.mock()
         order.payment?.onchain?.address = ""
 
-        vm.onTransferToSpendingHwConfirm(order: order, deviceId: "dev1")
+        vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
 
         if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
         XCTAssertFalse(vm.hwSpending.isSigning)

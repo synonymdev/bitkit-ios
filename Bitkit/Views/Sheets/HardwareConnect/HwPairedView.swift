@@ -1,15 +1,31 @@
 import SwiftUI
 
-/// Paired step: the device's watch-only balance plus an editable "Label Funds" field, over the coin
-/// illustration.
+/// Paired step, shared by the standard wallet and by a passphrase wallet found afterwards: both
+/// confirm the watched balance and its Bitkit-side label over the coin illustration, and both can add
+/// another passphrase wallet from the same device before finishing.
 struct HwPairedView: View {
     let deviceName: String
     let balanceSats: UInt64
     @Binding var labelText: String
+    let onPassphrase: () -> Void
     let onFinish: () -> Void
+    /// Set for the step confirming a passphrase wallet, which says so in its own words.
+    var isPassphraseWallet = false
 
     /// Coins illustration width as a fraction of the sheet — the 256-wide Visual in the 375-wide Figma frame.
     private let coinsWidthRatio: CGFloat = 256.0 / 375.0
+
+    private var header: String {
+        isPassphraseWallet ? t("hardware__passphrase_paired_header") : t("hardware__paired_header")
+    }
+
+    private var text: String {
+        isPassphraseWallet ? t("hardware__passphrase_paired_text") : t("hardware__paired_text")
+    }
+
+    private var screenIdentifier: String {
+        isPassphraseWallet ? "HardwareWalletPassphrasePairedScreen" : "HardwareWalletPairedScreen"
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -28,9 +44,9 @@ struct HwPairedView: View {
                     .padding(.horizontal, 16)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    DisplayText(t("hardware__paired_header"), accentColor: .blueAccent)
+                    DisplayText(header, accentColor: .blueAccent)
 
-                    BodyMText(t("hardware__paired_text"))
+                    BodyMText(text)
                         .padding(.top, 8)
 
                     HwPairedBalanceView(name: deviceName, sats: balanceSats)
@@ -50,16 +66,23 @@ struct HwPairedView: View {
 
                 Spacer(minLength: 0)
 
-                CustomButton(title: t("hardware__paired_finish"), shouldExpand: true) {
-                    onFinish()
+                HStack(spacing: 16) {
+                    CustomButton(title: t("hardware__passphrase_button"), variant: .secondary, shouldExpand: true) {
+                        onPassphrase()
+                    }
+                    .accessibilityIdentifier("HardwareWalletPairedPassphrase")
+
+                    CustomButton(title: t("hardware__paired_finish"), shouldExpand: true) {
+                        onFinish()
+                    }
+                    .accessibilityIdentifier("HardwareWalletPairedFinish")
                 }
-                .accessibilityIdentifier("HardwareWalletPairedFinish")
                 .padding(.horizontal, 32)
                 .padding(.bottom, 16)
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("HardwareWalletPairedScreen")
+        .accessibilityIdentifier(screenIdentifier)
     }
 }
 
@@ -85,12 +108,28 @@ private struct HwPairedBalanceView: View {
     }
 }
 
-#Preview {
+#Preview("Paired") {
     HwPairedView(
         deviceName: "Trezor Safe 3",
         balanceSats: 10_562_411,
         labelText: .constant("Trezor Safe 3"),
+        onPassphrase: {},
         onFinish: {}
+    )
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.black)
+    .environmentObject(CurrencyViewModel())
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Passphrase funds found") {
+    HwPairedView(
+        deviceName: "Trezor Safe 3",
+        balanceSats: 5_214_983,
+        labelText: .constant("Trezor Safe 3"),
+        onPassphrase: {},
+        onFinish: {},
+        isPassphraseWallet: true
     )
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black)

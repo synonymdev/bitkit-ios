@@ -88,6 +88,7 @@ final class HwWalletManagerTests: XCTestCase {
         deleted = []
         receivedTxs = []
         cancellables = []
+        xpubsByDeviceId = [:]
     }
 
     // MARK: - Factories
@@ -117,7 +118,8 @@ final class HwWalletManagerTests: XCTestCase {
         model: String? = "Safe 5",
         lastConnectedAt: Date = Date(timeIntervalSince1970: 1000)
     ) -> TrezorKnownDevice {
-        TrezorKnownDevice(
+        xpubsByDeviceId[id] = xpubs
+        return TrezorKnownDevice(
             id: id,
             name: id,
             path: "ble:\(id)",
@@ -209,8 +211,20 @@ final class HwWalletManagerTests: XCTestCase {
         )
     }
 
+    /// Watcher ids are keyed by wallet identity, so they are derived from the device's xpubs.
+    /// `makeDevice` records them here so tests can keep naming devices by their transport id.
+    private var xpubsByDeviceId: [String: [String: String]] = [:]
+
     private func watcherId(_ deviceId: String, _ addressType: String) -> String {
-        "\(deviceId)|\(addressType)"
+        let derived = (try? HwWalletId.derive(xpubs: xpubsByDeviceId[deviceId] ?? [:])) ?? deviceId
+        return "\(derived)|\(addressType)"
+    }
+
+    /// Needed when one device id holds several identities, where the registry above can only
+    /// remember the last one written for it.
+    private func watcherId(_ device: TrezorKnownDevice, _ addressType: String) -> String {
+        let derived = (try? HwWalletId.derive(xpubs: device.xpubs)) ?? device.id
+        return "\(derived)|\(addressType)"
     }
 
     // MARK: - Tests
@@ -227,7 +241,7 @@ final class HwWalletManagerTests: XCTestCase {
 
         XCTAssertEqual(vm.wallets.count, 1)
         let wallet = vm.wallets[0]
-        XCTAssertEqual(wallet.id, "dev1")
+        XCTAssertEqual(wallet.id, wallet.walletId, "a wallet is identified by its wallet id, not by its transport")
         XCTAssertEqual(wallet.balanceSats, 50000)
         XCTAssertEqual(wallet.name, "Trezor Safe 5")
         XCTAssertTrue(wallet.isConnected)
@@ -256,8 +270,8 @@ final class HwWalletManagerTests: XCTestCase {
     func testSamePhysicalDeviceDedupedByXpub() {
         // Same xpubs, two device entries (e.g. re-paired) → one wallet, one walletId.
         let xpubs = ["nativeSegwit": "zpubShared"]
-        let ble = makeDevice(id: "ble1", xpubs: xpubs, lastConnectedAt: Date(timeIntervalSince1970: 1000))
-        let usb = makeDevice(id: "usb1", xpubs: xpubs, lastConnectedAt: Date(timeIntervalSince1970: 2000))
+        let ble = makeDevice(id: "ble1", xpubs: xpubs, label: "Older", lastConnectedAt: Date(timeIntervalSince1970: 1000))
+        let usb = makeDevice(id: "usb1", xpubs: xpubs, label: "Newer", lastConnectedAt: Date(timeIntervalSince1970: 2000))
         let vm = makeViewModel()
         vm.updateDevices(knownDevices: [ble, usb], connectedDeviceId: nil)
 
@@ -267,8 +281,9 @@ final class HwWalletManagerTests: XCTestCase {
 
         XCTAssertEqual(vm.wallets.count, 1)
         XCTAssertEqual(vm.wallets[0].deviceIds, ["ble1", "usb1"])
-        // Representative is the most recently connected entry.
-        XCTAssertEqual(vm.wallets[0].id, "usb1")
+        XCTAssertEqual(vm.wallets[0].balanceSats, 70000, "one watcher feeds the single identity")
+        // The entries share an identity, so the most recently connected one names it.
+        XCTAssertEqual(vm.wallets[0].name, "Newer")
         XCTAssertEqual(vm.hwWalletIds.count, 1)
     }
 
@@ -361,15 +376,6 @@ final class HwWalletManagerTests: XCTestCase {
         ))
         await vm.drainPendingPersists()
         XCTAssertEqual(persistedSnapshots.count, 2)
-    }
-
-    func testWalletIdForDeviceMatchesDerivedIdAndThrowsForUnknownDevice() throws {
-        let xpubs = ["nativeSegwit": "zpubNS"]
-        let vm = makeViewModel()
-        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: xpubs)], connectedDeviceId: nil)
-
-        XCTAssertEqual(try vm.walletId(forDevice: "dev1"), try HwWalletId.derive(xpubs: xpubs))
-        XCTAssertThrowsError(try vm.walletId(forDevice: "unknown"))
     }
 
     func testUnchangedWatcherEventDoesNotRepersist() async {
@@ -592,24 +598,26 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(params?.accountType, .nativeSegwit)
     }
 
-    func testWatcherRestartsWhenXpubChangesForSameDeviceAndType() async {
+    func testWatcherMovesToTheNewIdWhenTheWalletIdChanges() async {
         let mock = MockWatcherService()
+        let original = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])
         let vm = makeViewModel(watcherService: mock, monitored: ["nativeSegwit"])
-        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])], connectedDeviceId: nil)
+        vm.updateDevices(knownDevices: [original], connectedDeviceId: nil)
         await waitUntil { mock.startedParams.count == 1 }
-        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+        vm.handleWatcherEvent(watcherId: watcherId(original, "nativeSegwit"), event: makeEvent(
             [makeActivity(txId: "t1", value: 40000, txType: .received)], total: 40000
         ))
         let originalWalletId = vm.wallets.first?.walletId
 
-        // Same device id + address type, new xpub (e.g. a passphrase/hidden wallet, or re-fetched
-        // accounts): the watcher id is unchanged but the watched key — and the derived wallet id —
-        // differ, so the old watcher must be torn down and a new one started on the new xpub
-        // instead of feeding the old wallet's balance under the new wallet id.
-        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z2"])], connectedDeviceId: nil)
+        // Same device id + address type, new xpub (e.g. re-fetched accounts): the wallet id derives
+        // from the key material, so this is a different identity and a different watcher id. The old
+        // watcher must be torn down rather than left feeding the old balance under the new identity.
+        let rekeyed = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z2"])
+        vm.updateDevices(knownDevices: [rekeyed], connectedDeviceId: nil)
         await waitUntil { mock.startedParams.count == 2 }
 
-        XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId("dev1", "nativeSegwit")))
+        XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId(original, "nativeSegwit")))
+        XCTAssertEqual(mock.startedParams.last?.watcherId, watcherId(rekeyed, "nativeSegwit"))
         XCTAssertEqual(mock.startedParams.last?.extendedKey, "z2")
         XCTAssertNotEqual(vm.wallets.first?.walletId, originalWalletId)
         XCTAssertEqual(vm.wallets.first?.balanceSats, 0, "stale old-xpub balance is dropped until the new watcher reports")
@@ -700,14 +708,72 @@ final class HwWalletManagerTests: XCTestCase {
     func testConnectedEntryWinsRepresentativeIdentity() {
         // Same xpub over two entries; the more recent is `ble1`, but `usb1` is connected.
         let xpubs = ["nativeSegwit": "shared"]
-        let ble = makeDevice(id: "ble1", xpubs: xpubs, lastConnectedAt: Date(timeIntervalSince1970: 2000))
-        let usb = makeDevice(id: "usb1", xpubs: xpubs, lastConnectedAt: Date(timeIntervalSince1970: 1000))
+        let ble = makeDevice(id: "ble1", xpubs: xpubs, label: "Ble", lastConnectedAt: Date(timeIntervalSince1970: 2000))
+        let usb = makeDevice(id: "usb1", xpubs: xpubs, label: "Usb", lastConnectedAt: Date(timeIntervalSince1970: 1000))
         let vm = makeViewModel()
         vm.updateDevices(knownDevices: [ble, usb], connectedDeviceId: "usb1")
 
         XCTAssertEqual(vm.wallets.count, 1)
-        XCTAssertEqual(vm.wallets[0].id, "usb1")
+        XCTAssertEqual(vm.wallets[0].name, "Usb", "the connected entry names the wallet")
         XCTAssertTrue(vm.wallets[0].isConnected)
+    }
+
+    // MARK: - Several wallet identities on one device
+
+    func testPassphraseWalletIsWatchedNextToTheStandardWalletOfTheSameDevice() {
+        let standard = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zStandard"])
+        let hidden = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zHidden"])
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [standard, hidden], connectedDeviceId: "dev1")
+
+        vm.handleWatcherEvent(watcherId: watcherId(standard, "nativeSegwit"), event: makeEvent([], total: 30000))
+        vm.handleWatcherEvent(watcherId: watcherId(hidden, "nativeSegwit"), event: makeEvent([], total: 20000))
+
+        XCTAssertEqual(vm.wallets.count, 2, "one tile per identity, not per device")
+        XCTAssertEqual(vm.wallets.map(\.balanceSats), [30000, 20000], "each identity counts its own balance")
+        XCTAssertEqual(vm.totalSats, 50000)
+        XCTAssertEqual(vm.hwWalletIds.count, 2)
+    }
+
+    /// A device only holds one wallet open at a time, and only that identity can sign.
+    func testOnlyTheIdentityHoldingTheSessionShowsAsConnected() throws {
+        let standard = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zStandard"])
+        let hidden = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zHidden"])
+        let hiddenWalletId = try HwWalletId.derive(xpubs: hidden.xpubs)
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+
+        vm.updateDevices(knownDevices: [standard, hidden], connectedDeviceId: "dev1", connectedWalletId: hiddenWalletId)
+
+        let connected = vm.wallets.filter(\.isConnected)
+        XCTAssertEqual(connected.map(\.id), [hiddenWalletId])
+    }
+
+    /// A session opened before its identity could be resolved reports none and stays inclusive.
+    func testUnresolvedSessionLeavesEveryIdentityOnTheDeviceConnected() {
+        let standard = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zStandard"])
+        let hidden = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zHidden"])
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+
+        vm.updateDevices(knownDevices: [standard, hidden], connectedDeviceId: "dev1", connectedWalletId: nil)
+
+        XCTAssertEqual(vm.wallets.filter(\.isConnected).count, 2)
+    }
+
+    func testRemovingOneIdentityLeavesTheOtherWatched() async throws {
+        let mock = MockWatcherService()
+        let standard = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zStandard"])
+        let hidden = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zHidden"])
+        let hiddenWalletId = try HwWalletId.derive(xpubs: hidden.xpubs)
+        let vm = makeViewModel(watcherService: mock, monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [standard, hidden], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 2 }
+
+        vm.removeDevice(walletId: hiddenWalletId)
+        await vm.drainPendingPersists()
+
+        XCTAssertEqual(mock.stoppedWatcherIds, [watcherId(hidden, "nativeSegwit")], "only the removed identity stops watching")
+        XCTAssertEqual(deleted, [hiddenWalletId], "only the removed identity's activities are deleted")
+        XCTAssertTrue(vm.wallets.contains { $0.id == (try? HwWalletId.derive(xpubs: standard.xpubs)) })
     }
 
     func testTotalSatsSaturatesInsteadOfOverflowing() {
@@ -734,7 +800,7 @@ final class HwWalletManagerTests: XCTestCase {
         vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
         await waitUntil { mock.startedParams.count == 1 }
 
-        vm.handleWatcherEvent(watcherId: watcherId("dev1", "nativeSegwit"), event: makeEvent(
+        vm.handleWatcherEvent(watcherId: watcherId(device, "nativeSegwit"), event: makeEvent(
             [makeActivity(txId: "t1", value: 40000, txType: .received)], total: 40000
         ))
         XCTAssertEqual(vm.wallets.first?.balanceSats, 40000)
@@ -742,7 +808,7 @@ final class HwWalletManagerTests: XCTestCase {
         // Stop fails → the watcher must stay active and keep feeding its balance.
         mock.stopShouldFail = true
         vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: [:])], connectedDeviceId: nil)
-        XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId("dev1", "nativeSegwit")))
+        XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId(device, "nativeSegwit")))
 
         // Stop now succeeds → next sync removes it.
         mock.stopShouldFail = false
@@ -761,14 +827,17 @@ final class HwWalletManagerTests: XCTestCase {
             [makeActivity(txId: "t1", value: 1000, txType: .received)], total: 1000
         ))
 
-        vm.removeDevice(id: "dev1")
+        try vm.removeDevice(walletId: HwWalletId.derive(xpubs: xpubs))
 
         XCTAssertTrue(mock.stoppedWatcherIds.contains(watcherId("dev1", "nativeSegwit")))
         await vm.drainPendingPersists()
         XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])
     }
 
-    func testRemoveWalletForgetsEveryDeviceEntry() async throws {
+    /// The same wallet stored under two entries is one identity, so removing it deletes its
+    /// activities once. Forgetting the stored entries is the session's job — see
+    /// `HwWalletManagerPassphraseTests`.
+    func testRemoveWalletDeletesTheIdentitysActivitiesOnce() async throws {
         let xpubs = ["nativeSegwit": "z"]
         let devices = [
             makeDevice(id: "dev1", xpubs: xpubs),
@@ -777,11 +846,9 @@ final class HwWalletManagerTests: XCTestCase {
         let vm = makeViewModel(monitored: ["nativeSegwit"])
         vm.updateDevices(knownDevices: devices, connectedDeviceId: nil)
         let wallet = try XCTUnwrap(vm.wallets.first)
-        var forgottenDeviceIds: [String] = []
 
-        await vm.removeWallet(wallet) { forgottenDeviceIds.append($0) }
+        await vm.removeWallet(walletId: wallet.id)
 
-        XCTAssertEqual(Set(forgottenDeviceIds), wallet.deviceIds)
         await vm.drainPendingPersists()
         XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])
     }
