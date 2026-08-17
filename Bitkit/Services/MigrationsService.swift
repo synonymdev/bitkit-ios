@@ -291,7 +291,7 @@ enum RNKeychainKey {
 
 // MARK: - Channel Migration Data
 
-struct PendingChannelMigration: Codable {
+struct PendingChannelMigration: Codable, Equatable {
     let channelManager: Data
     let channelMonitors: [Data]
 }
@@ -399,6 +399,17 @@ class MigrationsService: ObservableObject {
     var pendingChannelMigration: PendingChannelMigration? {
         get { getCodable(forKey: Self.rnPendingChannelMigrationKey) }
         set { setCodable(newValue, forKey: Self.rnPendingChannelMigrationKey) }
+    }
+
+    func withPendingChannelMigration(
+        _ operation: (PendingChannelMigration?) async throws -> Void
+    ) async rethrows {
+        let migration = pendingChannelMigration
+        try await operation(migration)
+
+        if pendingChannelMigration == migration {
+            pendingChannelMigration = nil
+        }
     }
 
     /// Stored activity data from RN remote backup for reapplying metadata after sync (persisted)
