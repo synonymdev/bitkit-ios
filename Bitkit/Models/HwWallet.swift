@@ -1,13 +1,16 @@
 import BitkitCore
 import Foundation
 
-/// A paired hardware wallet tracked as a watch-only balance.
+/// A paired hardware wallet tracked as a watch-only balance. One per wallet identity: a Trezor with
+/// passphrase protection contributes its standard wallet plus one of these per hidden wallet.
 ///
 /// Activities are NOT held here — they are persisted in bitkit-core scoped by `walletId`
 /// and read back through the normal activity pipeline (see `HwWalletManager`).
 struct HwWallet: Identifiable {
+    /// The wallet identity, equal to `walletId`. Routes and every wallet-scoped API key off it,
+    /// since the transport-level device id is shared by all of a device's wallets.
     let id: String
-    /// bitkit-core wallet id scoping this device's activities (see `HwWalletId`).
+    /// bitkit-core wallet id scoping this wallet's activities (see `HwWalletId`).
     let walletId: String
     let name: String
     let model: String?
@@ -17,7 +20,10 @@ struct HwWallet: Identifiable {
     /// (v1 funds from native-segwit; other address types are watched but not spent). Defaults to
     /// `balanceSats` when not computed separately.
     let fundingBalanceSats: UInt64
+    /// Transport-level ids this wallet is reachable over. Bluetooth-only on iOS, so effectively one.
     let deviceIds: Set<String>
+    /// Whether reaching this wallet needs a passphrase, i.e. it is a hidden wallet.
+    let passphraseProtected: Bool
 
     init(
         id: String,
@@ -27,7 +33,8 @@ struct HwWallet: Identifiable {
         isConnected: Bool,
         balanceSats: UInt64,
         fundingBalanceSats: UInt64? = nil,
-        deviceIds: Set<String>? = nil
+        deviceIds: Set<String>? = nil,
+        passphraseProtected: Bool = false
     ) {
         self.id = id
         self.walletId = walletId
@@ -37,6 +44,7 @@ struct HwWallet: Identifiable {
         self.balanceSats = balanceSats
         self.fundingBalanceSats = fundingBalanceSats ?? balanceSats
         self.deviceIds = deviceIds ?? [id]
+        self.passphraseProtected = passphraseProtected
     }
 }
 

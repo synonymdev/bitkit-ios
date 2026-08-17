@@ -6,7 +6,7 @@ import SwiftUI
 /// device's on-chain activity grouped by date (blue hardware icons), a Transfer-To-Spending
 /// placeholder on funded devices, and a Remove action. Ports bitkit-android's `HardwareWalletScreen`.
 struct HardwareWalletScreen: View {
-    let deviceId: String
+    let walletId: String
 
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
@@ -18,7 +18,7 @@ struct HardwareWalletScreen: View {
     @State private var showRemoveDialog = false
 
     private var wallet: HwWallet? {
-        hwWalletManager.wallets.first { $0.deviceIds.contains(deviceId) }
+        hwWalletManager.wallets.first { $0.id == walletId }
     }
 
     var body: some View {
@@ -133,9 +133,9 @@ struct HardwareWalletScreen: View {
             isDisabled: GeoService.shared.isGeoBlocked
         ) {
             if app.hasSeenTransferToSpendingIntro {
-                navigation.navigate(.spendingAmountHw(deviceId: deviceId))
+                navigation.navigate(.spendingAmountHw(walletId: walletId))
             } else {
-                navigation.navigate(.spendingIntroHw(deviceId: deviceId))
+                navigation.navigate(.spendingIntroHw(walletId: walletId))
             }
         }
         .accessibilityIdentifier("HardwareTransferToSpending")
@@ -175,15 +175,12 @@ struct HardwareWalletScreen: View {
         }
     }
 
-    /// Stop watching and forget every entry for this wallet (the same device may be paired over
-    /// multiple transports). `removeDevice` stops the watchers and deletes the persisted activities;
-    /// `forgetDevice` clears credentials and drops the known-device entry, which re-pushes the device
-    /// snapshot and removes the tile. The reactive auto-pop above then leaves the screen.
+    /// Stop watching this wallet and forget its stored entries, leaving the device paired for any
+    /// other wallet it holds. Dropping the entries re-pushes the device snapshot and removes the
+    /// tile, and the reactive auto-pop above then leaves the screen.
     private func removeWallet() async {
         guard let wallet else { return }
-        await hwWalletManager.removeWallet(wallet) { deviceId in
-            await trezorManager.forgetDevice(id: deviceId)
-        }
+        await hwWalletManager.removeWallet(walletId: wallet.id)
     }
 }
 

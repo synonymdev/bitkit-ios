@@ -332,7 +332,7 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .renameHardwareWallet else { return nil }
             guard let data = config.data as? RenameHardwareWalletConfig else { return nil }
-            return RenameHardwareWalletSheetItem(deviceId: data.deviceId, currentName: data.currentName)
+            return RenameHardwareWalletSheetItem(walletId: data.walletId, currentName: data.currentName)
         }
         set {
             if newValue == nil {

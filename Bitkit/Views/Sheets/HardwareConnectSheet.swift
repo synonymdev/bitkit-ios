@@ -9,11 +9,12 @@ struct HardwareConnectSheetItem: SheetItem {
 /// Entry point for the Connect Hardware flow.
 struct HardwareConnectSheet: View {
     @Environment(TrezorManager.self) private var trezorManager
+    @Environment(HwWalletManager.self) private var hwWalletManager
     let config: HardwareConnectSheetItem
 
     var body: some View {
         HardwareConnectFlow(
-            service: TrezorHwConnectService(trezorManager: trezorManager),
+            service: TrezorHwConnectService(trezorManager: trezorManager, hwWalletManager: hwWalletManager),
             config: config
         )
     }
@@ -96,7 +97,25 @@ private struct HardwareConnectFlow: View {
                 deviceName: viewModel.deviceName,
                 balanceSats: viewModel.balanceSats,
                 labelText: labelBinding,
+                onPassphrase: viewModel.onPassphraseClick,
                 onFinish: viewModel.onFinish
+            )
+        case .passphrase:
+            HwPassphraseView(
+                passphrase: passphraseBinding,
+                isSubmitting: viewModel.isSubmittingPassphrase,
+                errorMessage: viewModel.errorMessage,
+                onBack: viewModel.onPassphraseBack,
+                onContinue: viewModel.onPassphraseSubmit
+            )
+        case .passphrasePaired:
+            HwPairedView(
+                deviceName: viewModel.deviceName,
+                balanceSats: viewModel.balanceSats,
+                labelText: labelBinding,
+                onPassphrase: viewModel.onPassphraseClick,
+                onFinish: viewModel.onFinish,
+                isPassphraseWallet: true
             )
         case .pairCode:
             HwPairCodeView(onSubmit: { trezorManager.submitPairingCode($0) })
@@ -168,13 +187,18 @@ private struct HardwareConnectFlow: View {
         Binding(get: { viewModel.labelInput }, set: { viewModel.onLabelChange($0) })
     }
 
-    /// Changes whenever the paired wallet's name or balance changes, so the balance shown on the
-    /// Paired step tracks incoming watcher updates.
+    private var passphraseBinding: Binding<String> {
+        Binding(get: { viewModel.passphraseInput }, set: { viewModel.onPassphraseChange($0) })
+    }
+
+    /// Changes whenever the wallet list changes for the paired device, so the Paired step picks up
+    /// its balance and its newly watched passphrase wallets as they land.
     private var connectedWalletKey: String {
         guard let deviceId = viewModel.pairedDeviceId else { return "" }
-        guard let wallet = hwWalletManager.wallets.first(where: { $0.id == deviceId || $0.deviceIds.contains(deviceId) })
-        else { return "" }
-        return "\(wallet.name)\u{1}\(wallet.balanceSats)"
+        return hwWalletManager.wallets
+            .filter { $0.deviceIds.contains(deviceId) }
+            .map { "\($0.id)\u{1}\($0.name)\u{1}\($0.balanceSats)" }
+            .joined(separator: "\u{1f}")
     }
 
     private var isBluetoothUsable: Bool {
