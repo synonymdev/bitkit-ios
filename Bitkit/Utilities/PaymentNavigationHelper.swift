@@ -12,31 +12,41 @@ struct PaymentNavigationHelper {
     static func shouldUseQuickpay(
         app: AppViewModel,
         settings: SettingsViewModel,
-        currency: CurrencyViewModel
+        currency: CurrencyViewModel,
+        spendStore: QuickPaySpendStore = .shared
     ) -> Bool {
-        // Check if quickpay is enabled
         guard settings.enableQuickpay else {
             return false
         }
 
-        // We need a lightning invoice or LNURL pay data to use quickpay
-        guard app.scannedLightningInvoice != nil || app.lnurlPayData != nil else {
+        guard let amountSats = QuickPayLimits.paymentAmountSats(app: app), amountSats > 0 else {
             return false
         }
 
-        // Convert quickpay amount from USD to sats
         let quickpayAmountSats = currency.convert(fiatAmount: settings.quickpayAmount, from: "USD") ?? 0
-        guard quickpayAmountSats > 0 else {
+        guard quickpayAmountSats > 0, amountSats <= quickpayAmountSats else {
             return false
         }
 
-        // Check LNURL pay
-        if let lnurlPayData = app.lnurlPayData {
-            return lnurlPayData.isFixedAmount && lnurlPayData.minSendableSat <= quickpayAmountSats
+        let multiplier = QuickPayLimits.sanitizedMultiplier(settings.quickpayDailyLimitMultiplier)
+        guard let dailyCapUsd = QuickPayLimits.dailyCapUsd(
+            thresholdUsd: settings.quickpayAmount,
+            multiplier: multiplier,
+            currency: currency
+        ), let amountUsd = QuickPayLimits.usdValue(sats: amountSats, currency: currency) else {
+            return false
         }
 
-        // Check regular lightning invoice
-        return app.scannedLightningInvoice!.amountSatoshis <= quickpayAmountSats
+        let dayKey = QuickPaySpendStore.dayKey()
+        let spentUsdToday = spendStore.spentUsd(forDayKey: dayKey)
+        if spentUsdToday + amountUsd > dailyCapUsd {
+            Logger.info(
+                "Skipping QuickPay: daily spend '\(spentUsdToday)' + '\(amountUsd)' exceeds cap '\(dailyCapUsd)'"
+            )
+            return false
+        }
+
+        return true
     }
 
     /// Centralized method to open the appropriate sheet based on the current state
@@ -44,7 +54,8 @@ struct PaymentNavigationHelper {
         app: AppViewModel,
         currency: CurrencyViewModel,
         settings: SettingsViewModel,
-        sheetViewModel: SheetViewModel
+        sheetViewModel: SheetViewModel,
+        spendStore: QuickPaySpendStore = .shared
     ) {
         // Handle LNURL withdraw
         if let lnurlWithdrawData = app.lnurlWithdrawData {
@@ -57,7 +68,7 @@ struct PaymentNavigationHelper {
             return
         }
 
-        let shouldUseQuickpay = shouldUseQuickpay(app: app, settings: settings, currency: currency)
+        let shouldUseQuickpay = shouldUseQuickpay(app: app, settings: settings, currency: currency, spendStore: spendStore)
 
         // Handle Lightning address / LNURL pay
         if let lnurlPayData = app.lnurlPayData {
@@ -100,7 +111,8 @@ struct PaymentNavigationHelper {
     static func appropriateSendRoute(
         app: AppViewModel,
         currency: CurrencyViewModel,
-        settings: SettingsViewModel
+        settings: SettingsViewModel,
+        spendStore: QuickPaySpendStore = .shared
     ) -> SendRoute? {
         if let lnurlWithdrawData = app.lnurlWithdrawData {
             if lnurlWithdrawData.isFixedAmount {
@@ -110,7 +122,7 @@ struct PaymentNavigationHelper {
             }
         }
 
-        let shouldUseQuickpay = shouldUseQuickpay(app: app, settings: settings, currency: currency)
+        let shouldUseQuickpay = shouldUseQuickpay(app: app, settings: settings, currency: currency, spendStore: spendStore)
 
         // Handle Lightning address / LNURL pay
         if let lnurlPayData = app.lnurlPayData {
@@ -150,9 +162,10 @@ struct PaymentNavigationHelper {
     static func contactPaymentRoute(
         app: AppViewModel,
         currency: CurrencyViewModel,
-        settings: SettingsViewModel
+        settings: SettingsViewModel,
+        spendStore: QuickPaySpendStore = .shared
     ) -> SendRoute? {
-        guard let route = appropriateSendRoute(app: app, currency: currency, settings: settings) else {
+        guard let route = appropriateSendRoute(app: app, currency: currency, settings: settings, spendStore: spendStore) else {
             return nil
         }
 
