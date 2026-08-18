@@ -6,11 +6,18 @@ struct ShopWebView: UIViewRepresentable {
     let url: String
     var webView: Binding<WKWebView?>?
     var onMessage: ((String) -> Void)?
+    var onBlockedNavigation: (() -> Void)?
 
-    init(url: String, webView: Binding<WKWebView?>? = nil, onMessage: ((String) -> Void)? = nil) {
+    init(
+        url: String,
+        webView: Binding<WKWebView?>? = nil,
+        onMessage: ((String) -> Void)? = nil,
+        onBlockedNavigation: (() -> Void)? = nil
+    ) {
         self.url = url
         self.webView = webView
         self.onMessage = onMessage
+        self.onBlockedNavigation = onBlockedNavigation
     }
 
     func makeCoordinator() -> Coordinator {
@@ -55,9 +62,22 @@ struct ShopWebView: UIViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "messageHandler", let body = message.body as? String {
-                parent.onMessage?(body)
+            guard message.name == "messageHandler", let body = message.body as? String else { return }
+            let frameInfo = message.frameInfo
+            let securityOrigin = frameInfo.securityOrigin
+            guard ShopOrigin.isAllowedMessageSender(
+                isMainFrame: frameInfo.isMainFrame,
+                scheme: securityOrigin.protocol,
+                host: securityOrigin.host,
+                port: securityOrigin.port
+            ) else {
+                Logger.warn(
+                    "Rejected shop payment_intent from untrusted sender '\(securityOrigin.protocol)://\(securityOrigin.host):\(securityOrigin.port)'",
+                    context: "ShopWebView"
+                )
+                return
             }
+            parent.onMessage?(body)
         }
 
         func webView(
@@ -65,18 +85,29 @@ struct ShopWebView: UIViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            decisionHandler(.allow)
+            if navigationAction.targetFrame?.isMainFrame == false {
+                decisionHandler(.allow)
+                return
+            }
+            if ShopOrigin.shouldAllowMainFrameNavigation(
+                to: navigationAction.request.url,
+                initialUrl: parent.url
+            ) {
+                decisionHandler(.allow)
+                return
+            }
+            Logger.warn(
+                "Blocked shop navigation to untrusted origin '\(navigationAction.request.url?.absoluteString ?? "")'",
+                context: "ShopWebView"
+            )
+            parent.onBlockedNavigation?()
+            decisionHandler(.cancel)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             // Inject JavaScript to capture postMessage events if message handler is configured
             if parent.onMessage != nil {
-                let script = """
-                    window.addEventListener('message', function(event) {
-                        window.webkit.messageHandlers.messageHandler.postMessage(JSON.stringify(event.data));
-                    });
-                """
-                webView.evaluateJavaScript(script)
+                webView.evaluateJavaScript(ShopOrigin.messageBridgeScript)
             }
         }
 
@@ -86,9 +117,19 @@ struct ShopWebView: UIViewRepresentable {
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            // Load the navigation request in the current WebView instead of opening a new window
+            guard ShopOrigin.shouldAllowMainFrameNavigation(
+                to: navigationAction.request.url,
+                initialUrl: parent.url
+            ) else {
+                Logger.warn(
+                    "Blocked shop window navigation to untrusted origin '\(navigationAction.request.url?.absoluteString ?? "")'",
+                    context: "ShopWebView"
+                )
+                parent.onBlockedNavigation?()
+                return nil
+            }
             webView.load(navigationAction.request)
-            return nil // Return nil to use the current WebView
+            return nil
         }
     }
 }
