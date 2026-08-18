@@ -143,7 +143,7 @@ class LightningService {
         let storeId = try await VssStoreIdProvider.shared.getVssStoreId(walletIndex: walletIndex)
 
         let vssUrl = Env.vssServerUrl
-        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl
+        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         Logger.debug("Building ldk-node with vssUrl: '\(vssUrl)'")
         Logger.debug("Building ldk-node with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)'")
 
@@ -154,21 +154,17 @@ class LightningService {
 
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
+        guard !lnurlAuthServerUrl.isEmpty else {
+            throw CustomServiceError.vssAuthRequired
+        }
+
         try await ServiceQueue.background(.ldk) {
-            if !lnurlAuthServerUrl.isEmpty {
-                self.node = try builder.buildWithVssStore(
-                    vssUrl: vssUrl,
-                    storeId: storeId,
-                    lnurlAuthServerUrl: lnurlAuthServerUrl,
-                    fixedHeaders: [:]
-                )
-            } else {
-                self.node = try builder.buildWithVssStoreAndFixedHeaders(
-                    vssUrl: vssUrl,
-                    storeId: storeId,
-                    fixedHeaders: [:]
-                )
-            }
+            self.node = try builder.buildWithVssStore(
+                vssUrl: vssUrl,
+                storeId: storeId,
+                lnurlAuthServerUrl: lnurlAuthServerUrl,
+                fixedHeaders: [:]
+            )
         }
         shouldReleaseLightningLock = false
 
