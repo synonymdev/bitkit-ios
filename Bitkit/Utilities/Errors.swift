@@ -6,6 +6,7 @@ enum CustomServiceError: LocalizedError {
     case nodeNotStarted
     case onchainWalletNotInitialized
     case mnemonicNotFound
+    case vssAuthRequired
     case nodeStillRunning
     case onchainWalletStillRunning
     case invalidNodeSigningMessage
@@ -23,6 +24,8 @@ enum CustomServiceError: LocalizedError {
             return "Onchain wallet not created"
         case .mnemonicNotFound:
             return "Mnemonic not found"
+        case .vssAuthRequired:
+            return "VSS requires LNURL-auth"
         case .nodeStillRunning:
             return "Node is still running"
         case .onchainWalletStillRunning:
@@ -143,6 +146,9 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .mnemonicNotFound:
             message = "Mnemonic not found"
+            debugMessage = nil
+        case .vssAuthRequired:
+            message = "VSS requires LNURL-auth"
             debugMessage = nil
         case .nodeStillRunning:
             message = "Node is still running"
