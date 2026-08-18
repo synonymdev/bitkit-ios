@@ -31,22 +31,16 @@ enum QuickPayLimits {
     }
 
     @MainActor
-    static func dailyCapUsd(
+    static func dailyCapSats(
         thresholdUsd: Double,
         multiplier: Double,
         currency: CurrencyViewModel
-    ) -> Double? {
+    ) -> UInt64? {
         guard let thresholdSats = currency.convert(fiatAmount: thresholdUsd, from: usdCurrencyCode), thresholdSats > 0 else {
             return nil
         }
 
-        let dailyCapSats = thresholdSats * UInt64(max(multiplier, 1).rounded())
-        return usdValue(sats: dailyCapSats, currency: currency)
-    }
-
-    @MainActor
-    static func usdValue(sats: UInt64, currency: CurrencyViewModel) -> Double? {
-        guard let converted = currency.convert(sats: sats, to: usdCurrencyCode) else { return nil }
-        return (converted.value as NSDecimalNumber).doubleValue
+        let (dailyCapSats, overflow) = thresholdSats.multipliedReportingOverflow(by: UInt64(max(multiplier, 1).rounded()))
+        return overflow ? UInt64.max : dailyCapSats
     }
 }

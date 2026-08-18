@@ -43,22 +43,23 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore
     ) -> Bool {
         let multiplier = QuickPayLimits.sanitizedMultiplier(settings.quickpayDailyLimitMultiplier)
-        guard let dailyCapUsd = QuickPayLimits.dailyCapUsd(
+        guard let dailyCapSats = QuickPayLimits.dailyCapSats(
             thresholdUsd: settings.quickpayAmount,
             multiplier: multiplier,
             currency: currency
-        ), let amountUsd = QuickPayLimits.usdValue(sats: amountSats, currency: currency) else {
+        ) else {
             return false
         }
 
         let dayKey = QuickPaySpendStore.dayKey()
-        let spentUsdToday = spendStore.spentUsd(forDayKey: dayKey)
-        if spentUsdToday + amountUsd <= dailyCapUsd {
+        let spentSatsToday = spendStore.spentSats(forDayKey: dayKey)
+        let (total, overflow) = spentSatsToday.addingReportingOverflow(amountSats)
+        if !overflow, total <= dailyCapSats {
             return true
         }
 
         Logger.info(
-            "Skipping QuickPay: daily spend '\(spentUsdToday)' + '\(amountUsd)' exceeds cap '\(dailyCapUsd)'"
+            "Skipping QuickPay: daily spend '\(spentSatsToday)' + '\(amountSats)' exceeds cap '\(dailyCapSats)'"
         )
         return false
     }

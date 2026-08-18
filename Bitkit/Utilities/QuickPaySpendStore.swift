@@ -4,14 +4,14 @@ final class QuickPaySpendStore: @unchecked Sendable {
     static let shared = QuickPaySpendStore()
 
     static let dayKeyDefaultsKey = "quickPaySpendDayKey"
-    static let spentUsdDefaultsKey = "quickPaySpentUsdToday"
+    static let spentSatsDefaultsKey = "quickPaySpentSatsToday"
     static let pendingReservationsDefaultsKey = "quickPayPendingReservations"
 
     private let defaults: UserDefaults
     private let lock = NSLock()
 
     struct PendingReservation: Codable, Equatable {
-        let amountUsd: Double
+        let amountSats: UInt64
         let dayKey: String
     }
 
@@ -26,53 +26,60 @@ final class QuickPaySpendStore: @unchecked Sendable {
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
-    func spentUsd(forDayKey dayKey: String) -> Double {
+    func spentSats(forDayKey dayKey: String) -> UInt64 {
         lock.lock()
         defer { lock.unlock() }
-        return lockedSpentUsd(forDayKey: dayKey)
+        return lockedSpend(forDayKey: dayKey).spentSats
     }
 
     @discardableResult
-    func tryReserve(amountUsd: Double, dayKey: String, dailyCapUsd: Double) -> Bool {
+    func tryReserve(amountSats: UInt64, dayKey: String, dailyCapSats: UInt64) -> Bool {
         lock.lock()
         defer { lock.unlock() }
 
-        let spent = lockedSpentUsd(forDayKey: dayKey)
-        if spent + amountUsd > dailyCapUsd {
+        let spend = lockedSpend(forDayKey: dayKey)
+        let (total, overflow) = spend.spentSats.addingReportingOverflow(amountSats)
+        if overflow || total > dailyCapSats {
             return false
         }
 
-        lockedWrite(dayKey: dayKey, spentUsd: spent + amountUsd)
+        lockedWrite(dayKey: spend.dayKey, spentSats: total)
         return true
     }
 
-    func release(amountUsd: Double, dayKey: String) {
+    func release(amountSats: UInt64, dayKey: String) {
         lock.lock()
         defer { lock.unlock() }
 
-        guard defaults.string(forKey: Self.dayKeyDefaultsKey) == dayKey else { return }
-        let spent = defaults.double(forKey: Self.spentUsdDefaultsKey)
-        lockedWrite(dayKey: dayKey, spentUsd: max(spent - amountUsd, 0))
+        let spend = lockedSpend(forDayKey: dayKey)
+        let storedDayKey = defaults.string(forKey: Self.dayKeyDefaultsKey) ?? ""
+        guard spend.dayKey == storedDayKey else { return }
+        lockedWrite(dayKey: spend.dayKey, spentSats: spend.spentSats > amountSats ? spend.spentSats - amountSats : 0)
     }
 
-    func record(amountUsd: Double, dayKey: String) {
+    func record(amountSats: UInt64, dayKey: String) {
         lock.lock()
         defer { lock.unlock() }
 
-        let spent = lockedSpentUsd(forDayKey: dayKey)
-        lockedWrite(dayKey: dayKey, spentUsd: spent + amountUsd)
+        let spend = lockedSpend(forDayKey: dayKey)
+        let (total, overflow) = spend.spentSats.addingReportingOverflow(amountSats)
+        lockedWrite(dayKey: spend.dayKey, spentSats: overflow ? UInt64.max : total)
     }
 
-    func trackPending(paymentHash: String, amountUsd: Double, dayKey: String) {
+    func trackPending(paymentHash: String, amountSats: UInt64, dayKey: String) {
+        guard !paymentHash.isEmpty else { return }
+
         lock.lock()
         defer { lock.unlock() }
 
         var pending = lockedPendingReservations()
-        pending[paymentHash] = PendingReservation(amountUsd: amountUsd, dayKey: dayKey)
+        pending[paymentHash] = PendingReservation(amountSats: amountSats, dayKey: dayKey)
         lockedWritePending(pending)
     }
 
     func forgetPending(paymentHash: String) {
+        guard !paymentHash.isEmpty else { return }
+
         lock.lock()
         defer { lock.unlock() }
 
@@ -82,6 +89,8 @@ final class QuickPaySpendStore: @unchecked Sendable {
     }
 
     func releasePending(paymentHash: String) {
+        guard !paymentHash.isEmpty else { return }
+
         lock.lock()
         defer { lock.unlock() }
 
@@ -89,19 +98,33 @@ final class QuickPaySpendStore: @unchecked Sendable {
         guard let reservation = pending.removeValue(forKey: paymentHash) else { return }
         lockedWritePending(pending)
 
-        guard defaults.string(forKey: Self.dayKeyDefaultsKey) == reservation.dayKey else { return }
-        let spent = defaults.double(forKey: Self.spentUsdDefaultsKey)
-        lockedWrite(dayKey: reservation.dayKey, spentUsd: max(spent - reservation.amountUsd, 0))
+        let spend = lockedSpend(forDayKey: reservation.dayKey)
+        lockedWrite(
+            dayKey: spend.dayKey,
+            spentSats: spend.spentSats > reservation.amountSats ? spend.spentSats - reservation.amountSats : 0
+        )
     }
 
-    private func lockedSpentUsd(forDayKey dayKey: String) -> Double {
-        guard defaults.string(forKey: Self.dayKeyDefaultsKey) == dayKey else { return 0 }
-        return defaults.double(forKey: Self.spentUsdDefaultsKey)
+    private func lockedSpend(forDayKey dayKey: String) -> (dayKey: String, spentSats: UInt64) {
+        let storedDayKey = defaults.string(forKey: Self.dayKeyDefaultsKey) ?? ""
+        let storedSpend = lockedStoredSpentSats()
+
+        if storedDayKey.isEmpty || dayKey > storedDayKey {
+            return (dayKey, 0)
+        }
+        if dayKey == storedDayKey {
+            return (dayKey, storedSpend)
+        }
+        return (storedDayKey, storedSpend)
     }
 
-    private func lockedWrite(dayKey: String, spentUsd: Double) {
+    private func lockedStoredSpentSats() -> UInt64 {
+        UInt64(max(defaults.integer(forKey: Self.spentSatsDefaultsKey), 0))
+    }
+
+    private func lockedWrite(dayKey: String, spentSats: UInt64) {
         defaults.set(dayKey, forKey: Self.dayKeyDefaultsKey)
-        defaults.set(spentUsd, forKey: Self.spentUsdDefaultsKey)
+        defaults.set(Int(clamping: spentSats), forKey: Self.spentSatsDefaultsKey)
     }
 
     private func lockedPendingReservations() -> [String: PendingReservation] {

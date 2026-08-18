@@ -69,15 +69,14 @@ final class PaymentNavigationHelperTests: XCTestCase {
     }
 
     func testSkipsQuickpayWhenDailySpendCapIsExceeded() {
-        // 1000 sats = $1 at the test rate; $25 already spent exceeds the $25 daily cap.
-        spendStore.record(amountUsd: 25, dayKey: QuickPaySpendStore.dayKey())
+        // 1000 sats invoice; $5 × 5 = 25_000 sats at the test rate.
+        spendStore.record(amountSats: 25000, dayKey: QuickPaySpendStore.dayKey())
 
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .confirm)
     }
 
     func testAllowsQuickpayWhenSpendPlusAmountEqualsDailyCap() {
-        // $24 + $1 = $25, which is still within the cap.
-        spendStore.record(amountUsd: 24, dayKey: QuickPaySpendStore.dayKey())
+        spendStore.record(amountSats: 24000, dayKey: QuickPaySpendStore.dayKey())
 
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }

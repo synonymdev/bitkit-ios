@@ -96,7 +96,7 @@ struct SendQuickpay: View {
             } catch is PaymentTimeoutError {
                 spendStore.trackPending(
                     paymentHash: paymentHash,
-                    amountUsd: reservation.amountUsd,
+                    amountSats: reservation.amountSats,
                     dayKey: reservation.dayKey
                 )
                 return
@@ -114,13 +114,11 @@ struct SendQuickpay: View {
 
     private func reserveDailySpend(amountSats: UInt64) throws -> ReservedQuickPaySpend? {
         let multiplier = QuickPayLimits.sanitizedMultiplier(settings.quickpayDailyLimitMultiplier)
-        guard let amountUsd = QuickPayLimits.usdValue(sats: amountSats, currency: currency),
-              let dailyCapUsd = QuickPayLimits.dailyCapUsd(
-                  thresholdUsd: settings.quickpayAmount,
-                  multiplier: multiplier,
-                  currency: currency
-              )
-        else {
+        guard let dailyCapSats = QuickPayLimits.dailyCapSats(
+            thresholdUsd: settings.quickpayAmount,
+            multiplier: multiplier,
+            currency: currency
+        ) else {
             throw AppError(
                 message: t("wallet__send_quickpay__currency_conversion"),
                 debugMessage: "Currency conversion failed"
@@ -128,14 +126,14 @@ struct SendQuickpay: View {
         }
 
         let dayKey = QuickPaySpendStore.dayKey()
-        let reserved = spendStore.tryReserve(amountUsd: amountUsd, dayKey: dayKey, dailyCapUsd: dailyCapUsd)
+        let reserved = spendStore.tryReserve(amountSats: amountSats, dayKey: dayKey, dailyCapSats: dailyCapSats)
         guard reserved else {
-            Logger.info("Skipping QuickPay pay: daily spend reserve failed for '\(amountUsd)'")
+            Logger.info("Skipping QuickPay pay: daily spend reserve failed for '\(amountSats)'")
             navigationPath.append(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
             return nil
         }
 
-        return ReservedQuickPaySpend(amountUsd: amountUsd, dayKey: dayKey, store: spendStore)
+        return ReservedQuickPaySpend(amountSats: amountSats, dayKey: dayKey, store: spendStore)
     }
 
     private func handlePaymentError(_ error: Error, paymentRequest: String?) {
@@ -151,11 +149,11 @@ struct SendQuickpay: View {
 }
 
 private struct ReservedQuickPaySpend {
-    let amountUsd: Double
+    let amountSats: UInt64
     let dayKey: String
     let store: QuickPaySpendStore
 
     func release() {
-        store.release(amountUsd: amountUsd, dayKey: dayKey)
+        store.release(amountSats: amountSats, dayKey: dayKey)
     }
 }
