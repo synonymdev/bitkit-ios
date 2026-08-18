@@ -13,22 +13,29 @@ struct ShopMain: View {
     let navTitle = t("other__shop__main__nav_title")
 
     private var uri: String {
-        let baseUrl = "https://embed.bitrefill.com"
         let paymentMethod = "bitcoin" // Payment method "bitcoin" gives a unified invoice
         let params = "?ref=\(Env.bitrefillRef)&paymentMethod=\(paymentMethod)&theme=dark&utm_source=\(Env.appName)"
-        return "\(baseUrl)/\(page)/\(params)"
+        return "\(ShopOrigin.paymentOrigin)/\(page)/\(params)"
     }
 
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: navTitle)
 
-            ShopWebView(url: uri, onMessage: handleMessage)
-                .padding(.top, 16)
+            ShopWebView(
+                url: uri,
+                onMessage: handleMessage,
+                onBlockedNavigation: handleBlockedNavigation
+            )
+            .padding(.top, 16)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .offlineOverlay(title: navTitle)
+    }
+
+    private func handleBlockedNavigation() {
+        app.toast(type: .warning, title: navTitle, description: t("other__shop__external_link_blocked"))
     }
 
     private func handleMessage(_ message: String) {
@@ -39,14 +46,15 @@ struct ShopMain: View {
               let json = try? JSONSerialization.jsonObject(with: innerData) as? [String: Any],
               let event = json["event"] as? String,
               event == "payment_intent",
-              let paymentUri = json["paymentUri"] as? String
+              let paymentUri = (json["paymentUri"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !paymentUri.isEmpty
         else {
             return
         }
 
         Task { @MainActor in
             do {
-                try await app.handleScannedData(paymentUri)
+                try await app.handleScannedData(paymentUri, scope: .paymentRequests)
 
                 PaymentNavigationHelper.openPaymentSheet(
                     app: app,

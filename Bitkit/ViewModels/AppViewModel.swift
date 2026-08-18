@@ -394,7 +394,11 @@ extension AppViewModel {
 // MARK: Scanning/pasting handling
 
 extension AppViewModel {
-    func handleScannedData(_ uri: String, claimedContactPaymentContext: ContactPaymentContext? = nil) async throws {
+    func handleScannedData(
+        _ uri: String,
+        claimedContactPaymentContext: ContactPaymentContext? = nil,
+        scope: ScanHandlingScope = .unrestricted
+    ) async throws {
         let handlingId = claimedContactPaymentContext?.id ?? UUID()
         if let claimedContactPaymentContext {
             guard ownsContactPaymentContext(claimedContactPaymentContext), scannedDataHandlingId == nil else {
@@ -408,23 +412,46 @@ extension AppViewModel {
             }
         }
 
+        let uri = uri.removingLightningSchemes()
+        let prevalidatedPaymentRequest: BitkitCore.Scanner?
+        if scope == .paymentRequests {
+            guard SamRockSetupRequest.parse(uri) == nil,
+                  !SamRockSetupRequest.isProtocolURL(uri)
+            else {
+                throw ShopPaymentRequestError.unsupportedRequest
+            }
+            if Bip21Utils.isDuplicatedBip21(uri) {
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__generic"),
+                    accessibilityIdentifier: "InvalidAddressToast"
+                )
+                return
+            }
+            let data = try await decode(invoice: uri)
+            try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+            guard ShopPaymentRequest.isSupported(data) else { throw ShopPaymentRequestError.unsupportedRequest }
+            prevalidatedPaymentRequest = data
+        } else {
+            prevalidatedPaymentRequest = nil
+        }
+
         // Reset send state before handling new data
         resetSendState(preservingContactPaymentContext: claimedContactPaymentContext != nil)
 
-        let uri = uri.removingLightningSchemes()
-
-        if let samRockSetup = SamRockSetupRequest.parse(uri) {
+        if scope == .unrestricted, let samRockSetup = SamRockSetupRequest.parse(uri) {
             handleBTCPayConnection(samRockSetup)
             return
         }
 
-        if SamRockSetupRequest.isProtocolURL(uri) {
+        if scope == .unrestricted, SamRockSetupRequest.isProtocolURL(uri) {
             handleInvalidBTCPayConnection(uri)
             return
         }
 
         // Workaround for duplicated BIP21 URIs (bitkit-core#63)
-        if Bip21Utils.isDuplicatedBip21(uri) {
+        if scope == .unrestricted, Bip21Utils.isDuplicatedBip21(uri) {
             toast(
                 type: .error,
                 title: t("other__scan_err_decoding"),
@@ -434,8 +461,13 @@ extension AppViewModel {
             return
         }
 
-        let data = try await decode(invoice: uri)
-        try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+        let data: BitkitCore.Scanner
+        if let prevalidatedPaymentRequest {
+            data = prevalidatedPaymentRequest
+        } else {
+            data = try await decode(invoice: uri)
+            try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+        }
 
         switch data {
         // BIP21 (Unified) invoice handling
