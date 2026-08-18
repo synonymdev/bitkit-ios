@@ -162,23 +162,23 @@ class WalletViewModel: ObservableObject {
             let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
             let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
 
-            var channelMigration: ChannelDataMigration?
-            if let migration = MigrationsService.shared.pendingChannelMigration {
-                channelMigration = ChannelDataMigration(
-                    channelManager: [UInt8](migration.channelManager),
-                    channelMonitors: migration.channelMonitors.map { [UInt8]($0) }
+            try await MigrationsService.shared.withPendingChannelMigration { migration in
+                let channelMigration = migration.map {
+                    ChannelDataMigration(
+                        channelManager: [UInt8]($0.channelManager),
+                        channelMonitors: $0.channelMonitors.map { [UInt8]($0) }
+                    )
+                }
+
+                await runLegacyNetworkGraphCleanupIfNeeded()
+
+                try await lightningService.setup(
+                    walletIndex: walletIndex,
+                    electrumServerUrl: electrumServerUrl,
+                    rgsServerUrl: rgsServerUrl.isEmpty ? nil : rgsServerUrl,
+                    channelMigration: channelMigration
                 )
-                MigrationsService.shared.pendingChannelMigration = nil
             }
-
-            await runLegacyNetworkGraphCleanupIfNeeded()
-
-            try await lightningService.setup(
-                walletIndex: walletIndex,
-                electrumServerUrl: electrumServerUrl,
-                rgsServerUrl: rgsServerUrl.isEmpty ? nil : rgsServerUrl,
-                channelMigration: channelMigration
-            )
             try await lightningService.start(onEvent: { event in
                 Task { @MainActor in
                     // Notify all event handlers

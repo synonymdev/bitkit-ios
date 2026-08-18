@@ -65,11 +65,11 @@ class VssBackupClient {
         await ldkSetupCoordinator.reset()
     }
 
-    /// Returns lnurl auth params when lnurl is configured; nil otherwise.
+    /// Returns LNURL-auth params when configured. Callers fail closed if this returns nil.
     private func getLnurlAuthParams(walletIndex: Int) async throws
         -> (vssUrl: String, storeId: String, mnemonic: String, passphrase: String?, lnurlAuthServerUrl: String)?
     {
-        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl
+        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !lnurlAuthServerUrl.isEmpty else { return nil }
         guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
@@ -87,18 +87,16 @@ class VssBackupClient {
                 let vssUrl = Env.vssServerUrl
                 Logger.debug("Building VSS client with vssUrl: '\(vssUrl)'", context: "VssBackupClient")
 
-                if let params = try await getLnurlAuthParams(walletIndex: walletIndex) {
-                    try await vssNewClientWithLnurlAuth(
-                        baseUrl: params.vssUrl,
-                        storeId: params.storeId,
-                        mnemonic: params.mnemonic,
-                        passphrase: params.passphrase,
-                        lnurlAuthServerUrl: params.lnurlAuthServerUrl
-                    )
-                } else {
-                    let storeId = try await VssStoreIdProvider.shared.getVssStoreId(walletIndex: walletIndex)
-                    try await vssNewClient(baseUrl: vssUrl, storeId: storeId)
+                guard let params = try await getLnurlAuthParams(walletIndex: walletIndex) else {
+                    throw CustomServiceError.vssAuthRequired
                 }
+                try await vssNewClientWithLnurlAuth(
+                    baseUrl: params.vssUrl,
+                    storeId: params.storeId,
+                    mnemonic: params.mnemonic,
+                    passphrase: params.passphrase,
+                    lnurlAuthServerUrl: params.lnurlAuthServerUrl
+                )
                 Logger.info("VSS client setup with server: '\(vssUrl)'", context: "VssBackupClient")
             }
         } catch {
@@ -110,7 +108,7 @@ class VssBackupClient {
     /// Lazily initializes the LDK VSS client (used only by the debug screen). Only runs when lnurl auth is configured.
     private func setupLdk(walletIndex: Int = 0) async throws {
         guard let params = try await getLnurlAuthParams(walletIndex: walletIndex) else {
-            throw AppError(message: "LDK VSS requires lnurl auth", debugMessage: "lnurlAuthServerUrl is not set")
+            throw CustomServiceError.vssAuthRequired
         }
         do {
             try await withTimeout(seconds: 30) {
