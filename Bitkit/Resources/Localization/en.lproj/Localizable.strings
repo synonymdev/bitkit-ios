@@ -803,7 +803,9 @@
 "settings__quickpay__settings__label" = "Quickpay threshold";
 "settings__quickpay__settings__daily_label" = "Daily QuickPay limit";
 "settings__quickpay__settings__daily_text" = "Auto-pay up to ${limit} per day without PIN ({multiplier}× your threshold). After that, payments open Confirm.";
+"settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay exclusively supports payments from your Spending Balance.";
+"wallet__send_quickpay__currency_conversion" = "Currency conversion failed";
 "wallet__send_quickpay__daily_limit" = "Daily QuickPay limit reached";
 "settings__security__title" = "Security And Privacy";
 "settings__security__swipe_balance_to_hide" = "Swipe balance to hide";

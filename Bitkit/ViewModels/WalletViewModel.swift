@@ -780,6 +780,11 @@ class WalletViewModel: ObservableObject {
         let routeFeeMsat: UInt64?
     }
 
+    struct SettledLightningPayment {
+        let paymentHash: PaymentHash
+        let feePaidSats: UInt64
+    }
+
     /// Waits for probe results that match one of the returned probe `paymentId`s.
     /// If any matching probe succeeds, this resolves success immediately.
     /// If all matching probes fail, this resolves with the final failed probe event.
@@ -870,12 +875,14 @@ class WalletViewModel: ObservableObject {
         sats: UInt64? = nil,
         timeoutSeconds: TimeInterval = 10,
         onTimeout: (@MainActor () -> Void)? = nil
-    ) async throws -> PaymentHash {
-        try await withThrowingTaskGroup(of: PaymentHash.self) { group in
+    ) async throws -> SettledLightningPayment {
+        try await withThrowingTaskGroup(of: SettledLightningPayment.self) { group in
             group.addTask { try await self.send(bolt11: bolt11, sats: sats) }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
-                if let onTimeout { await MainActor.run { onTimeout() } }
+                if let onTimeout {
+                    await MainActor.run { onTimeout() }
+                }
                 throw PaymentTimeoutError.timedOut
             }
             let first = try await group.next()!
@@ -888,7 +895,7 @@ class WalletViewModel: ObservableObject {
     /// A LN payment can throw an error right away, be successful right away,
     /// or take a while to complete/fail because it's retrying different paths.
     /// So we need to handle all these cases here.
-    func send(bolt11: String, sats: UInt64? = nil) async throws -> PaymentHash {
+    func send(bolt11: String, sats: UInt64? = nil) async throws -> SettledLightningPayment {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
         let eventId = String(hash)
 
@@ -896,10 +903,13 @@ class WalletViewModel: ObservableObject {
             // Add event listener for this specific payment
             addOnEvent(id: eventId) { event in
                 switch event {
-                case let .paymentSuccessful(_, paymentHash, _, _):
+                case let .paymentSuccessful(_, paymentHash, _, feePaidMsat):
                     if paymentHash == hash {
                         self.removeOnEvent(id: eventId)
-                        continuation.resume(returning: paymentHash)
+                        continuation.resume(returning: SettledLightningPayment(
+                            paymentHash: paymentHash,
+                            feePaidSats: (feePaidMsat ?? 0) / 1000
+                        ))
                     }
                 case .paymentFailed(paymentId: _, let paymentHash, let reason):
                     if paymentHash == hash {

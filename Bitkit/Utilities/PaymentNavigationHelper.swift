@@ -23,11 +23,25 @@ struct PaymentNavigationHelper {
             return false
         }
 
-        let quickpayAmountSats = currency.convert(fiatAmount: settings.quickpayAmount, from: "USD") ?? 0
-        guard quickpayAmountSats > 0, amountSats <= quickpayAmountSats else {
-            return false
-        }
+        return isWithinThreshold(amountSats: amountSats, settings: settings, currency: currency)
+            && isWithinDailyCap(amountSats: amountSats, settings: settings, currency: currency, spendStore: spendStore)
+    }
 
+    private static func isWithinThreshold(
+        amountSats: UInt64,
+        settings: SettingsViewModel,
+        currency: CurrencyViewModel
+    ) -> Bool {
+        let quickpayAmountSats = currency.convert(fiatAmount: settings.quickpayAmount, from: QuickPayLimits.usdCurrencyCode) ?? 0
+        return quickpayAmountSats > 0 && amountSats <= quickpayAmountSats
+    }
+
+    private static func isWithinDailyCap(
+        amountSats: UInt64,
+        settings: SettingsViewModel,
+        currency: CurrencyViewModel,
+        spendStore: QuickPaySpendStore
+    ) -> Bool {
         let multiplier = QuickPayLimits.sanitizedMultiplier(settings.quickpayDailyLimitMultiplier)
         guard let dailyCapUsd = QuickPayLimits.dailyCapUsd(
             thresholdUsd: settings.quickpayAmount,
@@ -39,14 +53,14 @@ struct PaymentNavigationHelper {
 
         let dayKey = QuickPaySpendStore.dayKey()
         let spentUsdToday = spendStore.spentUsd(forDayKey: dayKey)
-        if spentUsdToday + amountUsd > dailyCapUsd {
-            Logger.info(
-                "Skipping QuickPay: daily spend '\(spentUsdToday)' + '\(amountUsd)' exceeds cap '\(dailyCapUsd)'"
-            )
-            return false
+        if spentUsdToday + amountUsd <= dailyCapUsd {
+            return true
         }
 
-        return true
+        Logger.info(
+            "Skipping QuickPay: daily spend '\(spentUsdToday)' + '\(amountUsd)' exceeds cap '\(dailyCapUsd)'"
+        )
+        return false
     }
 
     /// Centralized method to open the appropriate sheet based on the current state

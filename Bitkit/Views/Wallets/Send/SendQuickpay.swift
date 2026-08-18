@@ -62,9 +62,7 @@ struct SendQuickpay: View {
             }
 
             guard let bolt11 = bolt11Invoice else {
-                throw NSError(
-                    domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "No Lightning invoice found"]
-                )
+                throw AppError(message: t("common__error_body"), debugMessage: "No Lightning invoice found")
             }
 
             let amountSats = wallet.sendAmountSats ?? 0
@@ -76,13 +74,17 @@ struct SendQuickpay: View {
             // Quickpay only triggers for invoices with built-in amounts, so pass sats: nil
             // to let LDK use the invoice's native millisatoshi precision.
             do {
-                try await wallet.sendWithTimeout(
+                let settled = try await wallet.sendWithTimeout(
                     bolt11: bolt11,
                     sats: nil,
                     onTimeout: {
                         app.addPendingPaymentHash(paymentHash)
                         navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .quickpay, paymentRequest: bolt11))
                     }
+                )
+                wallet.sendAmountSats = QuickPayLimits.amountWithFeeSats(
+                    amountSats: amountSats,
+                    feePaidSats: settled.feePaidSats
                 )
                 Logger.info("Quickpay payment successful: \(paymentHash)")
                 navigationPath.append(.success(paymentId: paymentHash))
@@ -110,10 +112,9 @@ struct SendQuickpay: View {
                   currency: currency
               )
         else {
-            throw NSError(
-                domain: "Payment",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Currency conversion failed"]
+            throw AppError(
+                message: t("wallet__send_quickpay__currency_conversion"),
+                debugMessage: "Currency conversion failed"
             )
         }
 
@@ -121,10 +122,9 @@ struct SendQuickpay: View {
         let reserved = spendStore.tryReserve(amountUsd: amountUsd, dayKey: dayKey, dailyCapUsd: dailyCapUsd)
         guard reserved else {
             Logger.info("Skipping QuickPay pay: daily spend reserve failed for '\(amountUsd)'")
-            throw NSError(
-                domain: "Payment",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: t("wallet__send_quickpay__daily_limit")]
+            throw AppError(
+                message: t("wallet__send_quickpay__daily_limit"),
+                debugMessage: "Daily QuickPay limit reached"
             )
         }
 

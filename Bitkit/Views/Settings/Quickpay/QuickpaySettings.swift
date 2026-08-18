@@ -56,7 +56,12 @@ struct QuickpaySettings: View {
                             CustomSlider(
                                 value: $settings.quickpayDailyLimitMultiplier,
                                 steps: QuickPayLimits.dailyMultiplierSteps,
-                                formatLabel: { "\(Int($0))×" },
+                                formatLabel: {
+                                    t(
+                                        "settings__quickpay__settings__multiplier_format",
+                                        variables: ["multiplier": String(Int($0))]
+                                    )
+                                },
                                 testIdentifier: "QuickpayDailyLimitSlider"
                             )
                         }
