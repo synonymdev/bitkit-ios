@@ -253,6 +253,7 @@ final class AddressTypeSettingsTests: XCTestCase {
         settings.addressTypesToMonitor = [.nativeSegwit, .taproot, .legacy]
         settings.hideBalance = true
         settings.enableQuickpay = true
+        settings.quickpayDailyLimitMultiplier = 10
         UserDefaults.standard.synchronize()
 
         let backupDict = settings.getSettingsDictionary()
@@ -274,5 +275,21 @@ final class AddressTypeSettingsTests: XCTestCase {
                        "hideBalance should survive full backup→reset→restore cycle")
         XCTAssertEqual(settings.enableQuickpay, true,
                        "enableQuickpay should survive full backup→reset→restore cycle")
+        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 10,
+                       "quickpayDailyLimitMultiplier should survive full backup→reset→restore cycle")
+        XCTAssertEqual(backupDict["quickPayDailyLimitMultiplier"] as? Int, 10)
+        XCTAssertNil(backupDict["quickpayDailyLimitMultiplier"])
+    }
+
+    func testRestoresDailyLimitMultiplierFromAndroidKey() {
+        settings.restoreSettingsDictionary(["quickPayDailyLimitMultiplier": 3])
+
+        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 3)
+    }
+
+    func testInvalidDailyLimitMultiplierFallsBackToDefault() {
+        settings.restoreSettingsDictionary(["quickPayDailyLimitMultiplier": 7])
+
+        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 5)
     }
 }

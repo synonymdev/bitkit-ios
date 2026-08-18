@@ -3,7 +3,12 @@ import SwiftUI
 struct QuickpaySettings: View {
     @EnvironmentObject private var settings: SettingsViewModel
 
-    private let sliderSteps: [Double] = [1, 5, 10, 20, 50]
+    private var dailyLimitUsd: Int {
+        QuickPayLimits.dailyCapUsdDisplay(
+            thresholdUsd: settings.quickpayAmount,
+            multiplier: settings.quickpayDailyLimitMultiplier
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -26,7 +31,34 @@ struct QuickpaySettings: View {
 
                         VStack(alignment: .leading, spacing: 0) {
                             SettingsSectionHeader(t("settings__quickpay__settings__label"))
-                            CustomSlider(value: $settings.quickpayAmount, steps: sliderSteps)
+                            CustomSlider(
+                                value: $settings.quickpayAmount,
+                                steps: QuickPayLimits.thresholdSteps,
+                                testIdentifier: "QuickpayAmountSlider"
+                            )
+                        }
+                        .padding(.top, 32)
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            SettingsSectionHeader(t("settings__quickpay__settings__daily_label"))
+
+                            BodyMText(
+                                t(
+                                    "settings__quickpay__settings__daily_text",
+                                    variables: [
+                                        "limit": String(dailyLimitUsd),
+                                        "multiplier": String(Int(settings.quickpayDailyLimitMultiplier)),
+                                    ]
+                                )
+                            )
+                            .padding(.bottom, 16)
+
+                            CustomSlider(
+                                value: $settings.quickpayDailyLimitMultiplier,
+                                steps: QuickPayLimits.dailyMultiplierSteps,
+                                formatLabel: { "\(Int($0))×" },
+                                testIdentifier: "QuickpayDailyLimitSlider"
+                            )
                         }
                         .padding(.top, 32)
 
@@ -42,7 +74,6 @@ struct QuickpaySettings: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 16)
-                        // .padding(.vertical, 32)
 
                         BodySText(t("settings__quickpay__settings__note"))
                     }
@@ -53,5 +84,13 @@ struct QuickpaySettings: View {
             }
         }
         .navigationBarHidden(true)
+    }
+}
+
+#Preview {
+    NavigationStack {
+        QuickpaySettings()
+            .environmentObject(SettingsViewModel.shared)
+            .preferredColorScheme(.dark)
     }
 }
