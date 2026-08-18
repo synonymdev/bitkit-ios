@@ -9,11 +9,18 @@ struct SendSheetPendingResolution: Equatable {
     let paymentHash: String
     let success: Bool
     let failureReason: PaymentFailureReason?
+    let feePaidSats: UInt64?
 
-    init(paymentHash: String, success: Bool, failureReason: PaymentFailureReason? = nil) {
+    init(
+        paymentHash: String,
+        success: Bool,
+        failureReason: PaymentFailureReason? = nil,
+        feePaidSats: UInt64? = nil
+    ) {
         self.paymentHash = paymentHash
         self.success = success
         self.failureReason = failureReason
+        self.feePaidSats = feePaidSats
     }
 }
 
@@ -1039,11 +1046,19 @@ extension AppViewModel {
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
-        case let .paymentSuccessful(paymentId, paymentHash, _, _):
+        case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
             let hash = paymentId ?? paymentHash
+            QuickPaySpendStore.shared.forgetPending(paymentHash: hash)
+            if paymentHash != hash {
+                QuickPaySpendStore.shared.forgetPending(paymentHash: paymentHash)
+            }
             if pendingPaymentHashes.contains(hash) {
                 pendingPaymentHashes.remove(hash)
-                sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: true)
+                sendSheetPendingResolution = SendSheetPendingResolution(
+                    paymentHash: hash,
+                    success: true,
+                    feePaidSats: (feePaidMsat ?? 0) / 1000
+                )
                 toast(
                     type: .lightning,
                     title: t("wallet__toast_payment_success_title"),
@@ -1053,6 +1068,12 @@ extension AppViewModel {
             }
         case let .paymentFailed(paymentId, paymentHash, reason):
             let hash = paymentId ?? paymentHash
+            if let hash {
+                QuickPaySpendStore.shared.releasePending(paymentHash: hash)
+                if let paymentHash, paymentHash != hash {
+                    QuickPaySpendStore.shared.releasePending(paymentHash: paymentHash)
+                }
+            }
             if let hash, pendingPaymentHashes.contains(hash) {
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: reason)

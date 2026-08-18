@@ -11,6 +11,7 @@ struct SendQuickpay: View {
     @Binding var navigationPath: [SendRoute]
     let routingCacheResetAttempted: Bool
     var spendStore: QuickPaySpendStore = .shared
+    @State private var didStartPayment = false
 
     var body: some View {
         VStack {
@@ -37,6 +38,8 @@ struct SendQuickpay: View {
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
+            guard !didStartPayment else { return }
+            didStartPayment = true
             Task {
                 await performPayment()
             }
@@ -66,7 +69,9 @@ struct SendQuickpay: View {
             }
 
             let amountSats = wallet.sendAmountSats ?? 0
-            let reservation = try reserveDailySpend(amountSats: amountSats)
+            guard let reservation = try reserveDailySpend(amountSats: amountSats) else {
+                return
+            }
 
             let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
             let paymentHash = String(describing: parsedInvoice.paymentHash())
@@ -89,7 +94,11 @@ struct SendQuickpay: View {
                 Logger.info("Quickpay payment successful: \(paymentHash)")
                 navigationPath.append(.success(paymentId: paymentHash))
             } catch is PaymentTimeoutError {
-                // Pending keeps the reserved spend; onTimeout already navigated.
+                spendStore.trackPending(
+                    paymentHash: paymentHash,
+                    amountUsd: reservation.amountUsd,
+                    dayKey: reservation.dayKey
+                )
                 return
             } catch {
                 reservation.release()
@@ -103,7 +112,7 @@ struct SendQuickpay: View {
         }
     }
 
-    private func reserveDailySpend(amountSats: UInt64) throws -> ReservedQuickPaySpend {
+    private func reserveDailySpend(amountSats: UInt64) throws -> ReservedQuickPaySpend? {
         let multiplier = QuickPayLimits.sanitizedMultiplier(settings.quickpayDailyLimitMultiplier)
         guard let amountUsd = QuickPayLimits.usdValue(sats: amountSats, currency: currency),
               let dailyCapUsd = QuickPayLimits.dailyCapUsd(
@@ -122,10 +131,8 @@ struct SendQuickpay: View {
         let reserved = spendStore.tryReserve(amountUsd: amountUsd, dayKey: dayKey, dailyCapUsd: dailyCapUsd)
         guard reserved else {
             Logger.info("Skipping QuickPay pay: daily spend reserve failed for '\(amountUsd)'")
-            throw AppError(
-                message: t("wallet__send_quickpay__daily_limit"),
-                debugMessage: "Daily QuickPay limit reached"
-            )
+            navigationPath.append(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+            return nil
         }
 
         return ReservedQuickPaySpend(amountUsd: amountUsd, dayKey: dayKey, store: spendStore)

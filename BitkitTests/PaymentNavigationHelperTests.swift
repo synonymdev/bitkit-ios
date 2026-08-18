@@ -82,6 +82,13 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
 
+    func testReserveRaceFallsBackToConfirm() {
+        XCTAssertEqual(
+            PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: appWithEligibleInvoice),
+            .confirm
+        )
+    }
+
     private func sendRoute(for app: AppViewModel) -> SendRoute? {
         PaymentNavigationHelper.appropriateSendRoute(
             app: app,

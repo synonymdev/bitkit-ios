@@ -5,9 +5,15 @@ final class QuickPaySpendStore: @unchecked Sendable {
 
     static let dayKeyDefaultsKey = "quickPaySpendDayKey"
     static let spentUsdDefaultsKey = "quickPaySpentUsdToday"
+    static let pendingReservationsDefaultsKey = "quickPayPendingReservations"
 
     private let defaults: UserDefaults
     private let lock = NSLock()
+
+    struct PendingReservation: Codable, Equatable {
+        let amountUsd: Double
+        let dayKey: String
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -57,6 +63,37 @@ final class QuickPaySpendStore: @unchecked Sendable {
         lockedWrite(dayKey: dayKey, spentUsd: spent + amountUsd)
     }
 
+    func trackPending(paymentHash: String, amountUsd: Double, dayKey: String) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var pending = lockedPendingReservations()
+        pending[paymentHash] = PendingReservation(amountUsd: amountUsd, dayKey: dayKey)
+        lockedWritePending(pending)
+    }
+
+    func forgetPending(paymentHash: String) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var pending = lockedPendingReservations()
+        pending.removeValue(forKey: paymentHash)
+        lockedWritePending(pending)
+    }
+
+    func releasePending(paymentHash: String) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var pending = lockedPendingReservations()
+        guard let reservation = pending.removeValue(forKey: paymentHash) else { return }
+        lockedWritePending(pending)
+
+        guard defaults.string(forKey: Self.dayKeyDefaultsKey) == reservation.dayKey else { return }
+        let spent = defaults.double(forKey: Self.spentUsdDefaultsKey)
+        lockedWrite(dayKey: reservation.dayKey, spentUsd: max(spent - reservation.amountUsd, 0))
+    }
+
     private func lockedSpentUsd(forDayKey dayKey: String) -> Double {
         guard defaults.string(forKey: Self.dayKeyDefaultsKey) == dayKey else { return 0 }
         return defaults.double(forKey: Self.spentUsdDefaultsKey)
@@ -65,5 +102,23 @@ final class QuickPaySpendStore: @unchecked Sendable {
     private func lockedWrite(dayKey: String, spentUsd: Double) {
         defaults.set(dayKey, forKey: Self.dayKeyDefaultsKey)
         defaults.set(spentUsd, forKey: Self.spentUsdDefaultsKey)
+    }
+
+    private func lockedPendingReservations() -> [String: PendingReservation] {
+        guard let data = defaults.data(forKey: Self.pendingReservationsDefaultsKey),
+              let decoded = try? JSONDecoder().decode([String: PendingReservation].self, from: data)
+        else {
+            return [:]
+        }
+        return decoded
+    }
+
+    private func lockedWritePending(_ pending: [String: PendingReservation]) {
+        if pending.isEmpty {
+            defaults.removeObject(forKey: Self.pendingReservationsDefaultsKey)
+            return
+        }
+
+        defaults.set(try? JSONEncoder().encode(pending), forKey: Self.pendingReservationsDefaultsKey)
     }
 }

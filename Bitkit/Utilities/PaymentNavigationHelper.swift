@@ -173,6 +173,18 @@ struct PaymentNavigationHelper {
         return nil
     }
 
+    static func confirmRouteAfterQuickPayCap(app: AppViewModel) -> SendRoute {
+        if let lnurlPayData = app.lnurlPayData {
+            return lnurlPayData.isFixedAmount ? .lnurlPayConfirm : .lnurlPayAmount
+        }
+
+        if let invoice = app.scannedLightningInvoice, invoice.amountSatoshis == 0 {
+            return .amount
+        }
+
+        return .confirm
+    }
+
     static func contactPaymentRoute(
         app: AppViewModel,
         currency: CurrencyViewModel,

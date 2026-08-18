@@ -74,4 +74,34 @@ final class QuickPaySpendStoreTests: XCTestCase {
         sut.release(amountUsd: 7.0, dayKey: "2026-08-15")
         XCTAssertEqual(sut.spentUsd(forDayKey: "2026-08-16"), 7.0)
     }
+
+    func testReleasePendingRollsBackATrackedReservation() {
+        XCTAssertTrue(sut.tryReserve(amountUsd: 5.0, dayKey: "2026-08-15", dailyCapUsd: 25.0))
+        sut.trackPending(paymentHash: "abc", amountUsd: 5.0, dayKey: "2026-08-15")
+
+        sut.releasePending(paymentHash: "abc")
+
+        XCTAssertEqual(sut.spentUsd(forDayKey: "2026-08-15"), 0)
+        XCTAssertTrue(sut.tryReserve(amountUsd: 25.0, dayKey: "2026-08-15", dailyCapUsd: 25.0))
+    }
+
+    func testForgetPendingKeepsTheReservation() {
+        XCTAssertTrue(sut.tryReserve(amountUsd: 5.0, dayKey: "2026-08-15", dailyCapUsd: 25.0))
+        sut.trackPending(paymentHash: "abc", amountUsd: 5.0, dayKey: "2026-08-15")
+
+        sut.forgetPending(paymentHash: "abc")
+        sut.releasePending(paymentHash: "abc")
+
+        XCTAssertEqual(sut.spentUsd(forDayKey: "2026-08-15"), 5.0)
+    }
+
+    func testPendingReservationSurvivesANewStoreInstance() {
+        XCTAssertTrue(sut.tryReserve(amountUsd: 5.0, dayKey: "2026-08-15", dailyCapUsd: 25.0))
+        sut.trackPending(paymentHash: "abc", amountUsd: 5.0, dayKey: "2026-08-15")
+
+        let reloaded = QuickPaySpendStore(defaults: defaults)
+        reloaded.releasePending(paymentHash: "abc")
+
+        XCTAssertEqual(reloaded.spentUsd(forDayKey: "2026-08-15"), 0)
+    }
 }
