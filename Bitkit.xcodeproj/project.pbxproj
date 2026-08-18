@@ -1187,7 +1187,7 @@
 			repositoryURL = "https://github.com/synonymdev/vss-rust-client-ffi";
 			requirement = {
 				kind = exactVersion;
-				version = 0.5.21;
+				version = 0.5.23;
 			};
 		};
 		4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
