@@ -15,53 +15,17 @@ struct PaymentNavigationHelper {
         currency: CurrencyViewModel,
         spendStore: QuickPaySpendStore = .shared
     ) -> Bool {
-        guard settings.enableQuickpay else {
-            return false
-        }
-
         guard let amountSats = QuickPayLimits.paymentAmountSats(app: app), amountSats > 0 else {
             return false
         }
 
-        return isWithinThreshold(amountSats: amountSats, settings: settings, currency: currency)
-            && isWithinDailyCap(amountSats: amountSats, settings: settings, currency: currency, spendStore: spendStore)
-    }
-
-    private static func isWithinThreshold(
-        amountSats: UInt64,
-        settings: SettingsViewModel,
-        currency: CurrencyViewModel
-    ) -> Bool {
-        let quickpayAmountSats = currency.convert(fiatAmount: settings.quickpayAmount, from: QuickPayLimits.usdCurrencyCode) ?? 0
-        return quickpayAmountSats > 0 && amountSats <= quickpayAmountSats
-    }
-
-    private static func isWithinDailyCap(
-        amountSats: UInt64,
-        settings: SettingsViewModel,
-        currency: CurrencyViewModel,
-        spendStore: QuickPaySpendStore
-    ) -> Bool {
-        let multiplier = QuickPayLimits.sanitizedMultiplier(settings.quickpayDailyLimitMultiplier)
-        guard let dailyCapSats = QuickPayLimits.dailyCapSats(
+        return spendStore.canApply(
+            amountSats: amountSats,
+            enabled: settings.enableQuickpay,
             thresholdUsd: settings.quickpayAmount,
-            multiplier: multiplier,
-            currency: currency
-        ) else {
-            return false
-        }
-
-        let dayKey = QuickPaySpendStore.dayKey()
-        let spentSatsToday = spendStore.spentSats(forDayKey: dayKey)
-        let (total, overflow) = spentSatsToday.addingReportingOverflow(amountSats)
-        if !overflow, total <= dailyCapSats {
-            return true
-        }
-
-        Logger.info(
-            "Skipping QuickPay: daily spend '\(spentSatsToday)' + '\(amountSats)' exceeds cap '\(dailyCapSats)'"
+            multiplier: settings.quickpayDailyLimitMultiplier,
+            rates: .live(currency)
         )
-        return false
     }
 
     /// Centralized method to open the appropriate sheet based on the current state
@@ -184,6 +148,24 @@ struct PaymentNavigationHelper {
         }
 
         return .confirm
+    }
+
+    static func replacingQuickPay(
+        in path: [SendRoute],
+        root: SendRoute,
+        with route: SendRoute
+    ) -> (root: SendRoute, path: [SendRoute]) {
+        if root == .quickpay {
+            return (route, [])
+        }
+
+        if let index = path.lastIndex(of: .quickpay) {
+            var nextPath = Array(path.prefix(index))
+            nextPath.append(route)
+            return (root, nextPath)
+        }
+
+        return (root, path + [route])
     }
 
     static func contactPaymentRoute(

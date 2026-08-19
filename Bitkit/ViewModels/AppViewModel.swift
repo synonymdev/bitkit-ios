@@ -99,6 +99,7 @@ class AppViewModel: ObservableObject {
     /// When payment succeeds/fails, we show toast and publish resolution so SendPendingScreen can navigate.
     private var pendingPaymentHashes: Set<String> = []
     private var pendingContactPaymentContexts: [String: ContactPaymentContext] = [:]
+    private(set) var isQuickPayActive = false
 
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
@@ -395,6 +396,18 @@ extension AppViewModel {
     func consumeSendSheetPendingResolution(paymentHash hash: String) {
         guard sendSheetPendingResolution?.paymentHash == hash else { return }
         sendSheetPendingResolution = nil
+    }
+
+    func beginQuickPay() -> Bool {
+        if isQuickPayActive {
+            return false
+        }
+        isQuickPayActive = true
+        return true
+    }
+
+    func resetQuickPay() {
+        isQuickPayActive = false
     }
 }
 
@@ -808,6 +821,7 @@ extension AppViewModel {
         if !preservingContactPaymentContext {
             contactPaymentContext = nil
         }
+        resetQuickPay()
     }
 }
 
@@ -1048,16 +1062,18 @@ extension AppViewModel {
             break
         case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
             let hash = paymentId ?? paymentHash
-            QuickPaySpendStore.shared.forgetPending(paymentHash: hash)
-            if paymentHash != hash {
-                QuickPaySpendStore.shared.forgetPending(paymentHash: paymentHash)
-            }
             if pendingPaymentHashes.contains(hash) {
+                let isQuickPay = QuickPaySpendStore.shared.reservation(paymentHash: hash) != nil
+                    || paymentHash != hash && QuickPaySpendStore.shared.reservation(paymentHash: paymentHash) != nil
+                QuickPaySpendStore.shared.clear(paymentHash: hash)
+                if paymentHash != hash {
+                    QuickPaySpendStore.shared.clear(paymentHash: paymentHash)
+                }
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(
                     paymentHash: hash,
                     success: true,
-                    feePaidSats: (feePaidMsat ?? 0) / 1000
+                    feePaidSats: isQuickPay ? (feePaidMsat ?? 0) / 1000 : nil
                 )
                 toast(
                     type: .lightning,
@@ -1068,13 +1084,11 @@ extension AppViewModel {
             }
         case let .paymentFailed(paymentId, paymentHash, reason):
             let hash = paymentId ?? paymentHash
-            if let hash {
-                QuickPaySpendStore.shared.releasePending(paymentHash: hash)
-                if let paymentHash, paymentHash != hash {
-                    QuickPaySpendStore.shared.releasePending(paymentHash: paymentHash)
-                }
-            }
             if let hash, pendingPaymentHashes.contains(hash) {
+                QuickPaySpendStore.shared.release(paymentHash: hash)
+                if let paymentHash, paymentHash != hash {
+                    QuickPaySpendStore.shared.release(paymentHash: paymentHash)
+                }
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: reason)
                 toast(

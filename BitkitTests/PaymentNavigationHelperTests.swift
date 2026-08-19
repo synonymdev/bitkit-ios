@@ -68,15 +68,21 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
 
-    func testSkipsQuickpayWhenDailySpendCapIsExceeded() {
-        // 1000 sats invoice; $5 × 5 = 25_000 sats at the test rate.
-        spendStore.record(amountSats: 25000, dayKey: QuickPaySpendStore.dayKey())
+    func testSkipsQuickpayWhenDailySpendCapIsExceeded() throws {
+        let rates = QuickPaySpendRates.live(CurrencyViewModel())
+        for _ in 0 ..< 5 {
+            XCTAssertNotNil(try spendStore.tryReserve(amountSats: 5000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        }
 
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .confirm)
     }
 
-    func testAllowsQuickpayWhenSpendPlusAmountEqualsDailyCap() {
-        spendStore.record(amountSats: 24000, dayKey: QuickPaySpendStore.dayKey())
+    func testAllowsQuickpayWhenSpendPlusAmountEqualsDailyCap() throws {
+        let rates = QuickPaySpendRates.live(CurrencyViewModel())
+        for _ in 0 ..< 4 {
+            XCTAssertNotNil(try spendStore.tryReserve(amountSats: 5000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        }
+        XCTAssertNotNil(try spendStore.tryReserve(amountSats: 4000, thresholdUsd: 5, multiplier: 5, rates: rates))
 
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
@@ -86,6 +92,24 @@ final class PaymentNavigationHelperTests: XCTestCase {
             PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: appWithEligibleInvoice),
             .confirm
         )
+    }
+
+    func testReplacingQuickPayRootLeavesConfirmWithoutABackTarget() {
+        let next = PaymentNavigationHelper.replacingQuickPay(in: [], root: .quickpay, with: .confirm)
+
+        XCTAssertEqual(next.root, .confirm)
+        XCTAssertTrue(next.path.isEmpty)
+    }
+
+    func testReplacingQuickPayOnThePathKeepsTheExistingRoot() {
+        let next = PaymentNavigationHelper.replacingQuickPay(
+            in: [.amount, .quickpay],
+            root: .options,
+            with: .confirm
+        )
+
+        XCTAssertEqual(next.root, .options)
+        XCTAssertEqual(next.path, [.amount, .confirm])
     }
 
     private func sendRoute(for app: AppViewModel) -> SendRoute? {

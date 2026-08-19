@@ -85,7 +85,7 @@ struct SendPendingScreen: View {
             app.consumeSendSheetPendingResolution(paymentHash: paymentHash)
             if resolution.success {
                 Task { @MainActor in
-                    if let feePaidSats = resolution.feePaidSats, let amountSats = wallet.sendAmountSats {
+                    if retryRoute == .quickpay, let feePaidSats = resolution.feePaidSats, let amountSats = wallet.sendAmountSats {
                         wallet.sendAmountSats = QuickPayLimits.amountWithFeeSats(
                             amountSats: amountSats,
                             feePaidSats: feePaidSats

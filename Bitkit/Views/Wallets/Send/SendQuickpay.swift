@@ -11,6 +11,7 @@ struct SendQuickpay: View {
     @Binding var navigationPath: [SendRoute]
     let routingCacheResetAttempted: Bool
     var spendStore: QuickPaySpendStore = .shared
+    var replaceQuickPay: (SendRoute) -> Void
     @State private var didStartPayment = false
 
     var body: some View {
@@ -47,12 +48,12 @@ struct SendQuickpay: View {
     }
 
     private func performPayment() async {
+        guard app.beginQuickPay() else { return }
+
         var bolt11Invoice: String?
 
         do {
-            // Handle LNURL Pay
             if let lnurlPayData = app.lnurlPayData {
-                // Set the amount in sats for the success screen
                 wallet.sendAmountSats = lnurlPayData.minSendableSat
 
                 bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
@@ -73,20 +74,22 @@ struct SendQuickpay: View {
                 return
             }
 
-            let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
-            let paymentHash = String(describing: parsedInvoice.paymentHash())
-
-            // Quickpay only triggers for invoices with built-in amounts, so pass sats: nil
-            // to let LDK use the invoice's native millisatoshi precision.
+            var submittedHash = ""
             do {
                 let settled = try await wallet.sendWithTimeout(
                     bolt11: bolt11,
                     sats: nil,
-                    onTimeout: {
+                    afterListening: { paymentHash in
+                        submittedHash = paymentHash
+                        spendStore.remember(paymentHash: paymentHash, reservation: reservation)
+                    },
+                    onTimeout: { paymentHash in
                         app.addPendingPaymentHash(paymentHash)
                         navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .quickpay, paymentRequest: bolt11))
                     }
                 )
+                let paymentHash = String(settled.paymentHash)
+                spendStore.clear(paymentHash: paymentHash)
                 wallet.sendAmountSats = QuickPayLimits.amountWithFeeSats(
                     amountSats: amountSats,
                     feePaidSats: settled.feePaidSats
@@ -94,46 +97,37 @@ struct SendQuickpay: View {
                 Logger.info("Quickpay payment successful: \(paymentHash)")
                 navigationPath.append(.success(paymentId: paymentHash))
             } catch is PaymentTimeoutError {
-                spendStore.trackPending(
-                    paymentHash: paymentHash,
-                    amountSats: reservation.amountSats,
-                    dayKey: reservation.dayKey
-                )
                 return
             } catch {
-                reservation.release()
+                if submittedHash.isEmpty {
+                    spendStore.releaseUnbound(reservation)
+                } else {
+                    spendStore.release(paymentHash: submittedHash)
+                }
                 throw error
             }
         } catch is PaymentTimeoutError {
-            // onTimeout callback already navigated to .pending; suppress throw
             return
         } catch {
             handlePaymentError(error, paymentRequest: bolt11Invoice)
         }
     }
 
-    private func reserveDailySpend(amountSats: UInt64) throws -> ReservedQuickPaySpend? {
-        let multiplier = QuickPayLimits.sanitizedMultiplier(settings.quickpayDailyLimitMultiplier)
-        guard let dailyCapSats = QuickPayLimits.dailyCapSats(
+    private func reserveDailySpend(amountSats: UInt64) throws -> QuickPaySpendReservation? {
+        let reserved = try spendStore.tryReserve(
+            amountSats: amountSats,
             thresholdUsd: settings.quickpayAmount,
-            multiplier: multiplier,
-            currency: currency
-        ) else {
-            throw AppError(
-                message: t("wallet__send_quickpay__currency_conversion"),
-                debugMessage: "Currency conversion failed"
-            )
-        }
+            multiplier: settings.quickpayDailyLimitMultiplier,
+            rates: .live(currency)
+        )
 
-        let dayKey = QuickPaySpendStore.dayKey()
-        let reserved = spendStore.tryReserve(amountSats: amountSats, dayKey: dayKey, dailyCapSats: dailyCapSats)
-        guard reserved else {
+        guard let reserved else {
             Logger.info("Skipping QuickPay pay: daily spend reserve failed for '\(amountSats)'")
-            navigationPath.append(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+            replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
             return nil
         }
 
-        return ReservedQuickPaySpend(amountSats: amountSats, dayKey: dayKey, store: spendStore)
+        return reserved
     }
 
     private func handlePaymentError(_ error: Error, paymentRequest: String?) {
@@ -145,15 +139,5 @@ struct SendQuickpay: View {
             routingCacheResetAttempted: routingCacheResetAttempted,
             paymentRequest: paymentRequest
         )))
-    }
-}
-
-private struct ReservedQuickPaySpend {
-    let amountSats: UInt64
-    let dayKey: String
-    let store: QuickPaySpendStore
-
-    func release() {
-        store.release(amountSats: amountSats, dayKey: dayKey)
     }
 }

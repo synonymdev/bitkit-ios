@@ -4,13 +4,19 @@ import XCTest
 final class QuickPaySpendStoreTests: XCTestCase {
     private var defaults: UserDefaults!
     private var suiteName: String!
+    private var currentDay = "2026-08-15"
     private var sut: QuickPaySpendStore!
+    private let rates = QuickPaySpendRates(
+        satsToUsdCents: { sats in Int64(sats) / 2 },
+        usdToSats: { usd in UInt64(usd * 200) }
+    )
 
     override func setUp() {
         super.setUp()
         suiteName = "QuickPaySpendStoreTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
-        sut = QuickPaySpendStore(defaults: defaults)
+        currentDay = "2026-08-15"
+        sut = QuickPaySpendStore(defaults: defaults, dayKey: { [unowned self] in currentDay })
     }
 
     override func tearDown() {
@@ -29,104 +35,138 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertEqual(QuickPaySpendStore.dayKey(date: date, timeZone: timeZone), "2026-08-15")
     }
 
-    func testSpentSatsReturnsSpendForMatchingDayKey() {
-        sut.record(amountSats: 3500, dayKey: "2026-08-15")
+    func testSpentCentsTodayReturnsSpendForMatchingDay() throws {
+        XCTAssertNotNil(try sut.tryReserve(amountSats: 500, thresholdUsd: 5, multiplier: 5, rates: rates))
 
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 3500)
+        XCTAssertEqual(sut.spentCentsToday(), 250)
     }
 
-    func testSpentSatsReturnsZeroForALaterDayKey() {
-        sut.record(amountSats: 12000, dayKey: "2026-08-14")
+    func testSpentCentsTodayReturnsZeroForALaterDay() throws {
+        XCTAssertNotNil(try sut.tryReserve(amountSats: 500, thresholdUsd: 5, multiplier: 5, rates: rates))
+        currentDay = "2026-08-16"
 
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 0)
+        XCTAssertEqual(sut.spentCentsToday(), 0)
     }
 
-    func testSpentSatsKeepsSpendOnClockRollback() {
-        sut.record(amountSats: 12000, dayKey: "2026-08-15")
+    func testSpentCentsTodayKeepsSpendOnClockRollback() throws {
+        XCTAssertNotNil(try sut.tryReserve(amountSats: 500, thresholdUsd: 5, multiplier: 5, rates: rates))
+        currentDay = "2026-08-14"
 
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-14"), 12000)
-        XCTAssertTrue(sut.tryReserve(amountSats: 1000, dayKey: "2026-08-14", dailyCapSats: 20000))
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-14"), 13000)
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 13000)
+        XCTAssertEqual(sut.spentCentsToday(), 250)
+        XCTAssertNotNil(try sut.tryReserve(amountSats: 200, thresholdUsd: 5, multiplier: 5, rates: rates))
+        XCTAssertEqual(sut.spentCentsToday(), 350)
+        currentDay = "2026-08-15"
+        XCTAssertEqual(sut.spentCentsToday(), 350)
     }
 
-    func testRecordAccumulatesOnTheSameDayAndResetsOnANewDay() {
-        sut.record(amountSats: 2000, dayKey: "2026-08-15")
-        sut.record(amountSats: 1500, dayKey: "2026-08-15")
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 3500)
+    func testTryReserveAccumulatesOnTheSameDayAndResetsOnANewDay() throws {
+        XCTAssertNotNil(try sut.tryReserve(amountSats: 400, thresholdUsd: 5, multiplier: 5, rates: rates))
+        XCTAssertNotNil(try sut.tryReserve(amountSats: 300, thresholdUsd: 5, multiplier: 5, rates: rates))
+        XCTAssertEqual(sut.spentCentsToday(), 350)
 
-        sut.record(amountSats: 4000, dayKey: "2026-08-16")
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-16"), 4000)
-        // An earlier key is treated as a clock rollback, so stored spend is kept.
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 4000)
+        currentDay = "2026-08-16"
+        XCTAssertNotNil(try sut.tryReserve(amountSats: 800, thresholdUsd: 5, multiplier: 5, rates: rates))
+        XCTAssertEqual(sut.spentCentsToday(), 400)
     }
 
-    func testReserveAcceptsSpendUnderTheCapAndRejectsOverIt() {
-        XCTAssertTrue(sut.tryReserve(amountSats: 10000, dayKey: "2026-08-15", dailyCapSats: 25000))
-        XCTAssertTrue(sut.tryReserve(amountSats: 10000, dayKey: "2026-08-15", dailyCapSats: 25000))
-        XCTAssertFalse(sut.tryReserve(amountSats: 10000, dayKey: "2026-08-15", dailyCapSats: 25000))
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 20000)
+    func testTryReserveReservesUnderTheCapAndRejectsOverIt() throws {
+        for _ in 0 ..< 5 {
+            XCTAssertNotNil(try sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        }
+        XCTAssertNil(try sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        XCTAssertEqual(sut.spentCentsToday(), 2500)
     }
 
-    func testReserveAllowsSpendThatEqualsTheCap() {
-        XCTAssertTrue(sut.tryReserve(amountSats: 25000, dayKey: "2026-08-15", dailyCapSats: 25000))
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 25000)
+    func testReleaseUnboundRollsBackAReservation() throws {
+        let reserved = try XCTUnwrap(sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+
+        sut.releaseUnbound(reserved)
+
+        XCTAssertEqual(sut.spentCentsToday(), 0)
     }
 
-    func testReleaseRollsBackAReservation() {
-        XCTAssertTrue(sut.tryReserve(amountSats: 5000, dayKey: "2026-08-15", dailyCapSats: 25000))
-        sut.release(amountSats: 5000, dayKey: "2026-08-15")
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 0)
+    func testReleaseUnboundOnAPriorDayDoesNotDecrementTheNewDay() throws {
+        let old = try XCTUnwrap(sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        currentDay = "2026-08-16"
+        XCTAssertNotNil(try sut.tryReserve(amountSats: 800, thresholdUsd: 5, multiplier: 5, rates: rates))
+
+        sut.releaseUnbound(old)
+
+        XCTAssertEqual(sut.spentCentsToday(), 400)
     }
 
-    func testReleaseDoesNotChangeSpendForALaterDay() {
-        sut.record(amountSats: 7000, dayKey: "2026-08-15")
-        sut.release(amountSats: 7000, dayKey: "2026-08-16")
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 7000)
+    func testReleaseFreesPendingSpendByPaymentHash() throws {
+        let reserved = try XCTUnwrap(sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        sut.remember(paymentHash: "abc", reservation: reserved)
+
+        sut.release(paymentHash: "abc")
+
+        XCTAssertEqual(sut.spentCentsToday(), 0)
+        XCTAssertNil(sut.reservation(paymentHash: "abc"))
     }
 
-    func testReleaseSubtractsOnClockRollback() {
-        sut.record(amountSats: 7000, dayKey: "2026-08-15")
-        sut.release(amountSats: 1000, dayKey: "2026-08-14")
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 6000)
+    func testClearKeepsSpendAfterSuccess() throws {
+        let reserved = try XCTUnwrap(sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        sut.remember(paymentHash: "abc", reservation: reserved)
+
+        sut.clear(paymentHash: "abc")
+
+        XCTAssertEqual(sut.spentCentsToday(), 500)
+        XCTAssertNil(sut.reservation(paymentHash: "abc"))
     }
 
-    func testReleasePendingRollsBackATrackedReservation() {
-        XCTAssertTrue(sut.tryReserve(amountSats: 5000, dayKey: "2026-08-15", dailyCapSats: 25000))
-        sut.trackPending(paymentHash: "abc", amountSats: 5000, dayKey: "2026-08-15")
+    func testReleaseOnAPriorDayDoesNotDecrementTheNewDay() throws {
+        let old = try XCTUnwrap(sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        sut.remember(paymentHash: "old", reservation: old)
+        currentDay = "2026-08-16"
+        XCTAssertNotNil(try sut.tryReserve(amountSats: 800, thresholdUsd: 5, multiplier: 5, rates: rates))
 
-        sut.releasePending(paymentHash: "abc")
+        sut.release(paymentHash: "old")
 
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 0)
-        XCTAssertTrue(sut.tryReserve(amountSats: 25000, dayKey: "2026-08-15", dailyCapSats: 25000))
+        XCTAssertEqual(sut.spentCentsToday(), 400)
+        XCTAssertNil(sut.reservation(paymentHash: "old"))
     }
 
-    func testReleasePendingSubtractsOnClockRollback() {
-        XCTAssertTrue(sut.tryReserve(amountSats: 5000, dayKey: "2026-08-15", dailyCapSats: 25000))
-        sut.trackPending(paymentHash: "abc", amountSats: 5000, dayKey: "2026-08-14")
-
-        sut.releasePending(paymentHash: "abc")
-
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 0)
+    func testCanApplyIsTrueUnderThresholdAndCap() {
+        XCTAssertTrue(
+            sut.canApply(amountSats: 500, enabled: true, thresholdUsd: 5, multiplier: 5, rates: rates)
+        )
     }
 
-    func testForgetPendingKeepsTheReservation() {
-        XCTAssertTrue(sut.tryReserve(amountSats: 5000, dayKey: "2026-08-15", dailyCapSats: 25000))
-        sut.trackPending(paymentHash: "abc", amountSats: 5000, dayKey: "2026-08-15")
+    func testCanApplyIsFalseWhenDailyCapWouldBeExceeded() throws {
+        XCTAssertNotNil(try sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 1, rates: rates))
 
-        sut.forgetPending(paymentHash: "abc")
-        sut.releasePending(paymentHash: "abc")
-
-        XCTAssertEqual(sut.spentSats(forDayKey: "2026-08-15"), 5000)
+        XCTAssertFalse(
+            sut.canApply(amountSats: 1000, enabled: true, thresholdUsd: 5, multiplier: 1, rates: rates)
+        )
     }
 
-    func testPendingReservationSurvivesANewStoreInstance() {
-        XCTAssertTrue(sut.tryReserve(amountSats: 5000, dayKey: "2026-08-15", dailyCapSats: 25000))
-        sut.trackPending(paymentHash: "abc", amountSats: 5000, dayKey: "2026-08-15")
+    func testCanApplyIsFalseWhenDisabled() {
+        XCTAssertFalse(
+            sut.canApply(amountSats: 500, enabled: false, thresholdUsd: 5, multiplier: 5, rates: rates)
+        )
+    }
 
-        let reloaded = QuickPaySpendStore(defaults: defaults)
-        reloaded.releasePending(paymentHash: "abc")
+    func testTryReserveFailsWithConversionErrorWhenRatesAreUnavailable() {
+        let missingRates = QuickPaySpendRates(
+            satsToUsdCents: { _ in nil },
+            usdToSats: { _ in nil }
+        )
 
-        XCTAssertEqual(reloaded.spentSats(forDayKey: "2026-08-15"), 0)
+        XCTAssertThrowsError(
+            try sut.tryReserve(amountSats: 500, thresholdUsd: 5, multiplier: 5, rates: missingRates)
+        ) { error in
+            XCTAssertTrue(error is QuickPayConversionError)
+        }
+    }
+
+    func testReservationSurvivesANewStoreInstance() throws {
+        let reserved = try XCTUnwrap(sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        sut.remember(paymentHash: "abc", reservation: reserved)
+
+        let reloaded = QuickPaySpendStore(defaults: defaults, dayKey: { [unowned self] in currentDay })
+        reloaded.release(paymentHash: "abc")
+
+        XCTAssertEqual(reloaded.spentCentsToday(), 0)
     }
 }

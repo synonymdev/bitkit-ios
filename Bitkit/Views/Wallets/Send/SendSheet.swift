@@ -87,10 +87,15 @@ struct SendSheet: View {
     let config: SendSheetItem
 
     @State private var navigationPath: [SendRoute] = []
+    @State private var rootOverride: SendRoute?
     @State private var hasValidatedAfterSync = false
     @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
+
+    private var currentRoot: SendRoute {
+        rootOverride ?? config.initialRoute
+    }
 
     /// How long the sync overlay may wait for channels to become usable before falling back
     private static let syncTimeoutSeconds: TimeInterval = 20
@@ -145,7 +150,7 @@ struct SendSheet: View {
                     .transition(.opacity)
             } else {
                 NavigationStack(path: $navigationPath) {
-                    viewForRoute(config.initialRoute)
+                    viewForRoute(currentRoot)
                         .navigationDestination(for: SendRoute.self) { route in
                             viewForRoute(route)
                         }
@@ -187,6 +192,7 @@ struct SendSheet: View {
         }
         .onDisappear {
             app.contactPaymentContext = nil
+            app.resetQuickPay()
         }
         .onChange(of: wallet.nodeLifecycleState) { _, state in
             // When the node becomes running and we have a scanned invoice, run deferred validation.
@@ -466,7 +472,11 @@ struct SendSheet: View {
         case .tag:
             SendTagScreen(navigationPath: $navigationPath)
         case .quickpay:
-            SendQuickpay(navigationPath: $navigationPath, routingCacheResetAttempted: routingCacheResetAttempted)
+            SendQuickpay(
+                navigationPath: $navigationPath,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                replaceQuickPay: replaceQuickPay(with:)
+            )
         case .pin:
             SendPinScreen(onCancel: { resolvePinCheck(false) }, onPinVerified: { resolvePinCheck(true) })
         case let .pending(paymentHash, retryRoute, paymentRequest):
@@ -525,9 +535,27 @@ struct SendSheet: View {
         }
     }
 
+    private func replaceQuickPay(with route: SendRoute) {
+        app.resetQuickPay()
+        let next = PaymentNavigationHelper.replacingQuickPay(in: navigationPath, root: currentRoot, with: route)
+        rootOverride = next.root == config.initialRoute ? nil : next.root
+        navigationPath = next.path
+    }
+
     private func resetNavigationForRetry(_ retryRoute: SendRetryRoute) {
         let route = retryRoute.sendRoute
-        navigationPath = route == config.initialRoute ? [] : [route]
+        if retryRoute == .quickpay {
+            app.resetQuickPay()
+        }
+        if route == config.initialRoute || currentRoot == route {
+            if route == config.initialRoute {
+                rootOverride = nil
+            }
+            navigationPath = []
+            return
+        }
+
+        navigationPath = [route]
     }
 }
 

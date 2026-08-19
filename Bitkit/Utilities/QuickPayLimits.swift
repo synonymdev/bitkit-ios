@@ -17,7 +17,26 @@ enum QuickPayLimits {
     }
 
     static func dailyCapUsdDisplay(thresholdUsd: Double, multiplier: Double) -> Int {
-        Int(thresholdUsd) * Int(multiplier)
+        Int(thresholdUsd) * Int(sanitizedMultiplier(multiplier))
+    }
+
+    static func thresholdCents(_ thresholdUsd: Double) -> Int64 {
+        Int64(Int(thresholdUsd)) * 100
+    }
+
+    static func capCents(thresholdUsd: Double, multiplier: Double) -> Int64 {
+        thresholdCents(thresholdUsd) * Int64(Int(sanitizedMultiplier(multiplier)))
+    }
+
+    static func reserveCents(convertedCents: Int64, thresholdUsd: Double) -> Int64 {
+        min(convertedCents, thresholdCents(thresholdUsd))
+    }
+
+    static func usdCents(from converted: ConvertedAmount) -> Int64 {
+        var cents = converted.value * 100
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &cents, 0, .plain)
+        return NSDecimalNumber(decimal: rounded).int64Value
     }
 
     @MainActor
@@ -28,19 +47,5 @@ enum QuickPayLimits {
         }
 
         return app.scannedLightningInvoice?.amountSatoshis
-    }
-
-    @MainActor
-    static func dailyCapSats(
-        thresholdUsd: Double,
-        multiplier: Double,
-        currency: CurrencyViewModel
-    ) -> UInt64? {
-        guard let thresholdSats = currency.convert(fiatAmount: thresholdUsd, from: usdCurrencyCode), thresholdSats > 0 else {
-            return nil
-        }
-
-        let (dailyCapSats, overflow) = thresholdSats.multipliedReportingOverflow(by: UInt64(max(multiplier, 1).rounded()))
-        return overflow ? UInt64.max : dailyCapSats
     }
 }

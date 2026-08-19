@@ -874,14 +874,17 @@ class WalletViewModel: ObservableObject {
         bolt11: String,
         sats: UInt64? = nil,
         timeoutSeconds: TimeInterval = 10,
-        onTimeout: (@MainActor () -> Void)? = nil
+        afterListening: (@MainActor (String) -> Void)? = nil,
+        onTimeout: (@MainActor (String) -> Void)? = nil
     ) async throws -> SettledLightningPayment {
-        try await withThrowingTaskGroup(of: SettledLightningPayment.self) { group in
-            group.addTask { try await self.send(bolt11: bolt11, sats: sats) }
+        let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
+        let paymentHash = String(hash)
+        return try await withThrowingTaskGroup(of: SettledLightningPayment.self) { group in
+            group.addTask { try await self.watchSend(hash: paymentHash, afterListening: afterListening) }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
                 if let onTimeout {
-                    await MainActor.run { onTimeout() }
+                    await MainActor.run { onTimeout(paymentHash) }
                 }
                 throw PaymentTimeoutError.timedOut
             }
@@ -897,10 +900,16 @@ class WalletViewModel: ObservableObject {
     /// So we need to handle all these cases here.
     func send(bolt11: String, sats: UInt64? = nil) async throws -> SettledLightningPayment {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
-        let eventId = String(hash)
+        return try await watchSend(hash: String(hash))
+    }
+
+    private func watchSend(
+        hash: String,
+        afterListening: (@MainActor (String) -> Void)? = nil
+    ) async throws -> SettledLightningPayment {
+        let eventId = hash
 
         return try await withCheckedThrowingContinuation { continuation in
-            // Add event listener for this specific payment
             addOnEvent(id: eventId) { event in
                 switch event {
                 case let .paymentSuccessful(_, paymentHash, _, feePaidMsat):
@@ -921,6 +930,7 @@ class WalletViewModel: ObservableObject {
                 }
             }
 
+            afterListening?(hash)
             syncState()
         }
     }
