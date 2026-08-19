@@ -297,6 +297,12 @@ class BackupService {
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
 
+            // Runs while `isRestoring` is still true, which is safe only because `triggerBackup` is
+            // the one upload entry point that does not consult `shouldSkipBackup()` — adding a guard
+            // there would silently strand legacy envelopes on the server. Do not clear the flag here
+            // to sidestep that: it belongs to the caller (`AppScene.restoreFromMostRecentBackup`
+            // wraps this in its own set/defer pair), so clearing it early would reopen that
+            // suppression window and let the restore's own change traffic schedule uploads.
             await rewriteMigratedBackups(categoriesNeedingRewrite)
         } catch {
             Logger.warn("Full restore error: \(error)", context: "BackupService")
@@ -758,6 +764,11 @@ class BackupService {
             // outlive the activity it was meant for and hold tags the user has since edited. Live
             // tag state wins for those keys; stored records the derived set does not cover — a
             // restore whose device has not reconnected yet — are untouched.
+            //
+            // Deliberately the opposite of bitkit-android's `BackupRepo.getMetadataBackupDataBytes`,
+            // which concatenates stored first and so keeps the stale row. The two only differ inside
+            // that attach-failure window, and preserving what the user currently sees is the safer
+            // side to land on.
             let preActivityMetadata = HwActivityTagBackup.deduplicated(hardwareTagMetadata + storedPreActivityMetadata)
 
             let payload = MetadataBackupV1(
