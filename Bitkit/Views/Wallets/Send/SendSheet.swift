@@ -88,6 +88,7 @@ struct SendSheet: View {
 
     @State private var navigationPath: [SendRoute] = []
     @State private var rootOverride: SendRoute?
+    @State private var quickPaySession = 0
     @State private var hasValidatedAfterSync = false
     @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
@@ -477,6 +478,7 @@ struct SendSheet: View {
                 routingCacheResetAttempted: routingCacheResetAttempted,
                 replaceQuickPay: replaceQuickPay(with:)
             )
+            .id(quickPaySession)
         case .pin:
             SendPinScreen(onCancel: { resolvePinCheck(false) }, onPinVerified: { resolvePinCheck(true) })
         case let .pending(paymentHash, retryRoute, paymentRequest):
@@ -546,6 +548,7 @@ struct SendSheet: View {
         let route = retryRoute.sendRoute
         if retryRoute == .quickpay {
             app.resetQuickPay()
+            quickPaySession += 1
         }
         if route == config.initialRoute || currentRoot == route {
             if route == config.initialRoute {
