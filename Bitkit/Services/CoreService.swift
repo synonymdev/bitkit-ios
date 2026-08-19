@@ -410,7 +410,7 @@ class ActivityService {
         // read → delete → upsert below would then run unserialized, and a concurrent
         // `markOnchainActivityAsTransfer` could interleave with it. Anything needing `await` runs
         // after this returns.
-        try await ServiceQueue.background(.core) {
+        let removedActivities = try await ServiceQueue.background(.core) {
             try Self.applyHwSnapshot(
                 walletId: walletId,
                 activities: activities,
@@ -427,17 +427,26 @@ class ActivityService {
         // re-enters the core queue.
         cachedTxIdsInBoostTxIds.withLock { $0[walletId] = nil }
         activitiesChangedSubject.send()
+
+        // A deletion cascades into `activity_tags`, so the metadata envelope carrying this wallet's
+        // tags is now stale. A plain upsert cannot drop a tag, which is why the ordinary watcher
+        // poll must not re-upload it.
+        if removedActivities {
+            metadataChangedSubject.send()
+        }
     }
 
     /// One core-queue transaction: read what is stored, then apply the plan. Deliberately non-async
     /// and static, so it cannot reach instance state and reintroduce an `await` in the queue block.
+    /// Returns whether any activity was deleted; the caller turns that into the metadata backup
+    /// signal, since it cannot reach `metadataChangedSubject` from here.
     private static func applyHwSnapshot(
         walletId: String,
         activities: [Activity],
         transactionDetails: [BitkitCore.TransactionDetails],
         pruneMissing: Bool,
         transferChannelIdsByFundingTxId: [String: String]
-    ) throws {
+    ) throws -> Bool {
         let plan = try HwSnapshotMerge.plan(
             existing: storedOnchainActivities(walletId: walletId),
             incoming: activities,
@@ -457,6 +466,8 @@ class ActivityService {
         if !transactionDetails.isEmpty {
             try upsertTransactionDetails(detailsList: transactionDetails)
         }
+
+        return !plan.toDelete.isEmpty
     }
 
     private static func storedOnchainActivities(walletId: String) throws -> [OnchainActivity] {
@@ -483,6 +494,7 @@ class ActivityService {
         try await ServiceQueue.background(.core) {
             let deleted = try deleteActivitiesByWalletId(walletId: walletId)
             self.activitiesChangedSubject.send()
+            self.notifyHardwareTagsChanged(walletId: walletId)
             return deleted
         }
     }
@@ -1413,6 +1425,7 @@ class ActivityService {
 
             let result = try deleteActivityById(walletId: walletId, activityId: id)
             self.activitiesChangedSubject.send()
+            self.notifyHardwareTagsChanged(walletId: walletId)
             return result
         }
     }
@@ -1423,6 +1436,7 @@ class ActivityService {
         try await ServiceQueue.background(.core) {
             try addTags(walletId: walletId, activityId: id, tags: tags)
             self.activitiesChangedSubject.send()
+            self.notifyHardwareTagsChanged(walletId: walletId)
         }
     }
 
@@ -1430,7 +1444,16 @@ class ActivityService {
         try await ServiceQueue.background(.core) {
             try removeTags(walletId: walletId, activityId: id, tags: tags)
             self.activitiesChangedSubject.send()
+            self.notifyHardwareTagsChanged(walletId: walletId)
         }
+    }
+
+    /// Hardware wallet tags ride in the metadata backup rather than the activity one, so a change
+    /// to them has to mark that envelope stale. Default-wallet tags are carried by the activity
+    /// backup, which `activitiesChangedSubject` already covers.
+    private func notifyHardwareTagsChanged(walletId: String) {
+        guard walletId != WalletScope.default else { return }
+        metadataChangedSubject.send()
     }
 
     func tags(forActivity id: String, walletId: String = WalletScope.default) async throws -> [String] {
@@ -1446,10 +1469,29 @@ class ActivityService {
     }
 
     /// Tags for the normal Bitkit wallet only. Watch-only hardware wallets are re-derived from the
-    /// device on pairing, so their tags are deliberately left out of the backup payload.
+    /// device on pairing, so their activities are left out of the backup payload — and a tag whose
+    /// activity is missing would fail core's foreign key on restore. Their tags travel in the
+    /// metadata backup instead, see `getHardwareTagsAsPreActivityMetadata`.
     func getAllActivitiesTags() async throws -> [ActivityTags] {
         try await ServiceQueue.background(.core) {
             try BitkitCore.getAllActivitiesTags().filter { $0.walletId == WalletScope.default }
+        }
+    }
+
+    /// Tags on watch-only hardware activities, shaped as `PreActivityMetadata` for the metadata
+    /// backup — see `HwActivityTagBackup` for why they cannot ride the activity backup.
+    func getHardwareTagsAsPreActivityMetadata() async throws -> [BitkitCore.PreActivityMetadata] {
+        try await ServiceQueue.background(.core) { () throws -> [BitkitCore.PreActivityMetadata] in
+            // The wrapper above is filtered to the default wallet; this needs its inverse, and
+            // calling the wrapper from here would re-enter the core queue.
+            let hardwareTags = try BitkitCore.getAllActivitiesTags().filter { $0.walletId != WalletScope.default }
+            guard !hardwareTags.isEmpty else { return [] }
+
+            let activities = try Set(hardwareTags.map(\.walletId)).sorted().flatMap { walletId in
+                try Self.storedOnchainActivities(walletId: walletId)
+            }
+
+            return HwActivityTagBackup.preActivityMetadata(activities: activities, tags: hardwareTags)
         }
     }
 
