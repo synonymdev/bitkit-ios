@@ -202,6 +202,11 @@ class BackupService {
 
             var pendingPaykitSdkBackupState: String?
             var didRestoreWalletBackup = false
+            // The server still holds the pre-migration envelope, so without a rewrite every future
+            // restore would re-run the legacy migration. Set only once core has persisted the
+            // migrated rows, so a mid-restore failure can never replace a good backup with empty
+            // state.
+            var categoriesNeedingRewrite: Set<BackupCategory> = []
 
             try await performRestore(category: .wallet) { dataBytes in
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
@@ -218,15 +223,19 @@ class BackupService {
             }
 
             try await performRestore(category: .activity) { dataBytes in
-                let migrated = try self.migrateCoreOwnedBackupFields(dataBytes, fieldMigrations: [
+                let migration = BackupFieldMigration.apply(dataBytes, fieldMigrations: [
                     "activities": migrateBackupActivitiesJson,
                     "activityTags": migrateBackupActivityTagsJson,
                 ])
-                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: migrated)
+                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: migration.data)
 
                 try await CoreService.shared.activity.upsertList(payload.activities)
                 try await CoreService.shared.activity.upsertTags(payload.activityTags)
                 try await CoreService.shared.activity.upsertClosedChannelList(payload.closedChannels)
+
+                if migration.changed {
+                    categoriesNeedingRewrite.insert(.activity)
+                }
 
                 Logger.debug(
                     "Restored \(payload.activities.count) activities, \(payload.activityTags.count) activity tags, \(payload.closedChannels.count) closed channels",
@@ -235,12 +244,16 @@ class BackupService {
             }
 
             try await performRestore(category: .metadata) { dataBytes in
-                let migrated = try self.migrateCoreOwnedBackupFields(dataBytes, fieldMigrations: [
+                let migration = BackupFieldMigration.apply(dataBytes, fieldMigrations: [
                     "tagMetadata": migrateBackupPreActivityMetadataJson,
                 ])
-                let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: migrated)
+                let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: migration.data)
 
                 try await CoreService.shared.activity.upsertPreActivityMetadata(payload.tagMetadata)
+
+                if migration.changed {
+                    categoriesNeedingRewrite.insert(.metadata)
+                }
 
                 await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
@@ -283,6 +296,8 @@ class BackupService {
 
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
+
+            await rewriteMigratedBackups(categoriesNeedingRewrite)
         } catch {
             Logger.warn("Full restore error: \(error)", context: "BackupService")
         }
@@ -733,7 +748,17 @@ class BackupService {
             let pubkySession = try PubkyProfileManager.snapshotSessionBackupState()
             let pubkyContactProfileOverrides = ContactsManager.backupContactProfileOverrides()
 
-            let preActivityMetadata = try await CoreService.shared.activity.getAllPreActivityMetadata()
+            // Neither read may fall back to an empty list: this envelope is the only copy of the
+            // tags, so uploading a partial payload would replace the stored ones. Throwing here
+            // leaves the previous upload intact until a retry succeeds.
+            let hardwareTagMetadata = try await CoreService.shared.activity.getHardwareTagsAsPreActivityMetadata()
+            let storedPreActivityMetadata = try await CoreService.shared.activity.getAllPreActivityMetadata()
+
+            // Hardware-derived records first: Core swallows attach failures, so a stored row can
+            // outlive the activity it was meant for and hold tags the user has since edited. Live
+            // tag state wins for those keys; stored records the derived set does not cover — a
+            // restore whose device has not reconnected yet — are untouched.
+            let preActivityMetadata = HwActivityTagBackup.deduplicated(hardwareTagMetadata + storedPreActivityMetadata)
 
             let payload = MetadataBackupV1(
                 version: 1,
@@ -784,26 +809,20 @@ class BackupService {
         }
     }
 
-    /// Fills in wallet ids that predate wallet-scoped activity data before a
-    /// backup envelope is decoded. Each Core-owned array field is handed to the
-    /// matching Core migration helper as raw JSON, so the app never edits Core
-    /// model JSON itself. Records that already carry a wallet id are left
-    /// unchanged, so this is safe to run on current backups too.
-    private func migrateCoreOwnedBackupFields(
-        _ dataBytes: Data,
-        fieldMigrations: [String: (String) throws -> String]
-    ) throws -> Data {
-        guard var root = try JSONSerialization.jsonObject(with: dataBytes) as? [String: Any] else {
-            return dataBytes
+    /// Re-upload the envelopes whose Core-owned fields the restore had to migrate, so later restores
+    /// read current wallet-scoped entries instead of re-running the legacy path forever. Uploads
+    /// from the rows Core just persisted, so this can only ever publish state Core accepted.
+    private func rewriteMigratedBackups(_ categories: Set<BackupCategory>) async {
+        guard !categories.isEmpty else { return }
+
+        Logger.info(
+            "Rewriting migrated backups for: '\(categories.map(\.rawValue).sorted().joined(separator: ", "))'",
+            context: "BackupService"
+        )
+
+        for category in categories {
+            await triggerBackup(category: category)
         }
-        for (field, migrate) in fieldMigrations {
-            guard let array = root[field] as? [Any] else { continue }
-            let arrayData = try JSONSerialization.data(withJSONObject: array)
-            let migratedJson = try migrate(String(decoding: arrayData, as: UTF8.self))
-            guard let migratedData = migratedJson.data(using: .utf8) else { continue }
-            root[field] = try JSONSerialization.jsonObject(with: migratedData)
-        }
-        return try JSONSerialization.data(withJSONObject: root)
     }
 
     private func performRestore(category: BackupCategory, restoreAction: (Data) async throws -> Void) async throws {
@@ -817,7 +836,9 @@ class BackupService {
                 Logger.warn("Restore null for: '\(category.rawValue)'", context: "BackupService")
             }
         } catch {
-            Logger.debug("Restore error for: '\(category.rawValue)'", context: "BackupService")
+            // Only a total VSS failure surfaces otherwise, so without the error every category
+            // fails silently. The benign "nothing backed up yet" case takes the branch above.
+            Logger.warn("Restore error for: '\(category.rawValue)': \(error)", context: "BackupService")
         }
 
         let currentTime = UInt64(Date().timeIntervalSince1970)
