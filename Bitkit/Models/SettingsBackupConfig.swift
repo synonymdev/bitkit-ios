@@ -32,6 +32,9 @@ enum SettingsBackupConfig {
         "highBalanceIgnoreTimestamp",
         "dismissedSuggestions",
         "lastUsedTags",
+        "quickPaySpendDayKey",
+        "quickPaySpentCentsToday",
+        "quickPayReservations",
     ]
 
     static let settingsKeyTypes: [String: SettingKeyType] = [

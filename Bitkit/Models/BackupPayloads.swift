@@ -49,6 +49,9 @@ struct AppCacheData: Codable {
     let highBalanceIgnoreTimestamp: TimeInterval
     let dismissedSuggestions: [String]
     let lastUsedTags: [String]
+    let quickPaySpendDayKey: String
+    let quickPaySpentCentsToday: Int64
+    let quickPayReservations: [String: QuickPaySpendReservation]
 
     init(
         hasSeenContactsIntro: Bool,
@@ -66,7 +69,10 @@ struct AppCacheData: Codable {
         highBalanceIgnoreCount: Int,
         highBalanceIgnoreTimestamp: TimeInterval,
         dismissedSuggestions: [String],
-        lastUsedTags: [String]
+        lastUsedTags: [String],
+        quickPaySpendDayKey: String = "",
+        quickPaySpentCentsToday: Int64 = 0,
+        quickPayReservations: [String: QuickPaySpendReservation] = [:]
     ) {
         self.hasSeenContactsIntro = hasSeenContactsIntro
         self.hasSeenProfileIntro = hasSeenProfileIntro
@@ -84,6 +90,9 @@ struct AppCacheData: Codable {
         self.highBalanceIgnoreTimestamp = highBalanceIgnoreTimestamp
         self.dismissedSuggestions = dismissedSuggestions
         self.lastUsedTags = lastUsedTags
+        self.quickPaySpendDayKey = quickPaySpendDayKey
+        self.quickPaySpentCentsToday = quickPaySpentCentsToday
+        self.quickPayReservations = quickPayReservations
     }
 
     init(from decoder: Decoder) throws {
@@ -104,6 +113,9 @@ struct AppCacheData: Codable {
         highBalanceIgnoreTimestamp = try c.decode(TimeInterval.self, forKey: .highBalanceIgnoreTimestamp)
         dismissedSuggestions = try c.decode([String].self, forKey: .dismissedSuggestions)
         lastUsedTags = try c.decode([String].self, forKey: .lastUsedTags)
+        quickPaySpendDayKey = try c.decodeIfPresent(String.self, forKey: .quickPaySpendDayKey) ?? ""
+        quickPaySpentCentsToday = try c.decodeIfPresent(Int64.self, forKey: .quickPaySpentCentsToday) ?? 0
+        quickPayReservations = try c.decodeIfPresent([String: QuickPaySpendReservation].self, forKey: .quickPayReservations) ?? [:]
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -112,6 +124,7 @@ struct AppCacheData: Codable {
         case hasSeenWidgetsIntro, hasDismissedWidgetsOnboardingHint
         case appUpdateIgnoreTimestamp, backupIgnoreTimestamp, highBalanceIgnoreCount, highBalanceIgnoreTimestamp
         case dismissedSuggestions, lastUsedTags
+        case quickPaySpendDayKey, quickPaySpentCentsToday, quickPayReservations
     }
 }
 

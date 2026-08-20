@@ -867,7 +867,8 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Gets the current app cache data for backup
     func getAppCacheData() -> AppCacheData {
-        AppCacheData(
+        let spend = QuickPaySpendStore.shared.backupSnapshot()
+        return AppCacheData(
             hasSeenContactsIntro: defaults.bool(forKey: "hasSeenContactsIntro"),
             hasSeenProfileIntro: defaults.bool(forKey: "hasSeenProfileIntro"),
             hasSeenNotificationsIntro: defaults.bool(forKey: "hasSeenNotificationsIntro"),
@@ -883,7 +884,10 @@ class SettingsViewModel: NSObject, ObservableObject {
             highBalanceIgnoreCount: defaults.integer(forKey: "highBalanceIgnoreCount"),
             highBalanceIgnoreTimestamp: defaults.double(forKey: "highBalanceIgnoreTimestamp"),
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
-            lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? []
+            lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
+            quickPaySpendDayKey: spend.dayKey,
+            quickPaySpentCentsToday: spend.spentCents,
+            quickPayReservations: spend.reservations
         )
     }
 
@@ -905,5 +909,10 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.highBalanceIgnoreTimestamp, forKey: "highBalanceIgnoreTimestamp")
         defaults.set(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
         defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
+        QuickPaySpendStore.shared.restoreFromBackup(
+            dayKey: cache.quickPaySpendDayKey,
+            spentCents: cache.quickPaySpentCentsToday,
+            reservations: cache.quickPayReservations
+        )
     }
 }

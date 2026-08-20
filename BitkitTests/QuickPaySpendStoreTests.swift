@@ -127,6 +127,22 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertNil(sut.reservation(paymentHash: "old"))
     }
 
+    func testBackupSnapshotRoundTripsSpendAndReservations() throws {
+        let reserved = try XCTUnwrap(sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        sut.remember(paymentHash: "abc", reservation: reserved)
+
+        let snapshot = sut.backupSnapshot()
+        let restored = QuickPaySpendStore(defaults: defaults, dayKey: { [unowned self] in currentDay })
+        restored.restoreFromBackup(
+            dayKey: snapshot.dayKey,
+            spentCents: snapshot.spentCents,
+            reservations: snapshot.reservations
+        )
+
+        XCTAssertEqual(restored.spentCentsToday(), 500)
+        XCTAssertEqual(restored.reservation(paymentHash: "abc"), reserved)
+    }
+
     func testCanApplyIsTrueUnderThresholdAndCap() {
         XCTAssertTrue(
             sut.canApply(amountSats: 500, enabled: true, thresholdUsd: 5, multiplier: 5, rates: rates)

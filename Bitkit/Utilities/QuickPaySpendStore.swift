@@ -167,6 +167,19 @@ final class QuickPaySpendStore: @unchecked Sendable {
         lockedWriteReservations(reservations)
     }
 
+    func backupSnapshot() -> (dayKey: String, spentCents: Int64, reservations: [String: QuickPaySpendReservation]) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (lockedStoredDayKey(), lockedStoredSpentCents(), lockedReservations())
+    }
+
+    func restoreFromBackup(dayKey: String, spentCents: Int64, reservations: [String: QuickPaySpendReservation]) {
+        lock.lock()
+        defer { lock.unlock() }
+        lockedWriteSpend(dayKey: dayKey, spentCents: max(spentCents, 0))
+        lockedWriteReservations(reservations)
+    }
+
     private func lockedSpend(forDayKey dayKey: String) -> (dayKey: String, spentCents: Int64) {
         let storedDayKey = lockedStoredDayKey()
         let storedCents = lockedStoredSpentCents()
