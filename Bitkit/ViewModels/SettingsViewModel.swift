@@ -902,7 +902,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         if let hasSeenNotificationsIntro = cache.hasSeenNotificationsIntro {
             defaults.set(hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
         }
-        if let hasSeenQuickpayIntro = cache.hasSeenQuickpayIntro {
+        if defaults.object(forKey: "hasSeenQuickpayIntro") == nil, let hasSeenQuickpayIntro = cache.hasSeenQuickpayIntro {
             defaults.set(hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
         }
         if let hasSeenShopIntro = cache.hasSeenShopIntro {

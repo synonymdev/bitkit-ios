@@ -318,6 +318,32 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertTrue(UserDefaults.standard.bool(forKey: "hasSeenQuickpayIntro"))
     }
 
+    func testCacheRestoreDoesNotClobberSettingsQuickPayIntro() {
+        settings.restoreSettingsDictionary(["quickPayIntroSeen": true])
+        settings.restoreAppCacheData(
+            AppCacheData(
+                hasSeenContactsIntro: false,
+                hasSeenProfileIntro: false,
+                hasSeenNotificationsIntro: false,
+                hasSeenQuickpayIntro: false,
+                hasSeenShopIntro: false,
+                hasSeenTransferIntro: false,
+                hasSeenTransferToSpendingIntro: false,
+                hasSeenTransferToSavingsIntro: false,
+                hasSeenWidgetsIntro: false,
+                hasDismissedWidgetsOnboardingHint: false,
+                appUpdateIgnoreTimestamp: 0,
+                backupIgnoreTimestamp: 0,
+                highBalanceIgnoreCount: 0,
+                highBalanceIgnoreTimestamp: 0,
+                dismissedSuggestions: [],
+                lastUsedTags: []
+            )
+        )
+
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: "hasSeenQuickpayIntro"))
+    }
+
     func testInvalidDailyLimitMultiplierFallsBackToDefault() {
         settings.restoreSettingsDictionary(["quickPayDailyLimitMultiplier": 7])
 
