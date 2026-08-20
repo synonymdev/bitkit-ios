@@ -218,11 +218,11 @@ struct PaymentRequestsView: View {
         VStack(spacing: 0) {
             NavigationBar(title: t("wallet__payment_requests"))
 
-            ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    if paymentRequests.historyRequests.isEmpty {
-                        emptyState
-                    } else {
+            if paymentRequests.historyRequests.isEmpty {
+                emptyState
+            } else {
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: 16) {
                         if !activeRequests.isEmpty {
                             CaptionMText(t("wallet__payment_requests").localizedUppercase, textColor: .white64)
                             ForEach(activeRequests) { request in
@@ -238,9 +238,9 @@ struct PaymentRequestsView: View {
                             }
                         }
                     }
+                    .padding(.top, 24)
+                    .padding(.bottom, 120)
                 }
-                .padding(.top, 24)
-                .padding(.bottom, 120)
             }
 
             if !paymentRequests.eligibleTargets.isEmpty {
@@ -262,16 +262,24 @@ struct PaymentRequestsView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image("bell")
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer()
+
+            Image("restore")
                 .resizable()
-                .scaledToFit()
-                .foregroundColor(.white32)
-                .frame(width: 48, height: 48)
-            BodyMText(t("wallet__payment_requests_empty"), textColor: .white64)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 256, height: 256)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
+
+            Spacer()
+
+            DisplayText(t("wallet__payment_requests_empty_headline"), accentColor: .purpleAccent)
+            Spacer().frame(height: 12)
+            BodyMText(t("wallet__payment_requests_empty_description"), textColor: .white64)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 120)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.bottom, 24)
     }
 
     private var activeRequests: [PaykitPaymentRequest] {

@@ -1214,6 +1214,7 @@
 "profile__suggestions_title" = "Suggestions To Add";
 "wallet__drawer__wallet" = "Wallet";
 "wallet__drawer__activity" = "Activity";
+"wallet__drawer__payment_requests" = "Requests";
 "wallet__drawer__contacts" = "Contacts";
 "wallet__drawer__profile" = "Profile";
 "wallet__drawer__widgets" = "Widgets";
@@ -1471,7 +1472,8 @@
 "wallet__payment_request_dismiss" = "Dismiss";
 "wallet__payment_requests_not_now" = "Not Now";
 "wallet__payment_requests_see_all" = "See All";
-"wallet__payment_requests_empty" = "No payment requests yet";
+"wallet__payment_requests_empty_description" = "You have not made any payments to providers and don’t have any payment requests yet.";
+"wallet__payment_requests_empty_headline" = "No Payment\n<accent>History</accent>";
 "wallet__payment_request_status_accepted" = "Accepted";
 "wallet__payment_request_status_rejected" = "Rejected";
 "wallet__payment_request_status_canceled" = "Canceled";

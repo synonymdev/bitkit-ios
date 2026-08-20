@@ -3,6 +3,7 @@ import SwiftUI
 enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
     case wallet
     case activity
+    case paymentRequests
     case contacts
     case profile
     case widgets
@@ -19,6 +20,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         switch self {
         case .wallet: return "coins"
         case .activity: return "activity"
+        case .paymentRequests: return "file-text"
         case .contacts: return "users"
         case .profile: return "user-square"
         case .widgets: return "stack"
@@ -33,6 +35,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         switch self {
         case .wallet: return t("wallet__drawer__wallet")
         case .activity: return t("wallet__drawer__activity")
+        case .paymentRequests: return t("wallet__drawer__payment_requests")
         case .contacts: return t("wallet__drawer__contacts")
         case .profile: return t("wallet__drawer__profile")
         case .widgets: return t("wallet__drawer__widgets")
@@ -56,6 +59,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         switch self {
         case .wallet: return "DrawerWallet"
         case .activity: return "DrawerActivity"
+        case .paymentRequests: return "DrawerPaymentRequests"
         case .contacts: return "DrawerContacts"
         case .profile: return "DrawerProfile"
         case .widgets: return "DrawerWidgets"
@@ -68,6 +72,8 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
 }
 
 struct DrawerView: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var settings: SettingsViewModel
@@ -77,6 +83,12 @@ struct DrawerView: View {
     @State private var currentDragOffset: CGFloat = 0
     @State private var showBackdrop = false
     @State private var showMenu = false
+
+    private var mainMenuItems: [DrawerMenuItem] {
+        DrawerMenuItem.allCases.filter { item in
+            item.isMainMenuItem && (item != .paymentRequests || PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled)
+        }
+    }
 
     private func closeMenu() {
         withAnimation(.easeOut(duration: 0.25)) {
@@ -104,6 +116,7 @@ struct DrawerView: View {
         switch item {
         case .wallet: return nil
         case .activity: return .activityList
+        case .paymentRequests: return .paymentRequests
         case .contacts: return .contacts
         case .profile: return .profile
         case .widgets: return nil
@@ -163,7 +176,7 @@ struct DrawerView: View {
             if showMenu {
                 GeometryReader { geometry in
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(DrawerMenuItem.allCases.filter(\.isMainMenuItem)) { item in
+                        ForEach(mainMenuItems) { item in
                             Button(action: {
                                 selectDrawerItem(item)
                             }) {
