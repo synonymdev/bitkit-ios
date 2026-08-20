@@ -91,11 +91,3 @@ struct QuickpaySettings: View {
         .navigationBarHidden(true)
     }
 }
-
-#Preview {
-    NavigationStack {
-        QuickpaySettings()
-            .environmentObject(SettingsViewModel.shared)
-            .preferredColorScheme(.dark)
-    }
-}
