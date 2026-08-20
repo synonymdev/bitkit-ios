@@ -705,11 +705,7 @@ class SettingsViewModel: NSObject, ObservableObject {
                 } else {
                     let androidKey = SettingsBackupConfig.iosToAndroidFieldMapping[key] ?? key
                     if key == "quickpayAmount" || key == "quickpayDailyLimitMultiplier", let doubleValue = value as? Double {
-                        let encoded = Int(doubleValue)
-                        dict[androidKey] = encoded
-                        if key == "quickpayAmount" {
-                            dict["quickPayAmount"] = encoded
-                        }
+                        dict[androidKey] = Int(doubleValue)
                     } else {
                         dict[androidKey] = value
                     }
@@ -728,10 +724,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         dict["isDevModeEnabled"] = Env.isDebug && Env.network != .bitcoin
-
-        if defaults.object(forKey: "hasSeenQuickpayIntro") != nil {
-            dict["quickPayIntroSeen"] = defaults.bool(forKey: "hasSeenQuickpayIntro")
-        }
 
         return dict
     }
@@ -794,12 +786,7 @@ class SettingsViewModel: NSObject, ObservableObject {
             }
 
             let androidKey = SettingsBackupConfig.iosToAndroidFieldMapping[iosKey] ?? iosKey
-            let value: Any? = if iosKey == "quickpayAmount" {
-                dict["quickPayAmount"] ?? dict["quickpayAmount"]
-            } else {
-                dict[androidKey] ?? dict[iosKey]
-            }
-            guard let value else {
+            guard let value = dict[androidKey] ?? dict[iosKey] else {
                 defaults.removeObject(forKey: iosKey)
                 continue
             }
@@ -832,10 +819,6 @@ class SettingsViewModel: NSObject, ObservableObject {
                     defaults.set(arrayValue, forKey: iosKey)
                 }
             }
-        }
-
-        if let seen = dict["quickPayIntroSeen"] as? Bool {
-            defaults.set(seen, forKey: "hasSeenQuickpayIntro")
         }
 
         if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty {
@@ -908,34 +891,28 @@ class SettingsViewModel: NSObject, ObservableObject {
         )
     }
 
+    /// Restores app cache data from backup
     func restoreAppCacheData(_ cache: AppCacheData) {
-        setIfPresent(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
-        setIfPresent(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
-        setIfPresent(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
-        if defaults.object(forKey: "hasSeenQuickpayIntro") == nil {
-            setIfPresent(cache.hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
-        }
-        setIfPresent(cache.hasSeenShopIntro, forKey: "hasSeenShopIntro")
-        setIfPresent(cache.hasSeenTransferIntro, forKey: "hasSeenTransferIntro")
-        setIfPresent(cache.hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
-        setIfPresent(cache.hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
-        setIfPresent(cache.hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
-        setIfPresent(cache.hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
-        setIfPresent(cache.appUpdateIgnoreTimestamp, forKey: "appUpdateIgnoreTimestamp")
-        setIfPresent(cache.backupIgnoreTimestamp, forKey: "backupIgnoreTimestamp")
-        setIfPresent(cache.highBalanceIgnoreCount, forKey: "highBalanceIgnoreCount")
-        setIfPresent(cache.highBalanceIgnoreTimestamp, forKey: "highBalanceIgnoreTimestamp")
-        setIfPresent(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
-        setIfPresent(cache.lastUsedTags, forKey: "lastUsedTags")
+        defaults.set(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
+        defaults.set(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
+        defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
+        defaults.set(cache.hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
+        defaults.set(cache.hasSeenShopIntro, forKey: "hasSeenShopIntro")
+        defaults.set(cache.hasSeenTransferIntro, forKey: "hasSeenTransferIntro")
+        defaults.set(cache.hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
+        defaults.set(cache.hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
+        defaults.set(cache.hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
+        defaults.set(cache.hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
+        defaults.set(cache.appUpdateIgnoreTimestamp, forKey: "appUpdateIgnoreTimestamp")
+        defaults.set(cache.backupIgnoreTimestamp, forKey: "backupIgnoreTimestamp")
+        defaults.set(cache.highBalanceIgnoreCount, forKey: "highBalanceIgnoreCount")
+        defaults.set(cache.highBalanceIgnoreTimestamp, forKey: "highBalanceIgnoreTimestamp")
+        defaults.set(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
+        defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
         QuickPaySpendStore.shared.restoreFromBackup(
             dayKey: cache.quickPaySpendDayKey ?? "",
             spentCents: cache.quickPaySpentCentsToday ?? 0,
             reservations: cache.quickPayReservations ?? [:]
         )
-    }
-
-    private func setIfPresent(_ value: Any?, forKey key: String) {
-        guard let value else { return }
-        defaults.set(value, forKey: key)
     }
 }

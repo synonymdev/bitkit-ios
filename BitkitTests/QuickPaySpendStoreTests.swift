@@ -131,23 +131,25 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertNil(sut.reservation(paymentHash: "old"))
     }
 
-    func testAppCacheDataDecodesAndroidShapedSpendFields() throws {
+    func testAppCacheDataDecodesSpendFields() throws {
         let reservation = QuickPaySpendReservation(amountCents: 500, dayKey: "2026-08-15")
         let json = """
         {
-          "cachedRates": [],
-          "paidOrders": {},
-          "onchainAddress": "",
-          "bolt11": "",
-          "bolt11PaymentHash": "",
-          "bip21": "",
-          "balance": null,
-          "backupStatuses": {},
-          "deletedActivities": [],
-          "pendingBoostActivities": [],
-          "backgroundReceive": null,
-          "addressSearchLastUsedReceiveIndexes": {},
-          "addressSearchLastUsedChangeIndexes": {},
+          "hasSeenContactsIntro": false,
+          "hasSeenProfileIntro": false,
+          "hasSeenNotificationsIntro": false,
+          "hasSeenQuickpayIntro": false,
+          "hasSeenShopIntro": false,
+          "hasSeenTransferIntro": false,
+          "hasSeenTransferToSpendingIntro": false,
+          "hasSeenTransferToSavingsIntro": false,
+          "hasSeenWidgetsIntro": false,
+          "appUpdateIgnoreTimestamp": 0,
+          "backupIgnoreTimestamp": 0,
+          "highBalanceIgnoreCount": 0,
+          "highBalanceIgnoreTimestamp": 0,
+          "dismissedSuggestions": [],
+          "lastUsedTags": [],
           "quickPaySpendDayKey": "2026-08-15",
           "quickPaySpentCentsToday": 500,
           "quickPayReservations": {
@@ -163,7 +165,6 @@ final class QuickPaySpendStoreTests: XCTestCase {
             reservations: cache.quickPayReservations ?? [:]
         )
 
-        XCTAssertNil(cache.hasSeenQuickpayIntro)
         XCTAssertEqual(cache.quickPaySpendDayKey, "2026-08-15")
         XCTAssertEqual(cache.quickPaySpentCentsToday, 500)
         XCTAssertEqual(cache.quickPayReservations?["abc"], reservation)

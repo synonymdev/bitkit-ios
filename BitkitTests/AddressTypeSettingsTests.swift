@@ -16,7 +16,6 @@ final class AddressTypeSettingsTests: XCTestCase {
 
     override func tearDown() {
         settings.resetToDefaults()
-        UserDefaults.standard.removeObject(forKey: "hasSeenQuickpayIntro")
         super.tearDown()
     }
 
@@ -255,14 +254,11 @@ final class AddressTypeSettingsTests: XCTestCase {
         settings.hideBalance = true
         settings.enableQuickpay = true
         settings.quickpayDailyLimitMultiplier = 10
-        settings.quickpayAmount = 1
-        UserDefaults.standard.set(true, forKey: "hasSeenQuickpayIntro")
         UserDefaults.standard.synchronize()
 
         let backupDict = settings.getSettingsDictionary()
 
         settings.resetToDefaults()
-        UserDefaults.standard.removeObject(forKey: "hasSeenQuickpayIntro")
         UserDefaults.standard.synchronize()
 
         XCTAssertEqual(settings.selectedAddressType, .nativeSegwit, "Should be default after reset")
@@ -281,66 +277,13 @@ final class AddressTypeSettingsTests: XCTestCase {
                        "enableQuickpay should survive full backup→reset→restore cycle")
         XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 10,
                        "quickpayDailyLimitMultiplier should survive full backup→reset→restore cycle")
-        XCTAssertEqual(settings.quickpayAmount, 1,
-                       "quickpayAmount should survive full backup→reset→restore cycle")
         XCTAssertEqual(backupDict["quickPayDailyLimitMultiplier"] as? Int, 10)
-        XCTAssertEqual(backupDict["quickpayAmount"] as? Int, 1)
-        XCTAssertEqual(backupDict["quickPayAmount"] as? Int, 1)
-        XCTAssertEqual(backupDict["quickPayIntroSeen"] as? Bool, true)
-        XCTAssertNil(backupDict["hasSeenQuickpayIntro"])
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: "hasSeenQuickpayIntro"))
     }
 
     func testRestoresDailyLimitMultiplierFromAndroidKey() {
         settings.restoreSettingsDictionary(["quickPayDailyLimitMultiplier": 3])
 
         XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 3)
-    }
-
-    func testRestoresQuickpayAmountFromAndroidKey() {
-        settings.restoreSettingsDictionary(["quickPayAmount": 1])
-
-        XCTAssertEqual(settings.quickpayAmount, 1)
-    }
-
-    func testRestoresQuickPaySettingsFromAndroidSettingsDataKeys() {
-        settings.restoreSettingsDictionary([
-            "isQuickPayEnabled": true,
-            "quickPayAmount": 1,
-            "quickPayDailyLimitMultiplier": 50,
-            "quickPayIntroSeen": true,
-        ])
-
-        XCTAssertEqual(settings.enableQuickpay, true)
-        XCTAssertEqual(settings.quickpayAmount, 1)
-        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 50)
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: "hasSeenQuickpayIntro"))
-    }
-
-    func testCacheRestoreDoesNotClobberSettingsQuickPayIntro() {
-        settings.restoreSettingsDictionary(["quickPayIntroSeen": true])
-        settings.restoreAppCacheData(
-            AppCacheData(
-                hasSeenContactsIntro: false,
-                hasSeenProfileIntro: false,
-                hasSeenNotificationsIntro: false,
-                hasSeenQuickpayIntro: false,
-                hasSeenShopIntro: false,
-                hasSeenTransferIntro: false,
-                hasSeenTransferToSpendingIntro: false,
-                hasSeenTransferToSavingsIntro: false,
-                hasSeenWidgetsIntro: false,
-                hasDismissedWidgetsOnboardingHint: false,
-                appUpdateIgnoreTimestamp: 0,
-                backupIgnoreTimestamp: 0,
-                highBalanceIgnoreCount: 0,
-                highBalanceIgnoreTimestamp: 0,
-                dismissedSuggestions: [],
-                lastUsedTags: []
-            )
-        )
-
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: "hasSeenQuickpayIntro"))
     }
 
     func testInvalidDailyLimitMultiplierFallsBackToDefault() {
