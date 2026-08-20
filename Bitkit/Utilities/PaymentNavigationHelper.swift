@@ -180,19 +180,7 @@ struct PaymentNavigationHelper {
 
         switch route {
         case .quickpay:
-            if let lnurlPayData = app.lnurlPayData {
-                return lnurlPayData.isFixedAmount ? .lnurlPayConfirm : .lnurlPayAmount
-            }
-
-            if let invoice = app.scannedLightningInvoice {
-                return invoice.amountSatoshis == 0 ? .amount : .confirm
-            }
-
-            if app.scannedOnchainInvoice != nil {
-                return .amount
-            }
-
-            return route
+            return confirmRouteAfterQuickPayCap(app: app)
         case .confirm:
             if let invoice = app.scannedLightningInvoice {
                 return invoice.amountSatoshis == 0 ? .amount : .confirm

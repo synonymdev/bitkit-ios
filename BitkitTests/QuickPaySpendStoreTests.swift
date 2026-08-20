@@ -158,15 +158,15 @@ final class QuickPaySpendStoreTests: XCTestCase {
 
         let cache = try JSONDecoder().decode(AppCacheData.self, from: json)
         sut.restoreFromBackup(
-            dayKey: cache.quickPaySpendDayKey,
-            spentCents: cache.quickPaySpentCentsToday,
-            reservations: cache.quickPayReservations
+            dayKey: cache.quickPaySpendDayKey ?? "",
+            spentCents: cache.quickPaySpentCentsToday ?? 0,
+            reservations: cache.quickPayReservations ?? [:]
         )
 
         XCTAssertNil(cache.hasSeenQuickpayIntro)
         XCTAssertEqual(cache.quickPaySpendDayKey, "2026-08-15")
         XCTAssertEqual(cache.quickPaySpentCentsToday, 500)
-        XCTAssertEqual(cache.quickPayReservations["abc"], reservation)
+        XCTAssertEqual(cache.quickPayReservations?["abc"], reservation)
         XCTAssertEqual(sut.spentCentsToday(), 500)
         XCTAssertEqual(sut.reservation(paymentHash: "abc"), reservation)
     }

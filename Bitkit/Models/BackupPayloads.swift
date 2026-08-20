@@ -33,99 +33,25 @@ struct PubkySessionBackupV1: Codable, Equatable {
 }
 
 struct AppCacheData: Codable {
-    let hasSeenContactsIntro: Bool?
-    let hasSeenProfileIntro: Bool?
-    let hasSeenNotificationsIntro: Bool?
-    let hasSeenQuickpayIntro: Bool?
-    let hasSeenShopIntro: Bool?
-    let hasSeenTransferIntro: Bool?
-    let hasSeenTransferToSpendingIntro: Bool?
-    let hasSeenTransferToSavingsIntro: Bool?
-    let hasSeenWidgetsIntro: Bool?
-    let hasDismissedWidgetsOnboardingHint: Bool?
-    let appUpdateIgnoreTimestamp: TimeInterval?
-    let backupIgnoreTimestamp: TimeInterval?
-    let highBalanceIgnoreCount: Int?
-    let highBalanceIgnoreTimestamp: TimeInterval?
-    let dismissedSuggestions: [String]?
-    let lastUsedTags: [String]?
-    let quickPaySpendDayKey: String
-    let quickPaySpentCentsToday: Int64
-    let quickPayReservations: [String: QuickPaySpendReservation]
-
-    init(
-        hasSeenContactsIntro: Bool,
-        hasSeenProfileIntro: Bool,
-        hasSeenNotificationsIntro: Bool,
-        hasSeenQuickpayIntro: Bool,
-        hasSeenShopIntro: Bool,
-        hasSeenTransferIntro: Bool,
-        hasSeenTransferToSpendingIntro: Bool,
-        hasSeenTransferToSavingsIntro: Bool,
-        hasSeenWidgetsIntro: Bool,
-        hasDismissedWidgetsOnboardingHint: Bool,
-        appUpdateIgnoreTimestamp: TimeInterval,
-        backupIgnoreTimestamp: TimeInterval,
-        highBalanceIgnoreCount: Int,
-        highBalanceIgnoreTimestamp: TimeInterval,
-        dismissedSuggestions: [String],
-        lastUsedTags: [String],
-        quickPaySpendDayKey: String = "",
-        quickPaySpentCentsToday: Int64 = 0,
-        quickPayReservations: [String: QuickPaySpendReservation] = [:]
-    ) {
-        self.hasSeenContactsIntro = hasSeenContactsIntro
-        self.hasSeenProfileIntro = hasSeenProfileIntro
-        self.hasSeenNotificationsIntro = hasSeenNotificationsIntro
-        self.hasSeenQuickpayIntro = hasSeenQuickpayIntro
-        self.hasSeenShopIntro = hasSeenShopIntro
-        self.hasSeenTransferIntro = hasSeenTransferIntro
-        self.hasSeenTransferToSpendingIntro = hasSeenTransferToSpendingIntro
-        self.hasSeenTransferToSavingsIntro = hasSeenTransferToSavingsIntro
-        self.hasSeenWidgetsIntro = hasSeenWidgetsIntro
-        self.hasDismissedWidgetsOnboardingHint = hasDismissedWidgetsOnboardingHint
-        self.appUpdateIgnoreTimestamp = appUpdateIgnoreTimestamp
-        self.backupIgnoreTimestamp = backupIgnoreTimestamp
-        self.highBalanceIgnoreCount = highBalanceIgnoreCount
-        self.highBalanceIgnoreTimestamp = highBalanceIgnoreTimestamp
-        self.dismissedSuggestions = dismissedSuggestions
-        self.lastUsedTags = lastUsedTags
-        self.quickPaySpendDayKey = quickPaySpendDayKey
-        self.quickPaySpentCentsToday = quickPaySpentCentsToday
-        self.quickPayReservations = quickPayReservations
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        hasSeenContactsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenContactsIntro)
-        hasSeenProfileIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenProfileIntro)
-        hasSeenNotificationsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenNotificationsIntro)
-        hasSeenQuickpayIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenQuickpayIntro)
-        hasSeenShopIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenShopIntro)
-        hasSeenTransferIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferIntro)
-        hasSeenTransferToSpendingIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferToSpendingIntro)
-        hasSeenTransferToSavingsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferToSavingsIntro)
-        hasSeenWidgetsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenWidgetsIntro)
-        hasDismissedWidgetsOnboardingHint = try c.decodeIfPresent(Bool.self, forKey: .hasDismissedWidgetsOnboardingHint)
-        appUpdateIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .appUpdateIgnoreTimestamp)
-        backupIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .backupIgnoreTimestamp)
-        highBalanceIgnoreCount = try c.decodeIfPresent(Int.self, forKey: .highBalanceIgnoreCount)
-        highBalanceIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .highBalanceIgnoreTimestamp)
-        dismissedSuggestions = try c.decodeIfPresent([String].self, forKey: .dismissedSuggestions)
-        lastUsedTags = try c.decodeIfPresent([String].self, forKey: .lastUsedTags)
-        quickPaySpendDayKey = try c.decodeIfPresent(String.self, forKey: .quickPaySpendDayKey) ?? ""
-        quickPaySpentCentsToday = try c.decodeIfPresent(Int64.self, forKey: .quickPaySpentCentsToday) ?? 0
-        quickPayReservations = try c.decodeIfPresent([String: QuickPaySpendReservation].self, forKey: .quickPayReservations) ?? [:]
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case hasSeenContactsIntro, hasSeenProfileIntro, hasSeenNotificationsIntro, hasSeenQuickpayIntro
-        case hasSeenShopIntro, hasSeenTransferIntro, hasSeenTransferToSpendingIntro, hasSeenTransferToSavingsIntro
-        case hasSeenWidgetsIntro, hasDismissedWidgetsOnboardingHint
-        case appUpdateIgnoreTimestamp, backupIgnoreTimestamp, highBalanceIgnoreCount, highBalanceIgnoreTimestamp
-        case dismissedSuggestions, lastUsedTags
-        case quickPaySpendDayKey, quickPaySpentCentsToday, quickPayReservations
-    }
+    var hasSeenContactsIntro: Bool?
+    var hasSeenProfileIntro: Bool?
+    var hasSeenNotificationsIntro: Bool?
+    var hasSeenQuickpayIntro: Bool?
+    var hasSeenShopIntro: Bool?
+    var hasSeenTransferIntro: Bool?
+    var hasSeenTransferToSpendingIntro: Bool?
+    var hasSeenTransferToSavingsIntro: Bool?
+    var hasSeenWidgetsIntro: Bool?
+    var hasDismissedWidgetsOnboardingHint: Bool?
+    var appUpdateIgnoreTimestamp: TimeInterval?
+    var backupIgnoreTimestamp: TimeInterval?
+    var highBalanceIgnoreCount: Int?
+    var highBalanceIgnoreTimestamp: TimeInterval?
+    var dismissedSuggestions: [String]?
+    var lastUsedTags: [String]?
+    var quickPaySpendDayKey: String? = nil
+    var quickPaySpentCentsToday: Int64? = nil
+    var quickPayReservations: [String: QuickPaySpendReservation]? = nil
 }
 
 struct BlocktankBackupV1: Codable {

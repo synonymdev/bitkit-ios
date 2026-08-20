@@ -891,60 +891,34 @@ class SettingsViewModel: NSObject, ObservableObject {
         )
     }
 
-    /// Restores app cache data from backup
     func restoreAppCacheData(_ cache: AppCacheData) {
-        if let hasSeenContactsIntro = cache.hasSeenContactsIntro {
-            defaults.set(hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
+        setIfPresent(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
+        setIfPresent(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
+        setIfPresent(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
+        if defaults.object(forKey: "hasSeenQuickpayIntro") == nil {
+            setIfPresent(cache.hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
         }
-        if let hasSeenProfileIntro = cache.hasSeenProfileIntro {
-            defaults.set(hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
-        }
-        if let hasSeenNotificationsIntro = cache.hasSeenNotificationsIntro {
-            defaults.set(hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
-        }
-        if defaults.object(forKey: "hasSeenQuickpayIntro") == nil, let hasSeenQuickpayIntro = cache.hasSeenQuickpayIntro {
-            defaults.set(hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
-        }
-        if let hasSeenShopIntro = cache.hasSeenShopIntro {
-            defaults.set(hasSeenShopIntro, forKey: "hasSeenShopIntro")
-        }
-        if let hasSeenTransferIntro = cache.hasSeenTransferIntro {
-            defaults.set(hasSeenTransferIntro, forKey: "hasSeenTransferIntro")
-        }
-        if let hasSeenTransferToSpendingIntro = cache.hasSeenTransferToSpendingIntro {
-            defaults.set(hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
-        }
-        if let hasSeenTransferToSavingsIntro = cache.hasSeenTransferToSavingsIntro {
-            defaults.set(hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
-        }
-        if let hasSeenWidgetsIntro = cache.hasSeenWidgetsIntro {
-            defaults.set(hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
-        }
-        if let hasDismissedWidgetsOnboardingHint = cache.hasDismissedWidgetsOnboardingHint {
-            defaults.set(hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
-        }
-        if let appUpdateIgnoreTimestamp = cache.appUpdateIgnoreTimestamp {
-            defaults.set(appUpdateIgnoreTimestamp, forKey: "appUpdateIgnoreTimestamp")
-        }
-        if let backupIgnoreTimestamp = cache.backupIgnoreTimestamp {
-            defaults.set(backupIgnoreTimestamp, forKey: "backupIgnoreTimestamp")
-        }
-        if let highBalanceIgnoreCount = cache.highBalanceIgnoreCount {
-            defaults.set(highBalanceIgnoreCount, forKey: "highBalanceIgnoreCount")
-        }
-        if let highBalanceIgnoreTimestamp = cache.highBalanceIgnoreTimestamp {
-            defaults.set(highBalanceIgnoreTimestamp, forKey: "highBalanceIgnoreTimestamp")
-        }
-        if let dismissedSuggestions = cache.dismissedSuggestions {
-            defaults.set(dismissedSuggestions, forKey: "dismissedSuggestions")
-        }
-        if let lastUsedTags = cache.lastUsedTags {
-            defaults.set(lastUsedTags, forKey: "lastUsedTags")
-        }
+        setIfPresent(cache.hasSeenShopIntro, forKey: "hasSeenShopIntro")
+        setIfPresent(cache.hasSeenTransferIntro, forKey: "hasSeenTransferIntro")
+        setIfPresent(cache.hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
+        setIfPresent(cache.hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
+        setIfPresent(cache.hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
+        setIfPresent(cache.hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
+        setIfPresent(cache.appUpdateIgnoreTimestamp, forKey: "appUpdateIgnoreTimestamp")
+        setIfPresent(cache.backupIgnoreTimestamp, forKey: "backupIgnoreTimestamp")
+        setIfPresent(cache.highBalanceIgnoreCount, forKey: "highBalanceIgnoreCount")
+        setIfPresent(cache.highBalanceIgnoreTimestamp, forKey: "highBalanceIgnoreTimestamp")
+        setIfPresent(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
+        setIfPresent(cache.lastUsedTags, forKey: "lastUsedTags")
         QuickPaySpendStore.shared.restoreFromBackup(
-            dayKey: cache.quickPaySpendDayKey,
-            spentCents: cache.quickPaySpentCentsToday,
-            reservations: cache.quickPayReservations
+            dayKey: cache.quickPaySpendDayKey ?? "",
+            spentCents: cache.quickPaySpentCentsToday ?? 0,
+            reservations: cache.quickPayReservations ?? [:]
         )
+    }
+
+    private func setIfPresent(_ value: Any?, forKey key: String) {
+        guard let value else { return }
+        defaults.set(value, forKey: key)
     }
 }
