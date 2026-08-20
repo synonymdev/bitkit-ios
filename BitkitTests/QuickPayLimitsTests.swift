@@ -13,8 +13,10 @@ final class QuickPayLimitsTests: XCTestCase {
 
     func testCapCentsUsesIntegerUsdAndMultiplier() {
         XCTAssertEqual(QuickPayLimits.capCents(thresholdUsd: 5, multiplier: 5), 2500)
-        XCTAssertEqual(QuickPayLimits.reserveCents(convertedCents: 700, thresholdUsd: 5), 500)
-        XCTAssertEqual(QuickPayLimits.reserveCents(convertedCents: 200, thresholdUsd: 5), 200)
+        XCTAssertEqual(QuickPayLimits.reserveCents(convertedCents: 700, thresholdUsd: 5, amountSats: 1), 500)
+        XCTAssertEqual(QuickPayLimits.reserveCents(convertedCents: 200, thresholdUsd: 5, amountSats: 1), 200)
+        XCTAssertEqual(QuickPayLimits.reserveCents(convertedCents: 0, thresholdUsd: 5, amountSats: 7), 1)
+        XCTAssertEqual(QuickPayLimits.reserveCents(convertedCents: 0, thresholdUsd: 5, amountSats: 0), 0)
     }
 
     func testAmountWithFeeSatsAddsFeeWithoutOverflow() {

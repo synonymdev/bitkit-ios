@@ -10,6 +10,10 @@ final class QuickPaySpendStoreTests: XCTestCase {
         satsToUsdCents: { sats in Int64(sats) / 2 },
         usdToSats: { usd in UInt64(usd * 200) }
     )
+    private let dustRates = QuickPaySpendRates(
+        satsToUsdCents: { _ in 0 },
+        usdToSats: { usd in UInt64(usd * 200) }
+    )
 
     override func setUp() {
         super.setUp()
@@ -147,6 +151,24 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertTrue(
             sut.canApply(amountSats: 500, enabled: true, thresholdUsd: 5, multiplier: 5, rates: rates)
         )
+    }
+
+    func testZeroCentConversionAtFullCapDoesNotQuickPay() throws {
+        for _ in 0 ..< 5 {
+            XCTAssertNotNil(try sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        }
+
+        XCTAssertFalse(
+            sut.canApply(amountSats: 7, enabled: true, thresholdUsd: 5, multiplier: 5, rates: dustRates)
+        )
+        XCTAssertNil(try sut.tryReserve(amountSats: 7, thresholdUsd: 5, multiplier: 5, rates: dustRates))
+    }
+
+    func testZeroCentConversionReservesOneCent() throws {
+        let reserved = try XCTUnwrap(sut.tryReserve(amountSats: 7, thresholdUsd: 5, multiplier: 5, rates: dustRates))
+
+        XCTAssertEqual(reserved.amountCents, 1)
+        XCTAssertEqual(sut.spentCentsToday(), 1)
     }
 
     func testCanApplyIsFalseWhenDailyCapWouldBeExceeded() throws {

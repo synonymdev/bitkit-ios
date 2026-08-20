@@ -70,7 +70,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
         }
         guard let convertedCents = rates.satsToUsdCents(amountSats) else { return false }
 
-        let reserveCents = QuickPayLimits.reserveCents(convertedCents: convertedCents, thresholdUsd: thresholdUsd)
+        let reserveCents = QuickPayLimits.reserveCents(convertedCents: convertedCents, thresholdUsd: thresholdUsd, amountSats: amountSats)
         let capCents = QuickPayLimits.capCents(thresholdUsd: thresholdUsd, multiplier: multiplier)
 
         lock.lock()
@@ -97,7 +97,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
             throw QuickPayConversionError()
         }
 
-        let amountCents = QuickPayLimits.reserveCents(convertedCents: convertedCents, thresholdUsd: thresholdUsd)
+        let amountCents = QuickPayLimits.reserveCents(convertedCents: convertedCents, thresholdUsd: thresholdUsd, amountSats: amountSats)
         let capCents = QuickPayLimits.capCents(thresholdUsd: thresholdUsd, multiplier: multiplier)
 
         lock.lock()

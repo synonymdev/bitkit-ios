@@ -28,8 +28,12 @@ enum QuickPayLimits {
         thresholdCents(thresholdUsd) * Int64(Int(sanitizedMultiplier(multiplier)))
     }
 
-    static func reserveCents(convertedCents: Int64, thresholdUsd: Double) -> Int64 {
-        min(convertedCents, thresholdCents(thresholdUsd))
+    static func reserveCents(convertedCents: Int64, thresholdUsd: Double, amountSats: UInt64) -> Int64 {
+        let clamped = min(convertedCents, thresholdCents(thresholdUsd))
+        if amountSats == 0 {
+            return clamped
+        }
+        return max(clamped, 1)
     }
 
     static func usdCents(from converted: ConvertedAmount) -> Int64 {
