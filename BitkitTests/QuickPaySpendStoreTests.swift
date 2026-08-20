@@ -135,6 +135,19 @@ final class QuickPaySpendStoreTests: XCTestCase {
         let reservation = QuickPaySpendReservation(amountCents: 500, dayKey: "2026-08-15")
         let json = """
         {
+          "cachedRates": [],
+          "paidOrders": {},
+          "onchainAddress": "",
+          "bolt11": "",
+          "bolt11PaymentHash": "",
+          "bip21": "",
+          "balance": null,
+          "backupStatuses": {},
+          "deletedActivities": [],
+          "pendingBoostActivities": [],
+          "backgroundReceive": null,
+          "addressSearchLastUsedReceiveIndexes": {},
+          "addressSearchLastUsedChangeIndexes": {},
           "quickPaySpendDayKey": "2026-08-15",
           "quickPaySpentCentsToday": 500,
           "quickPayReservations": {
@@ -150,11 +163,22 @@ final class QuickPaySpendStoreTests: XCTestCase {
             reservations: cache.quickPayReservations
         )
 
+        XCTAssertNil(cache.hasSeenQuickpayIntro)
         XCTAssertEqual(cache.quickPaySpendDayKey, "2026-08-15")
         XCTAssertEqual(cache.quickPaySpentCentsToday, 500)
         XCTAssertEqual(cache.quickPayReservations["abc"], reservation)
         XCTAssertEqual(sut.spentCentsToday(), 500)
         XCTAssertEqual(sut.reservation(paymentHash: "abc"), reservation)
+    }
+
+    func testTryReserveReturnsNilWhenAmountExceedsThresholdSats() throws {
+        let tightRates = QuickPaySpendRates(
+            satsToUsdCents: { sats in Int64(sats) / 2 },
+            usdToSats: { _ in 100 }
+        )
+
+        XCTAssertNil(try sut.tryReserve(amountSats: 500, thresholdUsd: 5, multiplier: 5, rates: tightRates))
+        XCTAssertEqual(sut.spentCentsToday(), 0)
     }
 
     func testBackupSnapshotRoundTripsSpendAndReservations() throws {
@@ -214,7 +238,7 @@ final class QuickPaySpendStoreTests: XCTestCase {
     func testTryReserveFailsWithConversionErrorWhenRatesAreUnavailable() {
         let missingRates = QuickPaySpendRates(
             satsToUsdCents: { _ in nil },
-            usdToSats: { _ in nil }
+            usdToSats: { usd in UInt64(usd * 200) }
         )
 
         XCTAssertThrowsError(

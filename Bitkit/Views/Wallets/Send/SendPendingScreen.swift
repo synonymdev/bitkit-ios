@@ -78,8 +78,8 @@ struct SendPendingScreen: View {
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
-            await searchForActivity()
             applyPendingResolutionIfNeeded(app.sendSheetPendingResolution)
+            await searchForActivity()
         }
         .onChange(of: app.sendSheetPendingResolution) { _, resolution in
             applyPendingResolutionIfNeeded(resolution)

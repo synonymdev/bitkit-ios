@@ -93,6 +93,9 @@ final class QuickPaySpendStore: @unchecked Sendable {
         multiplier: Double,
         rates: QuickPaySpendRates
     ) throws -> QuickPaySpendReservation? {
+        guard let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0, amountSats <= thresholdSats else {
+            return nil
+        }
         guard let convertedCents = rates.satsToUsdCents(amountSats) else {
             throw QuickPayConversionError()
         }

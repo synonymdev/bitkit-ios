@@ -893,22 +893,54 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Restores app cache data from backup
     func restoreAppCacheData(_ cache: AppCacheData) {
-        defaults.set(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
-        defaults.set(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
-        defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
-        defaults.set(cache.hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
-        defaults.set(cache.hasSeenShopIntro, forKey: "hasSeenShopIntro")
-        defaults.set(cache.hasSeenTransferIntro, forKey: "hasSeenTransferIntro")
-        defaults.set(cache.hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
-        defaults.set(cache.hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
-        defaults.set(cache.hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
-        defaults.set(cache.hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
-        defaults.set(cache.appUpdateIgnoreTimestamp, forKey: "appUpdateIgnoreTimestamp")
-        defaults.set(cache.backupIgnoreTimestamp, forKey: "backupIgnoreTimestamp")
-        defaults.set(cache.highBalanceIgnoreCount, forKey: "highBalanceIgnoreCount")
-        defaults.set(cache.highBalanceIgnoreTimestamp, forKey: "highBalanceIgnoreTimestamp")
-        defaults.set(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
-        defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
+        if let hasSeenContactsIntro = cache.hasSeenContactsIntro {
+            defaults.set(hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
+        }
+        if let hasSeenProfileIntro = cache.hasSeenProfileIntro {
+            defaults.set(hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
+        }
+        if let hasSeenNotificationsIntro = cache.hasSeenNotificationsIntro {
+            defaults.set(hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
+        }
+        if let hasSeenQuickpayIntro = cache.hasSeenQuickpayIntro {
+            defaults.set(hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
+        }
+        if let hasSeenShopIntro = cache.hasSeenShopIntro {
+            defaults.set(hasSeenShopIntro, forKey: "hasSeenShopIntro")
+        }
+        if let hasSeenTransferIntro = cache.hasSeenTransferIntro {
+            defaults.set(hasSeenTransferIntro, forKey: "hasSeenTransferIntro")
+        }
+        if let hasSeenTransferToSpendingIntro = cache.hasSeenTransferToSpendingIntro {
+            defaults.set(hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
+        }
+        if let hasSeenTransferToSavingsIntro = cache.hasSeenTransferToSavingsIntro {
+            defaults.set(hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
+        }
+        if let hasSeenWidgetsIntro = cache.hasSeenWidgetsIntro {
+            defaults.set(hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
+        }
+        if let hasDismissedWidgetsOnboardingHint = cache.hasDismissedWidgetsOnboardingHint {
+            defaults.set(hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
+        }
+        if let appUpdateIgnoreTimestamp = cache.appUpdateIgnoreTimestamp {
+            defaults.set(appUpdateIgnoreTimestamp, forKey: "appUpdateIgnoreTimestamp")
+        }
+        if let backupIgnoreTimestamp = cache.backupIgnoreTimestamp {
+            defaults.set(backupIgnoreTimestamp, forKey: "backupIgnoreTimestamp")
+        }
+        if let highBalanceIgnoreCount = cache.highBalanceIgnoreCount {
+            defaults.set(highBalanceIgnoreCount, forKey: "highBalanceIgnoreCount")
+        }
+        if let highBalanceIgnoreTimestamp = cache.highBalanceIgnoreTimestamp {
+            defaults.set(highBalanceIgnoreTimestamp, forKey: "highBalanceIgnoreTimestamp")
+        }
+        if let dismissedSuggestions = cache.dismissedSuggestions {
+            defaults.set(dismissedSuggestions, forKey: "dismissedSuggestions")
+        }
+        if let lastUsedTags = cache.lastUsedTags {
+            defaults.set(lastUsedTags, forKey: "lastUsedTags")
+        }
         QuickPaySpendStore.shared.restoreFromBackup(
             dayKey: cache.quickPaySpendDayKey,
             spentCents: cache.quickPaySpentCentsToday,

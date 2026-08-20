@@ -33,22 +33,22 @@ struct PubkySessionBackupV1: Codable, Equatable {
 }
 
 struct AppCacheData: Codable {
-    let hasSeenContactsIntro: Bool
-    let hasSeenProfileIntro: Bool
-    let hasSeenNotificationsIntro: Bool
-    let hasSeenQuickpayIntro: Bool
-    let hasSeenShopIntro: Bool
-    let hasSeenTransferIntro: Bool
-    let hasSeenTransferToSpendingIntro: Bool
-    let hasSeenTransferToSavingsIntro: Bool
-    let hasSeenWidgetsIntro: Bool
-    let hasDismissedWidgetsOnboardingHint: Bool
-    let appUpdateIgnoreTimestamp: TimeInterval
-    let backupIgnoreTimestamp: TimeInterval
-    let highBalanceIgnoreCount: Int
-    let highBalanceIgnoreTimestamp: TimeInterval
-    let dismissedSuggestions: [String]
-    let lastUsedTags: [String]
+    let hasSeenContactsIntro: Bool?
+    let hasSeenProfileIntro: Bool?
+    let hasSeenNotificationsIntro: Bool?
+    let hasSeenQuickpayIntro: Bool?
+    let hasSeenShopIntro: Bool?
+    let hasSeenTransferIntro: Bool?
+    let hasSeenTransferToSpendingIntro: Bool?
+    let hasSeenTransferToSavingsIntro: Bool?
+    let hasSeenWidgetsIntro: Bool?
+    let hasDismissedWidgetsOnboardingHint: Bool?
+    let appUpdateIgnoreTimestamp: TimeInterval?
+    let backupIgnoreTimestamp: TimeInterval?
+    let highBalanceIgnoreCount: Int?
+    let highBalanceIgnoreTimestamp: TimeInterval?
+    let dismissedSuggestions: [String]?
+    let lastUsedTags: [String]?
     let quickPaySpendDayKey: String
     let quickPaySpentCentsToday: Int64
     let quickPayReservations: [String: QuickPaySpendReservation]
@@ -97,22 +97,22 @@ struct AppCacheData: Codable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        hasSeenContactsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenContactsIntro) ?? false
-        hasSeenProfileIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenProfileIntro) ?? false
-        hasSeenNotificationsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenNotificationsIntro) ?? false
-        hasSeenQuickpayIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenQuickpayIntro) ?? false
-        hasSeenShopIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenShopIntro) ?? false
-        hasSeenTransferIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferIntro) ?? false
-        hasSeenTransferToSpendingIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferToSpendingIntro) ?? false
-        hasSeenTransferToSavingsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferToSavingsIntro) ?? false
-        hasSeenWidgetsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenWidgetsIntro) ?? false
-        hasDismissedWidgetsOnboardingHint = try c.decodeIfPresent(Bool.self, forKey: .hasDismissedWidgetsOnboardingHint) ?? false
-        appUpdateIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .appUpdateIgnoreTimestamp) ?? 0
-        backupIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .backupIgnoreTimestamp) ?? 0
-        highBalanceIgnoreCount = try c.decodeIfPresent(Int.self, forKey: .highBalanceIgnoreCount) ?? 0
-        highBalanceIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .highBalanceIgnoreTimestamp) ?? 0
-        dismissedSuggestions = try c.decodeIfPresent([String].self, forKey: .dismissedSuggestions) ?? []
-        lastUsedTags = try c.decodeIfPresent([String].self, forKey: .lastUsedTags) ?? []
+        hasSeenContactsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenContactsIntro)
+        hasSeenProfileIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenProfileIntro)
+        hasSeenNotificationsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenNotificationsIntro)
+        hasSeenQuickpayIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenQuickpayIntro)
+        hasSeenShopIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenShopIntro)
+        hasSeenTransferIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferIntro)
+        hasSeenTransferToSpendingIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferToSpendingIntro)
+        hasSeenTransferToSavingsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferToSavingsIntro)
+        hasSeenWidgetsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenWidgetsIntro)
+        hasDismissedWidgetsOnboardingHint = try c.decodeIfPresent(Bool.self, forKey: .hasDismissedWidgetsOnboardingHint)
+        appUpdateIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .appUpdateIgnoreTimestamp)
+        backupIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .backupIgnoreTimestamp)
+        highBalanceIgnoreCount = try c.decodeIfPresent(Int.self, forKey: .highBalanceIgnoreCount)
+        highBalanceIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .highBalanceIgnoreTimestamp)
+        dismissedSuggestions = try c.decodeIfPresent([String].self, forKey: .dismissedSuggestions)
+        lastUsedTags = try c.decodeIfPresent([String].self, forKey: .lastUsedTags)
         quickPaySpendDayKey = try c.decodeIfPresent(String.self, forKey: .quickPaySpendDayKey) ?? ""
         quickPaySpentCentsToday = try c.decodeIfPresent(Int64.self, forKey: .quickPaySpentCentsToday) ?? 0
         quickPayReservations = try c.decodeIfPresent([String: QuickPaySpendReservation].self, forKey: .quickPayReservations) ?? [:]
