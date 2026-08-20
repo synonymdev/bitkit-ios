@@ -16,6 +16,7 @@ final class AddressTypeSettingsTests: XCTestCase {
 
     override func tearDown() {
         settings.resetToDefaults()
+        UserDefaults.standard.removeObject(forKey: "hasSeenQuickpayIntro")
         super.tearDown()
     }
 
@@ -255,11 +256,13 @@ final class AddressTypeSettingsTests: XCTestCase {
         settings.enableQuickpay = true
         settings.quickpayDailyLimitMultiplier = 10
         settings.quickpayAmount = 1
+        UserDefaults.standard.set(true, forKey: "hasSeenQuickpayIntro")
         UserDefaults.standard.synchronize()
 
         let backupDict = settings.getSettingsDictionary()
 
         settings.resetToDefaults()
+        UserDefaults.standard.removeObject(forKey: "hasSeenQuickpayIntro")
         UserDefaults.standard.synchronize()
 
         XCTAssertEqual(settings.selectedAddressType, .nativeSegwit, "Should be default after reset")
@@ -284,6 +287,9 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertNil(backupDict["quickpayDailyLimitMultiplier"])
         XCTAssertEqual(backupDict["quickPayAmount"] as? Int, 1)
         XCTAssertNil(backupDict["quickpayAmount"])
+        XCTAssertEqual(backupDict["quickPayIntroSeen"] as? Bool, true)
+        XCTAssertNil(backupDict["hasSeenQuickpayIntro"])
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: "hasSeenQuickpayIntro"))
     }
 
     func testRestoresDailyLimitMultiplierFromAndroidKey() {
@@ -296,6 +302,20 @@ final class AddressTypeSettingsTests: XCTestCase {
         settings.restoreSettingsDictionary(["quickPayAmount": 1])
 
         XCTAssertEqual(settings.quickpayAmount, 1)
+    }
+
+    func testRestoresQuickPaySettingsFromAndroidSettingsDataKeys() {
+        settings.restoreSettingsDictionary([
+            "isQuickPayEnabled": true,
+            "quickPayAmount": 1,
+            "quickPayDailyLimitMultiplier": 50,
+            "quickPayIntroSeen": true,
+        ])
+
+        XCTAssertEqual(settings.enableQuickpay, true)
+        XCTAssertEqual(settings.quickpayAmount, 1)
+        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 50)
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: "hasSeenQuickpayIntro"))
     }
 
     func testInvalidDailyLimitMultiplierFallsBackToDefault() {
