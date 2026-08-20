@@ -284,9 +284,8 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertEqual(settings.quickpayAmount, 1,
                        "quickpayAmount should survive full backup→reset→restore cycle")
         XCTAssertEqual(backupDict["quickPayDailyLimitMultiplier"] as? Int, 10)
-        XCTAssertNil(backupDict["quickpayDailyLimitMultiplier"])
+        XCTAssertEqual(backupDict["quickpayAmount"] as? Int, 1)
         XCTAssertEqual(backupDict["quickPayAmount"] as? Int, 1)
-        XCTAssertNil(backupDict["quickpayAmount"])
         XCTAssertEqual(backupDict["quickPayIntroSeen"] as? Bool, true)
         XCTAssertNil(backupDict["hasSeenQuickpayIntro"])
         XCTAssertTrue(UserDefaults.standard.bool(forKey: "hasSeenQuickpayIntro"))

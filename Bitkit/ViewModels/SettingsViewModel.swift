@@ -705,7 +705,11 @@ class SettingsViewModel: NSObject, ObservableObject {
                 } else {
                     let androidKey = SettingsBackupConfig.iosToAndroidFieldMapping[key] ?? key
                     if key == "quickpayAmount" || key == "quickpayDailyLimitMultiplier", let doubleValue = value as? Double {
-                        dict[androidKey] = Int(doubleValue)
+                        let encoded = Int(doubleValue)
+                        dict[androidKey] = encoded
+                        if key == "quickpayAmount" {
+                            dict["quickPayAmount"] = encoded
+                        }
                     } else {
                         dict[androidKey] = value
                     }
@@ -724,6 +728,10 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         dict["isDevModeEnabled"] = Env.isDebug && Env.network != .bitcoin
+
+        if defaults.object(forKey: "hasSeenQuickpayIntro") != nil {
+            dict["quickPayIntroSeen"] = defaults.bool(forKey: "hasSeenQuickpayIntro")
+        }
 
         return dict
     }
@@ -786,7 +794,12 @@ class SettingsViewModel: NSObject, ObservableObject {
             }
 
             let androidKey = SettingsBackupConfig.iosToAndroidFieldMapping[iosKey] ?? iosKey
-            guard let value = dict[androidKey] ?? dict[iosKey] else {
+            let value: Any? = if iosKey == "quickpayAmount" {
+                dict["quickPayAmount"] ?? dict["quickpayAmount"]
+            } else {
+                dict[androidKey] ?? dict[iosKey]
+            }
+            guard let value else {
                 defaults.removeObject(forKey: iosKey)
                 continue
             }
@@ -819,6 +832,10 @@ class SettingsViewModel: NSObject, ObservableObject {
                     defaults.set(arrayValue, forKey: iosKey)
                 }
             }
+        }
+
+        if let seen = dict["quickPayIntroSeen"] as? Bool {
+            defaults.set(seen, forKey: "hasSeenQuickpayIntro")
         }
 
         if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty {
