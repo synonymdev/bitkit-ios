@@ -30,9 +30,9 @@ struct QuickPaySpendRates {
 final class QuickPaySpendStore: @unchecked Sendable {
     static let shared = QuickPaySpendStore()
 
-    static let dayKeyDefaultsKey = "quickPaySpendDayKey"
-    static let spentCentsDefaultsKey = "quickPaySpentCentsToday"
-    static let reservationsDefaultsKey = "quickPayReservations"
+    private static let dayKeyDefaultsKey = "quickPaySpendDayKey"
+    private static let spentCentsDefaultsKey = "quickPaySpentCentsToday"
+    private static let reservationsDefaultsKey = "quickPayReservations"
 
     private let defaults: UserDefaults
     private let lock = NSLock()

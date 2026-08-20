@@ -10,7 +10,6 @@ struct SendQuickpay: View {
 
     @Binding var navigationPath: [SendRoute]
     let routingCacheResetAttempted: Bool
-    var spendStore: QuickPaySpendStore = .shared
     var replaceQuickPay: (SendRoute) -> Void
     @State private var didStartPayment = false
 
@@ -81,7 +80,7 @@ struct SendQuickpay: View {
                     sats: nil,
                     afterListening: { paymentHash in
                         submittedHash = paymentHash
-                        spendStore.remember(paymentHash: paymentHash, reservation: reservation)
+                        QuickPaySpendStore.shared.remember(paymentHash: paymentHash, reservation: reservation)
                     },
                     onTimeout: { paymentHash in
                         app.addPendingPaymentHash(paymentHash)
@@ -89,7 +88,7 @@ struct SendQuickpay: View {
                     }
                 )
                 let paymentHash = String(settled.paymentHash)
-                spendStore.clear(paymentHash: paymentHash)
+                QuickPaySpendStore.shared.clear(paymentHash: paymentHash)
                 wallet.sendAmountSats = QuickPayLimits.amountWithFeeSats(
                     amountSats: amountSats,
                     feePaidSats: settled.feePaidSats
@@ -100,9 +99,9 @@ struct SendQuickpay: View {
                 return
             } catch {
                 if submittedHash.isEmpty {
-                    spendStore.releaseUnbound(reservation)
+                    QuickPaySpendStore.shared.releaseUnbound(reservation)
                 } else {
-                    spendStore.release(paymentHash: submittedHash)
+                    QuickPaySpendStore.shared.release(paymentHash: submittedHash)
                 }
                 throw error
             }
@@ -114,7 +113,7 @@ struct SendQuickpay: View {
     }
 
     private func reserveDailySpend(amountSats: UInt64) throws -> QuickPaySpendReservation? {
-        let reserved = try spendStore.tryReserve(
+        let reserved = try QuickPaySpendStore.shared.tryReserve(
             amountSats: amountSats,
             thresholdUsd: settings.quickpayAmount,
             multiplier: settings.quickpayDailyLimitMultiplier,

@@ -4,7 +4,6 @@ enum QuickPayLimits {
     static let usdCurrencyCode = "USD"
     static let thresholdSteps: [Double] = [1, 5, 10, 20, 50]
     static let dailyMultiplierSteps: [Double] = [1, 3, 5, 10, 50]
-    static let defaultThresholdUsd: Double = 5
     static let defaultDailyMultiplier: Double = 5
 
     static func amountWithFeeSats(amountSats: UInt64, feePaidSats: UInt64) -> UInt64 {

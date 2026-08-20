@@ -806,7 +806,6 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay exclusively supports payments from your Spending Balance.";
 "wallet__send_quickpay__currency_conversion" = "Currency conversion failed";
-"wallet__send_quickpay__daily_limit" = "Daily QuickPay limit reached";
 "settings__security__title" = "Security And Privacy";
 "settings__security__swipe_balance_to_hide" = "Swipe balance to hide";
 "settings__security__hide_balance_on_open" = "Hide balance on open";
