@@ -131,6 +131,32 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertNil(sut.reservation(paymentHash: "old"))
     }
 
+    func testAppCacheDataDecodesAndroidShapedSpendFields() throws {
+        let reservation = QuickPaySpendReservation(amountCents: 500, dayKey: "2026-08-15")
+        let json = """
+        {
+          "quickPaySpendDayKey": "2026-08-15",
+          "quickPaySpentCentsToday": 500,
+          "quickPayReservations": {
+            "abc": { "amountCents": 500, "dayKey": "2026-08-15" }
+          }
+        }
+        """.data(using: .utf8)!
+
+        let cache = try JSONDecoder().decode(AppCacheData.self, from: json)
+        sut.restoreFromBackup(
+            dayKey: cache.quickPaySpendDayKey,
+            spentCents: cache.quickPaySpentCentsToday,
+            reservations: cache.quickPayReservations
+        )
+
+        XCTAssertEqual(cache.quickPaySpendDayKey, "2026-08-15")
+        XCTAssertEqual(cache.quickPaySpentCentsToday, 500)
+        XCTAssertEqual(cache.quickPayReservations["abc"], reservation)
+        XCTAssertEqual(sut.spentCentsToday(), 500)
+        XCTAssertEqual(sut.reservation(paymentHash: "abc"), reservation)
+    }
+
     func testBackupSnapshotRoundTripsSpendAndReservations() throws {
         let reserved = try XCTUnwrap(sut.tryReserve(amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
         sut.remember(paymentHash: "abc", reservation: reserved)

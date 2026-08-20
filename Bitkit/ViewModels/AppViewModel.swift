@@ -1062,13 +1062,13 @@ extension AppViewModel {
             break
         case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
             let hash = paymentId ?? paymentHash
+            let isQuickPay = QuickPaySpendStore.shared.reservation(paymentHash: hash) != nil
+                || paymentHash != hash && QuickPaySpendStore.shared.reservation(paymentHash: paymentHash) != nil
+            QuickPaySpendStore.shared.clear(paymentHash: hash)
+            if paymentHash != hash {
+                QuickPaySpendStore.shared.clear(paymentHash: paymentHash)
+            }
             if pendingPaymentHashes.contains(hash) {
-                let isQuickPay = QuickPaySpendStore.shared.reservation(paymentHash: hash) != nil
-                    || paymentHash != hash && QuickPaySpendStore.shared.reservation(paymentHash: paymentHash) != nil
-                QuickPaySpendStore.shared.clear(paymentHash: hash)
-                if paymentHash != hash {
-                    QuickPaySpendStore.shared.clear(paymentHash: paymentHash)
-                }
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(
                     paymentHash: hash,
@@ -1084,11 +1084,13 @@ extension AppViewModel {
             }
         case let .paymentFailed(paymentId, paymentHash, reason):
             let hash = paymentId ?? paymentHash
-            if let hash, pendingPaymentHashes.contains(hash) {
+            if let hash {
                 QuickPaySpendStore.shared.release(paymentHash: hash)
                 if let paymentHash, paymentHash != hash {
                     QuickPaySpendStore.shared.release(paymentHash: paymentHash)
                 }
+            }
+            if let hash, pendingPaymentHashes.contains(hash) {
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: reason)
                 toast(
