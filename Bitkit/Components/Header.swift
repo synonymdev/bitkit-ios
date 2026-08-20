@@ -8,6 +8,8 @@ struct Header: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject private var sheets: SheetViewModel
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     /// When true, shows the widget edit button (only on the widgets tab).
     var showWidgetEditButton: Bool = false
@@ -16,6 +18,10 @@ struct Header: View {
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    private var hasPaymentRequests: Bool {
+        !paymentRequests.pendingRequests.isEmpty || !paymentRequests.sentRequests.isEmpty
     }
 
     init(showWidgetEditButton: Bool = false, isEditingWidgets: Binding<Bool> = .constant(false)) {
@@ -39,6 +45,47 @@ struct Header: View {
                         navigation.navigate(.appStatus)
                     }
                 )
+
+                if isPaykitUIActive, hasPaymentRequests {
+                    Button {
+                        if dismissCalculatorIfNeeded() { return }
+                        if paymentRequests.pendingRequests.isEmpty {
+                            navigation.navigate(.paymentRequests)
+                        } else {
+                            sheets.showSheet(.paymentRequests)
+                        }
+                    } label: {
+                        Image("bell")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundColor(.brandAccent)
+                            .frame(width: 24, height: 24)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                            .shadow(color: .brandAccent.opacity(0.5), radius: 8)
+                            .overlay(alignment: .topTrailing) {
+                                if !paymentRequests.pendingRequests.isEmpty {
+                                    CaptionMText(
+                                        paymentRequests.pendingRequests.count > 99 ? "99+" : "\(paymentRequests.pendingRequests.count)",
+                                        textColor: .black
+                                    )
+                                    .frame(minWidth: 16, minHeight: 16)
+                                    .background(Color.brandAccent)
+                                    .clipShape(Capsule())
+                                    .offset(x: 4, y: -4)
+                                    .accessibilityHidden(true)
+                                }
+                            }
+                    }
+                    .accessibilityLabel(t("wallet__payment_requests"))
+                    .accessibilityValue(
+                        t(
+                            "wallet__payment_requests_pending_count",
+                            variables: ["count": "\(paymentRequests.pendingRequests.count)"]
+                        )
+                    )
+                    .accessibilityIdentifier("PaymentRequestsBell")
+                }
 
                 if showWidgetEditButton {
                     Button(action: {

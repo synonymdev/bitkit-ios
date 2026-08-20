@@ -123,6 +123,14 @@ struct MainNavView: View {
             config in NotificationsSheet(config: config)
         }
         .sheet(
+            item: $sheets.paymentRequestsSheetItem,
+            onDismiss: {
+                sheets.hideSheetIfActive(.paymentRequests, reason: "Payment requests sheet dismissed")
+            }
+        ) {
+            config in PaymentRequestsSheet(config: config)
+        }
+        .sheet(
             item: $sheets.receiveSheetItem,
             onDismiss: {
                 sheets.hideSheet()
@@ -530,6 +538,8 @@ struct MainNavView: View {
                     if isPaykitUIActive { EditProfileView() } else { paykitDisabledRedirectView }
                 case .payContacts:
                     if isPaykitUIActive { PayContactsView() } else { paykitDisabledRedirectView }
+                case .paymentRequests:
+                    if isPaykitUIActive { PaymentRequestsView() } else { paykitDisabledRedirectView }
 
                 // Shop
                 case .shopIntro: ShopIntro()

@@ -9,6 +9,9 @@ enum ReceiveRoute: Hashable {
     case cjitConfirm(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
     case cjitLearnMore(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
     case cjitGeoBlocked
+    case paymentRequestDetails
+    case paymentRequestRecipient
+    case paymentRequestSent
 }
 
 struct ReceiveConfig {
@@ -36,6 +39,8 @@ struct ReceiveSheet: View {
     let config: ReceiveSheetItem
 
     @State private var navigationPath: [ReceiveRoute] = []
+    @State private var paymentRequestDraft = PaykitPaymentRequestDraft(amountSats: 0, note: "", expiresAt: .now)
+    @State private var sentPaymentRequest: PaykitPaymentRequest?
 
     var body: some View {
         Sheet(id: .receive, data: config) {
@@ -50,6 +55,8 @@ struct ReceiveSheet: View {
         .onAppear {
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""
+            paymentRequestDraft = PaykitPaymentRequestDraft(amountSats: 0, note: "", expiresAt: .now)
+            sentPaymentRequest = nil
             tagManager.clearSelectedTags()
             Task {
                 // Reset tags for current payment ID before refreshing
@@ -65,7 +72,19 @@ struct ReceiveSheet: View {
     private func viewForRoute(_ route: ReceiveRoute) -> some View {
         switch route {
         case let .qr(cjitInvoice, tab):
-            ReceiveQr(navigationPath: $navigationPath, cjitInvoice: cjitInvoice, tab: tab)
+            ReceiveQr(
+                navigationPath: $navigationPath,
+                cjitInvoice: cjitInvoice,
+                tab: tab,
+                onSendPaymentRequest: {
+                    paymentRequestDraft = PaykitPaymentRequestDraft(
+                        amountSats: wallet.invoiceAmountSats,
+                        note: wallet.invoiceNote,
+                        expiresAt: .now
+                    )
+                    navigationPath.append(.paymentRequestDetails)
+                }
+            )
         case .edit:
             ReceiveEdit(navigationPath: $navigationPath)
         case .tag:
@@ -78,6 +97,20 @@ struct ReceiveSheet: View {
             ReceiveCjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditional)
         case .cjitGeoBlocked:
             ReceiveCjitGeoBlocked()
+        case .paymentRequestDetails:
+            PaymentRequestDetailsView(initialDraft: paymentRequestDraft) { draft in
+                paymentRequestDraft = draft
+                navigationPath.append(.paymentRequestRecipient)
+            }
+        case .paymentRequestRecipient:
+            PaymentRequestRecipientView(draft: paymentRequestDraft) { request in
+                sentPaymentRequest = request
+                navigationPath.append(.paymentRequestSent)
+            }
+        case .paymentRequestSent:
+            if let sentPaymentRequest {
+                PaymentRequestSentView(request: sentPaymentRequest)
+            }
         }
     }
 }

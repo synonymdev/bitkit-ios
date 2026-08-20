@@ -1400,7 +1400,7 @@ class WalletViewModel: ObservableObject {
     /// Formats satoshi amount to Bitcoin decimal format for BIP21 URIs
     /// - Parameter sats: Amount in satoshis
     /// - Returns: Formatted Bitcoin amount as string (e.g., "0.00123000")
-    static func formatBitcoinAmount(sats: UInt64) -> String {
+    nonisolated static func formatBitcoinAmount(sats: UInt64) -> String {
         let btcAmount = Double(sats) / 100_000_000.0
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal

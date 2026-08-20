@@ -255,14 +255,20 @@ class PubkyProfileManager: ObservableObject {
         let (publicKeyZ32, secretKeyHex) = try await deriveKeys()
 
         _ = try await Task.detached {
-            let homegate = try await Self.fetchHomegateSignupCode()
+            let signupDetails: (homeserverPubky: String, signupCode: String?)
+            if let homeserverPubky = Env.e2eHomeserverPubky {
+                signupDetails = (homeserverPubky, nil)
+            } else {
+                let homegate = try await Self.fetchHomegateSignupCode()
+                signupDetails = (homegate.homeserverPubky, homegate.signupCode)
+            }
 
             var session: String
             do {
                 session = try await PubkyService.signUp(
                     secretKeyHex: secretKeyHex,
-                    homeserverZ32: homegate.homeserverPubky,
-                    signupCode: homegate.signupCode
+                    homeserverZ32: signupDetails.homeserverPubky,
+                    signupCode: signupDetails.signupCode
                 )
             } catch {
                 Logger.info("signUp failed (likely already registered), trying signIn: \(error)", context: "PubkyProfileManager")
