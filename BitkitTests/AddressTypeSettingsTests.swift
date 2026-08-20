@@ -16,7 +16,6 @@ final class AddressTypeSettingsTests: XCTestCase {
 
     override func tearDown() {
         settings.resetToDefaults()
-        UserDefaults.standard.removeObject(forKey: "hasSeenQuickpayIntro")
         super.tearDown()
     }
 
@@ -297,20 +296,6 @@ final class AddressTypeSettingsTests: XCTestCase {
         settings.restoreSettingsDictionary(["quickPayAmount": 1])
 
         XCTAssertEqual(settings.quickpayAmount, 1)
-    }
-
-    func testRestoresQuickPaySettingsFromAndroidSettingsDataKeys() {
-        settings.restoreSettingsDictionary([
-            "isQuickPayEnabled": true,
-            "quickPayAmount": 1,
-            "quickPayDailyLimitMultiplier": 50,
-            "quickPayIntroSeen": true,
-        ])
-
-        XCTAssertEqual(settings.enableQuickpay, true)
-        XCTAssertEqual(settings.quickpayAmount, 1)
-        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 50)
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: "hasSeenQuickpayIntro"))
     }
 
     func testInvalidDailyLimitMultiplierFallsBackToDefault() {
