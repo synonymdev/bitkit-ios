@@ -182,6 +182,8 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.sendSheetItem,
             onDismiss: {
+                app.resetSendState()
+                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                 sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")
             }
         ) {

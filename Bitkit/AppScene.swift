@@ -236,11 +236,7 @@ struct AppScene: View {
             .onReceive(PrivatePaykitService.initialLinkBurstStartedPublisher) {
                 initialPaykitSyncGeneration += 1
             }
-            .onChange(of: sheets.activeSheetConfiguration?.id) { previousSheetId, activeSheetId in
-                if previousSheetId == .send, activeSheetId == nil {
-                    app.resetSendState()
-                    wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-                }
+            .onChange(of: sheets.activeSheetConfiguration?.id) { _, activeSheetId in
                 guard activeSheetId == nil, !sheets.isReplacingSheet else { return }
                 Task {
                     try? await Task.sleep(for: .milliseconds(700))
@@ -265,8 +261,6 @@ struct AppScene: View {
                       sheets.activeSheetConfiguration?.id == .send
                 else { return }
 
-                app.resetSendState()
-                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                 sheets.hideSheetIfActive(.send, reason: "Incoming payment request is no longer available")
             }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
