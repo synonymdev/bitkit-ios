@@ -9,7 +9,9 @@ struct PaymentRequestCard: View {
     @EnvironmentObject private var contactsManager: ContactsManager
 
     let request: PaykitPaymentRequest
+    var subtitleOverride: String?
     var status: String?
+    var isHighlighted = true
     var isActionDisabled = false
     var onPay: (() -> Void)?
     var onReject: (() async -> Void)?
@@ -25,8 +27,11 @@ struct PaymentRequestCard: View {
     }
 
     private var subtitle: String {
+        if let subtitleOverride {
+            return subtitleOverride
+        }
         guard let createdAt = request.createdAt else { return senderName }
-        return "\(senderName) · \(Self.dateFormatter.string(from: createdAt))"
+        return "\(senderName) - \(Self.dateFormatter.string(from: createdAt))"
     }
 
     var body: some View {
@@ -61,7 +66,7 @@ struct PaymentRequestCard: View {
                 CustomDivider()
                 HStack(spacing: 12) {
                     CustomButton(
-                        title: t("wallet__payment_request_reject"),
+                        title: t("wallet__payment_request_dismiss"),
                         variant: .secondary,
                         size: .small,
                         icon: Image("x-mark").resizable().frame(width: 16, height: 16),
@@ -92,9 +97,9 @@ struct PaymentRequestCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay {
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.brand50, lineWidth: 1)
+                .stroke(isHighlighted ? Color.brand50 : Color.clear, lineWidth: 1)
         }
-        .shadow(color: .brandAccent.opacity(0.18), radius: 12)
+        .shadow(color: isHighlighted ? .brandAccent.opacity(0.16) : .clear, radius: 64)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("PaymentRequestRow-\(request.paymentRequestId)")
     }
@@ -108,7 +113,12 @@ struct PaymentRequestCard: View {
         }
     }
 
-    private static let dateFormatter = DateFormatterHelpers.formatter(dateStyle: .medium, timeStyle: .short)
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate("MMMMdHm")
+        return formatter
+    }()
 
     private static let expirationFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -190,41 +200,56 @@ struct PaymentRequestsSheet: View {
 }
 
 struct PaymentRequestsView: View {
+    private struct HistorySection: Identifiable {
+        let title: String
+        let requests: [PaykitPaymentRequest]
+
+        var id: String {
+            title
+        }
+    }
+
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var contactsManager: ContactsManager
+    @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("wallet__payment_requests"), showMenuButton: false)
+            NavigationBar(title: t("wallet__payment_requests"))
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 16) {
-                    if paymentRequests.pendingRequests.isEmpty, paymentRequests.sentRequests.isEmpty {
+                    if paymentRequests.historyRequests.isEmpty {
                         emptyState
                     } else {
-                        if !paymentRequests.pendingRequests.isEmpty {
-                            CaptionMText(t("wallet__payment_requests_incoming"), textColor: .white64)
-                            ForEach(paymentRequests.pendingRequests) { request in
-                                PaymentRequestCard(
-                                    request: request,
-                                    isActionDisabled: paymentRequests.requestedPresentationId == request.id,
-                                    onPay: { _ = paymentRequests.requestPresentation(request) },
-                                    onReject: { await reject(request) }
-                                )
+                        if !activeRequests.isEmpty {
+                            CaptionMText(t("wallet__payment_requests").localizedUppercase, textColor: .white64)
+                            ForEach(activeRequests) { request in
+                                activeRequestCard(request)
                             }
                         }
 
-                        if !paymentRequests.sentRequests.isEmpty {
-                            CaptionMText(t("wallet__payment_requests_sent"), textColor: .white64)
+                        ForEach(historySections) { section in
+                            CaptionMText(section.title.localizedUppercase, textColor: .white64)
                                 .padding(.top, 8)
-                            ForEach(paymentRequests.sentRequests) { request in
-                                PaymentRequestCard(request: request, status: status(for: request))
+                            ForEach(section.requests) { request in
+                                PaymentRequestCard(request: request, subtitleOverride: historyDate(for: request), isHighlighted: false)
                             }
                         }
                     }
                 }
                 .padding(.top, 24)
                 .padding(.bottom, 120)
+            }
+
+            if !paymentRequests.eligibleTargets.isEmpty {
+                CustomButton(title: t("wallet__payment_request_request_payment")) {
+                    let draft = PaykitPaymentRequestDraft(amountSats: 0, note: "", expiresAt: .now)
+                    sheets.showSheet(.receive, data: ReceiveConfig(view: .paymentRequestDetails(draft)))
+                }
+                .padding(.bottom, 16)
+                .accessibilityIdentifier("PaymentRequestRequestPayment")
             }
         }
         .padding(.horizontal, 16)
@@ -249,9 +274,128 @@ struct PaymentRequestsView: View {
         .padding(.top, 120)
     }
 
-    private func status(for request: PaykitPaymentRequest) -> String {
-        request.deliveryStatus == .sent ? t("wallet__payment_request_waiting") : t("wallet__payment_request_sending")
+    private var activeRequests: [PaykitPaymentRequest] {
+        paymentRequests.historyRequests.filter {
+            $0.lifecycleState == .proposed && !$0.isExpired(at: Date())
+        }
     }
+
+    private var historicalRequests: [PaykitPaymentRequest] {
+        paymentRequests.historyRequests.filter { request in
+            !activeRequests.contains { $0.id == request.id }
+        }
+    }
+
+    private var historySections: [HistorySection] {
+        let calendar = Calendar.autoupdatingCurrent
+        let groups = Dictionary(grouping: historicalRequests) { request in
+            request.createdAt.map { calendar.dateInterval(of: .month, for: $0)?.start ?? .distantPast } ?? .distantPast
+        }
+        return groups.keys.sorted(by: >).map { month in
+            let title = calendar.isDate(month, equalTo: Date(), toGranularity: .month)
+                ? t("wallet__activity_group_month")
+                : Self.monthFormatter.string(from: month)
+            return HistorySection(title: title, requests: groups[month, default: []])
+        }
+    }
+
+    private func isActionable(_ request: PaykitPaymentRequest) -> Bool {
+        paymentRequests.pendingRequests.contains { $0.id == request.id }
+    }
+
+    private func status(for request: PaykitPaymentRequest) -> String {
+        if request.isExpired(at: Date()), request.lifecycleState == .proposed {
+            return t("wallet__payment_request_status_expired")
+        }
+
+        switch request.lifecycleState {
+        case .proposed:
+            if request.direction == .incoming {
+                return t("wallet__payment_request_status_unavailable")
+            }
+            return request.deliveryStatus == .sent
+                ? t("wallet__payment_request_waiting")
+                : t("wallet__payment_request_sending")
+        case .proposalExpired:
+            return t("wallet__payment_request_status_expired")
+        case .accepted:
+            return t("wallet__payment_request_status_accepted")
+        case .rejected:
+            return t("wallet__payment_request_status_rejected")
+        case .canceled:
+            return t("wallet__payment_request_status_canceled")
+        case .proofSubmitted:
+            return t("wallet__payment_request_status_proof_submitted")
+        case .recoveryRequired:
+            return t("wallet__payment_request_status_action_required")
+        case .invalidConflict, .activeRecurring, .unknown:
+            return t("wallet__payment_request_status_unavailable")
+        }
+    }
+
+    @ViewBuilder
+    private func activeRequestCard(_ request: PaykitPaymentRequest) -> some View {
+        if isActionable(request) {
+            PaymentRequestCard(
+                request: request,
+                subtitleOverride: activeDate(for: request),
+                isActionDisabled: paymentRequests.requestedPresentationId == request.id,
+                onPay: { _ = paymentRequests.requestPresentation(request) },
+                onReject: { await reject(request) }
+            )
+        } else if request.direction == .outgoing {
+            PaymentRequestCard(
+                request: request,
+                subtitleOverride: t(
+                    "wallet__payment_request_waiting_for_recipient",
+                    variables: ["name": displayName(for: request)]
+                ),
+                isHighlighted: false
+            )
+        } else {
+            PaymentRequestCard(request: request, status: status(for: request))
+        }
+    }
+
+    private func activeDate(for request: PaykitPaymentRequest) -> String {
+        guard let createdAt = request.createdAt else { return status(for: request) }
+        return Self.dateTimeFormatter.string(from: createdAt)
+    }
+
+    private func historyDate(for request: PaykitPaymentRequest) -> String {
+        guard let createdAt = request.createdAt else { return status(for: request) }
+        return Self.dateFormatter.string(from: createdAt)
+    }
+
+    private func displayName(for request: PaykitPaymentRequest) -> String {
+        guard let contact = contactsManager.contacts.first(where: {
+            PubkyPublicKeyFormat.matches($0.publicKey, request.counterparty)
+        }) else {
+            return PubkyPublicKeyFormat.displayTruncated(request.counterparty)
+        }
+        return contact.displayName
+    }
+
+    private static let dateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate("MMMMdHm")
+        return formatter
+    }()
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate("MMMMd")
+        return formatter
+    }()
+
+    private static let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate("MMMMyyyy")
+        return formatter
+    }()
 
     private func reject(_ request: PaykitPaymentRequest) async {
         do {

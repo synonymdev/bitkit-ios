@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum PaymentRequestExpiration: String, CaseIterable, Identifiable {
+enum PaymentRequestExpiration: String, CaseIterable, CustomStringConvertible, Identifiable {
     case hour
     case day
     case week
@@ -10,7 +10,7 @@ enum PaymentRequestExpiration: String, CaseIterable, Identifiable {
         rawValue
     }
 
-    var title: String {
+    var description: String {
         switch self {
         case .hour: t("wallet__payment_request_expiry_hour")
         case .day: t("wallet__payment_request_expiry_day")
@@ -74,23 +74,12 @@ struct PaymentRequestDetailsView: View {
                         .padding(.top, 24)
                         .padding(.bottom, 8)
 
-                    ZStack(alignment: .topLeading) {
-                        if note.isEmpty {
-                            BodySSBText(t("wallet__receive_note_placeholder"), textColor: .textSecondary)
-                        }
-                        TextEditor(text: $note)
-                            .focused($isNoteFocused)
-                            .font(.custom(Fonts.semiBold, size: 15))
-                            .foregroundColor(.textPrimary)
-                            .accentColor(.brandAccent)
-                            .scrollContentBackground(.hidden)
-                            .padding(EdgeInsets(top: -8, leading: -5, bottom: -5, trailing: -5))
-                            .frame(minHeight: 30, maxHeight: 50)
-                            .accessibilityIdentifier("PaymentRequestNote")
-                    }
-                    .padding()
-                    .background(Color.white06)
-                    .cornerRadius(8)
+                    NoteTextEditor(
+                        text: $note,
+                        placeholder: t("wallet__receive_note_placeholder"),
+                        testIdentifier: "PaymentRequestNote",
+                        isFocused: $isNoteFocused
+                    )
 
                     CaptionMText(t("wallet__payment_request_expires"), textColor: .white64)
                         .padding(.top, 24)
@@ -149,26 +138,11 @@ struct PaymentRequestDetailsView: View {
     }
 
     private var expirationPicker: some View {
-        HStack(spacing: 0) {
-            ForEach(PaymentRequestExpiration.allCases) { option in
-                Button {
-                    expiration = option
-                } label: {
-                    VStack(spacing: 8) {
-                        BodySSBText(option.title, textColor: expiration == option ? .textPrimary : .white64)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Rectangle()
-                            .fill(expiration == option ? Color.brandAccent : Color.white16)
-                            .frame(height: 2)
-                            .accessibilityHidden(true)
-                    }
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                .accessibilityAddTraits(expiration == option ? .isSelected : [])
-            }
-        }
+        SegmentedControl(
+            selectedTab: $expiration,
+            tabs: PaymentRequestExpiration.allCases,
+            activeColor: .textPrimary
+        )
     }
 }
 
@@ -181,10 +155,50 @@ struct PaymentRequestRecipientView: View {
     let onSent: (PaykitPaymentRequest) -> Void
 
     @State private var selectedTarget: PaykitPaymentRequestTarget?
+    @State private var recipientQuery = ""
 
     private var recipientTargets: [PaykitPaymentRequestTarget] {
-        paymentRequests.eligibleTargets.sorted {
-            displayName(for: $0).localizedCaseInsensitiveCompare(displayName(for: $1)) == .orderedAscending
+        paymentRequests.eligibleTargets
+            .filter { target in
+                let query = recipientQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+                return query.isEmpty
+                    || target.publicKey.localizedCaseInsensitiveContains(query)
+                    || displayName(for: target).localizedCaseInsensitiveContains(query)
+            }
+            .sorted {
+                displayName(for: $0).localizedCaseInsensitiveCompare(displayName(for: $1)) == .orderedAscending
+            }
+    }
+
+    private var allRecipientTargets: [PaykitPaymentRequestTarget] {
+        paymentRequests.eligibleTargets
+    }
+
+    private var isSelectionAvailable: Bool {
+        guard let selectedTarget else { return false }
+        return allRecipientTargets.contains(selectedTarget)
+    }
+
+    private var canSend: Bool {
+        isSelectionAvailable && !paymentRequests.isCreatingRequest
+    }
+
+    private var recipientSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64)
+                .padding(.bottom, 8)
+
+            TextField(
+                t("wallet__payment_request_enter_pubky"),
+                text: $recipientQuery,
+                testIdentifier: "PaymentRequestRecipientFilter"
+            )
+
+            CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64)
+                .padding(.top, 32)
+                .padding(.bottom, 16)
+
+            CustomDivider()
         }
     }
 
@@ -194,10 +208,7 @@ struct PaymentRequestRecipientView: View {
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64)
-                        .padding(.bottom, 16)
-
-                    CustomDivider()
+                    recipientSection
 
                     ForEach(recipientTargets) { target in
                         if let contact = contact(for: target) {
@@ -205,7 +216,8 @@ struct PaymentRequestRecipientView: View {
                                 contact: contact,
                                 verticalPadding: 20,
                                 isLoading: paymentRequests.isCreatingRequest && selectedTarget == target,
-                                isSelected: selectedTarget == target
+                                isSelected: selectedTarget == target,
+                                selectionColor: .pubkyGreen
                             ) {
                                 selectedTarget = target
                             }
@@ -229,7 +241,7 @@ struct PaymentRequestRecipientView: View {
         .sheetBackground()
         .navigationBarHidden(true)
         .interactiveDismissDisabled(paymentRequests.isCreatingRequest)
-        .onChange(of: recipientTargets) { _, targets in
+        .onChange(of: allRecipientTargets) { _, targets in
             if let selectedTarget, !targets.contains(selectedTarget) {
                 self.selectedTarget = nil
             }
@@ -237,10 +249,10 @@ struct PaymentRequestRecipientView: View {
     }
 
     private func sendRequest() async {
-        guard let selectedTarget, recipientTargets.contains(selectedTarget) else { return }
+        guard let selectedTarget, allRecipientTargets.contains(selectedTarget) else { return }
         do {
             let request = try await paymentRequests.propose(draft, to: selectedTarget)
-            guard paymentRequests.sentRequests.contains(where: { $0.id == request.id }) else { return }
+            guard paymentRequests.outgoingRequests.contains(where: { $0.id == request.id }) else { return }
             onSent(request)
         } catch {
             app.toast(error)
@@ -254,10 +266,6 @@ struct PaymentRequestRecipientView: View {
     private func displayName(for target: PaykitPaymentRequestTarget) -> String {
         contact(for: target)?.displayName ?? target.publicKey
     }
-
-    private var canSend: Bool {
-        selectedTarget.map(recipientTargets.contains) == true
-    }
 }
 
 struct PaymentRequestSentView: View {
@@ -266,39 +274,44 @@ struct PaymentRequestSentView: View {
     let request: PaykitPaymentRequest
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__payment_request_sent_title"))
 
-            MoneyStack(
-                sats: Int(clamping: request.amountSats),
-                showSymbol: true,
-                testIdPrefix: "PaymentRequestSentAmount"
-            )
-
-            Spacer()
+            Spacer(minLength: 8)
 
             Image("check")
                 .resizable()
-                .scaledToFit()
-                .frame(maxWidth: 180, maxHeight: 180)
-                .padding(.bottom, 32)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 256, height: 256)
+                .frame(maxWidth: .infinity)
 
-            DisplayText(t("wallet__payment_request_sent_headline"))
-                .multilineTextAlignment(.center)
-                .padding(.bottom, 16)
+            Spacer(minLength: 8)
+
+            DisplayText(t("wallet__payment_request_sent_headline"), accentColor: .purpleAccent)
+                .padding(.bottom, 8)
 
             BodyMText(description, textColor: .white64)
-                .multilineTextAlignment(.center)
+                .padding(.bottom, 16)
 
-            Spacer()
+            PaymentRequestCard(
+                request: request,
+                subtitleOverride: request.deliveryStatus == .sent
+                    ? t("wallet__payment_request_waiting")
+                    : t("wallet__payment_request_sending"),
+                isHighlighted: false
+            )
+
+            Spacer(minLength: 32)
 
             CustomButton(title: t("common__ok")) {
                 sheets.hideSheet(reason: "Payment request created")
             }
         }
         .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheetBackground()
         .navigationBarHidden(true)
+        .allowSwipeBack(false)
         .accessibilityIdentifier("PaymentRequestSent")
     }
 

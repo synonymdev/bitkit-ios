@@ -686,12 +686,6 @@ actor PaykitSdkService {
         }
     }
 
-    func actionableReceivedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord] {
-        try await operationLock.withLock {
-            try await handle().actionableReceivedPaymentRequests()
-        }
-    }
-
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord] {
         try await operationLock.withLock {
             try await handle().paymentRequests()

@@ -4,14 +4,9 @@ struct ReceiveQr: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var wallet: WalletViewModel
-    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
-
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
-
     @Binding var navigationPath: [ReceiveRoute]
     let cjitInvoice: String?
     let tab: ReceiveTab?
-    let onSendPaymentRequest: () -> Void
 
     @State private var selectedTab: ReceiveTab
     @State private var showDetails = false
@@ -20,13 +15,11 @@ struct ReceiveQr: View {
     init(
         navigationPath: Binding<[ReceiveRoute]>,
         cjitInvoice: String? = nil,
-        tab: ReceiveTab? = nil,
-        onSendPaymentRequest: @escaping () -> Void = {}
+        tab: ReceiveTab? = nil
     ) {
         _navigationPath = navigationPath
         self.cjitInvoice = cjitInvoice
         self.tab = tab
-        self.onSendPaymentRequest = onSendPaymentRequest
 
         // Default to unified tab if available, otherwise use provided tab or savings
         let defaultTab: ReceiveTab = if tab != nil {
@@ -97,19 +90,6 @@ struct ReceiveQr: View {
                 .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
 
                 Spacer()
-
-                if PaykitFeatureFlags.isUIAvailable,
-                   isPaykitUIEnabled,
-                   !paymentRequests.eligibleTargets.isEmpty,
-                   !showingCjitOnboarding
-                {
-                    CustomButton(title: t("wallet__payment_request_send"), variant: .secondary) {
-                        onSendPaymentRequest()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-                    .accessibilityIdentifier("PaymentRequestSendButton")
-                }
 
                 Group {
                     if showingCjitOnboarding {

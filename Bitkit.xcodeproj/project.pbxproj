@@ -1179,7 +1179,7 @@
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
 				kind = exactVersion;
-				version = "0.1.0-rc44";
+				version = "0.1.0-rc46";
 			};
 		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {

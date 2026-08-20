@@ -98,6 +98,39 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["valid"])
     }
 
+    func testRefreshKeepsOneTimeBitcoinLifecycleHistory() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let records = try [
+            paymentRequestRecord(id: "incoming", state: .proposed),
+            paymentRequestRecord(id: "accepted", state: .accepted),
+            paymentRequestRecord(id: "rejected", state: .rejected),
+            paymentRequestRecord(id: "expired", state: .proposalExpired, expiresAt: timestamp(now)),
+            paymentRequestRecord(id: "outgoing", state: .proposed, role: .payee),
+            paymentRequestRecord(id: "recurring", state: .activeRecurring),
+            paymentRequestRecord(id: "unsupported", state: .canceled, endpoints: ["btc-unsupported-method"]),
+        ]
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: records),
+            clock: PaymentRequestTestClock(now)
+        )
+
+        await manager.refresh()
+
+        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["incoming"])
+        XCTAssertEqual(
+            Set(manager.historyRequests.map(\.paymentRequestId)),
+            Set(["incoming", "accepted", "rejected", "expired", "outgoing", "unsupported"])
+        )
+        XCTAssertEqual(
+            manager.historyRequests.first { $0.paymentRequestId == "accepted" }?.lifecycleState,
+            .accepted
+        )
+        XCTAssertEqual(
+            manager.historyRequests.first { $0.paymentRequestId == "outgoing" }?.direction,
+            .outgoing
+        )
+    }
+
     func testRefreshRejectsAmountsOutsideTheAppPaymentRange() async throws {
         let records = try [
             paymentRequestRecord(id: "one-sat", amount: "0.00000001"),
@@ -169,6 +202,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertEqual(manager.pendingRequests.count, 1)
         try await waitUntil(timeout: .seconds(5)) { manager.pendingRequests.isEmpty }
+        XCTAssertEqual(manager.historyRequests.count, 1)
     }
 
     func testPresentedRequestRemainsPendingWithoutBeingPresentedAgain() async throws {
@@ -329,7 +363,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(presentationCount, 1)
 
         continuation?.resume()
-        await presentationTask.value
+        _ = await presentationTask.value
         await manager.presentRequests { _ in presentationCount += 1 }
         XCTAssertEqual(presentationCount, 2)
     }
@@ -378,7 +412,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertTrue(manager.requestPresentation(secondRequest))
         continuation?.resume()
-        await task.value
+        _ = await task.value
 
         XCTAssertFalse(automaticPresentationRemainedCurrent)
         XCTAssertEqual(manager.requestsForPresentation(), [secondRequest])
@@ -494,6 +528,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await manager.prepareForPayment(request)
 
         XCTAssertEqual(manager.pendingRequests.map(\.id), remainingIds)
+        XCTAssertEqual(
+            manager.historyRequests.first { $0.id == request.id }?.lifecycleState,
+            .accepted
+        )
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(
             snapshot.acceptedRequests,
@@ -628,6 +666,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await manager.reject(XCTUnwrap(manager.pendingRequests.first(where: { $0.paymentRequestId == "first" })))
 
         XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["second"])
+        XCTAssertEqual(
+            manager.historyRequests.first { $0.paymentRequestId == "first" }?.lifecycleState,
+            .rejected
+        )
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.rejectedRequests.map(\.paymentRequestId), ["first"])
         XCTAssertEqual(snapshot.processCallCount, 2)
@@ -798,7 +840,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             to: XCTUnwrap(manager.eligibleTargets.first)
         )
 
-        XCTAssertEqual(manager.sentRequests.map(\.paymentRequestId), ["outgoing"])
+        XCTAssertEqual(manager.outgoingRequests.map(\.paymentRequestId), ["outgoing"])
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.proposedRequests.count, 1)
         XCTAssertEqual(snapshot.processCallCount, 1)
@@ -895,7 +937,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         let committedRequest = try await task.value
         XCTAssertEqual(committedRequest.paymentRequestId, "outgoing")
-        XCTAssertTrue(manager.sentRequests.isEmpty)
+        XCTAssertTrue(manager.outgoingRequests.isEmpty)
         XCTAssertTrue(manager.eligibleTargets.isEmpty)
     }
 
@@ -937,7 +979,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
         let snapshot = await sdk.snapshot()
         XCTAssertTrue(snapshot.proposedRequests.isEmpty)
-        XCTAssertTrue(manager.sentRequests.isEmpty)
+        XCTAssertTrue(manager.outgoingRequests.isEmpty)
     }
 
     func testProposalReportsConfirmedDelivery() async throws {
@@ -1190,7 +1232,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         return []
     }
 
-    func actionableReceivedPaymentRequests() async -> [PaymentRequestRecord] {
+    func paymentRequests() async -> [PaymentRequestRecord] {
         let snapshot = records
         guard shouldPauseNextPaymentRequestList else { return snapshot }
 
@@ -1199,10 +1241,6 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         await withCheckedContinuation { paymentRequestListContinuation = $0 }
         isPaymentRequestListPaused = false
         return snapshot
-    }
-
-    func paymentRequests() -> [PaymentRequestRecord] {
-        records
     }
 
     func identityStatus() -> IdentityStatus? {

@@ -20,10 +20,6 @@ struct Header: View {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
     }
 
-    private var hasPaymentRequests: Bool {
-        !paymentRequests.pendingRequests.isEmpty || !paymentRequests.sentRequests.isEmpty
-    }
-
     init(showWidgetEditButton: Bool = false, isEditingWidgets: Binding<Bool> = .constant(false)) {
         self.showWidgetEditButton = showWidgetEditButton
         _isEditingWidgets = isEditingWidgets
@@ -46,14 +42,10 @@ struct Header: View {
                     }
                 )
 
-                if isPaykitUIActive, hasPaymentRequests {
+                if isPaykitUIActive, !paymentRequests.pendingRequests.isEmpty {
                     Button {
                         if dismissCalculatorIfNeeded() { return }
-                        if paymentRequests.pendingRequests.isEmpty {
-                            navigation.navigate(.paymentRequests)
-                        } else {
-                            sheets.showSheet(.paymentRequests)
-                        }
+                        sheets.showSheet(.paymentRequests)
                     } label: {
                         Image("bell")
                             .resizable()
@@ -63,19 +55,6 @@ struct Header: View {
                             .frame(width: 32, height: 32)
                             .contentShape(Rectangle())
                             .shadow(color: .brandAccent.opacity(0.5), radius: 8)
-                            .overlay(alignment: .topTrailing) {
-                                if !paymentRequests.pendingRequests.isEmpty {
-                                    CaptionMText(
-                                        paymentRequests.pendingRequests.count > 99 ? "99+" : "\(paymentRequests.pendingRequests.count)",
-                                        textColor: .black
-                                    )
-                                    .frame(minWidth: 16, minHeight: 16)
-                                    .background(Color.brandAccent)
-                                    .clipShape(Capsule())
-                                    .offset(x: 4, y: -4)
-                                    .accessibilityHidden(true)
-                                }
-                            }
                     }
                     .accessibilityLabel(t("wallet__payment_requests"))
                     .accessibilityValue(

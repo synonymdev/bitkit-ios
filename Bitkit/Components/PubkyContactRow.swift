@@ -6,6 +6,7 @@ struct PubkyContactRow: View {
     var showsDivider = true
     var isLoading = false
     var isSelected = false
+    var selectionColor: Color = .brandAccent
     let action: () -> Void
 
     var body: some View {
@@ -30,7 +31,7 @@ struct PubkyContactRow: View {
                         Image("check-mark")
                             .resizable()
                             .scaledToFit()
-                            .foregroundColor(.brandAccent)
+                            .foregroundColor(selectionColor)
                             .frame(width: 24, height: 24)
                             .accessibilityHidden(true)
                     }
