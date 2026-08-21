@@ -337,6 +337,13 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         XCTAssertEqual(session.forgottenWalletIds, [strayWalletId], "the wallet a typo opened is dropped")
         XCTAssertEqual(deletedWalletIds, [strayWalletId], "its activities go with it")
         XCTAssertEqual(session.staleDisconnects, ["dev1"], "the session it opened is torn down")
+        // The stray is a real wallet the user owns, and reading its accounts already consumed any
+        // name restored for it into the entry being forgotten, so the name has to go back.
+        XCTAssertEqual(
+            session.forgottenPendingNames.compactMap { $0 }.map(\.walletId),
+            [strayWalletId],
+            "its backup data is kept"
+        )
     }
 
     /// An account read that failed says nothing about which wallet the session holds, so calling it a

@@ -595,6 +595,43 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertEqual(decoded.cache.dismissedSuggestions, [])
     }
 
+    func testMetadataBackupV1RoundTripsHwWalletNames() throws {
+        let payload = MetadataBackupV1(
+            version: 1,
+            createdAt: 123,
+            tagMetadata: [],
+            cache: makeAppCacheData(),
+            pubkySession: nil,
+            pubkyContactProfileOverrides: nil,
+            hwWalletNames: ["trezor:standard": "Cold Storage"]
+        )
+
+        let encoded = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode(MetadataBackupV1.self, from: encoded)
+
+        XCTAssertEqual(decoded.hwWalletNames, ["trezor:standard": "Cold Storage"])
+    }
+
+    /// The envelope is shared with bitkit-android, which wrote it without this field before it
+    /// existed — and still omits it when no wallet is named.
+    func testMetadataBackupV1DecodesWithoutHwWalletNamesField() throws {
+        let payload = MetadataBackupV1(
+            version: 1,
+            createdAt: 123,
+            tagMetadata: [],
+            cache: makeAppCacheData(),
+            pubkySession: nil,
+            pubkyContactProfileOverrides: nil
+        )
+
+        let encoded = try JSONEncoder().encode(payload)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertNil(json["hwWalletNames"], "a nil map must not be written as an explicit null")
+
+        let decoded = try JSONDecoder().decode(MetadataBackupV1.self, from: encoded)
+        XCTAssertNil(decoded.hwWalletNames)
+    }
+
     // MARK: - Profile Link Input Model
 
     func testProfileLinkInputHasUniqueIds() {

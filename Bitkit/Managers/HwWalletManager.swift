@@ -95,9 +95,13 @@ final class HwWalletManager {
     /// content is byte-identical — that write is what applies the deletions the partial ones deferred.
     private var lastPersisted: [String: HwWalletSnapshot] = [:]
 
-    /// Tag metadata a removal asked to keep, held until the wallet's activities are gone and it can
-    /// be written back. Read at the moment each delete runs rather than captured, so a re-pair or a
-    /// second removal that keeps nothing cancels a repair that has not happened yet.
+    /// Tag metadata a removal asked to keep, re-applied after every delete of its wallet. Read at the
+    /// moment each delete runs rather than captured, so a later removal replaces it — or clears it,
+    /// when that one keeps nothing.
+    ///
+    /// Deliberately outlives the removal: a cleanup delete can arrive long afterwards, from a push
+    /// that re-added the wallet and then dropped it again, and re-applying is what keeps it from
+    /// taking the rows with it.
     private var keptBackupMetadata: [String: [PreActivityMetadata]] = [:]
 
     private var emittedReceivedTxIds: Set<String> = []
@@ -525,9 +529,6 @@ final class HwWalletManager {
         let liveSignatures = Set(knownDevices.filter { !$0.xpubs.isEmpty }.map { xpubsSignature($0.xpubs) })
         walletIdCache = walletIdCache.filter { liveSignatures.contains($0.key) }
         lastPersisted = lastPersisted.filter { hwWalletIds.contains($0.key) }
-        // A wallet that is paired again owns its metadata through its watcher; a pending repair from
-        // an earlier removal would only re-apply rows core has since re-attached anyway.
-        keptBackupMetadata = keptBackupMetadata.filter { !hwWalletIds.contains($0.key) }
     }
 
     private func startWatcher(_ spec: WatcherSpec) {
