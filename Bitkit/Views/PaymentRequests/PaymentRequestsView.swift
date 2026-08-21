@@ -202,7 +202,7 @@ struct PaymentRequestsSheet: View {
 struct PaymentRequestsView: View {
     private struct HistorySection: Identifiable {
         let title: String
-        let requests: [PaykitPaymentRequest]
+        var requests: [PaykitPaymentRequest]
 
         var id: String {
             title
@@ -295,16 +295,16 @@ struct PaymentRequestsView: View {
     }
 
     private var historySections: [HistorySection] {
-        let calendar = Calendar.autoupdatingCurrent
-        let groups = Dictionary(grouping: historicalRequests) { request in
-            request.createdAt.map { calendar.dateInterval(of: .month, for: $0)?.start ?? .distantPast } ?? .distantPast
-        }
-        return groups.keys.sorted(by: >).map { month in
-            let title = calendar.isDate(month, equalTo: Date(), toGranularity: .month)
-                ? t("wallet__activity_group_month")
-                : Self.monthFormatter.string(from: month)
-            return HistorySection(title: title, requests: groups[month, default: []])
-        }
+        historicalRequests
+            .sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+            .reduce(into: [HistorySection]()) { sections, request in
+                let title = request.createdAt.map { DateFormatterHelpers.getActivityGroupHeader(for: $0) } ?? t("other__earlier")
+                if sections.last?.title == title {
+                    sections[sections.count - 1].requests.append(request)
+                } else {
+                    sections.append(HistorySection(title: title, requests: [request]))
+                }
+            }
     }
 
     private func isActionable(_ request: PaykitPaymentRequest) -> Bool {
@@ -395,13 +395,6 @@ struct PaymentRequestsView: View {
         let formatter = DateFormatter()
         formatter.locale = .autoupdatingCurrent
         formatter.setLocalizedDateFormatFromTemplate("MMMMd")
-        return formatter
-    }()
-
-    private static let monthFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = .autoupdatingCurrent
-        formatter.setLocalizedDateFormatFromTemplate("MMMMyyyy")
         return formatter
     }()
 
