@@ -847,7 +847,7 @@ final class HwWalletManagerTests: XCTestCase {
         vm.updateDevices(knownDevices: devices, connectedDeviceId: nil)
         let wallet = try XCTUnwrap(vm.wallets.first)
 
-        await vm.removeWallet(walletId: wallet.id)
+        try await vm.removeWallet(walletId: wallet.id, keepBackupData: false)
 
         await vm.drainPendingPersists()
         XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])

@@ -180,7 +180,7 @@ struct HardwareWalletScreen: View {
     /// tile, and the reactive auto-pop above then leaves the screen.
     private func removeWallet() async {
         guard let wallet else { return }
-        await hwWalletManager.removeWallet(walletId: wallet.id)
+        try? await hwWalletManager.removeWallet(walletId: wallet.id, keepBackupData: true)
     }
 }
 

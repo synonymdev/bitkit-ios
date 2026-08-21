@@ -102,7 +102,7 @@ struct HardwareWalletsSettingsScreen: View {
 
     private func remove(_ wallet: HwWallet) async {
         pendingRemoval = nil
-        await hwWalletManager.removeWallet(walletId: wallet.id)
+        try? await hwWalletManager.removeWallet(walletId: wallet.id, keepBackupData: true)
     }
 }
 

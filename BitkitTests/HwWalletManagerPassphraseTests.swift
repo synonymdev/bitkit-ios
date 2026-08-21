@@ -429,14 +429,14 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
 
     // MARK: - removeWallet
 
-    func testRemovingAWalletForgetsOnlyThatIdentity() async {
+    func testRemovingAWalletForgetsOnlyThatIdentity() async throws {
         session.storedDevices = [
             makeDevice(walletId: standardWalletId),
             makeDevice(xpubs: ["nativeSegwit": "zHidden"], walletId: hiddenWalletId, passphraseProtected: true),
         ]
         let manager = makeManager()
 
-        await manager.removeWallet(walletId: hiddenWalletId)
+        try await manager.removeWallet(walletId: hiddenWalletId, keepBackupData: false)
         await manager.drainPendingPersists()
 
         XCTAssertEqual(session.forgottenWalletIds, [hiddenWalletId])
