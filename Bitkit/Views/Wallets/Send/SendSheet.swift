@@ -194,6 +194,7 @@ struct SendSheet: View {
         .onDisappear {
             app.contactPaymentContext = nil
             app.resetQuickPay()
+            QuickPayPaymentCoordinator.shared.detach()
         }
         .onChange(of: wallet.nodeLifecycleState) { _, state in
             // When the node becomes running and we have a scanned invoice, run deferred validation.

@@ -1,4 +1,5 @@
 import Foundation
+import LDKNode
 
 struct QuickPaySpendReservation: Codable, Equatable {
     let amountCents: Int64
@@ -27,12 +28,81 @@ struct QuickPaySpendRates {
     }
 }
 
+enum QuickPayRecordPhase: String, Codable {
+    case submitting
+    case submitted
+}
+
+struct QuickPayLedgerRecord: Codable, Equatable {
+    let id: String
+    let amountCents: Int64
+    let dayKey: String
+    let invoicePaymentHash: String
+    var paymentId: String?
+    var phase: QuickPayRecordPhase
+}
+
+struct QuickPayLedger: Codable, Equatable {
+    var version: Int
+    var dayKey: String
+    var spentCents: Int64
+    var records: [QuickPayLedgerRecord]
+}
+
+enum QuickPayTerminalOutcome: Equatable {
+    case none
+    case settledSuccess
+    case settledFailure
+}
+
+struct QuickPayReconcileRow {
+    let paymentId: String
+    let invoicePaymentHash: String
+    let isOutboundBolt11: Bool
+    let status: Status
+
+    enum Status {
+        case succeeded
+        case failed
+        case pending
+    }
+
+    init(payment: PaymentDetails) {
+        paymentId = payment.id
+        isOutboundBolt11 = payment.direction == .outbound && {
+            if case .bolt11 = payment.kind {
+                return true
+            }
+            return false
+        }()
+        invoicePaymentHash = {
+            if case let .bolt11(hash, _, _, _, _) = payment.kind {
+                return String(hash)
+            }
+            return payment.id
+        }()
+        status = switch payment.status {
+        case .succeeded: .succeeded
+        case .failed: .failed
+        case .pending: .pending
+        }
+    }
+
+    init(paymentId: String, invoicePaymentHash: String, isOutboundBolt11: Bool, status: Status) {
+        self.paymentId = paymentId
+        self.invoicePaymentHash = invoicePaymentHash
+        self.isOutboundBolt11 = isOutboundBolt11
+        self.status = status
+    }
+}
+
 final class QuickPaySpendStore: @unchecked Sendable {
     static let shared = QuickPaySpendStore()
 
-    private static let dayKeyDefaultsKey = "quickPaySpendDayKey"
-    private static let spentCentsDefaultsKey = "quickPaySpentCentsToday"
-    private static let reservationsDefaultsKey = "quickPayReservations"
+    static let ledgerDefaultsKey = "quickPayLedger"
+    static let dayKeyDefaultsKey = "quickPaySpendDayKey"
+    static let spentCentsDefaultsKey = "quickPaySpentCentsToday"
+    static let reservationsDefaultsKey = "quickPayReservations"
 
     private let defaults: UserDefaults
     private let lock = NSLock()
@@ -41,6 +111,9 @@ final class QuickPaySpendStore: @unchecked Sendable {
     init(defaults: UserDefaults = .standard, dayKey: @escaping () -> String = { QuickPaySpendStore.dayKey() }) {
         self.defaults = defaults
         dayKeyProvider = dayKey
+        lock.lock()
+        migrateLegacyIfNeededLocked()
+        lock.unlock()
     }
 
     static func dayKey(date: Date = Date(), timeZone: TimeZone = .current) -> String {
@@ -87,12 +160,26 @@ final class QuickPaySpendStore: @unchecked Sendable {
         return false
     }
 
-    func tryReserve(
+    func hasOpenRecord(paymentHash: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return lockedRecord(matching: paymentHash) != nil
+    }
+
+    func record(matching hash: String) -> QuickPayLedgerRecord? {
+        lock.lock()
+        defer { lock.unlock() }
+        return lockedRecord(matching: hash)
+    }
+
+    func reserveBound(
+        paymentHash: String,
         amountSats: UInt64,
         thresholdUsd: Double,
         multiplier: Double,
         rates: QuickPaySpendRates
-    ) throws -> QuickPaySpendReservation? {
+    ) throws -> QuickPayLedgerRecord? {
+        guard !paymentHash.isEmpty else { return nil }
         guard let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0, amountSats <= thresholdSats else {
             return nil
         }
@@ -106,124 +193,254 @@ final class QuickPaySpendStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        if lockedRecord(matching: paymentHash) != nil {
+            return nil
+        }
+
         let spend = lockedSpend(forDayKey: dayKeyProvider())
         let (total, overflow) = spend.spentCents.addingReportingOverflow(amountCents)
         if overflow || total > capCents {
             return nil
         }
 
-        lockedWriteSpend(dayKey: spend.dayKey, spentCents: total)
-        return QuickPaySpendReservation(amountCents: amountCents, dayKey: spend.dayKey)
+        var ledger = lockedLedger()
+        lockedPrune(ledger: &ledger, currentDay: spend.dayKey)
+        let record = QuickPayLedgerRecord(
+            id: UUID().uuidString,
+            amountCents: amountCents,
+            dayKey: spend.dayKey,
+            invoicePaymentHash: paymentHash,
+            paymentId: nil,
+            phase: .submitting
+        )
+        ledger.dayKey = spend.dayKey
+        ledger.spentCents = total
+        ledger.records.append(record)
+        lockedWriteLedger(ledger)
+        return record
     }
 
-    func remember(paymentHash: String, reservation: QuickPaySpendReservation) {
-        guard !paymentHash.isEmpty else { return }
+    func markSubmitted(invoicePaymentHash: String, paymentId: String?) {
+        guard !invoicePaymentHash.isEmpty else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        var ledger = lockedLedger()
+        guard let index = lockedRecordIndex(in: ledger, matching: invoicePaymentHash) else { return }
+        ledger.records[index].paymentId = paymentId
+        ledger.records[index].phase = .submitted
+        lockedWriteLedger(ledger)
+    }
+
+    @discardableResult
+    func noteTerminal(paymentId: String?, paymentHash: String?, success: Bool) -> QuickPayTerminalOutcome {
+        lock.lock()
+        defer { lock.unlock() }
+        var ledger = lockedLedger()
+        let keys = [paymentId, paymentHash].compactMap { $0 }.filter { !$0.isEmpty }
+        guard let index = keys.compactMap({ key in lockedRecordIndex(in: ledger, matching: key) }).first else {
+            return .none
+        }
+        let record = ledger.records.remove(at: index)
+        if !success, record.dayKey == ledger.dayKey {
+            ledger.spentCents = max(ledger.spentCents - record.amountCents, 0)
+        }
+        lockedWriteLedger(ledger)
+        return success ? .settledSuccess : .settledFailure
+    }
+
+    func releaseBound(paymentHash: String) {
+        _ = noteTerminal(paymentId: nil, paymentHash: paymentHash, success: false)
+    }
+
+    func reconcile(rows: [QuickPayReconcileRow]?, liveSubmittingHashes: Set<String>) {
+        guard let rows else { return }
 
         lock.lock()
         defer { lock.unlock() }
+        var ledger = lockedLedger()
+        let currentDay = dayKeyProvider()
+        lockedPrune(ledger: &ledger, currentDay: currentDay)
 
-        var reservations = lockedReservations()
-        reservations[paymentHash] = reservation
-        lockedWriteReservations(reservations)
+        var didWrite = false
+        var remaining: [QuickPayLedgerRecord] = []
+        remaining.reserveCapacity(ledger.records.count)
+
+        for record in ledger.records {
+            if liveSubmittingHashes.contains(record.invoicePaymentHash) {
+                remaining.append(record)
+                continue
+            }
+            let match = rows.first { row in
+                row.isOutboundBolt11 && (
+                    row.invoicePaymentHash == record.invoicePaymentHash
+                        || row.paymentId == record.invoicePaymentHash
+                        || row.paymentId == record.paymentId
+                        || (record.paymentId != nil && row.invoicePaymentHash == record.paymentId)
+                )
+            }
+            guard let match else {
+                remaining.append(record)
+                continue
+            }
+            switch match.status {
+            case .pending:
+                remaining.append(record)
+            case .succeeded:
+                didWrite = true
+            case .failed:
+                if record.dayKey == ledger.dayKey {
+                    ledger.spentCents = max(ledger.spentCents - record.amountCents, 0)
+                }
+                didWrite = true
+            }
+        }
+
+        if didWrite || remaining.count != ledger.records.count {
+            ledger.records = remaining
+            lockedWriteLedger(ledger)
+        }
     }
 
-    func reservation(paymentHash: String) -> QuickPaySpendReservation? {
-        guard !paymentHash.isEmpty else { return nil }
-
+    func backupSnapshot() -> (
+        dayKey: String,
+        spentCents: Int64,
+        reservations: [String: QuickPaySpendReservation],
+        ledger: QuickPayLedger
+    ) {
         lock.lock()
         defer { lock.unlock() }
-        return lockedReservations()[paymentHash]
+        let ledger = lockedLedger()
+        var reservations: [String: QuickPaySpendReservation] = [:]
+        for record in ledger.records {
+            let value = QuickPaySpendReservation(amountCents: record.amountCents, dayKey: record.dayKey)
+            reservations[record.invoicePaymentHash] = value
+            if let paymentId = record.paymentId, paymentId != record.invoicePaymentHash {
+                reservations[paymentId] = value
+            }
+        }
+        return (ledger.dayKey, ledger.spentCents, reservations, ledger)
     }
 
-    func release(paymentHash: String) {
-        guard !paymentHash.isEmpty else { return }
-
+    func restoreFromBackup(
+        dayKey: String,
+        spentCents: Int64,
+        reservations: [String: QuickPaySpendReservation],
+        ledger: QuickPayLedger? = nil
+    ) {
         lock.lock()
         defer { lock.unlock() }
-
-        var reservations = lockedReservations()
-        guard let reservation = reservations.removeValue(forKey: paymentHash) else { return }
-        lockedWriteReservations(reservations)
-
-        let spend = lockedSpend(forDayKey: reservation.dayKey)
-        guard reservation.dayKey == spend.dayKey else { return }
-        lockedWriteSpend(dayKey: spend.dayKey, spentCents: max(spend.spentCents - reservation.amountCents, 0))
+        if let ledger, ledger.version >= 1 {
+            var restored = ledger
+            lockedPrune(ledger: &restored, currentDay: dayKeyProvider())
+            lockedWriteLedger(restored)
+            return
+        }
+        lockedWriteLedger(Self.ledgerFromLegacy(dayKey: dayKey, spentCents: spentCents, reservations: reservations))
     }
 
-    func releaseUnbound(_ reservation: QuickPaySpendReservation) {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let storedDayKey = lockedStoredDayKey()
-        guard reservation.dayKey == storedDayKey else { return }
-        lockedWriteSpend(dayKey: storedDayKey, spentCents: max(lockedStoredSpentCents() - reservation.amountCents, 0))
+    private func migrateLegacyIfNeededLocked() {
+        if defaults.data(forKey: Self.ledgerDefaultsKey) != nil {
+            return
+        }
+        let dayKey = defaults.string(forKey: Self.dayKeyDefaultsKey) ?? ""
+        let spentCents = Int64(max(defaults.integer(forKey: Self.spentCentsDefaultsKey), 0))
+        let reservations: [String: QuickPaySpendReservation] = if let data = defaults.data(forKey: Self.reservationsDefaultsKey),
+                                                                  let decoded = try? JSONDecoder().decode(
+                                                                      [String: QuickPaySpendReservation].self,
+                                                                      from: data
+                                                                  )
+        {
+            decoded
+        } else {
+            [:]
+        }
+        if dayKey.isEmpty, spentCents == 0, reservations.isEmpty {
+            return
+        }
+        lockedWriteLedger(Self.ledgerFromLegacy(dayKey: dayKey, spentCents: spentCents, reservations: reservations))
     }
 
-    func clear(paymentHash: String) {
-        guard !paymentHash.isEmpty else { return }
-
-        lock.lock()
-        defer { lock.unlock() }
-
-        var reservations = lockedReservations()
-        guard reservations.removeValue(forKey: paymentHash) != nil else { return }
-        lockedWriteReservations(reservations)
-    }
-
-    func backupSnapshot() -> (dayKey: String, spentCents: Int64, reservations: [String: QuickPaySpendReservation]) {
-        lock.lock()
-        defer { lock.unlock() }
-        return (lockedStoredDayKey(), lockedStoredSpentCents(), lockedReservations())
-    }
-
-    func restoreFromBackup(dayKey: String, spentCents: Int64, reservations: [String: QuickPaySpendReservation]) {
-        lock.lock()
-        defer { lock.unlock() }
-        lockedWriteSpend(dayKey: dayKey, spentCents: max(spentCents, 0))
-        lockedWriteReservations(reservations)
+    private static func ledgerFromLegacy(
+        dayKey: String,
+        spentCents: Int64,
+        reservations: [String: QuickPaySpendReservation]
+    ) -> QuickPayLedger {
+        var seen: Set<String> = []
+        var records: [QuickPayLedgerRecord] = []
+        for (hash, reservation) in reservations {
+            if seen.contains(hash) {
+                continue
+            }
+            seen.insert(hash)
+            records.append(
+                QuickPayLedgerRecord(
+                    id: UUID().uuidString,
+                    amountCents: reservation.amountCents,
+                    dayKey: reservation.dayKey,
+                    invoicePaymentHash: hash,
+                    paymentId: nil,
+                    phase: .submitted
+                )
+            )
+        }
+        return QuickPayLedger(version: 1, dayKey: dayKey, spentCents: max(spentCents, 0), records: records)
     }
 
     private func lockedSpend(forDayKey dayKey: String) -> (dayKey: String, spentCents: Int64) {
-        let storedDayKey = lockedStoredDayKey()
-        let storedCents = lockedStoredSpentCents()
-
-        if storedDayKey.isEmpty || dayKey > storedDayKey {
+        var ledger = lockedLedger()
+        if ledger.dayKey.isEmpty || dayKey > ledger.dayKey {
+            lockedPrune(ledger: &ledger, currentDay: dayKey)
+            ledger.dayKey = dayKey
+            ledger.spentCents = 0
+            lockedWriteLedger(ledger)
             return (dayKey, 0)
         }
-        if dayKey == storedDayKey {
-            return (dayKey, storedCents)
+        if dayKey == ledger.dayKey {
+            return (dayKey, ledger.spentCents)
         }
-        return (storedDayKey, storedCents)
+        return (ledger.dayKey, ledger.spentCents)
     }
 
-    private func lockedStoredDayKey() -> String {
-        defaults.string(forKey: Self.dayKeyDefaultsKey) ?? ""
+    private func lockedPrune(ledger: inout QuickPayLedger, currentDay: String) {
+        guard !currentDay.isEmpty else { return }
+        ledger.records.removeAll { $0.dayKey < currentDay }
     }
 
-    private func lockedStoredSpentCents() -> Int64 {
-        Int64(max(defaults.integer(forKey: Self.spentCentsDefaultsKey), 0))
+    private func lockedRecord(matching hash: String) -> QuickPayLedgerRecord? {
+        guard let index = lockedRecordIndex(in: lockedLedger(), matching: hash) else { return nil }
+        return lockedLedger().records[index]
     }
 
-    private func lockedWriteSpend(dayKey: String, spentCents: Int64) {
-        defaults.set(dayKey, forKey: Self.dayKeyDefaultsKey)
-        defaults.set(Int(clamping: spentCents), forKey: Self.spentCentsDefaultsKey)
+    private func lockedRecordIndex(in ledger: QuickPayLedger, matching hash: String) -> Int? {
+        ledger.records.firstIndex {
+            $0.invoicePaymentHash == hash || $0.paymentId == hash || $0.id == hash
+        }
     }
 
-    private func lockedReservations() -> [String: QuickPaySpendReservation] {
-        guard let data = defaults.data(forKey: Self.reservationsDefaultsKey),
-              let decoded = try? JSONDecoder().decode([String: QuickPaySpendReservation].self, from: data)
+    private func lockedLedger() -> QuickPayLedger {
+        guard let data = defaults.data(forKey: Self.ledgerDefaultsKey),
+              let decoded = try? JSONDecoder().decode(QuickPayLedger.self, from: data)
         else {
-            return [:]
+            return QuickPayLedger(version: 1, dayKey: "", spentCents: 0, records: [])
         }
         return decoded
     }
 
-    private func lockedWriteReservations(_ reservations: [String: QuickPaySpendReservation]) {
+    private func lockedWriteLedger(_ ledger: QuickPayLedger) {
+        defaults.set(try? JSONEncoder().encode(ledger), forKey: Self.ledgerDefaultsKey)
+        defaults.set(ledger.dayKey, forKey: Self.dayKeyDefaultsKey)
+        defaults.set(Int(clamping: ledger.spentCents), forKey: Self.spentCentsDefaultsKey)
+        var reservations: [String: QuickPaySpendReservation] = [:]
+        for record in ledger.records {
+            reservations[record.invoicePaymentHash] = QuickPaySpendReservation(
+                amountCents: record.amountCents,
+                dayKey: record.dayKey
+            )
+        }
         if reservations.isEmpty {
             defaults.removeObject(forKey: Self.reservationsDefaultsKey)
-            return
+        } else {
+            defaults.set(try? JSONEncoder().encode(reservations), forKey: Self.reservationsDefaultsKey)
         }
-
-        defaults.set(try? JSONEncoder().encode(reservations), forKey: Self.reservationsDefaultsKey)
     }
 }

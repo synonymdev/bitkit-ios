@@ -70,8 +70,16 @@ final class PaymentNavigationHelperTests: XCTestCase {
 
     func testSkipsQuickpayWhenDailySpendCapIsExceeded() throws {
         let rates = QuickPaySpendRates.live(CurrencyViewModel())
-        for _ in 0 ..< 5 {
-            XCTAssertNotNil(try spendStore.tryReserve(amountSats: 5000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        for i in 0 ..< 5 {
+            XCTAssertNotNil(
+                try spendStore.reserveBound(
+                    paymentHash: "cap\(i)",
+                    amountSats: 5000,
+                    thresholdUsd: 5,
+                    multiplier: 5,
+                    rates: rates
+                )
+            )
         }
 
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .confirm)
@@ -79,10 +87,10 @@ final class PaymentNavigationHelperTests: XCTestCase {
 
     func testAllowsQuickpayWhenSpendPlusAmountEqualsDailyCap() throws {
         let rates = QuickPaySpendRates.live(CurrencyViewModel())
-        for _ in 0 ..< 4 {
-            XCTAssertNotNil(try spendStore.tryReserve(amountSats: 5000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        for i in 0 ..< 4 {
+            XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "under\(i)", amountSats: 5000, thresholdUsd: 5, multiplier: 5, rates: rates))
         }
-        XCTAssertNotNil(try spendStore.tryReserve(amountSats: 4000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "under4", amountSats: 4000, thresholdUsd: 5, multiplier: 5, rates: rates))
 
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }

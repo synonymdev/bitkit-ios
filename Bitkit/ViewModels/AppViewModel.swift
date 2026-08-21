@@ -1062,19 +1062,24 @@ extension AppViewModel {
             break
         case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
             let hash = paymentId ?? paymentHash
-            let isQuickPay = QuickPaySpendStore.shared.reservation(paymentHash: hash) != nil
-                || paymentHash != hash && QuickPaySpendStore.shared.reservation(paymentHash: paymentHash) != nil
-            QuickPaySpendStore.shared.clear(paymentHash: hash)
-            if paymentHash != hash {
-                QuickPaySpendStore.shared.clear(paymentHash: paymentHash)
-            }
-            if pendingPaymentHashes.contains(hash) {
+            let wasQuickPay = QuickPaySpendStore.shared.record(matching: hash) != nil
+                || QuickPaySpendStore.shared.record(matching: paymentHash) != nil
+            let outcome = QuickPaySpendStore.shared.noteTerminal(
+                paymentId: paymentId,
+                paymentHash: paymentHash,
+                success: true
+            )
+            QuickPayPaymentCoordinator.shared.handleSettled(paymentId: paymentId, paymentHash: paymentHash)
+            let awaitingSheet = pendingPaymentHashes.contains(hash)
+            if awaitingSheet {
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(
                     paymentHash: hash,
                     success: true,
-                    feePaidSats: isQuickPay ? (feePaidMsat ?? 0) / 1000 : nil
+                    feePaidSats: wasQuickPay ? (feePaidMsat ?? 0) / 1000 : nil
                 )
+            }
+            if awaitingSheet || outcome != .none {
                 toast(
                     type: .lightning,
                     title: t("wallet__toast_payment_success_title"),
@@ -1084,15 +1089,18 @@ extension AppViewModel {
             }
         case let .paymentFailed(paymentId, paymentHash, reason):
             let hash = paymentId ?? paymentHash
-            if let hash {
-                QuickPaySpendStore.shared.release(paymentHash: hash)
-                if let paymentHash, paymentHash != hash {
-                    QuickPaySpendStore.shared.release(paymentHash: paymentHash)
-                }
-            }
-            if let hash, pendingPaymentHashes.contains(hash) {
+            let outcome = QuickPaySpendStore.shared.noteTerminal(
+                paymentId: paymentId,
+                paymentHash: paymentHash,
+                success: false
+            )
+            QuickPayPaymentCoordinator.shared.handleSettled(paymentId: paymentId, paymentHash: paymentHash)
+            let awaitingSheet = hash.map { pendingPaymentHashes.contains($0) } ?? false
+            if let hash, awaitingSheet {
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: reason)
+            }
+            if awaitingSheet || outcome != .none {
                 toast(
                     type: .error,
                     title: t("wallet__toast_payment_failed_title"),

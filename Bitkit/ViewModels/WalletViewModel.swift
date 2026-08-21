@@ -580,6 +580,7 @@ class WalletViewModel: ObservableObject {
 
         isSyncingWallet = false
         syncState()
+        QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
         if isPaykitUIActive {
             await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
             await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
@@ -879,12 +880,25 @@ class WalletViewModel: ObservableObject {
     ) async throws -> SettledLightningPayment {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
         let paymentHash = String(hash)
-        return try await withThrowingTaskGroup(of: SettledLightningPayment.self) { group in
-            group.addTask { try await self.watchSend(hash: paymentHash, afterListening: afterListening) }
+        afterListening?(paymentHash)
+        return try await waitForLightningPayment(
+            hash: paymentHash,
+            timeoutSeconds: timeoutSeconds,
+            onTimeout: onTimeout
+        )
+    }
+
+    func waitForLightningPayment(
+        hash: String,
+        timeoutSeconds: TimeInterval = 10,
+        onTimeout: (@MainActor (String) -> Void)? = nil
+    ) async throws -> SettledLightningPayment {
+        try await withThrowingTaskGroup(of: SettledLightningPayment.self) { group in
+            group.addTask { try await self.watchSend(hash: hash) }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
                 if let onTimeout {
-                    await MainActor.run { onTimeout(paymentHash) }
+                    await MainActor.run { onTimeout(hash) }
                 }
                 throw PaymentTimeoutError.timedOut
             }
@@ -903,10 +917,7 @@ class WalletViewModel: ObservableObject {
         return try await watchSend(hash: String(hash))
     }
 
-    private func watchSend(
-        hash: String,
-        afterListening: (@MainActor (String) -> Void)? = nil
-    ) async throws -> SettledLightningPayment {
+    private func watchSend(hash: String) async throws -> SettledLightningPayment {
         let eventId = hash
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -930,7 +941,6 @@ class WalletViewModel: ObservableObject {
                 }
             }
 
-            afterListening?(hash)
             syncState()
         }
     }
