@@ -184,18 +184,6 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertNotNil(sut.record(matching: "inv"))
     }
 
-    func testLegacyUserDefaultsMigrateWithoutLosingSpend() throws {
-        defaults.set("2026-08-15", forKey: QuickPaySpendStore.dayKeyDefaultsKey)
-        defaults.set(500, forKey: QuickPaySpendStore.spentCentsDefaultsKey)
-        let reservations = ["abc": QuickPaySpendReservation(amountCents: 500, dayKey: "2026-08-15")]
-        try defaults.set(JSONEncoder().encode(reservations), forKey: QuickPaySpendStore.reservationsDefaultsKey)
-
-        let migrated = QuickPaySpendStore(defaults: defaults, dayKey: { [unowned self] in currentDay })
-
-        XCTAssertEqual(migrated.spentCentsToday(), 500)
-        XCTAssertNotNil(migrated.record(matching: "abc"))
-    }
-
     func testAppCacheDataDecodesLegacySpendFields() throws {
         let json = """
         {
@@ -226,8 +214,7 @@ final class QuickPaySpendStoreTests: XCTestCase {
         sut.restoreFromBackup(
             dayKey: cache.quickPaySpendDayKey ?? "",
             spentCents: cache.quickPaySpentCentsToday ?? 0,
-            reservations: cache.quickPayReservations ?? [:],
-            ledger: cache.quickPayLedger
+            reservations: cache.quickPayReservations ?? [:]
         )
 
         XCTAssertEqual(sut.spentCentsToday(), 500)

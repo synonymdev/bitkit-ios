@@ -52,7 +52,6 @@ struct AppCacheData: Codable {
     let quickPaySpendDayKey: String?
     let quickPaySpentCentsToday: Int64?
     let quickPayReservations: [String: QuickPaySpendReservation]?
-    let quickPayLedger: QuickPayLedger?
 
     init(
         hasSeenContactsIntro: Bool,
@@ -73,8 +72,7 @@ struct AppCacheData: Codable {
         lastUsedTags: [String],
         quickPaySpendDayKey: String? = nil,
         quickPaySpentCentsToday: Int64? = nil,
-        quickPayReservations: [String: QuickPaySpendReservation]? = nil,
-        quickPayLedger: QuickPayLedger? = nil
+        quickPayReservations: [String: QuickPaySpendReservation]? = nil
     ) {
         self.hasSeenContactsIntro = hasSeenContactsIntro
         self.hasSeenProfileIntro = hasSeenProfileIntro
@@ -95,7 +93,6 @@ struct AppCacheData: Codable {
         self.quickPaySpendDayKey = quickPaySpendDayKey
         self.quickPaySpentCentsToday = quickPaySpentCentsToday
         self.quickPayReservations = quickPayReservations
-        self.quickPayLedger = quickPayLedger
     }
 
     init(from decoder: Decoder) throws {
@@ -119,7 +116,6 @@ struct AppCacheData: Codable {
         quickPaySpendDayKey = try c.decodeIfPresent(String.self, forKey: .quickPaySpendDayKey)
         quickPaySpentCentsToday = try c.decodeIfPresent(Int64.self, forKey: .quickPaySpentCentsToday)
         quickPayReservations = try c.decodeIfPresent([String: QuickPaySpendReservation].self, forKey: .quickPayReservations)
-        quickPayLedger = try c.decodeIfPresent(QuickPayLedger.self, forKey: .quickPayLedger)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -128,7 +124,7 @@ struct AppCacheData: Codable {
         case hasSeenWidgetsIntro, hasDismissedWidgetsOnboardingHint
         case appUpdateIgnoreTimestamp, backupIgnoreTimestamp, highBalanceIgnoreCount, highBalanceIgnoreTimestamp
         case dismissedSuggestions, lastUsedTags
-        case quickPaySpendDayKey, quickPaySpentCentsToday, quickPayReservations, quickPayLedger
+        case quickPaySpendDayKey, quickPaySpentCentsToday, quickPayReservations
     }
 }
 

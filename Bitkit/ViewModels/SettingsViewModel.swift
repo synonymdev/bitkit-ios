@@ -887,8 +887,7 @@ class SettingsViewModel: NSObject, ObservableObject {
             lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
             quickPaySpendDayKey: spend.dayKey,
             quickPaySpentCentsToday: spend.spentCents,
-            quickPayReservations: spend.reservations,
-            quickPayLedger: spend.ledger
+            quickPayReservations: spend.reservations
         )
     }
 
@@ -913,8 +912,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         QuickPaySpendStore.shared.restoreFromBackup(
             dayKey: cache.quickPaySpendDayKey ?? "",
             spentCents: cache.quickPaySpentCentsToday ?? 0,
-            reservations: cache.quickPayReservations ?? [:],
-            ledger: cache.quickPayLedger
+            reservations: cache.quickPayReservations ?? [:]
         )
     }
 }

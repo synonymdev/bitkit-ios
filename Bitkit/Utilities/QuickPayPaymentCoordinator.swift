@@ -12,15 +12,11 @@ final class QuickPayPaymentCoordinator {
         var routingCacheResetAttempted: Bool
     }
 
-    private struct Operation {
-        var presentation: Presentation?
-    }
-
     private let store: QuickPaySpendStore
     private let sendBolt11: (String) async throws -> String
     private let listRows: () async -> [QuickPayReconcileRow]?
 
-    private var operations: [String: Operation] = [:]
+    private var operations: [String: Presentation?] = [:]
     private var generation = UUID()
 
     var liveSubmittingHashes: Set<String> {
@@ -43,11 +39,8 @@ final class QuickPayPaymentCoordinator {
 
     func detach() {
         generation = UUID()
-        for hash in operations.keys {
-            if var op = operations[hash] {
-                op.presentation = nil
-                operations[hash] = op
-            }
+        for hash in Array(operations.keys) {
+            operations[hash] = Optional.none
         }
     }
 
@@ -140,14 +133,13 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        if var existing = operations[invoiceHash] {
-            existing.presentation = presentation
-            operations[invoiceHash] = existing
+        if operations[invoiceHash] != nil {
+            operations[invoiceHash] = presentation
             return
         }
 
         if store.record(matching: invoiceHash) != nil {
-            operations[invoiceHash] = Operation(presentation: presentation)
+            operations[invoiceHash] = presentation
             return
         }
 
@@ -175,27 +167,27 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        operations[invoiceHash] = Operation(presentation: presentation)
+        operations[invoiceHash] = presentation
 
         do {
             let paymentId = try await sendBolt11(bolt11)
             store.markSubmitted(invoicePaymentHash: invoiceHash, paymentId: paymentId)
-            if let op = operations[invoiceHash], paymentId != invoiceHash {
-                operations[paymentId] = op
+            if operations[invoiceHash] != nil, paymentId != invoiceHash {
+                operations[paymentId] = operations[invoiceHash]
             }
         } catch {
             await handleDispatchError(error, invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
             return
         }
 
-        guard let attached = operations[invoiceHash]?.presentation else { return }
+        guard let attached = operations[invoiceHash] ?? nil else { return }
 
         do {
             let settled = try await wallet.waitForLightningPayment(hash: invoiceHash) { hash in
                 attached.addPendingPaymentHash(hash)
                 attached.appendRoute(.pending(paymentHash: hash, retryRoute: .quickpay, paymentRequest: bolt11))
             }
-            operations[invoiceHash]?.presentation?.appendRoute(.success(paymentId: String(settled.paymentHash)))
+            operations[invoiceHash]??.appendRoute(.success(paymentId: String(settled.paymentHash)))
             if let amountSats = wallet.sendAmountSats {
                 wallet.sendAmountSats = QuickPayLimits.amountWithFeeSats(
                     amountSats: amountSats,
@@ -205,7 +197,7 @@ final class QuickPayPaymentCoordinator {
         } catch is PaymentTimeoutError {
             return
         } catch {
-            operations[invoiceHash]?.presentation?.appendRoute(.failure(SendFailureContext(
+            operations[invoiceHash]??.appendRoute(.failure(SendFailureContext(
                 error: error,
                 retryRoute: .quickpay,
                 routingCacheResetAttempted: attached.routingCacheResetAttempted,
@@ -220,7 +212,7 @@ final class QuickPayPaymentCoordinator {
         bolt11: String,
         presentation: Presentation
     ) async {
-        let attached = operations[invoiceHash]?.presentation
+        let attached = operations[invoiceHash] ?? nil
         if Self.isHardReject(error) {
             store.releaseBound(paymentHash: invoiceHash)
             operations.removeValue(forKey: invoiceHash)
