@@ -77,6 +77,9 @@
 "hardware__remove_button" = "Remove {name}";
 "hardware__remove_dialog_title" = "Remove {name}";
 "hardware__remove_dialog_text" = "Don't worry, your funds are safe and your coins won't be deleted. Bitkit will simply stop displaying the amounts in the wallet.";
+"hardware__remove_dialog_keep" = "Keep name and tags in backup";
+"hardware__remove_error" = "Could not remove the hardware wallet. Please try again.";
+"hardware__remove_keep_error" = "Could not keep this wallet's tags in your backup. Try again, or remove it without keeping them.";
 "cards__buyBitcoin__title" = "Buy";
 "cards__buyBitcoin__description" = "Buy some bitcoin";
 "cards__btFailed__title" = "Failed";
