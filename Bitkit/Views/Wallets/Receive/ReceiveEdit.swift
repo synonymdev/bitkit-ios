@@ -93,7 +93,7 @@ struct ReceiveEdit: View {
                                 PaykitPaymentRequestDraft(
                                     amountSats: amountSats,
                                     note: note.trimmingCharacters(in: .whitespacesAndNewlines),
-                                    expiresAt: .now
+                                    expiresAt: PaymentRequestExpiration.week.date(from: .now)
                                 )
                             )
                         }

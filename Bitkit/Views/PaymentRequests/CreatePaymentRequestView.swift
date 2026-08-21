@@ -152,6 +152,7 @@ struct PaymentRequestRecipientView: View {
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     let draft: PaykitPaymentRequestDraft
+    let onEditExpiration: () -> Void
     let onSent: (PaykitPaymentRequest) -> Void
 
     @State private var selectedTarget: PaykitPaymentRequestTarget?
@@ -188,11 +189,40 @@ struct PaymentRequestRecipientView: View {
             CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64)
                 .padding(.bottom, 8)
 
-            TextField(
-                t("wallet__payment_request_enter_pubky"),
-                text: $recipientQuery,
-                testIdentifier: "PaymentRequestRecipientFilter"
-            )
+            HStack(spacing: 8) {
+                TextField(
+                    t("wallet__payment_request_enter_pubky"),
+                    text: $recipientQuery,
+                    backgroundColor: .clear,
+                    font: .custom(Fonts.regular, size: 17),
+                    testIdentifier: "PaymentRequestRecipientFilter"
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
+
+                Button {
+                    if let clipboard = UIPasteboard.general.string {
+                        recipientQuery = PubkyPublicKeyFormat.bounded(clipboard)
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image("clipboard")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .accessibilityHidden(true)
+
+                        BodyMSBText(t("common__paste"))
+                    }
+                    .foregroundColor(.textPrimary)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 16)
+                .accessibilityIdentifier("PaymentRequestRecipientPaste")
+            }
+            .background(Color.white08)
+            .cornerRadius(8)
 
             CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64)
                 .padding(.top, 32)
@@ -204,7 +234,22 @@ struct PaymentRequestRecipientView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("wallet__payment_request_choose_recipient"), showBackButton: !paymentRequests.isCreatingRequest)
+            SheetHeader(
+                title: t("wallet__payment_request_choose_recipient"),
+                action: AnyView(
+                    Button(action: onEditExpiration) {
+                        Image("timer")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundColor(.textPrimary)
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(paymentRequests.isCreatingRequest)
+                    .accessibilityLabel(t("wallet__payment_request_expires"))
+                    .accessibilityIdentifier("PaymentRequestEditExpiration")
+                )
+            )
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -217,7 +262,7 @@ struct PaymentRequestRecipientView: View {
                                 verticalPadding: 20,
                                 isLoading: paymentRequests.isCreatingRequest && selectedTarget == target,
                                 isSelected: selectedTarget == target,
-                                selectionColor: .pubkyGreen
+                                selectionColor: .brandAccent
                             ) {
                                 selectedTarget = target
                             }

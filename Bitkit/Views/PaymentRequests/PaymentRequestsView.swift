@@ -63,7 +63,6 @@ struct PaymentRequestCard: View {
                 }
                 .padding(16)
             } else if onPay != nil || onReject != nil {
-                CustomDivider()
                 HStack(spacing: 12) {
                     CustomButton(
                         title: t("wallet__payment_request_dismiss"),
@@ -91,6 +90,7 @@ struct PaymentRequestCard: View {
                     .frame(maxWidth: .infinity)
                 }
                 .padding(16)
+                .background(Color.gray5)
             }
         }
         .background(Color.gray6)

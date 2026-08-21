@@ -75,7 +75,7 @@ struct ReceiveSheet: View {
             )
         case .edit:
             ReceiveEdit(navigationPath: $navigationPath) { draft in
-                navigationPath.append(.paymentRequestDetails(draft))
+                navigationPath.append(.paymentRequestRecipient(draft))
             }
         case .tag:
             ReceiveTag(navigationPath: $navigationPath)
@@ -89,12 +89,24 @@ struct ReceiveSheet: View {
             ReceiveCjitGeoBlocked()
         case let .paymentRequestDetails(draft):
             PaymentRequestDetailsView(initialDraft: draft) { updatedDraft in
+                if navigationPath.count >= 2,
+                   case .paymentRequestDetails = navigationPath[navigationPath.count - 1],
+                   case .paymentRequestRecipient = navigationPath[navigationPath.count - 2]
+                {
+                    navigationPath.removeLast(2)
+                }
                 navigationPath.append(.paymentRequestRecipient(updatedDraft))
             }
         case let .paymentRequestRecipient(draft):
-            PaymentRequestRecipientView(draft: draft) { request in
-                navigationPath.append(.paymentRequestSent(request))
-            }
+            PaymentRequestRecipientView(
+                draft: draft,
+                onEditExpiration: {
+                    navigationPath.append(.paymentRequestDetails(draft))
+                },
+                onSent: { request in
+                    navigationPath.append(.paymentRequestSent(request))
+                }
+            )
         case let .paymentRequestSent(request):
             PaymentRequestSentView(request: request)
         }
