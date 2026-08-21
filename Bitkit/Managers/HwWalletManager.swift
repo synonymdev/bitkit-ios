@@ -199,7 +199,7 @@ final class HwWalletManager {
     /// Other wallets of the same physical device stay paired.
     func removeWallet(walletId: String) async {
         removeDevice(walletId: walletId)
-        await session?.forgetWallet(walletId: walletId)
+        await session?.forgetWallet(walletId: walletId, pendingName: nil)
     }
 
     // MARK: - Wallet identity & the device session

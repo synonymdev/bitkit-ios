@@ -60,6 +60,8 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
             return connectedFeatures ?? makeFeatures()
         }
 
+        var forgottenPendingNames: [PendingHwWalletName?] = []
+
         func disconnectStaleSession(deviceId: String) async {
             staleDisconnects.append(deviceId)
         }
@@ -72,8 +74,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
             warmUpCalls.append(deviceId)
         }
 
-        func forgetWallet(walletId: String) async {
+        func forgetWallet(walletId: String, pendingName: PendingHwWalletName?) async {
             forgottenWalletIds.append(walletId)
+            forgottenPendingNames.append(pendingName)
             storedDevices.removeAll { $0.resolvedWalletId == walletId }
             if connectedWalletId == walletId { connectedWalletId = nil }
         }

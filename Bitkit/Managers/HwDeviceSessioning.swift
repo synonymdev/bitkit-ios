@@ -29,7 +29,11 @@ protocol HwDeviceSessioning: AnyObject, Sendable {
     func warmUpConnection(deviceId: String)
     /// Forgets every stored entry of `walletId`, keeping transport credentials while another
     /// identity of the same device remains paired.
-    func forgetWallet(walletId: String) async
+    ///
+    /// - Parameter pendingName: a name to keep for the wallet being forgotten, so re-pairing the
+    /// device restores it, or nil to drop any name kept for it. It rides the same store write that
+    /// forgets the entries, so the device list is never published while the name is missing.
+    func forgetWallet(walletId: String, pendingName: PendingHwWalletName?) async
 }
 
 extension TrezorManager: HwDeviceSessioning {
