@@ -4,24 +4,15 @@ import XCTest
 
 @MainActor
 final class QuickPayPaymentCoordinatorTests: XCTestCase {
-    func testClassifyDuplicatePayment() {
-        XCTAssertEqual(
-            QuickPayPaymentCoordinator.classify(NodeError.DuplicatePayment(message: "dup")),
-            .duplicatePayment
-        )
+    func testDuplicatePaymentIsHardReject() {
+        XCTAssertTrue(QuickPayPaymentCoordinator.isHardReject(NodeError.DuplicatePayment(message: "dup")))
     }
 
-    func testClassifyInvalidInvoiceAsPreDispatch() {
-        XCTAssertEqual(
-            QuickPayPaymentCoordinator.classify(NodeError.InvalidInvoice(message: "bad")),
-            .preDispatchRejection
-        )
+    func testInvalidInvoiceIsHardReject() {
+        XCTAssertTrue(QuickPayPaymentCoordinator.isHardReject(NodeError.InvalidInvoice(message: "bad")))
     }
 
-    func testClassifyPersistenceAsAmbiguous() {
-        XCTAssertEqual(
-            QuickPayPaymentCoordinator.classify(NodeError.PersistenceFailed(message: "io")),
-            .ambiguous
-        )
+    func testPersistenceIsNotHardReject() {
+        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(NodeError.PersistenceFailed(message: "io")))
     }
 }

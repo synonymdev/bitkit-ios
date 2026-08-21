@@ -28,18 +28,12 @@ struct QuickPaySpendRates {
     }
 }
 
-enum QuickPayRecordPhase: String, Codable {
-    case submitting
-    case submitted
-}
-
 struct QuickPayLedgerRecord: Codable, Equatable {
     let id: String
     let amountCents: Int64
     let dayKey: String
     let invoicePaymentHash: String
     var paymentId: String?
-    var phase: QuickPayRecordPhase
 }
 
 struct QuickPayLedger: Codable, Equatable {
@@ -160,12 +154,6 @@ final class QuickPaySpendStore: @unchecked Sendable {
         return false
     }
 
-    func hasOpenRecord(paymentHash: String) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return lockedRecord(matching: paymentHash) != nil
-    }
-
     func record(matching hash: String) -> QuickPayLedgerRecord? {
         lock.lock()
         defer { lock.unlock() }
@@ -210,8 +198,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
             amountCents: amountCents,
             dayKey: spend.dayKey,
             invoicePaymentHash: paymentHash,
-            paymentId: nil,
-            phase: .submitting
+            paymentId: nil
         )
         ledger.dayKey = spend.dayKey
         ledger.spentCents = total
@@ -227,7 +214,6 @@ final class QuickPaySpendStore: @unchecked Sendable {
         var ledger = lockedLedger()
         guard let index = lockedRecordIndex(in: ledger, matching: invoicePaymentHash) else { return }
         ledger.records[index].paymentId = paymentId
-        ledger.records[index].phase = .submitted
         lockedWriteLedger(ledger)
     }
 
@@ -312,11 +298,10 @@ final class QuickPaySpendStore: @unchecked Sendable {
         let ledger = lockedLedger()
         var reservations: [String: QuickPaySpendReservation] = [:]
         for record in ledger.records {
-            let value = QuickPaySpendReservation(amountCents: record.amountCents, dayKey: record.dayKey)
-            reservations[record.invoicePaymentHash] = value
-            if let paymentId = record.paymentId, paymentId != record.invoicePaymentHash {
-                reservations[paymentId] = value
-            }
+            reservations[record.invoicePaymentHash] = QuickPaySpendReservation(
+                amountCents: record.amountCents,
+                dayKey: record.dayKey
+            )
         }
         return (ledger.dayKey, ledger.spentCents, reservations, ledger)
     }
@@ -365,21 +350,15 @@ final class QuickPaySpendStore: @unchecked Sendable {
         spentCents: Int64,
         reservations: [String: QuickPaySpendReservation]
     ) -> QuickPayLedger {
-        var seen: Set<String> = []
         var records: [QuickPayLedgerRecord] = []
         for (hash, reservation) in reservations {
-            if seen.contains(hash) {
-                continue
-            }
-            seen.insert(hash)
             records.append(
                 QuickPayLedgerRecord(
                     id: UUID().uuidString,
                     amountCents: reservation.amountCents,
                     dayKey: reservation.dayKey,
                     invoicePaymentHash: hash,
-                    paymentId: nil,
-                    phase: .submitted
+                    paymentId: nil
                 )
             )
         }
@@ -413,7 +392,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
 
     private func lockedRecordIndex(in ledger: QuickPayLedger, matching hash: String) -> Int? {
         ledger.records.firstIndex {
-            $0.invoicePaymentHash == hash || $0.paymentId == hash || $0.id == hash
+            $0.invoicePaymentHash == hash || $0.paymentId == hash
         }
     }
 
@@ -428,19 +407,5 @@ final class QuickPaySpendStore: @unchecked Sendable {
 
     private func lockedWriteLedger(_ ledger: QuickPayLedger) {
         defaults.set(try? JSONEncoder().encode(ledger), forKey: Self.ledgerDefaultsKey)
-        defaults.set(ledger.dayKey, forKey: Self.dayKeyDefaultsKey)
-        defaults.set(Int(clamping: ledger.spentCents), forKey: Self.spentCentsDefaultsKey)
-        var reservations: [String: QuickPaySpendReservation] = [:]
-        for record in ledger.records {
-            reservations[record.invoicePaymentHash] = QuickPaySpendReservation(
-                amountCents: record.amountCents,
-                dayKey: record.dayKey
-            )
-        }
-        if reservations.isEmpty {
-            defaults.removeObject(forKey: Self.reservationsDefaultsKey)
-        } else {
-            defaults.set(try? JSONEncoder().encode(reservations), forKey: Self.reservationsDefaultsKey)
-        }
     }
 }

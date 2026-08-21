@@ -1062,8 +1062,6 @@ extension AppViewModel {
             break
         case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
             let hash = paymentId ?? paymentHash
-            let wasQuickPay = QuickPaySpendStore.shared.record(matching: hash) != nil
-                || QuickPaySpendStore.shared.record(matching: paymentHash) != nil
             let outcome = QuickPaySpendStore.shared.noteTerminal(
                 paymentId: paymentId,
                 paymentHash: paymentHash,
@@ -1076,7 +1074,7 @@ extension AppViewModel {
                 sendSheetPendingResolution = SendSheetPendingResolution(
                     paymentHash: hash,
                     success: true,
-                    feePaidSats: wasQuickPay ? (feePaidMsat ?? 0) / 1000 : nil
+                    feePaidSats: outcome != .none ? (feePaidMsat ?? 0) / 1000 : nil
                 )
             }
             if awaitingSheet || outcome != .none {

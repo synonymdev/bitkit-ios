@@ -1,6 +1,5 @@
 import Foundation
 import LDKNode
-import SwiftUI
 
 @MainActor
 final class QuickPayPaymentCoordinator {
@@ -14,7 +13,6 @@ final class QuickPayPaymentCoordinator {
     }
 
     private struct Operation {
-        var dispatched = false
         var presentation: Presentation?
     }
 
@@ -87,27 +85,19 @@ final class QuickPayPaymentCoordinator {
         }
     }
 
-    static func classify(_ error: Error) -> DispatchClass {
+    static func isHardReject(_ error: Error) -> Bool {
         if PrivatePaykitService.isDuplicatePaymentError(error) {
-            return .duplicatePayment
+            return true
         }
         guard let nodeError = error as? NodeError else {
-            return .ambiguous
+            return false
         }
         switch nodeError {
-        case .InvalidInvoice, .InvalidAmount, .InvalidPaymentHash, .InvalidPaymentId, .InvalidNetwork:
-            return .preDispatchRejection
-        case .DuplicatePayment:
-            return .duplicatePayment
+        case .InvalidInvoice, .InvalidAmount, .InvalidPaymentHash, .InvalidPaymentId, .InvalidNetwork, .DuplicatePayment:
+            return true
         default:
-            return .ambiguous
+            return false
         }
-    }
-
-    enum DispatchClass {
-        case preDispatchRejection
-        case duplicatePayment
-        case ambiguous
     }
 
     private func run(
@@ -156,30 +146,27 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        if store.hasOpenRecord(paymentHash: invoiceHash) {
-            operations[invoiceHash] = Operation(dispatched: true, presentation: presentation)
+        if store.record(matching: invoiceHash) != nil {
+            operations[invoiceHash] = Operation(presentation: presentation)
             return
         }
 
         guard generation == self.generation else { return }
 
         let amountSats = wallet.sendAmountSats ?? 0
-        let reserved: QuickPayLedgerRecord?
         do {
-            reserved = try store.reserveBound(
+            guard try store.reserveBound(
                 paymentHash: invoiceHash,
                 amountSats: amountSats,
                 thresholdUsd: settings.quickpayAmount,
                 multiplier: settings.quickpayDailyLimitMultiplier,
                 rates: .live(currency)
-            )
+            ) != nil else {
+                presentation.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+                return
+            }
         } catch {
             fail(presentation, error: error, bolt11: bolt11)
-            return
-        }
-
-        guard let reserved else {
-            presentation.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
             return
         }
 
@@ -188,24 +175,18 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        operations[invoiceHash] = Operation(dispatched: false, presentation: presentation)
+        operations[invoiceHash] = Operation(presentation: presentation)
 
         do {
             let paymentId = try await sendBolt11(bolt11)
             store.markSubmitted(invoicePaymentHash: invoiceHash, paymentId: paymentId)
-            if var op = operations[invoiceHash] {
-                op.dispatched = true
-                operations[invoiceHash] = op
-                if paymentId != invoiceHash {
-                    operations[paymentId] = op
-                }
+            if let op = operations[invoiceHash], paymentId != invoiceHash {
+                operations[paymentId] = op
             }
         } catch {
             await handleDispatchError(error, invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
             return
         }
-
-        _ = reserved
 
         guard let attached = operations[invoiceHash]?.presentation else { return }
 
@@ -240,18 +221,12 @@ final class QuickPayPaymentCoordinator {
         presentation: Presentation
     ) async {
         let attached = operations[invoiceHash]?.presentation
-        switch Self.classify(error) {
-        case .duplicatePayment, .preDispatchRejection:
+        if Self.isHardReject(error) {
             store.releaseBound(paymentHash: invoiceHash)
             operations.removeValue(forKey: invoiceHash)
-        case .ambiguous:
+        } else {
             await store.reconcile(rows: listRows(), liveSubmittingHashes: [])
-            if store.record(matching: invoiceHash) != nil {
-                if var op = operations[invoiceHash] {
-                    op.dispatched = true
-                    operations[invoiceHash] = op
-                }
-            } else {
+            if store.record(matching: invoiceHash) == nil {
                 operations.removeValue(forKey: invoiceHash)
             }
         }
