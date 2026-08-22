@@ -67,6 +67,7 @@ enum SettingsBackupConfig {
         "warnWhenSendingOver100": "enableSendAmountWarning",
         "bitcoinDisplayUnit": "displayUnit",
         "enableQuickpay": "isQuickPayEnabled",
+        "quickpayAmount": "quickPayAmount",
         "quickpayDailyLimitMultiplier": "quickPayDailyLimitMultiplier",
         "enableNotifications": "notificationsGranted",
         // Note: PIN settings are intentionally NOT backed up for security
