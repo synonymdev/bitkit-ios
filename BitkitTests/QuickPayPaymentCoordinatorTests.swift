@@ -52,8 +52,8 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         super.tearDown()
     }
 
-    func testDuplicatePaymentIsHardReject() {
-        XCTAssertTrue(QuickPayPaymentCoordinator.isHardReject(NodeError.DuplicatePayment(message: "dup")))
+    func testDuplicatePaymentIsNotHardReject() {
+        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(NodeError.DuplicatePayment(message: "dup")))
     }
 
     func testInvalidInvoiceIsHardReject() {
@@ -93,11 +93,11 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertNotNil(store.record(matching: invoiceHash))
     }
 
-    func testSendAfterTerminalGoesToSuccess() async throws {
+    func testSendAfterSignalCompletionGoesToSuccess() async throws {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { [store] _ in
-                store?.noteTerminal(paymentId: nil, paymentHash: invoiceHash, success: true)
+                store?.signalCompletion(paymentId: nil, paymentHash: invoiceHash, success: true)
                 return invoiceHash
             }
         )
@@ -149,7 +149,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertNil(store.record(matching: invoiceHash))
     }
 
-    func testDuplicateDispatchGoesToFailureAndReleases() async throws {
+    func testDuplicateDispatchWithOpenRecordGoesPending() async throws {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
@@ -157,11 +157,158 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             }
         )
 
-        guard case .failure = route else {
-            return XCTFail("Expected failure, got \(String(describing: route))")
+        guard case let .pending(paymentHash, retryRoute, _) = route else {
+            return XCTFail("Expected pending, got \(String(describing: route))")
         }
+        XCTAssertEqual(paymentHash, invoiceHash)
+        XCTAssertEqual(retryRoute, .quickpay)
+        XCTAssertNotNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 100)
+    }
+
+    func testDuplicateDispatchWithPendingLdkKeepsSpend() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let route = await firstRoute(
+            sendBolt11: { _ in
+                throw NodeError.DuplicatePayment(message: "dup")
+            },
+            listRows: {
+                [
+                    QuickPayReconcileRow(
+                        paymentId: "pid",
+                        invoicePaymentHash: invoiceHash,
+                        isOutboundBolt11: true,
+                        status: .pending
+                    ),
+                ]
+            }
+        )
+
+        guard case let .pending(paymentHash, _, _) = route else {
+            return XCTFail("Expected pending, got \(String(describing: route))")
+        }
+        XCTAssertEqual(paymentHash, invoiceHash)
+        XCTAssertNotNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 100)
+    }
+
+    func testDuplicateDispatchWithSucceededLdkGoesToSuccess() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let route = await firstRoute(
+            sendBolt11: { _ in
+                throw NodeError.DuplicatePayment(message: "dup")
+            },
+            listRows: {
+                [
+                    QuickPayReconcileRow(
+                        paymentId: "pid",
+                        invoicePaymentHash: invoiceHash,
+                        isOutboundBolt11: true,
+                        status: .succeeded
+                    ),
+                ]
+            }
+        )
+
+        guard case let .success(paymentId) = route else {
+            return XCTFail("Expected success, got \(String(describing: route))")
+        }
+        XCTAssertEqual(paymentId, invoiceHash)
         XCTAssertNil(store.record(matching: invoiceHash))
-        XCTAssertEqual(store.spentCentsToday(), 0)
+        XCTAssertEqual(store.spentCentsToday(), 100)
+    }
+
+    func testRecoveredHashThatLdkSucceededGoesToSuccess() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sent = false
+        XCTAssertNotNil(
+            try store.reserveBound(
+                paymentHash: invoiceHash,
+                amountSats: 1000,
+                thresholdUsd: 5,
+                multiplier: 5,
+                rates: rates
+            )
+        )
+
+        let route = await firstRoute(
+            sendBolt11: { _ in
+                sent = true
+                return invoiceHash
+            },
+            listRows: {
+                [
+                    QuickPayReconcileRow(
+                        paymentId: "pid",
+                        invoicePaymentHash: invoiceHash,
+                        isOutboundBolt11: true,
+                        status: .succeeded
+                    ),
+                ]
+            }
+        )
+
+        XCTAssertFalse(sent)
+        guard case let .success(paymentId) = route else {
+            return XCTFail("Expected success, got \(String(describing: route))")
+        }
+        XCTAssertEqual(paymentId, invoiceHash)
+        XCTAssertNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 500)
+    }
+
+    func testSecondPayOfInFlightHashDoesNotFallBackToConfirm() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let sendStarted = expectation(description: "send started")
+        let firstSettled = expectation(description: "first settled")
+        var sendCount = 0
+        var didConfirm = false
+        var sendCont: CheckedContinuation<Void, Never>?
+
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { [store] _ in
+                sendCount += 1
+                await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                    sendCont = cont
+                    sendStarted.fulfill()
+                }
+                store?.signalCompletion(paymentId: nil, paymentHash: invoiceHash, success: true)
+                return invoiceHash
+            },
+            listRows: { [] }
+        )
+
+        coordinator.pay(
+            app: appWithInvoice,
+            wallet: WalletViewModel(),
+            settings: settings,
+            currency: CurrencyViewModel(),
+            presentation: presentation(
+                onRoute: { _ in firstSettled.fulfill() },
+                onConfirm: { didConfirm = true }
+            )
+        )
+        await fulfillment(of: [sendStarted], timeout: 2)
+
+        coordinator.pay(
+            app: appWithInvoice,
+            wallet: WalletViewModel(),
+            settings: settings,
+            currency: CurrencyViewModel(),
+            presentation: presentation(
+                onRoute: { _ in XCTFail("Second pay should not emit a route") },
+                onConfirm: { didConfirm = true }
+            )
+        )
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(sendCount, 1)
+        XCTAssertFalse(didConfirm)
+
+        sendCont?.resume()
+        await fulfillment(of: [firstSettled], timeout: 2)
+        XCTAssertEqual(sendCount, 1)
+        XCTAssertFalse(didConfirm)
     }
 
     private func firstRoute(
@@ -176,18 +323,28 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(),
-            presentation: QuickPayPaymentCoordinator.Presentation(
-                appendRoute: {
+            presentation: presentation(
+                onRoute: {
                     route = $0
                     exp.fulfill()
                 },
-                replaceQuickPay: { _ in },
-                addPendingPaymentHash: { _ in },
-                routingCacheResetAttempted: false
+                onConfirm: {}
             )
         )
         await fulfillment(of: [exp], timeout: 2)
         return route
+    }
+
+    private func presentation(
+        onRoute: @escaping (SendRoute) -> Void,
+        onConfirm: @escaping () -> Void
+    ) -> QuickPayPaymentCoordinator.Presentation {
+        QuickPayPaymentCoordinator.Presentation(
+            appendRoute: onRoute,
+            replaceQuickPay: { _ in onConfirm() },
+            addPendingPaymentHash: { _ in },
+            routingCacheResetAttempted: false
+        )
     }
 
     private var appWithInvoice: AppViewModel {

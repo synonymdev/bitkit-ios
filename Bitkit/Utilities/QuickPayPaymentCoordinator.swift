@@ -51,11 +51,10 @@ final class QuickPayPaymentCoordinator {
         currency: CurrencyViewModel,
         presentation: Presentation
     ) {
-        let generation = UUID()
-        self.generation = generation
+        let capturedGeneration = generation
         Task {
             await run(
-                generation: generation,
+                generation: capturedGeneration,
                 app: app,
                 wallet: wallet,
                 settings: settings,
@@ -83,7 +82,7 @@ final class QuickPayPaymentCoordinator {
             return false
         }
         switch nodeError {
-        case .InvalidInvoice, .InvalidAmount, .InvalidPaymentHash, .InvalidPaymentId, .InvalidNetwork, .DuplicatePayment:
+        case .InvalidInvoice, .InvalidAmount, .InvalidPaymentHash, .InvalidPaymentId, .InvalidNetwork:
             return true
         default:
             return false
@@ -130,16 +129,21 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        let alreadyOpen = operations[invoiceHash] != nil || store.record(matching: invoiceHash) != nil
-        operations[invoiceHash] = presentation
-        if alreadyOpen {
-            resumePending(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
+        if (operations[invoiceHash] ?? nil) != nil {
+            operations[invoiceHash] = presentation
+            return
+        }
+
+        if store.record(matching: invoiceHash) != nil {
+            operations[invoiceHash] = presentation
+            await settleRecovered(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
             return
         }
 
         guard generation == self.generation else { return }
 
         let amountSats = wallet.sendAmountSats ?? 0
+        operations[invoiceHash] = presentation
         do {
             guard try store.reserveBound(
                 paymentHash: invoiceHash,
@@ -148,20 +152,25 @@ final class QuickPayPaymentCoordinator {
                 multiplier: settings.quickpayDailyLimitMultiplier,
                 rates: .live(currency)
             ) != nil else {
+                if store.record(matching: invoiceHash) != nil {
+                    await settleRecovered(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
+                    return
+                }
+                operations.removeValue(forKey: invoiceHash)
                 presentation.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
                 return
             }
         } catch {
+            operations.removeValue(forKey: invoiceHash)
             fail(presentation, error: error, bolt11: bolt11)
             return
         }
 
         guard generation == self.generation else {
             store.releaseBound(paymentHash: invoiceHash)
+            operations.removeValue(forKey: invoiceHash)
             return
         }
-
-        operations[invoiceHash] = presentation
 
         do {
             let paymentId = try await sendBolt11(bolt11)
@@ -224,19 +233,53 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        await store.reconcile(rows: listRows(), liveSubmittingHashes: [])
+        let rows = await listRows()
+        store.reconcile(rows: rows, liveSubmittingHashes: [])
         if store.record(matching: invoiceHash) != nil {
             resumePending(invoiceHash: invoiceHash, bolt11: bolt11, presentation: attached)
             return
         }
 
         operations.removeValue(forKey: invoiceHash)
+        if ldkSucceeded(invoiceHash: invoiceHash, rows: rows) {
+            attached.appendRoute(.success(paymentId: invoiceHash))
+            return
+        }
         attached.appendRoute(.failure(SendFailureContext(
             error: error,
             retryRoute: .quickpay,
             routingCacheResetAttempted: presentation.routingCacheResetAttempted,
             paymentRequest: bolt11
         )))
+    }
+
+    private func settleRecovered(invoiceHash: String, bolt11: String, presentation: Presentation) async {
+        let rows = await listRows()
+        store.reconcile(rows: rows, liveSubmittingHashes: [])
+        if store.record(matching: invoiceHash) != nil {
+            resumePending(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
+            return
+        }
+
+        operations.removeValue(forKey: invoiceHash)
+        if ldkSucceeded(invoiceHash: invoiceHash, rows: rows) {
+            presentation.appendRoute(.success(paymentId: invoiceHash))
+            return
+        }
+        fail(
+            presentation,
+            error: AppError(message: t("wallet__payment_failed_description"), debugMessage: "Recovered QuickPay payment is not pending or succeeded"),
+            bolt11: bolt11
+        )
+    }
+
+    private func ldkSucceeded(invoiceHash: String, rows: [QuickPayReconcileRow]?) -> Bool {
+        guard let rows else { return false }
+        return rows.contains {
+            $0.isOutboundBolt11 && $0.status == .succeeded && (
+                $0.invoicePaymentHash == invoiceHash || $0.paymentId == invoiceHash
+            )
+        }
     }
 
     private func resumePending(invoiceHash: String, bolt11: String, presentation: Presentation) {

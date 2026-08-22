@@ -73,33 +73,35 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertEqual(sut.spentCentsToday(), 350)
     }
 
-    func testNoteTerminalFailureReleasesSpend() throws {
+    func testSignalCompletionFailureReleasesSpend() throws {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "abc", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
 
-        XCTAssertEqual(sut.noteTerminal(paymentId: nil, paymentHash: "abc", success: false), .settledFailure)
+        XCTAssertEqual(sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: false), .settledFailure)
         XCTAssertEqual(sut.spentCentsToday(), 0)
         XCTAssertNil(sut.record(matching: "abc"))
     }
 
-    func testNoteTerminalSuccessKeepsSpend() throws {
+    func testSignalCompletionSuccessKeepsSpend() throws {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "abc", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
 
-        XCTAssertEqual(sut.noteTerminal(paymentId: nil, paymentHash: "abc", success: true), .settledSuccess)
+        XCTAssertEqual(sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: true), .settledSuccess)
         XCTAssertEqual(sut.spentCentsToday(), 500)
         XCTAssertNil(sut.record(matching: "abc"))
+        XCTAssertTrue(QuickPayCompletionOutcome.settledSuccess.wasQuickPay)
+        XCTAssertFalse(QuickPayCompletionOutcome.none.wasQuickPay)
     }
 
-    func testNoteTerminalMatchesPaymentIdAlias() throws {
+    func testSignalCompletionMatchesPaymentIdAlias() throws {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "inv", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
         sut.markSubmitted(invoicePaymentHash: "inv", paymentId: "pid")
 
-        XCTAssertEqual(sut.noteTerminal(paymentId: "pid", paymentHash: "other", success: false), .settledFailure)
+        XCTAssertEqual(sut.signalCompletion(paymentId: "pid", paymentHash: "other", success: false), .settledFailure)
         XCTAssertEqual(sut.spentCentsToday(), 0)
     }
 
-    func testMarkSubmittedAfterTerminalIsNoOp() throws {
+    func testMarkSubmittedAfterCompletionIsNoOp() throws {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "inv", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
-        XCTAssertEqual(sut.noteTerminal(paymentId: nil, paymentHash: "inv", success: true), .settledSuccess)
+        XCTAssertEqual(sut.signalCompletion(paymentId: nil, paymentHash: "inv", success: true), .settledSuccess)
 
         sut.markSubmitted(invoicePaymentHash: "inv", paymentId: "pid")
 
@@ -107,10 +109,10 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertEqual(sut.spentCentsToday(), 500)
     }
 
-    func testDuplicateNoteTerminalDoesNotDecrementTwice() throws {
+    func testDuplicateSignalCompletionDoesNotDecrementTwice() throws {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "abc", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
-        XCTAssertEqual(sut.noteTerminal(paymentId: nil, paymentHash: "abc", success: false), .settledFailure)
-        XCTAssertEqual(sut.noteTerminal(paymentId: nil, paymentHash: "abc", success: false), .none)
+        XCTAssertEqual(sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: false), .settledFailure)
+        XCTAssertEqual(sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: false), .none)
         XCTAssertEqual(sut.spentCentsToday(), 0)
     }
 
@@ -276,7 +278,7 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "abc", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
 
         let reloaded = QuickPaySpendStore(defaults: defaults, dayKey: { [unowned self] in currentDay })
-        XCTAssertEqual(reloaded.noteTerminal(paymentId: nil, paymentHash: "abc", success: false), .settledFailure)
+        XCTAssertEqual(reloaded.signalCompletion(paymentId: nil, paymentHash: "abc", success: false), .settledFailure)
 
         XCTAssertEqual(reloaded.spentCentsToday(), 0)
     }

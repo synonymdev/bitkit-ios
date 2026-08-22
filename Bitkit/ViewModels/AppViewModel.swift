@@ -1062,7 +1062,7 @@ extension AppViewModel {
             break
         case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
             let hash = paymentId ?? paymentHash
-            let outcome = QuickPaySpendStore.shared.noteTerminal(
+            let outcome = QuickPaySpendStore.shared.signalCompletion(
                 paymentId: paymentId,
                 paymentHash: paymentHash,
                 success: true
@@ -1074,10 +1074,10 @@ extension AppViewModel {
                 sendSheetPendingResolution = SendSheetPendingResolution(
                     paymentHash: hash,
                     success: true,
-                    feePaidSats: outcome != .none ? (feePaidMsat ?? 0) / 1000 : nil
+                    feePaidSats: outcome.wasQuickPay ? (feePaidMsat ?? 0) / 1000 : nil
                 )
             }
-            if awaitingSheet || outcome != .none {
+            if awaitingSheet || outcome.wasQuickPay {
                 toast(
                     type: .lightning,
                     title: t("wallet__toast_payment_success_title"),
@@ -1087,7 +1087,7 @@ extension AppViewModel {
             }
         case let .paymentFailed(paymentId, paymentHash, reason):
             let hash = paymentId ?? paymentHash
-            let outcome = QuickPaySpendStore.shared.noteTerminal(
+            let outcome = QuickPaySpendStore.shared.signalCompletion(
                 paymentId: paymentId,
                 paymentHash: paymentHash,
                 success: false
@@ -1098,7 +1098,7 @@ extension AppViewModel {
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: reason)
             }
-            if awaitingSheet || outcome != .none {
+            if awaitingSheet || outcome.wasQuickPay {
                 toast(
                     type: .error,
                     title: t("wallet__toast_payment_failed_title"),

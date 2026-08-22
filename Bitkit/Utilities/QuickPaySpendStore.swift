@@ -41,10 +41,14 @@ struct QuickPayLedger: Codable, Equatable {
     var records: [QuickPayLedgerRecord]
 }
 
-enum QuickPayTerminalOutcome: Equatable {
+enum QuickPayCompletionOutcome: Equatable {
     case none
     case settledSuccess
     case settledFailure
+
+    var wasQuickPay: Bool {
+        self != .none
+    }
 }
 
 struct QuickPayReconcileRow {
@@ -209,7 +213,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
     }
 
     @discardableResult
-    func noteTerminal(paymentId: String?, paymentHash: String?, success: Bool) -> QuickPayTerminalOutcome {
+    func signalCompletion(paymentId: String?, paymentHash: String?, success: Bool) -> QuickPayCompletionOutcome {
         lock.lock()
         defer { lock.unlock() }
         var ledger = lockedLedger()
@@ -226,7 +230,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
     }
 
     func releaseBound(paymentHash: String) {
-        _ = noteTerminal(paymentId: nil, paymentHash: paymentHash, success: false)
+        _ = signalCompletion(paymentId: nil, paymentHash: paymentHash, success: false)
     }
 
     func reconcile(rows: [QuickPayReconcileRow]?, liveSubmittingHashes: Set<String>) {
@@ -247,15 +251,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
                 remaining.append(record)
                 continue
             }
-            let match = rows.first { row in
-                row.isOutboundBolt11 && (
-                    row.invoicePaymentHash == record.invoicePaymentHash
-                        || row.paymentId == record.invoicePaymentHash
-                        || row.paymentId == record.paymentId
-                        || (record.paymentId != nil && row.invoicePaymentHash == record.paymentId)
-                )
-            }
-            guard let match else {
+            guard let match = pickQuickPayLedgerMatch(record: record, rows: rows) else {
                 remaining.append(record)
                 continue
             }
@@ -359,5 +355,35 @@ final class QuickPaySpendStore: @unchecked Sendable {
 
     private func lockedWriteLedger(_ ledger: QuickPayLedger) {
         defaults.set(try? JSONEncoder().encode(ledger), forKey: Self.ledgerDefaultsKey)
+    }
+}
+
+private func pickQuickPayLedgerMatch(record: QuickPayLedgerRecord, rows: [QuickPayReconcileRow]) -> QuickPayReconcileRow? {
+    let matches = rows.filter { row in
+        row.isOutboundBolt11 && (
+            row.invoicePaymentHash == record.invoicePaymentHash
+                || row.paymentId == record.invoicePaymentHash
+                || row.paymentId == record.paymentId
+                || (record.paymentId != nil && row.invoicePaymentHash == record.paymentId)
+        )
+    }
+    if matches.isEmpty {
+        return nil
+    }
+    if let paymentId = record.paymentId, let exact = matches.first(where: { $0.paymentId == paymentId }) {
+        return exact
+    }
+    return matches.max { lhs, rhs in
+        lhs.status.rank < rhs.status.rank
+    }
+}
+
+private extension QuickPayReconcileRow.Status {
+    var rank: Int {
+        switch self {
+        case .succeeded: 2
+        case .pending: 1
+        case .failed: 0
+        }
     }
 }
