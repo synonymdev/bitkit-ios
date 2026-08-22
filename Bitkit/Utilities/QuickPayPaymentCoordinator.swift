@@ -79,9 +79,6 @@ final class QuickPayPaymentCoordinator {
     }
 
     static func isHardReject(_ error: Error) -> Bool {
-        if PrivatePaykitService.isDuplicatePaymentError(error) {
-            return true
-        }
         guard let nodeError = error as? NodeError else {
             return false
         }
