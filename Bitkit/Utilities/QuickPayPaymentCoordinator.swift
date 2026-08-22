@@ -130,13 +130,10 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        if operations[invoiceHash] != nil {
-            operations[invoiceHash] = presentation
-            return
-        }
-
-        if store.record(matching: invoiceHash) != nil {
-            operations[invoiceHash] = presentation
+        let alreadyOpen = operations[invoiceHash] != nil || store.record(matching: invoiceHash) != nil
+        operations[invoiceHash] = presentation
+        if alreadyOpen {
+            resumePending(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
             return
         }
 
@@ -177,7 +174,12 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        guard let attached = operations[invoiceHash] ?? nil else { return }
+        if store.record(matching: invoiceHash) == nil {
+            presentation.appendRoute(.success(paymentId: invoiceHash))
+            return
+        }
+
+        let attached = (operations[invoiceHash] ?? nil) ?? presentation
 
         do {
             let settled = try await wallet.waitForLightningPayment(hash: invoiceHash) { hash in
@@ -209,23 +211,37 @@ final class QuickPayPaymentCoordinator {
         bolt11: String,
         presentation: Presentation
     ) async {
-        let attached = operations[invoiceHash] ?? nil
+        let attached = (operations[invoiceHash] ?? nil) ?? presentation
         if Self.isHardReject(error) {
             store.releaseBound(paymentHash: invoiceHash)
             operations.removeValue(forKey: invoiceHash)
-        } else {
-            await store.reconcile(rows: listRows(), liveSubmittingHashes: [])
-            if store.record(matching: invoiceHash) == nil {
-                operations.removeValue(forKey: invoiceHash)
-            }
+            attached.appendRoute(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .quickpay,
+                routingCacheResetAttempted: presentation.routingCacheResetAttempted,
+                paymentRequest: bolt11
+            )))
+            return
         }
 
-        attached?.appendRoute(.failure(SendFailureContext(
+        await store.reconcile(rows: listRows(), liveSubmittingHashes: [])
+        if store.record(matching: invoiceHash) != nil {
+            resumePending(invoiceHash: invoiceHash, bolt11: bolt11, presentation: attached)
+            return
+        }
+
+        operations.removeValue(forKey: invoiceHash)
+        attached.appendRoute(.failure(SendFailureContext(
             error: error,
             retryRoute: .quickpay,
             routingCacheResetAttempted: presentation.routingCacheResetAttempted,
             paymentRequest: bolt11
         )))
+    }
+
+    private func resumePending(invoiceHash: String, bolt11: String, presentation: Presentation) {
+        presentation.addPendingPaymentHash(invoiceHash)
+        presentation.appendRoute(.pending(paymentHash: invoiceHash, retryRoute: .quickpay, paymentRequest: bolt11))
     }
 
     private func fail(_ presentation: Presentation, error: Error, bolt11: String?) {
