@@ -129,7 +129,7 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        if (operations[invoiceHash] ?? nil) != nil {
+        if livePresentation(for: invoiceHash) != nil {
             operations[invoiceHash] = presentation
             return
         }
@@ -188,7 +188,7 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        let attached = (operations[invoiceHash] ?? nil) ?? presentation
+        let attached = livePresentation(for: invoiceHash) ?? presentation
 
         do {
             let settled = try await wallet.waitForLightningPayment(hash: invoiceHash) { hash in
@@ -220,14 +220,14 @@ final class QuickPayPaymentCoordinator {
         bolt11: String,
         presentation: Presentation
     ) async {
-        let attached = (operations[invoiceHash] ?? nil) ?? presentation
+        let attached = livePresentation(for: invoiceHash) ?? presentation
         if Self.isHardReject(error) {
             store.releaseBound(paymentHash: invoiceHash)
             operations.removeValue(forKey: invoiceHash)
             attached.appendRoute(.failure(SendFailureContext(
                 error: error,
                 retryRoute: .quickpay,
-                routingCacheResetAttempted: presentation.routingCacheResetAttempted,
+                routingCacheResetAttempted: attached.routingCacheResetAttempted,
                 paymentRequest: bolt11
             )))
             return
@@ -248,7 +248,7 @@ final class QuickPayPaymentCoordinator {
         attached.appendRoute(.failure(SendFailureContext(
             error: error,
             retryRoute: .quickpay,
-            routingCacheResetAttempted: presentation.routingCacheResetAttempted,
+            routingCacheResetAttempted: attached.routingCacheResetAttempted,
             paymentRequest: bolt11
         )))
     }
@@ -280,6 +280,10 @@ final class QuickPayPaymentCoordinator {
                 $0.invoicePaymentHash == invoiceHash || $0.paymentId == invoiceHash
             )
         }
+    }
+
+    private func livePresentation(for invoiceHash: String) -> Presentation? {
+        operations[invoiceHash] ?? nil
     }
 
     private func resumePending(invoiceHash: String, bolt11: String, presentation: Presentation) {

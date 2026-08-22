@@ -251,7 +251,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
                 remaining.append(record)
                 continue
             }
-            guard let match = pickQuickPayLedgerMatch(record: record, rows: rows) else {
+            guard let match = Self.ledgerMatch(record: record, rows: rows) else {
                 remaining.append(record)
                 continue
             }
@@ -356,25 +356,25 @@ final class QuickPaySpendStore: @unchecked Sendable {
     private func lockedWriteLedger(_ ledger: QuickPayLedger) {
         defaults.set(try? JSONEncoder().encode(ledger), forKey: Self.ledgerDefaultsKey)
     }
-}
 
-private func pickQuickPayLedgerMatch(record: QuickPayLedgerRecord, rows: [QuickPayReconcileRow]) -> QuickPayReconcileRow? {
-    let matches = rows.filter { row in
-        row.isOutboundBolt11 && (
-            row.invoicePaymentHash == record.invoicePaymentHash
-                || row.paymentId == record.invoicePaymentHash
-                || row.paymentId == record.paymentId
-                || (record.paymentId != nil && row.invoicePaymentHash == record.paymentId)
-        )
-    }
-    if matches.isEmpty {
-        return nil
-    }
-    if let paymentId = record.paymentId, let exact = matches.first(where: { $0.paymentId == paymentId }) {
-        return exact
-    }
-    return matches.max { lhs, rhs in
-        lhs.status.rank < rhs.status.rank
+    private static func ledgerMatch(record: QuickPayLedgerRecord, rows: [QuickPayReconcileRow]) -> QuickPayReconcileRow? {
+        let matches = rows.filter { row in
+            row.isOutboundBolt11 && (
+                row.invoicePaymentHash == record.invoicePaymentHash
+                    || row.paymentId == record.invoicePaymentHash
+                    || row.paymentId == record.paymentId
+                    || (record.paymentId != nil && row.invoicePaymentHash == record.paymentId)
+            )
+        }
+        if matches.isEmpty {
+            return nil
+        }
+        if let paymentId = record.paymentId, let exact = matches.first(where: { $0.paymentId == paymentId }) {
+            return exact
+        }
+        return matches.max { lhs, rhs in
+            lhs.status.rank < rhs.status.rank
+        }
     }
 }
 
