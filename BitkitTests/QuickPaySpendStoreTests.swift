@@ -76,7 +76,10 @@ final class QuickPaySpendStoreTests: XCTestCase {
     func testSignalCompletionFailureReleasesSpend() throws {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "abc", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
 
-        XCTAssertEqual(sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: false), .settledFailure)
+        XCTAssertEqual(
+            sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: false),
+            .settledFailure(invoicePaymentHash: "abc")
+        )
         XCTAssertEqual(sut.spentCentsToday(), 0)
         XCTAssertNil(sut.record(matching: "abc"))
     }
@@ -84,10 +87,13 @@ final class QuickPaySpendStoreTests: XCTestCase {
     func testSignalCompletionSuccessKeepsSpend() throws {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "abc", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
 
-        XCTAssertEqual(sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: true), .settledSuccess)
+        XCTAssertEqual(
+            sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: true),
+            .settledSuccess(invoicePaymentHash: "abc")
+        )
         XCTAssertEqual(sut.spentCentsToday(), 500)
         XCTAssertNil(sut.record(matching: "abc"))
-        XCTAssertTrue(QuickPayCompletionOutcome.settledSuccess.wasQuickPay)
+        XCTAssertTrue(QuickPayCompletionOutcome.settledSuccess(invoicePaymentHash: "abc").wasQuickPay)
         XCTAssertFalse(QuickPayCompletionOutcome.none.wasQuickPay)
     }
 
@@ -95,13 +101,19 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "inv", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
         sut.markSubmitted(invoicePaymentHash: "inv", paymentId: "pid")
 
-        XCTAssertEqual(sut.signalCompletion(paymentId: "pid", paymentHash: "other", success: false), .settledFailure)
+        XCTAssertEqual(
+            sut.signalCompletion(paymentId: "pid", paymentHash: "other", success: false),
+            .settledFailure(invoicePaymentHash: "inv")
+        )
         XCTAssertEqual(sut.spentCentsToday(), 0)
     }
 
     func testMarkSubmittedAfterCompletionIsNoOp() throws {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "inv", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
-        XCTAssertEqual(sut.signalCompletion(paymentId: nil, paymentHash: "inv", success: true), .settledSuccess)
+        XCTAssertEqual(
+            sut.signalCompletion(paymentId: nil, paymentHash: "inv", success: true),
+            .settledSuccess(invoicePaymentHash: "inv")
+        )
 
         sut.markSubmitted(invoicePaymentHash: "inv", paymentId: "pid")
 
@@ -111,7 +123,10 @@ final class QuickPaySpendStoreTests: XCTestCase {
 
     func testDuplicateSignalCompletionDoesNotDecrementTwice() throws {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "abc", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
-        XCTAssertEqual(sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: false), .settledFailure)
+        XCTAssertEqual(
+            sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: false),
+            .settledFailure(invoicePaymentHash: "abc")
+        )
         XCTAssertEqual(sut.signalCompletion(paymentId: nil, paymentHash: "abc", success: false), .none)
         XCTAssertEqual(sut.spentCentsToday(), 0)
     }
@@ -278,8 +293,63 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "abc", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
 
         let reloaded = QuickPaySpendStore(defaults: defaults, dayKey: { [unowned self] in currentDay })
-        XCTAssertEqual(reloaded.signalCompletion(paymentId: nil, paymentHash: "abc", success: false), .settledFailure)
+        XCTAssertEqual(
+            reloaded.signalCompletion(paymentId: nil, paymentHash: "abc", success: false),
+            .settledFailure(invoicePaymentHash: "abc")
+        )
 
         XCTAssertEqual(reloaded.spentCentsToday(), 0)
+    }
+
+    func testDropBoundClearsRecordAndKeepsSpend() throws {
+        XCTAssertNotNil(try sut.reserveBound(paymentHash: "inv", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+
+        sut.dropBound(paymentHash: "inv")
+
+        XCTAssertEqual(sut.spentCentsToday(), 500)
+        XCTAssertNil(sut.record(matching: "inv"))
+    }
+
+    func testPruneKeepsLiveHashesAcrossANewDay() throws {
+        XCTAssertNotNil(try sut.reserveBound(paymentHash: "old", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        currentDay = "2026-08-16"
+
+        XCTAssertNotNil(
+            try sut.reserveBound(
+                paymentHash: "new",
+                amountSats: 200,
+                thresholdUsd: 5,
+                multiplier: 5,
+                rates: rates,
+                keepHashes: ["old"]
+            )
+        )
+
+        XCTAssertNotNil(sut.record(matching: "old"))
+        XCTAssertNotNil(sut.record(matching: "new"))
+    }
+
+    func testPruneDropsStaleHashesOnALaterReserve() throws {
+        XCTAssertNotNil(try sut.reserveBound(paymentHash: "old", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        currentDay = "2026-08-16"
+
+        XCTAssertNotNil(try sut.reserveBound(paymentHash: "new", amountSats: 200, thresholdUsd: 5, multiplier: 5, rates: rates))
+
+        XCTAssertNil(sut.record(matching: "old"))
+        XCTAssertNotNil(sut.record(matching: "new"))
+    }
+
+    func testReconcileFailedKeepsUnattributedSubmittingRecord() throws {
+        XCTAssertNotNil(try sut.reserveBound(paymentHash: "inv", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+
+        sut.reconcile(
+            rows: [QuickPayReconcileRow(paymentId: "pid", invoicePaymentHash: "inv", isOutboundBolt11: true, status: .failed)],
+            liveSubmittingHashes: []
+        ) { _, _ in
+            false
+        }
+
+        XCTAssertEqual(sut.spentCentsToday(), 500)
+        XCTAssertNotNil(sut.record(matching: "inv"))
     }
 }

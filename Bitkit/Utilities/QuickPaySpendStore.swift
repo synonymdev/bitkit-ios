@@ -41,13 +41,28 @@ struct QuickPayLedger: Codable, Equatable {
     var records: [QuickPayLedgerRecord]
 }
 
-enum QuickPayCompletionOutcome: Equatable {
-    case none
-    case settledSuccess
-    case settledFailure
+struct QuickPayCompletionOutcome: Equatable {
+    enum Kind: Equatable {
+        case none
+        case settledSuccess
+        case settledFailure
+    }
+
+    let kind: Kind
+    let invoicePaymentHash: String?
 
     var wasQuickPay: Bool {
-        self != .none
+        kind != .none
+    }
+
+    static let none = QuickPayCompletionOutcome(kind: .none, invoicePaymentHash: nil)
+
+    static func settledSuccess(invoicePaymentHash: String) -> QuickPayCompletionOutcome {
+        QuickPayCompletionOutcome(kind: .settledSuccess, invoicePaymentHash: invoicePaymentHash)
+    }
+
+    static func settledFailure(invoicePaymentHash: String) -> QuickPayCompletionOutcome {
+        QuickPayCompletionOutcome(kind: .settledFailure, invoicePaymentHash: invoicePaymentHash)
     }
 }
 
@@ -161,7 +176,8 @@ final class QuickPaySpendStore: @unchecked Sendable {
         amountSats: UInt64,
         thresholdUsd: Double,
         multiplier: Double,
-        rates: QuickPaySpendRates
+        rates: QuickPaySpendRates,
+        keepHashes: Set<String> = []
     ) throws -> QuickPayLedgerRecord? {
         guard !paymentHash.isEmpty else { return nil }
         guard let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0, amountSats <= thresholdSats else {
@@ -188,7 +204,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
         }
 
         var ledger = lockedLedger()
-        lockedPrune(ledger: &ledger, currentDay: spend.dayKey)
+        lockedPrune(ledger: &ledger, currentDay: spend.dayKey, keepHashes: keepHashes)
         let record = QuickPayLedgerRecord(
             amountCents: amountCents,
             dayKey: spend.dayKey,
@@ -226,21 +242,44 @@ final class QuickPaySpendStore: @unchecked Sendable {
             ledger.spentCents = max(ledger.spentCents - record.amountCents, 0)
         }
         lockedWriteLedger(ledger)
-        return success ? .settledSuccess : .settledFailure
+        return success
+            ? .settledSuccess(invoicePaymentHash: record.invoicePaymentHash)
+            : .settledFailure(invoicePaymentHash: record.invoicePaymentHash)
     }
 
     func releaseBound(paymentHash: String) {
-        _ = signalCompletion(paymentId: nil, paymentHash: paymentHash, success: false)
+        lock.lock()
+        defer { lock.unlock() }
+        var ledger = lockedLedger()
+        guard let index = lockedRecordIndex(in: ledger, matching: paymentHash) else { return }
+        let record = ledger.records.remove(at: index)
+        if record.dayKey == ledger.dayKey {
+            ledger.spentCents = max(ledger.spentCents - record.amountCents, 0)
+        }
+        lockedWriteLedger(ledger)
     }
 
-    func reconcile(rows: [QuickPayReconcileRow]?, liveSubmittingHashes: Set<String>) {
+    func dropBound(paymentHash: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        var ledger = lockedLedger()
+        guard let index = lockedRecordIndex(in: ledger, matching: paymentHash) else { return }
+        ledger.records.remove(at: index)
+        lockedWriteLedger(ledger)
+    }
+
+    func reconcile(
+        rows: [QuickPayReconcileRow]?,
+        liveSubmittingHashes: Set<String>,
+        shouldReleaseFailed: ((QuickPayLedgerRecord, QuickPayReconcileRow) -> Bool)? = nil
+    ) {
         guard let rows else { return }
 
         lock.lock()
         defer { lock.unlock() }
         var ledger = lockedLedger()
         let currentDay = dayKeyProvider()
-        lockedPrune(ledger: &ledger, currentDay: currentDay)
+        lockedPrune(ledger: &ledger, currentDay: currentDay, keepHashes: liveSubmittingHashes)
 
         var didWrite = false
         var remaining: [QuickPayLedgerRecord] = []
@@ -261,6 +300,10 @@ final class QuickPaySpendStore: @unchecked Sendable {
             case .succeeded:
                 didWrite = true
             case .failed:
+                if let shouldReleaseFailed, !shouldReleaseFailed(record, match) {
+                    remaining.append(record)
+                    continue
+                }
                 if record.dayKey == ledger.dayKey {
                     ledger.spentCents = max(ledger.spentCents - record.amountCents, 0)
                 }
@@ -316,7 +359,6 @@ final class QuickPaySpendStore: @unchecked Sendable {
     private func lockedSpend(forDayKey dayKey: String) -> (dayKey: String, spentCents: Int64) {
         var ledger = lockedLedger()
         if ledger.dayKey.isEmpty || dayKey > ledger.dayKey {
-            lockedPrune(ledger: &ledger, currentDay: dayKey)
             ledger.dayKey = dayKey
             ledger.spentCents = 0
             lockedWriteLedger(ledger)
@@ -328,9 +370,9 @@ final class QuickPaySpendStore: @unchecked Sendable {
         return (ledger.dayKey, ledger.spentCents)
     }
 
-    private func lockedPrune(ledger: inout QuickPayLedger, currentDay: String) {
+    private func lockedPrune(ledger: inout QuickPayLedger, currentDay: String, keepHashes: Set<String> = []) {
         guard !currentDay.isEmpty else { return }
-        ledger.records.removeAll { $0.dayKey < currentDay }
+        ledger.records.removeAll { $0.dayKey < currentDay && !keepHashes.contains($0.invoicePaymentHash) }
     }
 
     private func lockedRecord(matching hash: String) -> QuickPayLedgerRecord? {
@@ -357,7 +399,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
         defaults.set(try? JSONEncoder().encode(ledger), forKey: Self.ledgerDefaultsKey)
     }
 
-    private static func ledgerMatch(record: QuickPayLedgerRecord, rows: [QuickPayReconcileRow]) -> QuickPayReconcileRow? {
+    static func ledgerMatch(record: QuickPayLedgerRecord, rows: [QuickPayReconcileRow]) -> QuickPayReconcileRow? {
         let matches = rows.filter { row in
             row.isOutboundBolt11 && (
                 row.invoicePaymentHash == record.invoicePaymentHash
