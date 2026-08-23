@@ -10,15 +10,18 @@ struct SendQuickpay: View {
     let routingCacheResetAttempted: Bool
     var replaceQuickPay: (SendRoute) -> Void
     @State private var didStartPayment = false
+    @State private var displayedSats: UInt64?
+
+    private var paymentSats: UInt64? {
+        displayedSats ?? app.lnurlPayData?.minSendableSat ?? app.scannedLightningInvoice?.amountSatoshis
+    }
 
     var body: some View {
         VStack {
             SheetHeader(title: t("wallet__send_quickpay__nav_title"))
 
-            if let lnurlPayData = app.lnurlPayData {
-                MoneyStack(sats: Int(lnurlPayData.minSendableSat), showSymbol: true)
-            } else if let invoice = app.scannedLightningInvoice {
-                MoneyStack(sats: Int(invoice.amountSatoshis), showSymbol: true)
+            if let paymentSats {
+                MoneyStack(sats: Int(paymentSats), showSymbol: true)
             }
 
             Spacer(minLength: 32)
@@ -36,6 +39,9 @@ struct SendQuickpay: View {
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
+            if displayedSats == nil {
+                displayedSats = app.lnurlPayData?.minSendableSat ?? app.scannedLightningInvoice?.amountSatoshis
+            }
             guard !didStartPayment else { return }
             didStartPayment = true
             QuickPayPaymentCoordinator.shared.pay(
