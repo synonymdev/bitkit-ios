@@ -19,6 +19,7 @@ final class QuickPayPaymentCoordinator {
         var paymentId: String?
         var dispatched = false
         var emitted = false
+        var runActive = false
         var waiterActive = false
 
         init(invoiceHash: String, bolt11: String, presentation: Presentation?) {
@@ -210,11 +211,10 @@ final class QuickPayPaymentCoordinator {
         }
 
         if let existing = operations[invoiceHash] {
-            let waiterDead = existing.presentation == nil || !existing.waiterActive
             existing.presentation = presentation
             if existing.emitted {
                 replayPending(existing)
-            } else if waiterDead {
+            } else if !existing.runActive {
                 emitPending(existing)
             }
             return
@@ -223,8 +223,10 @@ final class QuickPayPaymentCoordinator {
         if store.record(matching: invoiceHash) != nil {
             let op = InFlightOp(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
             op.dispatched = true
+            op.runActive = true
             register(op)
             await settleRecovered(op)
+            op.runActive = false
             return
         }
 
@@ -232,7 +234,9 @@ final class QuickPayPaymentCoordinator {
 
         let amountSats = wallet.sendAmountSats ?? 0
         let op = InFlightOp(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
+        op.runActive = true
         register(op)
+        defer { op.runActive = false }
         do {
             guard try store.reserveBound(
                 paymentHash: invoiceHash,
@@ -446,12 +450,13 @@ final class QuickPayPaymentCoordinator {
     }
 
     private func emitPending(_ op: InFlightOp) {
+        guard let presentation = op.presentation else { return }
         if op.emitted {
             return
         }
         op.emitted = true
-        op.presentation?.addPendingPaymentHash(op.invoiceHash)
-        op.presentation?.appendRoute(.pending(paymentHash: op.invoiceHash, retryRoute: .quickpay, paymentRequest: op.bolt11))
+        presentation.addPendingPaymentHash(op.invoiceHash)
+        presentation.appendRoute(.pending(paymentHash: op.invoiceHash, retryRoute: .quickpay, paymentRequest: op.bolt11))
     }
 
     private func replayPending(_ op: InFlightOp) {

@@ -343,11 +343,14 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
     func testZombieRescanReplaysPendingAfterDetach() async throws {
         let invoiceHash = try Self.invoiceHash
         let sendStarted = expectation(description: "send started")
-        var sendCont: CheckedContinuation<String, Error>?
+        var sendCount = 0
+        var didConfirm = false
+        var sendCont: CheckedContinuation<String, Never>?
         let coordinator = QuickPayPaymentCoordinator(
             store: store,
             sendBolt11: { _ in
-                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+                sendCount += 1
+                return await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
                     sendCont = cont
                     sendStarted.fulfill()
                 }
@@ -364,13 +367,18 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         )
         await fulfillment(of: [sendStarted], timeout: 2)
         coordinator.detach()
-        sendCont?.resume(returning: invoiceHash)
 
-        let replayed = await firstRoute(from: coordinator)
-        guard case let .pending(paymentHash, _, _) = replayed else {
-            return XCTFail("Expected pending, got \(String(describing: replayed))")
-        }
-        XCTAssertEqual(paymentHash, invoiceHash)
+        coordinator.pay(
+            app: appWithInvoice,
+            wallet: WalletViewModel(),
+            settings: settings,
+            currency: CurrencyViewModel(),
+            presentation: presentation(onRoute: { _ in XCTFail("Live send should not emit yet") }, onConfirm: { didConfirm = true })
+        )
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(sendCount, 1)
+        XCTAssertFalse(didConfirm)
+        sendCont?.resume(returning: invoiceHash)
         XCTAssertNotNil(store.record(matching: invoiceHash))
     }
 
@@ -490,6 +498,8 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         )
         await fulfillment(of: [sendStarted], timeout: 2)
         XCTAssertNotNil(store.record(matching: invoiceHash))
+        let spent = store.spentCentsToday()
+        XCTAssertGreaterThan(spent, 0)
 
         store.reconcile(
             rows: [
@@ -503,10 +513,12 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             liveSubmittingHashes: coordinator.liveSubmittingHashes
         )
         XCTAssertNotNil(store.record(matching: invoiceHash))
-        XCTAssertEqual(store.spentCentsToday(), 100)
+        XCTAssertEqual(store.spentCentsToday(), spent)
 
         let outcome = coordinator.complete(paymentId: "pid", paymentHash: invoiceHash, success: true)
         XCTAssertTrue(outcome.wasQuickPay)
+        XCTAssertEqual(store.spentCentsToday(), spent)
+        XCTAssertNil(store.record(matching: invoiceHash))
         sendCont?.resume(returning: invoiceHash)
     }
 
