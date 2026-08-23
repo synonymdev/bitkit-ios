@@ -215,7 +215,299 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         }
         XCTAssertEqual(paymentId, invoiceHash)
         XCTAssertNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
+    func testAmbiguousDispatchWithSucceededLdkKeepsSpend() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let route = await firstRoute(
+            sendBolt11: { _ in
+                throw NodeError.PersistenceFailed(message: "io")
+            },
+            listRows: {
+                [
+                    QuickPayReconcileRow(
+                        paymentId: "pid",
+                        invoicePaymentHash: invoiceHash,
+                        isOutboundBolt11: true,
+                        status: .succeeded
+                    ),
+                ]
+            }
+        )
+
+        guard case let .success(paymentId) = route else {
+            return XCTFail("Expected success, got \(String(describing: route))")
+        }
+        XCTAssertEqual(paymentId, invoiceHash)
+        XCTAssertNil(store.record(matching: invoiceHash))
         XCTAssertEqual(store.spentCentsToday(), 100)
+    }
+
+    func testRepayOfSettledHashDoesNotDoubleCount() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sendCount = 0
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { [store] _ in
+                sendCount += 1
+                if sendCount == 1 {
+                    store?.signalCompletion(paymentId: nil, paymentHash: invoiceHash, success: true)
+                    return invoiceHash
+                }
+                throw NodeError.DuplicatePayment(message: "dup")
+            },
+            listRows: {
+                [
+                    QuickPayReconcileRow(
+                        paymentId: "pid",
+                        invoicePaymentHash: invoiceHash,
+                        isOutboundBolt11: true,
+                        status: .succeeded
+                    ),
+                ]
+            }
+        )
+
+        let first = await firstRoute(from: coordinator)
+        guard case .success = first else {
+            return XCTFail("Expected success, got \(String(describing: first))")
+        }
+        XCTAssertEqual(store.spentCentsToday(), 100)
+        coordinator.detach()
+
+        let second = await firstRoute(from: coordinator)
+        guard case .success = second else {
+            return XCTFail("Expected success, got \(String(describing: second))")
+        }
+        XCTAssertEqual(sendCount, 2)
+        XCTAssertEqual(store.spentCentsToday(), 100)
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
+    func testLookupThrowOnDuplicateStillEmitsPending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let route = await firstRoute(
+            sendBolt11: { _ in
+                throw NodeError.DuplicatePayment(message: "dup")
+            },
+            listRows: {
+                throw NSError(domain: "QuickPayLookup", code: 1)
+            }
+        )
+
+        guard case let .pending(paymentHash, _, _) = route else {
+            return XCTFail("Expected pending, got \(String(describing: route))")
+        }
+        XCTAssertEqual(paymentHash, invoiceHash)
+        XCTAssertNotNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 100)
+    }
+
+    func testRescanOfPendingHashReplaysPendingToNewSession() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sendCount = 0
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                sendCount += 1
+                throw NodeError.DuplicatePayment(message: "dup")
+            },
+            listRows: {
+                [
+                    QuickPayReconcileRow(
+                        paymentId: "pid",
+                        invoicePaymentHash: invoiceHash,
+                        isOutboundBolt11: true,
+                        status: .pending
+                    ),
+                ]
+            }
+        )
+
+        let first = await firstRoute(from: coordinator)
+        guard case .pending = first else {
+            return XCTFail("Expected pending, got \(String(describing: first))")
+        }
+        coordinator.detach()
+        let second = await firstRoute(from: coordinator)
+        guard case let .pending(paymentHash, _, _) = second else {
+            return XCTFail("Expected pending replay, got \(String(describing: second))")
+        }
+        XCTAssertEqual(paymentHash, invoiceHash)
+        XCTAssertEqual(sendCount, 1)
+        XCTAssertEqual(store.spentCentsToday(), 100)
+        XCTAssertNotNil(store.record(matching: invoiceHash))
+    }
+
+    func testZombieRescanReplaysPendingAfterDetach() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let sendStarted = expectation(description: "send started")
+        var sendCont: CheckedContinuation<String, Error>?
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+                    sendCont = cont
+                    sendStarted.fulfill()
+                }
+            },
+            listRows: { [] }
+        )
+
+        coordinator.pay(
+            app: appWithInvoice,
+            wallet: WalletViewModel(),
+            settings: settings,
+            currency: CurrencyViewModel(),
+            presentation: presentation(onRoute: { _ in }, onConfirm: {})
+        )
+        await fulfillment(of: [sendStarted], timeout: 2)
+        coordinator.detach()
+        sendCont?.resume(returning: invoiceHash)
+
+        let replayed = await firstRoute(from: coordinator)
+        guard case let .pending(paymentHash, _, _) = replayed else {
+            return XCTFail("Expected pending, got \(String(describing: replayed))")
+        }
+        XCTAssertEqual(paymentHash, invoiceHash)
+        XCTAssertNotNil(store.record(matching: invoiceHash))
+    }
+
+    func testPayIgnoresReentryUntilDetach() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let sendStarted = expectation(description: "send started")
+        var sendCount = 0
+        var sendCont: CheckedContinuation<String, Never>?
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                sendCount += 1
+                return await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
+                    sendCont = cont
+                    sendStarted.fulfill()
+                }
+            },
+            listRows: { [] }
+        )
+
+        coordinator.pay(
+            app: appWithInvoice,
+            wallet: WalletViewModel(),
+            settings: settings,
+            currency: CurrencyViewModel(),
+            presentation: presentation(onRoute: { _ in }, onConfirm: {})
+        )
+        await fulfillment(of: [sendStarted], timeout: 2)
+        coordinator.pay(
+            app: appWithInvoice,
+            wallet: WalletViewModel(),
+            settings: settings,
+            currency: CurrencyViewModel(),
+            presentation: presentation(onRoute: { _ in XCTFail("Re-entry should not emit") }, onConfirm: {})
+        )
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(sendCount, 1)
+        sendCont?.resume(returning: invoiceHash)
+    }
+
+    func testHasOpenIsTrueForLiveOpOrRecoveredRow() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in throw NodeError.DuplicatePayment(message: "dup") },
+            listRows: { [] }
+        )
+        XCTAssertFalse(coordinator.hasOpen(invoiceHash))
+
+        _ = await firstRoute(from: coordinator)
+        XCTAssertTrue(coordinator.hasOpen(invoiceHash))
+
+        XCTAssertNotNil(
+            try store.reserveBound(
+                paymentHash: "recovered-hash",
+                amountSats: 500,
+                thresholdUsd: 5,
+                multiplier: 5,
+                rates: rates
+            )
+        )
+        XCTAssertTrue(coordinator.hasOpen("recovered-hash"))
+        XCTAssertTrue(coordinator.complete(paymentId: nil, paymentHash: invoiceHash, success: true).wasQuickPay)
+        XCTAssertFalse(coordinator.hasOpen(invoiceHash))
+    }
+
+    func testUnattributableFailedEventAgainstSubmittingRetains() throws {
+        let invoiceHash = try Self.invoiceHash
+        XCTAssertNotNil(
+            try store.reserveBound(
+                paymentHash: invoiceHash,
+                amountSats: 1000,
+                thresholdUsd: 5,
+                multiplier: 5,
+                rates: rates
+            )
+        )
+        let coordinator = QuickPayPaymentCoordinator(store: store, sendBolt11: { _ in invoiceHash }, listRows: { [] })
+
+        let outcome = coordinator.complete(paymentId: "stale-pid", paymentHash: invoiceHash, success: false)
+
+        XCTAssertEqual(outcome, .none)
+        XCTAssertEqual(store.spentCentsToday(), 500)
+        XCTAssertNotNil(store.record(matching: invoiceHash))
+    }
+
+    func testReconcileDuringLiveDispatchedOpDoesNotStealCompletion() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let sendStarted = expectation(description: "send started")
+        var sendCont: CheckedContinuation<String, Never>?
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                return await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
+                    sendCont = cont
+                    sendStarted.fulfill()
+                }
+            },
+            listRows: {
+                [
+                    QuickPayReconcileRow(
+                        paymentId: "pid",
+                        invoicePaymentHash: invoiceHash,
+                        isOutboundBolt11: true,
+                        status: .succeeded
+                    ),
+                ]
+            }
+        )
+
+        coordinator.pay(
+            app: appWithInvoice,
+            wallet: WalletViewModel(),
+            settings: settings,
+            currency: CurrencyViewModel(),
+            presentation: presentation(onRoute: { _ in }, onConfirm: {})
+        )
+        await fulfillment(of: [sendStarted], timeout: 2)
+        XCTAssertNotNil(store.record(matching: invoiceHash))
+
+        store.reconcile(
+            rows: [
+                QuickPayReconcileRow(
+                    paymentId: "pid",
+                    invoicePaymentHash: invoiceHash,
+                    isOutboundBolt11: true,
+                    status: .succeeded
+                ),
+            ],
+            liveSubmittingHashes: coordinator.liveSubmittingHashes
+        )
+        XCTAssertNotNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 100)
+
+        let outcome = coordinator.complete(paymentId: "pid", paymentHash: invoiceHash, success: true)
+        XCTAssertTrue(outcome.wasQuickPay)
+        sendCont?.resume(returning: invoiceHash)
     }
 
     func testRecoveredHashThatLdkSucceededGoesToSuccess() async throws {
@@ -313,9 +605,13 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
 
     private func firstRoute(
         sendBolt11: @escaping (String) async throws -> String,
-        listRows: @escaping () async -> [QuickPayReconcileRow]? = { [] }
+        listRows: @escaping () async throws -> [QuickPayReconcileRow]? = { [] }
     ) async -> SendRoute? {
         let coordinator = QuickPayPaymentCoordinator(store: store, sendBolt11: sendBolt11, listRows: listRows)
+        return await firstRoute(from: coordinator)
+    }
+
+    private func firstRoute(from coordinator: QuickPayPaymentCoordinator) async -> SendRoute? {
         var route: SendRoute?
         let exp = expectation(description: "route")
         coordinator.pay(
