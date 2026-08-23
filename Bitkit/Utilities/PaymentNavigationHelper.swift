@@ -13,10 +13,16 @@ struct PaymentNavigationHelper {
         app: AppViewModel,
         settings: SettingsViewModel,
         currency: CurrencyViewModel,
-        spendStore: QuickPaySpendStore = .shared
+        spendStore: QuickPaySpendStore = .shared,
+        coordinator: QuickPayPaymentCoordinator? = nil
     ) -> Bool {
         guard let amountSats = QuickPayLimits.paymentAmountSats(app: app), amountSats > 0 else {
             return false
+        }
+
+        let coordinator = coordinator ?? .shared
+        if let hash = app.scannedLightningInvoice?.paymentHash.hex, coordinator.hasOpen(hash) {
+            return true
         }
 
         return spendStore.canApply(
@@ -34,7 +40,8 @@ struct PaymentNavigationHelper {
         currency: CurrencyViewModel,
         settings: SettingsViewModel,
         sheetViewModel: SheetViewModel,
-        spendStore: QuickPaySpendStore = .shared
+        spendStore: QuickPaySpendStore = .shared,
+        coordinator: QuickPayPaymentCoordinator? = nil
     ) {
         // Handle LNURL withdraw
         if let lnurlWithdrawData = app.lnurlWithdrawData {
@@ -47,7 +54,13 @@ struct PaymentNavigationHelper {
             return
         }
 
-        let shouldUseQuickpay = shouldUseQuickpay(app: app, settings: settings, currency: currency, spendStore: spendStore)
+        let shouldUseQuickpay = shouldUseQuickpay(
+            app: app,
+            settings: settings,
+            currency: currency,
+            spendStore: spendStore,
+            coordinator: coordinator
+        )
 
         // Handle Lightning address / LNURL pay
         if let lnurlPayData = app.lnurlPayData {
@@ -91,7 +104,8 @@ struct PaymentNavigationHelper {
         app: AppViewModel,
         currency: CurrencyViewModel,
         settings: SettingsViewModel,
-        spendStore: QuickPaySpendStore = .shared
+        spendStore: QuickPaySpendStore = .shared,
+        coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
         if let lnurlWithdrawData = app.lnurlWithdrawData {
             if lnurlWithdrawData.isFixedAmount {
@@ -101,7 +115,13 @@ struct PaymentNavigationHelper {
             }
         }
 
-        let shouldUseQuickpay = shouldUseQuickpay(app: app, settings: settings, currency: currency, spendStore: spendStore)
+        let shouldUseQuickpay = shouldUseQuickpay(
+            app: app,
+            settings: settings,
+            currency: currency,
+            spendStore: spendStore,
+            coordinator: coordinator
+        )
 
         // Handle Lightning address / LNURL pay
         if let lnurlPayData = app.lnurlPayData {
@@ -172,9 +192,16 @@ struct PaymentNavigationHelper {
         app: AppViewModel,
         currency: CurrencyViewModel,
         settings: SettingsViewModel,
-        spendStore: QuickPaySpendStore = .shared
+        spendStore: QuickPaySpendStore = .shared,
+        coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
-        guard let route = appropriateSendRoute(app: app, currency: currency, settings: settings, spendStore: spendStore) else {
+        guard let route = appropriateSendRoute(
+            app: app,
+            currency: currency,
+            settings: settings,
+            spendStore: spendStore,
+            coordinator: coordinator
+        ) else {
             return nil
         }
 

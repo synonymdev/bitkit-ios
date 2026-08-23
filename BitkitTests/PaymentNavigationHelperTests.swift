@@ -95,6 +95,60 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
 
+    func testUsesQuickpayWhenHashIsAlreadyOpenEvenIfDisabled() throws {
+        settings.enableQuickpay = false
+        let hash = "aabbccdd"
+        XCTAssertNotNil(
+            try spendStore.reserveBound(
+                paymentHash: hash,
+                amountSats: 1000,
+                thresholdUsd: 5,
+                multiplier: 5,
+                rates: QuickPaySpendRates.live(CurrencyViewModel())
+            )
+        )
+        let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in hash }, listRows: { [] })
+
+        XCTAssertEqual(sendRoute(for: appWithInvoice(paymentHash: hash), coordinator: coordinator), .quickpay)
+    }
+
+    func testUsesQuickpayWhenHashIsOpenEvenIfDailyCapIsExceeded() throws {
+        settings.quickpayDailyLimitMultiplier = 1
+        let rates = QuickPaySpendRates.live(CurrencyViewModel())
+        let hash = "aabbccdd"
+        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: hash, amountSats: 1000, thresholdUsd: 5, multiplier: 1, rates: rates))
+        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "cap0", amountSats: 4000, thresholdUsd: 5, multiplier: 1, rates: rates))
+        let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in hash }, listRows: { [] })
+
+        XCTAssertEqual(sendRoute(for: appWithInvoice(paymentHash: hash), coordinator: coordinator), .quickpay)
+    }
+
+    func testContactPaymentSkipsQuickpayEvenWhenHashIsOpen() throws {
+        let hash = "c0c0c0c0"
+        XCTAssertNotNil(
+            try spendStore.reserveBound(
+                paymentHash: hash,
+                amountSats: 1000,
+                thresholdUsd: 5,
+                multiplier: 5,
+                rates: QuickPaySpendRates.live(CurrencyViewModel())
+            )
+        )
+        let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in hash }, listRows: { [] })
+        let app = appWithInvoice(paymentHash: hash)
+
+        XCTAssertEqual(
+            PaymentNavigationHelper.contactPaymentRoute(
+                app: app,
+                currency: CurrencyViewModel(),
+                settings: settings,
+                spendStore: spendStore,
+                coordinator: coordinator
+            ),
+            .confirm
+        )
+    }
+
     func testReserveRaceFallsBackToConfirm() {
         XCTAssertEqual(
             PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: appWithEligibleInvoice),
@@ -120,20 +174,25 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(next.path, [.amount, .confirm])
     }
 
-    private func sendRoute(for app: AppViewModel) -> SendRoute? {
+    private func sendRoute(for app: AppViewModel, coordinator: QuickPayPaymentCoordinator? = nil) -> SendRoute? {
         PaymentNavigationHelper.appropriateSendRoute(
             app: app,
             currency: CurrencyViewModel(),
             settings: settings,
-            spendStore: spendStore
+            spendStore: spendStore,
+            coordinator: coordinator
         )
     }
 
     private var appWithEligibleInvoice: AppViewModel {
+        appWithInvoice(paymentHash: "")
+    }
+
+    private func appWithInvoice(paymentHash: String) -> AppViewModel {
         let app = AppViewModel()
         app.scannedLightningInvoice = LightningInvoice(
             bolt11: "test-invoice",
-            paymentHash: Data(),
+            paymentHash: paymentHash.hexaData,
             amountSatoshis: 1000,
             timestampSeconds: 0,
             expirySeconds: 0,
