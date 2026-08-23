@@ -1061,13 +1061,12 @@ extension AppViewModel {
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
         case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
-            let hash = paymentId ?? paymentHash
-            let outcome = QuickPaySpendStore.shared.signalCompletion(
+            let outcome = QuickPayPaymentCoordinator.shared.complete(
                 paymentId: paymentId,
                 paymentHash: paymentHash,
                 success: true
             )
-            QuickPayPaymentCoordinator.shared.handleSettled(paymentId: paymentId, paymentHash: paymentHash)
+            let hash = outcome.invoicePaymentHash ?? paymentHash
             let awaitingSheet = pendingPaymentHashes.contains(hash)
             if awaitingSheet {
                 pendingPaymentHashes.remove(hash)
@@ -1086,13 +1085,12 @@ extension AppViewModel {
                 )
             }
         case let .paymentFailed(paymentId, paymentHash, reason):
-            let hash = paymentId ?? paymentHash
-            let outcome = QuickPaySpendStore.shared.signalCompletion(
+            let outcome = QuickPayPaymentCoordinator.shared.complete(
                 paymentId: paymentId,
                 paymentHash: paymentHash,
                 success: false
             )
-            QuickPayPaymentCoordinator.shared.handleSettled(paymentId: paymentId, paymentHash: paymentHash)
+            let hash = paymentHash ?? outcome.invoicePaymentHash ?? paymentId
             let awaitingSheet = hash.map { pendingPaymentHashes.contains($0) } ?? false
             if let hash, awaitingSheet {
                 pendingPaymentHashes.remove(hash)
