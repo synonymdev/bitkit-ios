@@ -20,7 +20,6 @@ final class QuickPayPaymentCoordinator {
         var dispatched = false
         var emitted = false
         var runActive = false
-        var waiterActive = false
 
         init(invoiceHash: String, bolt11: String, presentation: Presentation?) {
             self.invoiceHash = invoiceHash
@@ -286,7 +285,6 @@ final class QuickPayPaymentCoordinator {
         }
 
         let attached = op.presentation ?? presentation
-        op.waiterActive = true
         do {
             let settled = try await wallet.waitForLightningPayment(hash: invoiceHash) { _ in
                 self.emitPending(op)
@@ -301,9 +299,12 @@ final class QuickPayPaymentCoordinator {
         } catch is PaymentTimeoutError {
             emitPending(op)
         } catch {
-            emitFailure(op, error: error, routingCacheResetAttempted: attached.routingCacheResetAttempted)
+            emitFailure(
+                op,
+                error: error,
+                routingCacheResetAttempted: (op.presentation ?? attached).routingCacheResetAttempted
+            )
         }
-        op.waiterActive = false
     }
 
     private func handleDispatchError(_ error: Error, op: InFlightOp) async {
