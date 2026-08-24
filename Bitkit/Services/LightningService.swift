@@ -124,7 +124,9 @@ class LightningService {
                 lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
                 feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
             ),
-            connectionTimeoutSecs: 10
+            connectionTimeoutSecs: 10,
+            additionalWalletFullScanBatchSize: 100,
+            additionalWalletFullScanStopGap: 1000
         )
         builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
 
