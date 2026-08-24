@@ -236,6 +236,51 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertEqual(restored.record(matching: "abc")?.phase, .submitted)
     }
 
+    func testAppCacheDataDecodesAndroidShapedMetadataWithLedger() throws {
+        let json = """
+        {
+          "version": 1,
+          "createdAt": 1,
+          "tagMetadata": [],
+          "cache": {
+            "cachedRates": [],
+            "paidOrders": {},
+            "onchainAddress": "bc1keep",
+            "deletedActivities": ["act-1"],
+            "quickPayLedger": {
+              "version": 1,
+              "dayKey": "2026-08-15",
+              "spentCents": 500,
+              "records": [
+                {
+                  "id": "rec-android",
+                  "amountCents": 500,
+                  "dayKey": "2026-08-15",
+                  "invoicePaymentHash": "inv-android",
+                  "paymentId": "pid-android",
+                  "phase": "submitted"
+                }
+              ]
+            }
+          }
+        }
+        """
+        let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: Data(json.utf8))
+        XCTAssertTrue(payload.tagMetadata.isEmpty)
+        XCTAssertFalse(payload.cache.hasSeenQuickpayIntro)
+        XCTAssertEqual(payload.cache.dismissedSuggestions, [])
+        XCTAssertEqual(payload.cache.quickPayLedger?.spentCents, 500)
+
+        let restored = try QuickPaySpendStore(
+            defaults: XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)),
+            dayKey: { "2026-08-15" }
+        )
+        restored.restoreFromBackup(ledger: payload.cache.quickPayLedger)
+        XCTAssertEqual(restored.spentCentsToday(), 500)
+        XCTAssertEqual(restored.record(matching: "inv-android")?.paymentId, "pid-android")
+        XCTAssertEqual(restored.record(matching: "inv-android")?.phase, .submitted)
+    }
+
     func testCanApplyIsTrueUnderThresholdAndCap() {
         XCTAssertTrue(
             sut.canApply(amountSats: 500, enabled: true, thresholdUsd: 5, multiplier: 5, rates: rates)
