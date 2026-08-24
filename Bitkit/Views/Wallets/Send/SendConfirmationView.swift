@@ -581,9 +581,23 @@ struct SendConfirmationView: View {
         var createdMetadataPaymentId: String? = nil
         let contactPaymentContext = app.contactPaymentContext
         let contactPublicKey = contactPaymentContext?.publicKey
+        let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
+        var shouldCancelPaymentProof = false
 
         do {
-            try await prepareContactPaymentIfNeeded()
+            try validateIncomingPaymentRequestContext(contactPaymentContext)
+            try validateIncomingPaymentRequestAmounts(contactPaymentContext)
+            if let incomingPaymentRequest {
+                let proof = try paymentProofPreparation(for: incomingPaymentRequest)
+                try await PaykitPaymentProofService.shared.prepare(
+                    request: incomingPaymentRequest,
+                    paymentEndpointIdentifier: proof.endpointIdentifier,
+                    kind: proof.kind
+                )
+                shouldCancelPaymentProof = true
+            }
+            try await prepareIncomingPaymentRequest()
+            try validateIncomingPaymentRequestContext(contactPaymentContext)
 
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
@@ -592,6 +606,12 @@ struct SendConfirmationView: View {
 
                 // Create pre-activity metadata for tags and activity address
                 let paymentHash = invoice.paymentHash.hex
+                if let incomingPaymentRequest {
+                    try await PaykitPaymentProofService.shared.associateLightningPayment(
+                        incomingPaymentRequest,
+                        paymentHash: paymentHash
+                    )
+                }
                 createdMetadataPaymentId = paymentHash
                 await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
 
@@ -608,11 +628,14 @@ struct SendConfirmationView: View {
                             navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
                         }
                     )
+                    shouldCancelPaymentProof = false
+                    await PaykitPaymentProofService.shared.reconcile()
                     await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
                     Logger.info("Lightning payment successful: \(paymentHash)")
                     navigationPath.append(.success(paymentId: paymentHash))
                 } catch is PaymentTimeoutError {
                     // onTimeout callback already navigated to .pending; suppress throw
+                    shouldCancelPaymentProof = false
                     return
                 } catch {
                     throw error
@@ -621,6 +644,10 @@ struct SendConfirmationView: View {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
                 let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: useMaxAmount)
+                shouldCancelPaymentProof = false
+                if let incomingPaymentRequest {
+                    await PaykitPaymentProofService.shared.completeOnchainPayment(incomingPaymentRequest, txid: txid)
+                }
 
                 // Create pre-activity metadata for tags and activity address
                 await createPreActivityMetadata(paymentId: txid, address: invoice.address, txId: txid, feeRate: wallet.selectedFeeRateSatsPerVByte)
@@ -647,6 +674,9 @@ struct SendConfirmationView: View {
                 )
             }
         } catch {
+            if shouldCancelPaymentProof, let incomingPaymentRequest {
+                await PaykitPaymentProofService.shared.cancel(incomingPaymentRequest)
+            }
             Logger.error("Payment failed: \(error)")
 
             if let paymentId = createdMetadataPaymentId {
@@ -662,12 +692,26 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func prepareContactPaymentIfNeeded() async throws {
-        let context = app.contactPaymentContext
-        try validateIncomingPaymentRequestContext(context)
-        try validateIncomingPaymentRequestAmounts(context)
-        try await prepareIncomingPaymentRequest()
-        try validateIncomingPaymentRequestContext(context)
+    private func paymentProofPreparation(
+        for request: PaykitPaymentRequest
+    ) throws -> (endpointIdentifier: String, kind: PaykitPaymentProofKind) {
+        switch app.selectedWalletToPayFrom {
+        case .lightning:
+            let endpointIdentifier = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+            guard request.acceptedPaymentEndpointIdentifiers.contains(endpointIdentifier) else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
+            return (endpointIdentifier, .lightning)
+        case .onchain:
+            guard let address = app.scannedOnchainInvoice?.address else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
+            let endpointIdentifier = PublicPaykitService.onchainMethodId(for: address).rawValue
+            guard request.acceptedPaymentEndpointIdentifiers.contains(endpointIdentifier) else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
+            return (endpointIdentifier, .onchain)
+        }
     }
 
     private func validateIncomingPaymentRequestContext(_ context: ContactPaymentContext?) throws {
