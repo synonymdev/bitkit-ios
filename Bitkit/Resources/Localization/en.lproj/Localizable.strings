@@ -802,7 +802,7 @@
 "settings__quickpay__settings__text" = "If enabled, scanned invoices below ${amount} will be paid automatically without requiring your confirmation or PIN*.";
 "settings__quickpay__settings__label" = "Quickpay threshold";
 "settings__quickpay__settings__daily_label" = "Daily QuickPay limit";
-"settings__quickpay__settings__daily_text" = "Auto-pay up to ${limit} per day without PIN ({multiplier}× your threshold). After that, payments open Confirm.";
+"settings__quickpay__settings__daily_text" = "Pay up to ${limit} per day without entering your PIN. After that, confirm each payment.";
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay exclusively supports payments from your Spending Balance.";
 "wallet__send_quickpay__currency_conversion" = "Currency conversion failed";
