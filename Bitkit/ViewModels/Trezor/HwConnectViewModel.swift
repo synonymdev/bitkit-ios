@@ -32,6 +32,8 @@ protocol HwConnectServicing {
     func connect(to device: TrezorDeviceInfo) async throws -> HwConnectResult
     /// Opens the hidden wallet the passphrase unlocks and starts watching it; returns its wallet id.
     func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String
+    /// The Bitkit-side name already stored for `walletId`, or nil when it has none.
+    func storedName(forWallet walletId: String) -> String?
     func setWalletLabel(walletId: String, label: String)
     func cancelPairingCode()
 }
@@ -284,10 +286,13 @@ final class HwConnectViewModel {
         balanceSats = 0
         // A brand-new identity carries no label of its own, so it shows the device's name until the
         // wallet is published and that emission refines the prefill; once it resolves the field is
-        // the user's to edit.
-        deviceName = deviceDefaultName
-        labelInitialized = false
-        labelInput = deviceDefaultName
+        // the user's to edit. One being added back already has its name on the entry that opening it
+        // just wrote — a name restored from a backup or kept through its removal — so take it now
+        // rather than showing the device's own for as long as the wallet takes to reach the list.
+        let storedName = service.storedName(forWallet: walletId)
+        deviceName = storedName ?? deviceDefaultName
+        labelInitialized = storedName != nil
+        labelInput = storedName ?? deviceDefaultName
         phase = .passphrasePaired
     }
 
@@ -395,17 +400,26 @@ struct TrezorHwConnectService: HwConnectServicing {
         storedEntries: [TrezorKnownDevice],
         deviceDefaultName: String
     ) -> String {
+        storedName(walletId: walletId, storedEntries: storedEntries) ?? deviceDefaultName
+    }
+
+    /// The Bitkit-side name stored for `walletId`, or nil when it has none of its own.
+    static func storedName(walletId: String?, storedEntries: [TrezorKnownDevice]) -> String? {
         guard let walletId,
               let label = storedEntries.first(where: { $0.resolvedWalletId == walletId })?.customLabel,
               !label.isEmpty
         else {
-            return deviceDefaultName
+            return nil
         }
         return label
     }
 
     func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String {
         try await hwWalletManager.connectWithPassphrase(deviceId: deviceId, passphrase: passphrase)
+    }
+
+    func storedName(forWallet walletId: String) -> String? {
+        Self.storedName(walletId: walletId, storedEntries: TrezorKnownDeviceStorage.loadAll())
     }
 
     func setWalletLabel(walletId: String, label: String) {

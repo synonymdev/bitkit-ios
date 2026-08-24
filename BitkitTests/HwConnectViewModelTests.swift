@@ -226,6 +226,56 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertEqual(sut.labelInput, "Trezor Safe 3")
     }
 
+    /// A hidden wallet being added back already carries the name kept through its removal, so it must
+    /// not sit on the device's own name for as long as the wallet takes to reach the published list.
+    func testReaddedPassphraseWalletShowsItsStoredNameImmediately() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(
+            deviceId: "dev1",
+            walletId: standardWalletId,
+            name: "Trezor Safe 3",
+            deviceDefaultName: "Trezor Safe 3"
+        ))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+
+        service.passphraseResult = .success(hiddenWalletId)
+        service.storedNames[hiddenWalletId] = "Pass B"
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("correct horse")
+        sut.onPassphraseSubmit()
+        await waitUntil { self.sut.phase == .passphrasePaired }
+
+        XCTAssertEqual(sut.deviceName, "Pass B")
+        XCTAssertEqual(sut.labelInput, "Pass B")
+    }
+
+    /// The stored name is the prefill, so a wallet emission landing afterwards must not reset the
+    /// field the user may already be editing.
+    func testAReaddedPassphraseWalletsNameSurvivesALaterWalletEmission() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(
+            deviceId: "dev1",
+            walletId: standardWalletId,
+            name: "Trezor Safe 3",
+            deviceDefaultName: "Trezor Safe 3"
+        ))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+
+        service.passphraseResult = .success(hiddenWalletId)
+        service.storedNames[hiddenWalletId] = "Pass B"
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("correct horse")
+        sut.onPassphraseSubmit()
+        await waitUntil { self.sut.phase == .passphrasePaired }
+
+        sut.onWalletsUpdated([makeWallet(id: hiddenWalletId, name: "Pass B", balance: 42)])
+
+        XCTAssertEqual(sut.labelInput, "Pass B")
+        XCTAssertEqual(sut.balanceSats, 42)
+    }
+
     func testPassphraseFailureReportsInlineAndKeepsNoPassphrase() async {
         await givenDevicePaired()
         service.passphraseResult = .failure(HwPassphraseError.alreadyAdded)
@@ -473,6 +523,7 @@ private final class FakeHwConnectService: HwConnectServicing {
     var scanError: Error?
     var connectResult: Result<HwConnectResult, Error> = .failure(TestError.stub)
     var passphraseResult: Result<String, Error> = .failure(TestError.stub)
+    var storedNames: [String: String] = [:]
 
     private(set) var scanCount = 0
     private(set) var connectedDeviceIds: [String] = []
@@ -494,6 +545,10 @@ private final class FakeHwConnectService: HwConnectServicing {
     func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String {
         passphraseCalls.append((deviceId, passphrase))
         return try passphraseResult.get()
+    }
+
+    func storedName(forWallet walletId: String) -> String? {
+        storedNames[walletId]
     }
 
     func setWalletLabel(walletId: String, label: String) {
