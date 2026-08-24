@@ -363,6 +363,65 @@ final class HwConnectViewModelTests: XCTestCase {
         await waitUntil { self.sut.phase == .paired }
     }
 
+    // MARK: - Paired step name
+
+    /// Re-adding a removed wallet is the case the published wallet list cannot answer: the wallet is
+    /// not in it yet, but the entry pairing just wrote already carries the name kept for it.
+    func testPairedNameUsesTheStoredLabelOfAWalletMissingFromTheWalletList() {
+        let name = TrezorHwConnectService.pairedName(
+            walletId: standardWalletId,
+            storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: "No Pass")],
+            deviceDefaultName: "Trezor T"
+        )
+
+        XCTAssertEqual(name, "No Pass")
+    }
+
+    func testPairedNameFallsBackToTheDeviceNameWhenTheWalletWasNeverNamed() {
+        let name = TrezorHwConnectService.pairedName(
+            walletId: standardWalletId,
+            storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: nil)],
+            deviceDefaultName: "Trezor T"
+        )
+
+        XCTAssertEqual(name, "Trezor T")
+    }
+
+    /// A brand-new passphrase wallet has no entry of its own yet, and must not borrow the name of the
+    /// identity that happened to be open before it.
+    func testPairedNameIgnoresAnotherIdentitysLabel() {
+        let name = TrezorHwConnectService.pairedName(
+            walletId: hiddenWalletId,
+            storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: "No Pass")],
+            deviceDefaultName: "Trezor T"
+        )
+
+        XCTAssertEqual(name, "Trezor T")
+    }
+
+    func testPairedNameFallsBackToTheDeviceNameBeforeTheIdentityResolves() {
+        let name = TrezorHwConnectService.pairedName(
+            walletId: nil,
+            storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: "No Pass")],
+            deviceDefaultName: "Trezor T"
+        )
+
+        XCTAssertEqual(name, "Trezor T")
+    }
+
+    private func makeStoredEntry(walletId: String, customLabel: String?) -> TrezorKnownDevice {
+        TrezorKnownDevice(
+            id: "dev1",
+            name: "Trezor",
+            path: "ble://dev1",
+            transportType: "bluetooth",
+            lastConnectedAt: Date(timeIntervalSince1970: 0),
+            xpubs: ["nativeSegwit": "z\(walletId)"],
+            customLabel: customLabel,
+            walletId: walletId
+        )
+    }
+
     private func makeDevice(id: String, model: String?) -> TrezorDeviceInfo {
         TrezorDeviceInfo(
             id: id,

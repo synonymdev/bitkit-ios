@@ -371,14 +371,37 @@ struct TrezorHwConnectService: HwConnectServicing {
             label: connected.label ?? trezorManager.deviceFeatures?.label,
             model: connected.model ?? trezorManager.deviceFeatures?.model
         )
-        // Show the name it was already saved under, so re-pairing doesn't appear to rename it.
-        let stored = walletId.flatMap { id in hwWalletManager.wallets.first { $0.id == id } }
         return HwConnectResult(
             deviceId: connected.id,
             walletId: walletId,
-            name: stored?.name ?? deviceDefaultName,
+            name: Self.pairedName(
+                walletId: walletId,
+                storedEntries: TrezorKnownDeviceStorage.loadAll(),
+                deviceDefaultName: deviceDefaultName
+            ),
             deviceDefaultName: deviceDefaultName
         )
+    }
+
+    /// The name to show the paired step under, so re-pairing doesn't appear to rename the wallet.
+    ///
+    /// Read from the store rather than from the published wallet list: connecting has just written
+    /// this identity's entry, and the tiles only catch up on the next device push. A wallet that was
+    /// removed and is now being re-added is not in that list at all, so its name — restored from a
+    /// backup or kept through the removal, and adopted onto the entry a moment ago — would fall back
+    /// to the device's own. Finishing the step then persists that fallback over it.
+    static func pairedName(
+        walletId: String?,
+        storedEntries: [TrezorKnownDevice],
+        deviceDefaultName: String
+    ) -> String {
+        guard let walletId,
+              let label = storedEntries.first(where: { $0.resolvedWalletId == walletId })?.customLabel,
+              !label.isEmpty
+        else {
+            return deviceDefaultName
+        }
+        return label
     }
 
     func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String {
