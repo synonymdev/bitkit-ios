@@ -240,7 +240,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.requestsForPresentation(), [request])
     }
 
-    func testDeferredRequestStopsAfterConfiguredRetries() async throws {
+    func testAutomaticDeferredRequestFallsBackToLowFrequencyRetries() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let clock = PaymentRequestTestClock(now)
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
@@ -256,9 +256,36 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
 
         manager.deferPresentation(request)
-        clock.advance(by: 2)
+        clock.advance(by: 119)
 
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+
+        clock.advance(by: 1)
+
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+        XCTAssertEqual(manager.pendingRequests, [request])
+    }
+
+    func testRequestedDeferredRequestStopsAfterConfiguredRetries() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+
+        for _ in 0 ..< 14 {
+            manager.deferPresentation(request)
+            XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+            clock.advance(by: 2)
+            XCTAssertEqual(manager.requestsForPresentation(), [request])
+        }
+
+        manager.deferPresentation(request)
+
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        XCTAssertNil(manager.requestedPresentationId)
         XCTAssertEqual(manager.pendingRequests, [request])
     }
 

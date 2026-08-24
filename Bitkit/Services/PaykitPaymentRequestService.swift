@@ -570,6 +570,7 @@ struct PaykitPaymentRequestPresentationStore: PaykitPaymentRequestPresentationSt
 @MainActor
 final class PaykitPaymentRequestManager {
     private static let presentationRetryDelays = Array(repeating: TimeInterval(2), count: 14)
+    private static let automaticPresentationRetryDelay = TimeInterval(120)
 
     private(set) var pendingRequests: [PaykitPaymentRequest] = []
     private(set) var historyRequests: [PaykitPaymentRequest] = []
@@ -815,7 +816,6 @@ final class PaykitPaymentRequestManager {
         return pendingRequests.filter {
             !presentedRequestIds.contains($0.id) &&
                 !processingRequestIds.contains($0.id) &&
-                presentationRetryAttempts[$0.id, default: 0] <= Self.presentationRetryDelays.count &&
                 (presentationRetryDates[$0.id].map { $0 <= date } ?? true)
         }
     }
@@ -864,17 +864,21 @@ final class PaykitPaymentRequestManager {
             presentedRequestIds.remove(request.id)
         }
         let attempt = presentationRetryAttempts[request.id, default: 0]
-        presentationRetryAttempts[request.id] = attempt + 1
-        guard attempt < Self.presentationRetryDelays.count else {
+        let delay: TimeInterval
+        if attempt < Self.presentationRetryDelays.count {
+            presentationRetryAttempts[request.id] = attempt + 1
+            delay = Self.presentationRetryDelays[attempt]
+        } else if isRequestedPresentation {
             presentationRetryDates.removeValue(forKey: request.id)
-            if isRequestedPresentation {
-                requestedPresentationId = nil
-            }
-            logWarning("Stopped retrying incoming Paykit payment request after \(attempt + 1) presentation attempts")
+            requestedPresentationId = nil
+            presentedRequestIds.insert(request.id)
+            persistPresentedRequestIds()
+            logWarning("Stopped retrying requested incoming Paykit payment request after \(attempt + 1) presentation attempts")
             schedulePresentationRetry()
             return
+        } else {
+            delay = Self.automaticPresentationRetryDelay
         }
-        let delay = Self.presentationRetryDelays[attempt]
         presentationRetryDates[request.id] = now().addingTimeInterval(delay)
         schedulePresentationRetry()
     }
