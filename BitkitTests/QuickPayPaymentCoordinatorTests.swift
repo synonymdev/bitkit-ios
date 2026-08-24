@@ -418,16 +418,26 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         await fulfillment(of: [sendStarted], timeout: 2)
         coordinator.detach()
 
+        var liveSendShouldNotEmit = true
         coordinator.pay(
             app: appWithInvoice,
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(),
-            presentation: presentation(onRoute: { _ in XCTFail("Live send should not emit yet") }, onConfirm: { didConfirm = true })
+            presentation: presentation(
+                onRoute: { _ in
+                    if liveSendShouldNotEmit {
+                        XCTFail("Live send should not emit yet")
+                    }
+                },
+                onConfirm: { didConfirm = true }
+            )
         )
         try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(sendCount, 1)
         XCTAssertFalse(didConfirm)
+        liveSendShouldNotEmit = false
+        coordinator.detach()
         sendCont?.resume(returning: invoiceHash)
         XCTAssertNotNil(store.record(matching: invoiceHash))
     }
@@ -466,6 +476,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         )
         try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(sendCount, 1)
+        coordinator.detach()
         sendCont?.resume(returning: invoiceHash)
     }
 
