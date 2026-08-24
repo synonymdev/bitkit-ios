@@ -201,44 +201,6 @@ final class QuickPaySpendStoreTests: XCTestCase {
         XCTAssertNotNil(sut.record(matching: "inv"))
     }
 
-    func testAppCacheDataDecodesLegacySpendFields() throws {
-        let json = """
-        {
-          "hasSeenContactsIntro": false,
-          "hasSeenProfileIntro": false,
-          "hasSeenNotificationsIntro": false,
-          "hasSeenQuickpayIntro": false,
-          "hasSeenShopIntro": false,
-          "hasSeenTransferIntro": false,
-          "hasSeenTransferToSpendingIntro": false,
-          "hasSeenTransferToSavingsIntro": false,
-          "hasSeenWidgetsIntro": false,
-          "appUpdateIgnoreTimestamp": 0,
-          "backupIgnoreTimestamp": 0,
-          "highBalanceIgnoreCount": 0,
-          "highBalanceIgnoreTimestamp": 0,
-          "dismissedSuggestions": [],
-          "lastUsedTags": [],
-          "quickPaySpendDayKey": "2026-08-15",
-          "quickPaySpentCentsToday": 500,
-          "quickPayReservations": {
-            "abc": { "amountCents": 500, "dayKey": "2026-08-15" }
-          }
-        }
-        """.data(using: .utf8)!
-
-        let cache = try JSONDecoder().decode(AppCacheData.self, from: json)
-        sut.restoreFromBackup(
-            ledger: cache.quickPayLedger,
-            dayKey: cache.quickPaySpendDayKey ?? "",
-            spentCents: cache.quickPaySpentCentsToday ?? 0,
-            reservations: cache.quickPayReservations ?? [:]
-        )
-
-        XCTAssertEqual(sut.spentCentsToday(), 500)
-        XCTAssertNotNil(sut.record(matching: "abc"))
-    }
-
     func testAppCacheDataRoundTripsQuickPayLedger() throws {
         XCTAssertNotNil(try sut.reserveBound(paymentHash: "abc", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
         sut.markSubmitted(invoicePaymentHash: "abc", paymentId: "pid")

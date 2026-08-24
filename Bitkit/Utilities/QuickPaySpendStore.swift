@@ -1,11 +1,6 @@
 import Foundation
 import LDKNode
 
-struct QuickPaySpendReservation: Codable, Equatable {
-    let amountCents: Int64
-    let dayKey: String
-}
-
 struct QuickPayConversionError: Error {}
 
 struct QuickPaySpendRates {
@@ -374,31 +369,10 @@ final class QuickPaySpendStore: @unchecked Sendable {
         return lockedLedger()
     }
 
-    func restoreFromBackup(
-        ledger: QuickPayLedger? = nil,
-        dayKey: String = "",
-        spentCents: Int64 = 0,
-        reservations: [String: QuickPaySpendReservation] = [:]
-    ) {
+    func restoreFromBackup(ledger: QuickPayLedger?) {
         lock.lock()
         defer { lock.unlock() }
-        if let ledger {
-            lockedWriteLedger(ledger)
-            return
-        }
-        var records: [QuickPayLedgerRecord] = []
-        for (hash, reservation) in reservations {
-            records.append(
-                QuickPayLedgerRecord(
-                    amountCents: reservation.amountCents,
-                    dayKey: reservation.dayKey,
-                    invoicePaymentHash: hash,
-                    paymentId: nil,
-                    phase: .submitted
-                )
-            )
-        }
-        lockedWriteLedger(QuickPayLedger(dayKey: dayKey, spentCents: max(spentCents, 0), records: records))
+        lockedWriteLedger(ledger ?? QuickPayLedger(dayKey: "", spentCents: 0, records: []))
     }
 
     private func lockedSpend(forDayKey dayKey: String) -> (dayKey: String, spentCents: Int64) {

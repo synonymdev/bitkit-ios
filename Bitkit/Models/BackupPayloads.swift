@@ -49,9 +49,6 @@ struct AppCacheData: Codable {
     let highBalanceIgnoreTimestamp: TimeInterval
     let dismissedSuggestions: [String]
     let lastUsedTags: [String]
-    let quickPaySpendDayKey: String?
-    let quickPaySpentCentsToday: Int64?
-    let quickPayReservations: [String: QuickPaySpendReservation]?
     let quickPayLedger: QuickPayLedger?
 
     init(
@@ -71,9 +68,6 @@ struct AppCacheData: Codable {
         highBalanceIgnoreTimestamp: TimeInterval,
         dismissedSuggestions: [String],
         lastUsedTags: [String],
-        quickPaySpendDayKey: String? = nil,
-        quickPaySpentCentsToday: Int64? = nil,
-        quickPayReservations: [String: QuickPaySpendReservation]? = nil,
         quickPayLedger: QuickPayLedger? = nil
     ) {
         self.hasSeenContactsIntro = hasSeenContactsIntro
@@ -92,9 +86,6 @@ struct AppCacheData: Codable {
         self.highBalanceIgnoreTimestamp = highBalanceIgnoreTimestamp
         self.dismissedSuggestions = dismissedSuggestions
         self.lastUsedTags = lastUsedTags
-        self.quickPaySpendDayKey = quickPaySpendDayKey
-        self.quickPaySpentCentsToday = quickPaySpentCentsToday
-        self.quickPayReservations = quickPayReservations
         self.quickPayLedger = quickPayLedger
     }
 
@@ -116,9 +107,6 @@ struct AppCacheData: Codable {
         highBalanceIgnoreTimestamp = try c.decode(TimeInterval.self, forKey: .highBalanceIgnoreTimestamp)
         dismissedSuggestions = try c.decode([String].self, forKey: .dismissedSuggestions)
         lastUsedTags = try c.decode([String].self, forKey: .lastUsedTags)
-        quickPaySpendDayKey = try c.decodeIfPresent(String.self, forKey: .quickPaySpendDayKey)
-        quickPaySpentCentsToday = try c.decodeIfPresent(Int64.self, forKey: .quickPaySpentCentsToday)
-        quickPayReservations = try c.decodeIfPresent([String: QuickPaySpendReservation].self, forKey: .quickPayReservations)
         quickPayLedger = try c.decodeIfPresent(QuickPayLedger.self, forKey: .quickPayLedger)
     }
 
@@ -128,7 +116,7 @@ struct AppCacheData: Codable {
         case hasSeenWidgetsIntro, hasDismissedWidgetsOnboardingHint
         case appUpdateIgnoreTimestamp, backupIgnoreTimestamp, highBalanceIgnoreCount, highBalanceIgnoreTimestamp
         case dismissedSuggestions, lastUsedTags
-        case quickPaySpendDayKey, quickPaySpentCentsToday, quickPayReservations, quickPayLedger
+        case quickPayLedger
     }
 }
 

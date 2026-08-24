@@ -907,11 +907,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.highBalanceIgnoreTimestamp, forKey: "highBalanceIgnoreTimestamp")
         defaults.set(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
         defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
-        QuickPaySpendStore.shared.restoreFromBackup(
-            ledger: cache.quickPayLedger,
-            dayKey: cache.quickPaySpendDayKey ?? "",
-            spentCents: cache.quickPaySpentCentsToday ?? 0,
-            reservations: cache.quickPayReservations ?? [:]
-        )
+        QuickPaySpendStore.shared.restoreFromBackup(ledger: cache.quickPayLedger)
     }
 }
