@@ -28,17 +28,67 @@ struct QuickPaySpendRates {
     }
 }
 
+enum QuickPayRecordPhase: String, Codable {
+    case submitting
+    case submitted
+}
+
 struct QuickPayLedgerRecord: Codable, Equatable {
+    var id: String
     let amountCents: Int64
     let dayKey: String
     let invoicePaymentHash: String
     var paymentId: String?
+    var phase: QuickPayRecordPhase
+
+    init(
+        id: String = UUID().uuidString,
+        amountCents: Int64,
+        dayKey: String,
+        invoicePaymentHash: String,
+        paymentId: String? = nil,
+        phase: QuickPayRecordPhase = .submitting
+    ) {
+        self.id = id
+        self.amountCents = amountCents
+        self.dayKey = dayKey
+        self.invoicePaymentHash = invoicePaymentHash
+        self.paymentId = paymentId
+        self.phase = phase
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        amountCents = try c.decode(Int64.self, forKey: .amountCents)
+        dayKey = try c.decode(String.self, forKey: .dayKey)
+        invoicePaymentHash = try c.decode(String.self, forKey: .invoicePaymentHash)
+        paymentId = try c.decodeIfPresent(String.self, forKey: .paymentId)
+        phase = try c.decodeIfPresent(QuickPayRecordPhase.self, forKey: .phase)
+            ?? (paymentId == nil ? .submitting : .submitted)
+    }
 }
 
 struct QuickPayLedger: Codable, Equatable {
+    var version: Int
     var dayKey: String
     var spentCents: Int64
     var records: [QuickPayLedgerRecord]
+
+    init(version: Int = 1, dayKey: String, spentCents: Int64, records: [QuickPayLedgerRecord]) {
+        self.version = version
+        self.dayKey = dayKey
+        self.spentCents = spentCents
+        self.records = records
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        dayKey = try c.decode(String.self, forKey: .dayKey)
+        spentCents = try c.decode(Int64.self, forKey: .spentCents)
+        records = try c.decodeIfPresent([QuickPayLedgerRecord].self, forKey: .records) ?? []
+    }
 }
 
 struct QuickPayCompletionOutcome: Equatable {
@@ -225,6 +275,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
         var ledger = lockedLedger()
         guard let index = lockedRecordIndex(in: ledger, matching: invoicePaymentHash) else { return }
         ledger.records[index].paymentId = paymentId
+        ledger.records[index].phase = .submitted
         lockedWriteLedger(ledger)
     }
 
@@ -317,31 +368,24 @@ final class QuickPaySpendStore: @unchecked Sendable {
         }
     }
 
-    func backupSnapshot() -> (
-        dayKey: String,
-        spentCents: Int64,
-        reservations: [String: QuickPaySpendReservation]
-    ) {
+    func backupSnapshot() -> QuickPayLedger {
         lock.lock()
         defer { lock.unlock() }
-        let ledger = lockedLedger()
-        var reservations: [String: QuickPaySpendReservation] = [:]
-        for record in ledger.records {
-            reservations[record.invoicePaymentHash] = QuickPaySpendReservation(
-                amountCents: record.amountCents,
-                dayKey: record.dayKey
-            )
-        }
-        return (ledger.dayKey, ledger.spentCents, reservations)
+        return lockedLedger()
     }
 
     func restoreFromBackup(
-        dayKey: String,
-        spentCents: Int64,
-        reservations: [String: QuickPaySpendReservation]
+        ledger: QuickPayLedger? = nil,
+        dayKey: String = "",
+        spentCents: Int64 = 0,
+        reservations: [String: QuickPaySpendReservation] = [:]
     ) {
         lock.lock()
         defer { lock.unlock() }
+        if let ledger {
+            lockedWriteLedger(ledger)
+            return
+        }
         var records: [QuickPayLedgerRecord] = []
         for (hash, reservation) in reservations {
             records.append(
@@ -349,7 +393,8 @@ final class QuickPaySpendStore: @unchecked Sendable {
                     amountCents: reservation.amountCents,
                     dayKey: reservation.dayKey,
                     invoicePaymentHash: hash,
-                    paymentId: nil
+                    paymentId: nil,
+                    phase: .submitted
                 )
             )
         }

@@ -229,6 +229,7 @@ final class QuickPaySpendStoreTests: XCTestCase {
 
         let cache = try JSONDecoder().decode(AppCacheData.self, from: json)
         sut.restoreFromBackup(
+            ledger: cache.quickPayLedger,
             dayKey: cache.quickPaySpendDayKey ?? "",
             spentCents: cache.quickPaySpentCentsToday ?? 0,
             reservations: cache.quickPayReservations ?? [:]
@@ -236,6 +237,41 @@ final class QuickPaySpendStoreTests: XCTestCase {
 
         XCTAssertEqual(sut.spentCentsToday(), 500)
         XCTAssertNotNil(sut.record(matching: "abc"))
+    }
+
+    func testAppCacheDataRoundTripsQuickPayLedger() throws {
+        XCTAssertNotNil(try sut.reserveBound(paymentHash: "abc", amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        sut.markSubmitted(invoicePaymentHash: "abc", paymentId: "pid")
+
+        let encoded = try JSONEncoder().encode(
+            AppCacheData(
+                hasSeenContactsIntro: false,
+                hasSeenProfileIntro: false,
+                hasSeenNotificationsIntro: false,
+                hasSeenQuickpayIntro: false,
+                hasSeenShopIntro: false,
+                hasSeenTransferIntro: false,
+                hasSeenTransferToSpendingIntro: false,
+                hasSeenTransferToSavingsIntro: false,
+                hasSeenWidgetsIntro: false,
+                hasDismissedWidgetsOnboardingHint: false,
+                appUpdateIgnoreTimestamp: 0,
+                backupIgnoreTimestamp: 0,
+                highBalanceIgnoreCount: 0,
+                highBalanceIgnoreTimestamp: 0,
+                dismissedSuggestions: [],
+                lastUsedTags: [],
+                quickPayLedger: sut.backupSnapshot()
+            )
+        )
+        let cache = try JSONDecoder().decode(AppCacheData.self, from: encoded)
+        let restored = try QuickPaySpendStore(defaults: XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)), dayKey: { "2026-08-15" })
+        restored.restoreFromBackup(ledger: cache.quickPayLedger)
+
+        XCTAssertEqual(cache.quickPayLedger?.version, 1)
+        XCTAssertEqual(restored.spentCentsToday(), 500)
+        XCTAssertEqual(restored.record(matching: "abc")?.paymentId, "pid")
+        XCTAssertEqual(restored.record(matching: "abc")?.phase, .submitted)
     }
 
     func testCanApplyIsTrueUnderThresholdAndCap() {
