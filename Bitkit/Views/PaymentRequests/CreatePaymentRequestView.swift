@@ -236,6 +236,7 @@ struct PaymentRequestRecipientView: View {
         VStack(spacing: 0) {
             SheetHeader(
                 title: t("wallet__payment_request_choose_recipient"),
+                showBackButton: !paymentRequests.isCreatingRequest,
                 action: AnyView(
                     Button(action: onEditExpiration) {
                         Image("timer")
