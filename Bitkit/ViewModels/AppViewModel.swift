@@ -1064,7 +1064,8 @@ extension AppViewModel {
             let outcome = QuickPayPaymentCoordinator.shared.complete(
                 paymentId: paymentId,
                 paymentHash: paymentHash,
-                success: true
+                success: true,
+                feePaidMsat: feePaidMsat
             )
             let hash = outcome.invoicePaymentHash ?? paymentHash
             let awaitingSheet = pendingPaymentHashes.contains(hash)

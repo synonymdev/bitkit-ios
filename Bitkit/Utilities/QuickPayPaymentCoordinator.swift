@@ -20,6 +20,8 @@ final class QuickPayPaymentCoordinator {
         var dispatched = false
         var emitted = false
         var runActive = false
+        var terminalSuccess: Bool?
+        var feePaidSats: UInt64?
 
         init(invoiceHash: String, bolt11: String, presentation: Presentation?) {
             self.invoiceHash = invoiceHash
@@ -112,7 +114,12 @@ final class QuickPayPaymentCoordinator {
     }
 
     @discardableResult
-    func complete(paymentId: String?, paymentHash: String?, success: Bool) -> QuickPayCompletionOutcome {
+    func complete(
+        paymentId: String?,
+        paymentHash: String?,
+        success: Bool,
+        feePaidMsat: UInt64? = nil
+    ) -> QuickPayCompletionOutcome {
         let keys = [paymentId, paymentHash].compactMap { $0 }.filter { !$0.isEmpty }
         guard !keys.isEmpty else { return .none }
         guard let record = keys.compactMap({ store.record(matching: $0) }).first else {
@@ -130,6 +137,10 @@ final class QuickPayPaymentCoordinator {
         }
         let outcome = store.signalCompletion(paymentId: paymentId, paymentHash: paymentHash, success: success)
         if let op {
+            op.terminalSuccess = success
+            if success {
+                op.feePaidSats = (feePaidMsat ?? 0) / 1000
+            }
             removeOp(op)
         }
         return outcome
@@ -279,7 +290,17 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        if store.record(matching: invoiceHash) == nil {
+        if op.terminalSuccess == false {
+            emitFailure(
+                op,
+                error: AppError(message: t("wallet__payment_failed_description"), debugMessage: "QuickPay payment failed"),
+                routingCacheResetAttempted: (op.presentation ?? presentation).routingCacheResetAttempted
+            )
+            return
+        }
+
+        if store.record(matching: invoiceHash) == nil || op.terminalSuccess == true {
+            applyFee(op, wallet: wallet)
             emitSuccess(op)
             return
         }
@@ -289,13 +310,8 @@ final class QuickPayPaymentCoordinator {
             let settled = try await wallet.waitForLightningPayment(hash: invoiceHash) { _ in
                 self.emitPending(op)
             }
+            applyFee(op, wallet: wallet, feePaidSats: settled.feePaidSats)
             emitSuccess(op, paymentId: String(settled.paymentHash))
-            if let amountSats = wallet.sendAmountSats {
-                wallet.sendAmountSats = QuickPayLimits.amountWithFeeSats(
-                    amountSats: amountSats,
-                    feePaidSats: settled.feePaidSats
-                )
-            }
         } catch is PaymentTimeoutError {
             emitPending(op)
         } catch {
@@ -448,6 +464,12 @@ final class QuickPayPaymentCoordinator {
     private var uniqueOps: [InFlightOp] {
         var seen = Set<ObjectIdentifier>()
         return operations.values.filter { seen.insert(ObjectIdentifier($0)).inserted }
+    }
+
+    private func applyFee(_ op: InFlightOp, wallet: WalletViewModel, feePaidSats: UInt64? = nil) {
+        let fee = feePaidSats ?? op.feePaidSats
+        guard let fee, let amountSats = wallet.sendAmountSats else { return }
+        wallet.sendAmountSats = QuickPayLimits.amountWithFeeSats(amountSats: amountSats, feePaidSats: fee)
     }
 
     private func emitPending(_ op: InFlightOp) {

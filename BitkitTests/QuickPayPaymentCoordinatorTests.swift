@@ -109,6 +109,55 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertNil(store.record(matching: invoiceHash))
     }
 
+    func testCompleteSuccessAppliesRoutingFee() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let wallet = WalletViewModel()
+        let holder = CoordinatorHolder()
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                _ = holder.coordinator?.complete(
+                    paymentId: nil,
+                    paymentHash: invoiceHash,
+                    success: true,
+                    feePaidMsat: 12000
+                )
+                return invoiceHash
+            },
+            listRows: { [] }
+        )
+        holder.coordinator = coordinator
+
+        let route = await firstRoute(from: coordinator, wallet: wallet)
+        guard case .success = route else {
+            return XCTFail("Expected success, got \(String(describing: route))")
+        }
+        XCTAssertEqual(wallet.sendAmountSats, 1012)
+    }
+
+    func testCompleteFailureAfterSendGoesToFailure() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let holder = CoordinatorHolder()
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                _ = holder.coordinator?.complete(
+                    paymentId: nil,
+                    paymentHash: invoiceHash,
+                    success: false
+                )
+                return invoiceHash
+            },
+            listRows: { [] }
+        )
+        holder.coordinator = coordinator
+
+        let route = await firstRoute(from: coordinator)
+        guard case .failure = route else {
+            return XCTFail("Expected failure, got \(String(describing: route))")
+        }
+    }
+
     func testAmbiguousDispatchWithOpenRecordGoesPending() async throws {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
@@ -624,12 +673,12 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         return await firstRoute(from: coordinator)
     }
 
-    private func firstRoute(from coordinator: QuickPayPaymentCoordinator) async -> SendRoute? {
+    private func firstRoute(from coordinator: QuickPayPaymentCoordinator, wallet: WalletViewModel? = nil) async -> SendRoute? {
         var route: SendRoute?
         let exp = expectation(description: "route")
         coordinator.pay(
             app: appWithInvoice,
-            wallet: WalletViewModel(),
+            wallet: wallet ?? WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(),
             presentation: presentation(
@@ -690,6 +739,10 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         get throws {
             try String(Bolt11Invoice.fromStr(invoiceStr: regtestBolt11).paymentHash())
         }
+    }
+
+    private final class CoordinatorHolder {
+        var coordinator: QuickPayPaymentCoordinator?
     }
 
     private static let regtestBolt11 =
