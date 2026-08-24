@@ -93,7 +93,6 @@ actor PaykitPaymentProofService {
     private let lightningPaymentLookup: any PaykitLightningPaymentProofLookingUp
     private let logInfo: @Sendable (String) -> Void
     private let logWarning: @Sendable (String) -> Void
-    private var proofs: [PendingPaykitPaymentProof]?
 
     init(
         sdk: any PaykitPaymentProofSdkHandling = PaykitSdkService.shared,
@@ -130,7 +129,10 @@ actor PaykitPaymentProofService {
 
         var pendingProofs = try await loadProofs()
         pendingProofs.removeAll {
-            PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == request.id
+            PubkyPublicKeyFormat.matches($0.identity, identity) &&
+                $0.requestId == request.id &&
+                $0.paymentIdentifier == nil &&
+                $0.proofData == nil
         }
         pendingProofs.append(PendingPaykitPaymentProof(
             identity: identity,
@@ -149,7 +151,12 @@ actor PaykitPaymentProofService {
         }
 
         var pendingProofs = try await loadProofs()
-        guard let index = pendingProofs.firstIndex(where: { $0.requestId == request.id && $0.kind == .lightning }) else {
+        guard let index = pendingProofs.lastIndex(where: {
+            $0.requestId == request.id &&
+                $0.kind == .lightning &&
+                $0.paymentIdentifier == nil &&
+                $0.proofData == nil
+        }) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         pendingProofs[index].paymentIdentifier = paymentHash.lowercased()
@@ -176,12 +183,10 @@ actor PaykitPaymentProofService {
             for index in indexes {
                 pendingProofs[index].proofData = preimage.lowercased()
             }
-            try await persist(pendingProofs)
-            for index in indexes.reversed() {
-                await submit(pendingProofs[index])
-            }
+            let completedProofs = indexes.map { pendingProofs[$0] }
+            await persistAndSubmit(completedProofs, allProofs: pendingProofs)
         } catch {
-            logWarning("Failed to persist a completed Paykit Lightning payment proof: \(error)")
+            logWarning("Failed to complete a Paykit Lightning payment proof: \(error)")
         }
     }
 
@@ -193,13 +198,17 @@ actor PaykitPaymentProofService {
 
         do {
             var pendingProofs = try await loadProofs()
-            guard let index = pendingProofs.firstIndex(where: { $0.requestId == request.id && $0.kind == .onchain }) else { return }
+            guard let index = pendingProofs.lastIndex(where: {
+                $0.requestId == request.id &&
+                    $0.kind == .onchain &&
+                    $0.paymentIdentifier == nil &&
+                    $0.proofData == nil
+            }) else { return }
             pendingProofs[index].paymentIdentifier = txid.lowercased()
             pendingProofs[index].proofData = txid.lowercased()
-            try await persist(pendingProofs)
-            await submit(pendingProofs[index])
+            await persistAndSubmit([pendingProofs[index]], allProofs: pendingProofs)
         } catch {
-            logWarning("Failed to persist a completed Paykit on-chain payment proof: \(error)")
+            logWarning("Failed to complete a Paykit on-chain payment proof: \(error)")
         }
     }
 
@@ -209,8 +218,12 @@ actor PaykitPaymentProofService {
         }
     }
 
-    func cancel(_ request: PaykitPaymentRequest) async {
-        await removeProofs { $0.requestId == request.id }
+    func cancelPreparation(_ request: PaykitPaymentRequest) async {
+        await removeProofs {
+            $0.requestId == request.id &&
+                $0.paymentIdentifier == nil &&
+                $0.proofData == nil
+        }
     }
 
     func reconcile() async {
@@ -260,51 +273,62 @@ actor PaykitPaymentProofService {
             }) else { return }
 
             let proofText = try Self.proofText(kind: pendingProof.kind, data: proofData)
-            if request.paymentProofs.contains(where: {
+            let isAlreadyQueued = request.paymentProofs.contains(where: {
                 $0.billingPeriod == nil &&
                     $0.paymentEndpointIdentifier == pendingProof.paymentEndpointIdentifier &&
                     Self.proofValues($0.proof.exportText()) == Self.proofValues(proofText)
-            }) {
-                await removeProof(pendingProof)
-                return
-            }
+            })
 
-            _ = try await sdk.submitPaymentProof(
-                counterparty: pendingProof.requestId.counterparty,
-                counterpartyReceiverPath: pendingProof.requestId.counterpartyReceiverPath,
-                paymentRequestId: pendingProof.requestId.paymentRequestId,
-                proof: Paykit.PaymentProofSubmission(
-                    billingPeriod: nil,
-                    paymentEndpointIdentifier: pendingProof.paymentEndpointIdentifier,
-                    proof: Paykit.PrivateJsonObject(text: proofText)
+            if !isAlreadyQueued {
+                _ = try await sdk.submitPaymentProof(
+                    counterparty: pendingProof.requestId.counterparty,
+                    counterpartyReceiverPath: pendingProof.requestId.counterpartyReceiverPath,
+                    paymentRequestId: pendingProof.requestId.paymentRequestId,
+                    proof: Paykit.PaymentProofSubmission(
+                        billingPeriod: nil,
+                        paymentEndpointIdentifier: pendingProof.paymentEndpointIdentifier,
+                        proof: Paykit.PrivateJsonObject(text: proofText)
+                    )
                 )
-            )
-            await removeProof(pendingProof)
-            logInfo("Queued a Paykit payment proof for private delivery")
-            do {
-                _ = try await sdk.processPendingPrivateMessages()
-            } catch {
-                logWarning("Paykit payment proof remains queued for private delivery: \(error)")
+                logInfo("Queued a Paykit payment proof for private delivery")
+                do {
+                    _ = try await sdk.processPendingPrivateMessages()
+                } catch {
+                    logWarning("Paykit payment proof remains queued for private delivery: \(error)")
+                }
             }
+            await removeRequestProofs(pendingProof)
         } catch {
             logWarning("Failed to queue a Paykit payment proof: \(error)")
         }
     }
 
     private func loadProofs() async throws -> [PendingPaykitPaymentProof] {
-        if let proofs { return proofs }
-        let storedProofs = try await store.load()
-        proofs = storedProofs
-        return storedProofs
+        try await store.load()
     }
 
     private func persist(_ proofs: [PendingPaykitPaymentProof]) async throws {
         try await store.save(proofs)
-        self.proofs = proofs
     }
 
-    private func removeProof(_ proof: PendingPaykitPaymentProof) async {
-        await removeProofs { $0 == proof }
+    private func persistAndSubmit(
+        _ completedProofs: [PendingPaykitPaymentProof],
+        allProofs: [PendingPaykitPaymentProof]
+    ) async {
+        do {
+            try await persist(allProofs)
+        } catch {
+            logWarning("Failed to persist a completed Paykit payment proof; attempting immediate delivery: \(error)")
+        }
+        for proof in completedProofs {
+            await submit(proof)
+        }
+    }
+
+    private func removeRequestProofs(_ proof: PendingPaykitPaymentProof) async {
+        await removeProofs {
+            PubkyPublicKeyFormat.matches($0.identity, proof.identity) && $0.requestId == proof.requestId
+        }
     }
 
     private func removeProofs(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async {

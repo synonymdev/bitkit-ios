@@ -201,15 +201,13 @@ struct LnurlPayConfirm: View {
         let contactPublicKey = contactPaymentContext?.publicKey
         let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
         var bolt11Invoice: String?
+        var lightningPaymentHash: String?
         var shouldCancelPaymentProof = false
 
         do {
             try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
             if let incomingPaymentRequest {
                 let endpointIdentifier = PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue
-                guard incomingPaymentRequest.acceptedPaymentEndpointIdentifiers.contains(endpointIdentifier) else {
-                    throw PaykitPaymentRequestError.requestUnavailable
-                }
                 try await PaykitPaymentProofService.shared.prepare(
                     request: incomingPaymentRequest,
                     paymentEndpointIdentifier: endpointIdentifier,
@@ -230,6 +228,7 @@ struct LnurlPayConfirm: View {
 
             let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
             let paymentHash = String(describing: parsedInvoice.paymentHash())
+            lightningPaymentHash = paymentHash
             if let incomingPaymentRequest {
                 try await PaykitPaymentProofService.shared.associateLightningPayment(
                     incomingPaymentRequest,
@@ -249,7 +248,6 @@ struct LnurlPayConfirm: View {
                 }
             )
             shouldCancelPaymentProof = false
-            await PaykitPaymentProofService.shared.reconcile()
             app.addPendingContactPaymentContext(paymentHash, contactPublicKey: contactPublicKey)
             Logger.info("LNURL payment successful: \(paymentHash)")
             navigationPath.append(.success(paymentId: paymentHash))
@@ -258,8 +256,11 @@ struct LnurlPayConfirm: View {
             shouldCancelPaymentProof = false
             return
         } catch {
+            if let lightningPaymentHash {
+                await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: lightningPaymentHash)
+            }
             if shouldCancelPaymentProof, let incomingPaymentRequest {
-                await PaykitPaymentProofService.shared.cancel(incomingPaymentRequest)
+                await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
             Logger.error("LNURL payment failed: \(error)")
 

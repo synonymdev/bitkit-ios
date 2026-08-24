@@ -588,7 +588,7 @@ struct SendConfirmationView: View {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
             try validateIncomingPaymentRequestAmounts(contactPaymentContext)
             if let incomingPaymentRequest {
-                let proof = try paymentProofPreparation(for: incomingPaymentRequest)
+                let proof = try paymentProofPreparation()
                 try await PaykitPaymentProofService.shared.prepare(
                     request: incomingPaymentRequest,
                     paymentEndpointIdentifier: proof.endpointIdentifier,
@@ -629,7 +629,6 @@ struct SendConfirmationView: View {
                         }
                     )
                     shouldCancelPaymentProof = false
-                    await PaykitPaymentProofService.shared.reconcile()
                     await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
                     Logger.info("Lightning payment successful: \(paymentHash)")
                     navigationPath.append(.success(paymentId: paymentHash))
@@ -638,6 +637,7 @@ struct SendConfirmationView: View {
                     shouldCancelPaymentProof = false
                     return
                 } catch {
+                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
                     throw error
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
@@ -675,7 +675,7 @@ struct SendConfirmationView: View {
             }
         } catch {
             if shouldCancelPaymentProof, let incomingPaymentRequest {
-                await PaykitPaymentProofService.shared.cancel(incomingPaymentRequest)
+                await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
             Logger.error("Payment failed: \(error)")
 
@@ -692,24 +692,16 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func paymentProofPreparation(
-        for request: PaykitPaymentRequest
-    ) throws -> (endpointIdentifier: String, kind: PaykitPaymentProofKind) {
+    private func paymentProofPreparation() throws -> (endpointIdentifier: String, kind: PaykitPaymentProofKind) {
         switch app.selectedWalletToPayFrom {
         case .lightning:
             let endpointIdentifier = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
-            guard request.acceptedPaymentEndpointIdentifiers.contains(endpointIdentifier) else {
-                throw PaykitPaymentRequestError.requestUnavailable
-            }
             return (endpointIdentifier, .lightning)
         case .onchain:
             guard let address = app.scannedOnchainInvoice?.address else {
                 throw PaykitPaymentRequestError.requestUnavailable
             }
             let endpointIdentifier = PublicPaykitService.onchainMethodId(for: address).rawValue
-            guard request.acceptedPaymentEndpointIdentifiers.contains(endpointIdentifier) else {
-                throw PaykitPaymentRequestError.requestUnavailable
-            }
             return (endpointIdentifier, .onchain)
         }
     }

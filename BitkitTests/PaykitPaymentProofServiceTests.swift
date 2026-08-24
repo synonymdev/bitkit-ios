@@ -143,6 +143,79 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(remainingProofs.isEmpty)
     }
 
+    func testLightningRetryPreservesEarlierPaymentCorrelation() async throws {
+        let record = try paymentRequestRecord()
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+
+        try await service.prepare(
+            request: request,
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning
+        )
+        try await service.associateLightningPayment(request, paymentHash: paymentHash)
+        try await service.prepare(
+            request: request,
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning
+        )
+        try await service.associateLightningPayment(request, paymentHash: String(repeating: "aa", count: 32))
+
+        await service.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+
+        let submissionCount = await sdk.submissionCount()
+        let remainingProofs = await store.snapshot()
+        XCTAssertEqual(submissionCount, 1)
+        XCTAssertTrue(remainingProofs.isEmpty)
+    }
+
+    func testClearedStoreDoesNotRestoreCachedProofs() async throws {
+        let firstRecord = try paymentRequestRecord()
+        let firstRequest = try XCTUnwrap(PaykitPaymentRequest(record: firstRecord, now: Date()))
+        let secondRequestId = "550e8400-e29b-41d4-a716-446655440001"
+        let secondRecord = try paymentRequestRecord(paymentRequestId: secondRequestId)
+        let secondRequest = try XCTUnwrap(PaykitPaymentRequest(record: secondRecord, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [firstRecord, secondRecord])
+        let service = paymentProofService(sdk: sdk, store: store)
+
+        try await service.prepare(
+            request: firstRequest,
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning
+        )
+        await store.clear()
+        try await service.prepare(
+            request: secondRequest,
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning
+        )
+
+        let remainingProofs = await store.snapshot()
+        XCTAssertEqual(remainingProofs.count, 1)
+        XCTAssertEqual(remainingProofs.first?.requestId.paymentRequestId, secondRequestId)
+    }
+
+    func testOnchainPaymentSubmitsWhenCompletedProofCannotBePersisted() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+
+        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        await store.failNextSave()
+        await service.completeOnchainPayment(request, txid: String(repeating: "ab", count: 32))
+
+        let submissionCount = await sdk.submissionCount()
+        let remainingProofs = await store.snapshot()
+        XCTAssertEqual(submissionCount, 1)
+        XCTAssertTrue(remainingProofs.isEmpty)
+    }
+
     private func paymentProofService(
         sdk: PaymentProofSdkMock,
         store: PaymentProofMemoryStore,
@@ -159,12 +232,13 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
     private func paymentRequestRecord(
         endpoints: [String] = [PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue],
-        paymentProofs: [PaymentProofRecord] = []
+        paymentProofs: [PaymentProofRecord] = [],
+        paymentRequestId: String = "550e8400-e29b-41d4-a716-446655440000"
     ) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: counterparty,
             counterpartyReceiverPath: PaykitReceiverPath.wallet,
-            paymentRequestId: "550e8400-e29b-41d4-a716-446655440000",
+            paymentRequestId: paymentRequestId,
             localRole: .payer,
             state: .proposed,
             proposalStreamItemId: 1,
@@ -220,13 +294,26 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
 private actor PaymentProofMemoryStore: PaykitPaymentProofStoring {
     private var proofs: [PendingPaykitPaymentProof] = []
+    private var shouldFailNextSave = false
 
     func load() -> [PendingPaykitPaymentProof] {
         proofs
     }
 
-    func save(_ proofs: [PendingPaykitPaymentProof]) {
+    func save(_ proofs: [PendingPaykitPaymentProof]) throws {
+        if shouldFailNextSave {
+            shouldFailNextSave = false
+            throw PaymentProofStoreMockError.save
+        }
         self.proofs = proofs
+    }
+
+    func clear() {
+        proofs = []
+    }
+
+    func failNextSave() {
+        shouldFailNextSave = true
     }
 
     func snapshot() -> [PendingPaykitPaymentProof] {
@@ -319,4 +406,8 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
 private enum PaymentProofSdkMockError: Error {
     case requestMissing
     case submission
+}
+
+private enum PaymentProofStoreMockError: Error {
+    case save
 }
