@@ -50,19 +50,16 @@ struct RemoveHwWalletDialog: View {
         .accessibilityIdentifier("RemoveHwWalletDialog")
     }
 
+    /// One control rather than a row with its own tap gesture: the label belongs to the toggle, so
+    /// tapping anywhere on it flips the switch exactly once and VoiceOver reads label and state
+    /// together without a hand-written accessibility label.
     private var keepBackupDataRow: some View {
-        HStack(spacing: 16) {
+        Toggle(isOn: $keepBackupData) {
             BodyMSBText(t("hardware__remove_dialog_keep"))
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-            Toggle("", isOn: $keepBackupData)
-                .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
-                .labelsHidden()
-                .accessibilityLabel(t("hardware__remove_dialog_keep"))
-                .accessibilityIdentifier("HwRemoveKeepBackupToggle")
         }
-        .contentShape(Rectangle())
-        .onTapGesture { keepBackupData.toggle() }
+        .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
+        .accessibilityIdentifier("HwRemoveKeepBackupToggle")
     }
 }
 
