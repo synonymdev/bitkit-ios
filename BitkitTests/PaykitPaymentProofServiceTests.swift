@@ -130,7 +130,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let txid = String(repeating: "ab", count: 32)
 
         try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
-        await service.completeOnchainPayment(request, txid: txid)
+        await service.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: endpoint)
 
         let submittedProof = await sdk.lastSubmission()
         let submission = try XCTUnwrap(submittedProof)
@@ -208,11 +208,39 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
         await store.failNextSave()
-        await service.completeOnchainPayment(request, txid: String(repeating: "ab", count: 32))
+        await service.completeOnchainPayment(
+            request,
+            txid: String(repeating: "ab", count: 32),
+            paymentEndpointIdentifier: endpoint
+        )
 
         let submissionCount = await sdk.submissionCount()
         let remainingProofs = await store.snapshot()
         XCTAssertEqual(submissionCount, 1)
+        XCTAssertTrue(remainingProofs.isEmpty)
+    }
+
+    func testOnchainPaymentSubmitsWhenPreparedProofCannotBeLoaded() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+        let txid = String(repeating: "ab", count: 32)
+
+        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        await store.failNextLoad()
+        await service.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: endpoint)
+
+        let submittedProof = await sdk.lastSubmission()
+        let submission = try XCTUnwrap(submittedProof)
+        XCTAssertEqual(submission.paymentEndpointIdentifier, endpoint)
+        XCTAssertEqual(
+            try proofValues(submission.proof.exportText()),
+            ["data": txid, "type": PaykitPaymentProofKind.onchain.rawValue]
+        )
+        let remainingProofs = await store.snapshot()
         XCTAssertTrue(remainingProofs.isEmpty)
     }
 
@@ -294,10 +322,15 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
 private actor PaymentProofMemoryStore: PaykitPaymentProofStoring {
     private var proofs: [PendingPaykitPaymentProof] = []
+    private var shouldFailNextLoad = false
     private var shouldFailNextSave = false
 
-    func load() -> [PendingPaykitPaymentProof] {
-        proofs
+    func load() throws -> [PendingPaykitPaymentProof] {
+        if shouldFailNextLoad {
+            shouldFailNextLoad = false
+            throw PaymentProofStoreMockError.load
+        }
+        return proofs
     }
 
     func save(_ proofs: [PendingPaykitPaymentProof]) throws {
@@ -314,6 +347,10 @@ private actor PaymentProofMemoryStore: PaykitPaymentProofStoring {
 
     func failNextSave() {
         shouldFailNextSave = true
+    }
+
+    func failNextLoad() {
+        shouldFailNextLoad = true
     }
 
     func snapshot() -> [PendingPaykitPaymentProof] {
@@ -409,5 +446,6 @@ private enum PaymentProofSdkMockError: Error {
 }
 
 private enum PaymentProofStoreMockError: Error {
+    case load
     case save
 }

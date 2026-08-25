@@ -583,6 +583,7 @@ struct SendConfirmationView: View {
         let contactPublicKey = contactPaymentContext?.publicKey
         let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
         var shouldCancelPaymentProof = false
+        var preparedPaymentProof: (endpointIdentifier: String, kind: PaykitPaymentProofKind)?
 
         do {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
@@ -594,6 +595,7 @@ struct SendConfirmationView: View {
                     paymentEndpointIdentifier: proof.endpointIdentifier,
                     kind: proof.kind
                 )
+                preparedPaymentProof = proof
                 shouldCancelPaymentProof = true
             }
             try await prepareIncomingPaymentRequest()
@@ -645,8 +647,12 @@ struct SendConfirmationView: View {
                 let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
                 let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: useMaxAmount)
                 shouldCancelPaymentProof = false
-                if let incomingPaymentRequest {
-                    await PaykitPaymentProofService.shared.completeOnchainPayment(incomingPaymentRequest, txid: txid)
+                if let incomingPaymentRequest, let preparedPaymentProof {
+                    await PaykitPaymentProofService.shared.completeOnchainPayment(
+                        incomingPaymentRequest,
+                        txid: txid,
+                        paymentEndpointIdentifier: preparedPaymentProof.endpointIdentifier
+                    )
                 }
 
                 // Create pre-activity metadata for tags and activity address

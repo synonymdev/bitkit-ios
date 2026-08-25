@@ -117,6 +117,28 @@ actor PaykitPaymentProofService {
         paymentEndpointIdentifier: String,
         kind: PaykitPaymentProofKind
     ) async throws {
+        let proof = try await pendingProof(
+            request: request,
+            paymentEndpointIdentifier: paymentEndpointIdentifier,
+            kind: kind
+        )
+
+        var pendingProofs = try await loadProofs()
+        pendingProofs.removeAll {
+            PubkyPublicKeyFormat.matches($0.identity, proof.identity) &&
+                $0.requestId == request.id &&
+                $0.paymentIdentifier == nil &&
+                $0.proofData == nil
+        }
+        pendingProofs.append(proof)
+        try await persist(pendingProofs)
+    }
+
+    private func pendingProof(
+        request: PaykitPaymentRequest,
+        paymentEndpointIdentifier: String,
+        kind: PaykitPaymentProofKind
+    ) async throws -> PendingPaykitPaymentProof {
         guard request.acceptedPaymentEndpointIdentifiers.contains(paymentEndpointIdentifier),
               Self.endpoint(paymentEndpointIdentifier, supports: kind),
               let identityStatus = try await sdk.identityStatus(),
@@ -127,22 +149,14 @@ actor PaykitPaymentProofService {
             throw PaykitPaymentRequestError.requestUnavailable
         }
 
-        var pendingProofs = try await loadProofs()
-        pendingProofs.removeAll {
-            PubkyPublicKeyFormat.matches($0.identity, identity) &&
-                $0.requestId == request.id &&
-                $0.paymentIdentifier == nil &&
-                $0.proofData == nil
-        }
-        pendingProofs.append(PendingPaykitPaymentProof(
+        return PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
             paymentEndpointIdentifier: paymentEndpointIdentifier,
             kind: kind,
             paymentIdentifier: nil,
             proofData: nil
-        ))
-        try await persist(pendingProofs)
+        )
     }
 
     func associateLightningPayment(_ request: PaykitPaymentRequest, paymentHash: String) async throws {
@@ -190,7 +204,11 @@ actor PaykitPaymentProofService {
         }
     }
 
-    func completeOnchainPayment(_ request: PaykitPaymentRequest, txid: String) async {
+    func completeOnchainPayment(
+        _ request: PaykitPaymentRequest,
+        txid: String,
+        paymentEndpointIdentifier: String
+    ) async {
         guard Self.isHex(txid, byteCount: 32) else {
             logWarning("Ignored a Paykit on-chain proof with an invalid transaction id")
             return
@@ -208,7 +226,19 @@ actor PaykitPaymentProofService {
             pendingProofs[index].proofData = txid.lowercased()
             await persistAndSubmit([pendingProofs[index]], allProofs: pendingProofs)
         } catch {
-            logWarning("Failed to complete a Paykit on-chain payment proof: \(error)")
+            logWarning("Failed to load a Paykit on-chain payment proof; attempting immediate delivery: \(error)")
+            do {
+                var proof = try await pendingProof(
+                    request: request,
+                    paymentEndpointIdentifier: paymentEndpointIdentifier,
+                    kind: .onchain
+                )
+                proof.paymentIdentifier = txid.lowercased()
+                proof.proofData = txid.lowercased()
+                await submit(proof)
+            } catch {
+                logWarning("Failed to complete a Paykit on-chain payment proof: \(error)")
+            }
         }
     }
 
