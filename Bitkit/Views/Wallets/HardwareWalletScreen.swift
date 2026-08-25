@@ -16,6 +16,7 @@ struct HardwareWalletScreen: View {
 
     @State private var activities: [Activity] = []
     @State private var showRemoveDialog = false
+    @State private var keepBackupDataOnRemoval = true
 
     private var wallet: HwWallet? {
         hwWalletManager.wallets.first { $0.id == walletId }
@@ -52,17 +53,12 @@ struct HardwareWalletScreen: View {
                 navigation.navigateBack()
             }
         }
-        .alert(
-            t("hardware__remove_dialog_title", variables: ["name": wallet?.name ?? ""]),
-            isPresented: $showRemoveDialog
-        ) {
-            Button(t("common__remove"), role: .destructive) {
-                Task { await removeWallet() }
-            }
-            Button(t("common__dialog_cancel"), role: .cancel) {}
-        } message: {
-            Text(t("hardware__remove_dialog_text"))
-        }
+        .removeHwWalletDialog(
+            walletName: showRemoveDialog ? wallet?.name : nil,
+            keepBackupData: $keepBackupDataOnRemoval,
+            onConfirm: { Task { await removeWallet() } },
+            onDismiss: { showRemoveDialog = false }
+        )
     }
 
     private func content(for wallet: HwWallet) -> some View {
@@ -146,6 +142,9 @@ struct HardwareWalletScreen: View {
             title: t("hardware__remove_button", variables: ["name": wallet.name]),
             variant: .tertiary
         ) {
+            // Reset on open rather than on dismiss, so a cancel or a failed removal starts from the
+            // default rather than from the last choice.
+            keepBackupDataOnRemoval = true
             showRemoveDialog = true
         }
         .accessibilityIdentifier("RemoveHardwareWallet")
@@ -180,7 +179,13 @@ struct HardwareWalletScreen: View {
     /// tile, and the reactive auto-pop above then leaves the screen.
     private func removeWallet() async {
         guard let wallet else { return }
-        await hwWalletManager.removeWallet(walletId: wallet.id)
+        let keepBackupData = keepBackupDataOnRemoval
+        showRemoveDialog = false
+        do {
+            try await hwWalletManager.removeWallet(walletId: wallet.id, keepBackupData: keepBackupData)
+        } catch {
+            app.toast(type: .error, title: t("common__error"), description: RemoveHwWalletDialog.errorDescription(for: error))
+        }
     }
 }
 

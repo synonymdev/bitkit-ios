@@ -77,6 +77,20 @@ final class HwWalletManagerTests: XCTestCase {
     private var receivedTxs: [HwWalletReceivedTx] = []
     private var cancellables: Set<AnyCancellable> = []
 
+    /// The metadata a removal asked to keep, per wallet id, and whether reading it should fail.
+    private var tagMetadataByWallet: [String: [PreActivityMetadata]] = [:]
+    private var tagMetadataReadError: Error?
+    private var tagMetadataWriteError: Error?
+
+    /// Deletes and metadata write-backs in the order core saw them, so ordering is assertable and
+    /// not just the call sets.
+    private enum CoreOp: Equatable {
+        case delete(String)
+        case upsert([String])
+    }
+
+    private var coreOps: [CoreOp] = []
+
     /// The activity sets handed to core, oldest first — most assertions only care about these.
     private var persisted: [[Activity]] {
         persistedSnapshots.map(\.activities)
@@ -89,6 +103,10 @@ final class HwWalletManagerTests: XCTestCase {
         receivedTxs = []
         cancellables = []
         xpubsByDeviceId = [:]
+        tagMetadataByWallet = [:]
+        tagMetadataReadError = nil
+        tagMetadataWriteError = nil
+        coreOps = []
     }
 
     // MARK: - Factories
@@ -103,7 +121,19 @@ final class HwWalletManagerTests: XCTestCase {
             electrumUrl: { "ssl://test:1" },
             network: { .regtest },
             persistSnapshot: { [weak self] in self?.persistedSnapshots.append($0) },
-            deleteActivities: { [weak self] in self?.deleted.append($0) }
+            deleteActivities: { [weak self] walletId in
+                self?.deleted.append(walletId)
+                self?.coreOps.append(.delete(walletId))
+            },
+            readTagMetadata: { [weak self] walletId in
+                guard let self else { return [] }
+                if let tagMetadataReadError { throw tagMetadataReadError }
+                return tagMetadataByWallet[walletId] ?? []
+            },
+            writeTagMetadata: { [weak self] records in
+                self?.coreOps.append(.upsert(records.map(\.paymentId)))
+                if let error = self?.tagMetadataWriteError { throw error }
+            }
         )
         vm.receivedTxPublisher
             .sink { [weak self] in self?.receivedTxs.append($0) }
@@ -847,7 +877,7 @@ final class HwWalletManagerTests: XCTestCase {
         vm.updateDevices(knownDevices: devices, connectedDeviceId: nil)
         let wallet = try XCTUnwrap(vm.wallets.first)
 
-        await vm.removeWallet(walletId: wallet.id)
+        try await vm.removeWallet(walletId: wallet.id, keepBackupData: false)
 
         await vm.drainPendingPersists()
         XCTAssertEqual(deleted, try [HwWalletId.derive(xpubs: xpubs)])
@@ -1147,12 +1177,189 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(order.first, "B1")
     }
 
+    // MARK: - Removal keeping backup data
+
+    /// Core drops a wallet's pre-activity metadata along with its activities, so the rows a removal
+    /// kept can only go back once the delete has run.
+    func testRemovingAWalletKeepingItsDataWritesTheTagsBackAfterTheDelete() async throws {
+        let xpubs = ["nativeSegwit": "z"]
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
+        tagMetadataByWallet[walletId] = [makeTagMetadata(walletId: walletId, paymentId: "p1")]
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: xpubs)], connectedDeviceId: nil)
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: true)
+        await vm.drainPendingPersists()
+
+        XCTAssertEqual(coreOps, [.delete(walletId), .upsert(["p1"])])
+    }
+
+    /// The push that follows `forgetWallet` used to delete the wallet's activities a second time,
+    /// taking the kept rows with them. The delete now carries its own repair, so even if one runs it
+    /// leaves the metadata behind.
+    func testACleanupDeleteAfterRemovalReappliesTheKeptTags() async throws {
+        let xpubs = ["nativeSegwit": "z"]
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
+        let device = makeDevice(id: "dev1", xpubs: xpubs)
+        tagMetadataByWallet[walletId] = [makeTagMetadata(walletId: walletId, paymentId: "p1")]
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: true)
+        // A stale push still holding the wallet, then one without it — the window `forgetWallet`
+        // opens while it awaits `clearCredentials`.
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        vm.updateDevices(knownDevices: [], connectedDeviceId: nil)
+        await vm.drainPendingPersists()
+
+        XCTAssertEqual(coreOps.last, .upsert(["p1"]), "the last thing core saw must be the kept rows")
+        for (index, op) in coreOps.enumerated() where op == .delete(walletId) {
+            XCTAssertEqual(coreOps[safeIndex: index + 1], .upsert(["p1"]), "every delete repairs itself")
+        }
+    }
+
+    /// The wallet leaves the tile list inside `removeDevice`, so the push that follows has nothing
+    /// left to clean up.
+    func testRemovingAWalletDoesNotDeleteItsActivitiesAgainOnTheNextPush() async throws {
+        let xpubs = ["nativeSegwit": "z"]
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: xpubs)], connectedDeviceId: nil)
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: false)
+        vm.updateDevices(knownDevices: [], connectedDeviceId: nil)
+        await vm.drainPendingPersists()
+
+        XCTAssertEqual(deleted, [walletId])
+        XCTAssertTrue(vm.wallets.isEmpty)
+    }
+
+    func testRemovingAWalletWithoutKeepingItsDataReadsAndWritesNothing() async throws {
+        let xpubs = ["nativeSegwit": "z"]
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
+        tagMetadataByWallet[walletId] = [makeTagMetadata(walletId: walletId, paymentId: "p1")]
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: xpubs)], connectedDeviceId: nil)
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: false)
+        await vm.drainPendingPersists()
+
+        XCTAssertEqual(coreOps, [.delete(walletId)])
+    }
+
+    /// Raised before anything is deleted, so the wallet has to come through it untouched.
+    func testAnUnreadableTagSnapshotRefusesTheRemovalAndTouchesNothing() async throws {
+        struct ReadFailure: Error {}
+        let mock = MockWatcherService()
+        let xpubs = ["nativeSegwit": "z"]
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
+        tagMetadataReadError = ReadFailure()
+        let vm = makeViewModel(watcherService: mock, monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: xpubs)], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 1 }
+
+        do {
+            try await vm.removeWallet(walletId: walletId, keepBackupData: true)
+            XCTFail("Expected the removal to be refused")
+        } catch {
+            XCTAssertEqual(error as? HwWalletRemovalError, .backupDataUnreadable)
+        }
+        await vm.drainPendingPersists()
+
+        XCTAssertTrue(coreOps.isEmpty, "nothing was deleted")
+        XCTAssertTrue(mock.stoppedWatcherIds.isEmpty, "the wallet is still watched")
+        XCTAssertEqual(vm.wallets.map(\.id), [walletId], "the wallet is still paired")
+    }
+
+    /// The activities are already gone by then, so there is nothing to roll back to and reporting a
+    /// failed removal would be false.
+    func testAFailedTagWriteBackStillCompletesTheRemoval() async throws {
+        struct WriteFailure: Error {}
+        let xpubs = ["nativeSegwit": "z"]
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
+        tagMetadataByWallet[walletId] = [makeTagMetadata(walletId: walletId, paymentId: "p1")]
+        tagMetadataWriteError = WriteFailure()
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: xpubs)], connectedDeviceId: nil)
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: true)
+        await vm.drainPendingPersists()
+
+        XCTAssertEqual(deleted, [walletId])
+        XCTAssertTrue(vm.wallets.isEmpty)
+    }
+
+    /// A later removal that keeps nothing is what disarms the repair — otherwise the rows the user
+    /// asked to drop would come back.
+    func testRemovingAWalletAgainWithoutKeepingItsDataDropsTheEarlierRepair() async throws {
+        let xpubs = ["nativeSegwit": "z"]
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
+        let device = makeDevice(id: "dev1", xpubs: xpubs)
+        tagMetadataByWallet[walletId] = [makeTagMetadata(walletId: walletId, paymentId: "p1")]
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: true)
+        await vm.drainPendingPersists()
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        coreOps = []
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: false)
+        await vm.drainPendingPersists()
+
+        XCTAssertEqual(coreOps, [.delete(walletId)])
+    }
+
+    /// `deviceGroups()` used to keep yielding the removed group until the next push, so an event
+    /// still in flight re-persisted the activities the removal had just deleted.
+    func testAWatcherEventAfterRemovalDoesNotRePersistTheWallet() async throws {
+        let mock = MockWatcherService()
+        let xpubs = ["nativeSegwit": "z"]
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
+        let device = makeDevice(id: "dev1", xpubs: xpubs)
+        let vm = makeViewModel(watcherService: mock, monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        await waitUntil { mock.startedParams.count == 1 }
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: false)
+        persistedSnapshots = []
+        vm.handleWatcherEvent(
+            watcherId: watcherId(device, "nativeSegwit"),
+            event: makeEvent([makeActivity(txId: "t1", value: 1000, txType: .received)], total: 1000)
+        )
+        await vm.drainPendingPersists()
+
+        XCTAssertTrue(persistedSnapshots.isEmpty)
+    }
+
     // MARK: - Helpers
+
+    private func makeTagMetadata(walletId: String, paymentId: String) -> PreActivityMetadata {
+        PreActivityMetadata(
+            walletId: walletId,
+            paymentId: paymentId,
+            tags: ["coffee"],
+            paymentHash: nil,
+            txId: paymentId,
+            address: nil,
+            isReceive: false,
+            feeRate: 0,
+            isTransfer: false,
+            channelId: nil,
+            createdAt: 1_700_000_000_000
+        )
+    }
 
     private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition(), Date() < deadline {
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
+    }
+}
+
+private extension Array {
+    subscript(safeIndex index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }

@@ -7,9 +7,11 @@ import SwiftUI
 struct HardwareWalletsSettingsScreen: View {
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(TrezorManager.self) private var trezorManager
+    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
 
     @State private var pendingRemoval: HwWallet?
+    @State private var keepBackupDataOnRemoval = true
 
     private var wallets: [HwWallet] {
         hwWalletManager.wallets
@@ -39,21 +41,15 @@ struct HardwareWalletsSettingsScreen: View {
         .navigationBarHidden(true)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareWalletsScreen")
-        .alert(
-            t("hardware__remove_dialog_title", variables: ["name": pendingRemoval?.name ?? ""]),
-            isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } })
-        ) {
-            Button(t("common__remove"), role: .destructive) {
+        .removeHwWalletDialog(
+            walletName: pendingRemoval?.name,
+            keepBackupData: $keepBackupDataOnRemoval,
+            onConfirm: {
                 guard let wallet = pendingRemoval else { return }
                 Task { await remove(wallet) }
-            }
-            .accessibilityIdentifier("DialogConfirm")
-
-            Button(t("common__dialog_cancel"), role: .cancel) {}
-                .accessibilityIdentifier("DialogCancel")
-        } message: {
-            Text(t("hardware__remove_dialog_text"))
-        }
+            },
+            onDismiss: { pendingRemoval = nil }
+        )
     }
 
     private var emptyState: some View {
@@ -83,7 +79,12 @@ struct HardwareWalletsSettingsScreen: View {
                                 data: RenameHardwareWalletConfig(walletId: wallet.id, currentName: wallet.name)
                             )
                         },
-                        onRemove: { pendingRemoval = wallet }
+                        // Reset on open rather than on dismiss, so a cancel, a failed removal or
+                        // another wallet picked from the list all start from the default.
+                        onRemove: {
+                            keepBackupDataOnRemoval = true
+                            pendingRemoval = wallet
+                        }
                     )
                     CustomDivider()
                 }
@@ -101,8 +102,13 @@ struct HardwareWalletsSettingsScreen: View {
     }
 
     private func remove(_ wallet: HwWallet) async {
+        let keepBackupData = keepBackupDataOnRemoval
         pendingRemoval = nil
-        await hwWalletManager.removeWallet(walletId: wallet.id)
+        do {
+            try await hwWalletManager.removeWallet(walletId: wallet.id, keepBackupData: keepBackupData)
+        } catch {
+            app.toast(type: .error, title: t("common__error"), description: RemoveHwWalletDialog.errorDescription(for: error))
+        }
     }
 }
 
@@ -172,6 +178,7 @@ private struct HwConnectionBadge: View {
         HardwareWalletsSettingsScreen()
             .environment(HwWalletManager())
             .environment(TrezorManager())
+            .environmentObject(AppViewModel())
             .environmentObject(SheetViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(CurrencyViewModel())
@@ -185,6 +192,7 @@ private struct HwConnectionBadge: View {
         HardwareWalletsSettingsScreen()
             .environment(HwWalletManager())
             .environment(TrezorManager())
+            .environmentObject(AppViewModel())
             .environmentObject(SheetViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(CurrencyViewModel())
