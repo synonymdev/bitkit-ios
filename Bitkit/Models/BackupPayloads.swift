@@ -20,6 +20,28 @@ struct MetadataBackupV1: Codable {
     let cache: AppCacheData
     let pubkySession: PubkySessionBackupV1?
     let pubkyContactProfileOverrides: [String: PubkyProfileData]?
+    /// User-set hardware wallet names, keyed by bitkit-core wallet id. Nil in envelopes written
+    /// before this field, and in envelopes from an app that knows no names. Shared with
+    /// bitkit-android, which spells the key the same way — see its `MetadataBackupV1`.
+    let hwWalletNames: [String: String]?
+
+    init(
+        version: Int,
+        createdAt: UInt64,
+        tagMetadata: [PreActivityMetadata],
+        cache: AppCacheData,
+        pubkySession: PubkySessionBackupV1?,
+        pubkyContactProfileOverrides: [String: PubkyProfileData]?,
+        hwWalletNames: [String: String]? = nil
+    ) {
+        self.version = version
+        self.createdAt = createdAt
+        self.tagMetadata = tagMetadata
+        self.cache = cache
+        self.pubkySession = pubkySession
+        self.pubkyContactProfileOverrides = pubkyContactProfileOverrides
+        self.hwWalletNames = hwWalletNames
+    }
 }
 
 struct PubkySessionBackupV1: Codable, Equatable {

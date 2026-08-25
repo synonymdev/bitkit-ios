@@ -226,6 +226,56 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertEqual(sut.labelInput, "Trezor Safe 3")
     }
 
+    /// A hidden wallet being added back already carries the name kept through its removal, so it must
+    /// not sit on the device's own name for as long as the wallet takes to reach the published list.
+    func testReaddedPassphraseWalletShowsItsStoredNameImmediately() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(
+            deviceId: "dev1",
+            walletId: standardWalletId,
+            name: "Trezor Safe 3",
+            deviceDefaultName: "Trezor Safe 3"
+        ))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+
+        service.passphraseResult = .success(hiddenWalletId)
+        service.storedNames[hiddenWalletId] = "Pass B"
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("correct horse")
+        sut.onPassphraseSubmit()
+        await waitUntil { self.sut.phase == .passphrasePaired }
+
+        XCTAssertEqual(sut.deviceName, "Pass B")
+        XCTAssertEqual(sut.labelInput, "Pass B")
+    }
+
+    /// The stored name is the prefill, so a wallet emission landing afterwards must not reset the
+    /// field the user may already be editing.
+    func testAReaddedPassphraseWalletsNameSurvivesALaterWalletEmission() async {
+        await givenDeviceFound()
+        service.connectResult = .success(HwConnectResult(
+            deviceId: "dev1",
+            walletId: standardWalletId,
+            name: "Trezor Safe 3",
+            deviceDefaultName: "Trezor Safe 3"
+        ))
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+
+        service.passphraseResult = .success(hiddenWalletId)
+        service.storedNames[hiddenWalletId] = "Pass B"
+        sut.onPassphraseClick()
+        sut.onPassphraseChange("correct horse")
+        sut.onPassphraseSubmit()
+        await waitUntil { self.sut.phase == .passphrasePaired }
+
+        sut.onWalletsUpdated([makeWallet(id: hiddenWalletId, name: "Pass B", balance: 42)])
+
+        XCTAssertEqual(sut.labelInput, "Pass B")
+        XCTAssertEqual(sut.balanceSats, 42)
+    }
+
     func testPassphraseFailureReportsInlineAndKeepsNoPassphrase() async {
         await givenDevicePaired()
         service.passphraseResult = .failure(HwPassphraseError.alreadyAdded)
@@ -363,6 +413,65 @@ final class HwConnectViewModelTests: XCTestCase {
         await waitUntil { self.sut.phase == .paired }
     }
 
+    // MARK: - Paired step name
+
+    /// Re-adding a removed wallet is the case the published wallet list cannot answer: the wallet is
+    /// not in it yet, but the entry pairing just wrote already carries the name kept for it.
+    func testPairedNameUsesTheStoredLabelOfAWalletMissingFromTheWalletList() {
+        let name = TrezorHwConnectService.pairedName(
+            walletId: standardWalletId,
+            storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: "No Pass")],
+            deviceDefaultName: "Trezor T"
+        )
+
+        XCTAssertEqual(name, "No Pass")
+    }
+
+    func testPairedNameFallsBackToTheDeviceNameWhenTheWalletWasNeverNamed() {
+        let name = TrezorHwConnectService.pairedName(
+            walletId: standardWalletId,
+            storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: nil)],
+            deviceDefaultName: "Trezor T"
+        )
+
+        XCTAssertEqual(name, "Trezor T")
+    }
+
+    /// A brand-new passphrase wallet has no entry of its own yet, and must not borrow the name of the
+    /// identity that happened to be open before it.
+    func testPairedNameIgnoresAnotherIdentitysLabel() {
+        let name = TrezorHwConnectService.pairedName(
+            walletId: hiddenWalletId,
+            storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: "No Pass")],
+            deviceDefaultName: "Trezor T"
+        )
+
+        XCTAssertEqual(name, "Trezor T")
+    }
+
+    func testPairedNameFallsBackToTheDeviceNameBeforeTheIdentityResolves() {
+        let name = TrezorHwConnectService.pairedName(
+            walletId: nil,
+            storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: "No Pass")],
+            deviceDefaultName: "Trezor T"
+        )
+
+        XCTAssertEqual(name, "Trezor T")
+    }
+
+    private func makeStoredEntry(walletId: String, customLabel: String?) -> TrezorKnownDevice {
+        TrezorKnownDevice(
+            id: "dev1",
+            name: "Trezor",
+            path: "ble://dev1",
+            transportType: "bluetooth",
+            lastConnectedAt: Date(timeIntervalSince1970: 0),
+            xpubs: ["nativeSegwit": "z\(walletId)"],
+            customLabel: customLabel,
+            walletId: walletId
+        )
+    }
+
     private func makeDevice(id: String, model: String?) -> TrezorDeviceInfo {
         TrezorDeviceInfo(
             id: id,
@@ -414,6 +523,7 @@ private final class FakeHwConnectService: HwConnectServicing {
     var scanError: Error?
     var connectResult: Result<HwConnectResult, Error> = .failure(TestError.stub)
     var passphraseResult: Result<String, Error> = .failure(TestError.stub)
+    var storedNames: [String: String] = [:]
 
     private(set) var scanCount = 0
     private(set) var connectedDeviceIds: [String] = []
@@ -435,6 +545,10 @@ private final class FakeHwConnectService: HwConnectServicing {
     func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String {
         passphraseCalls.append((deviceId, passphrase))
         return try passphraseResult.get()
+    }
+
+    func storedName(forWallet walletId: String) -> String? {
+        storedNames[walletId]
     }
 
     func setWalletLabel(walletId: String, label: String) {

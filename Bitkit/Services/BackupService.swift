@@ -264,10 +264,18 @@ class BackupService {
                 }
                 ContactsManager.restoreContactProfileOverrides(payload.pubkyContactProfileOverrides)
 
+                // App-owned, so it takes no part in the core field migration above and never sets
+                // needsRewrite. Restored names wait as pending ones until each wallet is paired again.
+                TrezorKnownDeviceStorage.restoreNames(payload.hwWalletNames ?? [:])
+
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
 
-                Logger.debug("Restored caches, \(payload.tagMetadata.count) pre-activity metadata", context: "BackupService")
+                Logger.debug(
+                    "Restored caches, \(payload.tagMetadata.count) pre-activity metadata, "
+                        + "\(payload.hwWalletNames?.count ?? 0) hardware wallet names",
+                    context: "BackupService"
+                )
             }
 
             if didRestoreWalletBackup {
@@ -413,6 +421,16 @@ class BackupService {
 
         // METADATA (from ActivityService)
         CoreService.shared.activity.metadataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: &cancellables)
+
+        // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
+        // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
+        TrezorKnownDeviceStorage.namesChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -771,13 +789,19 @@ class BackupService {
             // side to land on.
             let preActivityMetadata = HwActivityTagBackup.deduplicated(hardwareTagMetadata + storedPreActivityMetadata)
 
+            // A UserDefaults read that cannot fail, so unlike the tags above there is no partial-read
+            // case to guard against. Nil rather than an empty map when nothing is named, so an
+            // envelope this app writes stays byte-comparable with one bitkit-android writes.
+            let hwWalletNames = TrezorKnownDeviceStorage.backupSnapshot()
+
             let payload = MetadataBackupV1(
                 version: 1,
                 createdAt: currentTime,
                 tagMetadata: preActivityMetadata,
                 cache: cache,
                 pubkySession: pubkySession,
-                pubkyContactProfileOverrides: pubkyContactProfileOverrides
+                pubkyContactProfileOverrides: pubkyContactProfileOverrides,
+                hwWalletNames: hwWalletNames.isEmpty ? nil : hwWalletNames
             )
             return try JSONEncoder().encode(payload)
 

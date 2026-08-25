@@ -202,6 +202,7 @@ struct AppScene: View {
             .environment(paykitPaymentRequestManager)
             .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
+                    paykitPaymentRequestManager.activate(identity: pk)
                     Task {
                         try? await contactsManager.loadContacts(for: pk)
                         await refreshPrivateOnlyPaykitReceiverMarker()
@@ -235,20 +236,32 @@ struct AppScene: View {
             .onReceive(PrivatePaykitService.initialLinkBurstStartedPublisher) {
                 initialPaykitSyncGeneration += 1
             }
-            .onReceive(sheets.$activeSheetConfiguration) { configuration in
-                guard configuration == nil else { return }
+            .onChange(of: sheets.activeSheetConfiguration?.id) { _, activeSheetId in
+                guard activeSheetId == nil, !sheets.isReplacingSheet else { return }
+                Task {
+                    try? await Task.sleep(for: .milliseconds(700))
+                    guard !Task.isCancelled,
+                          sheets.activeSheetConfiguration == nil,
+                          !sheets.isReplacingSheet
+                    else { return }
+                    await presentNextIncomingPaykitPaymentRequest()
+                }
+            }
+            .onChange(of: paykitPaymentRequestManager.requestedPresentationId) { _, requestId in
+                guard requestId != nil else { return }
+                Task { await presentNextIncomingPaykitPaymentRequest() }
+            }
+            .onChange(of: paykitPaymentRequestManager.presentationRetryTrigger) {
                 Task { await presentNextIncomingPaykitPaymentRequest() }
             }
             .onChange(of: paykitPaymentRequestManager.pendingRequests) { _, requests in
                 guard let request = app.contactPaymentContext?.incomingPaymentRequest,
-                      request.isExpired(at: Date()),
                       !requests.contains(where: { $0.id == request.id }),
+                      !paykitPaymentRequestManager.isApprovedForPayment(request),
                       sheets.activeSheetConfiguration?.id == .send
                 else { return }
 
-                app.resetSendState()
-                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-                sheets.hideSheetIfActive(.send, reason: "Incoming payment request expired")
+                sheets.hideSheetIfActive(.send, reason: "Incoming payment request is no longer available")
             }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
                 guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
@@ -752,9 +765,13 @@ struct AppScene: View {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
               pubkyProfile.authState == .authenticated
-        else { return false }
+        else {
+            paykitPaymentRequestManager.clearEligibleTargets()
+            return false
+        }
 
         let previousRequests = paykitPaymentRequestManager.pendingRequests
+        await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         await paykitPaymentRequestManager.refresh()
         await presentNextIncomingPaykitPaymentRequest()
         return paykitPaymentRequestManager.pendingRequests != previousRequests
@@ -800,16 +817,23 @@ struct AppScene: View {
 
     private func presentNextIncomingPaykitPaymentRequest() async {
         guard sheets.activeSheetConfiguration == nil,
+              !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
         else { return }
 
-        await paykitPaymentRequestManager.presentRequests { requests in
-            guard sheets.activeSheetConfiguration == nil, app.contactPaymentContext == nil else { return }
+        let attemptedPresentation = await paykitPaymentRequestManager.presentRequests { requests in
+            guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet, app.contactPaymentContext == nil else { return }
             for request in requests {
+                guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
                 do {
                     let result = try await PrivatePaykitService.shared.beginPaymentRequest(request)
-                    guard sheets.activeSheetConfiguration == nil, app.contactPaymentContext == nil else { return }
+                    guard paykitPaymentRequestManager.isCurrentPresentation(request),
+                          sheets.activeSheetConfiguration == nil,
+                          !sheets.isReplacingSheet,
+                          app.contactPaymentContext == nil
+                    else { return }
                     guard case let .opened(paymentTarget, privatePaymentContext) = result else {
+                        Logger.debug("Incoming Paykit payment request is waiting for private payment details: \(result)", context: "AppScene")
                         paykitPaymentRequestManager.deferPresentation(request)
                         continue
                     }
@@ -826,9 +850,17 @@ struct AppScene: View {
                             paymentTarget,
                             claimedContactPaymentContext: contactPaymentContext
                         )
-                        guard app.ownsContactPaymentContext(contactPaymentContext),
-                              sheets.activeSheetConfiguration == nil
-                        else { return }
+                        guard paykitPaymentRequestManager.isCurrentPresentation(request),
+                              app.ownsContactPaymentContext(contactPaymentContext),
+                              sheets.activeSheetConfiguration == nil,
+                              !sheets.isReplacingSheet
+                        else {
+                            if app.ownsContactPaymentContext(contactPaymentContext) {
+                                app.resetSendState()
+                                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                            }
+                            return
+                        }
                         guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
                             app.resetSendState()
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
@@ -836,10 +868,10 @@ struct AppScene: View {
                             continue
                         }
 
-                        guard paykitPaymentRequestManager.markPresentedIfPending(request) else {
+                        guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
                             app.resetSendState()
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-                            continue
+                            return
                         }
                     } catch is CancellationError {
                         if app.ownsContactPaymentContext(contactPaymentContext) {
@@ -849,6 +881,11 @@ struct AppScene: View {
                         return
                     } catch {
                         guard app.ownsContactPaymentContext(contactPaymentContext) else { return }
+                        guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
+                            app.resetSendState()
+                            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                            return
+                        }
                         Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
@@ -857,16 +894,31 @@ struct AppScene: View {
                     }
 
                     let route: SendRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+                    guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
+                        app.resetSendState()
+                        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        return
+                    }
                     sheets.showSheet(.send, data: SendConfig(view: route))
                     return
                 } catch is CancellationError {
                     return
                 } catch {
+                    guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
                     Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
                     paykitPaymentRequestManager.deferPresentation(request)
                 }
             }
         }
+
+        guard attemptedPresentation,
+              paykitPaymentRequestManager.requestedPresentationId != nil ||
+              !paykitPaymentRequestManager.requestsForPresentation().isEmpty,
+              sheets.activeSheetConfiguration == nil,
+              !sheets.isReplacingSheet,
+              app.contactPaymentContext == nil
+        else { return }
+        await presentNextIncomingPaykitPaymentRequest()
     }
 
     private func retryPendingPaykitEndpointRemoval() async {

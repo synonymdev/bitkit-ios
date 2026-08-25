@@ -88,6 +88,7 @@ struct SendSheet: View {
 
     @State private var navigationPath: [SendRoute] = []
     @State private var hasValidatedAfterSync = false
+    @State private var incomingPaymentRequest: PaykitPaymentRequest?
     @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
@@ -162,6 +163,12 @@ struct SendSheet: View {
             tagManager.clearSelectedTags()
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
             if let request = app.contactPaymentContext?.incomingPaymentRequest {
+                incomingPaymentRequest = request
+                guard paykitPaymentRequestManager.markPresentedIfPending(request) else {
+                    app.resetSendState()
+                    sheets.hideSheetIfActive(.send, reason: "Incoming payment request is no longer available")
+                    return
+                }
                 wallet.sendAmountSats = request.amountSats
             }
             hasValidatedAfterSync = false
@@ -186,6 +193,9 @@ struct SendSheet: View {
             }
         }
         .onDisappear {
+            if let incomingPaymentRequest {
+                paykitPaymentRequestManager.finishPayment(incomingPaymentRequest)
+            }
             app.contactPaymentContext = nil
         }
         .onChange(of: wallet.nodeLifecycleState) { _, state in

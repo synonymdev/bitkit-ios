@@ -550,6 +550,12 @@ final class TrezorManager {
             copy.customLabel = customLabel
             return copy
         }
+        // Cleared before the label is written, while the entry still masks it: a pending name left
+        // behind would resurface the moment the user clears this label, resurrecting a name they
+        // replaced. Safe to drop first — the entry already carries whatever it adopted.
+        for walletId in Set(devices.filter(isTarget).compactMap(\.resolvedWalletId)) {
+            TrezorKnownDeviceStorage.setPendingName(walletId: walletId, name: nil)
+        }
         TrezorKnownDeviceStorage.saveAll(updated)
         loadKnownDevices()
     }
@@ -592,6 +598,13 @@ final class TrezorManager {
         let identityKey = TrezorKnownDevice.walletKey(for: mergedXpubs, fallback: device.id)
         let named = TrezorKnownDeviceMatching.named(in: stored, previous: previous, walletKey: identityKey)
 
+        // A name restored from a backup, or kept when this wallet was removed, waits as a pending one
+        // until the wallet is paired again — which is here. A name set locally wins: it was chosen on
+        // this device, after the backup was written. Adopting it is all the consuming needed, since
+        // `loadPendingNames` masks out wallets the device list already names.
+        let walletId = resolvedWalletId(previous: previous, identityKey: identityKey, xpubs: mergedXpubs, in: stored)
+        let pendingName = walletId.flatMap { TrezorKnownDeviceStorage.loadPendingNames()[$0] }
+
         let known = TrezorKnownDevice(
             id: device.id,
             name: device.name ?? "Trezor",
@@ -601,8 +614,8 @@ final class TrezorManager {
             model: device.model ?? deviceFeatures?.model,
             lastConnectedAt: Date(),
             xpubs: mergedXpubs,
-            customLabel: named?.customLabel,
-            walletId: resolvedWalletId(previous: previous, identityKey: identityKey, xpubs: mergedXpubs, in: stored),
+            customLabel: named?.customLabel ?? pendingName,
+            walletId: walletId,
             passphraseProtected: passphraseProtection(previous: previous),
             trezorDeviceId: deviceFeatures?.deviceId ?? previous?.trezorDeviceId
         )
@@ -720,7 +733,7 @@ final class TrezorManager {
     /// credentials are keyed by path and shared by every identity of a device, so they are only
     /// cleared once none remains — dropping them while a sibling is still paired would leave that
     /// wallet unable to reconnect.
-    func forgetWallet(walletId: String) async {
+    func forgetWallet(walletId: String, pendingName: PendingHwWalletName? = nil) async {
         let stored = TrezorKnownDeviceStorage.loadAll()
         let forgotten = stored.filter { $0.resolvedWalletId == walletId }
         guard !forgotten.isEmpty else {
@@ -733,7 +746,7 @@ final class TrezorManager {
             await clearCredentials(path: entry.path)
         }
 
-        TrezorKnownDeviceStorage.saveAll(remaining)
+        TrezorKnownDeviceStorage.saveAll(remaining, pendingName: pendingName)
         loadKnownDevices()
         trezorLog("Forgot hardware wallet: \(walletId)")
 

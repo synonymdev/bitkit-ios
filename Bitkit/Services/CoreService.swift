@@ -1495,6 +1495,30 @@ class ActivityService {
         }
     }
 
+    /// The slice of the metadata backup's tag data that belongs to `walletId`, built the same way the
+    /// envelope builds it so a caller can preserve a wallet's tags across a deletion.
+    ///
+    /// Both sources are needed: core drops a wallet's stored `PreActivityMetadata` along with its
+    /// activities, and those rows are not covered by the rendered set, which only shapes tags that
+    /// already reached an activity.
+    func tagMetadata(forWallet walletId: String) async throws -> [BitkitCore.PreActivityMetadata] {
+        try await ServiceQueue.background(.core) { () throws -> [BitkitCore.PreActivityMetadata] in
+            let stored = try BitkitCore.getAllPreActivityMetadata().filter { $0.walletId == walletId }
+            let hardwareTags = try BitkitCore.getAllActivitiesTags().filter { $0.walletId == walletId }
+            let rendered = try hardwareTags.isEmpty
+                ? []
+                : HwActivityTagBackup.preActivityMetadata(
+                    activities: Self.storedOnchainActivities(walletId: walletId),
+                    tags: hardwareTags
+                )
+
+            // Rendered first, matching the envelope build and for the same reason: a stored row can
+            // outlive the activity it was meant for and hold tags the user has since edited, and
+            // keeping a wallet's tags means keeping what the user currently sees.
+            return HwActivityTagBackup.deduplicated(rendered + stored)
+        }
+    }
+
     func upsertTags(_ activityTags: [ActivityTags]) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.upsertTags(activityTags: activityTags)
@@ -1549,6 +1573,9 @@ class ActivityService {
     func upsertPreActivityMetadata(_ preActivityMetadata: [BitkitCore.PreActivityMetadata]) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.upsertPreActivityMetadata(preActivityMetadata: preActivityMetadata)
+            // Rows written back after a hardware wallet's delete cascade have to reach the next
+            // envelope; a restore's own upsert is inert here, since `shouldSkipBackup` gates it.
+            self.metadataChangedSubject.send()
         }
     }
 

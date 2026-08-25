@@ -57,6 +57,7 @@ extension PrivatePaykitService {
         paymentRequest: PaykitPaymentRequest? = nil
     ) async throws -> PublicPaykitPaymentLaunchResult {
         let consumedVersion = state.contacts[publicKey]?.consumedPrivatePaymentListVersionsByReceiverPath[receiverPath]
+        let previousPaymentListVersion = consumedVersion.map(String.init) ?? "none"
         let amount = paymentRequest.map {
             PaymentAmountContext(value: $0.amountValue, asset: "btc")
         }
@@ -89,6 +90,10 @@ extension PrivatePaykitService {
             let payableEndpoints = await privatePayableEndpoints(from: acceptedEndpoints, publicKey: publicKey)
 
             if !payableEndpoints.isEmpty, let paymentListVersion = resolution.privatePaymentListVersion {
+                Logger.info(
+                    "Opened private Paykit payment for \(PubkyPublicKeyFormat.redacted(publicKey)) using payment list version \(paymentListVersion) after \(previousPaymentListVersion)",
+                    context: "PrivatePaykit"
+                )
                 return .opened(
                     paymentRequest: PublicPaykitService.paymentRequest(from: payableEndpoints),
                     privatePaymentContext: PrivatePaykitPaymentContext(
@@ -103,6 +108,10 @@ extension PrivatePaykitService {
             }
 
             if resolution.status == .waitingForUpdatedPaymentList {
+                Logger.info(
+                    "Waiting for a private Paykit payment list newer than \(previousPaymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey)); public resolution is disabled for this request",
+                    context: "PrivatePaykit"
+                )
                 schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
                 return .waitingForUpdatedPaymentList
             }
@@ -142,6 +151,10 @@ extension PrivatePaykitService {
         contactState.cachedResolvedEndpoints.removeAll()
         state.contacts[publicKey] = contactState
         try persistStateOrThrow(markWalletBackup: true)
+        Logger.info(
+            "Consumed private Paykit payment list version \(context.paymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey))",
+            context: "PrivatePaykit"
+        )
     }
 
     private func currentLinkState(

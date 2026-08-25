@@ -60,6 +60,8 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
             return connectedFeatures ?? makeFeatures()
         }
 
+        var forgottenPendingNames: [PendingHwWalletName?] = []
+
         func disconnectStaleSession(deviceId: String) async {
             staleDisconnects.append(deviceId)
         }
@@ -72,8 +74,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
             warmUpCalls.append(deviceId)
         }
 
-        func forgetWallet(walletId: String) async {
+        func forgetWallet(walletId: String, pendingName: PendingHwWalletName?) async {
             forgottenWalletIds.append(walletId)
+            forgottenPendingNames.append(pendingName)
             storedDevices.removeAll { $0.resolvedWalletId == walletId }
             if connectedWalletId == walletId { connectedWalletId = nil }
         }
@@ -334,6 +337,13 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         XCTAssertEqual(session.forgottenWalletIds, [strayWalletId], "the wallet a typo opened is dropped")
         XCTAssertEqual(deletedWalletIds, [strayWalletId], "its activities go with it")
         XCTAssertEqual(session.staleDisconnects, ["dev1"], "the session it opened is torn down")
+        // The stray is a real wallet the user owns, and reading its accounts already consumed any
+        // name restored for it into the entry being forgotten, so the name has to go back.
+        XCTAssertEqual(
+            session.forgottenPendingNames.compactMap { $0 }.map(\.walletId),
+            [strayWalletId],
+            "its backup data is kept"
+        )
     }
 
     /// An account read that failed says nothing about which wallet the session holds, so calling it a
@@ -426,14 +436,14 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
 
     // MARK: - removeWallet
 
-    func testRemovingAWalletForgetsOnlyThatIdentity() async {
+    func testRemovingAWalletForgetsOnlyThatIdentity() async throws {
         session.storedDevices = [
             makeDevice(walletId: standardWalletId),
             makeDevice(xpubs: ["nativeSegwit": "zHidden"], walletId: hiddenWalletId, passphraseProtected: true),
         ]
         let manager = makeManager()
 
-        await manager.removeWallet(walletId: hiddenWalletId)
+        try await manager.removeWallet(walletId: hiddenWalletId, keepBackupData: false)
         await manager.drainPendingPersists()
 
         XCTAssertEqual(session.forgottenWalletIds, [hiddenWalletId])
