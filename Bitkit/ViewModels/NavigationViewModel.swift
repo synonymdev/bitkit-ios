@@ -32,6 +32,7 @@ enum Route: Hashable {
     case createProfile
     case editProfile
     case payContacts
+    case paymentRequests
     case transferIntro
     case fundingOptions
     case spendingIntro

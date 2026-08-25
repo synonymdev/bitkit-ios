@@ -14,6 +14,7 @@ enum SheetID: String, CaseIterable {
     case lnurlWithdraw
     case pubkyAuthApproval
     case notifications
+    case paymentRequests
     case quickpay
     case receive
     case receivedTx
@@ -37,15 +38,18 @@ struct SheetConfiguration {
 class SheetViewModel: ObservableObject {
     @Published var activeSheetConfiguration: SheetConfiguration? = nil
     @Published var hardwareConnectHandlesPairing = false
+    @Published private(set) var isReplacingSheet = false
 
     func showSheet(_ id: SheetID, data: Any? = nil) {
         if isAnySheetOpen {
             // If any other sheet is open, close it and delay before showing the new sheet
             // to prevent the new sheet from closing immediately (bug)
+            isReplacingSheet = true
             hideSheet()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                 guard let self else { return }
+                isReplacingSheet = false
                 Logger.debug("Showing sheet \(id.rawValue) after delay", context: "SheetViewModel")
                 activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 playHaptics(for: id)
@@ -56,6 +60,7 @@ class SheetViewModel: ObservableObject {
                 }
             }
         } else {
+            isReplacingSheet = false
             // If no sheet is open, show the new sheet immediately
             Logger.debug("Showing sheet \(id.rawValue)", context: "SheetViewModel")
             activeSheetConfiguration = SheetConfiguration(id: id, data: data)
@@ -83,6 +88,22 @@ class SheetViewModel: ObservableObject {
         // Notify timed sheet manager
         Task { @MainActor in
             TimedSheetManager.shared.onSheetDismissed()
+        }
+    }
+
+    func hideSheetBeforePerforming(reason: String, action: @escaping () -> Void) {
+        guard isAnySheetOpen else {
+            action()
+            return
+        }
+
+        isReplacingSheet = true
+        hideSheet(reason: reason)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            guard let self else { return }
+            isReplacingSheet = false
+            guard activeSheetConfiguration == nil else { return }
+            action()
         }
     }
 
@@ -256,6 +277,18 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .notifications else { return nil }
             return NotificationsSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var paymentRequestsSheetItem: PaymentRequestsSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .paymentRequests else { return nil }
+            return PaymentRequestsSheetItem()
         }
         set {
             if newValue == nil {

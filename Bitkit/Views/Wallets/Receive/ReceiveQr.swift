@@ -4,7 +4,6 @@ struct ReceiveQr: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var wallet: WalletViewModel
-
     @Binding var navigationPath: [ReceiveRoute]
     let cjitInvoice: String?
     let tab: ReceiveTab?
@@ -13,7 +12,11 @@ struct ReceiveQr: View {
     @State private var showDetails = false
     @State private var hasAppliedDefaultTab = false
 
-    init(navigationPath: Binding<[ReceiveRoute]>, cjitInvoice: String? = nil, tab: ReceiveTab? = nil) {
+    init(
+        navigationPath: Binding<[ReceiveRoute]>,
+        cjitInvoice: String? = nil,
+        tab: ReceiveTab? = nil
+    ) {
         _navigationPath = navigationPath
         self.cjitInvoice = cjitInvoice
         self.tab = tab
