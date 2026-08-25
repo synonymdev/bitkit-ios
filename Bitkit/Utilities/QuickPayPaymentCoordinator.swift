@@ -157,7 +157,7 @@ final class QuickPayPaymentCoordinator {
     }
 
     static func isHardReject(_ error: Error) -> Bool {
-        guard let nodeError = error as? NodeError else {
+        guard let nodeError = nodeError(from: error) else {
             return false
         }
         switch nodeError {
@@ -169,13 +169,22 @@ final class QuickPayPaymentCoordinator {
     }
 
     static func isDuplicatePayment(_ error: Error) -> Bool {
-        guard let nodeError = error as? NodeError else {
+        guard let nodeError = nodeError(from: error) else {
             return false
         }
         if case .DuplicatePayment = nodeError {
             return true
         }
         return false
+    }
+
+    /// `ServiceQueue` boxes LDK errors into `AppError`, so production dispatch failures
+    /// arrive wrapped; classify on the preserved underlying `NodeError`.
+    private static func nodeError(from error: Error) -> NodeError? {
+        if let nodeError = error as? NodeError {
+            return nodeError
+        }
+        return (error as? AppError)?.underlyingError as? NodeError
     }
 
     private func run(

@@ -64,6 +64,61 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(NodeError.PersistenceFailed(message: "io")))
     }
 
+    func testWrappedInvalidInvoiceIsHardReject() {
+        XCTAssertTrue(QuickPayPaymentCoordinator.isHardReject(Bitkit.AppError(error: NodeError.InvalidInvoice(message: "bad"))))
+    }
+
+    func testWrappedDuplicatePaymentIsDuplicateNotHardReject() {
+        let wrapped = Bitkit.AppError(error: NodeError.DuplicatePayment(message: "dup"))
+        XCTAssertTrue(QuickPayPaymentCoordinator.isDuplicatePayment(wrapped))
+        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(wrapped))
+    }
+
+    func testWrappedPersistenceIsNotHardReject() {
+        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(Bitkit.AppError(error: NodeError.PersistenceFailed(message: "io"))))
+    }
+
+    func testWrappedHardRejectReleasesSpendAndFails() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let route = await firstRoute(
+            sendBolt11: { _ in
+                throw Bitkit.AppError(error: NodeError.InvalidInvoice(message: "bad"))
+            }
+        )
+
+        guard case .failure = route else {
+            return XCTFail("Expected failure, got \(String(describing: route))")
+        }
+        XCTAssertNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
+    func testWrappedDuplicateDispatchWithSucceededLdkGoesToSuccess() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let route = await firstRoute(
+            sendBolt11: { _ in
+                throw Bitkit.AppError(error: NodeError.DuplicatePayment(message: "dup"))
+            },
+            listRows: {
+                [
+                    QuickPayReconcileRow(
+                        paymentId: "pid",
+                        invoicePaymentHash: invoiceHash,
+                        isOutboundBolt11: true,
+                        status: .succeeded
+                    ),
+                ]
+            }
+        )
+
+        guard case let .success(paymentId) = route else {
+            return XCTFail("Expected success, got \(String(describing: route))")
+        }
+        XCTAssertEqual(paymentId, invoiceHash)
+        XCTAssertNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
     func testLeftoverRecordGoesPendingWithoutSending() async throws {
         let invoiceHash = try Self.invoiceHash
         var sent = false
