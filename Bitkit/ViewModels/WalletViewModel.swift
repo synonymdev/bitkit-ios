@@ -56,6 +56,7 @@ class WalletViewModel: ObservableObject {
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
     private var eventHandlers: [String: (Event) -> Void] = [:]
+    private var watchSendContinuations: [String: CheckedContinuation<SettledLightningPayment, Error>] = [:]
     private var probeOutcomes: [PaymentId: ProbeOutcome] = [:]
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
@@ -917,32 +918,49 @@ class WalletViewModel: ObservableObject {
         return try await watchSend(hash: String(hash))
     }
 
+    /// Observes task cancellation so `waitForLightningPayment`'s task group can unwind after its
+    /// timeout instead of awaiting a continuation that only an LDK event would resume.
     private func watchSend(hash: String) async throws -> SettledLightningPayment {
         let eventId = hash
 
-        return try await withCheckedThrowingContinuation { continuation in
-            addOnEvent(id: eventId) { event in
-                switch event {
-                case let .paymentSuccessful(_, paymentHash, _, feePaidMsat):
-                    if paymentHash == hash {
-                        self.removeOnEvent(id: eventId)
-                        continuation.resume(returning: SettledLightningPayment(
-                            paymentHash: paymentHash,
-                            feePaidSats: (feePaidMsat ?? 0) / 1000
-                        ))
-                    }
-                case .paymentFailed(paymentId: _, let paymentHash, let reason):
-                    if paymentHash == hash {
-                        self.removeOnEvent(id: eventId)
-                        continuation.resume(throwing: AppError(paymentFailureReason: reason))
-                    }
-                default:
-                    break
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SettledLightningPayment, Error>) in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
                 }
-            }
+                watchSendContinuations[eventId] = continuation
+                addOnEvent(id: eventId) { [weak self] event in
+                    switch event {
+                    case let .paymentSuccessful(_, paymentHash, _, feePaidMsat):
+                        if paymentHash == hash {
+                            self?.finishWatchSend(id: eventId, result: .success(SettledLightningPayment(
+                                paymentHash: paymentHash,
+                                feePaidSats: (feePaidMsat ?? 0) / 1000
+                            )))
+                        }
+                    case .paymentFailed(paymentId: _, let paymentHash, let reason):
+                        if paymentHash == hash {
+                            self?.finishWatchSend(id: eventId, result: .failure(AppError(paymentFailureReason: reason)))
+                        }
+                    default:
+                        break
+                    }
+                }
 
-            syncState()
+                syncState()
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.finishWatchSend(id: eventId, result: .failure(CancellationError()))
+            }
         }
+    }
+
+    private func finishWatchSend(id: String, result: Result<SettledLightningPayment, Error>) {
+        guard let continuation = watchSendContinuations.removeValue(forKey: id) else { return }
+        removeOnEvent(id: id)
+        continuation.resume(with: result)
     }
 
     func closeChannel(_ channel: ChannelDetails, force: Bool = false, forceCloseReason: String? = nil) async throws {
