@@ -32,6 +32,8 @@ protocol HwConnectServicing {
     func connect(to device: TrezorDeviceInfo) async throws -> HwConnectResult
     /// Opens the hidden wallet the passphrase unlocks and starts watching it; returns its wallet id.
     func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String
+    /// The Bitkit-side name already stored for `walletId`, or nil when it has none.
+    func storedName(forWallet walletId: String) -> String?
     func setWalletLabel(walletId: String, label: String)
     func cancelPairingCode()
 }
@@ -284,10 +286,13 @@ final class HwConnectViewModel {
         balanceSats = 0
         // A brand-new identity carries no label of its own, so it shows the device's name until the
         // wallet is published and that emission refines the prefill; once it resolves the field is
-        // the user's to edit.
-        deviceName = deviceDefaultName
-        labelInitialized = false
-        labelInput = deviceDefaultName
+        // the user's to edit. One being added back already has its name on the entry that opening it
+        // just wrote — a name restored from a backup or kept through its removal — so take it now
+        // rather than showing the device's own for as long as the wallet takes to reach the list.
+        let storedName = service.storedName(forWallet: walletId)
+        deviceName = storedName ?? deviceDefaultName
+        labelInitialized = storedName != nil
+        labelInput = storedName ?? deviceDefaultName
         phase = .passphrasePaired
     }
 
@@ -371,18 +376,50 @@ struct TrezorHwConnectService: HwConnectServicing {
             label: connected.label ?? trezorManager.deviceFeatures?.label,
             model: connected.model ?? trezorManager.deviceFeatures?.model
         )
-        // Show the name it was already saved under, so re-pairing doesn't appear to rename it.
-        let stored = walletId.flatMap { id in hwWalletManager.wallets.first { $0.id == id } }
         return HwConnectResult(
             deviceId: connected.id,
             walletId: walletId,
-            name: stored?.name ?? deviceDefaultName,
+            name: Self.pairedName(
+                walletId: walletId,
+                storedEntries: TrezorKnownDeviceStorage.loadAll(),
+                deviceDefaultName: deviceDefaultName
+            ),
             deviceDefaultName: deviceDefaultName
         )
     }
 
+    /// The name to show the paired step under, so re-pairing doesn't appear to rename the wallet.
+    ///
+    /// Read from the store rather than from the published wallet list: connecting has just written
+    /// this identity's entry, and the tiles only catch up on the next device push. A wallet that was
+    /// removed and is now being re-added is not in that list at all, so its name — restored from a
+    /// backup or kept through the removal, and adopted onto the entry a moment ago — would fall back
+    /// to the device's own. Finishing the step then persists that fallback over it.
+    static func pairedName(
+        walletId: String?,
+        storedEntries: [TrezorKnownDevice],
+        deviceDefaultName: String
+    ) -> String {
+        storedName(walletId: walletId, storedEntries: storedEntries) ?? deviceDefaultName
+    }
+
+    /// The Bitkit-side name stored for `walletId`, or nil when it has none of its own.
+    static func storedName(walletId: String?, storedEntries: [TrezorKnownDevice]) -> String? {
+        guard let walletId,
+              let label = storedEntries.first(where: { $0.resolvedWalletId == walletId })?.customLabel,
+              !label.isEmpty
+        else {
+            return nil
+        }
+        return label
+    }
+
     func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String {
         try await hwWalletManager.connectWithPassphrase(deviceId: deviceId, passphrase: passphrase)
+    }
+
+    func storedName(forWallet walletId: String) -> String? {
+        Self.storedName(walletId: walletId, storedEntries: TrezorKnownDeviceStorage.loadAll())
     }
 
     func setWalletLabel(walletId: String, label: String) {

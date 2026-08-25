@@ -53,6 +53,8 @@ final class HwWalletManager {
     private let networkProvider: () -> TrezorCoinType
     private let persistSnapshot: @MainActor (HwWalletSnapshot) async throws -> Void
     private let deleteActivities: @MainActor (String) async throws -> Void
+    private let readTagMetadata: @MainActor (String) async throws -> [PreActivityMetadata]
+    private let writeTagMetadata: @MainActor ([PreActivityMetadata]) async throws -> Void
 
     /// The live device session. Only the identity-aware operations need it; tile and watcher state
     /// still come solely from `updateDevices(...)`. Nil in previews and in tests that don't reach
@@ -93,6 +95,15 @@ final class HwWalletManager {
     /// content is byte-identical — that write is what applies the deletions the partial ones deferred.
     private var lastPersisted: [String: HwWalletSnapshot] = [:]
 
+    /// Tag metadata a removal asked to keep, re-applied after every delete of its wallet. Read at the
+    /// moment each delete runs rather than captured, so a later removal replaces it — or clears it,
+    /// when that one keeps nothing.
+    ///
+    /// Deliberately outlives the removal: a cleanup delete can arrive long afterwards, from a push
+    /// that re-added the wallet and then dropped it again, and re-applying is what keeps it from
+    /// taking the rows with it.
+    private var keptBackupMetadata: [String: [PreActivityMetadata]] = [:]
+
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
 
@@ -103,7 +114,9 @@ final class HwWalletManager {
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
         persistSnapshot: (@MainActor (HwWalletSnapshot) async throws -> Void)? = nil,
-        deleteActivities: (@MainActor (String) async throws -> Void)? = nil
+        deleteActivities: (@MainActor (String) async throws -> Void)? = nil,
+        readTagMetadata: (@MainActor (String) async throws -> [PreActivityMetadata])? = nil,
+        writeTagMetadata: (@MainActor ([PreActivityMetadata]) async throws -> Void)? = nil
     ) {
         self.session = session
         self.watcherService = watcherService
@@ -125,6 +138,12 @@ final class HwWalletManager {
         }
         self.deleteActivities = deleteActivities ?? { walletId in
             _ = try await CoreService.shared.activity.deleteByWalletId(walletId)
+        }
+        self.readTagMetadata = readTagMetadata ?? { walletId in
+            try await CoreService.shared.activity.tagMetadata(forWallet: walletId)
+        }
+        self.writeTagMetadata = writeTagMetadata ?? { records in
+            try await CoreService.shared.activity.upsertPreActivityMetadata(records)
         }
     }
 
@@ -162,9 +181,13 @@ final class HwWalletManager {
 
     /// Stop watching a paired hardware wallet and delete its stored activities. Other wallets on the
     /// same physical device are left untouched. The caller is responsible for forgetting the stored
-    /// entries (via `TrezorManager`); the next `updateDevices(...)` push then drops it from the tile
-    /// list.
-    func removeDevice(walletId: String) {
+    /// entries (via `TrezorManager`).
+    ///
+    /// - Parameter keptMetadata: tag metadata to re-apply after each delete of this wallet, or empty
+    /// to keep nothing. Passed on every call so a removal that keeps nothing clears what an earlier
+    /// one left behind.
+    func removeDevice(walletId: String, keptMetadata: [PreActivityMetadata] = []) {
+        keptBackupMetadata[walletId] = keptMetadata.isEmpty ? nil : keptMetadata
         for watcherId in activeWatchers where self.walletId(fromWatcherId: watcherId) == walletId {
             _ = stopActiveWatcher(watcherId)
         }
@@ -173,6 +196,11 @@ final class HwWalletManager {
         for device in knownDevices where device.resolvedWalletId == walletId {
             walletIdCache[xpubsSignature(device.xpubs)] = nil
         }
+        // Dropped here rather than left to the next `updateDevices(...)` push. Until the wallet leaves
+        // `hwWalletIds`, the push's own cleanup deletes its activities a second time — after any kept
+        // metadata was written back — and `deviceGroups()` still yields the group, so a watcher event
+        // arriving in that window re-persists the activities this just deleted.
+        knownDevices.removeAll { $0.resolvedWalletId == walletId }
         recomputeDerivedState()
     }
 
@@ -197,9 +225,37 @@ final class HwWalletManager {
 
     /// Removes a hardware wallet and forgets every stored entry that belongs to its wallet identity.
     /// Other wallets of the same physical device stay paired.
-    func removeWallet(walletId: String) async {
-        removeDevice(walletId: walletId)
-        await session?.forgetWallet(walletId: walletId)
+    ///
+    /// - Parameter keepBackupData: whether to carry the wallet's name and tags in the backup, so
+    /// re-pairing the device restores them. Core deletes a wallet's activities, its activity tags and
+    /// its pre-activity metadata in one cascade, which is both of the sources the metadata envelope
+    /// draws hardware tags from, so without this a removal silently empties the backup of them.
+    func removeWallet(walletId: String, keepBackupData: Bool) async throws {
+        // Everything here reads; nothing has been deleted yet, so a failure leaves the wallet whole.
+        var keptName: String?
+        var keptMetadata: [PreActivityMetadata] = []
+        if keepBackupData {
+            keptName = entries(for: walletId)
+                .lazy
+                .compactMap { $0.customLabel?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
+            do {
+                keptMetadata = try await readTagMetadata(walletId)
+            } catch {
+                // Refused rather than reported as a failed removal: the wallet is untouched, so the
+                // choice stays with the user — retry, or remove it without keeping the data.
+                Logger.error("Failed to read tag metadata of HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
+                throw HwWalletRemovalError.backupDataUnreadable
+            }
+        }
+
+        removeDevice(walletId: walletId, keptMetadata: keptMetadata)
+        // The name rides the same store write that forgets the entries carrying it. A nil name is
+        // passed deliberately when keeping nothing: it drops a name an earlier removal kept.
+        await session?.forgetWallet(
+            walletId: walletId,
+            pendingName: PendingHwWalletName(walletId: walletId, name: keptName)
+        )
     }
 
     // MARK: - Wallet identity & the device session
@@ -367,7 +423,11 @@ final class HwWalletManager {
         // Reading the accounts of the wrong wallet already stored it; a mistyped passphrase must not
         // leave a stray watch-only wallet behind.
         if !watchedBefore.contains(opened) {
-            await removeWallet(walletId: opened)
+            // The wallet is a real one the user owns, and reading its accounts already stored it —
+            // consuming any name restored for it into the entry about to be forgotten. Keeping its
+            // data puts that name back where re-pairing will find it. Failing here must not replace
+            // the mismatch the caller is waiting for.
+            try? await removeWallet(walletId: opened, keepBackupData: true)
         }
         await session.disconnectStaleSession(deviceId: deviceId)
         throw HwPassphraseError.mismatch
@@ -609,11 +669,29 @@ final class HwWalletManager {
 
     private func delete(walletId: String) {
         persistQueue.enqueue(walletId: walletId) { [weak self] in
+            guard let self else { return }
             do {
-                try await self?.deleteActivities(walletId)
+                try await deleteActivities(walletId)
             } catch {
                 Logger.error("Failed to delete activities for HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
             }
+            await restoreKeptMetadata(walletId: walletId)
+        }
+    }
+
+    /// Re-apply the tag metadata a removal asked to keep, as the tail of the delete that took it.
+    /// Core drops a wallet's pre-activity metadata along with its activities whether or not any
+    /// matched, so this belongs to every delete of the wallet rather than to the removal alone — a
+    /// later cleanup pass then repairs itself instead of destroying the kept rows. Core re-attaches
+    /// them once a watcher recreates the activities, so re-pairing the device brings the tags back.
+    private func restoreKeptMetadata(walletId: String) async {
+        guard let kept = keptBackupMetadata[walletId], !kept.isEmpty else { return }
+        do {
+            try await writeTagMetadata(kept)
+        } catch {
+            // The activities are already gone and the watchers already stopped, so there is nothing
+            // to roll back to and reporting a failed removal would be false. The tags are lost.
+            Logger.error("Failed to keep tag metadata of HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
         }
     }
 
@@ -1009,6 +1087,14 @@ final class SnapshotPersistQueue {
             await task.value
         }
     }
+}
+
+/// Failures of a hardware-wallet removal the user can act on.
+enum HwWalletRemovalError: Error, Equatable {
+    /// The removal asked to keep the wallet's backup data, but its tags could not be read. Raised
+    /// before anything is deleted, so the wallet is untouched and the removal can be retried or
+    /// repeated without keeping the data.
+    case backupDataUnreadable
 }
 
 /// Failures specific to passphrase (hidden) wallets, mirroring bitkit-android's `HwPassphrase*Error`
