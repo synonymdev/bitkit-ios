@@ -123,7 +123,7 @@ struct SpendingHwSign: View {
                         size: .small,
                         isDisabled: transfer.hwSpending.isSigning || transfer.hwSpending.hasPendingBroadcast
                     ) {
-                        navigation.navigate(.spendingAdvanced(order: order))
+                        navigation.navigate(.spendingAdvanced(order: order, walletId: walletId))
                     }
                     .accessibilityIdentifier("HardwareTransferSignAdvanced")
                 }

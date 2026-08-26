@@ -212,6 +212,8 @@
 "lightning__spending_amount__quarter" = "25%";
 "lightning__spending_amount__error_min__title" = "Savings Balance Minimum";
 "lightning__spending_amount__error_min__description" = "A minimum of ₿ {amount} is needed to set up your spending balance.";
+"lightning__spending_amount__error_balance__description" = "Your savings cannot cover this transfer and its fees. Try a smaller amount.";
+"lightning__spending_amount__error_balance__title" = "Insufficient Savings";
 "lightning__spending_amount__error_max__title" = "Spending Balance Maximum";
 "lightning__spending_amount__error_max__description" = "The amount you can transfer to your spending balance is currently limited to ₿ {amount}.";
 "lightning__spending_amount__error_max__description_zero" = "Your transfer to the spending balance is limited due to liquidity policy. For details, visit the Help Center.";
@@ -223,6 +225,8 @@
 "lightning__spending_confirm__default" = "Use Defaults";
 "lightning__spending_advanced__title" = "Receiving\n<accent>capacity</accent>";
 "lightning__spending_advanced__fee" = "Liquidity fee";
+"lightning__spending_advanced__error_balance__description" = "Your savings cannot cover the liquidity fee for this receiving capacity. Choose a smaller amount.";
+"lightning__spending_advanced__error_balance__title" = "Not Enough Funds";
 "lightning__spending_advanced__error_max__title" = "Receiving Capacity Maximum";
 "lightning__spending_advanced__error_max__description" = "The receiving capacity is currently limited to ₿ {amount}.";
 "lightning__liquidity__title" = "Liquidity\n<accent>& routing</accent>";

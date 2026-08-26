@@ -185,6 +185,27 @@ struct SpendingAmountHw: View {
         }
 
         do {
+            // The budget is the device account, never on-chain savings: these funds never sit in
+            // this wallet, so an on-chain read would reject every hardware transfer.
+            let canFund = await transfer.canFundOrder(
+                clientBalance: amountSats,
+                budget: transfer.hwFundingBudget(walletId: walletId),
+                transferValues: { transfer.calculateTransferValues(clientBalanceSat: $0, blocktankInfo: blocktank.info) },
+                estimateOrderFee: { clientBalance, lspBalance in
+                    let estimate = try await blocktank.estimateOrderFee(clientBalance: clientBalance, lspBalance: lspBalance)
+                    return (estimate.networkFeeSat, estimate.serviceFeeSat)
+                }
+            )
+            guard canFund else {
+                app.toast(
+                    type: .warning,
+                    title: t("lightning__spending_amount__error_balance__title"),
+                    description: t("lightning__spending_amount__error_balance__description"),
+                    visibilityTime: Toast.visibilityTimeShort
+                )
+                return
+            }
+
             let values = transfer.calculateTransferValues(clientBalanceSat: amountSats, blocktankInfo: blocktank.info)
             let lspBalance = max(values.defaultLspBalance, values.minLspBalance)
             let order = try await blocktank.createOrder(clientBalance: amountSats, lspBalance: lspBalance)

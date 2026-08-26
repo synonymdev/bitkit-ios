@@ -443,7 +443,7 @@ struct MainNavView: View {
                 case let .spendingHwSign(walletId): SpendingHwSign(walletId: walletId)
                 case .spendingHwSigned: SpendingHwSigned()
                 case let .spendingConfirm(order): SpendingConfirm(order: order)
-                case let .spendingAdvanced(order): SpendingAdvancedView(order: order)
+                case let .spendingAdvanced(order, walletId): SpendingAdvancedView(order: order, walletId: walletId)
                 case let .transferLearnMore(order): TransferLearnMoreView(order: order)
                 case .settingUp: SettingUpView()
                 case .fundingAdvanced: FundAdvancedOptions()
