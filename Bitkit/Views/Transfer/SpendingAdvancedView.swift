@@ -182,6 +182,12 @@ struct SpendingAdvancedView: View {
     private func updateInputCap() {
         let maxLspBalance = transfer.transferValues.maxLspBalance
         amountViewModel.maxAmountOverride = maxLspBalance > 0 ? maxLspBalance : nil
+
+        // Settling the max can land it below what is already entered, so the amount comes down with
+        // it rather than leaving a capacity that no longer exists selected.
+        if maxLspBalance > 0, maxLspBalance < amountViewModel.amountSats {
+            amountViewModel.updateFromSats(maxLspBalance, currency: currency)
+        }
     }
 
     private func onMaxExceeded() {
@@ -207,21 +213,21 @@ struct SpendingAdvancedView: View {
 
     private var actionButtons: some View {
         HStack(spacing: 16) {
-            NumberPadActionButton(text: t("common__min"), disabled: transfer.isSettlingAdvancedCapacity) {
+            NumberPadActionButton(text: t("common__min")) {
                 amountViewModel.updateFromSats(transfer.transferValues.minLspBalance, currency: currency)
             }
             .accessibilityIdentifier("SpendingAdvancedMin")
 
             Spacer()
 
-            NumberPadActionButton(text: t("common__default"), disabled: transfer.isSettlingAdvancedCapacity) {
+            NumberPadActionButton(text: t("common__default")) {
                 amountViewModel.updateFromSats(transfer.transferValues.defaultLspBalance, currency: currency)
             }
             .accessibilityIdentifier("SpendingAdvancedDefault")
 
             Spacer()
 
-            NumberPadActionButton(text: t("common__max"), disabled: transfer.isSettlingAdvancedCapacity) {
+            NumberPadActionButton(text: t("common__max")) {
                 amountViewModel.updateFromSats(transfer.transferValues.maxLspBalance, currency: currency)
             }
             .accessibilityIdentifier("SpendingAdvancedMax")
