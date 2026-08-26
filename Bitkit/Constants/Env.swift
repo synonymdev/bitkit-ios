@@ -76,7 +76,7 @@ enum Env {
     }
 
     private static var e2eLocalHost: String {
-        infoPlistValue("E2E_LOCAL_HOST") ?? "127.0.0.1"
+        configValue("E2E_LOCAL_HOST") ?? "127.0.0.1"
     }
 
     private static var e2eHomegateUrl: String {
