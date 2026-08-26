@@ -39,7 +39,6 @@ struct NumberPadActionButton: View {
                     .stroke(variant == .secondary ? color : Color.clear, lineWidth: 2)
             )
             .cornerRadius(8)
-            .opacity(disabled ? 0.5 : 1)
         }
         .disabled(disabled)
         .buttonStyle(NoAnimationButtonStyle())
