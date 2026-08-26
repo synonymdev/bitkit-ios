@@ -32,7 +32,9 @@ enum Route: Hashable {
     case createProfile
     case editProfile
     case payContacts
-    case paymentRequests
+    case subscriptions(showPayments: Bool)
+    case paymentRequestDetail(PaykitPaymentRequest.ID)
+    case subscriptionDetail(PaykitSubscription.ID)
     case transferIntro
     case fundingOptions
     case spendingIntro

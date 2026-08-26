@@ -16,6 +16,7 @@ struct MainNavView: View {
     @EnvironmentObject private var transfer: TransferViewModel
     @Environment(TrezorManager.self) private var trezorManager
     @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
     @Environment(\.scenePhase) var scenePhase
 
     @State private var showClipboardAlert = false
@@ -131,6 +132,14 @@ struct MainNavView: View {
             config in PaymentRequestsSheet(config: config)
         }
         .sheet(
+            item: $sheets.subscriptionSheetItem,
+            onDismiss: {
+                sheets.hideSheetIfActive(.subscription, reason: "Subscription sheet dismissed")
+            }
+        ) {
+            config in SubscriptionSheet(config: config)
+        }
+        .sheet(
             item: $sheets.receiveSheetItem,
             onDismiss: {
                 sheets.hideSheet()
@@ -182,6 +191,9 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.sendSheetItem,
             onDismiss: {
+                if let request = app.contactPaymentContext?.incomingPaymentRequest {
+                    Task { await paykitPaymentRequestManager.finishPayment(request) }
+                }
                 app.resetSendState()
                 wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                 sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")
@@ -293,6 +305,9 @@ struct MainNavView: View {
             }
         }
         .onChange(of: settings.enableNotifications) { _, newValue in
+            Task {
+                await paykitPaymentRequestManager.synchronizeSubscriptionNotifications(enabled: newValue)
+            }
             // Handle notification enable/disable
             if newValue {
                 // Request permission in case user was not prompted yet
@@ -548,8 +563,12 @@ struct MainNavView: View {
                     if isPaykitUIActive { EditProfileView() } else { paykitDisabledRedirectView }
                 case .payContacts:
                     if isPaykitUIActive { PayContactsView() } else { paykitDisabledRedirectView }
-                case .paymentRequests:
-                    if isPaykitUIActive { PaymentRequestsView() } else { paykitDisabledRedirectView }
+                case let .subscriptions(showPayments):
+                    if isPaykitUIActive { SubscriptionsView(showPayments: showPayments) } else { paykitDisabledRedirectView }
+                case let .paymentRequestDetail(id):
+                    if isPaykitUIActive { PaymentRequestDetailView(id: id) } else { paykitDisabledRedirectView }
+                case let .subscriptionDetail(id):
+                    if isPaykitUIActive { SubscriptionDetailView(id: id) } else { paykitDisabledRedirectView }
 
                 // Shop
                 case .shopIntro: ShopIntro()

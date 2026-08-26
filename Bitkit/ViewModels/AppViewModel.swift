@@ -29,17 +29,20 @@ struct ContactPaymentContext: Equatable {
     let publicKey: String
     let privatePaymentContext: PrivatePaykitPaymentContext?
     let incomingPaymentRequest: PaykitPaymentRequest?
+    let isInitialSubscriptionPayment: Bool
 
     init(
         id: UUID = UUID(),
         publicKey: String,
         privatePaymentContext: PrivatePaykitPaymentContext? = nil,
-        incomingPaymentRequest: PaykitPaymentRequest? = nil
+        incomingPaymentRequest: PaykitPaymentRequest? = nil,
+        isInitialSubscriptionPayment: Bool = false
     ) {
         self.id = id
         self.publicKey = publicKey
         self.privatePaymentContext = privatePaymentContext
         self.incomingPaymentRequest = incomingPaymentRequest
+        self.isInitialSubscriptionPayment = isInitialSubscriptionPayment
     }
 }
 
@@ -372,17 +375,17 @@ extension AppViewModel {
 // MARK: Pending payment tracking
 
 extension AppViewModel {
-    func addPendingPaymentHash(_ hash: String, contactPublicKey: String? = nil) {
+    func addPendingPaymentHash(_ hash: String, contactPaymentContext: ContactPaymentContext? = nil) {
         pendingPaymentHashes.insert(hash)
 
-        if let contactPublicKey {
-            pendingContactPaymentContexts[hash] = ContactPaymentContext(publicKey: contactPublicKey)
+        if let contactPaymentContext {
+            pendingContactPaymentContexts[hash] = contactPaymentContext
         }
     }
 
-    func addPendingContactPaymentContext(_ hash: String, contactPublicKey: String?) {
-        guard let contactPublicKey else { return }
-        pendingContactPaymentContexts[hash] = ContactPaymentContext(publicKey: contactPublicKey)
+    func addPendingContactPaymentContext(_ hash: String, context: ContactPaymentContext?) {
+        guard let context else { return }
+        pendingContactPaymentContexts[hash] = context
     }
 
     func contactPaymentContext(forPendingPaymentHash hash: String) -> ContactPaymentContext? {

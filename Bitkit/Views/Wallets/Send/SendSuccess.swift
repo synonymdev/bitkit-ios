@@ -11,10 +11,16 @@ struct SendSuccess: View {
 
     let paymentId: String // The payment hash or txid from the successful payment
     let walletId: String
+    let isInitialSubscriptionPayment: Bool
 
-    init(paymentId: String, walletId: String = WalletScope.default) {
+    init(
+        paymentId: String,
+        walletId: String = WalletScope.default,
+        isInitialSubscriptionPayment: Bool = false
+    ) {
         self.paymentId = paymentId
         self.walletId = walletId
+        self.isInitialSubscriptionPayment = isInitialSubscriptionPayment
     }
 
     @State private var foundActivity: Activity?
@@ -49,6 +55,22 @@ struct SendSuccess: View {
     }
 
     var body: some View {
+        Group {
+            if isInitialSubscriptionPayment {
+                SubscriptionSuccessView {
+                    sheets.hideSheet(reason: "Initial subscription payment completed")
+                }
+            } else {
+                standardSuccess
+            }
+        }
+        .navigationBarHidden(true)
+        .allowSwipeBack(false)
+        .sheetBackground()
+        .task { await searchForActivity() }
+    }
+
+    private var standardSuccess: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
                 // Background confetti animation
@@ -100,12 +122,6 @@ struct SendSuccess: View {
                 }
                 .padding(.horizontal, 16)
             }
-            .navigationBarHidden(true)
-            .allowSwipeBack(false)
-            .sheetBackground()
-        }
-        .task {
-            await searchForActivity()
         }
     }
 

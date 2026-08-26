@@ -69,8 +69,12 @@ struct SendFailure: View {
 
     let context: SendFailureContext
     let onRetryReady: (Bool) -> Void
+    let onSecondaryAction: (() -> Void)?
 
     private var title: String {
+        if context.isInitialSubscriptionPayment {
+            return t("subscriptions__first_payment_failed")
+        }
         switch context.retryRoute {
         case .confirm:
             return app.selectedWalletToPayFrom == .lightning ? t("wallet__send_instant_failed") : t("wallet__send_error_tx_failed")
@@ -103,16 +107,20 @@ struct SendFailure: View {
 
                     VStack(spacing: 16) {
                         CustomButton(
-                            title: t("wallet__send_error_support"),
+                            title: context.isInitialSubscriptionPayment ? t("wallet__payment_requests_not_now") : t("wallet__send_error_support"),
                             variant: .secondary,
                             isDisabled: wallet.isRetryingLightningPayment
                         ) {
-                            contactSupport()
+                            if let onSecondaryAction {
+                                onSecondaryAction()
+                            } else {
+                                contactSupport()
+                            }
                         }
-                        .accessibilityIdentifier("Support")
+                        .accessibilityIdentifier(context.isInitialSubscriptionPayment ? "NotNow" : "Support")
 
                         CustomButton(
-                            title: t("common__try_again"),
+                            title: context.isInitialSubscriptionPayment ? t("subscriptions__retry_payment") : t("common__try_again"),
                             isLoading: wallet.isRetryingLightningPayment
                         ) {
                             retryPayment()

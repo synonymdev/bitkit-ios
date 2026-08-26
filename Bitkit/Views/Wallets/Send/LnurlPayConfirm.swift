@@ -19,6 +19,7 @@ struct LnurlPayConfirm: View {
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var comment = ""
+    @State private var hasStartedAutomaticPayment = false
     @FocusState private var isCommentFocused: Bool
 
     var uri: String {
@@ -26,9 +27,41 @@ struct LnurlPayConfirm: View {
     }
 
     var body: some View {
+        ZStack {
+            confirmationContent
+            if app.contactPaymentContext?.isInitialSubscriptionPayment == true {
+                InitialSubscriptionPaymentProgress()
+            }
+        }
+        .alert(t("common__are_you_sure"), isPresented: $showWarningAlert) {
+            Button(t("common__dialog_cancel"), role: .cancel) {
+                alertContinuation?.resume(returning: false)
+                alertContinuation = nil
+            }
+            Button(t("wallet__send_yes")) {
+                alertContinuation?.resume(returning: true)
+                alertContinuation = nil
+            }
+        } message: {
+            Text(t("wallet__send_dialog1"))
+        }
+        .alert(
+            t("security__bio_error_title"),
+            isPresented: $showingBiometricError
+        ) {
+            Button(t("common__ok")) {
+                // Error handled, user acknowledged
+            }
+        } message: {
+            Text(biometricErrorMessage)
+        }
+        .task { await startAutomaticPaymentIfNeeded() }
+    }
+
+    private var confirmationContent: some View {
         VStack {
             SheetHeader(
-                title: app.contactPaymentContext?.incomingPaymentRequest == nil ? t("wallet__lnurl_p_title") : t("wallet__payment_request"),
+                title: reviewTitle,
                 showBackButton: true,
                 action: AnyView(SendContactHeaderAvatar())
             )
@@ -103,8 +136,11 @@ struct LnurlPayConfirm: View {
             Spacer()
 
             SwipeButton(
-                title: t("wallet__send_swipe"),
-                accentColor: .greenAccent
+                title: app.contactPaymentContext?.isInitialSubscriptionPayment == true
+                    ? t("subscriptions__swipe_to_subscribe_and_pay")
+                    : t("wallet__send_swipe"),
+                accentColor: .greenAccent,
+                isLoading: hasStartedAutomaticPayment
             ) {
                 try await submitPayment()
             }
@@ -112,27 +148,36 @@ struct LnurlPayConfirm: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
-        .alert(t("common__are_you_sure"), isPresented: $showWarningAlert) {
-            Button(t("common__dialog_cancel"), role: .cancel) {
-                alertContinuation?.resume(returning: false)
-                alertContinuation = nil
-            }
-            Button(t("wallet__send_yes")) {
-                alertContinuation?.resume(returning: true)
-                alertContinuation = nil
-            }
-        } message: {
-            Text(t("wallet__send_dialog1"))
-        }
-        .alert(
-            t("security__bio_error_title"),
-            isPresented: $showingBiometricError
-        ) {
-            Button(t("common__ok")) {
-                // Error handled, user acknowledged
-            }
-        } message: {
-            Text(biometricErrorMessage)
+    }
+
+    private var reviewTitle: String {
+        paykitPaymentReviewTitle(context: app.contactPaymentContext, fallback: t("wallet__lnurl_p_title"))
+    }
+
+    @MainActor
+    private func startAutomaticPaymentIfNeeded() async {
+        guard app.contactPaymentContext?.isInitialSubscriptionPayment == true,
+              !hasStartedAutomaticPayment
+        else { return }
+        hasStartedAutomaticPayment = true
+        do {
+            try await submitPayment()
+        } catch is CancellationError {
+            navigationPath.append(.failure(SendFailureContext(
+                error: CancellationError(),
+                retryRoute: .lnurlPayConfirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: app.scannedLightningInvoice?.bolt11,
+                contactPaymentContext: app.contactPaymentContext
+            )))
+        } catch {
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .lnurlPayConfirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: "LNURL: \(uri)",
+                contactPaymentContext: app.contactPaymentContext
+            )))
         }
     }
 
@@ -198,7 +243,6 @@ struct LnurlPayConfirm: View {
 
         let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
         let contactPaymentContext = app.contactPaymentContext
-        let contactPublicKey = contactPaymentContext?.publicKey
         let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
         var bolt11Invoice: String?
         var lightningPaymentHash: String?
@@ -243,12 +287,12 @@ struct LnurlPayConfirm: View {
                 bolt11: bolt11,
                 sats: nil,
                 onTimeout: { timedOutHash in
-                    app.addPendingPaymentHash(timedOutHash, contactPublicKey: contactPublicKey)
+                    app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
                     navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .lnurlPayConfirm, paymentRequest: bolt11))
                 }
             )
             shouldCancelPaymentProof = false
-            app.addPendingContactPaymentContext(paymentHash, contactPublicKey: contactPublicKey)
+            app.addPendingContactPaymentContext(paymentHash, context: contactPaymentContext)
             Logger.info("LNURL payment successful: \(paymentHash)")
             navigationPath.append(.success(paymentId: paymentHash))
         } catch is PaymentTimeoutError {
@@ -273,7 +317,8 @@ struct LnurlPayConfirm: View {
                 error: error,
                 retryRoute: .lnurlPayConfirm,
                 routingCacheResetAttempted: routingCacheResetAttempted,
-                paymentRequest: bolt11Invoice ?? "LNURL: \(lnurlPayData.uri)"
+                paymentRequest: bolt11Invoice ?? "LNURL: \(lnurlPayData.uri)",
+                contactPaymentContext: contactPaymentContext
             )))
         }
     }
