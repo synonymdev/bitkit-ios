@@ -492,6 +492,7 @@ extension AppViewModel {
             data = try await decode(invoice: uri)
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
         }
+        let requestedAmount = contactPaymentContext?.incomingPaymentRequest?.amountSats
 
         if scope == .onchainPayments {
             guard ShopPaymentRequest.isOnchainPayment(data) else { throw ScanHandlingError.unsupportedRequest }
@@ -528,7 +529,7 @@ extension AppViewModel {
                         if nodeIsRunning {
                             // Node is running → we have fresh balances; validate immediately.
                             // Prefer lightning; if insufficient or no channels/capacity, fall back to onchain.
-                            let canSendLightning = lightningService.canSend(amountSats: lightningInvoice.amountSatoshis)
+                            let canSendLightning = lightningService.canSend(amountSats: requestedAmount ?? lightningInvoice.amountSatoshis)
 
                             if canSendLightning {
                                 handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
@@ -551,7 +552,10 @@ extension AppViewModel {
                                 lightningService.balances?.spendableOnchainBalanceSats ?? 0,
                                 alternativeOnchainBalanceSats
                             )
-                            guard validateOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance) else {
+                            guard validateOnchainBalance(
+                                invoiceAmount: requestedAmount ?? invoice.amountSatoshis,
+                                onchainBalance: onchainBalance
+                            ) else {
                                 return
                             }
 
@@ -578,7 +582,10 @@ extension AppViewModel {
                     lightningService.balances?.spendableOnchainBalanceSats ?? 0,
                     alternativeOnchainBalanceSats
                 )
-                guard validateOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance) else {
+                guard validateOnchainBalance(
+                    invoiceAmount: requestedAmount ?? invoice.amountSatoshis,
+                    onchainBalance: onchainBalance
+                ) else {
                     return
                 }
             }
@@ -609,20 +616,21 @@ extension AppViewModel {
 
             // If node is running, we can check for channels and validate immediately
             if lightningService.status?.isRunning == true {
+                let paymentAmount = requestedAmount ?? invoice.amountSatoshis
                 // If user has no channels at all, they can never pay a pure lightning invoice.
                 // Show insufficient spending toast and do not navigate to the send flow.
                 let hasAnyChannels = (lightningService.channels?.isEmpty == false)
                 if !hasAnyChannels {
                     let spendingBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-                    showInsufficientSpendingToast(invoiceAmount: invoice.amountSatoshis, spendingBalance: spendingBalance)
+                    showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: spendingBalance)
                     return
                 }
 
                 // If channels are usable, validate capacity immediately
                 if let channels = lightningService.channels, channels.contains(where: \.isUsable) {
-                    guard lightningService.canSend(amountSats: invoice.amountSatoshis) else {
+                    guard lightningService.canSend(amountSats: paymentAmount) else {
                         let spendingBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-                        showInsufficientSpendingToast(invoiceAmount: invoice.amountSatoshis, spendingBalance: spendingBalance)
+                        showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: spendingBalance)
                         return
                     }
                 }

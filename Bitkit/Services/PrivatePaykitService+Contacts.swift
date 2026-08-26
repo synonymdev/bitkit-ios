@@ -352,7 +352,6 @@ extension PrivatePaykitService {
             let linkableReceiverPaths = receiverPathSelection.linkableReceiverPaths
             let publicationReceiverPaths = receiverPathSelection.publishableReceiverPaths
             if let error = receiverPathSelection.error {
-                firstError = firstError ?? error
                 Logger.warn(
                     "Failed to inspect private Paykit receiver markers for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(error)",
                     context: "PrivatePaykit"
