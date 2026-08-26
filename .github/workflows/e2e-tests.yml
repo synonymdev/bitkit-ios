@@ -506,6 +506,280 @@ jobs:
           name: e2e-artifacts-regtest_${{ matrix.shard.name }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
 
+  # The regtest stack for e2e-tests-remote, on a runner that can run Docker.
+  # Must not depend on e2e-tests-remote, nor it on this: this job only finishes
+  # once the tests are done, so a dependency either way deadlocks.
+  regtest-stack:
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-local, e2e-branch]
+    timeout-minutes: 180
+    steps:
+      - name: Clone E2E tests
+        uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ needs.e2e-branch.outputs.branch }}
+
+      - uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: regtest-${{ github.run_id }}
+          args: --accept-dns=false
+
+      - name: Start regtest stack
+        working-directory: docker
+        run: |
+          set -euo pipefail
+          # LND advertises this to peers and puts it in its TLS cert, so it has to
+          # be the address the Mac actually reaches it on.
+          LND_EXTERNAL_IP=$(tailscale ip -4)
+          export LND_EXTERNAL_IP
+          echo "tailnet address: $LND_EXTERNAL_IP"
+
+          mkdir -p lnd && chmod 777 lnd
+          docker compose pull
+          docker compose up -d
+          docker compose ps
+
+          wait_for() {
+            local what=$1 deadline=$(( SECONDS + 300 ))
+            until eval "$2"; do
+              if (( SECONDS >= deadline )); then
+                echo "::error::timed out waiting for $what"
+                docker compose logs --no-color --tail=50
+                exit 1
+              fi
+              sleep 5
+            done
+            echo "✓ $what"
+          }
+
+          wait_for "electrs on 60001" 'nc -z 127.0.0.1 60001'
+          # sudo: lnd/data is 0700 owned by the container uid, so an unprivileged
+          # test -f returns false whether or not the file is there.
+          wait_for "lnd macaroon" 'sudo test -f lnd/data/chain/bitcoin/regtest/admin.macaroon'
+          sudo chmod -R 777 lnd
+
+      - name: Serve LND credentials
+        run: |
+          set -euo pipefail
+          # The suite needs these as files. Only the tailnet can reach this
+          # runner; it has no inbound connectivity from the internet.
+          mkdir -p /tmp/creds
+          cp docker/lnd/tls.cert /tmp/creds/
+          cp docker/lnd/data/chain/bitcoin/regtest/admin.macaroon /tmp/creds/
+          chmod -R a+r /tmp/creds
+          nohup python3 -m http.server 8081 --bind 0.0.0.0 --directory /tmp/creds \
+            > /tmp/creds/access.log 2>&1 &
+          until nc -z 127.0.0.1 8081; do sleep 1; done
+          echo "✓ serving on :8081"
+
+      - name: Hold the stack up until the tests finish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          deadline=$(( SECONDS + 9000 ))
+          while (( SECONDS < deadline )); do
+            # Matrix jobs are named "<job> - <shard>", so match on the prefix.
+            pending=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
+              --paginate --jq '[.jobs[] | select(.name | startswith("e2e-tests-remote")) | select(.status != "completed")] | length' \
+              2>/dev/null || echo 1)
+            started=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
+              --paginate --jq '[.jobs[] | select(.name | startswith("e2e-tests-remote"))] | length' \
+              2>/dev/null || echo 0)
+            echo "e2e-tests-remote: ${started} job(s), ${pending} still running"
+            if [ "$started" -gt 0 ] && [ "$pending" -eq 0 ]; then
+              echo "tests finished"
+              break
+            fi
+            sleep 30
+          done
+
+      - name: Stack logs
+        if: always()
+        working-directory: docker
+        run: docker compose logs --no-color --tail=100 || true
+
+  # Same suite as e2e-tests-local, on a GitHub-hosted Mac with the stack on
+  # another runner. Runs alongside it until it has earned replacing it.
+  e2e-tests-remote:
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    runs-on: macos-latest
+    needs: [detect-changes, build-local, e2e-branch]
+    timeout-minutes: 180
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - { name: e2e, grep: '@transfer|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4|@hardware_wallet' }
+
+    name: e2e-tests-remote - ${{ matrix.shard.name }}
+
+    steps:
+      - name: Clone E2E tests
+        uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          path: bitkit-e2e-tests
+          ref: ${{ needs.e2e-branch.outputs.branch }}
+
+      - name: Download iOS app
+        uses: actions/download-artifact@v8
+        with:
+          name: bitkit-e2e-ios_${{ github.run_number }}
+          path: bitkit-e2e-tests/aut
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: bitkit-e2e-tests
+        run: npm ci
+
+      - name: Install ffmpeg
+        run: brew install ffmpeg
+
+      - uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: tester-${{ github.run_id }}
+          # Peers are found via `tailscale status`, so MagicDNS is unused. Leaving
+          # it on rewrites the resolver and WebDriverAgent then fails to start.
+          args: --accept-dns=false
+
+      - name: Find the stack runner
+        run: |
+          set -euo pipefail
+          deadline=$(( SECONDS + 1800 ))
+          while :; do
+            ip=$(tailscale status --json 2>/dev/null \
+              | jq -r --arg h "regtest-${{ github.run_id }}" \
+                  'first(.Peer[]? | select(.HostName == $h) | .TailscaleIPs[0]) // empty' \
+              || true)
+            [ -n "$ip" ] && break
+            if (( SECONDS >= deadline )); then
+              echo "::error::stack runner never joined the tailnet"
+              tailscale status || true
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "STACK_IP=$ip" >> "$GITHUB_ENV"
+
+          for port in 60001 9735 8080 43782 8081; do
+            until nc -z -w 5 "$ip" "$port" 2>/dev/null; do
+              if (( SECONDS >= deadline )); then
+                echo "::error::$ip:$port never became reachable"
+                tailscale ping -c 3 "$ip" || true
+                exit 1
+              fi
+              sleep 10
+            done
+          done
+          echo "✓ stack reachable at $ip"
+
+      - name: Fetch LND credentials
+        working-directory: bitkit-e2e-tests
+        run: |
+          set -euo pipefail
+          mkdir -p .lnd-creds
+          curl -fsS --max-time 30 -o .lnd-creds/tls.cert       "http://${STACK_IP}:8081/tls.cert"
+          curl -fsS --max-time 30 -o .lnd-creds/admin.macaroon "http://${STACK_IP}:8081/admin.macaroon"
+
+      - name: Clear previous E2E artifacts
+        working-directory: bitkit-e2e-tests
+        run: |
+          rm -rf artifacts/
+          rm -rf /tmp/lock/
+
+      - name: Boot Simulator
+        run: |
+          xcrun simctl shutdown all || true
+          xcrun simctl erase "iPhone 17" || true
+          defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
+          xcrun simctl boot "iPhone 17" || true
+          xcrun simctl bootstatus "iPhone 17" -b
+          # WebDriverAgent compiles on a cold runner; letting the UI settle first
+          # keeps that inside Appium's launch timeout.
+          open -a Simulator
+          sleep 30
+
+      - name: Run E2E Tests 1 (${{ matrix.shard.name }})
+        continue-on-error: true
+        id: test1
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
+        env:
+          BACKEND: local
+          SIMULATOR_NAME: iPhone 17
+          SIMULATOR_OS_VERSION: "26.2"
+          LND_HOST: ${{ env.STACK_IP }}
+          ELECTRUM_HOST: ${{ env.STACK_IP }}
+          BITCOIN_RPC_URL: http://polaruser:polarpass@${{ env.STACK_IP }}:43782
+          LND_TLS_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/tls.cert
+          LND_MACAROON_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/admin.macaroon
+          # Reaches the app through appium:processArguments; Info.plist is fixed
+          # at build time and the stack did not exist then.
+          E2E_LOCAL_HOST: ${{ env.STACK_IP }}
+          # WDA compiles on a cold runner and 5 minutes is marginal.
+          WDA_LAUNCH_TIMEOUT: "600000"
+          WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
+          RECORD_VIDEO: true
+          ATTEMPT: 1
+
+      - name: Run E2E Tests 2 (${{ matrix.shard.name }})
+        continue-on-error: true
+        if: steps.test1.outcome != 'success'
+        id: test2
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
+        env:
+          BACKEND: local
+          SIMULATOR_NAME: iPhone 17
+          SIMULATOR_OS_VERSION: "26.2"
+          LND_HOST: ${{ env.STACK_IP }}
+          ELECTRUM_HOST: ${{ env.STACK_IP }}
+          BITCOIN_RPC_URL: http://polaruser:polarpass@${{ env.STACK_IP }}:43782
+          LND_TLS_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/tls.cert
+          LND_MACAROON_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/admin.macaroon
+          E2E_LOCAL_HOST: ${{ env.STACK_IP }}
+          WDA_LAUNCH_TIMEOUT: "600000"
+          WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
+          RECORD_VIDEO: true
+          ATTEMPT: 2
+
+      - name: Run E2E Tests 3 (${{ matrix.shard.name }})
+        if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
+        id: test3
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
+        env:
+          BACKEND: local
+          SIMULATOR_NAME: iPhone 17
+          SIMULATOR_OS_VERSION: "26.2"
+          LND_HOST: ${{ env.STACK_IP }}
+          ELECTRUM_HOST: ${{ env.STACK_IP }}
+          BITCOIN_RPC_URL: http://polaruser:polarpass@${{ env.STACK_IP }}:43782
+          LND_TLS_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/tls.cert
+          LND_MACAROON_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/admin.macaroon
+          E2E_LOCAL_HOST: ${{ env.STACK_IP }}
+          WDA_LAUNCH_TIMEOUT: "600000"
+          WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
+          RECORD_VIDEO: true
+          ATTEMPT: 3
+
+      - name: Upload E2E Artifacts (${{ matrix.shard.name }})
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-artifacts-remote_${{ matrix.shard.name }}_${{ github.run_number }}
+          path: bitkit-e2e-tests/artifacts/
+
   e2e-status:
     if: always() && github.event.pull_request.draft == false
     name: e2e-status
