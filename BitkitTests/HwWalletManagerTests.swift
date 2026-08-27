@@ -226,7 +226,12 @@ final class HwWalletManagerTests: XCTestCase {
     private func makeEvent(
         _ activities: [Activity],
         total: UInt64,
-        transactionDetails: [TransactionDetails] = []
+        transactionDetails: [TransactionDetails] = [],
+        receiveAddress: BitkitCore.AddressInfo = BitkitCore.AddressInfo(
+            address: "bcrt1qwatcher",
+            path: "m/84'/1'/0'/0/0",
+            transfers: 0
+        )
     ) -> WatcherEvent {
         let balance = WalletBalance(
             confirmed: total, immature: 0, trustedPending: 0, untrustedPending: 0, spendable: total, total: total
@@ -238,12 +243,8 @@ final class HwWalletManagerTests: XCTestCase {
             txCount: UInt32(activities.count),
             blockHeight: 100,
             accountType: .nativeSegwit,
-            nextUnusedExternalAddress: unusedAddress()
+            nextUnusedExternalAddress: receiveAddress
         )
-    }
-
-    private func unusedAddress() -> BitkitCore.AddressInfo {
-        BitkitCore.AddressInfo(address: "bc1qtestunused", path: "m/84'/0'/0'/0/0", transfers: 0)
     }
 
     /// Watcher ids are keyed by wallet identity, so they are derived from the device's xpubs.
@@ -283,6 +284,33 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(vm.totalSats, 50000)
         XCTAssertEqual(wallet.walletId, try HwWalletId.derive(xpubs: xpubs))
         XCTAssertEqual(vm.hwWalletIds, [wallet.walletId])
+    }
+
+    func testWatcherEventProvidesReceiveAddress() throws {
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
+        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        let walletId = try HwWalletId.derive(xpubs: device.xpubs)
+
+        XCTAssertNil(vm.watcherReceiveAddress(walletId: walletId))
+
+        vm.handleWatcherEvent(
+            watcherId: watcherId(device, "nativeSegwit"),
+            event: makeEvent(
+                [],
+                total: 0,
+                receiveAddress: BitkitCore.AddressInfo(
+                    address: "bcrt1qnext",
+                    path: "m/84'/1'/0'/0/3",
+                    transfers: 0
+                )
+            )
+        )
+
+        XCTAssertEqual(
+            vm.watcherReceiveAddress(walletId: walletId),
+            HwReceiveAddress(address: "bcrt1qnext", path: "m/84'/1'/0'/0/3", addressType: .nativeSegwit)
+        )
     }
 
     func testBalanceAggregatesAcrossAddressTypes() {
