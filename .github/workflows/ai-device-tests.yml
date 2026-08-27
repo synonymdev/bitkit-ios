@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - trezor-emu
+          - trezor-emu-remote
       simulator_name:
         description: "iOS Simulator name"
         required: false
@@ -134,3 +135,312 @@ jobs:
         run: |
           ./scripts/trezor-emulator stop || true
           docker compose down || true
+
+  # The emulator stack for trezor-emu-remote, on a runner that can run Docker.
+  # Must not depend on trezor-emu-remote, nor it on this: this job only finishes
+  # once the tests are done, so a dependency either way deadlocks.
+  trezor-stack:
+    if: inputs.suite == 'trezor-emu-remote'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout bitkit-docker
+        uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-docker
+          ref: main
+
+      - uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: trezor-stack-${{ github.run_id }}
+          args: --accept-dns=false
+
+      - name: Start regtest and Trezor emulator
+        run: |
+          set -euo pipefail
+          echo "tailnet address: $(tailscale ip -4)"
+
+          # Naming the services: trezor-user-env-mac carries no `profiles` key,
+          # so a bare `up -d` starts it too and it takes 21325 before the
+          # host-networked Linux service the helper selects here can bind it.
+          docker compose up -d bitcoind bitcoinsetup electrs darkhttpd
+          ./scripts/trezor-emulator start
+          docker compose ps
+
+          wait_for() {
+            local what=$1 deadline=$(( SECONDS + 300 ))
+            until eval "$2"; do
+              if (( SECONDS >= deadline )); then
+                echo "::error::timed out waiting for $what"
+                docker compose logs --no-color --tail=50
+                exit 1
+              fi
+              sleep 5
+            done
+            echo "✓ $what"
+          }
+
+          wait_for "electrs on 60001" 'nc -z 127.0.0.1 60001'
+          wait_for "bitcoind rpc on 43782" 'nc -z 127.0.0.1 43782'
+          # Bridge answers on 21325 before it has the emulator, so wait on the
+          # device rather than on the port.
+          wait_for "a trezor device on the bridge" \
+            'curl -fsS -m 10 -X POST http://127.0.0.1:21325/enumerate | grep -q "\"path\""'
+
+      - name: Hold the stack up until the tests finish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          deadline=$(( SECONDS + 9000 ))
+          while (( SECONDS < deadline )); do
+            pending=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
+              --paginate --jq '[.jobs[] | select(.name == "trezor-emu-remote") | select(.status != "completed")] | length' \
+              2>/dev/null || echo 1)
+            started=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
+              --paginate --jq '[.jobs[] | select(.name == "trezor-emu-remote")] | length' \
+              2>/dev/null || echo 0)
+            echo "trezor-emu-remote: ${started} job(s), ${pending} still running"
+            if [ "$started" -gt 0 ] && [ "$pending" -eq 0 ]; then
+              echo "tests finished"
+              break
+            fi
+            sleep 30
+          done
+
+      - name: Collect stack diagnostics
+        if: always()
+        run: |
+          mkdir -p ai-device-artifacts/trezor-stack
+          ./scripts/trezor-emulator status > ai-device-artifacts/trezor-stack/trezor-status.json 2>&1 || true
+          curl --silent --show-error -X POST http://127.0.0.1:21325/enumerate > ai-device-artifacts/trezor-stack/bridge-enumerate.json 2>&1 || true
+          docker compose --profile trezor-linux logs --no-color --tail=500 trezor-user-env-linux > ai-device-artifacts/trezor-stack/trezor-user-env.log 2>&1 || true
+          docker compose logs --no-color > ai-device-artifacts/trezor-stack/docker-compose.log 2>&1 || true
+
+      - name: Upload stack diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ai-device-tests-trezor-stack-${{ github.run_number }}
+          path: ai-device-artifacts/trezor-stack
+          if-no-files-found: warn
+
+      - name: Stop emulator services
+        if: always()
+        run: |
+          ./scripts/trezor-emulator stop || true
+          docker compose down || true
+
+  # Same suite as trezor-emu, on a GitHub-hosted Mac with the emulator stack on
+  # another runner. Runs alongside it until it has earned replacing it.
+  trezor-emu-remote:
+    if: inputs.suite == 'trezor-emu-remote'
+    runs-on: macos-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout Bitkit iOS
+        uses: actions/checkout@v7
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.2"
+
+      - name: Install xcbeautify
+        run: |
+          if ! command -v xcbeautify >/dev/null 2>&1; then
+            brew install xcbeautify
+          fi
+
+      - name: System information
+        run: |
+          sw_vers
+          xcodebuild -version
+
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+            Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
+
+      - uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: trezor-tester-${{ github.run_id }}
+          # Peers are found via `tailscale status`, so MagicDNS is unused. Leaving
+          # it on rewrites the resolver, and its macOS setup targets a network
+          # service named "Ethernet" that hosted runners do not have.
+          args: --accept-dns=false
+
+      - name: Find the stack runner
+        run: |
+          set -euo pipefail
+          deadline=$(( SECONDS + 1800 ))
+          while :; do
+            ip=$(tailscale status --json 2>/dev/null \
+              | jq -r --arg h "trezor-stack-${{ github.run_id }}" \
+                  'first(.Peer[]? | select(.HostName == $h) | .TailscaleIPs[0]) // empty' \
+              || true)
+            [ -n "$ip" ] && break
+            if (( SECONDS >= deadline )); then
+              echo "::error::stack runner never joined the tailnet"
+              tailscale status || true
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "STACK_IP=$ip" >> "$GITHUB_ENV"
+
+          for port in 21325 9001 43782 60001 9002 6080; do
+            until nc -z -w 5 "$ip" "$port" 2>/dev/null; do
+              if (( SECONDS >= deadline )); then
+                echo "::error::$ip:$port never became reachable"
+                tailscale ping -c 3 "$ip" || true
+                exit 1
+              fi
+              sleep 10
+            done
+          done
+          echo "✓ stack reachable at $ip"
+
+      - name: Forward the stack onto loopback
+        run: |
+          set -euo pipefail
+          # The suite reaches Bridge, the User Env controller, electrs and
+          # bitcoind as 127.0.0.1 from inside the Simulator, across five call
+          # sites in BitkitUITests/TrezorBridgeDashboardUITests.swift that are
+          # not all configurable. Relaying those ports keeps the test unchanged.
+          cat > /tmp/forward-stack.py <<'PY'
+          import asyncio
+          import sys
+
+          HOST = sys.argv[1]
+          PORTS = [int(port) for port in sys.argv[2:]]
+
+
+          async def pipe(reader, writer):
+              try:
+                  while (chunk := await reader.read(65536)):
+                      writer.write(chunk)
+                      await writer.drain()
+              except Exception:
+                  pass
+              finally:
+                  writer.close()
+
+
+          def forward(port):
+              async def handle(local_reader, local_writer):
+                  remote_reader, remote_writer = await asyncio.open_connection(HOST, port)
+                  await asyncio.gather(
+                      pipe(local_reader, remote_writer),
+                      pipe(remote_reader, local_writer),
+                  )
+
+              return handle
+
+
+          async def main():
+              servers = [
+                  await asyncio.start_server(forward(port), "127.0.0.1", port)
+                  for port in PORTS
+              ]
+              print(f"forwarding {PORTS} to {HOST}", flush=True)
+              await asyncio.gather(*(server.serve_forever() for server in servers))
+
+
+          asyncio.run(main())
+          PY
+
+          nohup python3 /tmp/forward-stack.py "$STACK_IP" \
+            21325 9001 43782 60001 9002 6080 > /tmp/forward-stack.log 2>&1 &
+
+          # End to end, not just a local accept: the relay listens before it has
+          # dialled anything, so a port check against it passes either way.
+          deadline=$(( SECONDS + 120 ))
+          until curl -fsS -m 10 -X POST http://127.0.0.1:21325/enumerate | grep -q '"path"'; do
+            if (( SECONDS >= deadline )); then
+              echo "::error::bridge did not answer through the relay"
+              cat /tmp/forward-stack.log || true
+              exit 1
+            fi
+            sleep 5
+          done
+          curl -fsS -X POST http://127.0.0.1:21325/enumerate
+          echo "✓ bridge reachable on 127.0.0.1:21325"
+
+      - name: Boot simulator
+        env:
+          SIMULATOR_NAME: ${{ inputs.simulator_name }}
+        run: |
+          if ! xcodebuild -showsdks | grep -q "iOS Simulator"; then
+            xcodebuild -downloadPlatform iOS
+          fi
+
+          xcrun simctl shutdown all || true
+          xcrun simctl erase "$SIMULATOR_NAME" || true
+          defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
+          xcrun simctl boot "$SIMULATOR_NAME" || true
+          xcrun simctl bootstatus "$SIMULATOR_NAME" -b
+          # First boot on a cold runner keeps working after bootstatus returns,
+          # and XCUITest attaching into that loses the first launch.
+          open -a Simulator
+          sleep 30
+
+      - name: Run Trezor emulator UI tests
+        env:
+          TEST_TREZOR_EMU: "1"
+          TEST_TREZOR_RESET_STATE: "1"
+          TREZOR_BRIDGE: "true"
+          TREZOR_BRIDGE_URL: "http://127.0.0.1:21325"
+          TREZOR_ELECTRUM_URL: "tcp://127.0.0.1:60001"
+          E2E: "true"
+          E2E_BACKEND: "local"
+          E2E_NETWORK: "regtest"
+          GEO: "false"
+          SIMULATOR_NAME: ${{ inputs.simulator_name }}
+          SIMULATOR_OS: ${{ inputs.simulator_os }}
+        run: |
+          mkdir -p TestResults
+          set -o pipefail
+          xcodebuild test \
+            -workspace Bitkit.xcodeproj/project.xcworkspace \
+            -scheme BitkitAITests \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$SIMULATOR_OS" \
+            -derivedDataPath DerivedData \
+            -resultBundlePath TestResults/TrezorBridgeDashboardUITests.xcresult \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD TEST_TREZOR_EMU' \
+            -only-testing:BitkitUITests/TrezorBridgeDashboardUITests \
+            -parallel-testing-enabled NO \
+            -allowProvisioningUpdates \
+            | xcbeautify
+
+      - name: Collect diagnostics
+        if: always()
+        run: |
+          mkdir -p ai-device-artifacts/trezor-remote
+          xcrun simctl io booted screenshot ai-device-artifacts/trezor-remote/simulator.png || true
+          if [ -d TestResults ]; then
+            cp -R TestResults ai-device-artifacts/trezor-remote/ || true
+          fi
+          curl --silent --show-error -X POST http://127.0.0.1:21325/enumerate > ai-device-artifacts/trezor-remote/bridge-enumerate.json 2>&1 || true
+          cp /tmp/forward-stack.log ai-device-artifacts/trezor-remote/ || true
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ai-device-tests-trezor-remote-${{ github.run_number }}
+          path: ai-device-artifacts/trezor-remote
+          if-no-files-found: warn
