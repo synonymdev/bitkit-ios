@@ -54,6 +54,19 @@ The Transfer → Spending max populates from the on-chain balance and cached Blo
 screen is reachable and cappable even with the regtest backend down. That is *not* a substitute for
 a real LSP quote: without one the numbers are not the ones a real transfer would use.
 
+## Pending: PR #686
+
+[#686](https://github.com/synonymdev/bitkit-ios/pull/686) settles both transfer maximums and adds to
+`SpendingAdvancedView` the snap that `SpendingAmount.onMaxExceeded()` already performs — an entered
+capacity above the settled maximum comes down to it instead of the keypress being rejected. The
+existing assertion ("does not exceed the maximum receiving capacity") holds either way, but three
+behaviours it introduces are not covered yet and should be added to
+`transfer-spending-advanced-over-max.xml` when it lands:
+
+- the number pad is disabled while the maximum settles
+- an entered capacity above the settled maximum snaps down to it, with the toast showing the settled value
+- tapping Max before the maximum settles brings the entered amount down once it does
+
 ## Identifiers used
 - Number pad keys: digits `N0`–`N9`, triple-zero `N000`, decimal `NDecimal`, delete `NRemove`.
 - Send: screen `SendAmount`, field `SendNumberField`, available `AvailableAmount`,
