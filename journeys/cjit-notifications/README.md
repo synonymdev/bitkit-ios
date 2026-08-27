@@ -31,10 +31,12 @@ Consequences for the port:
 
 ## Preconditions
 - **A physical device, not the simulator.** These journeys need a real APNs round trip: the app must
-  hold a device token Blocktank can push to, and the NSE must decrypt a real Blocktank payload.
-  Run them on the self-hosted macOS runner used by `.github/workflows/ai-device-tests.yml`.
+  hold a device token Blocktank can push to, and the notification extension must decrypt a real
+  Blocktank payload. Note this suite has no CI home yet — `.github/workflows/ai-device-tests.yml`
+  runs on the self-hosted macOS runner but builds for `platform=iOS Simulator`, so it cannot host
+  these as written. Run them against a device attached to that runner, or add a device job first.
   `test-push-server/` can drive a hand-built push at a known device token when you need to exercise
-  the NSE without the LSP.
+  the extension without the LSP.
 - Onboarded regtest wallet connected to the LSP, with notifications authorized and
   "Get paid when Bitkit is closed" enabled in Settings → Notifications.
 - A funded CJIT entry ready to pay, and no Lightning channel open yet for the CJIT journeys.
@@ -44,14 +46,15 @@ Consequences for the port:
 There is no `dumpsys notification`. Two options, in order of preference:
 
 1. **Read the extension's own log.** `NotificationService` logs through `os_log`, unlike the main app
-   (which writes log files into the app group). Stream it while the push lands:
+   (which writes log files into the app group). Stream it from the Mac the device is attached to,
+   while the push lands:
    ```bash
-   xcrun simctl spawn <device> log stream --predicate 'eventMessage CONTAINS "🔔"'   # simulator
-   log stream --predicate 'eventMessage CONTAINS "🔔"'                                # attached device host
+   log stream --device --predicate 'eventMessage CONTAINS "🔔"'
    ```
    The `🔔 Configured notification: type=…, title=…` line names the type and title it posted.
-2. **Snapshot Notification Center.** Swipe down from the top of the screen and take a
-   `xcodebuildmcp simulator snapshot-ui`, then count the Bitkit entries and read their text.
+2. **Read Notification Center on the device.** Swipe down from the top of the screen, then count the
+   Bitkit entries and read their text. `xcodebuildmcp simulator snapshot-ui` does not apply here —
+   it drives a simulator, and this suite runs on hardware.
 
 ## Identifiers used
 - In-app toast: `SpendingBalanceReadyToast`.

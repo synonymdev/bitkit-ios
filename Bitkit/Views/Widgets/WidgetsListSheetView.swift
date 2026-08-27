@@ -110,7 +110,9 @@ struct WidgetsListSheetView: View {
                 navigationPath.append(.preview(type))
             }
             .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isButton)
+            // Tapping is gated on `enabled`, so a dimmed tile must not announce itself as
+            // actionable — VoiceOver would otherwise offer a double-tap that silently does nothing.
+            .accessibilityAddTraits(enabled ? AccessibilityTraits.isButton : [])
             .accessibilityIdentifier("WidgetListItem-\(type.rawValue)")
     }
 

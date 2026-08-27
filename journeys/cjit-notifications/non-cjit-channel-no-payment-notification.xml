@@ -11,7 +11,7 @@
   </description>
   <actions>
     <action>Keep the app in the foreground on the wallet home screen</action>
-    <action>Start streaming the extension log: log stream --predicate 'eventMessage CONTAINS "🔔"'</action>
+    <action>Start streaming the extension log from the attached Mac: log stream --device --predicate 'eventMessage CONTAINS "🔔"'</action>
     <action>Open a regular spending channel via Transfer → Spending, funding some sats and confirming</action>
     <action>Mine confirmations if required: ./lsp POST /regtest/chain/mine '{"count":3}'</action>
     <action>Wait for the ChannelReady event (~5-10s)</action>

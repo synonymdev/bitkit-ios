@@ -27,6 +27,9 @@ Both journeys were walked on an iPhone 17 simulator with no backend running:
 - **`WidgetsAdd` sits below the fold** on the home widgets page — the journey has to scroll before it
   can be tapped, even though `--identifier WidgetsAdd --predicate exists` passes without scrolling.
 - All six tiles fit on an iPhone 17 sheet without scrolling, so that step is conditional.
+- With "Show Widgets" off the tiles stay present by identifier but drop the button trait, so they
+  are no longer offered as tappable targets and `WidgetEnableInSettings` is the only actionable
+  control — matching the fact that their tap handler returns early.
 - Widget tiles are `.onTapGesture` views, not buttons. They now carry
   `.accessibilityElement(children: .combine)` + `.accessibilityAddTraits(.isButton)` so each is a
   single tappable target in the runtime snapshot; without `.combine` the identifier fanned out to
