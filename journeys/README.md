@@ -91,7 +91,7 @@ Known naming differences:
 | Concept | Android testTag | iOS accessibilityIdentifier |
 | --- | --- | --- |
 | Send amount screen | `send_amount_screen` | `SendAmount` |
-| Send available balance | `available_balance` | `AvailableAmount` |
+| Send available balance | `AvailableAmount` and `available_balance` (Android emits both) | `AvailableAmount` |
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
 

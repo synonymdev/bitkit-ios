@@ -394,6 +394,18 @@ simulator, agrees on `Tab-general`, `Tab-security`, `Tab-advanced`, `NavigationB
 `CurrenciesSettings`, `UnitSettings`, `WidgetsSettings` and `QuickpaySettings` — so a comparison run
 is mostly signal, and the rows that disagree stand out.
 
+Driving Android input: taps are `adb shell input tap <x> <y>` using an element's `center`. Do not
+type long strings — `adb shell input text` silently drops characters (it lost 54 of a 397-character
+invoice in testing), and `adb shell cmd clipboard` does not exist on the emulator image. For an
+address or invoice, hand it to the app as a URI instead, which also skips the recipient screen:
+
+```bash
+adb shell am start -a android.intent.action.VIEW -d "lightning:<invoice>" to.bitkit.dev
+```
+
+A cross-platform payment is the sharpest check the two builds agree: take an invoice from one side
+(`xcrun simctl pbpaste <udid>` after tapping Copy on iOS) and pay it from the other.
+
 When the two platforms disagree on a journey, decide which it is before touching anything:
 
 - an **intentional platform difference** — record it in the journey's `<description>` and the suite
