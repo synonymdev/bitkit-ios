@@ -119,3 +119,10 @@ journeys are blocked on the feature existing, not on the harness.
 ## Porting from Android
 
 When you port an Android feature, port its journeys too — see the Journeys section in `AGENTS.md`.
+
+A journey is a shared spec, so a behaviour that is meant to match Android can be checked by running
+the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `bitkit-android`
+checkout there (`android layout` is the `snapshot-ui` equivalent). When the two disagree, either
+record it as an intentional platform difference in the journey and this README, or report it as a
+bug — do not rewrite the journey to match whatever the app currently does. `AGENTS.md` has the
+commands.

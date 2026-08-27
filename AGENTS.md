@@ -371,6 +371,31 @@ Ensure accessibility modifiers and labels are added to custom components.
 - Journeys are agent-evaluated and non-deterministic: run them from the manual `ai-device-tests`
   workflow, never as a blocking CI gate.
 
+#### Running a journey on both platforms
+
+A journey is a shared spec, so when a behaviour is meant to match Android, run the same file on both
+sides rather than reasoning about the difference. iOS uses the XcodeBuildMCP CLI above; Android uses
+the `android` CLI against a `bitkit-android` checkout, which the `android-cli` agent skill drives:
+
+```bash
+android emulator start                 # or `android run` against a connected device
+android layout                         # flat JSON of on-screen elements — the snapshot-ui equivalent
+android layout --diff                  # only what changed, to keep context small
+android screen capture -o shot.png     # secondary; use when layout hits a WebView or animation
+```
+
+`android layout` reports each element's `resourceId`, `text`, `contentDesc` and `interactions`, so a
+journey's testTag assertions map onto it the way the iOS ones map onto `snapshot-ui` identifiers.
+
+When the two platforms disagree on a journey, decide which it is before touching anything:
+
+- an **intentional platform difference** — record it in the journey's `<description>` and the suite
+  README, on both sides, so the next reader does not rediscover it;
+- a **real divergence** — that is a bug on one platform, and the journey has done its job. Report it.
+
+Never quietly rewrite the iOS journey to match whatever iOS currently does; that turns a failing test
+into a description of the bug.
+
 ### Changelog
 
 - NEVER edit `CHANGELOG.md` in normal feature/fix PRs; release automation collects changelog fragments into it
