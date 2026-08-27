@@ -378,14 +378,21 @@ sides rather than reasoning about the difference. iOS uses the XcodeBuildMCP CLI
 the `android` CLI against a `bitkit-android` checkout, which the `android-cli` agent skill drives:
 
 ```bash
-android emulator start                 # or `android run` against a connected device
-android layout                         # flat JSON of on-screen elements — the snapshot-ui equivalent
+android emulator list                  # AVD names; `start` requires one, it has no default
+android emulator start Pixel_9         # or `android run` against a connected device
+android layout --pretty                # flat JSON of on-screen elements — the snapshot-ui equivalent
 android layout --diff                  # only what changed, to keep context small
 android screen capture -o shot.png     # secondary; use when layout hits a WebView or animation
 ```
 
-`android layout` reports each element's `resourceId`, `text`, `contentDesc` and `interactions`, so a
-journey's testTag assertions map onto it the way the iOS ones map onto `snapshot-ui` identifiers.
+`android layout` reports each element's `resource-id`, `text`, `content-desc` and `interactions`
+(note the hyphens — the JSON keys are not camelCase), so a journey's testTag assertions map onto it
+the way the iOS ones map onto `snapshot-ui` identifiers.
+
+The vocabulary really is shared. Settings on both platforms, captured from a live emulator and
+simulator, agrees on `Tab-general`, `Tab-security`, `Tab-advanced`, `NavigationBack`, `HeaderMenu`,
+`CurrenciesSettings`, `UnitSettings`, `WidgetsSettings` and `QuickpaySettings` — so a comparison run
+is mostly signal, and the rows that disagree stand out.
 
 When the two platforms disagree on a journey, decide which it is before touching anything:
 
