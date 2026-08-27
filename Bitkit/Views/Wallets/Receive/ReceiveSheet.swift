@@ -9,6 +9,9 @@ enum ReceiveRoute: Hashable {
     case cjitConfirm(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
     case cjitLearnMore(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
     case cjitGeoBlocked
+    case paymentRequestDetails(PaykitPaymentRequestDraft)
+    case paymentRequestRecipient(PaykitPaymentRequestDraft)
+    case paymentRequestSent(PaykitPaymentRequest)
 }
 
 struct ReceiveConfig {
@@ -65,9 +68,15 @@ struct ReceiveSheet: View {
     private func viewForRoute(_ route: ReceiveRoute) -> some View {
         switch route {
         case let .qr(cjitInvoice, tab):
-            ReceiveQr(navigationPath: $navigationPath, cjitInvoice: cjitInvoice, tab: tab)
+            ReceiveQr(
+                navigationPath: $navigationPath,
+                cjitInvoice: cjitInvoice,
+                tab: tab
+            )
         case .edit:
-            ReceiveEdit(navigationPath: $navigationPath)
+            ReceiveEdit(navigationPath: $navigationPath) { draft in
+                navigationPath.append(.paymentRequestRecipient(draft))
+            }
         case .tag:
             ReceiveTag(navigationPath: $navigationPath)
         case .cjitAmount:
@@ -78,6 +87,28 @@ struct ReceiveSheet: View {
             ReceiveCjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditional)
         case .cjitGeoBlocked:
             ReceiveCjitGeoBlocked()
+        case let .paymentRequestDetails(draft):
+            PaymentRequestDetailsView(initialDraft: draft) { updatedDraft in
+                if navigationPath.count >= 2,
+                   case .paymentRequestDetails = navigationPath[navigationPath.count - 1],
+                   case .paymentRequestRecipient = navigationPath[navigationPath.count - 2]
+                {
+                    navigationPath.removeLast(2)
+                }
+                navigationPath.append(.paymentRequestRecipient(updatedDraft))
+            }
+        case let .paymentRequestRecipient(draft):
+            PaymentRequestRecipientView(
+                draft: draft,
+                onEditExpiration: {
+                    navigationPath.append(.paymentRequestDetails(draft))
+                },
+                onSent: { request in
+                    navigationPath.append(.paymentRequestSent(request))
+                }
+            )
+        case let .paymentRequestSent(request):
+            PaymentRequestSentView(request: request)
         }
     }
 }

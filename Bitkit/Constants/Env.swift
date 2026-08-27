@@ -76,11 +76,15 @@ enum Env {
     }
 
     private static var e2eLocalHost: String {
-        infoPlistValue("E2E_LOCAL_HOST") ?? "127.0.0.1"
+        configValue("E2E_LOCAL_HOST") ?? "127.0.0.1"
     }
 
     private static var e2eHomegateUrl: String {
         infoPlistValue("E2E_HOMEGATE_URL") ?? "http://\(e2eLocalHost):6288"
+    }
+
+    static var e2eHomeserverPubky: String? {
+        isLocalE2EBackend ? infoPlistValue("E2E_HOMESERVER_PUBKY") : nil
     }
 
     static var pubkyLocalTestnetHost: String? {

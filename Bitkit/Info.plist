@@ -23,6 +23,8 @@
 	<string>$(E2E_BACKEND)</string>
 	<key>E2E_HOMEGATE_URL</key>
 	<string>$(E2E_HOMEGATE_URL)</string>
+	<key>E2E_HOMESERVER_PUBKY</key>
+	<string>$(E2E_HOMESERVER_PUBKY)</string>
 	<key>E2E_LOCAL_HOST</key>
 	<string>$(E2E_LOCAL_HOST)</string>
 	<key>E2E_NETWORK</key>

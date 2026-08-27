@@ -8,18 +8,18 @@ struct ReceiveEdit: View {
     @EnvironmentObject private var transfer: TransferViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var tagManager: TagManager
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @Binding var navigationPath: [ReceiveRoute]
+    let onSendPaymentRequest: (PaykitPaymentRequestDraft) -> Void
 
     @State private var amountViewModel = AmountInputViewModel()
     @State private var note = ""
     @State private var isAmountInputFocused: Bool = false
     @FocusState private var isNoteEditorFocused: Bool
-
-    var navTitle: String {
-        isAmountInputFocused ? t("wallet__receive_specify") : t("wallet__receive_amount")
-    }
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
@@ -27,7 +27,7 @@ struct ReceiveEdit: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: navTitle, showBackButton: true)
+            SheetHeader(title: t("wallet__receive_specify"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
                 NumberPadTextField(
@@ -49,27 +49,12 @@ struct ReceiveEdit: View {
                     CaptionMText(t("wallet__note"))
                         .padding(.bottom, 8)
 
-                    ZStack(alignment: .topLeading) {
-                        if note.isEmpty {
-                            BodySSBText(t("wallet__receive_note_placeholder"), textColor: .textSecondary)
-                        }
-
-                        TextEditor(text: $note)
-                            .focused($isNoteEditorFocused)
-                            .font(.custom(Fonts.semiBold, size: 15))
-                            .foregroundColor(.textPrimary)
-                            .accentColor(.brandAccent)
-                            .submitLabel(.done)
-                            .scrollContentBackground(.hidden)
-                            .padding(EdgeInsets(top: -8, leading: -5, bottom: -5, trailing: -5))
-                            .frame(minHeight: 30, maxHeight: 50)
-                            .dismissKeyboardOnReturn(text: $note, isFocused: $isNoteEditorFocused)
-                            .accessibilityValue(note)
-                            .accessibilityIdentifier("ReceiveNote")
-                    }
-                    .padding()
-                    .background(Color.white06)
-                    .cornerRadius(8)
+                    NoteTextEditor(
+                        text: $note,
+                        placeholder: t("wallet__receive_note_placeholder"),
+                        testIdentifier: "ReceiveNote",
+                        isFocused: $isNoteEditorFocused
+                    )
 
                     if !isNoteEditorFocused {
                         VStack(alignment: .leading, spacing: 0) {
@@ -94,6 +79,27 @@ struct ReceiveEdit: View {
                     }
 
                     Spacer()
+
+                    if PaykitFeatureFlags.isUIAvailable,
+                       isPaykitUIEnabled,
+                       !paymentRequests.eligibleTargets.isEmpty
+                    {
+                        CustomButton(
+                            title: t("wallet__payment_request_send"),
+                            variant: .secondary,
+                            isDisabled: amountSats == 0
+                        ) {
+                            onSendPaymentRequest(
+                                PaykitPaymentRequestDraft(
+                                    amountSats: amountSats,
+                                    note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+                                    expiresAt: PaymentRequestExpiration.week.date(from: .now)
+                                )
+                            )
+                        }
+                        .padding(.bottom, 12)
+                        .accessibilityIdentifier("PaymentRequestSendButton")
+                    }
 
                     CustomButton(title: t("wallet__receive_show_qr")) {
                         Task {

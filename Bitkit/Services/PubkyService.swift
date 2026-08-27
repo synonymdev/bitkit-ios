@@ -304,8 +304,24 @@ actor PaykitSdkService {
 
     func initialize() async throws {
         try await operationLock.withLock {
-            let sdk = try handle()
-            _ = try await sdk.initialize()
+            var sdk = try handle()
+            do {
+                _ = try await sdk.initialize()
+            } catch {
+                guard try sessionProvider.canDeferStaleSession(error: error) else { throw error }
+
+                Logger.warn("Deferring stale Paykit session restoration until SDK setup completes", context: "PaykitSdkService")
+                sessionProvider.suspendStoredSessionAccess()
+                resetRuntime()
+                do {
+                    sdk = try handle()
+                    _ = try await sdk.initialize()
+                } catch {
+                    sessionProvider.resumeStoredSessionAccess()
+                    throw error
+                }
+                sessionProvider.resumeStoredSessionAccess()
+            }
             await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
         }
     }
@@ -548,6 +564,24 @@ actor PaykitSdkService {
         }
     }
 
+    func paymentRequestReceiverPaths(publicKey: String) async throws -> [String] {
+        try await operationLock.withLock {
+            let sdk = try handle()
+            let paths = try await sdk.paykitReceiverPaths(publicKey: publicKey)
+            var capablePaths = Set<String>()
+
+            for path in paths where PaykitReceiverPath.supported.contains(path) {
+                guard let marker = try await sdk.paykitReceiverMarker(publicKey: publicKey, receiverPath: path),
+                      marker.capabilities.paymentRequests == true
+                else { continue }
+
+                capablePaths.insert(path)
+            }
+
+            return PaykitReceiverPath.supported.filter { capablePaths.contains($0) }
+        }
+    }
+
     func privateReceiverPathSelection(publicKey: String, savedReceiverPaths: [String]) async throws -> PrivateReceiverPathSelection {
         try await operationLock.withLock {
             let paths = Self.mergedReceiverPaths(savedReceiverPaths)
@@ -652,9 +686,30 @@ actor PaykitSdkService {
         }
     }
 
-    func actionableReceivedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord] {
+    func paymentRequests() async throws -> [Paykit.PaymentRequestRecord] {
         try await operationLock.withLock {
-            try await handle().actionableReceivedPaymentRequests()
+            try await handle().paymentRequests()
+        }
+    }
+
+    func proposePaymentRequest(
+        counterparty: String,
+        counterpartyReceiverPath: String,
+        terms: Paykit.PaymentRequestTerms,
+        expectedIdentity: String
+    ) async throws -> Paykit.PaymentRequestRecord {
+        try await withStateRevisionTracking { sdk in
+            guard let identityStatus = try await sdk.identityStatus(),
+                  identityStatus.liveSessionAvailable,
+                  PubkyPublicKeyFormat.matches(identityStatus.publicKey, expectedIdentity)
+            else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
+            return try await sdk.proposePaymentRequest(
+                counterparty: counterparty,
+                counterpartyReceiverPath: counterpartyReceiverPath,
+                terms: terms
+            )
         }
     }
 
@@ -668,6 +723,22 @@ actor PaykitSdkService {
                 counterparty: counterparty,
                 counterpartyReceiverPath: counterpartyReceiverPath,
                 paymentRequestId: paymentRequestId
+            )
+        }
+    }
+
+    func rejectPaymentRequest(
+        counterparty: String,
+        counterpartyReceiverPath: String,
+        paymentRequestId: String,
+        reason: String? = nil
+    ) async throws -> Paykit.PaymentRequestRecord {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.rejectPaymentRequest(
+                counterparty: counterparty,
+                counterpartyReceiverPath: counterpartyReceiverPath,
+                paymentRequestId: paymentRequestId,
+                reason: reason
             )
         }
     }
@@ -922,6 +993,16 @@ actor PaykitSdkService {
         marker?.capabilities.privatePayments == true || marker?.capabilities.paymentRequests == true || marker?.capabilities.receipts == true
     }
 
+    nonisolated static func shouldDeferStaleSession(error: Error, hasStoredSession: Bool) -> Bool {
+        guard hasStoredSession,
+              case let PaykitError.Identity(_, context) = error
+        else {
+            return false
+        }
+
+        return context == "import Pubky session from platform provider"
+    }
+
     private nonisolated static func canReceivePrivatePaymentDetails(marker: Paykit.PaykitReceiverMarker?) -> Bool {
         marker?.capabilities.privatePayments == true && marker?.capabilities.outgoingPayments == true
     }
@@ -1035,6 +1116,7 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
     private let lock = NSLock()
     private let receiverNoiseKeyStore = PaykitReceiverNoiseKeyStore()
     private var liveSessionAccess: PubkySessionAccess?
+    private var isStoredSessionAccessSuspended = false
 
     func setLiveSessionAccess(_ access: PubkySessionAccess) {
         lock.lock()
@@ -1049,13 +1131,18 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
     }
 
     func loadSessionAccess() throws -> PubkySessionAccess? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !isStoredSessionAccessSuspended else {
+            return nil
+        }
+
         guard let sessionSecret = try Keychain.loadString(key: .paykitSession), !sessionSecret.isEmpty else {
             return nil
         }
 
-        lock.lock()
         let liveAccess = liveSessionAccess
-        lock.unlock()
 
         if liveAccess?.exportSessionSecret() == sessionSecret {
             return liveAccess
@@ -1070,6 +1157,24 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
 
     func publicStorageAvailable() throws -> Bool {
         true
+    }
+
+    func canDeferStaleSession(error: Error) throws -> Bool {
+        let hasStoredSession = try Keychain.loadString(key: .paykitSession)?.isEmpty == false
+        return PaykitSdkService.shouldDeferStaleSession(error: error, hasStoredSession: hasStoredSession)
+    }
+
+    func suspendStoredSessionAccess() {
+        lock.lock()
+        liveSessionAccess = nil
+        isStoredSessionAccessSuspended = true
+        lock.unlock()
+    }
+
+    func resumeStoredSessionAccess() {
+        lock.lock()
+        isStoredSessionAccessSuspended = false
+        lock.unlock()
     }
 
     func clearSessionAccess() throws {
