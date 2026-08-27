@@ -65,6 +65,7 @@ struct ReceiveCjitConfirmation: View {
                 Toggle("", isOn: $settings.enableNotifications)
                     .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
                     .labelsHidden()
+                    .accessibilityIdentifier("ReceiveConfirmNotificationSwitch")
             }
             .frame(height: 50)
             .padding(.bottom, 8)
@@ -82,6 +83,8 @@ struct ReceiveCjitConfirmation: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ReceiveCjitConfirm")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()

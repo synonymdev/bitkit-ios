@@ -135,6 +135,8 @@ struct SendAmountView: View {
                 .accessibilityIdentifier("ContinueAmount")
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SendAmount")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()

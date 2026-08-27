@@ -52,6 +52,7 @@ struct ReceiveCjitLearnMore: View {
                 Toggle("", isOn: $settings.enableNotifications)
                     .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
                     .labelsHidden()
+                    .accessibilityIdentifier("ReceiveLiquidityNotificationSwitch")
             }
             .frame(height: 50)
             .padding(.bottom, 8)
@@ -63,6 +64,8 @@ struct ReceiveCjitLearnMore: View {
                 dismiss()
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ReceiveCjitLiquidity")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()

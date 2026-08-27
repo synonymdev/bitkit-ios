@@ -146,10 +146,21 @@ node scripts/validate-translations.js
 **Note:** Localization files are synced from Transifex using [bitkit-transifex-sync](https://github.com/synonymdev/bitkit-transifex-sync).
 
 ### Testing
+
+Three layers, in increasing order of setup cost:
+
 ```bash
-# Run tests via Xcode Test Navigator or:
-# Cmd+U in Xcode
+# Unit and UI tests — Xcode Test Navigator, Cmd+U, or:
+xcodebuildmcp simulator test
+
+# AI device tests (Trezor emulator, developer-triggered) — see Docs/AI_DEVICE_TESTS.md
 ```
+
+**Journeys** are the third layer: XML behaviour specs in `journeys/`, evaluated by an agent driving a
+running simulator rather than by a test runner. They cover flows that are impractical to assert in
+XCUITest — number pad caps, notification permission, widget flows, hardware wallet pairing and
+transfers. Read `journeys/README.md` before running or writing one, and see the Journeys section
+under Code Style & Conventions for the rule on porting them alongside Android changes.
 
 ## Architecture
 
@@ -252,6 +263,7 @@ While the project is transitioning away from traditional ViewModels, these still
 - `Extensions/`: Swift extensions for utilities and mock data
 - `Utilities/`: Helper utilities (Logger, Keychain, Crypto, Haptics, StateLocker)
 - `Models/`: Data models (Toast, ElectrumServer, NodeLifecycleState, etc.)
+- `journeys/`: XML behaviour specs evaluated by an agent on a simulator (see `journeys/README.md`)
 - `Styles/`: Fonts and sheet styles
 
 ### Service Queue Pattern
@@ -335,6 +347,29 @@ Ensure accessibility modifiers and labels are added to custom components.
 - Use descriptive names: `isLoadingUsers` not `loading`
 - Follow Apple's SwiftUI best practices
 - AVOID code comments on private functions, types, etc — PREFER self-documenting names that make intent obvious without explanation; only add a comment when the rationale is genuinely non-obvious (e.g. a workaround, an edge case, or a "why" the code itself can't convey)
+
+### Journeys
+
+`journeys/` holds XML behaviour specs evaluated by an agent driving a simulator — the iOS port of
+[`bitkit-android/journeys`](https://github.com/synonymdev/bitkit-android/tree/main/journeys). Read
+`journeys/README.md` before running or writing one.
+
+- **PORT the journeys whenever you port an Android feature.** If the Android change ships or touches
+  a journey under `bitkit-android/journeys/`, the iOS PR carries the matching journey. A ported
+  feature without its journey is an incomplete port.
+- KEEP the file name, `<journey name>` and `<action>` prose identical to the Android original so the
+  two platforms stay diffable. Change only what the platform forces: `adb` becomes `xcodebuildmcp`,
+  and Android `testTag`s become iOS `accessibilityIdentifier`s.
+- MATCH the Android identifier string when adding an `accessibilityIdentifier` for a journey — the
+  vocabulary is deliberately shared (`N9`, `NRemove`, `SpendingAmountContinue`, `HardwareTransferSign`).
+  Record any name that cannot match in the table in `journeys/README.md`.
+- PAIR a container identifier with `.accessibilityElement(children: .contain)` so it is queryable.
+- ADAPT rather than transcribe when iOS genuinely behaves differently, and say so in the journey's
+  `<description>` and the suite README — never assert Android behaviour iOS does not have.
+- SKIP a journey only when the iOS feature does not exist, and record it under "Not ported" in
+  `journeys/README.md` with what is missing.
+- Journeys are agent-evaluated and non-deterministic: run them from the manual `ai-device-tests`
+  workflow, never as a blocking CI gate.
 
 ### Changelog
 

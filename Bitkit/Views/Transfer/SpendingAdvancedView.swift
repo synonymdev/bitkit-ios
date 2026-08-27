@@ -98,6 +98,8 @@ struct SpendingAdvancedView: View {
                 .accessibilityIdentifier("SpendingAdvancedContinue")
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SpendingAdvanced")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
@@ -142,7 +144,8 @@ struct SpendingAdvancedView: View {
                 "lightning__spending_advanced__error_max__description",
                 variables: ["amount": CurrencyFormatter.formatSats(transfer.transferValues.maxLspBalance)]
             ),
-            visibilityTime: Toast.visibilityTimeShort
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "SpendingAdvancedExceededToast"
         )
     }
 

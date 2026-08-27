@@ -109,6 +109,8 @@ struct WidgetsListSheetView: View {
                 guard enabled else { return }
                 navigationPath.append(.preview(type))
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("WidgetListItem-\(type.rawValue)")
     }
 
