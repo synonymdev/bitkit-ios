@@ -74,6 +74,17 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(wrapped))
     }
 
+    func testQuickPayHandlingTracksExactHashUntilReset() {
+        let app = AppViewModel()
+        app.beginQuickPay(paymentHash: "active")
+
+        XCTAssertTrue(app.isQuickPayHandling(paymentHash: "active"))
+        XCTAssertFalse(app.isQuickPayHandling(paymentHash: "other"))
+
+        app.resetQuickPay()
+        XCTAssertFalse(app.isQuickPayHandling(paymentHash: "active"))
+    }
+
     func testWrappedPersistenceIsNotHardReject() {
         XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(Bitkit.AppError(error: NodeError.PersistenceFailed(message: "io"))))
     }
@@ -93,7 +104,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertEqual(store.spentCentsToday(), 0)
     }
 
-    func testWrappedDuplicateDispatchWithSucceededLdkGoesToSuccess() async throws {
+    func testWrappedDuplicateDispatchWithSucceededLdkReleasesFreshReserveAndFails() async throws {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
@@ -111,10 +122,9 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             }
         )
 
-        guard case let .success(paymentId) = route else {
-            return XCTFail("Expected success, got \(String(describing: route))")
+        guard case .failure = route else {
+            return XCTFail("Expected failure, got \(String(describing: route))")
         }
-        XCTAssertEqual(paymentId, invoiceHash)
         XCTAssertNil(store.record(matching: invoiceHash))
         XCTAssertEqual(store.spentCentsToday(), 0)
     }
@@ -296,7 +306,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertGreaterThan(store.spentCentsToday(), 0)
     }
 
-    func testDuplicateDispatchWithSucceededLdkGoesToSuccess() async throws {
+    func testDuplicateDispatchWithSucceededLdkReleasesFreshReserveAndFails() async throws {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
@@ -314,10 +324,9 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             }
         )
 
-        guard case let .success(paymentId) = route else {
-            return XCTFail("Expected success, got \(String(describing: route))")
+        guard case .failure = route else {
+            return XCTFail("Expected failure, got \(String(describing: route))")
         }
-        XCTAssertEqual(paymentId, invoiceHash)
         XCTAssertNil(store.record(matching: invoiceHash))
         XCTAssertEqual(store.spentCentsToday(), 0)
     }
@@ -348,7 +357,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertGreaterThan(store.spentCentsToday(), 0)
     }
 
-    func testRepayOfSettledHashDoesNotDoubleCount() async throws {
+    func testRepayOfSettledHashFailsWithoutDoubleCounting() async throws {
         let invoiceHash = try Self.invoiceHash
         var sendCount = 0
         let coordinator = QuickPayPaymentCoordinator(
@@ -382,8 +391,8 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         coordinator.detach()
 
         let second = await firstRoute(from: coordinator)
-        guard case .success = second else {
-            return XCTFail("Expected success, got \(String(describing: second))")
+        guard case .failure = second else {
+            return XCTFail("Expected failure, got \(String(describing: second))")
         }
         XCTAssertEqual(sendCount, 2)
         XCTAssertEqual(store.spentCentsToday(), spent)

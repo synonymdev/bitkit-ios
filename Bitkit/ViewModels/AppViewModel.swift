@@ -100,6 +100,7 @@ class AppViewModel: ObservableObject {
     private var pendingPaymentHashes: Set<String> = []
     private var pendingContactPaymentContexts: [String: ContactPaymentContext] = [:]
     private(set) var isQuickPayActive = false
+    private var quickPayPaymentHash: String?
 
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
@@ -398,16 +399,18 @@ extension AppViewModel {
         sendSheetPendingResolution = nil
     }
 
-    func beginQuickPay() -> Bool {
-        if isQuickPayActive {
-            return false
-        }
+    func beginQuickPay(paymentHash: String) {
         isQuickPayActive = true
-        return true
+        quickPayPaymentHash = paymentHash
+    }
+
+    func isQuickPayHandling(paymentHash: String) -> Bool {
+        isQuickPayActive && quickPayPaymentHash == paymentHash
     }
 
     func resetQuickPay() {
         isQuickPayActive = false
+        quickPayPaymentHash = nil
     }
 }
 
@@ -1077,7 +1080,7 @@ extension AppViewModel {
                     feePaidSats: outcome.wasQuickPay ? (feePaidMsat ?? 0) / 1000 : nil
                 )
             }
-            if awaitingSheet || outcome.wasQuickPay {
+            if awaitingSheet || outcome.wasQuickPay, !isQuickPayHandling(paymentHash: hash) {
                 toast(
                     type: .lightning,
                     title: t("wallet__toast_payment_success_title"),
@@ -1097,7 +1100,8 @@ extension AppViewModel {
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: reason)
             }
-            if awaitingSheet || outcome.wasQuickPay {
+            let isHandledByQuickPay = hash.map { isQuickPayHandling(paymentHash: $0) } ?? false
+            if awaitingSheet || outcome.wasQuickPay, !isHandledByQuickPay {
                 toast(
                     type: .error,
                     title: t("wallet__toast_payment_failed_title"),

@@ -33,6 +33,7 @@ final class QuickPayPaymentCoordinator {
     private enum AmbiguousApply {
         case unchanged
         case succeeded
+        case duplicateOfSucceededPayment
         case failed
     }
 
@@ -229,6 +230,8 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
+        app.beginQuickPay(paymentHash: invoiceHash)
+
         if let existing = operations[invoiceHash] {
             existing.presentation = presentation
             if existing.emitted {
@@ -362,7 +365,7 @@ final class QuickPayPaymentCoordinator {
         switch applied {
         case .succeeded:
             emitSuccess(op)
-        case .failed, .unchanged:
+        case .duplicateOfSucceededPayment, .failed, .unchanged:
             emitFailure(op, error: error, routingCacheResetAttempted: attached?.routingCacheResetAttempted ?? false)
         }
         removeOp(op)
@@ -411,11 +414,11 @@ final class QuickPayPaymentCoordinator {
         case .pending:
             return .unchanged
         case .succeeded:
-            if duplicate, record.paymentId == nil {
+            if duplicate, record.phase == .submitting, record.paymentId == nil {
                 store.releaseBound(paymentHash: record.invoicePaymentHash)
-            } else {
-                store.dropBound(paymentHash: record.invoicePaymentHash)
+                return .duplicateOfSucceededPayment
             }
+            store.dropBound(paymentHash: record.invoicePaymentHash)
             return .succeeded
         case .failed:
             let attributed = Self.isAttributedFailure(
