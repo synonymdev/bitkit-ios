@@ -1,22 +1,27 @@
-import LDKNode
 import SwiftUI
 
 struct SendQuickpay: View {
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     @Binding var navigationPath: [SendRoute]
     let routingCacheResetAttempted: Bool
+    var replaceQuickPay: (SendRoute) -> Void
+    @State private var didStartPayment = false
+    @State private var displayedSats: UInt64?
+
+    private var paymentSats: UInt64? {
+        displayedSats ?? app.lnurlPayData?.minSendableSat ?? app.scannedLightningInvoice?.amountSatoshis
+    }
 
     var body: some View {
         VStack {
             SheetHeader(title: t("wallet__send_quickpay__nav_title"))
 
-            if let lnurlPayData = app.lnurlPayData {
-                MoneyStack(sats: Int(lnurlPayData.minSendableSat), showSymbol: true)
-            } else if let invoice = app.scannedLightningInvoice {
-                MoneyStack(sats: Int(invoice.amountSatoshis), showSymbol: true)
+            if let paymentSats {
+                MoneyStack(sats: Int(paymentSats), showSymbol: true)
             }
 
             Spacer(minLength: 32)
@@ -34,67 +39,26 @@ struct SendQuickpay: View {
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            Task {
-                await performPayment()
+            if displayedSats == nil {
+                displayedSats = app.lnurlPayData?.minSendableSat ?? app.scannedLightningInvoice?.amountSatoshis
             }
-        }
-    }
-
-    private func performPayment() async {
-        var bolt11Invoice: String?
-
-        do {
-            // Handle LNURL Pay
-            if let lnurlPayData = app.lnurlPayData {
-                // Set the amount in sats for the success screen
-                wallet.sendAmountSats = lnurlPayData.minSendableSat
-
-                bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
-                    data: lnurlPayData,
-                    amountMsats: lnurlPayData.callbackAmountMsats()
+            guard !didStartPayment else { return }
+            didStartPayment = true
+            QuickPayPaymentCoordinator.shared.pay(
+                app: app,
+                wallet: wallet,
+                settings: settings,
+                currency: currency,
+                presentation: QuickPayPaymentCoordinator.Presentation(
+                    appendRoute: { navigationPath.append($0) },
+                    replaceQuickPay: replaceQuickPay,
+                    addPendingPaymentHash: { app.addPendingPaymentHash($0) },
+                    routingCacheResetAttempted: routingCacheResetAttempted
                 )
-            } else if let scannedInvoice = app.scannedLightningInvoice {
-                wallet.sendAmountSats = scannedInvoice.amountSatoshis
-                bolt11Invoice = scannedInvoice.bolt11
-            }
-
-            guard let bolt11 = bolt11Invoice else {
-                throw NSError(
-                    domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "No Lightning invoice found"]
-                )
-            }
-
-            let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
-            let paymentHash = String(describing: parsedInvoice.paymentHash())
-
-            // Quickpay only triggers for invoices with built-in amounts, so pass sats: nil
-            // to let LDK use the invoice's native millisatoshi precision.
-            try await wallet.sendWithTimeout(
-                bolt11: bolt11,
-                sats: nil,
-                onTimeout: {
-                    app.addPendingPaymentHash(paymentHash)
-                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .quickpay, paymentRequest: bolt11))
-                }
             )
-            Logger.info("Quickpay payment successful: \(paymentHash)")
-            navigationPath.append(.success(paymentId: paymentHash))
-        } catch is PaymentTimeoutError {
-            // onTimeout callback already navigated to .pending; suppress throw
-            return
-        } catch {
-            handlePaymentError(error, paymentRequest: bolt11Invoice)
         }
-    }
-
-    private func handlePaymentError(_ error: Error, paymentRequest: String?) {
-        Logger.error("Quickpay payment failed: \(error)")
-
-        navigationPath.append(.failure(SendFailureContext(
-            error: error,
-            retryRoute: .quickpay,
-            routingCacheResetAttempted: routingCacheResetAttempted,
-            paymentRequest: paymentRequest
-        )))
+        .onDisappear {
+            QuickPayPaymentCoordinator.shared.detach()
+        }
     }
 }

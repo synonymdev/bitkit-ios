@@ -104,6 +104,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
     @AppStorage("enableQuickpay") var enableQuickpay: Bool = false
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
+    @AppStorage("quickpayDailyLimitMultiplier") var quickpayDailyLimitMultiplier: Double = 5
     @AppStorage("enableNotifications") var enableNotifications: Bool = false
     @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
     @AppStorage("ignoresSwitchUnitToast") var ignoresSwitchUnitToast: Bool = false
@@ -217,6 +218,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         warnWhenSendingOver100 = false
         enableQuickpay = false
         quickpayAmount = 5
+        quickpayDailyLimitMultiplier = 5
         enableNotifications = false
         enableNotificationsAmount = false
         UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
@@ -383,11 +385,15 @@ class SettingsViewModel: NSObject, ObservableObject {
                 }
             }
         } else {
-            if addressType == selectedAddressType { return false }
+            if addressType == selectedAddressType {
+                return false
+            }
 
             do {
                 let balance = try await getBalanceForAddressType(addressType)
-                if balance > 0 { return false }
+                if balance > 0 {
+                    return false
+                }
             } catch {
                 Logger.error("Failed to check balance for \(addressType), preventing disable: \(error)")
                 lastAddressTypeError = error
@@ -467,7 +473,9 @@ class SettingsViewModel: NSObject, ObservableObject {
 
         for type in addressTypesToMonitor {
             // Always keep nativeSegwit (primary, required for Lightning)
-            if type == .nativeSegwit { continue }
+            if type == .nativeSegwit {
+                continue
+            }
 
             do {
                 let balance = try await getBalanceForAddressType(type)
@@ -696,7 +704,7 @@ class SettingsViewModel: NSObject, ObservableObject {
                     dict["coinSelectPreference"] = androidPreference
                 } else {
                     let androidKey = SettingsBackupConfig.iosToAndroidFieldMapping[key] ?? key
-                    if key == "quickpayAmount", let doubleValue = value as? Double {
+                    if key == "quickpayAmount" || key == "quickpayDailyLimitMultiplier", let doubleValue = value as? Double {
                         dict[androidKey] = Int(doubleValue)
                     } else {
                         dict[androidKey] = value
@@ -706,10 +714,14 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
-        if !electrumServerUrl.isEmpty { dict["electrumServer"] = electrumServerUrl }
+        if !electrumServerUrl.isEmpty {
+            dict["electrumServer"] = electrumServerUrl
+        }
 
         let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
-        if !rgsServerUrl.isEmpty { dict["rgsServerUrl"] = rgsServerUrl }
+        if !rgsServerUrl.isEmpty {
+            dict["rgsServerUrl"] = rgsServerUrl
+        }
 
         dict["isDevModeEnabled"] = Env.isDebug && Env.network != .bitcoin
 
@@ -842,6 +854,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         warnWhenSendingOver100 = defaults.bool(forKey: "warnWhenSendingOver100")
         enableQuickpay = defaults.bool(forKey: "enableQuickpay")
         quickpayAmount = defaults.double(forKey: "quickpayAmount")
+        quickpayDailyLimitMultiplier = QuickPayLimits.sanitizedMultiplier(defaults.double(forKey: "quickpayDailyLimitMultiplier"))
         enableNotifications = defaults.bool(forKey: "enableNotifications")
         requirePinForPayments = defaults.bool(forKey: "requirePinForPayments")
         useBiometrics = defaults.bool(forKey: "useBiometrics")
@@ -854,7 +867,8 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Gets the current app cache data for backup
     func getAppCacheData() -> AppCacheData {
-        AppCacheData(
+        let spend = QuickPaySpendStore.shared.backupSnapshot()
+        return AppCacheData(
             hasSeenContactsIntro: defaults.bool(forKey: "hasSeenContactsIntro"),
             hasSeenProfileIntro: defaults.bool(forKey: "hasSeenProfileIntro"),
             hasSeenNotificationsIntro: defaults.bool(forKey: "hasSeenNotificationsIntro"),
@@ -870,7 +884,8 @@ class SettingsViewModel: NSObject, ObservableObject {
             highBalanceIgnoreCount: defaults.integer(forKey: "highBalanceIgnoreCount"),
             highBalanceIgnoreTimestamp: defaults.double(forKey: "highBalanceIgnoreTimestamp"),
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
-            lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? []
+            lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
+            quickPayLedger: spend
         )
     }
 
@@ -892,5 +907,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.highBalanceIgnoreTimestamp, forKey: "highBalanceIgnoreTimestamp")
         defaults.set(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
         defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
+        QuickPaySpendStore.shared.restoreFromBackup(ledger: cache.quickPayLedger)
     }
 }

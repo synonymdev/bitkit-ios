@@ -9,11 +9,18 @@ struct SendSheetPendingResolution: Equatable {
     let paymentHash: String
     let success: Bool
     let failureReason: PaymentFailureReason?
+    let feePaidSats: UInt64?
 
-    init(paymentHash: String, success: Bool, failureReason: PaymentFailureReason? = nil) {
+    init(
+        paymentHash: String,
+        success: Bool,
+        failureReason: PaymentFailureReason? = nil,
+        feePaidSats: UInt64? = nil
+    ) {
         self.paymentHash = paymentHash
         self.success = success
         self.failureReason = failureReason
+        self.feePaidSats = feePaidSats
     }
 }
 
@@ -92,6 +99,8 @@ class AppViewModel: ObservableObject {
     /// When payment succeeds/fails, we show toast and publish resolution so SendPendingScreen can navigate.
     private var pendingPaymentHashes: Set<String> = []
     private var pendingContactPaymentContexts: [String: ContactPaymentContext] = [:]
+    private(set) var isQuickPayActive = false
+    private var quickPayPaymentHash: String?
 
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
@@ -388,6 +397,20 @@ extension AppViewModel {
     func consumeSendSheetPendingResolution(paymentHash hash: String) {
         guard sendSheetPendingResolution?.paymentHash == hash else { return }
         sendSheetPendingResolution = nil
+    }
+
+    func beginQuickPay(paymentHash: String) {
+        isQuickPayActive = true
+        quickPayPaymentHash = paymentHash
+    }
+
+    func isQuickPayHandling(paymentHash: String) -> Bool {
+        isQuickPayActive && quickPayPaymentHash == paymentHash
+    }
+
+    func resetQuickPay() {
+        isQuickPayActive = false
+        quickPayPaymentHash = nil
     }
 }
 
@@ -801,6 +824,7 @@ extension AppViewModel {
         if !preservingContactPaymentContext {
             contactPaymentContext = nil
         }
+        resetQuickPay()
     }
 }
 
@@ -1039,11 +1063,24 @@ extension AppViewModel {
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
-        case let .paymentSuccessful(paymentId, paymentHash, _, _):
-            let hash = paymentId ?? paymentHash
-            if pendingPaymentHashes.contains(hash) {
+        case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
+            let outcome = QuickPayPaymentCoordinator.shared.complete(
+                paymentId: paymentId,
+                paymentHash: paymentHash,
+                success: true,
+                feePaidMsat: feePaidMsat
+            )
+            let hash = outcome.invoicePaymentHash ?? paymentHash
+            let awaitingSheet = pendingPaymentHashes.contains(hash)
+            if awaitingSheet {
                 pendingPaymentHashes.remove(hash)
-                sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: true)
+                sendSheetPendingResolution = SendSheetPendingResolution(
+                    paymentHash: hash,
+                    success: true,
+                    feePaidSats: outcome.wasQuickPay ? (feePaidMsat ?? 0) / 1000 : nil
+                )
+            }
+            if awaitingSheet || outcome.wasQuickPay, !isQuickPayHandling(paymentHash: hash) {
                 toast(
                     type: .lightning,
                     title: t("wallet__toast_payment_success_title"),
@@ -1052,10 +1089,19 @@ extension AppViewModel {
                 )
             }
         case let .paymentFailed(paymentId, paymentHash, reason):
-            let hash = paymentId ?? paymentHash
-            if let hash, pendingPaymentHashes.contains(hash) {
+            let outcome = QuickPayPaymentCoordinator.shared.complete(
+                paymentId: paymentId,
+                paymentHash: paymentHash,
+                success: false
+            )
+            let hash = paymentHash ?? outcome.invoicePaymentHash ?? paymentId
+            let awaitingSheet = hash.map { pendingPaymentHashes.contains($0) } ?? false
+            if let hash, awaitingSheet {
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: reason)
+            }
+            let isHandledByQuickPay = hash.map { isQuickPayHandling(paymentHash: $0) } ?? false
+            if awaitingSheet || outcome.wasQuickPay, !isHandledByQuickPay {
                 toast(
                     type: .error,
                     title: t("wallet__toast_payment_failed_title"),
