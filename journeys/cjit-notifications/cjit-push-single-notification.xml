@@ -1,0 +1,23 @@
+<journey name="cjit push notification is delivered exactly once">
+  <description>
+    The pure push path. With the app fully killed, a CJIT payment must still surface a single
+    notification, delivered by the Notification Service Extension — this is the wake-the-node-and-
+    open-the-channel path, so it must keep working. The notification must use the cjitPaymentArrived
+    copy: title "Incoming Payment", body "Open Bitkit now to receive your payment".
+
+    Precondition: physical device with an onboarded regtest wallet connected to the LSP,
+    notifications authorized, "Get paid when Bitkit is closed" enabled. A funded CJIT entry is ready
+    to pay (see README.md), and the app force-quit from the app switcher so only the push and the
+    extension run.
+  </description>
+  <actions>
+    <action>Force-quit Bitkit from the app switcher so no Bitkit process is running</action>
+    <action>Start streaming the extension log: log stream --predicate 'eventMessage CONTAINS "🔔"'</action>
+    <action>Pay the CJIT invoice via the regtest backend: ./lsp POST /regtest/lightning/pay '{"invoice":"&lt;bolt11&gt;"}'</action>
+    <action>Wait up to ~30s for the push to wake the extension and deliver the notification</action>
+    <action>Verify EXACTLY ONE Bitkit notification is posted for this CJIT payment</action>
+    <action>Verify its title is "Incoming Payment" and its body is "Open Bitkit now to receive your payment"</action>
+    <action>Verify the streamed log shows exactly one "Configured notification" line, with type=cjitPaymentArrived</action>
+    <action>Tap the notification to open the app and verify the received amount in the activity list matches the CJIT payment</action>
+  </actions>
+</journey>
