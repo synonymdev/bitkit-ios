@@ -113,4 +113,5 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
   `HardwareTransferOpenTrezorConnect`, `HardwareTransferSigned`,
   `HwTransferPassphraseSheet`/`Input`/`Continue`/`Cancel`.
 - Activity: `ActivityShowAll`, `ActivityShort-<index>`, tabs `Tab-all`/`Tab-sent`/`Tab-received`/`Tab-other`,
-  `ActivityTags`, `ActivityTag`, `ActivityTxDetails`.
+  Add Tag button `ActivityTag`, detail chip list `ActivityTags`, All Activity tag filter
+  `TagsPrompt` (not `ActivityTags` — that one is detail-screen only), explorer `ActivityTxDetails`.
