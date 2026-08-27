@@ -518,7 +518,8 @@ jobs:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, build-local, e2e-branch]
-    timeout-minutes: 180
+    # Must outlast e2e-tests-remote: three attempts of the full shard.
+    timeout-minutes: 420
     steps:
       - name: Clone E2E tests
         uses: actions/checkout@v7
@@ -585,7 +586,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          deadline=$(( SECONDS + 9000 ))
+          deadline=$(( SECONDS + 24000 ))
+          finished=false
           while (( SECONDS < deadline )); do
             # Matrix jobs are named "<job> - <shard>", so match on the prefix.
             pending=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
@@ -597,10 +599,19 @@ jobs:
             echo "e2e-tests-remote: ${started} job(s), ${pending} still running"
             if [ "$started" -gt 0 ] && [ "$pending" -eq 0 ]; then
               echo "tests finished"
+              finished=true
               break
             fi
             sleep 30
           done
+
+          # Falling out of the loop tears the stack down while the tests are still
+          # using it, and every call against it then times out. Fail loudly rather
+          # than reporting success and leaving it to be diagnosed from timestamps.
+          if [ "$finished" != true ]; then
+            echo "::error::stack expired while e2e-tests-remote was still running"
+            exit 1
+          fi
 
       - name: Stack logs
         if: always()
@@ -613,13 +624,17 @@ jobs:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-latest
     needs: [detect-changes, build-local, e2e-branch]
-    timeout-minutes: 180
+    timeout-minutes: 360
 
     strategy:
       fail-fast: false
       matrix:
         shard:
-          - { name: e2e, grep: '@transfer|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4|@hardware_wallet' }
+          # @hardware_wallet omitted: ensureTrezorEmulator() shells out to
+          # `docker compose --profile trezor up` on the machine running the tests,
+          # which is a hosted Mac here and has no Docker. Tracked separately with
+          # the trezor-emu job in ai-device-tests.yml.
+          - { name: e2e, grep: '@transfer|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4' }
 
     name: e2e-tests-remote - ${{ matrix.shard.name }}
 
