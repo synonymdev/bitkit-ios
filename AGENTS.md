@@ -21,6 +21,52 @@ This app integrates with:
 
 ## Build & Development Commands
 
+### Agent CLI (XcodeBuildMCP)
+
+Agents should prefer the `xcodebuildmcp` CLI over raw `xcodebuild`, `xcrun`, and `simctl`. It wraps the
+same toolchain, parses build output, and adds simulator UI automation (AXe is bundled — no separate install).
+
+```bash
+# Install
+brew tap getsentry/xcodebuildmcp && brew install xcodebuildmcp
+
+# Discover commands and arguments — do not memorize tool lists
+xcodebuildmcp --help
+xcodebuildmcp <workflow> --help
+xcodebuildmcp <workflow> <tool> --help
+```
+
+Project defaults live in `.xcodebuildmcp/config.yaml`. It is gitignored because the CLI materializes a
+machine-local simulator UDID into it. Generate it with `xcodebuildmcp setup` (interactive), or write it by hand:
+
+```yaml
+schemaVersion: 1
+sessionDefaults:
+  projectPath: Bitkit.xcodeproj
+  scheme: Bitkit
+  configuration: Debug
+  simulatorName: iPhone 17
+setupPreferences:
+  platforms: [iOS]
+```
+
+With defaults set, most commands need no flags:
+
+```bash
+xcodebuildmcp simulator build-and-run   # build, install, launch, capture logs (preferred for run intent)
+xcodebuildmcp simulator test
+xcodebuildmcp simulator snapshot-ui     # semantic UI snapshot with elementRefs for tap/type-text
+xcodebuildmcp purge --report            # scratch storage lives in ~/Library/Developer/XcodeBuildMCP
+```
+
+**Notes:**
+- There is no standalone `.xcworkspace` here. Use `--project-path Bitkit.xcodeproj`, not `--workspace-path`.
+  The `-workspace Bitkit.xcodeproj/project.xcworkspace` form in the sections below applies to raw `xcodebuild` only.
+- Pass build settings and compilation conditions through `--extra-args`, e.g. for an E2E build:
+  `--extra-args "SWIFT_ACTIVE_COMPILATION_CONDITIONS=\$(inherited) E2E_BUILD"`.
+- `ARCHS` is already pinned to `arm64` in the project, so the arm64-only Rust xcframeworks build fine as long
+  as a concrete simulator is targeted (`--simulator-name` / `--simulator-id`), never a generic destination.
+
 ### Building
 ```bash
 # Standard build - Open Bitkit.xcodeproj in Xcode and build
