@@ -829,6 +829,10 @@ extension AppViewModel {
         contactPaymentContext?.id == context.id
     }
 
+    var hasSendPaymentTarget: Bool {
+        scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
+    }
+
     func resetSendState(preservingContactPaymentContext: Bool = false) {
         scannedLightningInvoice = nil
         scannedOnchainInvoice = nil

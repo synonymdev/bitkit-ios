@@ -489,7 +489,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let manager = paymentRequestManager(
             sdk: PaymentRequestSdkMock(records: [record]),
             clock: PaymentRequestTestClock(now),
-            completedPaymentRequestIds: [request.id]
+            completedPaymentProofKinds: [request.id: .lightning]
         )
 
         await manager.refresh()
@@ -497,6 +497,48 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertEqual(manager.historyRequests.first?.id, request.id)
         XCTAssertEqual(manager.historyRequests.first?.lifecycleState, .proofSubmitted)
+        XCTAssertEqual(manager.historyRequests.first?.paymentProofKind, .lightning)
+    }
+
+    func testCompletedOneTimePaymentAwaitingProofSubmissionKeepsPaymentProofKind() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let record = try paymentRequestRecord(state: .accepted)
+        let request = try XCTUnwrap(PaykitPaymentRequest(historyRecord: record, now: now))
+
+        for proofKind in [PaykitPaymentProofKind.lightning, .onchain] {
+            let manager = paymentRequestManager(
+                sdk: PaymentRequestSdkMock(records: [record]),
+                clock: PaymentRequestTestClock(now),
+                completedPaymentProofKinds: [request.id: proofKind]
+            )
+
+            await manager.refresh()
+
+            XCTAssertTrue(manager.pendingRequests.isEmpty)
+            XCTAssertEqual(manager.historyRequests.first?.id, request.id)
+            XCTAssertEqual(manager.historyRequests.first?.lifecycleState, .proofSubmitted)
+            XCTAssertEqual(manager.historyRequests.first?.paymentProofKind, proofKind)
+        }
+    }
+
+    func testOneTimeHistoryKeepsPaymentProofKind() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let cases: [(PublicPaykitService.MethodId, PaykitPaymentProofKind)] = [
+            (.bitcoinLightningBolt11, .lightning),
+            (.regtestOnchainP2wpkh, .onchain),
+        ]
+
+        for (method, proofKind) in cases {
+            let proof = try paymentProofRecord(endpoint: method.rawValue, kind: proofKind)
+            let record = try paymentRequestRecord(
+                state: .proofSubmitted,
+                endpoints: [method.rawValue],
+                paymentProofs: [proof]
+            )
+            let request = try XCTUnwrap(PaykitPaymentRequest(historyRecord: record, now: now))
+
+            XCTAssertEqual(request.paymentProofKind, proofKind)
+        }
     }
 
     func testInFlightSubscriptionPaymentIsNotOfferedOrMarkedPaid() async throws {
@@ -875,7 +917,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let manager = PaykitPaymentRequestManager(
             service: PaykitPaymentRequestService(sdk: sdk, now: now, logWarning: { _ in }),
             subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore(),
-            completedPaymentRequestIds: { _ in [] },
+            completedPaymentProofKinds: { _ in [:] },
             now: now,
             logWarning: { _ in }
         )
@@ -1820,7 +1862,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         sdk: PaymentRequestSdkMock,
         clock: PaymentRequestTestClock = PaymentRequestTestClock(Date()),
         isPrivatePaymentPublishingEnabled: Bool = true,
-        completedPaymentRequestIds: Set<PaykitPaymentRequest.ID> = [],
+        completedPaymentProofKinds: [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = [:],
         inFlightPaymentRequestIds: Set<PaykitPaymentRequest.ID> = [],
         protectedRequestIdsForSubscriptionCancellation: Set<PaykitPaymentRequest.ID> = []
     ) -> PaykitPaymentRequestManager {
@@ -1834,7 +1876,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             ),
             presentationStore: PaymentRequestPresentationMemoryStore(),
             subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore(),
-            completedPaymentRequestIds: { _ in completedPaymentRequestIds },
+            completedPaymentProofKinds: { _ in completedPaymentProofKinds },
             inFlightPaymentRequestIds: { _ in inFlightPaymentRequestIds },
             protectedRequestIdsForSubscriptionCancellation: { _, _ in protectedRequestIdsForSubscriptionCancellation },
             now: now,
@@ -1860,7 +1902,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         lastEventAt: String = "2027-01-15T08:00:00Z",
         proposalOutboundMessageId: UInt64? = nil,
         proposalOutboundStatus: OutboundPrivateMessageStatus? = nil,
-        acceptedEventId: String? = nil
+        acceptedEventId: String? = nil,
+        paymentProofs: [PaymentProofRecord] = []
     ) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: counterparty,
@@ -1886,12 +1929,29 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
             canceledOutboundStatus: nil,
-            paymentProofs: [],
+            paymentProofs: paymentProofs,
             lastStreamItemId: 1,
             lastOutboundMessageId: nil,
             lastOutboundStatus: nil,
             lastEventAt: lastEventAt,
             invalidReason: nil
+        )
+    }
+
+    private func paymentProofRecord(
+        endpoint: String,
+        kind: PaykitPaymentProofKind
+    ) throws -> PaymentProofRecord {
+        try PaymentProofRecord(
+            eventId: "750e8400-e29b-41d4-a716-446655440000",
+            outboundMessageId: nil,
+            outboundStatus: nil,
+            streamItemId: 2,
+            paymentReference: PaymentReference(text: "invoice-123"),
+            billingPeriod: nil,
+            paymentEndpointIdentifier: endpoint,
+            proof: PrivateJsonObject(text: "{\"data\":\"proof\",\"type\":\"\(kind.rawValue)\"}"),
+            recordedAt: "2027-01-15T08:01:00Z"
         )
     }
 

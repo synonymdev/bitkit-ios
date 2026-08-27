@@ -7,6 +7,11 @@ import Paykit
 enum PaykitPaymentProofKind: String, Codable {
     case lightning = "bitcoin-bolt11-preimage"
     case onchain = "bitcoin-onchain-txid"
+
+    init?(paymentEndpointIdentifier: String) {
+        guard let method = PublicPaykitService.MethodId(rawValue: paymentEndpointIdentifier) else { return nil }
+        self = method.onchainNetwork == nil ? .lightning : .onchain
+    }
 }
 
 struct PaykitOnchainPaymentResolution: Equatable {
@@ -485,15 +490,15 @@ actor PaykitPaymentProofService {
         }
     }
 
-    func completedRequestIdsAwaitingSubmission(identity: String) async -> Set<PaykitPaymentRequest.ID> {
+    func completedRequestProofKindsAwaitingSubmission(identity: String) async -> [PaykitPaymentRequest.ID: PaykitPaymentProofKind] {
         do {
-            return try await Set(loadProofs().compactMap { proof in
-                guard PubkyPublicKeyFormat.matches(proof.identity, identity), proof.proofData != nil else { return nil }
-                return proof.requestId
-            })
+            return try await loadProofs().reduce(into: [:]) { result, proof in
+                guard PubkyPublicKeyFormat.matches(proof.identity, identity), proof.proofData != nil else { return }
+                result[proof.requestId] = proof.kind
+            }
         } catch {
             logWarning("Failed to inspect pending Paykit payment proofs: \(error)")
-            return []
+            return [:]
         }
     }
 

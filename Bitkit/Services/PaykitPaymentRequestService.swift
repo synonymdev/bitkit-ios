@@ -44,6 +44,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     let direction: Direction
     let lifecycleState: Paykit.PaymentRequestLifecycleState
     let billingPeriod: PaykitBillingPeriod?
+    let paymentProofKind: PaykitPaymentProofKind?
 
     var requiresAcceptance: Bool {
         billingPeriod == nil && lifecycleState == .proposed
@@ -123,6 +124,9 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         direction = expectedRole == .payer ? .incoming : .outgoing
         lifecycleState = record.state
         billingPeriod = nil
+        paymentProofKind = record.paymentProofs.last.flatMap {
+            PaykitPaymentProofKind(paymentEndpointIdentifier: $0.paymentEndpointIdentifier)
+        }
     }
 
     init(
@@ -147,9 +151,13 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         direction = .outgoing
         lifecycleState = .proposed
         billingPeriod = nil
+        paymentProofKind = nil
     }
 
-    func updatingLifecycleState(_ state: Paykit.PaymentRequestLifecycleState) -> PaykitPaymentRequest {
+    func updatingLifecycleState(
+        _ state: Paykit.PaymentRequestLifecycleState,
+        paymentProofKind: PaykitPaymentProofKind? = nil
+    ) -> PaykitPaymentRequest {
         PaykitPaymentRequest(
             paymentRequestId: paymentRequestId,
             counterparty: counterparty,
@@ -163,11 +171,17 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             deliveryStatus: deliveryStatus,
             direction: direction,
             lifecycleState: state,
-            billingPeriod: billingPeriod
+            billingPeriod: billingPeriod,
+            paymentProofKind: paymentProofKind ?? self.paymentProofKind
         )
     }
 
-    init(subscription: PaykitSubscription, billingPeriod: PaykitBillingPeriod, lifecycleState: Paykit.PaymentRequestLifecycleState) {
+    init(
+        subscription: PaykitSubscription,
+        billingPeriod: PaykitBillingPeriod,
+        lifecycleState: Paykit.PaymentRequestLifecycleState,
+        paymentProofKind: PaykitPaymentProofKind? = nil
+    ) {
         paymentRequestId = subscription.paymentRequestId
         counterparty = subscription.counterparty
         counterpartyReceiverPath = subscription.counterpartyReceiverPath
@@ -181,6 +195,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         direction = .incoming
         self.lifecycleState = lifecycleState
         self.billingPeriod = billingPeriod
+        self.paymentProofKind = paymentProofKind
     }
 
     private init(
@@ -196,7 +211,8 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         deliveryStatus: DeliveryStatus?,
         direction: Direction,
         lifecycleState: Paykit.PaymentRequestLifecycleState,
-        billingPeriod: PaykitBillingPeriod?
+        billingPeriod: PaykitBillingPeriod?,
+        paymentProofKind: PaykitPaymentProofKind?
     ) {
         self.paymentRequestId = paymentRequestId
         self.counterparty = counterparty
@@ -211,6 +227,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         self.direction = direction
         self.lifecycleState = lifecycleState
         self.billingPeriod = billingPeriod
+        self.paymentProofKind = paymentProofKind
     }
 
     func isExpired(at date: Date) -> Bool {
@@ -700,7 +717,7 @@ final class PaykitPaymentRequestManager {
     private let presentationStore: any PaykitPaymentRequestPresentationStoring
     private let subscriptionStateStore: any PaykitSubscriptionStateStoring
     private let subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler
-    private let completedPaymentRequestIds: @Sendable (String) async -> Set<PaykitPaymentRequest.ID>
+    private let completedPaymentProofKinds: @Sendable (String) async -> [PaykitPaymentRequest.ID: PaykitPaymentProofKind]
     private let inFlightPaymentRequestIds: @Sendable (String) async -> Set<PaykitPaymentRequest.ID>
     private let protectedRequestIdsForSubscriptionCancellation: @Sendable (
         String,
@@ -749,8 +766,8 @@ final class PaykitPaymentRequestManager {
         presentationStore: any PaykitPaymentRequestPresentationStoring = PaykitPaymentRequestPresentationStore(),
         subscriptionStateStore: any PaykitSubscriptionStateStoring = PaykitSubscriptionStateStore(),
         subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler = PaykitSubscriptionNotificationScheduler(),
-        completedPaymentRequestIds: @escaping @Sendable (String) async -> Set<PaykitPaymentRequest.ID> = { identity in
-            await PaykitPaymentProofService.shared.completedRequestIdsAwaitingSubmission(identity: identity)
+        completedPaymentProofKinds: @escaping @Sendable (String) async -> [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = { identity in
+            await PaykitPaymentProofService.shared.completedRequestProofKindsAwaitingSubmission(identity: identity)
         },
         inFlightPaymentRequestIds: @escaping @Sendable (String) async -> Set<PaykitPaymentRequest.ID> = { identity in
             await PaykitPaymentProofService.shared.inFlightRequestIds(identity: identity)
@@ -774,7 +791,7 @@ final class PaykitPaymentRequestManager {
         self.presentationStore = presentationStore
         self.subscriptionStateStore = subscriptionStateStore
         self.subscriptionNotificationScheduler = subscriptionNotificationScheduler
-        self.completedPaymentRequestIds = completedPaymentRequestIds
+        self.completedPaymentProofKinds = completedPaymentProofKinds
         self.inFlightPaymentRequestIds = inFlightPaymentRequestIds
         self.protectedRequestIdsForSubscriptionCancellation = protectedRequestIdsForSubscriptionCancellation
         self.now = now
@@ -1219,9 +1236,10 @@ final class PaykitPaymentRequestManager {
               })
         else { return }
 
-        async let completed = completedPaymentRequestIds(activeIdentity)
+        async let completed = completedPaymentProofKinds(activeIdentity)
         async let inFlight = inFlightPaymentRequestIds(activeIdentity)
-        let protectedRequestIds = await completed.union(inFlight)
+        let (completedProofKinds, inFlightRequestIds) = await (completed, inFlight)
+        let protectedRequestIds = Set(completedProofKinds.keys).union(inFlightRequestIds)
         guard !protectedRequestIds.contains(request.id),
               !pendingRequests.contains(where: { $0.id == request.id })
         else { return }
@@ -1294,9 +1312,10 @@ final class PaykitPaymentRequestManager {
         do {
             let snapshot = try await service.synchronize()
             guard generation == refreshGeneration, let activeIdentity else { return }
-            async let completedRequestIds = completedPaymentRequestIds(activeIdentity)
+            async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
             async let inFlightRequestIds = inFlightPaymentRequestIds(activeIdentity)
-            let (locallyCompletedRequestIds, locallyInFlightRequestIds) = await (completedRequestIds, inFlightRequestIds)
+            let (locallyCompletedProofKinds, locallyInFlightRequestIds) = await (completedProofKinds, inFlightRequestIds)
+            let locallyCompletedRequestIds = Set(locallyCompletedProofKinds.keys)
             guard generation == refreshGeneration,
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
             else { return }
@@ -1339,9 +1358,8 @@ final class PaykitPaymentRequestManager {
                     if request.lifecycleState == .proofSubmitted {
                         return request
                     }
-                    return locallyCompletedRequestIds.contains(request.id)
-                        ? request.updatingLifecycleState(.proofSubmitted)
-                        : nil
+                    guard let proofKind = locallyCompletedProofKinds[request.id] else { return nil }
+                    return request.updatingLifecycleState(.proofSubmitted, paymentProofKind: proofKind)
                 }
             }
             let protectedRequests = pendingRequests.filter {
@@ -1352,11 +1370,15 @@ final class PaykitPaymentRequestManager {
                     !locallyInFlightRequestIds.contains($0.id) &&
                     !approvedPaymentRequestIds.contains($0.id)
             }
+            let oneTimeHistory = snapshot.history.map { request in
+                guard let proofKind = locallyCompletedProofKinds[request.id] else { return request }
+                return request.updatingLifecycleState(.proofSubmitted, paymentProofKind: proofKind)
+            }
             pendingRequests = recurringPending + oneTimePending
             for request in protectedRequests where !pendingRequests.contains(where: { $0.id == request.id }) {
                 pendingRequests.append(request)
             }
-            historyRequests = (snapshot.history + recurringHistory).sorted {
+            historyRequests = (oneTimeHistory + recurringHistory).sorted {
                 ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast)
             }
             await subscriptionNotificationScheduler.synchronize(

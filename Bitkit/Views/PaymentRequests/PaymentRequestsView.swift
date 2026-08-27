@@ -146,8 +146,8 @@ struct PaymentRequestCard: View {
         if let paymentDirection {
             CircularIcon(
                 icon: paymentDirection == .incoming ? "arrow-up" : "arrow-down",
-                iconColor: .brandAccent,
-                backgroundColor: .brand16,
+                iconColor: request.paymentRailColors.icon,
+                backgroundColor: request.paymentRailColors.background,
                 size: 40
             )
         } else if let contact {
@@ -543,7 +543,21 @@ struct PaymentRequestDetailView: View {
     }
 
     private func amount(_ request: PaykitPaymentRequest) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let isCompleted = request.lifecycleState == .proofSubmitted
+        let icon = if isCompleted {
+            request.direction == .incoming ? "arrow-up" : "arrow-down"
+        } else {
+            request.direction == .incoming ? "arrow-down" : "arrow-up"
+        }
+        let colors: (icon: Color, background: Color) = if isCompleted {
+            request.paymentRailColors
+        } else {
+            request.direction == .incoming
+                ? (.purpleAccent, .purple16)
+                : (.brandAccent, .brand16)
+        }
+
+        return VStack(alignment: .leading, spacing: 8) {
             CaptionMText(currency.convert(sats: request.amountSats)?.formatted ?? "", textColor: .white64)
             HStack(spacing: 16) {
                 MoneyText(
@@ -557,9 +571,9 @@ struct PaymentRequestDetailView: View {
                 )
                 Spacer()
                 CircularIcon(
-                    icon: request.direction == .incoming ? "arrow-down" : "arrow-up",
-                    iconColor: request.direction == .incoming ? .purpleAccent : .brandAccent,
-                    backgroundColor: request.direction == .incoming ? .purple16 : .brand16,
+                    icon: icon,
+                    iconColor: colors.icon,
+                    backgroundColor: colors.background,
                     size: 48
                 )
             }
@@ -660,4 +674,12 @@ struct PaymentRequestDetailView: View {
         formatter.setLocalizedDateFormatFromTemplate("Hm")
         return formatter
     }()
+}
+
+private extension PaykitPaymentRequest {
+    var paymentRailColors: (icon: Color, background: Color) {
+        paymentProofKind == .lightning
+            ? (.purpleAccent, .purple16)
+            : (.brandAccent, .brand16)
+    }
 }

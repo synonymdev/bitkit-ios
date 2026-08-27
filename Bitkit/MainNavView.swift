@@ -191,11 +191,6 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.sendSheetItem,
             onDismiss: {
-                if let request = app.contactPaymentContext?.incomingPaymentRequest {
-                    Task { await paykitPaymentRequestManager.finishPayment(request) }
-                }
-                app.resetSendState()
-                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                 sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")
             }
         ) {

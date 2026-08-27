@@ -68,7 +68,7 @@ struct SendFailure: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     let context: SendFailureContext
-    let onRetryReady: (Bool) -> Void
+    let onRetryReady: (Bool) async -> Void
     let onSecondaryAction: (() -> Void)?
 
     private var title: String {
@@ -137,11 +137,6 @@ struct SendFailure: View {
     }
 
     private func retryPayment() {
-        guard context.resetRoutingCachesOnRetry else {
-            onRetryReady(false)
-            return
-        }
-
         guard !wallet.isRetryingLightningPayment else { return }
         wallet.isRetryingLightningPayment = true
 
@@ -151,22 +146,25 @@ struct SendFailure: View {
             }
 
             do {
-                var cacheResetError: Error?
-                do {
-                    try await wallet.resetPaymentRoutingCaches()
-                } catch {
-                    cacheResetError = error
+                if context.resetRoutingCachesOnRetry {
+                    var cacheResetError: Error?
+                    do {
+                        try await wallet.resetPaymentRoutingCaches()
+                    } catch {
+                        cacheResetError = error
+                    }
+
+                    try await wallet.start()
+                    let refreshStartedAt = Date()
+
+                    if let cacheResetError {
+                        throw cacheResetError
+                    }
+
+                    try await wallet.waitForPaymentRoutingDataRefresh(startedAt: refreshStartedAt)
                 }
 
-                try await wallet.start()
-                let refreshStartedAt = Date()
-
-                if let cacheResetError {
-                    throw cacheResetError
-                }
-
-                try await wallet.waitForPaymentRoutingDataRefresh(startedAt: refreshStartedAt)
-                onRetryReady(true)
+                await onRetryReady(context.resetRoutingCachesOnRetry)
             } catch {
                 Logger.error("Failed to reset routing caches before payment retry: \(error)", context: "SendFailure")
                 app.toast(error)

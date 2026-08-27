@@ -7,6 +7,7 @@ struct SubscriptionSheetItem: SheetItem {
         case success
         case details(PaykitSubscription)
         case cancel(PaykitSubscription)
+        case payment(SendRoute)
     }
 
     let route: Route
@@ -467,6 +468,7 @@ struct SubscriptionSheet: View {
     @State private var route: SubscriptionSheetItem.Route
     @State private var previousRoute: SubscriptionSheetItem.Route?
     @State private var now = Date()
+    @State private var isAccepting = false
 
     init(config: SubscriptionSheetItem) {
         self.config = config
@@ -485,6 +487,8 @@ struct SubscriptionSheet: View {
                 moreInfo(subscription)
             case let .cancel(subscription):
                 cancel(subscription)
+            case let .payment(sendRoute):
+                SendSheet(config: SendSheetItem(initialRoute: sendRoute), isEmbedded: true)
             }
         }
         .task {
@@ -499,7 +503,8 @@ struct SubscriptionSheet: View {
             paymentRequests.markSubscriptionProposalPresented(subscription)
         }
         .onChange(of: paymentRequests.subscriptions) {
-            guard !paymentRequests.isProcessingSubscription,
+            guard !isAccepting,
+                  !paymentRequests.isProcessingSubscription,
                   case let .review(subscription) = route,
                   !paymentRequests.subscriptions.contains(where: {
                       $0.id == subscription.id && $0.isProposalVisible(at: Date())
@@ -516,6 +521,7 @@ struct SubscriptionSheet: View {
             }
             now = Date()
         }
+        .interactiveDismissDisabled(isAccepting)
     }
 
     private func review(_ subscription: PaykitSubscription) -> some View {
@@ -524,9 +530,11 @@ struct SubscriptionSheet: View {
             SheetHeader(title: t("subscriptions__review_and_subscribe"))
             SubscriptionAmountHeader(subscription: subscription)
             SubscriptionProviderCard(subscription: subscription) {
+                guard !isAccepting else { return }
                 previousRoute = route
                 route = .details(subscription)
             }
+            .allowsHitTesting(!isAccepting)
 
             if !subscription.recurrence.unit.isSupported {
                 BodyMText(t("subscriptions__unsupported_description"), textColor: .white64)
@@ -552,7 +560,7 @@ struct SubscriptionSheet: View {
                         ? t("subscriptions__swipe_to_subscribe_and_pay")
                         : t("subscriptions__swipe_to_subscribe"),
                     accentColor: .purpleAccent,
-                    isLoading: paymentRequests.isProcessingSubscription
+                    isLoading: isAccepting || paymentRequests.isProcessingSubscription
                 ) {
                     do {
                         try await accept(subscription)
@@ -574,6 +582,10 @@ struct SubscriptionSheet: View {
 
     @MainActor
     private func accept(_ subscription: PaykitSubscription) async throws {
+        guard !isAccepting else { throw PaykitPaymentRequestError.operationInProgress }
+        isAccepting = true
+        defer { isAccepting = false }
+
         guard let dueRequest = try await paymentRequests.accept(subscription) else {
             guard paymentRequests.subscriptions.contains(where: {
                 $0.id == subscription.id && $0.lifecycleState == .activeRecurring
@@ -583,6 +595,8 @@ struct SubscriptionSheet: View {
             route = .success
             return
         }
+
+        guard sheets.activeSheetConfiguration?.id == .subscription else { return }
 
         let resolution: PublicPaykitPaymentLaunchResult
         do {
@@ -595,6 +609,7 @@ struct SubscriptionSheet: View {
             try showInitialPaymentFailure(dueRequest, error: PaykitPaymentRequestError.requestUnavailable)
             return
         }
+        guard sheets.activeSheetConfiguration?.id == .subscription else { return }
 
         let context = ContactPaymentContext(
             publicKey: dueRequest.counterparty,
@@ -609,27 +624,51 @@ struct SubscriptionSheet: View {
         do {
             try await app.handleScannedData(paymentTarget, claimedContactPaymentContext: context)
         } catch {
-            let failure = SendFailureContext(
-                error: error,
-                retryRoute: .confirm,
-                contactPaymentContext: context
+            guard sheets.activeSheetConfiguration?.id == .subscription,
+                  app.ownsContactPaymentContext(context)
+            else {
+                if app.ownsContactPaymentContext(context) {
+                    app.resetSendState()
+                }
+                return
+            }
+            try showInitialPaymentFailure(dueRequest, error: error, context: context)
+            return
+        }
+        guard sheets.activeSheetConfiguration?.id == .subscription,
+              app.ownsContactPaymentContext(context)
+        else {
+            if app.ownsContactPaymentContext(context) {
+                app.resetSendState()
+            }
+            return
+        }
+        guard app.hasSendPaymentTarget else {
+            try showInitialPaymentFailure(
+                dueRequest,
+                error: PaykitPaymentRequestError.requestUnavailable,
+                context: context
             )
-            sheets.showSheet(.send, data: SendConfig(view: .failure(failure)))
             return
         }
 
         let sendRoute: SendRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
-        sheets.showSheet(.send, data: SendConfig(view: sendRoute))
+        route = .payment(sendRoute)
     }
 
     @MainActor
-    private func showInitialPaymentFailure(_ request: PaykitPaymentRequest, error: Error) throws {
-        let context = ContactPaymentContext(
+    private func showInitialPaymentFailure(
+        _ request: PaykitPaymentRequest,
+        error: Error,
+        context existingContext: ContactPaymentContext? = nil
+    ) throws {
+        guard sheets.activeSheetConfiguration?.id == .subscription else { return }
+        let context = existingContext ?? ContactPaymentContext(
             publicKey: request.counterparty,
             incomingPaymentRequest: request,
             isInitialSubscriptionPayment: true
         )
-        guard app.claimContactPaymentContext(context) else {
+        guard app.ownsContactPaymentContext(context) || app.claimContactPaymentContext(context) else {
             throw PaykitPaymentRequestError.operationInProgress
         }
         let failure = SendFailureContext(
@@ -637,7 +676,7 @@ struct SubscriptionSheet: View {
             retryRoute: .confirm,
             contactPaymentContext: context
         )
-        sheets.showSheet(.send, data: SendConfig(view: .failure(failure)))
+        route = .payment(.failure(failure))
     }
 
     private var reviewTransitionDate: Date? {
@@ -719,16 +758,23 @@ struct SubscriptionSheet: View {
 }
 
 struct SubscriptionSuccessView: View {
+    private let paymentProofKind: PaykitPaymentProofKind?
     let onClose: () -> Void
 
-    private static let confettiAnimation: LottieAnimation? = {
-        guard let url = Bundle.main.url(forResource: "confetti-purple", withExtension: "json") else { return nil }
+    init(paymentProofKind: PaykitPaymentProofKind? = nil, onClose: @escaping () -> Void) {
+        self.paymentProofKind = paymentProofKind
+        self.onClose = onClose
+    }
+
+    private var confettiAnimation: LottieAnimation? {
+        let animationName = paymentProofKind == .onchain ? "confetti-orange" : "confetti-purple"
+        guard let url = Bundle.main.url(forResource: animationName, withExtension: "json") else { return nil }
         return LottieAnimation.filepath(url.path)
-    }()
+    }
 
     var body: some View {
         ZStack {
-            if let animation = Self.confettiAnimation {
+            if let animation = confettiAnimation {
                 LottieView(animation: animation)
                     .playing(loopMode: .loop)
                     .scaleEffect(1.9)

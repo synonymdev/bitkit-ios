@@ -10,6 +10,46 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
     private let preimage = String(repeating: "00", count: 32)
     private let onchainAddress = "bcrt1qpaymentproof"
 
+    func testSubscriptionHistoryKeepsPaymentProofKind() throws {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let billingPeriod = BillingPeriod(
+            startsAt: "2027-01-01T08:00:00.000Z",
+            endsAt: "2027-02-01T08:00:00.000Z"
+        )
+        let acceptedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-01T08:00:00Z"))
+        let through = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let cases: [(PublicPaykitService.MethodId, PaykitPaymentProofKind)] = [
+            (.bitcoinLightningBolt11, .lightning),
+            (.regtestOnchainP2wpkh, .onchain),
+        ]
+
+        for (method, proofKind) in cases {
+            let proof = try paymentProofRecord(
+                endpoint: method.rawValue,
+                kind: proofKind,
+                data: String(repeating: "01", count: 32),
+                billingPeriod: billingPeriod
+            )
+            let record = try paymentRequestRecord(
+                endpoints: [method.rawValue],
+                paymentProofs: [proof],
+                state: .activeRecurring,
+                recurrence: recurrence
+            )
+            let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+            let request = try XCTUnwrap(subscription.requests(through: through, acceptedAt: acceptedAt).first)
+
+            XCTAssertEqual(request.lifecycleState, .proofSubmitted)
+            XCTAssertEqual(request.paymentProofKind, proofKind)
+        }
+    }
+
     func testCompletedLightningPaymentRetriesAfterRestart() async throws {
         let record = try paymentRequestRecord()
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
@@ -28,10 +68,10 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         let failedSubmissionCount = await sdk.submissionCount()
         let persistedProof = await store.snapshot().first
-        let completedRequestIds = await service.completedRequestIdsAwaitingSubmission(identity: identity)
+        let completedProofKinds = await service.completedRequestProofKindsAwaitingSubmission(identity: identity)
         XCTAssertEqual(failedSubmissionCount, 1)
         XCTAssertEqual(persistedProof?.proofData, preimage)
-        XCTAssertEqual(completedRequestIds, Set([request.id]))
+        XCTAssertEqual(completedProofKinds, [request.id: .lightning])
 
         await sdk.setSubmissionFailure(false)
         let restartedService = paymentProofService(

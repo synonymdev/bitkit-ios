@@ -25,6 +25,10 @@ struct SendSuccess: View {
 
     @State private var foundActivity: Activity?
 
+    private var paymentProofKind: PaykitPaymentProofKind {
+        app.selectedWalletToPayFrom == .onchain ? .onchain : .lightning
+    }
+
     private var successDisplaySats: Int? {
         if let sendAmountSats = wallet.sendAmountSats {
             return Int(sendAmountSats)
@@ -43,8 +47,7 @@ struct SendSuccess: View {
 
     /// Load the confetti animation
     private var confettiAnimation: LottieAnimation? {
-        let isOnchain = app.selectedWalletToPayFrom == .onchain
-        let animationName = isOnchain ? "confetti-orange" : "confetti-purple"
+        let animationName = paymentProofKind == .onchain ? "confetti-orange" : "confetti-purple"
 
         guard let filepathURL = Bundle.main.url(forResource: animationName, withExtension: "json") else {
             print("Could not find \(animationName).json in bundle")
@@ -57,7 +60,7 @@ struct SendSuccess: View {
     var body: some View {
         Group {
             if isInitialSubscriptionPayment {
-                SubscriptionSuccessView {
+                SubscriptionSuccessView(paymentProofKind: paymentProofKind) {
                     sheets.hideSheet(reason: "Initial subscription payment completed")
                 }
             } else {

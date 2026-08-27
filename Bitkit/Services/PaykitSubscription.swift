@@ -379,6 +379,11 @@ struct PaykitSubscription: Identifiable, Hashable {
         let counterpartyReceiverPath: String
     }
 
+    struct Payment: Hashable {
+        let billingPeriod: PaykitBillingPeriod
+        let proofKind: PaykitPaymentProofKind?
+    }
+
     let paymentRequestId: String
     let counterparty: String
     let counterpartyReceiverPath: String
@@ -392,7 +397,11 @@ struct PaykitSubscription: Identifiable, Hashable {
     let acceptedPaymentEndpointIdentifiers: [String]
     let wasAccepted: Bool
     var lifecycleState: Paykit.PaymentRequestLifecycleState
-    let paidPeriods: [PaykitBillingPeriod]
+    let payments: [Payment]
+
+    var paidPeriods: [PaykitBillingPeriod] {
+        payments.map(\.billingPeriod)
+    }
 
     var id: ID {
         ID(
@@ -465,18 +474,23 @@ struct PaykitSubscription: Identifiable, Hashable {
         )
         wasAccepted = record.acceptedEventId != nil || record.state == .activeRecurring || !record.paymentProofs.isEmpty
         lifecycleState = record.state
-        paidPeriods = record.paymentProofs.compactMap { proof in
-            proof.billingPeriod.flatMap(PaykitBillingPeriod.init)
+        payments = record.paymentProofs.compactMap { proof in
+            guard let billingPeriod = proof.billingPeriod.flatMap(PaykitBillingPeriod.init) else { return nil }
+            return Payment(
+                billingPeriod: billingPeriod,
+                proofKind: PaykitPaymentProofKind(paymentEndpointIdentifier: proof.paymentEndpointIdentifier)
+            )
         }
     }
 
     func requests(through date: Date, acceptedAt: Date) -> [PaykitPaymentRequest] {
         recurrence.periods(through: date, acceptedAt: acceptedAt).map { period in
-            let isPaid = paidPeriods.contains(period)
+            let payment = payments.last { $0.billingPeriod == period }
             return PaykitPaymentRequest(
                 subscription: self,
                 billingPeriod: period,
-                lifecycleState: isPaid ? .proofSubmitted : .activeRecurring
+                lifecycleState: payment == nil ? .activeRecurring : .proofSubmitted,
+                paymentProofKind: payment?.proofKind
             )
         }
     }

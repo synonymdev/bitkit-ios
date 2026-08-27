@@ -113,11 +113,15 @@ struct SendSheet: View {
     @Environment(TrezorManager.self) private var trezorManager
 
     let config: SendSheetItem
+    let isEmbedded: Bool
 
+    @State private var rootRoute: SendRoute
+    @State private var rootRouteGeneration = 0
     @State private var navigationPath: [SendRoute] = []
     @State private var rootOverride: SendRoute?
     @State private var quickPaySession = 0
     @State private var hasValidatedAfterSync = false
+    @State private var pendingEmbeddedRetryRoute: SendRoute?
     @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
@@ -129,8 +133,14 @@ struct SendSheet: View {
         _hwSend = State(initialValue: HwSendCoordinator(walletId: config.hardwareWalletId))
     }
 
+    init(config: SendSheetItem, isEmbedded: Bool = false) {
+        self.config = config
+        self.isEmbedded = isEmbedded
+        _rootRoute = State(initialValue: config.initialRoute)
+    }
+
     private var currentRoot: SendRoute {
-        rootOverride ?? config.initialRoute
+        rootOverride ?? rootRoute
     }
 
     /// How long the sync overlay may wait for channels to become usable before falling back
@@ -184,25 +194,20 @@ struct SendSheet: View {
     }
 
     private var startsOnFailure: Bool {
-        if case .failure = config.initialRoute {
+        if case .failure = currentRoot {
             return true
         }
         return false
     }
 
     var body: some View {
-        Sheet(id: .send, data: config) {
-            if shouldShowSyncOverlay {
-                SendSyncScreen()
-                    .transition(.opacity)
+        Group {
+            if isEmbedded {
+                content
             } else {
-                NavigationStack(path: $navigationPath) {
-                    viewForRoute(currentRoot)
-                        .navigationDestination(for: SendRoute.self) { route in
-                            viewForRoute(route)
-                        }
+                Sheet(id: .send, data: config) {
+                    content
                 }
-                .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
@@ -233,7 +238,10 @@ struct SendSheet: View {
                 }
                 guard paykitPaymentRequestManager.markPresentedIfPending(request) else {
                     app.resetSendState()
-                    sheets.hideSheetIfActive(.send, reason: "Incoming payment request is no longer available")
+                    sheets.hideSheetIfActive(
+                        isEmbedded ? .subscription : .send,
+                        reason: "Incoming payment request is no longer available"
+                    )
                     return
                 }
                 if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
@@ -248,7 +256,7 @@ struct SendSheet: View {
 
             // A plain Send open (TabBar) must not inherit invoice state from an earlier scan,
             // e.g. one abandoned behind the sync overlay. Invoice-carrying opens use other routes.
-            if config.initialRoute == .options {
+            if currentRoot == .options {
                 app.resetSendState()
             }
 
@@ -305,8 +313,7 @@ struct SendSheet: View {
         .onChange(of: wallet.hasUsableChannels) { _, hasUsable in
             // Only validate if channels just became usable and we have a scanned invoice
             // (Validation already happened in AppViewModel if channels were already usable)
-            let hasScannedInvoice = app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil || app.lnurlPayData != nil
-            guard hasScannedInvoice else { return }
+            guard app.hasSendPaymentTarget else { return }
 
             let isLightningPayment = app.scannedLightningInvoice != nil
                 || app.lnurlPayData != nil
@@ -333,6 +340,34 @@ struct SendSheet: View {
 
             handleSyncTimeout()
         }
+        .onDisappear(perform: cleanup)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if shouldShowSyncOverlay {
+            SendSyncScreen()
+                .transition(.opacity)
+        } else {
+            NavigationStack(path: $navigationPath) {
+                viewForRoute(currentRoot)
+                    .navigationDestination(for: SendRoute.self) { route in
+                        viewForRoute(route)
+                    }
+            }
+            .id(rootRouteGeneration)
+            .transition(.opacity)
+        }
+    }
+
+    private func cleanup() {
+        if let request = app.contactPaymentContext?.incomingPaymentRequest {
+            Task { await paykitPaymentRequestManager.finishPayment(request) }
+        }
+        app.resetSendState()
+        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+        app.resetQuickPay()
+        QuickPayPaymentCoordinator.shared.detach()
     }
 
     /// Called when the sync overlay has been visible for `syncTimeoutSeconds` without channels becoming usable.
@@ -396,12 +431,17 @@ struct SendSheet: View {
     private func showPaymentSetupFailure(title: String, description: String, accessibilityIdentifier: String) {
         if let context = app.contactPaymentContext, context.isInitialSubscriptionPayment {
             let error = AppError(message: title, debugMessage: description)
-            navigationPath.append(.failure(SendFailureContext(
+            let failureRoute = SendRoute.failure(SendFailureContext(
                 error: error,
                 retryRoute: app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm,
                 paymentRequest: app.scannedLightningInvoice?.bolt11,
                 contactPaymentContext: context
-            )))
+            ))
+            if isEmbedded {
+                replaceRootRoute(with: failureRoute)
+            } else {
+                navigationPath.append(failureRoute)
+            }
             return
         }
 
@@ -414,11 +454,32 @@ struct SendSheet: View {
         sheets.hideSheet()
     }
 
+    private enum PaymentValidationResult {
+        case ready
+        case waiting
+        case failed
+    }
+
     /// Validates payment affordability after sync completes
     /// For lightning: falls back to onchain for unified invoices, shows error for pure lightning invoices
     /// For onchain: validates balance and shows error if insufficient
     /// Pass `ignoreChannelWait: true` to validate even while channels are unusable (sync timeout).
     private func validatePaymentAfterSync(ignoreChannelWait: Bool = false) {
+        let result = performPaymentValidationAfterSync(ignoreChannelWait: ignoreChannelWait)
+        guard let route = pendingEmbeddedRetryRoute else { return }
+
+        switch result {
+        case .ready:
+            pendingEmbeddedRetryRoute = nil
+            replaceRootRoute(with: route)
+        case .failed:
+            pendingEmbeddedRetryRoute = nil
+        case .waiting:
+            break
+        }
+    }
+
+    private func performPaymentValidationAfterSync(ignoreChannelWait: Bool) -> PaymentValidationResult {
         let requestedAmount = app.contactPaymentContext?.incomingPaymentRequest?.amountSats
 
         if let lnurlPayData = app.lnurlPayData, let requestedAmount {
@@ -433,7 +494,7 @@ struct SendSheet: View {
                     accessibilityIdentifier: "LnurlPayAmountTooLowToast"
                 )
                 hasValidatedAfterSync = true
-                return
+                return .failed
             }
             guard requestedAmount <= lnurlPayData.maxSendableSat else {
                 showPaymentSetupFailure(
@@ -442,17 +503,17 @@ struct SendSheet: View {
                     accessibilityIdentifier: "LnurlPayAmountTooHighToast"
                 )
                 hasValidatedAfterSync = true
-                return
+                return .failed
             }
             guard LightningService.shared.canSend(amountSats: requestedAmount) else {
                 let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
                 showInsufficientSpendingToast(invoiceAmount: requestedAmount, spendingBalance: spendingBalance)
                 hasValidatedAfterSync = true
-                return
+                return .failed
             }
 
             hasValidatedAfterSync = true
-            return
+            return .ready
         }
 
         // Validate lightning payment if present
@@ -464,7 +525,7 @@ struct SendSheet: View {
             let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
             if hasAnyChannels, !wallet.hasUsableChannels, !ignoreChannelWait {
                 // We have channels but none usable yet → wait
-                return
+                return .waiting
             }
 
             // Check if we can afford the lightning payment
@@ -489,7 +550,7 @@ struct SendSheet: View {
                         onchainBalance: onchainBalance
                     ) else {
                         hasValidatedAfterSync = true
-                        return
+                        return .failed
                     }
 
                     // Onchain balance is sufficient → navigate to amount screen
@@ -498,18 +559,18 @@ struct SendSheet: View {
                         navigationPath = [.amount]
                     }
                     hasValidatedAfterSync = true
-                    return
+                    return .ready
                 } else {
                     // For pure lightning invoices, show error toast and dismiss sheet
                     let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
                     showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: spendingBalance)
                     hasValidatedAfterSync = true
-                    return
+                    return .failed
                 }
             } else {
                 // Lightning payment is valid, we're done
                 hasValidatedAfterSync = true
-                return
+                return .ready
             }
         }
 
@@ -524,11 +585,12 @@ struct SendSheet: View {
                 onchainBalance: onchainBalance
             ) else {
                 hasValidatedAfterSync = true
-                return
+                return .failed
             }
         }
 
         hasValidatedAfterSync = true
+        return .ready
     }
 
     private func requestPinCheck() async -> Bool {
@@ -694,7 +756,7 @@ struct SendSheet: View {
                         routingCacheResetAttempted = true
                     }
                     if let requestId = context.incomingPaymentRequestId {
-                        retryIncomingPaymentRequest(
+                        await retryIncomingPaymentRequest(
                             requestId,
                             isInitialSubscriptionPayment: context.isInitialSubscriptionPayment
                         )
@@ -817,12 +879,25 @@ struct SendSheet: View {
         navigationPath = [route]
     }
 
+    private func replaceRootRoute(with route: SendRoute) {
+        rootOverride = nil
+        rootRoute = route
+        navigationPath = []
+        rootRouteGeneration &+= 1
+    }
+
+    @MainActor
     private func retryIncomingPaymentRequest(
         _ requestId: PaykitPaymentRequest.ID,
         isInitialSubscriptionPayment: Bool
-    ) {
+    ) async {
         guard let request = paykitPaymentRequestManager.paymentRequestForRetry(requestId) else {
             app.toast(PaykitPaymentRequestError.requestUnavailable)
+            return
+        }
+
+        if isEmbedded, isInitialSubscriptionPayment {
+            await retryEmbeddedInitialSubscriptionPayment(request)
             return
         }
 
@@ -833,6 +908,109 @@ struct SendSheet: View {
             isInitialSubscriptionPayment: isInitialSubscriptionPayment
         )
         sheets.hideSheet(reason: "Retrying incoming payment request with fresh private payment details")
+    }
+
+    @MainActor
+    private func retryEmbeddedInitialSubscriptionPayment(_ request: PaykitPaymentRequest) async {
+        guard sheets.activeSheetConfiguration?.id == .subscription else { return }
+
+        app.resetSendState()
+        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+        wallet.sendAmountSats = request.amountSats
+
+        let resolution: PublicPaykitPaymentLaunchResult
+        do {
+            resolution = try await PrivatePaykitService.shared.beginPaymentRequestWaitingForUpdatedList(request)
+        } catch {
+            showEmbeddedInitialPaymentFailure(request, error: error)
+            return
+        }
+
+        guard case let .opened(paymentTarget, privatePaymentContext) = resolution else {
+            showEmbeddedInitialPaymentFailure(request, error: PaykitPaymentRequestError.requestUnavailable)
+            return
+        }
+        guard sheets.activeSheetConfiguration?.id == .subscription else { return }
+
+        let context = ContactPaymentContext(
+            publicKey: request.counterparty,
+            privatePaymentContext: privatePaymentContext,
+            incomingPaymentRequest: request,
+            isInitialSubscriptionPayment: true
+        )
+        guard app.claimContactPaymentContext(context) else {
+            app.toast(PaykitPaymentRequestError.operationInProgress)
+            return
+        }
+
+        do {
+            try await app.handleScannedData(paymentTarget, claimedContactPaymentContext: context)
+        } catch {
+            guard sheets.activeSheetConfiguration?.id == .subscription,
+                  app.ownsContactPaymentContext(context)
+            else {
+                if app.ownsContactPaymentContext(context) {
+                    app.resetSendState()
+                }
+                return
+            }
+            showEmbeddedInitialPaymentFailure(request, error: error, context: context)
+            return
+        }
+
+        guard sheets.activeSheetConfiguration?.id == .subscription,
+              app.ownsContactPaymentContext(context)
+        else {
+            if app.ownsContactPaymentContext(context) {
+                app.resetSendState()
+            }
+            return
+        }
+        guard app.hasSendPaymentTarget else {
+            showEmbeddedInitialPaymentFailure(
+                request,
+                error: PaykitPaymentRequestError.requestUnavailable,
+                context: context
+            )
+            return
+        }
+
+        pendingEmbeddedRetryRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        hasValidatedAfterSync = false
+        guard !shouldShowSyncOverlay else { return }
+        validatePaymentAfterSync()
+    }
+
+    @MainActor
+    private func showEmbeddedInitialPaymentFailure(
+        _ request: PaykitPaymentRequest,
+        error: Error,
+        context existingContext: ContactPaymentContext? = nil
+    ) {
+        guard sheets.activeSheetConfiguration?.id == .subscription else {
+            if let existingContext, app.ownsContactPaymentContext(existingContext) {
+                app.resetSendState()
+            }
+            return
+        }
+
+        let context = existingContext ?? ContactPaymentContext(
+            publicKey: request.counterparty,
+            incomingPaymentRequest: request,
+            isInitialSubscriptionPayment: true
+        )
+        if !app.ownsContactPaymentContext(context), !app.claimContactPaymentContext(context) {
+            app.toast(PaykitPaymentRequestError.operationInProgress)
+            return
+        }
+
+        let failure = SendFailureContext(
+            error: error,
+            retryRoute: .confirm,
+            routingCacheResetAttempted: routingCacheResetAttempted,
+            contactPaymentContext: context
+        )
+        replaceRootRoute(with: .failure(failure))
     }
 }
 
