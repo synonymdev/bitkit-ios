@@ -229,7 +229,12 @@ jobs:
       e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
   e2e-tests-local:
-    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    # TEMPORARY: parked while e2e-tests-remote is validated, so this PR does not
+    # tie up the shared self-hosted Mac for hours. Restore before merging:
+    #   if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    # Note: e2e-status treats a skipped shard as a failure, so it will report red
+    # until this is restored.
+    if: false
     runs-on: [self-hosted, macOS]
     needs: [detect-changes, build-local, e2e-branch]
 
@@ -510,10 +515,7 @@ jobs:
   # Must not depend on e2e-tests-remote, nor it on this: this job only finishes
   # once the tests are done, so a dependency either way deadlocks.
   regtest-stack:
-    # TEMPORARY: draft guard removed so this path can be exercised on a draft PR
-    # without occupying the self-hosted Mac. Restore before merging:
-    #   if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
-    if: needs.detect-changes.outputs.code == 'true'
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, build-local, e2e-branch]
     timeout-minutes: 180
@@ -608,10 +610,7 @@ jobs:
   # Same suite as e2e-tests-local, on a GitHub-hosted Mac with the stack on
   # another runner. Runs alongside it until it has earned replacing it.
   e2e-tests-remote:
-    # TEMPORARY: draft guard removed so this path can be exercised on a draft PR
-    # without occupying the self-hosted Mac. Restore before merging:
-    #   if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
-    if: needs.detect-changes.outputs.code == 'true'
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-latest
     needs: [detect-changes, build-local, e2e-branch]
     timeout-minutes: 180
