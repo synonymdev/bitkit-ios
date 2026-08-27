@@ -143,16 +143,31 @@ struct ReceiveQr: View {
                             }
                         }
                     } else if showDetails {
-                        CustomButton(
-                            title: t("wallet__receive_show_qr"),
-                            icon: Image("qr")
-                                .resizable()
-                                .frame(width: 16, height: 16)
-                                .foregroundColor(.textPrimary)
-                        ) {
-                            showDetails.toggle()
+                        VStack(spacing: 16) {
+                            if selectedTab == .trezor {
+                                CustomButton(
+                                    title: t("hardware__verify_address"),
+                                    variant: .secondary,
+                                    isDisabled: displayedHardwareAddress == nil,
+                                    isLoading: isVerifyingHardwareAddress,
+                                    shouldExpand: true
+                                ) {
+                                    startHardwareAddressVerification()
+                                }
+                                .accessibilityIdentifier("HardwareVerifyAddress")
+                            }
+
+                            CustomButton(
+                                title: t("wallet__receive_show_qr"),
+                                icon: Image("qr")
+                                    .resizable()
+                                    .frame(width: 16, height: 16)
+                                    .foregroundColor(.textPrimary)
+                            ) {
+                                showDetails.toggle()
+                            }
+                            .accessibilityIdentifier("QRCode")
                         }
-                        .accessibilityIdentifier("QRCode")
                     } else {
                         CustomButton(
                             title: t("common__show_details"),
@@ -430,20 +445,6 @@ struct ReceiveQr: View {
                     editRoute: .edit(onchainOnly: tab == .trezor),
                     accentColor: tab == .trezor ? .blueAccent : nil
                 )
-            }
-
-            if tab == .trezor {
-                CustomButton(
-                    title: t("hardware__verify_address"),
-                    isDisabled: displayedHardwareAddress == nil,
-                    isLoading: isVerifyingHardwareAddress,
-                    shouldExpand: true,
-                    background: Color.blueAccent
-                ) {
-                    startHardwareAddressVerification()
-                }
-                .padding(.top, 16)
-                .accessibilityIdentifier("HardwareVerifyAddress")
             }
 
             Spacer()
