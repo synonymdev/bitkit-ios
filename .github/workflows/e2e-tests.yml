@@ -229,12 +229,7 @@ jobs:
       e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
   e2e-tests-local:
-    # TEMPORARY: parked while e2e-tests-remote is validated, so this PR does not
-    # tie up the shared self-hosted Mac for hours. Restore before merging:
-    #   if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
-    # Note: e2e-status treats a skipped shard as a failure, so it will report red
-    # until this is restored.
-    if: false
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: [self-hosted, macOS]
     needs: [detect-changes, build-local, e2e-branch]
 
@@ -363,7 +358,9 @@ jobs:
           ATTEMPT: 3
 
       - name: Upload E2E Artifacts (${{ matrix.shard.name }})
-        if: failure()
+        # TEMPORARY: always(), so a passing self-hosted run can be compared against
+        # the remote one. Restore to failure() before merging.
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
@@ -794,7 +791,7 @@ jobs:
           ATTEMPT: 3
 
       - name: Upload E2E Artifacts (${{ matrix.shard.name }})
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts-remote_${{ matrix.shard.name }}_${{ github.run_number }}
