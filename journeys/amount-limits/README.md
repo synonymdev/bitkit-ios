@@ -15,14 +15,15 @@ screens (Send, Transfer→Spending, Receiving capacity, External node).
 1. **Fund a real, positive available balance first.** With `0` available, the cap falls back to the
    global maximum, so nothing gets blocked and the journeys silently pass for the wrong reason.
    - Get an on-chain (Savings) address from Receive → Show Details.
-   - Fund and mine against regtest, then wait for the balance to sync. Note the `./lsp` commands
-     inherited from the Android journeys will not run here — that helper lives in the bitkit-android
-     repo and is not checked in on this side (see the top-level README).
+   - Fund and mine via the sibling Android checkout's helper, then wait for the balance to sync:
+     `../bitkit-android/lsp POST /regtest/chain/deposit '{"address":"<addr>","amountSat":100000}'`
+     then `../bitkit-android/lsp POST /regtest/chain/mine '{"count":3}'`. There is no iOS copy of
+     that helper yet — see #694 and the top-level README.
 2. **Transfer/Spending and Receiving-capacity flows need the node connected to the LSP** so a real
    max can be quoted. On the Spending amount screen the max starts at `0` behind a spinner — wait
    for it to populate before typing.
 3. **The external-node flow needs a reachable Lightning peer.** The staging LSP node works
-   (`./lsp GET /info` for its id/host/port).
+   (`../bitkit-android/lsp GET /info` for its id/host/port).
 
 ## Gotchas
 - **The cap can be lower than the visible "Available".** Fee and channel reserves mean e.g. Available

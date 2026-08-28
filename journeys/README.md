@@ -91,13 +91,18 @@ xcodebuildmcp simulator build-and-run \
 ```
 
 Fund a wallet before any amount journey — with a zero balance the caps fall back to the global
-maximum and the journeys pass for the wrong reason.
+maximum and the journeys pass for the wrong reason:
 
-The `./lsp` helper the Android journeys call is a script in the **bitkit-android** repo root; there is
-no equivalent checked in here and `bitkit-docker` does not ship one, so the commands inherited from
-those journeys will not run as written. Until an iOS helper exists, fund the wallet however you
-normally do against regtest — `bitcoin-cli` through the `bitkit-docker` compose stack, or the
-Android checkout's `./lsp` if you have one.
+```bash
+../bitkit-android/lsp POST /regtest/chain/deposit '{"address":"<savings addr>","amountSat":100000}'
+../bitkit-android/lsp POST /regtest/chain/mine '{"count":3}'
+```
+
+**The `lsp` helper is borrowed from the sibling Android checkout.** It is the `blocktank-api` plugin's
+script, and there is no iOS copy yet — #694 tracks porting it. The relative path assumes
+`bitkit-android` is cloned next to this repo, which is the usual layout here; the hardware-wallet
+journeys already reach for `../bitkit-docker` the same way. If you do not have that clone, fund the
+wallet however you normally do against regtest and skip the helper.
 
 ## Identifiers
 

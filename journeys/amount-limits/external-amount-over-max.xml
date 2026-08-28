@@ -4,9 +4,9 @@
     "Spending Balance Maximum" warning toast, and still allows deleting digits while at the cap.
 
     Precondition: onboarded dev wallet with a POSITIVE on-chain Savings balance and a reachable
-    external Lightning node to peer with — the staging LSP node works (its id, host
-    and port come from the Blocktank info endpoint; the ./lsp helper the Android journeys use is not
-    checked in here). Start on the wallet home screen.
+    external Lightning node to peer with — the staging LSP node works — take its id, host and
+    port from `../bitkit-android/lsp GET /info`, borrowed from the sibling Android checkout because
+    there is no iOS copy of that helper yet (see #694). Start on the wallet home screen.
 
     Do NOT assert that Continue is disabled at the over-max input: the input is capped (never left in
     an over-max state), so the capped value is valid and Continue stays enabled.

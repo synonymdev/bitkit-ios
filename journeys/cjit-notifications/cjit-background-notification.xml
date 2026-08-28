@@ -16,7 +16,7 @@
     <action>Confirm "Get paid when Bitkit is closed" is enabled in Settings → Notifications, then go back to the wallet home screen</action>
     <action>Send the app to the background by pressing Home, leaving no Bitkit screen in the foreground</action>
     <action>Open Console.app with the device selected and filter on "🔔", including info-level messages — /usr/bin/log has no --device flag, so there is no verified one-liner here; if the log is not reachable, skip it and rely on Notification Center below</action>
-    <action>Pay the CJIT invoice against regtest however your setup allows — the ./lsp helper the Android journeys use lives in the bitkit-android repo and is not checked in here</action>
+    <action>Pay the CJIT invoice using the sibling Android checkout's helper (no iOS copy yet, see #694): ../bitkit-android/lsp POST /regtest/lightning/pay '{"invoice":"&lt;bolt11&gt;"}'</action>
     <action>Wait up to ~30s for the push to arrive and the notification to be delivered</action>
     <action>Verify EXACTLY ONE Bitkit notification is posted for this channel opening, not two</action>
     <action>Verify its title is "Incoming Payment" and its body is "Open Bitkit now to receive your payment"</action>
