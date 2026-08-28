@@ -147,8 +147,6 @@ node scripts/validate-translations.js
 
 ### Testing
 
-Three layers, in increasing order of setup cost:
-
 ```bash
 # Unit and UI tests — Xcode Test Navigator, Cmd+U, or:
 xcodebuildmcp simulator test
@@ -156,11 +154,11 @@ xcodebuildmcp simulator test
 # AI device tests (Trezor emulator, developer-triggered) — see Docs/AI_DEVICE_TESTS.md
 ```
 
-**Journeys** are the third layer: XML behaviour specs in `journeys/`, evaluated by an agent driving a
-running simulator rather than by a test runner. They cover flows that are impractical to assert in
-XCUITest — number pad caps, notification permission, widget flows, hardware wallet pairing and
-transfers. Read `journeys/README.md` before running or writing one, and see the Journeys section
-under Code Style & Conventions for the rule on porting them alongside Android changes.
+Separately from the test suites, `journeys/` holds XML walkthroughs of app behaviour that an agent
+evaluates by driving a running simulator — number pad caps, notification permission, widget flows,
+hardware wallet pairing and transfers. They are developer assistance rather than a test layer:
+nothing runs them in CI and they gate nothing. Read `journeys/README.md` before running or writing
+one, and see the Journeys section under Code Style & Conventions.
 
 ## Architecture
 
@@ -368,8 +366,11 @@ Ensure accessibility modifiers and labels are added to custom components.
   `<description>` and the suite README — never assert Android behaviour iOS does not have.
 - SKIP a journey only when the iOS feature does not exist, and record it under "Not ported" in
   `journeys/README.md` with what is missing.
-- Journeys are agent-evaluated and non-deterministic: run them from the manual `ai-device-tests`
-  workflow, never as a blocking CI gate.
+- Journeys are developer-assistance specs, not a QA gate. Nothing runs them in CI and no runner is
+  wired up for them; `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests` and never reads
+  `journeys/`. An agent runs one on request.
+- A journey that disagrees with the app is most likely stale rather than evidence of a bug. Say what
+  you found and update the journey; escalate only once you have separately confirmed the app is wrong.
 
 #### Running a journey on both platforms
 
@@ -406,14 +407,10 @@ adb shell am start -a android.intent.action.VIEW -d "lightning:<invoice>" to.bit
 A cross-platform payment is the sharpest check the two builds agree: take an invoice from one side
 (`xcrun simctl pbpaste <udid>` after tapping Copy on iOS) and pay it from the other.
 
-When the two platforms disagree on a journey, decide which it is before touching anything:
-
-- an **intentional platform difference** — record it in the journey's `<description>` and the suite
-  README, on both sides, so the next reader does not rediscover it;
-- a **real divergence** — that is a bug on one platform, and the journey has done its job. Report it.
-
-Never quietly rewrite the iOS journey to match whatever iOS currently does; that turns a failing test
-into a description of the bug.
+When the two platforms disagree on a journey, write down which it looks like — an intentional
+platform difference, or something worth a closer look — in the journey's `<description>` and the
+suite README, on both sides, so the next reader does not rediscover it. A disagreement is a prompt to
+investigate, not a bug report on its own.
 
 ### Changelog
 

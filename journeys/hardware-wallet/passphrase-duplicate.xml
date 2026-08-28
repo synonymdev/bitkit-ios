@@ -17,7 +17,7 @@
       prompts once per address type and the call blocks until it is acknowledged. Either tap the
       emulator UI or run: ../bitkit-docker/scripts/trezor-emulator send-json '{"type":"emulator-press-yes","id":1}'
     </action>
-    <action>Verify an error toast reports the passphrase wallet is already being watched, and that the sheet stays on the Passphrase step (id "HardwareWalletPassphraseScreen") with an empty input</action>
+    <action>Verify an inline error (id "HwPassphraseError") reports the passphrase wallet is already being watched — it renders in the sheet, not as a toast — and that the sheet stays on the Passphrase step (id "HardwareWalletPassphraseScreen") with an empty input</action>
     <action>Dismiss the sheet and return to the wallet home screen</action>
     <action>Verify the number of hardware wallet tiles is unchanged from the count noted at the start</action>
   </actions>

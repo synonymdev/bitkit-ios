@@ -32,10 +32,9 @@ Consequences for the port:
 ## Preconditions
 - **A physical device, not the simulator.** These journeys need a real APNs round trip: the app must
   hold a device token Blocktank can push to, and the notification extension must decrypt a real
-  Blocktank payload. Note this suite has no CI home yet — `.github/workflows/ai-device-tests.yml`
-  runs on the self-hosted macOS runner but builds for `platform=iOS Simulator`, so it cannot host
-  these as written. Run them against a device attached to that runner, or add a device job first.
-  `test-push-server/` can drive a hand-built push at a known device token when you need to exercise
+  Blocktank payload. Nothing runs this suite automatically, and that is not a gap to
+  fill here — `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests` on a simulator and is not a
+  journey runner. Run these by hand against an attached device. `test-push-server/` can drive a hand-built push at a known device token when you need to exercise
   the extension without the LSP.
 - Onboarded regtest wallet connected to the LSP, with notifications authorized and
   "Get paid when Bitkit is closed" enabled in Settings → Notifications.
@@ -45,16 +44,16 @@ Consequences for the port:
 
 There is no `dumpsys notification`. Two options, in order of preference:
 
-1. **Read the extension's own log.** `NotificationService` logs through `os_log`, unlike the main app
-   (which writes log files into the app group). Stream it from the Mac the device is attached to,
-   while the push lands:
-   ```bash
-   log stream --device --predicate 'eventMessage CONTAINS "🔔"'
-   ```
-   The `🔔 Configured notification: type=…, title=…` line names the type and title it posted.
-2. **Read Notification Center on the device.** Swipe down from the top of the screen, then count the
-   Bitkit entries and read their text. `xcodebuildmcp simulator snapshot-ui` does not apply here —
-   it drives a simulator, and this suite runs on hardware.
+1. **Read Notification Center on the device.** Swipe down from the top of the screen, then count the
+   Bitkit entries and read their text. This is the supported assertion path.
+   `xcodebuildmcp simulator snapshot-ui` does not apply — it drives a simulator, and this suite runs
+   on hardware.
+2. **The extension's own log, if you can get at it.** `NotificationService` logs through `os_log`
+   (unlike the main app, which writes log files into the app group), at `.info` level, so any
+   predicate needs `--level info` to see it — the `🔔 Configured notification: type=…, title=…` line
+   names the type and title it posted. Note `/usr/bin/log stream` has no `--device` flag, so there is
+   no verified one-liner for an attached device here; use Console.app with the device selected, or
+   treat this as unavailable and rely on Notification Center.
 
 ## Identifiers used
 - In-app toast: `SpendingBalanceReadyToast`.

@@ -26,9 +26,9 @@
     <action>Navigate to the wallet home screen and verify two hardware wallet tiles are shown beneath the SAVINGS and SPENDING tiles, one of them labelled "Hidden Trezor"</action>
     <action>Verify the headline total balance is at least the sum of both hardware tile balances</action>
     <action>Tap the "Hidden Trezor" tile and verify its hardware wallet detail screen opens (id "HardwareWalletScreen") titled "Hidden Trezor"</action>
-    <action>Resolve the app group container and grep it for the passphrase: GROUP=$(xcrun simctl get_app_container booted to.bitkit groups | awk '{print $2}'); grep -rl "bitkit-hidden" "$GROUP" || echo NO_PASSPHRASE_LEAK</action>
-    <action>Verify the previous command printed NO_PASSPHRASE_LEAK: the passphrase must never reach the app logs or the app group storage, only the device session</action>
-    <action>Grep the newest app log for errors: grep -iE "error|exception" "$(ls -t "$GROUP"/logs/*.log | head -1)" | tail -20</action>
+    <action>Resolve the app group container against the simulator under test and scan it, treating only "no match" as clean: UDID=&lt;the simulator this journey is running on&gt;; GROUP=$(xcrun simctl get_app_container "$UDID" to.bitkit groups | awk '{print $2}'); [ -d "$GROUP" ] || { echo "LEAK_CHECK_INVALID: container not found"; exit 1; }; grep -rl "bitkit-hidden" "$GROUP"; s=$?; case $s in 1) echo NO_PASSPHRASE_LEAK;; 0) echo "LEAK FOUND";; *) echo "LEAK_CHECK_INVALID: grep exit $s";; esac</action>
+    <action>Verify the previous command printed NO_PASSPHRASE_LEAK. LEAK_CHECK_INVALID means the check did not scan anything and the journey cannot conclude either way — treat it as a failed step, not a pass</action>
+    <action>Grep the newest app log for errors: grep -iE "error|exception" "$(ls -t "$GROUP"/logs/*.log | head -1)" | tail -20 — if no log file matches, say so rather than treating the empty result as clean</action>
     <action>Verify the previous command reported no Trezor connect, session or watcher errors while the hidden wallet was paired</action>
   </actions>
 </journey>

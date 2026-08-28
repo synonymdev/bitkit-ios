@@ -1,15 +1,23 @@
 # Journeys
 
-A journey is an XML-specified test of the app's behaviour, evaluated by an agent driving a running
-simulator. It is the source of truth: if the app disagrees with the journey, the app has failed.
+A journey is an XML-specified walkthrough of app behaviour, evaluated by an agent driving a running
+simulator. They are developer-assistance specs: they give an agent a reliable route through a flow so
+it can reproduce a bug, check a change by hand, or show you what a screen does today.
 
 These are ported from [`bitkit-android/journeys`](https://github.com/synonymdev/bitkit-android/tree/main/journeys)
 and deliberately keep the same file names, journey names and `<action>` prose so the two platforms
 stay diffable. Only the platform mechanics differ — `adb` becomes `xcodebuildmcp`, and Android
 `testTag`s become iOS `accessibilityIdentifier`s (the vocabulary is shared; see [Identifiers](#identifiers)).
 
-Journeys are agent-evaluated, not deterministic. They belong on the manual `ai-device-tests`
-workflow next to the XCUITest suites, **not** on a blocking CI gate.
+**Journeys are not a QA gate.** They are agent-evaluated and non-deterministic, nothing runs them in
+CI, and there is no runner wired up for them yet — `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests`
+and does not read `journeys/`. Treat a journey as a well-written description of a flow, not as an
+authority on what the app owes you.
+
+A journey that no longer matches the app is most likely **stale**, not evidence of a bug. The corpus
+is new on iOS and has not been run end to end, so when the two disagree the first assumption should be
+that the spec drifted. Say what you found, update the journey, and only escalate when you have
+separately confirmed the app is wrong.
 
 ## Format
 
@@ -23,13 +31,14 @@ workflow next to the XCUITest suites, **not** on a blocking CI gate.
 </journey>
 ```
 
-- Evaluate `<action>` elements in order. The journey passes only if every action passes.
+- Evaluate `<action>` elements in order, and report each one. An action that does not hold is worth
+  reporting as-is — it may be a stale step as easily as a real problem.
 - An action beginning with "check" or "verify" is an expectation about the **current** screen —
   inspect it, do not scroll or interact to satisfy it.
 - An action that specifies several interactions is split into sub-actions and evaluated individually.
-- If an interaction cannot be performed as written, the journey fails. Report the failure; do not
-  debug around it.
-- If the app crashes, exits or freezes, evaluation stops and the journey fails.
+- If an interaction cannot be performed as written, say so and stop rather than improvising a route
+  around it — the point is to find out where the written route stopped matching the app.
+- If the app crashes, exits or freezes, evaluation stops there. That one *is* worth escalating.
 
 ## Running a journey
 
@@ -73,12 +82,13 @@ xcodebuildmcp simulator build-and-run \
 ```
 
 Fund a wallet before any amount journey — with a zero balance the caps fall back to the global
-maximum and the journeys pass for the wrong reason:
+maximum and the journeys pass for the wrong reason.
 
-```bash
-./lsp POST /regtest/chain/deposit '{"address":"<savings addr>","amountSat":100000}'
-./lsp POST /regtest/chain/mine '{"count":3}'
-```
+The `./lsp` helper the Android journeys call is a script in the **bitkit-android** repo root; there is
+no equivalent checked in here and `bitkit-docker` does not ship one, so the commands inherited from
+those journeys will not run as written. Until an iOS helper exists, fund the wallet however you
+normally do against regtest — `bitcoin-cli` through the `bitkit-docker` compose stack, or the
+Android checkout's `./lsp` if you have one.
 
 ## Identifiers
 
@@ -122,7 +132,6 @@ When you port an Android feature, port its journeys too — see the Journeys sec
 
 A journey is a shared spec, so a behaviour that is meant to match Android can be checked by running
 the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `bitkit-android`
-checkout there (`android layout` is the `snapshot-ui` equivalent). When the two disagree, either
-record it as an intentional platform difference in the journey and this README, or report it as a
-bug — do not rewrite the journey to match whatever the app currently does. `AGENTS.md` has the
-commands.
+checkout there (`android layout` is the `snapshot-ui` equivalent). A disagreement is worth writing
+down — as an intentional platform difference, or as something to look into — but it is not by itself
+a bug report. `AGENTS.md` has the commands.

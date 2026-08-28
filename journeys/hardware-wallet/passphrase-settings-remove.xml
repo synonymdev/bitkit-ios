@@ -15,8 +15,7 @@
     <action>Tap the delete (trash) icon on the "Hidden Funds" row, and confirm "Remove" in the dialog (id "RemoveHwWalletDialog")</action>
     <action>Verify the Hardware Wallets screen now lists exactly one row, the standard wallet, still showing its balance</action>
     <action>Navigate to the wallet home screen and verify a single hardware wallet tile remains with a non-zero balance</action>
-    <action>Count the stored Trezor credentials: GROUP=$(xcrun simctl get_app_container booted to.bitkit groups | awk '{print $2}'); ls "$GROUP"/trezor-thp-credentials/ 2>/dev/null | wc -l</action>
-    <action>Verify the previous command reported at least one credential file: removing one identity must not unpair the physical device</action>
+    <action>Verify the physical device is still paired rather than re-paired: the remaining row keeps its green connection indicator, with no Searching or Found step and no PIN or pairing prompt. Trezor credentials live in the Keychain under service "to.bitkit.trezor.thp", not as files in the app group, so there is no directory to count here</action>
     <action>Tap the remaining hardware wallet tile and verify its detail screen opens and lists its activity, confirming the device was not re-paired</action>
   </actions>
 </journey>

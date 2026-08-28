@@ -65,9 +65,16 @@ Unlike the notification extension, the app writes its logs as **files in the app
 not to `os_log`. Resolve the container and grep it:
 
 ```bash
-GROUP=$(xcrun simctl get_app_container <device> to.bitkit groups | awk '{print $2}')
-grep -rl "bitkit-hidden" "$GROUP" || echo NO_PASSPHRASE_LEAK
+GROUP=$(xcrun simctl get_app_container "$UDID" to.bitkit groups | awk '{print $2}')
+[ -d "$GROUP" ] || { echo "LEAK_CHECK_INVALID: container not found"; exit 1; }
+grep -rl "bitkit-hidden" "$GROUP"; s=$?
+case $s in 1) echo NO_PASSPHRASE_LEAK;; 0) echo "LEAK FOUND";; *) echo "LEAK_CHECK_INVALID: grep exit $s";; esac
 ```
+
+`grep ... || echo NO_PASSPHRASE_LEAK` — the form the Android journeys use — prints the clean result
+for *every* nonzero status, so a missing container or an unresolved simulator passes the security
+check without scanning anything. Only exit status 1 means "no match"; resolve `$UDID` explicitly
+rather than relying on `booted`.
 
 ## Verified on simulator
 
