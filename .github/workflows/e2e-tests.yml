@@ -229,7 +229,9 @@ jobs:
       e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
   e2e-tests-local:
-    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    # TEMPORARY: parked while e2e-tests-remote is validated. Restore before merging:
+    #   if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    if: false
     runs-on: [self-hosted, macOS]
     needs: [detect-changes, build-local, e2e-branch]
 
@@ -358,9 +360,7 @@ jobs:
           ATTEMPT: 3
 
       - name: Upload E2E Artifacts (${{ matrix.shard.name }})
-        # TEMPORARY: always(), so a passing self-hosted run can be compared against
-        # the remote one. Restore to failure() before merging.
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
@@ -700,13 +700,85 @@ jobs:
           done
           echo "✓ stack reachable at $ip"
 
+
+      - name: Forward the stack onto loopback
+        run: |
+          set -euo pipefail
+          # The suite and the app both reach the stack as 127.0.0.1, across the
+          # test helpers, the specs and Env.swift. Relaying the ports keeps all of
+          # that unchanged rather than making each call site stack-aware.
+          cat > /tmp/forward-stack.py <<'PY'
+          import asyncio
+          import sys
+
+          HOST = sys.argv[1]
+          PORTS = [int(port) for port in sys.argv[2:]]
+
+
+          async def pipe(reader, writer):
+              try:
+                  while (chunk := await reader.read(65536)):
+                      writer.write(chunk)
+                      await writer.drain()
+              except Exception:
+                  pass
+              finally:
+                  writer.close()
+
+
+          def forward(port):
+              async def handle(local_reader, local_writer):
+                  remote_reader, remote_writer = await asyncio.open_connection(HOST, port)
+                  await asyncio.gather(
+                      pipe(local_reader, remote_writer),
+                      pipe(remote_reader, local_writer),
+                  )
+
+              return handle
+
+
+          async def main():
+              servers = [
+                  await asyncio.start_server(forward(port), "127.0.0.1", port)
+                  for port in PORTS
+              ]
+              print(f"forwarding {PORTS} to {HOST}", flush=True)
+              await asyncio.gather(*(server.serve_forever() for server in servers))
+
+
+          asyncio.run(main())
+          PY
+
+          nohup python3 /tmp/forward-stack.py "$STACK_IP" \
+            60001 9735 8080 10009 43782 3003 8081 > /tmp/forward-stack.log 2>&1 &
+
+          # End to end, not a port check: the relay accepts before it has dialled
+          # anything, so nc would pass even with the stack unreachable.
+          deadline=$(( SECONDS + 120 ))
+          until curl -fsS -m 10 --user polaruser:polarpass \
+                  -H 'content-type: text/plain;' \
+                  --data-binary '{"jsonrpc":"1.0","method":"getblockchaininfo"}' \
+                  http://127.0.0.1:43782/ | grep -q '"chain"'; do
+            if (( SECONDS >= deadline )); then
+              echo "::error::stack did not answer through the relay"
+              cat /tmp/forward-stack.log || true
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "✓ stack reachable on loopback"
+
       - name: Fetch LND credentials
         working-directory: bitkit-e2e-tests
         run: |
           set -euo pipefail
-          mkdir -p .lnd-creds
-          curl -fsS --max-time 30 -o .lnd-creds/tls.cert       "http://${STACK_IP}:8081/tls.cert"
-          curl -fsS --max-time 30 -o .lnd-creds/admin.macaroon "http://${STACK_IP}:8081/admin.macaroon"
+          # Written where lndConfig looks by default, so nothing has to be told
+          # about them either.
+          mkdir -p docker/lnd/data/chain/bitcoin/regtest
+          curl -fsS --max-time 30 -o docker/lnd/tls.cert \
+            "http://127.0.0.1:8081/tls.cert"
+          curl -fsS --max-time 30 -o docker/lnd/data/chain/bitcoin/regtest/admin.macaroon \
+            "http://127.0.0.1:8081/admin.macaroon"
 
       - name: Clear previous E2E artifacts
         working-directory: bitkit-e2e-tests
@@ -735,14 +807,6 @@ jobs:
           BACKEND: local
           SIMULATOR_NAME: iPhone 17
           SIMULATOR_OS_VERSION: "26.2"
-          LND_HOST: ${{ env.STACK_IP }}
-          ELECTRUM_HOST: ${{ env.STACK_IP }}
-          BITCOIN_RPC_URL: http://polaruser:polarpass@${{ env.STACK_IP }}:43782
-          LND_TLS_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/tls.cert
-          LND_MACAROON_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/admin.macaroon
-          # Reaches the app through appium:processArguments; Info.plist is fixed
-          # at build time and the stack did not exist then.
-          E2E_LOCAL_HOST: ${{ env.STACK_IP }}
           # WDA compiles on a cold runner and 5 minutes is marginal.
           WDA_LAUNCH_TIMEOUT: "600000"
           WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
@@ -759,12 +823,6 @@ jobs:
           BACKEND: local
           SIMULATOR_NAME: iPhone 17
           SIMULATOR_OS_VERSION: "26.2"
-          LND_HOST: ${{ env.STACK_IP }}
-          ELECTRUM_HOST: ${{ env.STACK_IP }}
-          BITCOIN_RPC_URL: http://polaruser:polarpass@${{ env.STACK_IP }}:43782
-          LND_TLS_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/tls.cert
-          LND_MACAROON_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/admin.macaroon
-          E2E_LOCAL_HOST: ${{ env.STACK_IP }}
           WDA_LAUNCH_TIMEOUT: "600000"
           WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
           RECORD_VIDEO: true
@@ -779,12 +837,6 @@ jobs:
           BACKEND: local
           SIMULATOR_NAME: iPhone 17
           SIMULATOR_OS_VERSION: "26.2"
-          LND_HOST: ${{ env.STACK_IP }}
-          ELECTRUM_HOST: ${{ env.STACK_IP }}
-          BITCOIN_RPC_URL: http://polaruser:polarpass@${{ env.STACK_IP }}:43782
-          LND_TLS_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/tls.cert
-          LND_MACAROON_PATH: ${{ github.workspace }}/bitkit-e2e-tests/.lnd-creds/admin.macaroon
-          E2E_LOCAL_HOST: ${{ env.STACK_IP }}
           WDA_LAUNCH_TIMEOUT: "600000"
           WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
           RECORD_VIDEO: true
@@ -801,7 +853,7 @@ jobs:
     if: always() && github.event.pull_request.draft == false
     name: e2e-status
     runs-on: ubuntu-latest
-    needs: [detect-changes, e2e-tests-local, e2e-tests-staging]
+    needs: [detect-changes, e2e-tests-remote, e2e-tests-staging]
     steps:
       - name: E2E skipped - no code changes
         if: needs.detect-changes.outputs.code != 'true'
@@ -810,7 +862,7 @@ jobs:
       - name: Verify all E2E shards succeeded
         if: needs.detect-changes.outputs.code == 'true'
         run: |
-          if [ "${{ needs.e2e-tests-local.result }}" != "success" ] || [ "${{ needs.e2e-tests-staging.result }}" != "success" ]; then
+          if [ "${{ needs.e2e-tests-remote.result }}" != "success" ] || [ "${{ needs.e2e-tests-staging.result }}" != "success" ]; then
             echo "❌ Some E2E shards failed."
             exit 1
           fi
