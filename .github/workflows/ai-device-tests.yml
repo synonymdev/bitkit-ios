@@ -426,6 +426,30 @@ jobs:
             -allowProvisioningUpdates \
             | xcbeautify
 
+      # xcbeautify prints one condensed line per failed test, which for an
+      # assertion carrying no message says only that it failed. The result
+      # bundle has the file and line, and the accessibility dump the UI tests
+      # attach to their messages.
+      - name: Report test failures
+        if: failure()
+        run: |
+          set -uo pipefail
+          bundle=TestResults/TrezorBridgeDashboardUITests.xcresult
+          if [ ! -d "$bundle" ]; then
+            echo "no result bundle at $bundle"
+            exit 0
+          fi
+
+          echo "=== failures ==="
+          xcrun xcresulttool get test-results tests --path "$bundle" --format json 2>/dev/null \
+            | jq -r '.. | objects | select(.nodeType? == "Failure Message") | .name' \
+            || echo "could not read failure messages"
+
+          echo "=== summary ==="
+          xcrun xcresulttool get test-results summary --path "$bundle" --format json 2>/dev/null \
+            | jq -r '.testFailures[]? | "\(.testName): \(.failureText)"' \
+            || echo "could not read summary"
+
       - name: Collect diagnostics
         if: always()
         run: |
