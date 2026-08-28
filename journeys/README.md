@@ -98,6 +98,10 @@ maximum and the journeys pass for the wrong reason:
 ../bitkit-android/lsp POST /regtest/chain/mine '{"count":3}'
 ```
 
+`deposit` prints the funding txid; **`mine` prints nothing on success** and signals only through its
+exit status, so an empty response there is not a failure. Give the wallet ~20s to sync before
+reading the balance.
+
 **The `lsp` helper is borrowed from the sibling Android checkout.** It is the `blocktank-api` plugin's
 script, and there is no iOS copy yet — #694 tracks porting it. The relative path assumes
 `bitkit-android` is cloned next to this repo, which is the usual layout here; the hardware-wallet

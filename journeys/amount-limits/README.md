@@ -17,8 +17,9 @@ screens (Send, Transfer→Spending, Receiving capacity, External node).
    - Get an on-chain (Savings) address from Receive → Show Details.
    - Fund and mine via the sibling Android checkout's helper, then wait for the balance to sync:
      `../bitkit-android/lsp POST /regtest/chain/deposit '{"address":"<addr>","amountSat":100000}'`
-     then `../bitkit-android/lsp POST /regtest/chain/mine '{"count":3}'`. There is no iOS copy of
-     that helper yet — see #694 and the top-level README.
+     then `../bitkit-android/lsp POST /regtest/chain/mine '{"count":3}'`. `mine` prints nothing on
+     success — that is not a failure. There is no iOS copy of that helper yet — see #694 and the
+     top-level README.
 2. **Transfer/Spending and Receiving-capacity flows need the node connected to the LSP** so a real
    max can be quoted. On the Spending amount screen the max starts at `0` behind a spinner — wait
    for it to populate before typing.
