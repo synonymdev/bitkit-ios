@@ -16,8 +16,8 @@
     <action>Tap "Open Trezor Connect" (id "HardwareTransferOpenTrezorConnect") and verify no passphrase sheet appears, because the session opened at pairing still holds the hidden wallet</action>
     <action>Approve the Recipient, Amount, Locktime, and Summary prompts on the Bridge emulator in order, and verify the transaction signed screen appears (id "HardwareTransferSigned")</action>
     <action>Wait for the Processing Payment screen, tap "Continue Using Bitkit", and verify the app returns to the wallet home screen</action>
-    <action>Force-quit Bitkit: xcodebuildmcp simulator stop</action>
-    <action>Relaunch it: xcodebuildmcp simulator launch-app</action>
+    <action>Force-quit Bitkit: xcodebuildmcp simulator stop --bundle-id to.bitkit</action>
+    <action>Relaunch it: xcodebuildmcp simulator launch-app --bundle-id to.bitkit</action>
     <action>Once the app is back on the home screen, open the hidden wallet tile and start Transfer To Spending again, setting an amount with the "25%" quick button and continuing to the sign screen</action>
     <action>Tap "Open Trezor Connect" (id "HardwareTransferOpenTrezorConnect") and verify the passphrase sheet opens (id "HwTransferPassphraseSheet"), because the session that held the passphrase is gone</action>
     <action>Type a wrong passphrase "not-the-one" into the input (id "HwTransferPassphraseInput") and tap "Continue" (id "HwTransferPassphraseContinue")</action>

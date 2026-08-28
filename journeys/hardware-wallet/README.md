@@ -119,6 +119,9 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
   `HardwareTransferSignLearnMore`/`SignAdvanced`/`SignDefault`,
   `HardwareTransferOpenTrezorConnect`, `HardwareTransferSigned`,
   `HwTransferPassphraseSheet`/`Input`/`Continue`/`Cancel`.
-- Activity: `ActivityShowAll`, `ActivityShort-<index>`, tabs `Tab-all`/`Tab-sent`/`Tab-received`/`Tab-other`,
-  Add Tag button `ActivityTag`, detail chip list `ActivityTags`, All Activity tag filter
+- Activity: `ActivityShowAll` (home only). Rows use **two different schemes** — `ActivityShort-<index>`
+  in the home recent list, `Activity-<index>` in All Activity and on the hardware wallet screen.
+  Tabs `Tab-all`/`Tab-sent`/`Tab-received`/`Tab-other`,
+  Tag button `ActivityTag` (labelled "Tag"), tag field `TagInput`, submit `ActivityTagsSubmit`,
+  detail chip list `ActivityTags` (only rendered once a tag exists), All Activity tag filter
   `TagsPrompt` (not `ActivityTags` — that one is detail-screen only), explorer `ActivityTxDetails`.

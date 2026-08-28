@@ -16,7 +16,7 @@
   <actions>
     <action>Keep the app in the foreground on the wallet home screen</action>
     <action>Open a regular spending channel via Transfer → Spending, funding some sats and confirming</action>
-    <action>Mine confirmations if required: ./lsp POST /regtest/chain/mine '{"count":3}'</action>
+    <action>Mine confirmations if required, against regtest — note ./lsp is a bitkit-android helper and is not available in this repo</action>
     <action>Wait for the ChannelReady event (~5-10s)</action>
     <action>Verify an in-app "Spending balance ready" toast appears (id "SpendingBalanceReadyToast")</action>
     <action>Open Notification Center and inspect the Bitkit entries</action>

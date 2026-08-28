@@ -9,7 +9,8 @@
     <action>Tap "Show All" (id "ActivityShowAll") beneath the activity list</action>
     <action>Tap a blue hardware received row that is not the Transfer row</action>
     <action>Verify the activity detail screen shows a blue icon and the selected received amount</action>
-    <action>Tap "Add Tag" (id "ActivityTag"), enter "hwtest", and confirm the tag</action>
+    <action>Tap the "Tag" button (id "ActivityTag") — it is labelled "Tag", not "Add Tag"</action>
+    <action>Type "hwtest" into the tag field (id "TagInput") and tap "Add" (id "ActivityTagsSubmit")</action>
     <action>Verify a tag chip labelled "hwtest" is shown in the detail screen's chip list (id "ActivityTags")</action>
     <action>Navigate back, reopen the same blue hardware row, and verify the "hwtest" tag is still shown</action>
     <action>Tap "Explore" (id "ActivityTxDetails")</action>

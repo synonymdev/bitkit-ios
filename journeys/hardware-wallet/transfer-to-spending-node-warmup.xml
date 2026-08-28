@@ -6,8 +6,8 @@
     sign screen. Requires a paired and funded hardware wallet.
   </description>
   <actions>
-    <action>Force-quit Bitkit: xcodebuildmcp simulator stop</action>
-    <action>Relaunch it: xcodebuildmcp simulator launch-app</action>
+    <action>Force-quit Bitkit: xcodebuildmcp simulator stop --bundle-id to.bitkit</action>
+    <action>Relaunch it: xcodebuildmcp simulator launch-app --bundle-id to.bitkit</action>
     <action>As soon as the wallet home screen is visible, tap the hardware wallet tile (id "ActivityHardware") beneath the SAVINGS and SPENDING tiles</action>
     <action>Tap the "Transfer To Spending" button (id "HardwareTransferToSpending")</action>
     <action>Verify the transfer amount screen or loading/progress UI appears, and no reconnect, node-not-ready, or generic failure toast is shown while the node warms up</action>

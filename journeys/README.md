@@ -61,6 +61,15 @@ shape: `--predicate textContains --text "..."`, not `--text-contains`.
 Refresh the snapshot after navigation, scrolling, sheet changes, or any obvious layout change —
 `elementRef`s from a stale snapshot are not reusable.
 
+**Some controls never appear as snapshot targets.** Anything built on `.onTapGesture` rather than a
+`Button` — the All Activity tag filter (`TagsPrompt`) is one — resolves by identifier but is absent
+from the target list. If a control the journey names is missing from `snapshot-ui`, check it with
+`--identifier X --predicate exists` before concluding it is gone.
+
+**Identifiers built from localized text are English-only.** `SegmentedControl` derives its identifier
+from the tab's display name, so `Tab-all` is `Tab-todas` when the app runs in Spanish. Journeys that
+name a `Tab-*` identifier assume an English device.
+
 Prefer `snapshot-ui` over screenshots: it names elements by their accessibility identifier, which is
 what the journeys assert on, and it avoids the image-size limits the Android runner has to work around.
 
