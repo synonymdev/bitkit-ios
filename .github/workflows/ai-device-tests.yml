@@ -189,6 +189,26 @@ jobs:
           wait_for "a trezor device on the bridge" \
             'curl -fsS -m 10 -X POST http://127.0.0.1:21325/enumerate | grep -q "\"path\""'
 
+      # A coinbase matures after 100 confirmations and the compose setup mines a
+      # single block, so nothing is spendable and the suite cannot fund a Trezor
+      # address. On a developer machine the chain volume carries blocks over
+      # between runs, which hides this; a runner always starts at height 1.
+      - name: Fund the regtest wallet
+        run: |
+          set -euo pipefail
+          rpc() {
+            curl -fsS --user polaruser:polarpass -H 'content-type: application/json' \
+              --data "{\"jsonrpc\":\"1.0\",\"id\":\"ci\",\"method\":\"$1\",\"params\":$2}" \
+              http://127.0.0.1:43782/
+          }
+
+          address=$(rpc getnewaddress '[]' | jq -r '.result')
+          rpc generatetoaddress "[101, \"$address\"]" > /dev/null
+
+          balance=$(rpc getbalance '[]' | jq -r '.result')
+          echo "spendable balance: $balance"
+          echo "$balance" | jq -e '. > 0' > /dev/null
+
       - name: Hold the stack up until the tests finish
         env:
           GH_TOKEN: ${{ github.token }}
