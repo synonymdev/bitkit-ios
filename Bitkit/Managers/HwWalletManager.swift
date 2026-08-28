@@ -19,6 +19,14 @@ import Foundation
 @Observable
 @MainActor
 final class HwWalletManager {
+    typealias AccountInfoProvider = @MainActor (
+        String,
+        String,
+        TrezorCoinType,
+        UInt32,
+        AccountType
+    ) async throws -> AccountInfoResult
+
     private enum Constants {
         static let watcherIdSeparator = "|"
         static let watcherStartRetryDelay: Duration = .seconds(30)
@@ -54,6 +62,7 @@ final class HwWalletManager {
     private let monitoredTypesProvider: () -> Set<String>
     private let electrumUrlProvider: () -> String
     private let networkProvider: () -> TrezorCoinType
+    private let accountInfoProvider: AccountInfoProvider
     private let persistSnapshot: @MainActor (HwWalletSnapshot) async throws -> Void
     private let deleteActivities: @MainActor (String) async throws -> Void
     private let readTagMetadata: @MainActor (String) async throws -> [PreActivityMetadata]
@@ -117,6 +126,15 @@ final class HwWalletManager {
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
+        accountInfoProvider: @escaping AccountInfoProvider = { extendedKey, electrumUrl, network, gapLimit, scriptType in
+            try await OnChainHwService.shared.getAccountInfo(
+                extendedKey: extendedKey,
+                electrumUrl: electrumUrl,
+                network: network,
+                gapLimit: gapLimit,
+                scriptType: scriptType
+            )
+        },
         persistSnapshot: (@MainActor (HwWalletSnapshot) async throws -> Void)? = nil,
         deleteActivities: (@MainActor (String) async throws -> Void)? = nil,
         readTagMetadata: (@MainActor (String) async throws -> [PreActivityMetadata])? = nil,
@@ -129,6 +147,7 @@ final class HwWalletManager {
             Set(SettingsViewModel.shared.addressTypesToMonitor.map(\.stringValue))
         }
         electrumUrlProvider = electrumUrl ?? { OnChainHwService.getElectrumUrl() }
+        self.accountInfoProvider = accountInfoProvider
         // Both seams are plain writes: queueing, failure handling and cache repair live in
         // `persist(_:)` / `delete(walletId:)`, so an injected seam exercises them too.
         self.persistSnapshot = persistSnapshot ?? { snapshot in
@@ -933,12 +952,12 @@ final class HwWalletManager {
             return address
         }
         let account = try getFundingAccount(walletId: walletId, addressType: addressType)
-        let info = try await OnChainHwService.shared.getAccountInfo(
-            extendedKey: account.xpub,
-            electrumUrl: electrumUrlProvider(),
-            network: networkProvider(),
-            gapLimit: Constants.defaultGapLimit,
-            scriptType: account.accountType
+        let info = try await accountInfoProvider(
+            account.xpub,
+            electrumUrlProvider(),
+            networkProvider(),
+            Constants.defaultGapLimit,
+            account.accountType
         )
         guard let unused = info.account.addresses.unused.first else {
             throw AppError(

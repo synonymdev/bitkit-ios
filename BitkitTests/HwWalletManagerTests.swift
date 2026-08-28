@@ -113,13 +113,17 @@ final class HwWalletManagerTests: XCTestCase {
 
     private func makeViewModel(
         watcherService: OnChainWatcherServicing = MockWatcherService(),
-        monitored: Set<String> = ["legacy", "nestedSegwit", "nativeSegwit", "taproot"]
+        monitored: Set<String> = ["legacy", "nestedSegwit", "nativeSegwit", "taproot"],
+        accountInfoProvider: @escaping HwWalletManager.AccountInfoProvider = { _, _, _, _, _ in
+            fatalError("Unexpected account info request")
+        }
     ) -> HwWalletManager {
         let vm = HwWalletManager(
             watcherService: watcherService,
             monitoredTypes: { monitored },
             electrumUrl: { "ssl://test:1" },
             network: { .regtest },
+            accountInfoProvider: accountInfoProvider,
             persistSnapshot: { [weak self] in self?.persistedSnapshots.append($0) },
             deleteActivities: { [weak self] walletId in
                 self?.deleted.append(walletId)
@@ -247,6 +251,20 @@ final class HwWalletManagerTests: XCTestCase {
         )
     }
 
+    private func makeAccountInfo(unused: [BitkitCore.AddressInfo]) -> AccountInfoResult {
+        AccountInfoResult(
+            account: ComposeAccount(
+                path: "m/84'/1'/0'",
+                addresses: BitkitCore.AccountAddresses(used: [], unused: unused, change: []),
+                utxo: []
+            ),
+            balance: 0,
+            utxoCount: 0,
+            accountType: .nativeSegwit,
+            blockHeight: 100
+        )
+    }
+
     /// Watcher ids are keyed by wallet identity, so they are derived from the device's xpubs.
     /// `makeDevice` records them here so tests can keep naming devices by their transport id.
     private var xpubsByDeviceId: [String: [String: String]] = [:]
@@ -286,9 +304,13 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertEqual(vm.hwWalletIds, [wallet.walletId])
     }
 
-    func testWatcherEventProvidesReceiveAddress() throws {
+    func testGetReceiveAddressUsesWatcherWithoutScanning() async throws {
+        var scanCount = 0
         let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
-        let vm = makeViewModel(monitored: ["nativeSegwit"])
+        let vm = makeViewModel(monitored: ["nativeSegwit"]) { _, _, _, _, _ in
+            scanCount += 1
+            return self.makeAccountInfo(unused: [])
+        }
         vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
         let walletId = try HwWalletId.derive(xpubs: device.xpubs)
 
@@ -311,6 +333,67 @@ final class HwWalletManagerTests: XCTestCase {
             vm.watcherReceiveAddress(walletId: walletId),
             HwReceiveAddress(address: "bcrt1qnext", path: "m/84'/1'/0'/0/3", addressType: .nativeSegwit)
         )
+
+        let address = try await vm.getReceiveAddress(walletId: walletId)
+
+        XCTAssertEqual(address, HwReceiveAddress(address: "bcrt1qnext", path: "m/84'/1'/0'/0/3", addressType: .nativeSegwit))
+        XCTAssertEqual(scanCount, 0)
+    }
+
+    func testGetReceiveAddressFallsBackToFirstUnusedScannedAddress() async throws {
+        var request: (String, String, TrezorCoinType, UInt32, AccountType)?
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
+        let scanned = BitkitCore.AddressInfo(address: "bcrt1qscanned", path: "m/84'/1'/0'/0/4", transfers: 0)
+        let later = BitkitCore.AddressInfo(address: "bcrt1qlater", path: "m/84'/1'/0'/0/5", transfers: 0)
+        let vm = makeViewModel(monitored: ["nativeSegwit"]) { extendedKey, electrumUrl, network, gapLimit, accountType in
+            request = (extendedKey, electrumUrl, network, gapLimit, accountType)
+            return self.makeAccountInfo(unused: [scanned, later])
+        }
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+
+        let address = try await vm.getReceiveAddress(walletId: HwWalletId.derive(xpubs: device.xpubs))
+
+        XCTAssertEqual(address, HwReceiveAddress(address: scanned.address, path: scanned.path, addressType: .nativeSegwit))
+        XCTAssertEqual(request?.0, "zpubNS")
+        XCTAssertEqual(request?.1, "ssl://test:1")
+        XCTAssertEqual(request?.2, .regtest)
+        XCTAssertEqual(request?.3, 20)
+        XCTAssertEqual(request?.4, .nativeSegwit)
+    }
+
+    func testGetReceiveAddressThrowsWhenScanHasNoUnusedAddress() async throws {
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
+        let vm = makeViewModel(monitored: ["nativeSegwit"]) { _, _, _, _, _ in
+            self.makeAccountInfo(unused: [])
+        }
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        let walletId = try HwWalletId.derive(xpubs: device.xpubs)
+
+        do {
+            _ = try await vm.getReceiveAddress(walletId: walletId)
+            XCTFail("Expected an empty account scan to fail")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, t("hardware__receive_address_error"))
+        }
+    }
+
+    func testGetReceiveAddressPrefersWatcherUpdateReceivedDuringScan() async throws {
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS"])
+        let scanned = BitkitCore.AddressInfo(address: "bcrt1qscanned", path: "m/84'/1'/0'/0/4", transfers: 0)
+        let watcher = BitkitCore.AddressInfo(address: "bcrt1qwatcher", path: "m/84'/1'/0'/0/5", transfers: 0)
+        var vm: HwWalletManager!
+        vm = makeViewModel(monitored: ["nativeSegwit"]) { _, _, _, _, _ in
+            vm.handleWatcherEvent(
+                watcherId: self.watcherId(device, "nativeSegwit"),
+                event: self.makeEvent([], total: 0, receiveAddress: watcher)
+            )
+            return self.makeAccountInfo(unused: [scanned])
+        }
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+
+        let address = try await vm.getReceiveAddress(walletId: HwWalletId.derive(xpubs: device.xpubs))
+
+        XCTAssertEqual(address, HwReceiveAddress(address: watcher.address, path: watcher.path, addressType: .nativeSegwit))
     }
 
     func testBalanceAggregatesAcrossAddressTypes() {
