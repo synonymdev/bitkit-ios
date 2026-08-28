@@ -150,7 +150,9 @@ struct AppScene: View {
             // TrezorManager bumps devicesRevision on any device/connection change.
             .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
             .onChange(of: isPinVerified) { _, verified in
-                if verified { Task { await trezorManager.autoReconnect() } }
+                if verified {
+                    Task { await trezorManager.autoReconnect() }
+                }
             }
             .onReceive(settings.settingsPublisher) { _ in hwWalletManager.reconcileForSettingsChange() }
             .onChange(of: migrations.isShowingMigrationLoading) { _, isLoading in
@@ -681,6 +683,7 @@ struct AppScene: View {
             walletInitShouldFinish = true
             app.markAppStatusInit()
             BackupService.shared.startObservingBackups()
+            QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
             Task {
                 if !PaykitFeatureFlags.isUIEnabled {
                     await retryPendingPaykitEndpointRemoval()

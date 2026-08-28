@@ -518,9 +518,9 @@ struct SendConfirmationView: View {
                     try await wallet.sendWithTimeout(
                         bolt11: invoice.bolt11,
                         sats: paymentSats,
-                        onTimeout: {
-                            app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
-                            navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
+                        onTimeout: { timedOutHash in
+                            app.addPendingPaymentHash(timedOutHash, contactPublicKey: contactPublicKey)
+                            navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
                         }
                     )
                     await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)

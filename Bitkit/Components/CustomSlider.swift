@@ -3,6 +3,8 @@ import SwiftUI
 struct CustomSlider: View {
     @Binding var value: Double
     let steps: [Double]
+    var formatLabel: (Double) -> String = { "$\(Int($0))" }
+    var testIdentifier: String? = nil
 
     @State private var sliderIndex: Double = 0
     @State private var sliderWidth: CGFloat = 0
@@ -75,6 +77,7 @@ struct CustomSlider: View {
                             }
                     }
                 )
+                .accessibilityIdentifierIfPresent(testIdentifier)
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { gesture in
@@ -117,7 +120,7 @@ struct CustomSlider: View {
             // Step labels
             GeometryReader { geometry in
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                    Text("$\(Int(step))")
+                    Text(formatLabel(step))
                         .font(.custom(Fonts.medium, size: 13))
                         .foregroundColor(.textPrimary)
                         .position(

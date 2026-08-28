@@ -121,10 +121,12 @@ struct SpendingConfirm: View {
             Spacer()
 
             if !hideSwipeButton {
-                SwipeButton(title: t("lightning__transfer__swipe"), accentColor: .purpleAccent) {
-                    Task {
-                        await onConfirm()
-                    }
+                SwipeButton(
+                    title: t("lightning__transfer__swipe"),
+                    accentColor: .purpleAccent,
+                    isLoading: isPaying
+                ) {
+                    try await onConfirm()
                 }
                 .disabled(isPaying || selectedUtxos == nil || transactionFee == 0 || satsPerVbyte == nil)
             }
@@ -138,7 +140,7 @@ struct SpendingConfirm: View {
         }
     }
 
-    private func onConfirm() async {
+    private func onConfirm() async throws {
         guard let rate = satsPerVbyte else { return }
         isPaying = true
 
@@ -162,11 +164,10 @@ struct SpendingConfirm: View {
                 hideSwipeButton = true
             }
         } catch {
-            app.toast(error)
             isPaying = false
+            app.toast(error)
+            throw error
         }
-
-        isPaying = false
     }
 
     private func calculateTransactionFee() async {
