@@ -229,9 +229,7 @@ jobs:
       e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
   e2e-tests-local:
-    # TEMPORARY: parked while e2e-tests-remote is validated. Restore before merging:
-    #   if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
-    if: false
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: [self-hosted, macOS]
     needs: [detect-changes, build-local, e2e-branch]
 
@@ -545,6 +543,26 @@ jobs:
           docker compose up -d
           docker compose ps
 
+      - name: Start Trezor emulator
+        env:
+          # The image defaults to a macOS host; this runner is Linux.
+          TREZOR_MACOS: '0'
+        run: |
+          set -euo pipefail
+          ./scripts/trezor-emulator start
+          # The bridge answers on 21325 before it has a device, so wait on a
+          # device actually being enumerated rather than on the port.
+          deadline=$(( SECONDS + 300 ))
+          until curl -fsS -m 10 -X POST http://127.0.0.1:21325/enumerate | grep -q '"path"'; do
+            if (( SECONDS >= deadline )); then
+              echo "::error::no trezor device on the bridge"
+              ./scripts/trezor-emulator status || true
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "trezor emulator ready"
+
           wait_for() {
             local what=$1 deadline=$(( SECONDS + 300 ))
             until eval "$2"; do
@@ -627,11 +645,7 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          # @hardware_wallet omitted: ensureTrezorEmulator() shells out to
-          # `docker compose --profile trezor up` on the machine running the tests,
-          # which is a hosted Mac here and has no Docker. Tracked separately with
-          # the trezor-emu job in ai-device-tests.yml.
-          - { name: e2e, grep: '@transfer|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4' }
+          - { name: e2e, grep: '@transfer|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4|@hardware_wallet' }
 
     name: e2e-tests-remote - ${{ matrix.shard.name }}
 
@@ -688,7 +702,7 @@ jobs:
           done
           echo "STACK_IP=$ip" >> "$GITHUB_ENV"
 
-          for port in 60001 9735 8080 43782 8081; do
+          for port in 60001 9735 8080 43782 8081 21325 9001; do
             until nc -z -w 5 "$ip" "$port" 2>/dev/null; do
               if (( SECONDS >= deadline )); then
                 echo "::error::$ip:$port never became reachable"
@@ -750,7 +764,7 @@ jobs:
           PY
 
           nohup python3 /tmp/forward-stack.py "$STACK_IP" \
-            60001 9735 8080 10009 43782 3003 8081 > /tmp/forward-stack.log 2>&1 &
+            60001 9735 8080 10009 43782 3003 8081 21325 21328 9001 9002 > /tmp/forward-stack.log 2>&1 &
 
           # End to end, not a port check: the relay accepts before it has dialled
           # anything, so nc would pass even with the stack unreachable.
@@ -779,6 +793,9 @@ jobs:
             "http://127.0.0.1:8081/tls.cert"
           curl -fsS --max-time 30 -o docker/lnd/data/chain/bitcoin/regtest/admin.macaroon \
             "http://127.0.0.1:8081/admin.macaroon"
+
+      - name: Install Trezor controller dependencies
+        run: pip3 install --quiet --break-system-packages websockets mnemonic
 
       - name: Clear previous E2E artifacts
         working-directory: bitkit-e2e-tests
@@ -811,6 +828,9 @@ jobs:
           WDA_LAUNCH_TIMEOUT: "600000"
           WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
           RECORD_VIDEO: true
+          # Drives the emulator on the stack runner over the forwarded
+          # controller websocket instead of `docker exec`.
+          TREZOR_REMOTE: '1'
           ATTEMPT: 1
 
       - name: Run E2E Tests 2 (${{ matrix.shard.name }})
@@ -826,6 +846,9 @@ jobs:
           WDA_LAUNCH_TIMEOUT: "600000"
           WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
           RECORD_VIDEO: true
+          # Drives the emulator on the stack runner over the forwarded
+          # controller websocket instead of `docker exec`.
+          TREZOR_REMOTE: '1'
           ATTEMPT: 2
 
       - name: Run E2E Tests 3 (${{ matrix.shard.name }})
@@ -840,6 +863,9 @@ jobs:
           WDA_LAUNCH_TIMEOUT: "600000"
           WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
           RECORD_VIDEO: true
+          # Drives the emulator on the stack runner over the forwarded
+          # controller websocket instead of `docker exec`.
+          TREZOR_REMOTE: '1'
           ATTEMPT: 3
 
       - name: Upload E2E Artifacts (${{ matrix.shard.name }})
@@ -853,7 +879,7 @@ jobs:
     if: always() && github.event.pull_request.draft == false
     name: e2e-status
     runs-on: ubuntu-latest
-    needs: [detect-changes, e2e-tests-remote, e2e-tests-staging]
+    needs: [detect-changes, e2e-tests-local, e2e-tests-staging]
     steps:
       - name: E2E skipped - no code changes
         if: needs.detect-changes.outputs.code != 'true'
@@ -862,7 +888,7 @@ jobs:
       - name: Verify all E2E shards succeeded
         if: needs.detect-changes.outputs.code == 'true'
         run: |
-          if [ "${{ needs.e2e-tests-remote.result }}" != "success" ] || [ "${{ needs.e2e-tests-staging.result }}" != "success" ]; then
+          if [ "${{ needs.e2e-tests-local.result }}" != "success" ] || [ "${{ needs.e2e-tests-staging.result }}" != "success" ]; then
             echo "❌ Some E2E shards failed."
             exit 1
           fi
