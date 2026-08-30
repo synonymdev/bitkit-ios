@@ -543,6 +543,25 @@ jobs:
           docker compose up -d
           docker compose ps
 
+          wait_for() {
+            local what=$1 deadline=$(( SECONDS + 300 ))
+            until eval "$2"; do
+              if (( SECONDS >= deadline )); then
+                echo "::error::timed out waiting for $what"
+                docker compose logs --no-color --tail=50
+                exit 1
+              fi
+              sleep 5
+            done
+            echo "✓ $what"
+          }
+
+          wait_for "electrs on 60001" 'nc -z 127.0.0.1 60001'
+          # sudo: lnd/data is 0700 owned by the container uid, so an unprivileged
+          # test -f returns false whether or not the file is there.
+          wait_for "lnd macaroon" 'sudo test -f lnd/data/chain/bitcoin/regtest/admin.macaroon'
+          sudo chmod -R 777 lnd
+
       - name: Start Trezor emulator
         env:
           # The image defaults to a macOS host; this runner is Linux.
@@ -562,25 +581,6 @@ jobs:
             sleep 5
           done
           echo "trezor emulator ready"
-
-          wait_for() {
-            local what=$1 deadline=$(( SECONDS + 300 ))
-            until eval "$2"; do
-              if (( SECONDS >= deadline )); then
-                echo "::error::timed out waiting for $what"
-                docker compose logs --no-color --tail=50
-                exit 1
-              fi
-              sleep 5
-            done
-            echo "✓ $what"
-          }
-
-          wait_for "electrs on 60001" 'nc -z 127.0.0.1 60001'
-          # sudo: lnd/data is 0700 owned by the container uid, so an unprivileged
-          # test -f returns false whether or not the file is there.
-          wait_for "lnd macaroon" 'sudo test -f lnd/data/chain/bitcoin/regtest/admin.macaroon'
-          sudo chmod -R 777 lnd
 
       - name: Serve LND credentials
         run: |
