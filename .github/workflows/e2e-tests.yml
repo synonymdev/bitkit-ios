@@ -795,7 +795,7 @@ jobs:
             "http://127.0.0.1:8081/admin.macaroon"
 
       - name: Install Trezor controller dependencies
-        run: pip3 install --quiet --break-system-packages websockets mnemonic
+        run: pip3 install --quiet --break-system-packages websockets mnemonic trezor
 
       - name: Clear previous E2E artifacts
         working-directory: bitkit-e2e-tests
