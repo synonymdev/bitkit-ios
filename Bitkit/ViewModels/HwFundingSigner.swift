@@ -373,25 +373,28 @@ final class HwSendCoordinator {
     func refreshAvailable(
         manager: HwWalletManager,
         destinationAddress: String,
-        satsPerVByte: UInt64
+        satsPerVByte: UInt64?
     ) async {
         guard let walletId else { return }
 
-        guard !destinationAddress.isEmpty else {
-            if self.walletId == walletId {
-                availableSats = manager.fundingBalance(walletId: walletId)
-                isFundingSourceLoading = false
-            }
-            return
-        }
-
         availabilityRequestId += 1
         let requestId = availabilityRequestId
+        isFundingSourceLoading = true
 
         func apply(_ available: UInt64) {
             guard self.walletId == walletId, availabilityRequestId == requestId else { return }
             availableSats = available
             isFundingSourceLoading = false
+        }
+
+        guard let satsPerVByte else {
+            apply(availableSats)
+            return
+        }
+
+        guard !destinationAddress.isEmpty else {
+            apply(manager.fundingBalance(walletId: walletId))
+            return
         }
 
         do {

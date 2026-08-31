@@ -389,17 +389,18 @@ struct SendAmountView: View {
     private func calculateMaxSendableAmount() async {
         // Make sure we have everything we need to calculate the max sendable amount
         guard hwSend.isActive || app.selectedWalletToPayFrom == .onchain else { return }
-        guard let address = app.scannedOnchainInvoice?.address else { return }
-        guard let feeRate = wallet.selectedFeeRateSatsPerVByte else { return }
 
         if hwSend.isActive {
             await hwSend.refreshAvailable(
                 manager: hwWalletManager,
-                destinationAddress: address,
-                satsPerVByte: UInt64(feeRate)
+                destinationAddress: app.scannedOnchainInvoice?.address ?? "",
+                satsPerVByte: wallet.selectedFeeRateSatsPerVByte.map(UInt64.init)
             )
             return
         }
+
+        guard let address = app.scannedOnchainInvoice?.address else { return }
+        guard let feeRate = wallet.selectedFeeRateSatsPerVByte else { return }
 
         do {
             let maxAmount = try await wallet.calculateMaxSendableAmount(

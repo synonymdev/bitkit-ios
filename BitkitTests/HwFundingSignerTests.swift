@@ -90,6 +90,25 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(coordinator.availableSats, 42000)
     }
 
+    func testCoordinatorSettlesFundingSourceLoadingWithoutFeeRate() async {
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator()
+        coordinator.selectWallet(
+            "trezor:wallet",
+            initialAvailableSats: 42000,
+            showsLoading: true
+        )
+
+        await coordinator.refreshAvailable(
+            manager: manager,
+            destinationAddress: "bc1qtest",
+            satsPerVByte: nil
+        )
+
+        XCTAssertFalse(coordinator.isFundingSourceLoading)
+        XCTAssertEqual(coordinator.availableSats, 42000)
+    }
+
     func testCoordinatorTracksPreviewPreparation() async throws {
         let funding = MockHwFunding()
         funding.estimateDelay = 0.05
