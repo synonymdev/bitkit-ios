@@ -132,7 +132,7 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | --- | --- | --- |
 | [amount-limits](amount-limits) | 4 | Number pad caps on all four amount screens |
 | [widgets](widgets) | 2 | Widgets intro and add-widget flow |
-| [notification-permission](notification-permission) | 4 | "Set up in background" toggles |
+| [notification-permission](notification-permission) | 4 | Background-setup toggles |
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
 | [hardware-wallet](hardware-wallet) | 15 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
 

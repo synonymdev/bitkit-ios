@@ -1,9 +1,14 @@
 # Notification-permission journeys
 
-Verify that the "Enable background setup" toggle — shown on the Receive → CJIT confirm screen, the
-Receive → CJIT liquidity screen and the Transfer → Spending confirm screen — drives the iOS
-notification authorization prompt, and that the app's own notification settings own the route into
-the system Settings app.
+Verify that the background-setup toggle — shown on the Receive → CJIT confirm screen, the Receive →
+CJIT liquidity screen and the Transfer → Spending confirm screen — drives the iOS notification
+authorization prompt, and that the app's own notification settings own the route into the system
+Settings app.
+
+**The label differs by screen.** The two Receive CJIT screens bind
+`wallet__receive_background_setup_toggle` ("Enable background setup"); Transfer → Spending confirm
+binds `lightning__spending_confirm__background_setup` ("Set up in background"), matching Android.
+The switch identifiers are stable, so prefer those over the copy.
 
 ## iOS vs Android
 

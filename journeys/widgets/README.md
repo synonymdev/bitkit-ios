@@ -8,8 +8,10 @@ Cover the widgets intro (first run) and the add-widget flow reached from the wal
   in the list sheet render disabled and an "Enable in settings" button (id `WidgetEnableInSettings`)
   is shown instead, and both journeys fail on the first tap.
 - `widgets-intro.xml` needs the intro **unseen** and `add-widgets-flow.xml` needs it **seen**. The
-  flag is `hasSeenWidgetsIntro` in `UserDefaults`; reset it by reinstalling the app
-  (`xcodebuildmcp simulator install` over a fresh wallet) or by wiping the simulator's app data.
+  flag is `hasSeenWidgetsIntro` in `UserDefaults`. Reset it the way the notification-permission suite
+  does — `xcrun simctl uninstall <device> to.bitkit` then `xcodebuildmcp simulator build-and-run`,
+  which also means re-onboarding the wallet. `xcodebuildmcp simulator install` will not do it: it
+  requires `--app-path`, and installing over the bundle leaves `UserDefaults` intact.
 
 ## iOS notes
 - The drawer menu row is `DrawerWidgets`. With the intro unseen it pushes the intro screen
