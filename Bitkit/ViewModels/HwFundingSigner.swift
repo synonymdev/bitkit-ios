@@ -317,6 +317,7 @@ final class HwSendCoordinator {
     private var operationRequest: PaymentRequest?
     private var availabilityRequestId = 0
     private var previewRequestId = 0
+    private let signerFactory: @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner
 
     var isActive: Bool {
         walletId != nil
@@ -326,8 +327,18 @@ final class HwSendCoordinator {
         pendingPayment != nil
     }
 
-    init(walletId: String? = nil) {
+    init(
+        walletId: String? = nil,
+        signerFactory: @escaping @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner = { manager, address, satsPerVByte in
+            HwSendCoordinator.signer(
+                manager: manager,
+                address: address,
+                satsPerVByte: satsPerVByte
+            )
+        }
+    ) {
         self.walletId = walletId
+        self.signerFactory = signerFactory
     }
 
     func seedAvailable(walletId: String, availableSats: UInt64) {
@@ -374,11 +385,7 @@ final class HwSendCoordinator {
         }
 
         do {
-            let signer = Self.signer(
-                manager: manager,
-                address: destinationAddress,
-                satsPerVByte: satsPerVByte
-            )
+            let signer = signerFactory(manager, destinationAddress, satsPerVByte)
             let available = try await signer.availability(walletId: walletId).available
             apply(available)
         } catch {
@@ -435,7 +442,7 @@ final class HwSendCoordinator {
             isSigning = true
             defer { isSigning = false }
 
-            let signer = Self.signer(manager: manager, address: address, satsPerVByte: satsPerVByte)
+            let signer = signerFactory(manager, address, satsPerVByte)
             let signed: HwFundingSignedTx
             if let pendingPayment, pendingPayment.request == request {
                 signed = pendingPayment.signedTx

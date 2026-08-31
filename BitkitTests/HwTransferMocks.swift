@@ -29,6 +29,7 @@ final class MockHwFunding: HwTransferFunding {
     private(set) var maxSpendableCalls: [(address: String, satsPerVByte: UInt64)] = []
     private(set) var signCalls = 0
     private(set) var broadcastCalls = 0
+    private(set) var broadcastTransactions: [String] = []
 
     func getFundingAccount(walletId _: String, addressType _: AddressScriptType) throws -> HwFundingAccount {
         if let accountError { throw accountError }
@@ -86,8 +87,9 @@ final class MockHwFunding: HwTransferFunding {
         return signedTx
     }
 
-    func broadcastFunding(serializedTx _: String) async throws -> String {
+    func broadcastFunding(serializedTx: String) async throws -> String {
         broadcastCalls += 1
+        broadcastTransactions.append(serializedTx)
         if broadcastDelay > 0 { try await Task.sleep(nanoseconds: UInt64(broadcastDelay * 1_000_000_000)) }
         if let broadcastError { throw broadcastError }
         return broadcastTxId

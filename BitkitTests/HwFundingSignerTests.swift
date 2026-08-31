@@ -64,6 +64,63 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(coordinator.availableSats, 42000)
     }
 
+    func testCoordinatorRetryReusesSignedPaymentAfterUncertainBroadcast() async throws {
+        try await assertCoordinatorRetryReusesSignedPayment(error: HwTransferError.broadcastUncertain)
+    }
+
+    func testCoordinatorRetryReusesSignedPaymentAfterConnectivityFailure() async throws {
+        try await assertCoordinatorRetryReusesSignedPayment(
+            error: BroadcastError.ElectrumError(errorDetails: "offline")
+        )
+    }
+
+    private func assertCoordinatorRetryReusesSignedPayment(error: Error) async throws {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            walletId: "trezor:wallet",
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: connecting,
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        var beforeBroadcastCalls = 0
+        funding.broadcastError = error
+
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2,
+                beforeBroadcast: { beforeBroadcastCalls += 1 }
+            )
+        }
+
+        XCTAssertTrue(coordinator.hasPendingBroadcast)
+        XCTAssertTrue(coordinator.isBroadcastUnresolved)
+
+        funding.broadcastError = nil
+        _ = try await coordinator.signAndBroadcast(
+            manager: manager,
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2,
+            beforeBroadcast: { beforeBroadcastCalls += 1 }
+        )
+
+        XCTAssertEqual(funding.composeCalls.count, 1)
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 2)
+        XCTAssertEqual(funding.broadcastTransactions, [funding.signedTx.serializedTx, funding.signedTx.serializedTx])
+        XCTAssertEqual(beforeBroadcastCalls, 1)
+    }
+
     // MARK: - Availability
 
     func testAvailabilityUsesRealMaxSpendable() async throws {
