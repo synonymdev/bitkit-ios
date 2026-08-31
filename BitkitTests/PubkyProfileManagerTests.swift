@@ -115,6 +115,22 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testFailedSignOutMarksEnabledPaykitStateForReconciliation() {
+        var publicPending = false
+        var privatePending = false
+
+        PubkyProfileManager.markPaykitReconciliationPendingAfterFailedSignOut(
+            publicSharingEnabled: false,
+            privateSharingEnabled: true,
+            setPublicReconciliationPending: { publicPending = $0 },
+            setPrivateReconciliationPending: { privatePending = $0 }
+        )
+
+        XCTAssertTrue(publicPending)
+        XCTAssertTrue(privatePending)
+    }
+
+    @MainActor
     func testCompleteAuthenticationRevokesSessionWhenAuthIsCanceledAfterCompletion() async {
         let manager = PubkyProfileManager()
         let attemptID = UUID()

@@ -769,16 +769,41 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func signOut(cleanPrivatePaykitEndpoints: Bool) async throws {
-        try await Task.detached {
-            if cleanPrivatePaykitEndpoints {
-                try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
-            }
-            await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
-            try await PubkyService.signOut()
-            await Self.clearLocalAppState()
-        }.value
+        let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
+        let privateSharingEnabled = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
+
+        do {
+            try await Task.detached {
+                if cleanPrivatePaykitEndpoints {
+                    try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
+                }
+                await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
+                try await PubkyService.signOut()
+                await Self.clearLocalAppState()
+            }.value
+        } catch {
+            Self.markPaykitReconciliationPendingAfterFailedSignOut(
+                publicSharingEnabled: publicSharingEnabled,
+                privateSharingEnabled: privateSharingEnabled
+            )
+            throw error
+        }
 
         clearAuthenticatedState()
+    }
+
+    static func markPaykitReconciliationPendingAfterFailedSignOut(
+        publicSharingEnabled: Bool,
+        privateSharingEnabled: Bool,
+        setPublicReconciliationPending: (Bool) -> Void = PublicPaykitService.setCleanupPending,
+        setPrivateReconciliationPending: (Bool) -> Void = PrivatePaykitService.setContactSharingCleanupPending
+    ) {
+        if publicSharingEnabled || privateSharingEnabled {
+            setPublicReconciliationPending(true)
+        }
+        if privateSharingEnabled {
+            setPrivateReconciliationPending(true)
+        }
     }
 
     func refreshSessionIfPossible(after error: Error) async -> Bool {
