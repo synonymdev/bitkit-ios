@@ -24,7 +24,7 @@ struct ReceiveCjitAmount: View {
             SheetHeader(title: t("wallet__receive_bitcoin"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
-                NumberPadTextField(viewModel: amountViewModel)
+                NumberPadTextField(viewModel: amountViewModel, testIdentifier: "ReceiveCjitAmountNumberField")
                     .onTapGesture {
                         amountViewModel.togglePrimaryDisplay(currency: currency)
                     }
@@ -69,7 +69,10 @@ struct ReceiveCjitAmount: View {
                     await onContinue()
                 }
             }
+            .accessibilityIdentifier("ReceiveCjitAmountContinue")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ReceiveCjitAmount")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
