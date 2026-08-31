@@ -218,6 +218,58 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
 
+    func testUnaffordableRequestUsesRequestedAmountAndStopsAutomaticPresentation() async throws {
+        let clock = PaymentRequestTestClock(Date())
+        let onchainMethod = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(amount: "0.00001", endpoints: [onchainMethod.rawValue]),
+        ])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+        let app = AppViewModel(
+            sheetViewModel: SheetViewModel(),
+            navigationViewModel: NavigationViewModel(),
+            scanPaymentOperations: ScanPaymentOperations(
+                state: {
+                    ScanPaymentState(
+                        isNodeRunning: true,
+                        spendableOnchainBalanceSats: 100,
+                        totalLightningBalanceSats: 0,
+                        hasChannels: false,
+                        hasUsableChannels: false
+                    )
+                },
+                canSendLightning: { _ in false }
+            )
+        )
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+
+        try await app.handleScannedData(
+            "bitcoin:bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x",
+            claimedContactPaymentContext: context
+        )
+
+        XCTAssertNil(app.scannedOnchainInvoice)
+        XCTAssertNil(app.scannedLightningInvoice)
+        XCTAssertTrue(app.didRejectScannedPaymentForInsufficientBalance)
+
+        var didResetWalletSendState = false
+        PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(
+            request,
+            app: app,
+            manager: manager,
+            resetWalletSendState: { didResetWalletSendState = true }
+        )
+        clock.advance(by: 2)
+
+        XCTAssertTrue(didResetWalletSendState)
+        XCTAssertNil(app.contactPaymentContext)
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+    }
+
     func testDeferredRequestUsesIncreasingPresentationBackoff() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let clock = PaymentRequestTestClock(now)

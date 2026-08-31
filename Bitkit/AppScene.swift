@@ -867,14 +867,14 @@ struct AppScene: View {
                             return
                         }
                         guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
-                            let shouldStopAutomaticPresentation = app.didRejectScannedPaymentForInsufficientBalance
-                            app.resetSendState()
-                            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-                            if shouldStopAutomaticPresentation {
-                                _ = paykitPaymentRequestManager.markPresentedIfPending(request)
-                            } else {
-                                paykitPaymentRequestManager.deferPresentation(request)
-                            }
+                            PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(
+                                request,
+                                app: app,
+                                manager: paykitPaymentRequestManager,
+                                resetWalletSendState: {
+                                    wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                                }
+                            )
                             continue
                         }
 
