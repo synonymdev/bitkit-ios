@@ -309,10 +309,15 @@ class PubkyProfileManager: ObservableObject {
             profile = createdProfile
             cacheProfileMetadata(createdProfile)
         } catch {
-            try? Keychain.delete(key: .pubkySecretKey)
-            try? Keychain.delete(key: .paykitSession)
-            await PubkyService.forceSignOut()
-            throw error
+            let profileCreationError = error
+            do {
+                try await Task.detached {
+                    try await PubkyService.signOut()
+                }.value
+            } catch {
+                Logger.warn("Failed to revoke incomplete Pubky profile session: \(error)", context: "PubkyProfileManager")
+            }
+            throw profileCreationError
         }
 
         Logger.info("Pubky identity created for \(publicKeyZ32)", context: "PubkyProfileManager")
@@ -507,7 +512,11 @@ class PubkyProfileManager: ObservableObject {
         try await completeAuthentication(
             completeAuth: { _ = try await PubkyService.completeAuth() },
             currentPublicKey: { await PubkyService.currentPublicKey() },
-            clearSessionAccess: { await PubkyService.clearSessionAccess() }
+            revokeSessionAccess: {
+                try await Task.detached {
+                    try await PubkyService.signOut()
+                }.value
+            }
         )
     }
 
@@ -515,7 +524,7 @@ class PubkyProfileManager: ObservableObject {
     private func completeAuthentication(
         completeAuth: @escaping () async throws -> Void,
         currentPublicKey: @escaping () async -> String?,
-        clearSessionAccess: @escaping () async -> Void
+        revokeSessionAccess: @escaping () async throws -> Void
     ) async throws -> String {
         guard let attemptID = activeAuthAttemptID else {
             throw CancellationError()
@@ -548,14 +557,14 @@ class PubkyProfileManager: ObservableObject {
             await loadProfile()
             return pk
         } catch is CancellationError {
-            await clearCompletedAuthSessionIfNeeded(didCompleteAuth, clearSessionAccess: clearSessionAccess)
+            await revokeCompletedAuthSessionIfNeeded(didCompleteAuth, revokeSessionAccess: revokeSessionAccess)
             if activeAuthAttemptID == attemptID {
                 activeAuthAttemptID = nil
                 restoreAuthStateAfterAuthFlow()
             }
             throw CancellationError()
         } catch let serviceError as PubkyServiceError {
-            await clearCompletedAuthSessionIfNeeded(didCompleteAuth, clearSessionAccess: clearSessionAccess)
+            await revokeCompletedAuthSessionIfNeeded(didCompleteAuth, revokeSessionAccess: revokeSessionAccess)
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
@@ -564,7 +573,7 @@ class PubkyProfileManager: ObservableObject {
             restoreAuthStateAfterAuthFlow()
             throw serviceError
         } catch {
-            await clearCompletedAuthSessionIfNeeded(didCompleteAuth, clearSessionAccess: clearSessionAccess)
+            await revokeCompletedAuthSessionIfNeeded(didCompleteAuth, revokeSessionAccess: revokeSessionAccess)
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
@@ -575,9 +584,16 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    private func clearCompletedAuthSessionIfNeeded(_ didCompleteAuth: Bool, clearSessionAccess: @escaping () async -> Void) async {
+    private func revokeCompletedAuthSessionIfNeeded(
+        _ didCompleteAuth: Bool,
+        revokeSessionAccess: @escaping () async throws -> Void
+    ) async {
         guard didCompleteAuth else { return }
-        await clearSessionAccess()
+        do {
+            try await revokeSessionAccess()
+        } catch {
+            Logger.warn("Failed to revoke canceled Pubky auth session: \(error)", context: "PubkyProfileManager")
+        }
     }
 
     func finalizeAuthentication() {
@@ -614,12 +630,12 @@ class PubkyProfileManager: ObservableObject {
         func completeAuthenticationForTesting(
             completeAuth: @escaping () async throws -> Void,
             currentPublicKey: @escaping () async -> String?,
-            clearSessionAccess: @escaping () async -> Void
+            revokeSessionAccess: @escaping () async throws -> Void
         ) async throws -> String {
             try await completeAuthentication(
                 completeAuth: completeAuth,
                 currentPublicKey: currentPublicKey,
-                clearSessionAccess: clearSessionAccess
+                revokeSessionAccess: revokeSessionAccess
             )
         }
     #endif
@@ -666,11 +682,17 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Sign Out
 
     static func clearLocalState() async {
+        do {
+            try await PubkyService.forgetSessionAccess()
+        } catch {
+            Logger.warn("Failed to forget local Pubky session access: \(error)", context: "PubkyProfileManager")
+        }
+        await clearLocalAppState()
+    }
+
+    private static func clearLocalAppState() async {
         await PrivatePaykitService.shared.closeAndClear()
         await PrivatePaykitAddressReservationStore.shared.clearContactAssignments()
-        await PubkyService.forceSignOut()
-        try? Keychain.delete(key: .paykitSession)
-        try? Keychain.delete(key: .pubkySecretKey)
         await PubkyImageCache.shared.clear()
         UserDefaults.standard.removeObject(forKey: cachedNameKey)
         UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
@@ -752,12 +774,8 @@ class PubkyProfileManager: ObservableObject {
                 try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
             }
             await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
-            do {
-                try await PubkyService.signOut()
-            } catch {
-                Logger.warn("Server sign out failed, forcing local sign out: \(error)", context: "PubkyProfileManager")
-            }
-            await Self.clearLocalState()
+            try await PubkyService.signOut()
+            await Self.clearLocalAppState()
         }.value
 
         clearAuthenticatedState()
@@ -871,8 +889,8 @@ class PubkyProfileManager: ObservableObject {
         deleteKeychainValue: (KeychainEntryType) throws -> Void = {
             try Keychain.delete(key: $0)
         },
-        clearSessionAccess: @escaping () async -> Void = {
-            await PubkyService.clearSessionAccess()
+        forgetSessionAccess: @escaping () async throws -> Void = {
+            try await PubkyService.forgetSessionAccess()
         },
         signInWithSecretKey: @escaping (String) async throws -> String = {
             try await PubkyService.signIn(secretKeyHex: $0)
@@ -881,7 +899,7 @@ class PubkyProfileManager: ObservableObject {
             try await PubkyService.importExternalSession(secret: $0)
         }
     ) async throws {
-        await clearSessionAccess()
+        try await forgetSessionAccess()
 
         switch backup?.kind {
         case .none:
