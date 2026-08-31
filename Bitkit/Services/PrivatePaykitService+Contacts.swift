@@ -255,9 +255,25 @@ extension PrivatePaykitService {
         }
     }
 
-    func retryPendingEndpointRemoval(wallet _: WalletViewModel, savedPublicKeys publicKeys: [String]) async {
+    func retryPendingEndpointReconciliation(wallet: WalletViewModel, savedPublicKeys publicKeys: [String]) async {
         let savedKeys = Set(normalizedSavedContactKeys(publicKeys))
         let isFullCleanupPending = UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
+        if isFullCleanupPending,
+           UserDefaults.standard.bool(forKey: Self.publishingEnabledKey)
+        {
+            let error = await prepareSavedContacts(
+                Array(savedKeys),
+                wallet: wallet,
+                requireImmediatePublication: true
+            )
+            if let error {
+                Logger.warn("Failed to reconcile private Paykit endpoints: \(error)", context: "PrivatePaykit")
+            } else {
+                Self.setContactSharingCleanupPending(false)
+            }
+            return
+        }
+
         let cleanupKeys = isFullCleanupPending
             ? Set(knownSavedContactKeys).union(state.contacts.keys).union(Self.pendingDeletedContactCleanupKeys())
             : Set(pendingPrivateEndpointRemovalKeys(savedPublicKeys: publicKeys))

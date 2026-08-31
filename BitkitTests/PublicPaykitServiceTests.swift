@@ -187,6 +187,18 @@ final class PublicPaykitServiceTests: XCTestCase {
         }
     }
 
+    func testPendingReconciliationRestoresPrivateOnlyReceiverMarker() throws {
+        try withIsolatedDefaults { defaults in
+            defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+            defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+
+            XCTAssertEqual(
+                PublicPaykitService.pendingReconciliationMode(defaults: defaults),
+                .publishReceiverMarker
+            )
+        }
+    }
+
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {
         PublicPaykitService.Endpoint(
             methodId: methodId,
