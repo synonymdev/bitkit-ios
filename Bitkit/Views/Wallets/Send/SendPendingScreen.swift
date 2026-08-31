@@ -78,25 +78,36 @@ struct SendPendingScreen: View {
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
+            applyPendingResolutionIfNeeded(app.sendSheetPendingResolution)
             await searchForActivity()
         }
         .onChange(of: app.sendSheetPendingResolution) { _, resolution in
-            guard let resolution, resolution.paymentHash == paymentHash else { return }
-            app.consumeSendSheetPendingResolution(paymentHash: paymentHash)
-            if resolution.success {
-                Task { @MainActor in
-                    await applyPendingContactContextIfNeeded()
-                    navigationPath.append(.success(paymentId: paymentHash))
+            applyPendingResolutionIfNeeded(resolution)
+        }
+    }
+
+    private func applyPendingResolutionIfNeeded(_ resolution: SendSheetPendingResolution?) {
+        guard let resolution, resolution.paymentHash == paymentHash else { return }
+        app.consumeSendSheetPendingResolution(paymentHash: paymentHash)
+        if resolution.success {
+            Task { @MainActor in
+                if retryRoute == .quickpay, let feePaidSats = resolution.feePaidSats, let amountSats = wallet.sendAmountSats {
+                    wallet.sendAmountSats = QuickPayLimits.amountWithFeeSats(
+                        amountSats: amountSats,
+                        feePaidSats: feePaidSats
+                    )
                 }
-            } else {
-                app.consumeContactPaymentContext(forPendingPaymentHash: paymentHash)
-                navigationPath.append(.failure(SendFailureContext(
-                    error: AppError(paymentFailureReason: resolution.failureReason),
-                    retryRoute: retryRoute,
-                    routingCacheResetAttempted: routingCacheResetAttempted,
-                    paymentRequest: paymentRequest
-                )))
+                await applyPendingContactContextIfNeeded()
+                navigationPath.append(.success(paymentId: paymentHash))
             }
+        } else {
+            app.consumeContactPaymentContext(forPendingPaymentHash: paymentHash)
+            navigationPath.append(.failure(SendFailureContext(
+                error: AppError(paymentFailureReason: resolution.failureReason),
+                retryRoute: retryRoute,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: paymentRequest
+            )))
         }
     }
 

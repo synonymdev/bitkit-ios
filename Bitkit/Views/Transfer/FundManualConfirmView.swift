@@ -82,6 +82,7 @@ struct FundManualConfirmView: View {
                     } catch {
                         Logger.error("Failed to open channel: \(error)")
                         app.toast(error)
+                        throw error
                     }
                 }
             }

@@ -115,6 +115,7 @@ struct SavingsConfirmView: View {
                         }
                     } catch {
                         app.toast(error)
+                        throw error
                     }
                 }
             }

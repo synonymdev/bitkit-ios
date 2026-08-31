@@ -4,6 +4,10 @@ import SwiftUI
 func sendFailureMessage(for error: Error) -> String {
     let fallbackMessage = t("wallet__payment_failed_description")
 
+    if error is QuickPayConversionError {
+        return t("wallet__send_quickpay__currency_conversion")
+    }
+
     if let reason = (error as? AppError)?.paymentFailureReason {
         return PaymentFailureReason.userMessage(for: reason)
     }
