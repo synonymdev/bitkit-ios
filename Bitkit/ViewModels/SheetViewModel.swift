@@ -41,6 +41,10 @@ class SheetViewModel: ObservableObject {
     @Published private(set) var isReplacingSheet = false
 
     func showSheet(_ id: SheetID, data: Any? = nil) {
+        if activeSheetConfiguration?.id == .send, id == .receivedTx {
+            Logger.debug("Skipping received-transaction sheet while send is active", context: "SheetViewModel")
+            return
+        }
         if isAnySheetOpen {
             // If any other sheet is open, close it and delay before showing the new sheet
             // to prevent the new sheet from closing immediately (bug)
@@ -419,7 +423,7 @@ class SheetViewModel: ObservableObject {
             guard let config = activeSheetConfiguration, config.id == .send else { return nil }
             let sendConfig = config.data as? SendConfig
             let initialRoute = sendConfig?.initialRoute ?? .options
-            return SendSheetItem(initialRoute: initialRoute)
+            return SendSheetItem(initialRoute: initialRoute, hardwareWalletId: sendConfig?.hardwareWalletId)
         }
         set {
             if newValue == nil {

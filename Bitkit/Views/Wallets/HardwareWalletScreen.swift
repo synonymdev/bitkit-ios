@@ -3,8 +3,8 @@ import SwiftUI
 
 /// Detail overview of a paired hardware wallet, tracked as a watch-only balance. Mirrors the
 /// Savings/Spending screens: device name + blue Bitcoin icon in the top bar, balance header, the
-/// device's on-chain activity grouped by date (blue hardware icons), a Transfer-To-Spending
-/// placeholder on funded devices, and a Remove action. Ports bitkit-android's `HardwareWalletScreen`.
+/// device's on-chain activity grouped by date (blue hardware icons), a Transfer-To-Spending action
+/// on funded devices, and a Remove action. Ports bitkit-android's `HardwareWalletScreen`.
 struct HardwareWalletScreen: View {
     let walletId: String
 

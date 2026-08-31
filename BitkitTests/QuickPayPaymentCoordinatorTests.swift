@@ -167,7 +167,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             }
         )
 
-        guard case let .success(paymentId) = route else {
+        guard case let .success(paymentId, _) = route else {
             return XCTFail("Expected success, got \(String(describing: route))")
         }
         XCTAssertEqual(paymentId, invoiceHash)
@@ -349,7 +349,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             }
         )
 
-        guard case let .success(paymentId) = route else {
+        guard case let .success(paymentId, _) = route else {
             return XCTFail("Expected success, got \(String(describing: route))")
         }
         XCTAssertEqual(paymentId, invoiceHash)
@@ -678,7 +678,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         )
 
         XCTAssertFalse(sent)
-        guard case let .success(paymentId) = route else {
+        guard case let .success(paymentId, _) = route else {
             return XCTFail("Expected success, got \(String(describing: route))")
         }
         XCTAssertEqual(paymentId, invoiceHash)

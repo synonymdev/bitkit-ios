@@ -10,6 +10,12 @@ struct SendSuccess: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     let paymentId: String // The payment hash or txid from the successful payment
+    let walletId: String
+
+    init(paymentId: String, walletId: String = WalletScope.default) {
+        self.paymentId = paymentId
+        self.walletId = walletId
+    }
 
     @State private var foundActivity: Activity?
 
@@ -107,14 +113,17 @@ struct SendSuccess: View {
         do {
             let activity = try await tryNTimes(
                 toTry: {
-                    try await activityListViewModel.findActivity(byPaymentId: paymentId)
+                    try await activityListViewModel.findActivity(byPaymentId: paymentId, walletId: walletId)
                 },
                 times: 12,
                 interval: 5
             )
 
             await applyPendingContactContextIfNeeded()
-            let updatedActivity = try? await activityListViewModel.findActivity(byPaymentId: paymentId)
+            let updatedActivity = try? await activityListViewModel.findActivity(
+                byPaymentId: paymentId,
+                walletId: walletId
+            )
             foundActivity = updatedActivity ?? activity
         } catch {
             Logger.warn("Could not find activity for payment ID: \(paymentId) after 12 attempts")
@@ -127,7 +136,12 @@ struct SendSuccess: View {
         }
 
         do {
-            try await activityListViewModel.setContact(contactPublicKey, forPaymentId: paymentId, syncLdkPayments: false)
+            try await activityListViewModel.setContact(
+                contactPublicKey,
+                forPaymentId: paymentId,
+                walletId: walletId,
+                syncLdkPayments: false
+            )
             app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
         } catch {
             Logger.warn("Failed to set pending contact for payment \(paymentId): \(error)", context: "SendSuccess")

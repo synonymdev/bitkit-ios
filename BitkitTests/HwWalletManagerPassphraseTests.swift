@@ -26,6 +26,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
 
         var ensureConnectedError: Error?
         var connectWithWalletModeError: Error?
+        var blocksStaleDisconnect = false
+        var onStaleDisconnect: (() -> Void)?
+        private var staleDisconnectContinuation: CheckedContinuation<Void, Never>?
 
         private(set) var ensureCalls: [String] = []
         private(set) var openCalls: [(deviceId: String, mode: TrezorWalletMode, passphrase: String)] = []
@@ -64,6 +67,16 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
 
         func disconnectStaleSession(deviceId: String) async {
             staleDisconnects.append(deviceId)
+            onStaleDisconnect?()
+            if blocksStaleDisconnect {
+                await withCheckedContinuation { staleDisconnectContinuation = $0 }
+            }
+        }
+
+        func finishStaleDisconnect() {
+            blocksStaleDisconnect = false
+            staleDisconnectContinuation?.resume()
+            staleDisconnectContinuation = nil
         }
 
         func isKnownBluetoothDevice(deviceId _: String) -> Bool {
@@ -174,6 +187,32 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
 
         XCTAssertEqual(session.ensureCalls, ["dev1"])
         XCTAssertTrue(session.openCalls.isEmpty, "no reopen is needed")
+    }
+
+    func testRetryWaitsForScheduledStaleSessionCleanup() async throws {
+        session.storedDevices = [makeDevice(walletId: standardWalletId)]
+        session.connectedDeviceId = "dev1"
+        session.connectedWalletId = standardWalletId
+        session.blocksStaleDisconnect = true
+        let manager = makeManager()
+        let cleanupStarted = expectation(description: "stale cleanup started")
+        session.onStaleDisconnect = { cleanupStarted.fulfill() }
+
+        manager.scheduleStaleSessionCleanup(walletId: standardWalletId)
+        await fulfillment(of: [cleanupStarted], timeout: 1)
+
+        let retry = Task { @MainActor in
+            try await manager.ensureConnected(walletId: standardWalletId)
+        }
+        await Task.yield()
+
+        XCTAssertEqual(session.staleDisconnects, ["dev1"])
+        XCTAssertTrue(session.ensureCalls.isEmpty)
+
+        session.finishStaleDisconnect()
+        try await retry.value
+
+        XCTAssertEqual(session.ensureCalls, ["dev1"])
     }
 
     /// A session reporting no identity may be holding any seed the device has open, so it is not

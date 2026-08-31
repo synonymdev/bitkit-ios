@@ -420,7 +420,8 @@ extension AppViewModel {
     func handleScannedData(
         _ uri: String,
         claimedContactPaymentContext: ContactPaymentContext? = nil,
-        scope: ScanHandlingScope = .unrestricted
+        scope: ScanHandlingScope = .unrestricted,
+        alternativeOnchainBalanceSats: UInt64 = 0
     ) async throws {
         let handlingId = claimedContactPaymentContext?.id ?? UUID()
         if let claimedContactPaymentContext {
@@ -441,7 +442,7 @@ extension AppViewModel {
             guard SamRockSetupRequest.parse(uri) == nil,
                   !SamRockSetupRequest.isProtocolURL(uri)
             else {
-                throw ShopPaymentRequestError.unsupportedRequest
+                throw ScanHandlingError.unsupportedRequest
             }
             if Bip21Utils.isDuplicatedBip21(uri) {
                 toast(
@@ -454,7 +455,7 @@ extension AppViewModel {
             }
             let data = try await decode(invoice: uri)
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
-            guard ShopPaymentRequest.isSupported(data) else { throw ShopPaymentRequestError.unsupportedRequest }
+            guard ShopPaymentRequest.isSupported(data) else { throw ScanHandlingError.unsupportedRequest }
             prevalidatedPaymentRequest = data
         } else {
             prevalidatedPaymentRequest = nil
@@ -492,6 +493,10 @@ extension AppViewModel {
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
         }
 
+        if scope == .onchainPayments {
+            guard ShopPaymentRequest.isOnchainPayment(data) else { throw ScanHandlingError.unsupportedRequest }
+        }
+
         switch data {
         // BIP21 (Unified) invoice handling
         case let .onChain(invoice):
@@ -508,7 +513,7 @@ extension AppViewModel {
                 return
             }
 
-            if let lnInvoice = invoice.params?["lightning"] {
+            if scope != .onchainPayments, let lnInvoice = invoice.params?["lightning"] {
                 // Lightning invoice param found, prefer lightning payment if invoice is valid
                 let lightningData = try await decode(invoice: lnInvoice)
                 try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
@@ -542,7 +547,10 @@ extension AppViewModel {
                             // Lightning insufficient for any other reason (no channels at all, or
                             // usable channels without capacity).
                             // Fall back to onchain and validate onchain balance immediately.
-                            let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
+                            let onchainBalance = max(
+                                lightningService.balances?.spendableOnchainBalanceSats ?? 0,
+                                alternativeOnchainBalanceSats
+                            )
                             guard validateOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance) else {
                                 return
                             }
@@ -566,7 +574,10 @@ extension AppViewModel {
 
             // If node is running, validate balance immediately
             if lightningService.status?.isRunning == true {
-                let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
+                let onchainBalance = max(
+                    lightningService.balances?.spendableOnchainBalanceSats ?? 0,
+                    alternativeOnchainBalanceSats
+                )
                 guard validateOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance) else {
                     return
                 }

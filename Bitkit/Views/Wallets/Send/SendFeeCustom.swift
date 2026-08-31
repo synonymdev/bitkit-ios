@@ -6,8 +6,10 @@ struct SendFeeCustom: View {
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
+    let hwSend: HwSendCoordinator
 
     @State private var feeRate: UInt32 = 1
     @State private var maxFee: UInt32 = 999
@@ -103,12 +105,21 @@ struct SendFeeCustom: View {
         let amountSats = wallet.sendAmountSats!
 
         do {
-            let fee = try await wallet.calculateTotalFee(
-                address: address,
-                amountSats: amountSats,
-                satsPerVByte: feeRate,
-                utxosToSpend: wallet.selectedUtxos
-            )
+            let fee = if let walletId = hwSend.walletId {
+                try await hwWalletManager.estimateOfflineFundingMiningFee(
+                    walletId: walletId,
+                    address: address,
+                    sats: amountSats,
+                    satsPerVByte: UInt64(feeRate)
+                )
+            } else {
+                try await wallet.calculateTotalFee(
+                    address: address,
+                    amountSats: amountSats,
+                    satsPerVByte: feeRate,
+                    utxosToSpend: wallet.selectedUtxos
+                )
+            }
 
             await MainActor.run {
                 transactionFee = fee
@@ -187,6 +198,7 @@ struct SendFeeCustom: View {
             do {
                 try await wallet.setFeeRate(speed: .custom(satsPerVByte: feeRate))
                 app.selectedWalletToPayFrom = .onchain
+                await refreshHardwareMaxIfNeeded()
                 navigationPath.removeLast()
             } catch {
                 Logger.error("Failed to set custom fee rate: \(error)")
@@ -196,6 +208,23 @@ struct SendFeeCustom: View {
                     description: error.localizedDescription
                 )
             }
+        }
+    }
+
+    private func refreshHardwareMaxIfNeeded() async {
+        guard hwSend.isActive,
+              let address = app.scannedOnchainInvoice?.address,
+              let selectedFeeRate = wallet.selectedFeeRateSatsPerVByte
+        else {
+            return
+        }
+        await hwSend.refreshAvailable(
+            manager: hwWalletManager,
+            destinationAddress: address,
+            satsPerVByte: UInt64(selectedFeeRate)
+        )
+        if wallet.isMaxAmountSend {
+            wallet.sendAmountSats = hwSend.availableSats
         }
     }
 }

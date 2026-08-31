@@ -66,8 +66,8 @@ struct ActivityIcon: View {
             } else if confirmed == false, txType == .sent, context == .row {
                 CircularIcon(
                     icon: "hourglass-simple",
-                    iconColor: .brandAccent,
-                    backgroundColor: .brand16,
+                    iconColor: isHwWallet ? .blueAccent : .brandAccent,
+                    backgroundColor: isHwWallet ? .blue16 : .brand16,
                     size: size
                 )
             } else {

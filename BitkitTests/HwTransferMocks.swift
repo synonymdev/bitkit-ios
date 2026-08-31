@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import Foundation
 
 /// Shared mocks for the hardware-wallet transfer tests (`HwFundingSignerTests`,
 /// `TransferViewModelHwTests`).
@@ -14,7 +15,9 @@ final class MockHwFunding: HwTransferFunding {
     var composeError: Error?
     var composeDelay: Double = 0
     var signError: Error?
+    var signErrors: [Error] = []
     var signDelay: Double = 0
+    var cancellationIgnoringSignDelay: Double = 0
     var broadcastError: Error?
     var broadcastDelay: Double = 0
     var funding = HwFundingTransaction(psbt: "psbt", miningFeeSats: 141, feeRate: 1, totalSpent: 43186, satsPerVByte: 1)
@@ -71,6 +74,14 @@ final class MockHwFunding: HwTransferFunding {
     func signFunding(walletId _: String, funding _: HwFundingTransaction) async throws -> HwFundingSignedTx {
         signCalls += 1
         if signDelay > 0 { try await Task.sleep(nanoseconds: UInt64(signDelay * 1_000_000_000)) }
+        if cancellationIgnoringSignDelay > 0 {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global().asyncAfter(deadline: .now() + cancellationIgnoringSignDelay) {
+                    continuation.resume()
+                }
+            }
+        }
+        if !signErrors.isEmpty { throw signErrors.removeFirst() }
         if let signError { throw signError }
         return signedTx
     }
@@ -119,6 +130,10 @@ final class MockHwConnecting: HwTransferConnecting {
     }
 
     func disconnectStaleSession(walletId: String) async {
+        staleDisconnects.append(walletId)
+    }
+
+    func scheduleStaleSessionCleanup(walletId: String) {
         staleDisconnects.append(walletId)
     }
 }

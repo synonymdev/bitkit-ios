@@ -411,11 +411,12 @@ class ActivityService {
         // `markOnchainActivityAsTransfer` could interleave with it. Anything needing `await` runs
         // after this returns.
         let removedActivities = try await ServiceQueue.background(.core) {
-            try Self.applyHwSnapshot(
+            return try Self.applyHwSnapshot(
                 walletId: walletId,
                 activities: activities,
                 transactionDetails: transactionDetails,
                 pruneMissing: pruneMissing,
+                currentTimestamp: UInt64(Date().timeIntervalSince1970),
                 transferChannelIdsByFundingTxId: transferChannelIdsByFundingTxId
             )
         }
@@ -445,12 +446,14 @@ class ActivityService {
         activities: [Activity],
         transactionDetails: [BitkitCore.TransactionDetails],
         pruneMissing: Bool,
+        currentTimestamp: UInt64,
         transferChannelIdsByFundingTxId: [String: String]
     ) throws -> Bool {
         let plan = try HwSnapshotMerge.plan(
             existing: storedOnchainActivities(walletId: walletId),
             incoming: activities,
             pruneMissing: pruneMissing,
+            currentTimestamp: currentTimestamp,
             transferChannelIdsByFundingTxId: transferChannelIdsByFundingTxId
         )
 
@@ -1239,14 +1242,18 @@ class ActivityService {
         contact: String? = nil,
         walletId: String = WalletScope.default
     ) async {
+        let normalizedContact = contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
         do {
             try await ServiceQueue.background(.core) {
                 if let existing = try? BitkitCore.getActivityByTxId(walletId: walletId, txId: txid) {
-                    // The watcher can persist a hardware transaction before this call lands, so the
-                    // transfer flag still has to be applied to the row it already created.
-                    if isTransfer, !existing.isTransfer {
-                        var updated = existing
+                    var updated = existing
+                    if isTransfer {
                         updated.isTransfer = true
+                    }
+                    if let normalizedContact {
+                        updated.contact = normalizedContact
+                    }
+                    if updated != existing {
                         try updateActivity(activityId: existing.id, activity: .onchain(updated))
                         self.activitiesChangedSubject.send()
                     }
@@ -1272,7 +1279,7 @@ class ActivityService {
                     confirmTimestamp: nil,
                     channelId: nil,
                     transferTxId: nil,
-                    contact: contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 },
+                    contact: normalizedContact,
                     createdAt: now,
                     updatedAt: now,
                     seenAt: now

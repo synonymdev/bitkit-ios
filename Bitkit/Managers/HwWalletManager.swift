@@ -16,9 +16,6 @@ import Foundation
 /// injected `HwDeviceSessioning` seam, and read the stored entries fresh from it: a connect that
 /// just wrote one lands there before the push does. Never references `TrezorManager` concretely.
 ///
-/// Adapts bitkit-android's `HwWalletRepo`. iOS supports Bluetooth only, so the cross-transport
-/// (BLE+USB) dedup is reduced to a plain xpub-based identity and USB-specific reconnect handling
-/// is omitted.
 @Observable
 @MainActor
 final class HwWalletManager {
@@ -35,6 +32,12 @@ final class HwWalletManager {
 
     /// Sum of every paired wallet's balance.
     private(set) var totalSats: UInt64 = 0
+
+    /// Largest funding-account balance held by one paired hardware wallet. Hardware and software
+    /// balances are separate funding sources; fee-adjusted availability is resolved in the send flow.
+    var maximumFundingBalanceSats: UInt64 {
+        wallets.map(\.fundingBalanceSats).max() ?? 0
+    }
 
     /// bitkit-core wallet ids for the paired hardware wallets — the activity list queries these.
     private(set) var hwWalletIds: Set<String> = []
@@ -106,6 +109,7 @@ final class HwWalletManager {
 
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
+    private var staleSessionCleanupTasks: [String: Task<Void, Never>] = [:]
 
     init(
         session: HwDeviceSessioning? = nil,
@@ -312,6 +316,7 @@ final class HwWalletManager {
         guard let session else {
             throw AppError(message: "Unavailable", debugMessage: "No device session to open a passphrase wallet with")
         }
+        await waitForStaleSessionCleanup(deviceId: deviceId)
         // Absent features mean there is nothing to read the setting from — a session that dropped
         // between pairing and this call — which is a reconnect problem and not a device that refuses
         // hidden wallets.
@@ -350,6 +355,7 @@ final class HwWalletManager {
             throw AppError(message: "Unavailable", debugMessage: "No device session for wallet '\(walletId)'")
         }
         let deviceId = try requireTransportDeviceId(for: walletId)
+        await waitForStaleSessionCleanup(deviceId: deviceId)
         try await session.ensureConnected(deviceId: deviceId)
         if session.connectedWalletId == walletId { return }
 
@@ -373,6 +379,31 @@ final class HwWalletManager {
 
     func disconnectStaleSession(walletId: String) async {
         guard let deviceId = transportDeviceId(for: walletId) else { return }
+        if let cleanup = staleSessionCleanupTasks[deviceId] {
+            await cleanup.value
+            return
+        }
+        await performStaleSessionCleanup(deviceId: deviceId)
+    }
+
+    /// Starts timeout recovery without blocking the current UI operation. Any subsequent connect
+    /// for the same physical device waits for this task before opening a new session.
+    func scheduleStaleSessionCleanup(walletId: String) {
+        guard let deviceId = transportDeviceId(for: walletId) else { return }
+        guard staleSessionCleanupTasks[deviceId] == nil else { return }
+
+        staleSessionCleanupTasks[deviceId] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await performStaleSessionCleanup(deviceId: deviceId)
+            staleSessionCleanupTasks[deviceId] = nil
+        }
+    }
+
+    private func waitForStaleSessionCleanup(deviceId: String) async {
+        await staleSessionCleanupTasks[deviceId]?.value
+    }
+
+    private func performStaleSessionCleanup(deviceId: String) async {
         await session?.disconnectStaleSession(deviceId: deviceId)
     }
 
@@ -388,6 +419,7 @@ final class HwWalletManager {
         // about to need. The prompt reopens it properly a moment later.
         guard !needsPassphrase(walletId: walletId) else { return }
         guard let deviceId = transportDeviceId(for: walletId) else { return }
+        guard staleSessionCleanupTasks[deviceId] == nil else { return }
         session?.warmUpConnection(deviceId: deviceId)
     }
 
@@ -400,6 +432,7 @@ final class HwWalletManager {
             throw AppError(message: "Unavailable", debugMessage: "No device session for wallet '\(walletId)'")
         }
         let deviceId = try requireTransportDeviceId(for: walletId)
+        await waitForStaleSessionCleanup(deviceId: deviceId)
         let watchedBefore = watchedWalletIds()
         // Not `ensureConnected`: the session this reopens is usually already gone, either because the
         // app restarted or because a wrong passphrase closed it.

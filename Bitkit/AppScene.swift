@@ -851,7 +851,8 @@ struct AppScene: View {
                     do {
                         try await app.handleScannedData(
                             paymentTarget,
-                            claimedContactPaymentContext: contactPaymentContext
+                            claimedContactPaymentContext: contactPaymentContext,
+                            alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
                         )
                         guard paykitPaymentRequestManager.isCurrentPresentation(request),
                               app.ownsContactPaymentContext(contactPaymentContext),
@@ -896,8 +897,12 @@ struct AppScene: View {
                         continue
                     }
 
-                    let route: SendRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
-                    guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
+                    guard let route = PaymentNavigationHelper.contactPaymentRoute(
+                        app: app,
+                        currency: currency,
+                        settings: settings
+                    ), paykitPaymentRequestManager.isCurrentPresentation(request)
+                    else {
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                         return
