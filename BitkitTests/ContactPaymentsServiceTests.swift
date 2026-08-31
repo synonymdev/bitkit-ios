@@ -39,6 +39,9 @@ final class ContactPaymentsServiceTests: XCTestCase {
     func testEnablingContactPaymentsPublishesPublicAndPrivateEndpoints() async throws {
         try await withIsolatedDefaultsAsync { defaults in
             let operations = OperationsSpy()
+            operations.onPreparePrivateEndpoints = {
+                XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+            }
 
             try await ContactPaymentsService.setEnabled(
                 true,
@@ -213,6 +216,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
         var publicPublicationFailures: Set<Int> = []
         var privatePublicationFailures: Set<Int> = []
         var privateRemovalFailures: Set<Int> = []
+        var onPreparePrivateEndpoints: (() -> Void)?
 
         func makeOperations() -> ContactPaymentsService.Operations {
             ContactPaymentsService.Operations(
@@ -224,6 +228,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                     }
                 },
                 preparePrivateEndpoints: { contactPublicKeys, requiresImmediatePublication in
+                    self.onPreparePrivateEndpoints?()
                     self.calls.append("private:publish")
                     self.privatePublications.append(
                         PrivatePublication(

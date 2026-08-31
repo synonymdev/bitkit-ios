@@ -62,6 +62,7 @@ class AppViewModel: ObservableObject {
     @Published var isManualEntryInputValid: Bool = false
     @Published var manualEntryValidationResult: ManualEntryValidationResult = .empty
     @Published var contactPaymentContext: ContactPaymentContext?
+    private(set) var didRejectScannedPaymentForInsufficientBalance = false
 
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
@@ -161,6 +162,7 @@ class AppViewModel: ObservableObject {
 
     /// Shows insufficient spending balance toast with amount-specific or generic description
     private func showInsufficientSpendingToast(invoiceAmount: UInt64, spendingBalance: UInt64) {
+        didRejectScannedPaymentForInsufficientBalance = true
         let amountNeeded = invoiceAmount > spendingBalance ? invoiceAmount - spendingBalance : 0
         let description = amountNeeded > 0
             ? t(
@@ -181,6 +183,7 @@ class AppViewModel: ObservableObject {
     private func validateOnchainBalance(invoiceAmount: UInt64, onchainBalance: UInt64) -> Bool {
         if invoiceAmount > 0 {
             guard onchainBalance >= invoiceAmount else {
+                didRejectScannedPaymentForInsufficientBalance = true
                 let amountNeeded = invoiceAmount - onchainBalance
                 toast(
                     type: .error,
@@ -196,6 +199,7 @@ class AppViewModel: ObservableObject {
         } else {
             // Zero-amount invoice: user must have some balance to proceed
             guard onchainBalance > 0 else {
+                didRejectScannedPaymentForInsufficientBalance = true
                 toast(
                     type: .error,
                     title: t("other__pay_insufficient_savings"),
@@ -430,6 +434,7 @@ extension AppViewModel {
             }
         }
         scannedDataHandlingId = handlingId
+        didRejectScannedPaymentForInsufficientBalance = false
         defer {
             if scannedDataHandlingId == handlingId {
                 scannedDataHandlingId = nil
