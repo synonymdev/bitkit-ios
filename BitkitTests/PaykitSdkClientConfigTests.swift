@@ -3,6 +3,12 @@ import Paykit
 import XCTest
 
 final class PaykitSdkClientConfigTests: XCTestCase {
+    func testClientIDUsesBitkitOwnedDomain() {
+        let expectedClientID = Env.network == .bitcoin ? "bitkit.to" : "staging.bitkit.to"
+
+        XCTAssertEqual(PaykitSdkService.clientID, expectedClientID)
+    }
+
     func testProductionUsesDefaultPubkyClient() {
         let config = PaykitSdkService.makePubkyClientConfig(localTestnetHost: nil)
 

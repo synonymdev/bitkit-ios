@@ -115,10 +115,10 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testCompleteAuthenticationClearsSessionWhenAuthIsCanceledAfterCompletion() async {
+    func testCompleteAuthenticationRevokesSessionWhenAuthIsCanceledAfterCompletion() async {
         let manager = PubkyProfileManager()
         let attemptID = UUID()
-        var didClearSession = false
+        var didRevokeSession = false
 
         manager.setActiveAuthAttemptIDForTesting(attemptID)
         manager.authState = .authenticating
@@ -131,13 +131,13 @@ final class PubkyProfileManagerTests: XCTestCase {
                 currentPublicKey: {
                     "pubky_test"
                 },
-                clearSessionAccess: {
-                    didClearSession = true
+                revokeSessionAccess: {
+                    didRevokeSession = true
                 }
             )
             XCTFail("Expected cancellation")
         } catch is CancellationError {
-            XCTAssertTrue(didClearSession)
+            XCTAssertTrue(didRevokeSession)
             XCTAssertNil(manager.activeAuthAttemptIDForTesting)
         } catch {
             XCTFail("Expected CancellationError, got \(error)")
@@ -436,7 +436,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
             },
-            clearSessionAccess: {
+            forgetSessionAccess: {
                 didClearSessionAccess = true
             },
             signInWithSecretKey: { _ in
@@ -473,7 +473,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
             },
-            clearSessionAccess: {},
+            forgetSessionAccess: {},
             signInWithSecretKey: { _ in
                 XCTFail("Missing pubky state should not sign in")
                 return "unused-session"
@@ -508,7 +508,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             deleteKeychainValue: { key in
                 store.removeValue(forKey: key.storageKey)
             },
-            clearSessionAccess: {},
+            forgetSessionAccess: {},
             signInWithSecretKey: { secretKey in
                 XCTAssertFalse(secretKey.isEmpty)
                 store[KeychainEntryType.pubkySecretKey.storageKey] = secretKey
@@ -542,7 +542,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                 deleteKeychainValue: { key in
                     store.removeValue(forKey: key.storageKey)
                 },
-                clearSessionAccess: {},
+                forgetSessionAccess: {},
                 signInWithSecretKey: { _ in
                     throw PubkyServiceError.authFailed("offline")
                 }

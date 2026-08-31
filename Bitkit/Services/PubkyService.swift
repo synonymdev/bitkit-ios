@@ -274,12 +274,8 @@ enum PubkyService {
         try await PaykitSdkService.shared.signOut()
     }
 
-    static func forceSignOut() async {
-        await PaykitSdkService.shared.forceSignOut()
-    }
-
-    static func clearSessionAccess() async {
-        await PaykitSdkService.shared.clearSessionAccess()
+    static func forgetSessionAccess() async throws {
+        try await PaykitSdkService.shared.forgetSessionAccess()
     }
 }
 
@@ -817,25 +813,11 @@ actor PaykitSdkService {
         resetRuntime()
     }
 
-    func forceSignOut() async {
-        await operationLock.withLock {
-            sessionProvider.clearLiveSessionAccess()
-            try? Keychain.delete(key: .paykitSession)
-            try? Keychain.delete(key: .pubkySecretKey)
-            clearStateLocked()
+    func forgetSessionAccess() async throws {
+        try await withStateRevisionTracking { sdk in
+            _ = try await sdk.forgetSessionAccess()
         }
-    }
-
-    func clearSessionAccess() async {
-        await operationLock.withLock {
-            sessionProvider.clearLiveSessionAccess()
-            try? Keychain.delete(key: .paykitSession)
-            try? Keychain.delete(key: .pubkySecretKey)
-            activeAuthRequest = nil
-            activeAuthRequestID = nil
-            resetRuntime()
-            markWalletBackupDataChanged()
-        }
+        resetRuntime()
     }
 
     func clearState() async {
@@ -1024,7 +1006,10 @@ actor PaykitSdkService {
     }
 
     private func bootstrap() throws -> PubkySessionBootstrap {
-        try PubkySessionBootstrap.withPubkyClientConfig(pubkyClient: pubkyClientConfig)
+        try PubkySessionBootstrap.withPubkyClientConfig(
+            clientId: Self.clientID,
+            pubkyClient: pubkyClientConfig
+        )
     }
 
     nonisolated static func makePubkyClientConfig(localTestnetHost: String?) -> PubkyClientConfig {
@@ -1035,14 +1020,18 @@ actor PaykitSdkService {
 
     private nonisolated static func config() throws -> PaykitSdkConfig {
         var config = try Paykit.defaultConfig(receiverPath: PaykitReceiverPath.wallet)
-        config.profileNamespace = switch Env.network {
-        case .bitcoin: "bitkit.to"
-        default: "staging.bitkit.to"
-        }
+        config.profileNamespace = clientID
         config.endpointManagementScope = .managedOnly
         config.encryptedLinkRecoveryMarkers = .enabled
         config.publicContactSharing = .localOnly
         return config
+    }
+
+    nonisolated static var clientID: String {
+        switch Env.network {
+        case .bitcoin: "bitkit.to"
+        default: "staging.bitkit.to"
+        }
     }
 }
 
@@ -1165,6 +1154,7 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
         }
 
         return try PubkySessionAccess(
+            clientId: PaykitSdkService.clientID,
             sessionSecret: sessionSecret,
             localSecretKey: loadLocalSecretKey(),
             receiverNoiseSecretKey: loadOrDeriveReceiverNoiseSecretKey()
@@ -1195,8 +1185,8 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
 
     func clearSessionAccess() throws {
         clearLiveSessionAccess()
-        try? Keychain.delete(key: .paykitSession)
-        try? Keychain.delete(key: .pubkySecretKey)
+        try Keychain.delete(key: .pubkySecretKey)
+        try Keychain.delete(key: .paykitSession)
     }
 
     func loadLocalSecretKey() throws -> PubkyLocalSecretKey? {
