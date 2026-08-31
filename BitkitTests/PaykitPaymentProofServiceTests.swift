@@ -244,6 +244,17 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(remainingProofs.isEmpty)
     }
 
+    func testReconcileWithoutPendingProofsSkipsSdk() async {
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [])
+        let service = paymentProofService(sdk: sdk, store: store)
+
+        await service.reconcile()
+
+        let identityStatusCallCount = await sdk.identityStatusCallCount()
+        XCTAssertEqual(identityStatusCallCount, 0)
+    }
+
     private func paymentProofService(
         sdk: PaymentProofSdkMock,
         store: PaymentProofMemoryStore,
@@ -372,6 +383,7 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var submissions: [PaymentProofSubmission] = []
     private var shouldFailSubmission = false
     private var privateMessageProcessCallCount = 0
+    private var identityStatusCalls = 0
 
     init(identity: String, records: [PaymentRequestRecord]) {
         self.identity = identity
@@ -379,7 +391,8 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     }
 
     func identityStatus() -> IdentityStatus? {
-        IdentityStatus(publicKey: identity, liveSessionAvailable: true)
+        identityStatusCalls += 1
+        return IdentityStatus(publicKey: identity, liveSessionAvailable: true)
     }
 
     func paymentRequests() -> [PaymentRequestRecord] {
@@ -437,6 +450,10 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
 
     func processCallCount() -> Int {
         privateMessageProcessCallCount
+    }
+
+    func identityStatusCallCount() -> Int {
+        identityStatusCalls
     }
 }
 

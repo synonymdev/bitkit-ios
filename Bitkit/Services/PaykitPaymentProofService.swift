@@ -29,10 +29,20 @@ struct PaykitPaymentProofStore: PaykitPaymentProofStoring {
 
     func load() async throws -> [PendingPaykitPaymentProof] {
         guard let data = try Keychain.load(key: .paykitPendingPaymentProofs) else { return [] }
-        return try JSONDecoder().decode(State.self, from: data).proofs
+        do {
+            return try JSONDecoder().decode(State.self, from: data).proofs
+        } catch {
+            Logger.warn("Discarding invalid pending Paykit payment proof state: \(error)", context: "PaykitPaymentProof")
+            try? Keychain.delete(key: .paykitPendingPaymentProofs)
+            return []
+        }
     }
 
     func save(_ proofs: [PendingPaykitPaymentProof]) async throws {
+        guard !proofs.isEmpty else {
+            try Keychain.delete(key: .paykitPendingPaymentProofs)
+            return
+        }
         try Keychain.upsert(
             key: .paykitPendingPaymentProofs,
             data: JSONEncoder().encode(State(proofs: proofs))
@@ -258,16 +268,18 @@ actor PaykitPaymentProofService {
 
     func reconcile() async {
         do {
+            let pendingProofs = try await loadProofs()
+            guard !pendingProofs.isEmpty else { return }
             guard let identityStatus = try await sdk.identityStatus(),
                   identityStatus.liveSessionAvailable,
                   let publicKey = identityStatus.publicKey,
                   let identity = PubkyPublicKeyFormat.normalized(publicKey)
             else { return }
 
-            let pendingProofs = try await loadProofs().filter {
+            let identityProofs = pendingProofs.filter {
                 PubkyPublicKeyFormat.matches($0.identity, identity)
             }
-            for proof in pendingProofs {
+            for proof in identityProofs {
                 if proof.proofData != nil {
                     await submit(proof)
                     continue
