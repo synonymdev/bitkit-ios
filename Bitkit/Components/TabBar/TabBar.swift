@@ -28,10 +28,12 @@ struct TabBar: View {
                     TabBarButton(title: t("wallet__send"), icon: "arrow-up", variant: .left) {
                         onSendPress()
                     }
+                    .accessibilityIdentifier("Send")
 
                     TabBarButton(title: t("wallet__receive"), icon: "arrow-down", variant: .right) {
                         onReceivePress()
                     }
+                    .accessibilityIdentifier("Receive")
                 }
                 .overlay {
                     ScanButton {
