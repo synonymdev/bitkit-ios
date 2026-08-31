@@ -307,6 +307,8 @@ final class HwSendCoordinator {
 
     private(set) var availableSats: UInt64 = 0
     private(set) var previewFeeSats: UInt64 = 0
+    private(set) var isFundingSourceLoading = false
+    private(set) var isPreviewLoading = false
     private(set) var isSigning = false
     private(set) var isBroadcastUnresolved = false
     private(set) var isPassphraseRequired = false
@@ -346,7 +348,11 @@ final class HwSendCoordinator {
         self.availableSats = availableSats
     }
 
-    func selectWallet(_ walletId: String?, initialAvailableSats: UInt64 = 0) {
+    func selectWallet(
+        _ walletId: String?,
+        initialAvailableSats: UInt64 = 0,
+        showsLoading: Bool = false
+    ) {
         guard self.walletId != walletId else { return }
         guard operationTask == nil, !isBroadcastUnresolved else { return }
 
@@ -356,6 +362,8 @@ final class HwSendCoordinator {
         pendingPayment = nil
         availableSats = walletId == nil ? 0 : initialAvailableSats
         previewFeeSats = 0
+        isFundingSourceLoading = walletId != nil && showsLoading
+        isPreviewLoading = false
         isSigning = false
         isBroadcastUnresolved = false
         isPassphraseRequired = false
@@ -372,6 +380,7 @@ final class HwSendCoordinator {
         guard !destinationAddress.isEmpty else {
             if self.walletId == walletId {
                 availableSats = manager.fundingBalance(walletId: walletId)
+                isFundingSourceLoading = false
             }
             return
         }
@@ -382,6 +391,7 @@ final class HwSendCoordinator {
         func apply(_ available: UInt64) {
             guard self.walletId == walletId, availabilityRequestId == requestId else { return }
             availableSats = available
+            isFundingSourceLoading = false
         }
 
         do {
@@ -407,19 +417,27 @@ final class HwSendCoordinator {
         guard let walletId else { return nil }
         previewRequestId += 1
         let requestId = previewRequestId
+        isPreviewLoading = true
+        previewFeeSats = 0
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
         if pendingPayment?.request != request {
             pendingPayment = nil
         }
-        let fee = try await manager.estimateOfflineFundingMiningFee(
-            walletId: walletId,
-            address: address,
-            sats: sats,
-            satsPerVByte: satsPerVByte
-        )
-        guard self.walletId == walletId, previewRequestId == requestId else { return nil }
-        previewFeeSats = fee
-        return fee
+        do {
+            let signer = signerFactory(manager, address, satsPerVByte)
+            let fee = try await signer.estimateOfflineFundingMiningFee(walletId: walletId, address: address, sats: sats)
+            guard self.walletId == walletId, previewRequestId == requestId else { return nil }
+            previewFeeSats = fee
+            isFundingSourceLoading = false
+            isPreviewLoading = false
+            return fee
+        } catch {
+            if self.walletId == walletId, previewRequestId == requestId {
+                isFundingSourceLoading = false
+                isPreviewLoading = false
+            }
+            throw error
+        }
     }
 
     func signAndBroadcast(
@@ -509,6 +527,10 @@ final class HwSendCoordinator {
     }
 
     func cancel() {
+        availabilityRequestId += 1
+        previewRequestId += 1
+        isFundingSourceLoading = false
+        isPreviewLoading = false
         isVerifyingPassphrase = false
         isPassphraseRequired = false
         guard !isBroadcastUnresolved else { return }

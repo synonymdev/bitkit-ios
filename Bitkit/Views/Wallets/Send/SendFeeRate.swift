@@ -53,8 +53,8 @@ struct SendFeeRate: View {
                 } else {
                     try await wallet.setFeeRate(speed: speed)
                     app.selectedWalletToPayFrom = .onchain
-                    await refreshHardwareMaxIfNeeded()
                     navigationPath.removeLast()
+                    await refreshHardwareMaxIfNeeded()
                 }
             } catch {
                 Logger.error("Error setting fee rate: \(error)", context: "SendFeeRate")

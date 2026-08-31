@@ -153,7 +153,8 @@ struct SendAmountView: View {
                         imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
                         color: selectedSourceColor,
                         variant: canSwitchFundingSource ? .primary : .secondary,
-                        disabled: !canSwitchFundingSource || isContinuing
+                        disabled: !canSwitchFundingSource || isContinuing,
+                        isLoading: hwSend.isFundingSourceLoading
                     ) {
                         selectNextFundingSource()
                     }
@@ -183,7 +184,7 @@ struct SendAmountView: View {
 
                 CustomButton(
                     title: t("common__continue"),
-                    isDisabled: !isValidAmount,
+                    isDisabled: !isValidAmount || hwSend.isFundingSourceLoading,
                     isLoading: isContinuing
                 ) {
                     await onContinue()
@@ -368,7 +369,8 @@ struct SendAmountView: View {
             )
             hwSend.selectWallet(
                 walletId,
-                initialAvailableSats: balance > reserve ? balance - reserve : 0
+                initialAvailableSats: balance > reserve ? balance - reserve : 0,
+                showsLoading: true
             )
             app.selectedWalletToPayFrom = .onchain
         }
