@@ -230,7 +230,7 @@ struct PaymentNavigationHelper {
         currency: CurrencyViewModel,
         settings: SettingsViewModel,
         wallet: WalletViewModel,
-        alternativeOnchainBalanceSats: UInt64 = 0,
+        alternativeOnchainBalanceSats: UInt64,
         present: (SendRoute) -> Void
     ) async {
         do {

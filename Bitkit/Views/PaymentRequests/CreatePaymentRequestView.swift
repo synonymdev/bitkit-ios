@@ -43,6 +43,7 @@ struct RequestOrPayView: View {
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     let publicKey: String
     let onRequest: (PaykitPaymentRequestTarget) -> Void
@@ -110,7 +111,8 @@ struct RequestOrPayView: View {
             app: app,
             currency: currency,
             settings: settings,
-            wallet: wallet
+            wallet: wallet,
+            alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
         ) { route in
             sheets.hideSheetBeforePerforming(reason: "Opening contact payment") {
                 sheets.showSheet(.send, data: SendConfig(view: route))

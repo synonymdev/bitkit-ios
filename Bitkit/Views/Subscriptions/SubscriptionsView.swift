@@ -462,6 +462,7 @@ struct SubscriptionSheet: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     let config: SubscriptionSheetItem
 
@@ -622,7 +623,11 @@ struct SubscriptionSheet: View {
         }
 
         do {
-            try await app.handleScannedData(paymentTarget, claimedContactPaymentContext: context)
+            try await app.handleScannedData(
+                paymentTarget,
+                claimedContactPaymentContext: context,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+            )
         } catch {
             guard sheets.activeSheetConfiguration?.id == .subscription,
                   app.ownsContactPaymentContext(context)

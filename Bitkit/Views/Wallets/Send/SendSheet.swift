@@ -186,13 +186,6 @@ struct SendSheet: View {
         )
     }
 
-    private var startsOnFailure: Bool {
-        if case .failure = currentRoot {
-            return true
-        }
-        return false
-    }
-
     var body: some View {
         Group {
             if isEmbedded {
@@ -929,7 +922,11 @@ struct SendSheet: View {
         }
 
         do {
-            try await app.handleScannedData(paymentTarget, claimedContactPaymentContext: context)
+            try await app.handleScannedData(
+                paymentTarget,
+                claimedContactPaymentContext: context,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+            )
         } catch {
             guard sheets.activeSheetConfiguration?.id == .subscription,
                   app.ownsContactPaymentContext(context)
