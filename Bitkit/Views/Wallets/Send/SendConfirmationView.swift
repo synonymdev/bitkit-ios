@@ -968,14 +968,34 @@ struct SendConfirmationView: View {
         }
 
         guard let address = app.scannedOnchainInvoice?.address,
-              let amountSats = wallet.sendAmountSats,
-              let feeRate = wallet.selectedFeeRateSatsPerVByte
+              let amountSats = wallet.sendAmountSats
         else {
+            if hwSend.isActive {
+                await hwSend.refreshAvailable(
+                    manager: hwWalletManager,
+                    destinationAddress: "",
+                    satsPerVByte: nil
+                )
+            }
+            return
+        }
+
+        guard let feeRate = wallet.selectedFeeRateSatsPerVByte else {
+            if hwSend.isActive {
+                await hwSend.refreshAvailable(
+                    manager: hwWalletManager,
+                    destinationAddress: address,
+                    satsPerVByte: nil
+                )
+            }
             return
         }
 
         do {
             if hwSend.isActive {
+                if transactionFee == 0, hwSend.previewFeeSats > 0 {
+                    apply(hwSend.previewFeeSats)
+                }
                 guard let fee = try await hwSend.preparePreview(
                     manager: hwWalletManager,
                     address: address,
