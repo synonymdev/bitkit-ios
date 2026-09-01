@@ -17,6 +17,30 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(PrivatePaykitService.initialLinkBurstRetryDelays.allSatisfy { $0 == 2_000_000_000 })
     }
 
+    func testPendingEndpointReconciliationRestoresSavedContactsWhenPublishingRemainsEnabled() throws {
+        try withIsolatedDefaults { defaults in
+            defaults.set(true, forKey: PrivatePaykitService.cleanupPendingKey)
+            defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+
+            XCTAssertEqual(
+                PrivatePaykitService.fullCleanupReconciliationMode(defaults: defaults),
+                .restoreSavedContacts
+            )
+        }
+    }
+
+    func testPendingEndpointReconciliationRemovesPublishedStateWhenPublishingIsDisabled() throws {
+        try withIsolatedDefaults { defaults in
+            defaults.set(true, forKey: PrivatePaykitService.cleanupPendingKey)
+            defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+
+            XCTAssertEqual(
+                PrivatePaykitService.fullCleanupReconciliationMode(defaults: defaults),
+                .removePublishedState
+            )
+        }
+    }
+
     func testReceiverNoiseDerivationMatchesCrossPlatformVector() {
         let seed = (
             "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e534955" +
@@ -30,6 +54,14 @@ final class PrivatePaykitServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(key.hex, "500f4799bbb2d02103e3b74b365ddb478a3187333c053fa9eb62f4052ba6a327")
+    }
+
+    private func withIsolatedDefaults(_ body: (UserDefaults) throws -> Void) throws {
+        let suiteName = "PrivatePaykitServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        try body(defaults)
     }
 
     func testDuplicatePaymentErrorClassificationUsesWrappedAppErrorReason() {
