@@ -77,6 +77,7 @@ struct PaymentRequestCard: View {
                         await onReject?()
                         isRejecting = false
                     }
+                    .accessibilityIdentifier("PaymentRequestReject\(request.paymentRequestId)")
                     .frame(maxWidth: .infinity)
 
                     CustomButton(
@@ -87,6 +88,7 @@ struct PaymentRequestCard: View {
                     ) {
                         onPay?()
                     }
+                    .accessibilityIdentifier("PaymentRequestPay\(request.paymentRequestId)")
                     .frame(maxWidth: .infinity)
                 }
                 .padding(16)
