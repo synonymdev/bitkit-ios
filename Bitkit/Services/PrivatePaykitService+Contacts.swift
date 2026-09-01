@@ -4,6 +4,15 @@ import Paykit
 // MARK: - Saved Contacts
 
 extension PrivatePaykitService {
+    enum FullCleanupReconciliationMode: Equatable {
+        case restoreSavedContacts
+        case removePublishedState
+    }
+
+    static func fullCleanupReconciliationMode(defaults: UserDefaults = .standard) -> FullCleanupReconciliationMode {
+        return defaults.bool(forKey: publishingEnabledKey) ? .restoreSavedContacts : .removePublishedState
+    }
+
     struct EndpointPublicationOperations {
         let currentPublicKey: () async -> String?
         let linkedReceiverPaths: (_ reason: String) async -> (paths: [String: Set<String>], error: Error?)
@@ -284,7 +293,7 @@ extension PrivatePaykitService {
         let savedKeys = Set(normalizedSavedContactKeys(publicKeys))
         let isFullCleanupPending = UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
         if isFullCleanupPending,
-           UserDefaults.standard.bool(forKey: Self.publishingEnabledKey)
+           Self.fullCleanupReconciliationMode() == .restoreSavedContacts
         {
             let error = await prepareSavedContacts(
                 Array(savedKeys),
