@@ -158,55 +158,6 @@ struct SendConfirmationView: View {
                 InitialSubscriptionPaymentProgress()
             }
         }
-        .task {
-            ensureSendAmountFromScannedInvoicesIfNeeded()
-            await calculateTransactionFee()
-            await calculateRoutingFee()
-            await startAutomaticPaymentIfNeeded()
-        }
-        .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
-            Task {
-                await calculateTransactionFee()
-            }
-        }
-        .onChange(of: app.selectedWalletToPayFrom) {
-            Task {
-                if app.selectedWalletToPayFrom == .lightning {
-                    await MainActor.run { transactionFee = 0 }
-                } else {
-                    await onSwitchToOnchainWallet()
-                }
-            }
-        }
-        .alert(
-            t("security__bio_error_title"),
-            isPresented: $showingBiometricError
-        ) {
-            Button(t("common__ok")) {
-                // Error handled, user acknowledged
-            }
-        } message: {
-            Text(biometricErrorMessage)
-        }
-        .alert(
-            currentWarning?.title ?? "",
-            isPresented: .constant(currentWarning != nil)
-        ) {
-            Button(t("common__dialog_cancel"), role: .cancel) {
-                warningContinuation?.resume(returning: false)
-                warningContinuation = nil
-                currentWarning = nil
-            }
-            Button(t("wallet__send_yes")) {
-                warningContinuation?.resume(returning: true)
-                warningContinuation = nil
-                currentWarning = nil
-            }
-        } message: {
-            if let warning = currentWarning {
-                Text(warning.message)
-            }
-        }
     }
 
     private var confirmationContent: some View {
