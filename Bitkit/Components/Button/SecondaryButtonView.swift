@@ -7,6 +7,7 @@ struct SecondaryButtonView: View {
     let isDisabled: Bool
     let isPressed: Bool
     var isLoading: Bool = false
+    let shouldExpand: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -24,7 +25,7 @@ struct SecondaryButtonView: View {
                 BodySSBText(title, textColor: textColor)
             }
         }
-        .frame(maxWidth: size == .large ? .infinity : nil)
+        .frame(maxWidth: (size == .large || shouldExpand) ? .infinity : nil)
         .frame(height: buttonHeight)
         .padding(.horizontal, 16)
         .background(isPressed ? Color.white10 : Color.clear)

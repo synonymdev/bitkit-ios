@@ -78,7 +78,6 @@ struct PaymentRequestCard: View {
                         await onReject?()
                         isRejecting = false
                     }
-                    .frame(maxWidth: .infinity)
 
                     CustomButton(
                         title: t("common__pay"),
@@ -89,7 +88,6 @@ struct PaymentRequestCard: View {
                     ) {
                         onPay?()
                     }
-                    .frame(maxWidth: .infinity)
                 }
                 .padding(16)
                 .background(Color.gray5)
