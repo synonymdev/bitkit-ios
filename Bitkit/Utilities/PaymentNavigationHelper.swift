@@ -213,6 +213,13 @@ struct PaymentNavigationHelper {
                 return invoice.amountSatoshis == 0 ? .amount : .confirm
             }
             return route
+        case .amount:
+            if app.contactPaymentContext?.incomingPaymentRequest != nil,
+               let invoice = app.scannedOnchainInvoice
+            {
+                return invoice.amountSatoshis == 0 ? .amount : .confirm
+            }
+            return route
         default:
             return route
         }

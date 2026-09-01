@@ -13,6 +13,11 @@ final class ShopPaymentRequestTests: XCTestCase {
         XCTAssertFalse(ShopPaymentRequest.isSupported(.pubkyAuth(data: "pubkyauth://example")))
     }
 
+    func testOnchainPaymentScopeRejectsLightning() {
+        XCTAssertTrue(ShopPaymentRequest.isOnchainPayment(.onChain(invoice: onchainInvoice)))
+        XCTAssertFalse(ShopPaymentRequest.isOnchainPayment(.lightning(invoice: lightningInvoice)))
+    }
+
     func testNonPaymentRequestDoesNotClearExistingPaymentState() async {
         let app = AppViewModel()
         app.scannedLightningInvoice = lightningInvoice
@@ -24,7 +29,7 @@ final class ShopPaymentRequestTests: XCTestCase {
             )
             XCTFail("Expected the shop payment scope to reject a setup request")
         } catch {
-            XCTAssertTrue(error is ShopPaymentRequestError)
+            XCTAssertTrue(error is ScanHandlingError)
         }
 
         XCTAssertNotNil(app.scannedLightningInvoice)
@@ -41,6 +46,16 @@ final class ShopPaymentRequestTests: XCTestCase {
             description: nil,
             networkType: .regtest,
             payeeNodeId: nil
+        )
+    }
+
+    private var onchainInvoice: OnChainInvoice {
+        OnChainInvoice(
+            address: "bcrt1qexample",
+            amountSatoshis: 1000,
+            label: nil,
+            message: nil,
+            params: ["lightning": "test-invoice"]
         )
     }
 }

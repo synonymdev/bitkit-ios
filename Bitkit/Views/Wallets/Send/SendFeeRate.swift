@@ -7,13 +7,16 @@ struct SendFeeRate: View {
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
+    let hwSend: HwSendCoordinator
 
     @State private var transactionFees: [TransactionSpeed: UInt64] = [:]
 
     /// Both on-chain and Lightning options exist and the user can pay from either (BIP21 / unified invoice).
     private var canSwitchWallet: Bool {
+        guard !hwSend.isActive else { return false }
         guard app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil else { return false }
         let amount = wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis ?? 0
         return wallet.canSwitchWalletForUnifiedInvoice(amountSats: amount)
@@ -34,7 +37,9 @@ struct SendFeeRate: View {
         guard let amount = wallet.sendAmountSats else { return true }
 
         let fee = getFee(for: speed)
-        return wallet.totalOnchainSats < amount + fee && wallet.selectedSpeed != speed
+        let totalSats = hwSend.walletId.map { hwWalletManager.fundingBalance(walletId: $0) }
+            ?? UInt64(clamping: wallet.totalOnchainSats)
+        return totalSats < amount + fee && wallet.selectedSpeed != speed
     }
 
     private func selectFee(_ speed: TransactionSpeed) {
@@ -48,6 +53,7 @@ struct SendFeeRate: View {
                 } else {
                     try await wallet.setFeeRate(speed: speed)
                     app.selectedWalletToPayFrom = .onchain
+                    await refreshHardwareMaxIfNeeded()
                     navigationPath.removeLast()
                 }
             } catch {
@@ -85,12 +91,21 @@ struct SendFeeRate: View {
             let feeRate = speed.getFeeRate(from: estimates)
 
             do {
-                let fee = try await wallet.calculateTotalFee(
-                    address: address,
-                    amountSats: amountSats,
-                    satsPerVByte: feeRate,
-                    utxosToSpend: wallet.selectedUtxos
-                )
+                let fee = if let walletId = hwSend.walletId {
+                    try await hwWalletManager.estimateOfflineFundingMiningFee(
+                        walletId: walletId,
+                        address: address,
+                        sats: amountSats,
+                        satsPerVByte: UInt64(feeRate)
+                    )
+                } else {
+                    try await wallet.calculateTotalFee(
+                        address: address,
+                        amountSats: amountSats,
+                        satsPerVByte: feeRate,
+                        utxosToSpend: wallet.selectedUtxos
+                    )
+                }
                 newFees[speed] = fee
             } catch {
                 Logger.error("Error calculating fee for \(speed): \(error)", context: "SendFeeRate")
@@ -102,6 +117,23 @@ struct SendFeeRate: View {
 
         await MainActor.run {
             transactionFees = newFees
+        }
+    }
+
+    private func refreshHardwareMaxIfNeeded() async {
+        guard hwSend.isActive,
+              let address = app.scannedOnchainInvoice?.address,
+              let feeRate = wallet.selectedFeeRateSatsPerVByte
+        else {
+            return
+        }
+        await hwSend.refreshAvailable(
+            manager: hwWalletManager,
+            destinationAddress: address,
+            satsPerVByte: UInt64(feeRate)
+        )
+        if wallet.isMaxAmountSend {
+            wallet.sendAmountSats = hwSend.availableSats
         }
     }
 

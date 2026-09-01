@@ -49,7 +49,11 @@ struct TabBar: View {
     }
 
     private func onSendPress() {
-        sheets.showSheet(.send)
+        if case let .hardwareWallet(walletId) = navigation.currentRoute {
+            sheets.showSheet(.send, data: SendConfig(hardwareWalletId: walletId))
+        } else {
+            sheets.showSheet(.send)
+        }
     }
 
     private func onReceivePress() {

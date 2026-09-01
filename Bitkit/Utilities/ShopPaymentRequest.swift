@@ -4,6 +4,7 @@ import Foundation
 enum ScanHandlingScope {
     case unrestricted
     case paymentRequests
+    case onchainPayments
 }
 
 enum ShopPaymentRequest {
@@ -15,9 +16,14 @@ enum ShopPaymentRequest {
             return false
         }
     }
+
+    static func isOnchainPayment(_ data: BitkitCore.Scanner) -> Bool {
+        if case .onChain = data { return true }
+        return false
+    }
 }
 
-enum ShopPaymentRequestError: LocalizedError {
+enum ScanHandlingError: LocalizedError {
     case unsupportedRequest
 
     var errorDescription: String? {
