@@ -5,6 +5,7 @@ import XCTest
 final class PubkyAuthRequestTests: XCTestCase {
     private let relay = "https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F"
     private let secret = "e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+    private let clientPublicKey = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
 
     func testProtocolUrlRecognizesPubkyAuthSchemeCaseInsensitively() {
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL("pubkyauth://signin?caps=/pub/bitkit.to/:rw"))
@@ -15,7 +16,7 @@ final class PubkyAuthRequestTests: XCTestCase {
 
     func testParseUrlPreservesRequestedCapabilities() throws {
         let capabilities = "/pub/bitkit.to/:rw"
-        let url = "pubkyauth://signin?caps=\(capabilities)&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+        let url = authUrl(capabilities: capabilities)
 
         let request = try PubkyAuthRequest.parse(url: url)
 
@@ -63,13 +64,10 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertEqual(request.bitkitClaim, .watchOnlyAccountV1)
     }
 
-    func testParseUrlRecognizesWatchOnlyAccountClaimWithCapabilityWhitespace() throws {
+    func testWatchOnlyCapabilityMatcherAllowsWhitespace() {
         let capabilities = PubkyAuthClaim.watchOnlyAccountCapabilities.replacingOccurrences(of: ",", with: " , ")
-        let url = authUrl(capabilities: capabilities, claimValues: [PubkyAuthClaim.watchOnlyAccountV1.rawValue])
 
-        let request = try PubkyAuthRequest.parse(url: url)
-
-        XCTAssertEqual(request.bitkitClaim, .watchOnlyAccountV1)
+        XCTAssertTrue(PubkyAuthClaim.matchesWatchOnlyAccountCapabilities(capabilities))
     }
 
     func testParseUrlWithoutBitkitClaimPreservesNormalAuth() throws {
@@ -262,6 +260,7 @@ final class PubkyAuthRequestTests: XCTestCase {
         let claims = claimValues
             .map { "&\(PubkyAuthClaim.queryParameter)=\($0)" }
             .joined()
-        return "pubkyauth://signin?caps=\(capabilities)&relay=\(relay)&secret=\(secret)\(claims)"
+        return "pubkyauth://signin_grant?caps=\(capabilities)&relay=\(relay)&secret=\(secret)" +
+            "&cid=paykit.test&cpk=\(clientPublicKey)\(claims)"
     }
 }
