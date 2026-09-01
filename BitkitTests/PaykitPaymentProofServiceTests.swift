@@ -120,17 +120,50 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(submissionCount, 0)
     }
 
+    func testCanceledLightningWaitPreservesCorrelationForLaterSettlement() async throws {
+        let record = try paymentRequestRecord()
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+
+        try await service.prepare(
+            request: request,
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning
+        )
+        try await service.associateLightningPayment(request, paymentHash: paymentHash)
+        await service.cancelPreparation(request)
+
+        let correlatedProof = await store.snapshot().first
+        XCTAssertEqual(correlatedProof?.paymentIdentifier, paymentHash)
+
+        await service.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+
+        let submissionCount = await sdk.submissionCount()
+        let remainingProofs = await store.snapshot()
+        XCTAssertEqual(submissionCount, 1)
+        XCTAssertTrue(remainingProofs.isEmpty)
+    }
+
     func testOnchainPaymentSubmitsTransactionIdForSelectedEndpoint() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
-        let store = PaymentProofMemoryStore()
+        let proofRemoved = expectation(description: "On-chain proof removed after submission")
+        let store = PaymentProofMemoryStore { proofs in
+            if proofs.isEmpty {
+                proofRemoved.fulfill()
+            }
+        }
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
         let txid = String(repeating: "ab", count: 32)
 
         try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
         await service.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: endpoint)
+        await sdk.waitForSubmissionStart()
+        await fulfillment(of: [proofRemoved], timeout: 1)
 
         let submittedProof = await sdk.lastSubmission()
         let submission = try XCTUnwrap(submittedProof)
@@ -141,6 +174,34 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         )
         let remainingProofs = await store.snapshot()
         XCTAssertTrue(remainingProofs.isEmpty)
+    }
+
+    func testOnchainCompletionDoesNotWaitForProofDelivery() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+        let txid = String(repeating: "ab", count: 32)
+        let completion = expectation(description: "On-chain proof state persisted")
+
+        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        await sdk.suspendSubmission()
+        let completionTask = Task {
+            await service.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: endpoint)
+            completion.fulfill()
+        }
+
+        await fulfillment(of: [completion], timeout: 1)
+        await sdk.waitForSubmissionStart()
+
+        let persistedProof = await store.snapshot().first
+        XCTAssertEqual(persistedProof?.paymentIdentifier, txid)
+        XCTAssertEqual(persistedProof?.proofData, txid)
+
+        await sdk.resumeSubmission()
+        await completionTask.value
     }
 
     func testLightningRetryPreservesEarlierPaymentCorrelation() async throws {
@@ -202,7 +263,12 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
-        let store = PaymentProofMemoryStore()
+        let proofRemoved = expectation(description: "On-chain proof removed after submission")
+        let store = PaymentProofMemoryStore { proofs in
+            if proofs.isEmpty {
+                proofRemoved.fulfill()
+            }
+        }
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
 
@@ -213,6 +279,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             txid: String(repeating: "ab", count: 32),
             paymentEndpointIdentifier: endpoint
         )
+        await sdk.waitForSubmissionStart()
+        await fulfillment(of: [proofRemoved], timeout: 1)
 
         let submissionCount = await sdk.submissionCount()
         let remainingProofs = await store.snapshot()
@@ -224,7 +292,12 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
-        let store = PaymentProofMemoryStore()
+        let proofRemoved = expectation(description: "On-chain proof removed after submission")
+        let store = PaymentProofMemoryStore { proofs in
+            if proofs.isEmpty {
+                proofRemoved.fulfill()
+            }
+        }
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
         let txid = String(repeating: "ab", count: 32)
@@ -232,6 +305,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
         await store.failNextLoad()
         await service.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: endpoint)
+        await sdk.waitForSubmissionStart()
+        await fulfillment(of: [proofRemoved], timeout: 1)
 
         let submittedProof = await sdk.lastSubmission()
         let submission = try XCTUnwrap(submittedProof)
@@ -335,6 +410,11 @@ private actor PaymentProofMemoryStore: PaykitPaymentProofStoring {
     private var proofs: [PendingPaykitPaymentProof] = []
     private var shouldFailNextLoad = false
     private var shouldFailNextSave = false
+    private let onSave: @Sendable ([PendingPaykitPaymentProof]) -> Void
+
+    init(onSave: @escaping @Sendable ([PendingPaykitPaymentProof]) -> Void = { _ in }) {
+        self.onSave = onSave
+    }
 
     func load() throws -> [PendingPaykitPaymentProof] {
         if shouldFailNextLoad {
@@ -350,6 +430,7 @@ private actor PaymentProofMemoryStore: PaykitPaymentProofStoring {
             throw PaymentProofStoreMockError.save
         }
         self.proofs = proofs
+        onSave(proofs)
     }
 
     func clear() {
@@ -384,6 +465,9 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var shouldFailSubmission = false
     private var privateMessageProcessCallCount = 0
     private var identityStatusCalls = 0
+    private var shouldSuspendSubmission = false
+    private var submissionContinuation: CheckedContinuation<Void, Never>?
+    private var submissionStartContinuations: [CheckedContinuation<Void, Never>] = []
 
     init(identity: String, records: [PaymentRequestRecord]) {
         self.identity = identity
@@ -409,8 +493,15 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
         counterpartyReceiverPath: String,
         paymentRequestId: String,
         proof: PaymentProofSubmission
-    ) throws -> PaymentRequestRecord {
+    ) async throws -> PaymentRequestRecord {
         submissions.append(proof)
+        submissionStartContinuations.forEach { $0.resume() }
+        submissionStartContinuations.removeAll()
+        if shouldSuspendSubmission {
+            await withCheckedContinuation { continuation in
+                submissionContinuation = continuation
+            }
+        }
         if shouldFailSubmission {
             throw PaymentProofSdkMockError.submission
         }
@@ -438,6 +529,23 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
 
     func setSubmissionFailure(_ value: Bool) {
         shouldFailSubmission = value
+    }
+
+    func suspendSubmission() {
+        shouldSuspendSubmission = true
+    }
+
+    func resumeSubmission() {
+        shouldSuspendSubmission = false
+        submissionContinuation?.resume()
+        submissionContinuation = nil
+    }
+
+    func waitForSubmissionStart() async {
+        guard submissions.isEmpty else { return }
+        await withCheckedContinuation { continuation in
+            submissionStartContinuations.append(continuation)
+        }
     }
 
     func submissionCount() -> Int {

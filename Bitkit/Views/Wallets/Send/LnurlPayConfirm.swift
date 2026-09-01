@@ -255,6 +255,11 @@ struct LnurlPayConfirm: View {
             // onTimeout callback already navigated to .pending; suppress throw
             shouldCancelPaymentProof = false
             return
+        } catch is CancellationError {
+            if shouldCancelPaymentProof, let incomingPaymentRequest {
+                await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
+            }
+            return
         } catch {
             if let lightningPaymentHash {
                 await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: lightningPaymentHash)

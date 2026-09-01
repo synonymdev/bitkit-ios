@@ -234,21 +234,20 @@ actor PaykitPaymentProofService {
             }) else { return }
             pendingProofs[index].paymentIdentifier = txid.lowercased()
             pendingProofs[index].proofData = txid.lowercased()
-            await persistAndSubmit([pendingProofs[index]], allProofs: pendingProofs)
+            let completedProof = pendingProofs[index]
+            do {
+                try await persist(pendingProofs)
+            } catch {
+                logWarning("Failed to persist a completed Paykit payment proof; attempting immediate delivery: \(error)")
+            }
+            submitInBackground(completedProof)
         } catch {
             logWarning("Failed to load a Paykit on-chain payment proof; attempting immediate delivery: \(error)")
-            do {
-                var proof = try await pendingProof(
-                    request: request,
-                    paymentEndpointIdentifier: paymentEndpointIdentifier,
-                    kind: .onchain
-                )
-                proof.paymentIdentifier = txid.lowercased()
-                proof.proofData = txid.lowercased()
-                await submit(proof)
-            } catch {
-                logWarning("Failed to complete a Paykit on-chain payment proof: \(error)")
-            }
+            submitOnchainPaymentInBackground(
+                request,
+                txid: txid,
+                paymentEndpointIdentifier: paymentEndpointIdentifier
+            )
         }
     }
 
@@ -364,6 +363,34 @@ actor PaykitPaymentProofService {
         }
         for proof in completedProofs {
             await submit(proof)
+        }
+    }
+
+    private func submitInBackground(_ proof: PendingPaykitPaymentProof) {
+        Task { [weak self] in
+            await self?.submit(proof)
+        }
+    }
+
+    private func submitOnchainPaymentInBackground(
+        _ request: PaykitPaymentRequest,
+        txid: String,
+        paymentEndpointIdentifier: String
+    ) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                var proof = try await pendingProof(
+                    request: request,
+                    paymentEndpointIdentifier: paymentEndpointIdentifier,
+                    kind: .onchain
+                )
+                proof.paymentIdentifier = txid.lowercased()
+                proof.proofData = txid.lowercased()
+                await submit(proof)
+            } catch {
+                logWarning("Failed to complete a Paykit on-chain payment proof: \(error)")
+            }
         }
     }
 

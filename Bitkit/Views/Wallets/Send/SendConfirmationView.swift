@@ -638,6 +638,8 @@ struct SendConfirmationView: View {
                     // onTimeout callback already navigated to .pending; suppress throw
                     shouldCancelPaymentProof = false
                     return
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch {
                     await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
                     throw error
@@ -679,6 +681,11 @@ struct SendConfirmationView: View {
                     domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"]
                 )
             }
+        } catch is CancellationError {
+            if shouldCancelPaymentProof, let incomingPaymentRequest {
+                await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
+            }
+            return
         } catch {
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)

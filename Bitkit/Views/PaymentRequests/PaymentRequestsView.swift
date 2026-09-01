@@ -63,14 +63,15 @@ struct PaymentRequestCard: View {
                 }
                 .padding(16)
             } else if onPay != nil || onReject != nil {
-                HStack(spacing: 12) {
+                HStack(spacing: 16) {
                     CustomButton(
                         title: t("wallet__payment_request_dismiss"),
                         variant: .secondary,
                         size: .small,
                         icon: Image("x-mark").resizable().frame(width: 16, height: 16),
                         isDisabled: isActionDisabled,
-                        isLoading: isRejecting
+                        isLoading: isRejecting,
+                        shouldExpand: true
                     ) {
                         guard !isRejecting else { return }
                         isRejecting = true
@@ -83,7 +84,8 @@ struct PaymentRequestCard: View {
                         title: t("common__pay"),
                         size: .small,
                         icon: Image("coins").resizable().frame(width: 16, height: 16),
-                        isDisabled: isActionDisabled || isRejecting
+                        isDisabled: isActionDisabled || isRejecting,
+                        shouldExpand: true
                     ) {
                         onPay?()
                     }
