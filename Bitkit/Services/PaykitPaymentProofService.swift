@@ -389,12 +389,19 @@ actor PaykitPaymentProofService {
             pendingProofs[index].paymentIdentifier = txid.lowercased()
             pendingProofs[index].proofData = txid.lowercased()
             let completedProof = pendingProofs[index]
+            let didPersist: Bool
             do {
                 try await persist(pendingProofs)
+                didPersist = true
             } catch {
+                didPersist = false
                 logWarning("Failed to persist a completed Paykit payment proof; attempting immediate delivery: \(error)")
             }
-            submitInBackground(completedProof)
+            if didPersist {
+                submitInBackground(completedProof)
+            } else {
+                persistAndSubmitInBackground(completedProof, allProofs: pendingProofs)
+            }
             Self.onchainPaymentResolutionSubject.send(PaykitOnchainPaymentResolution(
                 identity: completedProof.identity,
                 requestId: requestId,
@@ -647,25 +654,12 @@ actor PaykitPaymentProofService {
         }
     }
 
-    private func submitOnchainPaymentInBackground(
-        _ request: PaykitPaymentRequest,
-        txid: String,
-        paymentEndpointIdentifier: String
+    private func persistAndSubmitInBackground(
+        _ proof: PendingPaykitPaymentProof,
+        allProofs: [PendingPaykitPaymentProof]
     ) {
         Task { [weak self] in
-            guard let self else { return }
-            do {
-                var proof = try await pendingProof(
-                    request: request,
-                    paymentEndpointIdentifier: paymentEndpointIdentifier,
-                    kind: .onchain
-                )
-                proof.paymentIdentifier = txid.lowercased()
-                proof.proofData = txid.lowercased()
-                await submit(proof)
-            } catch {
-                logWarning("Failed to complete a Paykit on-chain payment proof: \(error)")
-            }
+            await self?.persistAndSubmit([proof], allProofs: allProofs)
         }
     }
 

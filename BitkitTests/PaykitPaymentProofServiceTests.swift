@@ -617,6 +617,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         await store.failNextSave()
         await sdk.setSubmissionFailure(true)
         await service.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: endpoint)
+        await sdk.waitForSubmissionStart()
 
         let storedProofs = await store.snapshot()
         let proof = try XCTUnwrap(storedProofs.first)

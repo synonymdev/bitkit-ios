@@ -66,11 +66,7 @@ enum SendRoute: Hashable {
         paymentRequest: String?,
         paykitPaymentRequestId: PaykitPaymentRequest.ID? = nil
     )
-    case success(
-        paymentId: String,
-        walletId: String = WalletScope.default,
-        isInitialSubscriptionPayment: Bool = false
-    )
+    case success(paymentId: String, walletId: String = WalletScope.default)
     case failure(SendFailureContext)
     case lnurlPayAmount
     case lnurlPayConfirm
@@ -121,6 +117,7 @@ struct SendSheet: View {
     @State private var rootOverride: SendRoute?
     @State private var quickPaySession = 0
     @State private var hasValidatedAfterSync = false
+    @State private var incomingPaymentRequest: PaykitPaymentRequest?
     @State private var pendingEmbeddedRetryRoute: SendRoute?
     @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
@@ -128,15 +125,11 @@ struct SendSheet: View {
     @State private var hwSend: HwSendCoordinator
     @State private var setupTask: Task<Void, Never>?
 
-    init(config: SendSheetItem) {
-        self.config = config
-        _hwSend = State(initialValue: HwSendCoordinator(walletId: config.hardwareWalletId))
-    }
-
     init(config: SendSheetItem, isEmbedded: Bool = false) {
         self.config = config
         self.isEmbedded = isEmbedded
         _rootRoute = State(initialValue: config.initialRoute)
+        _hwSend = State(initialValue: HwSendCoordinator(walletId: config.hardwareWalletId))
     }
 
     private var currentRoot: SendRoute {
@@ -233,6 +226,7 @@ struct SendSheet: View {
                 )
             }
             if let request = app.contactPaymentContext?.incomingPaymentRequest {
+                incomingPaymentRequest = request
                 if !tagManager.consumePreservedTags(for: request.id) {
                     tagManager.clearSelectedTags()
                 }
@@ -282,18 +276,6 @@ struct SendSheet: View {
                     }
                 }
             }
-        }
-        .onDisappear {
-            setupTask?.cancel()
-            setupTask = nil
-            hwSend.cancel()
-            if let incomingPaymentRequest {
-                paykitPaymentRequestManager.finishPayment(incomingPaymentRequest)
-            }
-            incomingPaymentRequest = nil
-            app.contactPaymentContext = nil
-            app.resetQuickPay()
-            QuickPayPaymentCoordinator.shared.detach()
         }
         .onChange(of: wallet.nodeLifecycleState) { _, state in
             // When the node becomes running and we have a scanned invoice, run deferred validation.
@@ -361,9 +343,13 @@ struct SendSheet: View {
     }
 
     private func cleanup() {
-        if let request = app.contactPaymentContext?.incomingPaymentRequest {
+        setupTask?.cancel()
+        setupTask = nil
+        hwSend.cancel()
+        if let request = incomingPaymentRequest ?? app.contactPaymentContext?.incomingPaymentRequest {
             Task { await paykitPaymentRequestManager.finishPayment(request) }
         }
+        incomingPaymentRequest = nil
         app.resetSendState()
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
         app.resetQuickPay()
@@ -616,7 +602,7 @@ struct SendSheet: View {
 
     private func isCurrentIncomingRequest(_ requestId: PaykitPaymentRequest.ID) -> Bool {
         !Task.isCancelled
-            && sheets.activeSheetConfiguration?.id == .send
+            && sheets.activeSheetConfiguration?.id == (isEmbedded ? .subscription : .send)
             && incomingPaymentRequest?.id == requestId
             && app.contactPaymentContext?.incomingPaymentRequest?.id == requestId
     }
@@ -741,12 +727,11 @@ struct SendSheet: View {
                 routingCacheResetAttempted: routingCacheResetAttempted,
                 navigationPath: $navigationPath
             )
-        case let .success(paymentId, walletId, isInitialSubscriptionPayment):
+        case let .success(paymentId, walletId):
             SendSuccess(
                 paymentId: paymentId,
                 walletId: walletId,
-                isInitialSubscriptionPayment: isInitialSubscriptionPayment ||
-                    app.contactPaymentContext?.isInitialSubscriptionPayment == true
+                isInitialSubscriptionPayment: app.contactPaymentContext?.isInitialSubscriptionPayment == true
             )
         case let .failure(context):
             SendFailure(
