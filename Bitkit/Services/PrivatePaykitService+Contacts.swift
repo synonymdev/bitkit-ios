@@ -411,7 +411,12 @@ extension PrivatePaykitService {
             do {
                 receiverPathSelection = try await operations.receiverPathSelection(publicKey, receiverPaths)
             } catch {
-                return error
+                firstError = firstError ?? error
+                Logger.warn(
+                    "Failed to select private Paykit receiver paths for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(error)",
+                    context: "PrivatePaykit"
+                )
+                continue
             }
             let linkableReceiverPaths = receiverPathSelection.linkableReceiverPaths
             let publicationReceiverPaths = receiverPathSelection.publishableReceiverPaths

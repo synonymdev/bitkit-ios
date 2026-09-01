@@ -417,6 +417,41 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(update.counterpartyReceiverPath, PaykitReceiverPath.wallet)
         XCTAssertFalse(update.reservations.isEmpty)
     }
+
+    func testDeferredPublicationIgnoresReceiverPathSelectionFailure() async {
+        let publicKey = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let markerError = NSError(domain: "PrivatePaykitServiceTests", code: 1)
+        let operations = PrivatePaykitService.EndpointPublicationOperations(
+            currentPublicKey: { "pubkylocal" },
+            linkedReceiverPaths: { _ in ([:], nil) },
+            receiverPaths: { _ in [PaykitReceiverPath.wallet] },
+            receiverPathSelection: { _, _ in throw markerError },
+            ensureLink: { _, _ in XCTFail("No link should be prepared") },
+            buildEndpoints: { _, _ in
+                XCTFail("No endpoint should be built")
+                return []
+            },
+            syncPaymentLists: { _ in
+                XCTFail("No payment list should be synced")
+                return PrivatePaymentListDeliveryReport(
+                    queued: [],
+                    cleared: [],
+                    failedToQueue: [],
+                    failedToDeliver: []
+                )
+            }
+        )
+        let service = PrivatePaykitService()
+
+        let error = await service.syncLocalEndpointPublication(
+            for: [publicKey],
+            reason: "test",
+            requireImmediatePublication: false,
+            operations: operations
+        )
+
+        XCTAssertNil(error)
+    }
 }
 
 private extension PrivatePaykitService {
