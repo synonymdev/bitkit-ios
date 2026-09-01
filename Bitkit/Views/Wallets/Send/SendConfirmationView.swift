@@ -31,7 +31,9 @@ struct SendConfirmationView: View {
     @State private var swipeProgress: CGFloat = 0
 
     var accentColor: Color {
-        if hwSend.isActive { return .blueAccent }
+        if hwSend.isActive {
+            return .blueAccent
+        }
         return app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent
     }
 
@@ -227,6 +229,8 @@ struct SendConfirmationView: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(app.contactPaymentContext?.incomingPaymentRequest == nil ? "SendConfirm" : "PaymentRequestConfirm")
         .task {
             ensureSendAmountFromScannedInvoicesIfNeeded()
             await calculateTransactionFee()

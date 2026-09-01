@@ -223,7 +223,7 @@ enum PublicPaykitService {
             return nil
         }
 
-        guard let payload = parsePayload(endpointData) else {
+        guard let payload = PaykitIssuerInterop.parseEndpointPayload(endpointData) else {
             return nil
         }
 
@@ -392,33 +392,6 @@ enum PublicPaykitService {
         }
 
         return invoice.routeHints().contains { !$0.isEmpty }
-    }
-
-    private struct ParsedPayload {
-        let value: String
-        let min: String?
-        let max: String?
-    }
-
-    private static func parsePayload(_ endpointData: String) -> ParsedPayload? {
-        let trimmedPayload = endpointData.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPayload.isEmpty else {
-            return nil
-        }
-
-        if let data = trimmedPayload.data(using: .utf8),
-           let payloadObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let value = (payloadObject["value"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !value.isEmpty
-        {
-            return ParsedPayload(
-                value: value,
-                min: payloadObject["min"] as? String,
-                max: payloadObject["max"] as? String
-            )
-        }
-
-        return nil
     }
 
     private static func applyPublishedEndpoints(_ desiredEndpoints: [Endpoint]) async throws {
