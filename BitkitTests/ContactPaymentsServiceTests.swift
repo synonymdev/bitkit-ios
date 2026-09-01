@@ -54,7 +54,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             XCTAssertEqual(operations.publicPublicationValues, [true])
             XCTAssertEqual(operations.privatePublications.count, 1)
             XCTAssertEqual(operations.privatePublications[0].contactPublicKeys, ["contact-a", "contact-b"])
-            XCTAssertTrue(operations.privatePublications[0].requiresImmediatePublication)
+            XCTAssertFalse(operations.privatePublications[0].requiresImmediatePublication)
             XCTAssertEqual(operations.calls, ["private:publish", "public:true"])
             XCTAssertEqual(operations.privateRemovalCount, 0)
             XCTAssertEqual(operations.publicCleanupValues, [false])

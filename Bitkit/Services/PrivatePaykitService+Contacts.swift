@@ -21,7 +21,8 @@ extension PrivatePaykitService {
         requireImmediatePublication: Bool = false
     ) async -> Error? {
         let publicKeys = rememberSavedContacts(publicKeys, replacing: true)
-        guard await canPublishPrivateEndpoints(wallet: wallet) else {
+        if let reason = await privateEndpointPublicationUnavailabilityReason(wallet: wallet) {
+            Logger.info("Deferring private Paykit endpoint publication during prepare: \(reason)", context: "PrivatePaykitService")
             await prepareRelevantPrivateLinksIfAvailable(publicKeys, reason: "prepare")
             return requireImmediatePublication && !publicKeys.isEmpty ? PrivatePaykitError.privateUnavailable : nil
         }

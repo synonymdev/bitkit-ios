@@ -121,7 +121,7 @@ enum ContactPaymentsService {
         if canUsePrivatePayments,
            let error = await operations.preparePrivateEndpoints(
                contactPublicKeys,
-               true
+               false
            )
         {
             throw error
