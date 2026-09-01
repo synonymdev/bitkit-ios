@@ -690,12 +690,7 @@ struct SubscriptionSheet: View {
     private func moreInfo(_ subscription: PaykitSubscription) -> some View {
         VStack(spacing: 0) {
             SheetHeader(title: t("subscriptions__details"), showBackButton: true) {
-                if let previousRoute {
-                    route = previousRoute
-                    self.previousRoute = nil
-                } else {
-                    sheets.hideSheet(reason: "Subscription details closed")
-                }
+                closeDetails()
             }
             SubscriptionProviderCard(subscription: subscription)
                 .padding(.bottom, 24)
@@ -716,10 +711,19 @@ struct SubscriptionSheet: View {
             }
 
             CustomButton(title: t("common__ok")) {
-                sheets.hideSheet(reason: "Subscription details closed")
+                closeDetails()
             }
         }
         .padding(.horizontal, 16)
+    }
+
+    private func closeDetails() {
+        if let previousRoute {
+            route = previousRoute
+            self.previousRoute = nil
+        } else {
+            sheets.hideSheet(reason: "Subscription details closed")
+        }
     }
 
     private func cancel(_ subscription: PaykitSubscription) -> some View {
