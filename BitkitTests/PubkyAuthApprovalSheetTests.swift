@@ -6,11 +6,19 @@ import XCTest
 private let approvalTestXpub =
     "tpubDDWohsp5dx2iMJ9N7iHbgAEDhH4BJB9NWW1fEW3yA3AFNDREmpzteCXNqppMLUmKFY5q5e3" +
     "PXtS5CuqWCQbYcGhpPqYAgQSYdwknW9J6sQv"
+private let approvalTestClientPublicKey = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
 
 private func approvalTestAuthUrl(secret: String = "e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s") -> String {
-    "pubkyauth://signin?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+    "pubkyauth://signin_grant?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
         "&relay=https://httprelay.pubky.app/inbox/&secret=\(secret)" +
+        "&cid=paykit.test&cpk=\(approvalTestClientPublicKey)" +
         "&x-bitkit-claim=watch-only-account-v1"
+}
+
+private func ordinaryApprovalTestAuthUrl() -> String {
+    "pubkyauth://signin_grant?caps=/pub/example/:rw&relay=https://httprelay.pubky.app/inbox/" +
+        "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s" +
+        "&cid=paykit.test&cpk=\(approvalTestClientPublicKey)"
 }
 
 final class PubkyAuthApprovalSheetTests: XCTestCase {
@@ -33,7 +41,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
     }
 
     func testOrdinaryRequestStartsAtNormalAuthorization() throws {
-        let authUrl = "pubkyauth://signin?caps=/pub/example/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+        let authUrl = ordinaryApprovalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
 
         XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request), .authorize)
@@ -41,7 +49,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
 
     @MainActor
     func testOrdinaryRequestUsesOrdinaryApproval() async throws {
-        let authUrl = "pubkyauth://signin?caps=/pub/example/:rw&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+        let authUrl = ordinaryApprovalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
         var approvedCapabilities: String?
 
