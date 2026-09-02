@@ -799,6 +799,7 @@ struct SendSheet: View {
         )
         do {
             try await prepareIncomingPaymentRequest()
+            try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address)
         } catch {
             await PaykitPaymentProofService.shared.cancelPreparation(request)
             throw error
