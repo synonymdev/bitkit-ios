@@ -155,11 +155,26 @@ struct ReceiveEdit: View {
         wallet.invoiceAmountSats = amountSats
         wallet.invoiceNote = note
 
-        if onchainOnly {
+        await Self.finishEditing(
+            onchainOnly: onchainOnly,
+            dismiss: { dismiss() },
+            prepareLightningInvoice: prepareLightningInvoice
+        )
+    }
+
+    static func finishEditing(
+        onchainOnly: Bool,
+        dismiss: () -> Void,
+        prepareLightningInvoice: () async -> Void
+    ) async {
+        guard !onchainOnly else {
             dismiss()
             return
         }
+        await prepareLightningInvoice()
+    }
 
+    private func prepareLightningInvoice() async {
         // Wait until node is running if it's in starting state
         if await wallet.waitForNodeToRun() {
             do {

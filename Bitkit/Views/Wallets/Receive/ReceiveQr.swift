@@ -267,7 +267,11 @@ struct ReceiveQr: View {
     func qrContent(for tab: ReceiveTab) -> some View {
         if tab == .trezor {
             if let hardwareAddress = displayedHardwareAddress {
-                let uri = hardwareBip21(address: hardwareAddress.address)
+                let uri = Bip21Utils.hardwareInvoice(
+                    address: hardwareAddress.address,
+                    amountSats: wallet.invoiceAmountSats,
+                    message: wallet.invoiceNote
+                )
                 QrArea(
                     uri: uri,
                     imageAsset: "btc-circle-blue",
@@ -554,27 +558,6 @@ struct ReceiveQr: View {
         passphraseTask?.cancel()
         isPassphraseRequired = false
         isVerifyingPassphrase = false
-    }
-
-    private func hardwareBip21(address: String) -> String {
-        var components = URLComponents()
-        components.scheme = "bitcoin"
-        components.path = address
-
-        var queryItems: [URLQueryItem] = []
-        if wallet.invoiceAmountSats > 0 {
-            queryItems.append(
-                URLQueryItem(
-                    name: "amount",
-                    value: WalletViewModel.formatBitcoinAmount(sats: wallet.invoiceAmountSats)
-                )
-            )
-        }
-        if !wallet.invoiceNote.isEmpty {
-            queryItems.append(URLQueryItem(name: "message", value: wallet.invoiceNote))
-        }
-        components.queryItems = queryItems.isEmpty ? nil : queryItems
-        return components.string ?? "bitcoin:\(address)"
     }
 
     /// Strips the lightning parameter from a BIP21 URI while keeping other parameters

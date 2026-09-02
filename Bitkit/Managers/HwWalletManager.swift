@@ -26,6 +26,7 @@ final class HwWalletManager {
         UInt32,
         AccountType
     ) async throws -> AccountInfoResult
+    typealias AddressProvider = @MainActor (TrezorGetAddressParams) async throws -> TrezorAddressResponse
 
     private enum Constants {
         static let watcherIdSeparator = "|"
@@ -63,6 +64,7 @@ final class HwWalletManager {
     private let electrumUrlProvider: () -> String
     private let networkProvider: () -> TrezorCoinType
     private let accountInfoProvider: AccountInfoProvider
+    private let addressProvider: AddressProvider
     private let persistSnapshot: @MainActor (HwWalletSnapshot) async throws -> Void
     private let deleteActivities: @MainActor (String) async throws -> Void
     private let readTagMetadata: @MainActor (String) async throws -> [PreActivityMetadata]
@@ -135,6 +137,9 @@ final class HwWalletManager {
                 scriptType: scriptType
             )
         },
+        addressProvider: @escaping AddressProvider = { params in
+            try await TrezorService.shared.getAddress(params: params)
+        },
         persistSnapshot: (@MainActor (HwWalletSnapshot) async throws -> Void)? = nil,
         deleteActivities: (@MainActor (String) async throws -> Void)? = nil,
         readTagMetadata: (@MainActor (String) async throws -> [PreActivityMetadata])? = nil,
@@ -148,6 +153,7 @@ final class HwWalletManager {
         }
         electrumUrlProvider = electrumUrl ?? { OnChainHwService.getElectrumUrl() }
         self.accountInfoProvider = accountInfoProvider
+        self.addressProvider = addressProvider
         // Both seams are plain writes: queueing, failure handling and cache repair live in
         // `persist(_:)` / `delete(walletId:)`, so an injected seam exercises them too.
         self.persistSnapshot = persistSnapshot ?? { snapshot in
@@ -999,8 +1005,8 @@ final class HwWalletManager {
     }
 
     private func readAddressOnDevice(_ receiveAddress: HwReceiveAddress) async throws -> TrezorAddressResponse {
-        try await TrezorService.shared.getAddress(
-            params: TrezorGetAddressParams(
+        try await addressProvider(
+            TrezorGetAddressParams(
                 path: receiveAddress.path,
                 coin: networkProvider(),
                 showOnTrezor: true,
