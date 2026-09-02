@@ -291,6 +291,8 @@ enum PubkyService {
 // MARK: - Paykit SDK Runtime
 
 actor PaykitSdkService {
+    typealias ApprovalBootstrapFactory = (String, PubkyClientConfig) throws -> PubkySessionBootstrap
+
     static let shared = PaykitSdkService()
     private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
 
@@ -303,9 +305,16 @@ actor PaykitSdkService {
     private let paymentAdapter = PaykitSdkPaymentAdapter()
     private let operationLock = PaykitSdkOperationLock()
     private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
+    private let approvalBootstrapFactory: ApprovalBootstrapFactory
     private var sdk: PaykitSdk?
     private var activeAuthRequest: Paykit.PubkyAuthRequest?
     private var activeAuthRequestID: UUID?
+
+    init(
+        approvalBootstrapFactory: @escaping ApprovalBootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
+    ) {
+        self.approvalBootstrapFactory = approvalBootstrapFactory
+    }
 
     func initialize() async throws {
         try await operationLock.withLock {
@@ -1024,7 +1033,7 @@ actor PaykitSdkService {
         )
     }
 
-    private func approvalBootstrap(authUrl: String, approvedClientID: String) throws -> PubkySessionBootstrap {
+    func approvalBootstrap(authUrl: String, approvedClientID: String) throws -> PubkySessionBootstrap {
         let requestClientID = try Paykit.parsePubkyAuthUrl(authUrl: authUrl).clientId
         guard !approvedClientID.isEmpty, approvedClientID == requestClientID else {
             throw AppError(
@@ -1032,10 +1041,7 @@ actor PaykitSdkService {
                 debugMessage: "Approved Pubky client ID does not match auth request"
             )
         }
-        return try PubkySessionBootstrap.withPubkyClientConfig(
-            clientId: approvedClientID,
-            pubkyClient: pubkyClientConfig
-        )
+        return try approvalBootstrapFactory(requestClientID, pubkyClientConfig)
     }
 
     nonisolated static func makePubkyClientConfig(localTestnetHost: String?) -> PubkyClientConfig {
