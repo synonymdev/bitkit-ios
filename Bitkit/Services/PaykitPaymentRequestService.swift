@@ -4,6 +4,7 @@ import Paykit
 struct PaykitPaymentRequest: Identifiable, Hashable {
     enum ParseFailure: String, Error, Equatable {
         case missingLocalRole = "missing_local_role"
+        case outgoingRequest = "outgoing_request"
         case unsupportedLocalRole = "unsupported_local_role"
         case nonActionableState = "non_actionable_state"
         case missingTerms = "missing_terms"
@@ -16,7 +17,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         case expired
 
         var shouldLogIncomingRejection: Bool {
-            self != .unsupportedLocalRole && self != .nonActionableState
+            self != .outgoingRequest && self != .nonActionableState
         }
     }
 
@@ -89,7 +90,12 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         requiresActionableRequest: Bool
     ) -> Result<PaykitPaymentRequest, ParseFailure> {
         guard let localRole = record.localRole else { return .failure(.missingLocalRole) }
-        guard localRole == expectedRole else { return .failure(.unsupportedLocalRole) }
+        guard localRole == expectedRole else {
+            if expectedRole == .payer, localRole == .payee {
+                return .failure(.outgoingRequest)
+            }
+            return .failure(.unsupportedLocalRole)
+        }
 
         if requiresActionableRequest, record.state != .proposed {
             return .failure(.nonActionableState)
@@ -592,6 +598,7 @@ protocol PaykitPaymentRequestPresentationStoring {
 enum PaykitPaymentRequestPresentationDeferral: Equatable {
     case retryScheduled
     case requestedPresentationEnded
+    case requestExpired(wasRequested: Bool)
     case ignored
 }
 
@@ -910,7 +917,11 @@ final class PaykitPaymentRequestManager {
     @discardableResult
     func deferPresentation(_ request: PaykitPaymentRequest) -> PaykitPaymentRequestPresentationDeferral {
         let wasRequestedPresentation = requestedPresentationId == request.id
+        let requestExpired = request.isExpired(at: now())
         discardExpiredRequests()
+        if requestExpired {
+            return .requestExpired(wasRequested: wasRequestedPresentation)
+        }
         guard pendingRequests.contains(where: { $0.id == request.id }) else {
             return wasRequestedPresentation ? .requestedPresentationEnded : .ignored
         }

@@ -71,6 +71,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testIncomingParseFailuresAreReasonSpecific() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let cases: [(PaymentRequestRecord, PaykitPaymentRequest.ParseFailure)] = try [
+            (paymentRequestRecord(id: "missing-role", role: nil), .missingLocalRole),
+            (paymentRequestRecord(id: "outgoing", role: .payee), .outgoingRequest),
+            (paymentRequestRecord(id: "unknown-role", role: .unknown), .unsupportedLocalRole),
             (paymentRequestRecord(id: "missing-terms"), .missingTerms),
             (paymentRequestRecord(id: "wrong-asset", asset: "BTC"), .unsupportedAsset),
             (paymentRequestRecord(id: "invalid-amount", amount: "not-bitcoin"), .invalidAmount),
@@ -98,8 +101,20 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
     func testSynchronizeLogsRedactedParseFailuresWithoutRequestData() async throws {
         let counterparty = "pubky\(String(repeating: "y", count: 52))"
+        let outgoingCounterparty = "pubky\(String(repeating: "p", count: 52))"
+        let unknownRoleCounterparty = "pubky\(String(repeating: "u", count: 52))"
         let secretNote = "do-not-log-this-note"
         let records = try [
+            paymentRequestRecord(
+                id: "do-not-log-outgoing-id",
+                counterparty: outgoingCounterparty,
+                role: .payee
+            ),
+            paymentRequestRecord(
+                id: "do-not-log-unknown-role-id",
+                counterparty: unknownRoleCounterparty,
+                role: .unknown
+            ),
             paymentRequestRecord(
                 id: "do-not-log-this-id",
                 counterparty: counterparty,
@@ -129,11 +144,16 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let output = recorder.messages.joined(separator: "\n")
         XCTAssertTrue(output.contains("category=parse reason=unsupported_asset"))
         XCTAssertTrue(output.contains("category=parse reason=no_supported_endpoint"))
+        XCTAssertTrue(output.contains("category=parse reason=unsupported_local_role"))
         XCTAssertTrue(output.contains("counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(counterparty))"))
+        XCTAssertTrue(output.contains("counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(unknownRoleCounterparty))"))
+        XCTAssertFalse(output.contains(PaykitPaymentRequestDiagnostics.redactedCounterparty(outgoingCounterparty)))
         XCTAssertTrue(output.contains("counterparty=<invalid>"))
         XCTAssertFalse(output.contains(counterparty))
         XCTAssertFalse(output.contains("do-not-log-this-id"))
         XCTAssertFalse(output.contains("do-not-log-this-endpoint-id"))
+        XCTAssertFalse(output.contains("do-not-log-outgoing-id"))
+        XCTAssertFalse(output.contains("do-not-log-unknown-role-id"))
         XCTAssertFalse(output.contains(secretNote))
         XCTAssertFalse(output.contains("btc-private-unsupported-endpoint"))
         XCTAssertFalse(output.contains("do-not-log-invalid-counterparty"))
@@ -358,6 +378,25 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
         XCTAssertNil(manager.requestedPresentationId)
         XCTAssertEqual(manager.pendingRequests, [request])
+    }
+
+    func testRequestedDeferredRequestReportsExpirationInsteadOfRetryExhaustion() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(expiresAt: timestamp(now.addingTimeInterval(1))),
+        ])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+
+        clock.advance(by: 1)
+
+        XCTAssertEqual(manager.deferPresentation(request), .requestExpired(wasRequested: true))
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        XCTAssertNil(manager.requestedPresentationId)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
     }
 
     func testPreparationConsumesBeforeAccepting() async throws {

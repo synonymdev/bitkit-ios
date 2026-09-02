@@ -181,6 +181,16 @@ final class PublicPaykitServiceTests: XCTestCase {
         )
     }
 
+    func testIncomingRequestFailureReasonsHaveStableCategories() {
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.noSupportedEndpoint.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.endpointNotPayable.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.paymentDetailsPending.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.resolutionFailed.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.invalidPaymentTarget.category, "presentation")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.paymentTargetNotRoutable.category, "presentation")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.requestExpired.category, "presentation")
+    }
+
     func testPayableEndpointsFiltersInvalidDecodedEndpoints() async {
         let payable = await PublicPaykitService.payableEndpoints(from: [
             endpoint(.bitcoinLightningBolt11, value: "not-a-bolt11"),
