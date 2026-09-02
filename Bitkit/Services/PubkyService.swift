@@ -89,18 +89,25 @@ enum PubkyService {
     }
 
     /// Approve a pubkyauth:// request using the local secret key.
-    static func approveAuth(authUrl: String, expectedCapabilities: String, secretKeyHex: String) async throws {
+    static func approveAuth(authUrl: String, expectedCapabilities: String, approvedClientID: String, secretKeyHex: String) async throws {
         try await PaykitSdkService.shared.approveAuth(
             authUrl: authUrl,
             expectedCapabilities: expectedCapabilities,
+            approvedClientID: approvedClientID,
             secretKeyHex: secretKeyHex
         )
     }
 
-    static func approveAuthWithCompanionClaim(authUrl: String, unsignedPayload: Data, secretKeyHex: String) async throws {
+    static func approveAuthWithCompanionClaim(
+        authUrl: String,
+        approvedClientID: String,
+        unsignedPayload: Data,
+        secretKeyHex: String
+    ) async throws {
         try await PaykitSdkService.shared.approveAuthWithCompanionClaim(
             authUrl: authUrl,
             expectedCapabilities: PubkyAuthClaim.watchOnlyAccountCapabilities,
+            approvedClientID: approvedClientID,
             secretKeyHex: secretKeyHex,
             claim: Paykit.PubkyAuthCompanionClaim(
                 queryParameter: PubkyAuthClaim.queryParameter,
@@ -119,8 +126,8 @@ enum PubkyService {
         return false
     }
 
-    typealias OrdinaryAuthApproval = (String, String, String) async throws -> Void
-    typealias CompanionAuthApproval = (String, Data, String) async throws -> Void
+    typealias OrdinaryAuthApproval = (String, String, String, String) async throws -> Void
+    typealias CompanionAuthApproval = (String, String, Data, String) async throws -> Void
 
     @MainActor
     static func approveAuthRequest(
@@ -129,16 +136,18 @@ enum PubkyService {
         accountName: String,
         secretKeyHex: String,
         accountManager: WatchOnlyAccountManager? = nil,
-        ordinaryApproval: @escaping OrdinaryAuthApproval = { authUrl, capabilities, secretKeyHex in
+        ordinaryApproval: @escaping OrdinaryAuthApproval = { authUrl, capabilities, clientID, secretKeyHex in
             try await approveAuth(
                 authUrl: authUrl,
                 expectedCapabilities: capabilities,
+                approvedClientID: clientID,
                 secretKeyHex: secretKeyHex
             )
         },
-        companionApproval: @escaping CompanionAuthApproval = { authUrl, unsignedPayload, secretKeyHex in
+        companionApproval: @escaping CompanionAuthApproval = { authUrl, clientID, unsignedPayload, secretKeyHex in
             try await approveAuthWithCompanionClaim(
                 authUrl: authUrl,
+                approvedClientID: clientID,
                 unsignedPayload: unsignedPayload,
                 secretKeyHex: secretKeyHex
             )
@@ -161,7 +170,7 @@ enum PubkyService {
             }
 
             do {
-                try await companionApproval(authUrl, preparedClaim.1, secretKeyHex)
+                try await companionApproval(authUrl, request.clientID, preparedClaim.1, secretKeyHex)
             } catch {
                 if !didDeliverCompanionClaim(error: error) {
                     await cancelIncompleteAuthorization(
@@ -174,7 +183,7 @@ enum PubkyService {
 
             try await accountManager.markSetupActive(attempt: authorizationAttempt)
         } else {
-            try await ordinaryApproval(authUrl, request.capabilities, secretKeyHex)
+            try await ordinaryApproval(authUrl, request.capabilities, request.clientID, secretKeyHex)
         }
     }
 
@@ -441,9 +450,9 @@ actor PaykitSdkService {
         activeAuthRequestID = nil
     }
 
-    func approveAuth(authUrl: String, expectedCapabilities: String, secretKeyHex: String) async throws {
+    func approveAuth(authUrl: String, expectedCapabilities: String, approvedClientID: String, secretKeyHex: String) async throws {
         try await operationLock.withLock {
-            try await bootstrap().approveAuth(
+            try await approvalBootstrap(authUrl: authUrl, approvedClientID: approvedClientID).approveAuth(
                 authUrl: authUrl,
                 expectedCapabilities: expectedCapabilities,
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex)
@@ -454,11 +463,12 @@ actor PaykitSdkService {
     func approveAuthWithCompanionClaim(
         authUrl: String,
         expectedCapabilities: String,
+        approvedClientID: String,
         secretKeyHex: String,
         claim: Paykit.PubkyAuthCompanionClaim
     ) async throws {
         try await operationLock.withLock {
-            try await bootstrap().approveAuthWithCompanionClaim(
+            try await approvalBootstrap(authUrl: authUrl, approvedClientID: approvedClientID).approveAuthWithCompanionClaim(
                 authUrl: authUrl,
                 expectedCapabilities: expectedCapabilities,
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
@@ -1008,6 +1018,20 @@ actor PaykitSdkService {
     private func bootstrap() throws -> PubkySessionBootstrap {
         try PubkySessionBootstrap.withPubkyClientConfig(
             clientId: Self.clientID,
+            pubkyClient: pubkyClientConfig
+        )
+    }
+
+    private func approvalBootstrap(authUrl: String, approvedClientID: String) throws -> PubkySessionBootstrap {
+        let requestClientID = try Paykit.parsePubkyAuthUrl(authUrl: authUrl).clientId
+        guard !approvedClientID.isEmpty, approvedClientID == requestClientID else {
+            throw AppError(
+                message: "pubky_auth__invalid_request",
+                debugMessage: "Approved Pubky client ID does not match auth request"
+            )
+        }
+        return try PubkySessionBootstrap.withPubkyClientConfig(
+            clientId: approvedClientID,
             pubkyClient: pubkyClientConfig
         )
     }
