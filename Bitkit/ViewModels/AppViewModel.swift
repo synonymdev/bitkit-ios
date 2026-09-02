@@ -448,7 +448,8 @@ extension AppViewModel {
             }
         }
 
-        let uri = PubkyAuthRequest.normalizedProtocolURL(uri.removingLightningSchemes())
+        let sourceURI = uri.removingLightningSchemes()
+        let uri = PubkyAuthRequest.normalizedProtocolURL(sourceURI)
         let prevalidatedPaymentRequest: BitkitCore.Scanner?
         if scope == .paymentRequests {
             guard SamRockSetupRequest.parse(uri) == nil,
@@ -661,7 +662,7 @@ extension AppViewModel {
             }
 
             handleNodeUri(url)
-        case let .pubkyAuth(data: authUrl):
+        case .pubkyAuth:
             guard PaykitFeatureFlags.isUIEnabled else {
                 toast(
                     type: .error,
@@ -671,7 +672,7 @@ extension AppViewModel {
                 )
                 return
             }
-            handlePubkyAuthApproval(authUrl)
+            handlePubkyAuthApproval(sourceURI)
         case let .gift(code, amount):
             sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
         default:
@@ -798,7 +799,7 @@ extension AppViewModel {
         sheetViewModel.showSheet(.lnurlAuth, data: LnurlAuthConfig(lnurl: lnurl, authData: data))
     }
 
-    private func handlePubkyAuthApproval(_ authUrl: String) {
+    private func handlePubkyAuthApproval(_ sourceURL: String) {
         // State 1: No Pubky identity at all
         guard (try? Keychain.loadString(key: .paykitSession))?.isEmpty == false else {
             toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
@@ -815,8 +816,8 @@ extension AppViewModel {
 
         // State 3: Bitkit-generated identity — can approve
         do {
-            let request = try PubkyAuthRequest.parse(url: authUrl)
-            sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(authUrl: authUrl, request: request))
+            let request = try PubkyAuthRequest.parse(url: sourceURL)
+            sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(authUrl: request.rawUrl, request: request))
         } catch {
             Logger.error("Failed to parse pubky auth URL: \(error)", context: "AppViewModel")
             toast(
