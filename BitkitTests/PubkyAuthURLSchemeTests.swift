@@ -75,5 +75,14 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         XCTAssertEqual(sheets.activeSheetConfiguration?.id, .pubkyAuthApproval)
         let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? PubkyAuthApprovalConfig)
         XCTAssertEqual(config.request.bitkitClaim, .watchOnlyAccountV1)
+        XCTAssertTrue(config.authUrl.hasPrefix("pubkyauth://signin?"))
+
+        sheets.hideSheet()
+        let markerlessURL = "bitkit://pubky-auth/setup?caps=/pub/locks.app/:rw" +
+            "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
+            "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+        try await app.handleScannedData(markerlessURL)
+
+        XCTAssertNil(sheets.activeSheetConfiguration)
     }
 }
