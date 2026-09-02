@@ -123,7 +123,8 @@ extension PrivatePaykitService {
             }
 
             Logger.warn(
-                "Failed to resolve Paykit contact payment for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
+                "Failed to resolve Paykit contact payment for \(PubkyPublicKeyFormat.redacted(publicKey)): " +
+                    "errorType=\(String(reflecting: type(of: error)))",
                 context: "PrivatePaykit"
             )
 

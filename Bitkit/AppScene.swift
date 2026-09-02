@@ -837,8 +837,10 @@ struct AppScene: View {
                           app.contactPaymentContext == nil
                     else { return }
                     guard case let .opened(paymentTarget, privatePaymentContext) = result else {
-                        Logger.debug("Incoming Paykit payment request is waiting for private payment details: \(result)", context: "AppScene")
-                        paykitPaymentRequestManager.deferPresentation(request)
+                        deferIncomingPaykitPaymentRequestPresentation(
+                            request,
+                            reason: result.incomingPaymentRequestFailureReason ?? .resolutionFailed
+                        )
                         continue
                     }
 
@@ -869,7 +871,7 @@ struct AppScene: View {
                         guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
                             app.resetSendState()
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-                            paykitPaymentRequestManager.deferPresentation(request)
+                            deferIncomingPaykitPaymentRequestPresentation(request, reason: .paymentTargetNotRoutable)
                             continue
                         }
 
@@ -891,10 +893,9 @@ struct AppScene: View {
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                             return
                         }
-                        Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-                        paykitPaymentRequestManager.deferPresentation(request)
+                        deferIncomingPaykitPaymentRequestPresentation(request, reason: .invalidPaymentTarget)
                         continue
                     }
 
@@ -906,6 +907,7 @@ struct AppScene: View {
                     else {
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        deferIncomingPaykitPaymentRequestPresentation(request, reason: .paymentTargetNotRoutable)
                         return
                     }
                     sheets.showSheet(.send, data: SendConfig(view: route))
@@ -914,8 +916,7 @@ struct AppScene: View {
                     return
                 } catch {
                     guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
-                    Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
-                    paykitPaymentRequestManager.deferPresentation(request)
+                    deferIncomingPaykitPaymentRequestPresentation(request, reason: .resolutionFailed)
                 }
             }
         }
@@ -928,6 +929,25 @@ struct AppScene: View {
               app.contactPaymentContext == nil
         else { return }
         await presentNextIncomingPaykitPaymentRequest()
+    }
+
+    private func deferIncomingPaykitPaymentRequestPresentation(
+        _ request: PaykitPaymentRequest,
+        reason: IncomingPaykitPaymentRequestFailureReason
+    ) {
+        Logger.warn(
+            "Rejected incoming Paykit payment request presentation: category=\(reason.category) reason=\(reason.rawValue) " +
+                "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))",
+            context: "AppScene"
+        )
+
+        guard paykitPaymentRequestManager.deferPresentation(request) == .requestedPresentationEnded else { return }
+        app.toast(
+            type: .error,
+            title: t("wallet__payment_request"),
+            description: t("wallet__payment_request_unavailable"),
+            accessibilityIdentifier: "PaymentRequestUnavailableToast"
+        )
     }
 
     private func retryPendingPaykitEndpointRemoval() async {

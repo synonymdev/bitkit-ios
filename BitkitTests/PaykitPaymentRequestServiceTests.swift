@@ -68,6 +68,77 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
+    func testIncomingParseFailuresAreReasonSpecific() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let cases: [(PaymentRequestRecord, PaykitPaymentRequest.ParseFailure)] = try [
+            (paymentRequestRecord(id: "missing-terms"), .missingTerms),
+            (paymentRequestRecord(id: "wrong-asset", asset: "BTC"), .unsupportedAsset),
+            (paymentRequestRecord(id: "invalid-amount", amount: "not-bitcoin"), .invalidAmount),
+            (paymentRequestRecord(id: "amount-out-of-range", amount: "184467440737.09551615"), .amountOutOfRange),
+            (paymentRequestRecord(id: "unsupported-endpoint", endpoints: ["btc-unsupported-method"]), .noSupportedEndpoint),
+            (paymentRequestRecord(id: "invalid-expiration", expiresAt: "not-a-timestamp"), .invalidExpiration),
+            (paymentRequestRecord(id: "expired", expiresAt: timestamp(now)), .expired),
+        ].map { record, failure in
+            if record.paymentRequestId == "missing-terms" {
+                var record = record
+                record.terms = nil
+                return (record, failure)
+            }
+            return (record, failure)
+        }
+
+        for (record, expectedFailure) in cases {
+            guard case let .failure(failure) = PaykitPaymentRequest.parseIncoming(record: record, now: now) else {
+                XCTFail("Expected \(record.paymentRequestId) to fail parsing")
+                continue
+            }
+            XCTAssertEqual(failure, expectedFailure)
+        }
+    }
+
+    func testSynchronizeLogsRedactedParseFailuresWithoutRequestData() async throws {
+        let counterparty = "pubky\(String(repeating: "y", count: 52))"
+        let secretNote = "do-not-log-this-note"
+        let records = try [
+            paymentRequestRecord(
+                id: "do-not-log-this-id",
+                counterparty: counterparty,
+                asset: "BTC",
+                metadata: "{\"note\":\"\(secretNote)\"}"
+            ),
+            paymentRequestRecord(
+                id: "do-not-log-this-endpoint-id",
+                counterparty: counterparty,
+                endpoints: ["btc-private-unsupported-endpoint"]
+            ),
+            paymentRequestRecord(
+                id: "do-not-log-invalid-counterparty-id",
+                counterparty: "do-not-log-invalid-counterparty",
+                asset: "BTC"
+            ),
+        ]
+        let recorder = PaymentRequestLogRecorder()
+        let service = PaykitPaymentRequestService(
+            sdk: PaymentRequestSdkMock(records: records),
+            logWarning: { recorder.append($0) }
+        )
+
+        let snapshot = try await service.synchronize()
+
+        XCTAssertTrue(snapshot.incoming.isEmpty)
+        let output = recorder.messages.joined(separator: "\n")
+        XCTAssertTrue(output.contains("category=parse reason=unsupported_asset"))
+        XCTAssertTrue(output.contains("category=parse reason=no_supported_endpoint"))
+        XCTAssertTrue(output.contains("counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(counterparty))"))
+        XCTAssertTrue(output.contains("counterparty=<invalid>"))
+        XCTAssertFalse(output.contains(counterparty))
+        XCTAssertFalse(output.contains("do-not-log-this-id"))
+        XCTAssertFalse(output.contains("do-not-log-this-endpoint-id"))
+        XCTAssertFalse(output.contains(secretNote))
+        XCTAssertFalse(output.contains("btc-private-unsupported-endpoint"))
+        XCTAssertFalse(output.contains("do-not-log-invalid-counterparty"))
+    }
+
     func testRefreshDropsExpiredAndUnsupportedRequests() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let recurrence = PaymentRequestRecurrence(
@@ -249,13 +320,13 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let request = try XCTUnwrap(manager.requestsForPresentation().first)
 
         for _ in 0 ..< 14 {
-            manager.deferPresentation(request)
+            XCTAssertEqual(manager.deferPresentation(request), .retryScheduled)
             XCTAssertTrue(manager.requestsForPresentation().isEmpty)
             clock.advance(by: 2)
             XCTAssertEqual(manager.requestsForPresentation(), [request])
         }
 
-        manager.deferPresentation(request)
+        XCTAssertEqual(manager.deferPresentation(request), .retryScheduled)
         clock.advance(by: 119)
 
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
@@ -276,13 +347,13 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestPresentation(request))
 
         for _ in 0 ..< 14 {
-            manager.deferPresentation(request)
+            XCTAssertEqual(manager.deferPresentation(request), .retryScheduled)
             XCTAssertTrue(manager.requestsForPresentation().isEmpty)
             clock.advance(by: 2)
             XCTAssertEqual(manager.requestsForPresentation(), [request])
         }
 
-        manager.deferPresentation(request)
+        XCTAssertEqual(manager.deferPresentation(request), .requestedPresentationEnded)
 
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
         XCTAssertNil(manager.requestedPresentationId)
@@ -1193,6 +1264,19 @@ private final class PaymentRequestPresentationMemoryStore: PaykitPaymentRequestP
 
     func save(_ ids: Set<PaykitPaymentRequest.ID>, identity: String) {
         states[identity] = ids
+    }
+}
+
+private final class PaymentRequestLogRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    var messages: [String] {
+        lock.withLock { storage }
+    }
+
+    func append(_ message: String) {
+        lock.withLock { storage.append(message) }
     }
 }
 
