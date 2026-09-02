@@ -80,12 +80,12 @@ struct PubkyAuthRequest {
             return value
         }
 
-        guard let queryDelimiter = trimmedValue.firstIndex(of: "?") else {
+        let fragmentDelimiter = trimmedValue.firstIndex(of: "#") ?? trimmedValue.endIndex
+        guard let queryDelimiter = trimmedValue[..<fragmentDelimiter].firstIndex(of: "?") else {
             return "pubkyauth://signin"
         }
 
         let queryStart = trimmedValue.index(after: queryDelimiter)
-        let fragmentDelimiter = trimmedValue[queryStart...].firstIndex(of: "#") ?? trimmedValue.endIndex
         return "pubkyauth://signin?\(trimmedValue[queryStart ..< fragmentDelimiter])"
     }
 

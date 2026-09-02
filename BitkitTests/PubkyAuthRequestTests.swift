@@ -26,11 +26,33 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertEqual(request.capabilities, PubkyAuthClaim.watchOnlyAccountCapabilities)
     }
 
+    func testProtocolUrlRejectsBitkitSpecificSetupHandoffWithoutClaimMarker() {
+        let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+            "&relay=\(relay)&secret=\(secret)"
+
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url)) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .missingBitkitClaim)
+        }
+    }
+
     func testProtocolUrlDoesNotTreatPubkyRingCallbackAsSetupHandoff() {
         let url = "bitkit://pubky-auth/success?nonce=123"
 
         XCTAssertFalse(PubkyAuthRequest.isProtocolURL(url))
         XCTAssertEqual(PubkyAuthRequest.normalizedProtocolURL(url), url)
+    }
+
+    func testProtocolUrlRejectsSetupHandoffWithUserInfoOrPort() {
+        let query = "caps=<approve>&relay=https%3A%2F%2Fx&secret=first"
+        let urls = [
+            "bitkit://user@pubky-auth/setup?\(query)",
+            "bitkit://pubky-auth:123/setup?\(query)",
+        ]
+
+        for url in urls {
+            XCTAssertFalse(PubkyAuthRequest.isProtocolURL(url))
+            XCTAssertEqual(PubkyAuthRequest.normalizedProtocolURL(url), url)
+        }
     }
 
     func testProtocolUrlPreservesEncodedQueryOrderAndDropsFragment() {
@@ -55,6 +77,13 @@ final class PubkyAuthRequestTests: XCTestCase {
         let url = "bitkit://pubky-auth/setup"
 
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL(url))
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url))
+    }
+
+    func testProtocolUrlDoesNotTreatFragmentQuestionMarkAsQuery() {
+        let url = "bitkit://pubky-auth/setup#ignored?caps=<approve>"
+
+        XCTAssertEqual(PubkyAuthRequest.normalizedProtocolURL(url), "pubkyauth://signin")
         XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url))
     }
 
