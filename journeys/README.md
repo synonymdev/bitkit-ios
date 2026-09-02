@@ -134,7 +134,7 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [widgets](widgets) | 2 | Widgets intro and add-widget flow |
 | [notification-permission](notification-permission) | 4 | Background-setup toggles |
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
-| [hardware-wallet](hardware-wallet) | 15 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
+| [hardware-wallet](hardware-wallet) | 16 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
 
 ## Not ported
 

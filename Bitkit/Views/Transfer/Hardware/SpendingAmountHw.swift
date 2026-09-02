@@ -118,7 +118,10 @@ struct SpendingAmountHw: View {
                 }
             )
         }
-        .onChange(of: maxAllowed) { updateInputCap() }
+        // `initial: true` because `maxAllowed` lives on the shared TransferViewModel and survives
+        // this screen: re-entering with the limits already computed produces no change to observe,
+        // which would leave the fresh AmountInputViewModel uncapped.
+        .onChange(of: maxAllowed, initial: true) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { onMaxExceeded() }
         .onChange(of: transfer.hwTransferError) { _, error in
             guard let error else { return }
@@ -140,7 +143,8 @@ struct SpendingAmountHw: View {
                 "lightning__spending_amount__error_max__description",
                 variables: ["amount": CurrencyFormatter.formatSats(maxAllowed)]
             ),
-            visibilityTime: Toast.visibilityTimeShort
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "HardwareTransferAmountExceededToast"
         )
     }
 

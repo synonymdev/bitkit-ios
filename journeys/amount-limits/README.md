@@ -4,6 +4,9 @@ These journeys exercise the "block number pad input exceeding the max/available 
 The same `AmountInputViewModel` cap + `maxExceededCount` effect path backs all four amount-entry
 screens (Send, Transfer→Spending, Receiving capacity, External node).
 
+A fifth screen shares that path — the hardware Transfer To Spending amount. It needs a paired device,
+so its journey lives in [`../hardware-wallet/transfer-to-spending-over-max.xml`](../hardware-wallet/transfer-to-spending-over-max.xml).
+
 ## What the feature does
 - Typing a digit that would push the amount **over the cap is rejected** — the display stays at the
   largest value still within the cap (e.g. tapping `9` repeatedly stops at `9 999` when the cap is
