@@ -14,4 +14,17 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
 
         XCTAssertTrue(schemes.contains("pubkyring"))
     }
+
+    @MainActor
+    func testAppRetainsPubkyAuthURLUntilMainNavigationConsumesIt() throws {
+        let app = AppViewModel()
+        let url = try XCTUnwrap(URL(string: "pubkyauth://signin?x-bitkit-claim=watch-only-account-v1"))
+
+        app.retainDeepLink(url)
+
+        XCTAssertEqual(app.pendingDeepLinkURL, url)
+        XCTAssertEqual(app.takePendingDeepLink(), url)
+        XCTAssertNil(app.pendingDeepLinkURL)
+        XCTAssertNil(app.takePendingDeepLink())
+    }
 }

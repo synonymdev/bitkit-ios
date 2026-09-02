@@ -146,6 +146,7 @@ struct AppScene: View {
             .onChange(of: wallet.nodeLifecycleState) { _, newValue in handleNodeLifecycleChange(newValue) }
             .onChange(of: scenePhase, initial: true) { _, newValue in handleScenePhaseChange(newValue) }
             .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
+            .onOpenURL { url in app.retainDeepLink(url) }
             // Bridge Trezor device state into the watch-only manager without coupling the two:
             // TrezorManager bumps devicesRevision on any device/connection change.
             .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
