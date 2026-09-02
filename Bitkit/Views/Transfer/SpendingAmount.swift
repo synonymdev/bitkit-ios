@@ -15,7 +15,7 @@ struct SpendingAmount: View {
     @State private var isCalculatingMax = true
     @State private var availableAmount: UInt64?
     @State private var maxTransferAmount: UInt64?
-    /// Reserved once and reused, so re-reading the budget on Continue doesn't burn a receive index.
+    /// Reserved once and reused, so re-reading the budget doesn't burn a receive index.
     @State private var fundingAddress: String?
 
     private var amountSats: UInt64 {
@@ -220,8 +220,7 @@ struct SpendingAmount: View {
         }
     }
 
-    /// The on-chain budget this transfer has to fit under, used both to size the limits and to
-    /// re-check them before the order is placed.
+    /// Sizes the limits, and re-checks them before the order is placed.
     private func fundingBudget() async -> UInt64? {
         do {
             let address: String

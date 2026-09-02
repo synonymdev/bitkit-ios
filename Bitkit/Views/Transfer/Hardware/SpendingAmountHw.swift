@@ -118,9 +118,8 @@ struct SpendingAmountHw: View {
                 }
             )
         }
-        // `initial: true` because `maxAllowed` lives on the shared TransferViewModel and survives
-        // this screen: re-entering with the limits already computed produces no change to observe,
-        // which would leave the fresh AmountInputViewModel uncapped.
+        // `initial: true` because `maxAllowed` outlives this screen: arriving with the limits
+        // already computed leaves no change to observe, and the input would go uncapped.
         .onChange(of: maxAllowed, initial: true) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { onMaxExceeded() }
         .onChange(of: transfer.hwTransferError) { _, error in
@@ -189,8 +188,7 @@ struct SpendingAmountHw: View {
         }
 
         do {
-            // The budget is the device account, never on-chain savings: these funds never sit in
-            // this wallet, so an on-chain read would reject every hardware transfer.
+            // The device account, never on-chain savings, which would reject every hardware transfer.
             let canFund = await transfer.canFundOrder(
                 clientBalance: amountSats,
                 budget: transfer.hwFundingBudget(walletId: walletId),

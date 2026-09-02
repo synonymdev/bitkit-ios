@@ -3,8 +3,7 @@ import SwiftUI
 
 struct SpendingAdvancedView: View {
     let order: IBtOrder
-    /// Set when the transfer is funded by a hardware wallet, so the capacity is priced against the
-    /// device account instead of this wallet's savings.
+    /// Set for a hardware transfer, so the capacity is priced against the device account.
     var walletId: String?
 
     @EnvironmentObject var app: AppViewModel
@@ -19,7 +18,7 @@ struct SpendingAdvancedView: View {
     @State private var feeEstimate: UInt64?
     @State private var isLoading = false
     @State private var feeEstimateTask: Task<Void, Never>?
-    /// Reserved once and reused, so re-reading the budget on Continue doesn't burn a receive index.
+    /// Reserved once and reused, so re-reading the budget doesn't burn a receive index.
     @State private var fundingAddress: String?
 
     var lspBalance: UInt64 {
@@ -155,8 +154,7 @@ struct SpendingAdvancedView: View {
         }
     }
 
-    /// The budget this order has to fit under: the device account for a hardware transfer, this
-    /// wallet's on-chain savings otherwise.
+    /// The device account for a hardware transfer, this wallet's on-chain savings otherwise.
     private func fundingBudget() async -> UInt64? {
         if let walletId {
             return await transfer.hwFundingBudget(walletId: walletId)
@@ -185,8 +183,7 @@ struct SpendingAdvancedView: View {
         let maxLspBalance = transfer.transferValues.maxLspBalance
         amountViewModel.maxAmountOverride = maxLspBalance > 0 ? maxLspBalance : nil
 
-        // Settling the max can land it below what is already entered, so the amount comes down with
-        // it rather than leaving a capacity that no longer exists selected.
+        // Settling can land the max below what is already entered.
         if maxLspBalance > 0, maxLspBalance < amountViewModel.amountSats {
             amountViewModel.updateFromSats(maxLspBalance, currency: currency)
         }

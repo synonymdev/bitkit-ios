@@ -855,17 +855,11 @@ class TransferViewModel: ObservableObject {
         )
     }
 
-    /// Liquidity options for the advanced screen, with the offered maximum receiving capacity settled
-    /// on one the funding budget can actually pay the order fee for.
+    /// Liquidity options for the advanced screen, with the maximum receiving capacity settled on one
+    /// the budget can pay the order fee for.
     ///
-    /// The LSP prices both sides of the channel, so raising the receiving capacity raises the order
-    /// fee. Its advertised maximum knows nothing of the client balance already committed to the
-    /// order, so offering it against a balance sized near the budget buys an order the wallet cannot
-    /// fund. Settling it here means the Max button, and the ceiling the input enforces, land on a
-    /// capacity that can be ordered rather than one the confirm step rejects.
-    ///
-    /// - `transferValues`: liquidity options for a given client balance (prod: `calculateTransferValues`)
-    /// - `estimateOrderFee`: Blocktank order fee for a given client/LSP balance
+    /// The LSP prices both sides of the channel, so a higher capacity costs more, and its advertised
+    /// maximum knows nothing of the client balance already committed.
     func updateAdvancedTransferValues(
         clientBalanceSat: UInt64,
         budget: UInt64?,
@@ -896,9 +890,9 @@ class TransferViewModel: ObservableObject {
         self.transferValues = values
     }
 
-    /// The highest receiving capacity `budget` can still pay the order fee for, or nil when even
-    /// `minLspBalance` is out of reach — the offer is then left alone and the confirm step does the
-    /// rejecting, rather than presenting a range with nothing valid in it.
+    /// The highest receiving capacity `budget` can pay the order fee for, or nil when even
+    /// `minLspBalance` is out of reach — the confirm step does the rejecting rather than this
+    /// presenting a range with nothing valid in it.
     func settleAdvancedLspBalance(
         clientBalance: UInt64,
         budget: UInt64,
@@ -929,8 +923,7 @@ class TransferViewModel: ObservableObject {
         )
     }
 
-    /// The liquidity fee for one client/LSP split, or nil when the LSP will not quote it. Callers
-    /// treat nil as "skip this check" rather than as a rejection.
+    /// Nil when the LSP will not quote: callers skip the check rather than reject.
     private func lspFeeQuote(
         clientBalance: UInt64,
         lspBalance: UInt64,
@@ -942,11 +935,9 @@ class TransferViewModel: ObservableObject {
 
     /// Walks the affordable/over-budget bracket inward along the fee rate its two priced ends imply.
     ///
-    /// Unlike the client balance, a satoshi off the capacity only takes a fraction of a satoshi off
-    /// the fee, so stepping down by the shortfall would barely move. Interpolating through the
-    /// implied rate lands in a round or two instead. The bracket invariant
-    /// `affordableFee <= headroom < overBudgetFee` is what keeps each candidate strictly inside the
-    /// bracket, and is also why `scaledSpan` can never exceed the span.
+    /// A satoshi off the capacity only takes a fraction of a satoshi off the fee, so stepping down by
+    /// the shortfall would barely move; interpolating lands in a round or two. The invariant
+    /// `affordableFee <= headroom < overBudgetFee` keeps every candidate inside the bracket.
     private func settleCapacity(
         clientBalance: UInt64,
         headroom: UInt64,
@@ -988,9 +979,9 @@ class TransferViewModel: ObservableObject {
         return settled
     }
 
-    /// `span * numerator / denominator` without overflowing the 64-bit intermediate product. The
-    /// caller's bracket guarantees `numerator < denominator`, so the quotient always fits; the guard
-    /// keeps `dividingFullWidth` total for the misconfigured-LSP case that would otherwise trap.
+    /// `span * numerator / denominator` without overflowing the intermediate product. The caller's
+    /// bracket guarantees `numerator < denominator`; the guard keeps `dividingFullWidth` from
+    /// trapping if a misconfigured LSP breaks that.
     private static func scaledSpan(span: UInt64, numerator: UInt64, denominator: UInt64) -> UInt64 {
         guard denominator > 0 else { return 0 }
         let product = span.multipliedFullWidth(by: numerator)
@@ -998,8 +989,8 @@ class TransferViewModel: ObservableObject {
         return denominator.dividingFullWidth(product).quotient
     }
 
-    /// Backstop before a raised receiving capacity is ordered. Same non-blocking semantics as
-    /// `canFundOrder`: only a successfully quoted, definitively unaffordable capacity is rejected.
+    /// Backstop before a raised capacity is ordered. Like `canFundOrder`, only a quoted and
+    /// definitively unaffordable capacity is rejected.
     func canFundAdvancedOrder(
         clientBalance: UInt64,
         receivingAmount: UInt64,
@@ -1022,11 +1013,9 @@ class TransferViewModel: ObservableObject {
         return cost <= budget
     }
 
-    /// The device's spendable balance for `walletId`, re-read live at decision time.
-    ///
-    /// Never the on-chain savings balance: a hardware transfer is funded by the device, so an
-    /// on-chain read would reject every one of them. Nil when the hardware capabilities aren't
-    /// injected, which leaves the funding guards non-blocking in previews and tests.
+    /// The device's spendable balance, re-read at decision time. Never on-chain savings, which would
+    /// reject every hardware transfer. Nil without hardware capabilities, leaving the guards
+    /// non-blocking in previews and tests.
     func hwFundingBudget(walletId: String) async -> UInt64? {
         guard let hwSigner else { return nil }
         return try? await hwSigner.availability(walletId: walletId).available
@@ -1078,11 +1067,10 @@ class TransferViewModel: ObservableObject {
 
     /// Settles the advertised max on a client balance the LSP has actually priced.
     ///
-    /// The second-pass quote prices `quotedBalance`, but `availableAmount - fee` is a *different*
-    /// balance, and the service fee moves with the client/LSP split — upward with the client balance
-    /// in production, downward on staging and regtest. An order built at that unpriced balance can
-    /// therefore cost more than the wallet holds. Each round re-quotes its candidate, so only a
-    /// balance whose own quote fits the budget is returned.
+    /// `availableAmount - fee` is a different balance from the one that fee priced, and the service
+    /// fee moves with the client/LSP split — up with the client balance in production, down on
+    /// staging and regtest — so an order built there can cost more than the wallet holds. Each round
+    /// re-quotes its own candidate.
     private func resolveAffordableClientBalance(
         availableAmount: UInt64,
         quotedBalance: UInt64,
@@ -1116,13 +1104,11 @@ class TransferViewModel: ObservableObject {
         return fallback
     }
 
-    /// Backstop before an order is created: re-quote the fee for `clientBalance` and confirm the
-    /// funding source still covers both it and the balance itself.
+    /// Backstop before an order is created: re-quote the fee and confirm the funding source still
+    /// covers it and the balance.
     ///
-    /// Neither a missing budget nor an unavailable quote blocks the transfer — blocking there would
-    /// lock people out of the flow whenever the node is briefly unready, and the confirm step prices
-    /// the real order and stays the authority. Both cases are logged so support logs show why a
-    /// check was skipped.
+    /// A missing budget or quote does not block — that would lock people out whenever the node is
+    /// briefly unready, and the confirm step stays the authority. Both are logged.
     func canFundOrder(
         clientBalance: UInt64,
         budget: UInt64?,
