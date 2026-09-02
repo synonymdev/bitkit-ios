@@ -34,8 +34,22 @@ final class PaykitIssuerInteropTests: XCTestCase {
         }
     }
 
-    func testRequestFixturesCoverEveryNetworkAndChainIndependentLightningIdentifiers() throws {
+    func testRequestFixturesCoverEveryDocumentedIdentifier() throws {
         let acceptedFixtures = try loadFixtures().requestFixtures.filter(\.accepted)
+        let expectedOnchainFixtures = Set(FixtureNetwork.allCases.flatMap { network in
+            FixtureScript.allCases.map { script in
+                "\(network.rawValue)|btc-\(network.rawValue)-\(script.rawValue)"
+            }
+        })
+        let actualOnchainFixtures = Set(acceptedFixtures.compactMap { fixture -> String? in
+            guard fixture.expectedIdentifiers.count == 1,
+                  let identifier = fixture.expectedIdentifiers.first,
+                  identifier.hasPrefix("btc-\(fixture.network.rawValue)-")
+            else { return nil }
+            return "\(fixture.network.rawValue)|\(identifier)"
+        })
+
+        XCTAssertEqual(actualOnchainFixtures, expectedOnchainFixtures)
 
         for network in FixtureNetwork.allCases {
             XCTAssertTrue(
@@ -49,12 +63,6 @@ final class PaykitIssuerInteropTests: XCTestCase {
                     $0.network == network && $0.expectedIdentifiers == ["btc-lightning-lnurl"]
                 },
                 "Missing LNURL fixture for \(network.rawValue)"
-            )
-            XCTAssertTrue(
-                acceptedFixtures.contains {
-                    $0.network == network && $0.expectedIdentifiers == ["btc-\(network.rawValue)-p2wpkh"]
-                },
-                "Missing on-chain fixture for \(network.rawValue)"
             )
         }
     }
@@ -147,4 +155,11 @@ private enum FixtureNetwork: String, CaseIterable, Decodable {
         case .regtest: .regtest
         }
     }
+}
+
+private enum FixtureScript: String, CaseIterable {
+    case p2tr
+    case p2wpkh
+    case p2sh
+    case p2pkh
 }
