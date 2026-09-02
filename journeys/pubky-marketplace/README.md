@@ -14,7 +14,9 @@ server-side state and must provide:
 - A Paykit Server with the marketplace wallet-interop fixes and a `/setup` flow whose auth URL
   carries `x-bitkit-claim=watch-only-account-v1`.
 - A regtest bitcoind and Electrum/Fulcrum endpoint on the same chain. The endpoint must be configured
-  in both wallets before first launch so neither wallet retains a taller foreign regtest tip.
+  in both wallets before first launch so neither wallet retains a taller foreign regtest tip. The
+  reference fixture keeps Fulcrum internal, so a live wallet run must publish or proxy that endpoint
+  to the simulator host.
 - A clean seller wallet, a separate clean funded buyer wallet, and the seller Pubky public key.
 - A marketplace driver that can create one purchase for the buyer, expose its Payment Request id,
   report Paykit delivery, return the derived on-chain address and expected amount, mine one block,
@@ -26,9 +28,11 @@ The request and endpoint must satisfy the issuer contract from iOS issue
 The fixture must keep watch-only account material and spending authority separate. Evidence must
 show the claimed account xpub and account index while omitting wallet seed material and tokens.
 
-The previously proven staging fixture is documented in
-`BitcoinErrorLog/pubky-payment-rails/docs/wallet-leg.md`. Access to that repository, or an equivalent
-fixture implementing the requirements above, is required to execute the journey.
+The reference implementation is
+[`BitcoinErrorLog/pubky-marketplace/payments-env`](https://github.com/BitcoinErrorLog/pubky-marketplace/tree/0259d994967961cb0b972eba2f11a567d7376dd7/payments-env).
+Its `scripts/verify.sh` already proves the Locks, Paykit, Pubky, bitcoind, and Fulcrum protocol path.
+For this journey, the seller wallet replaces `paykit-companion-auth` and the buyer wallet replaces
+`paykit-reader-demo`; the other fixture roles remain unchanged.
 
 ## Required app changes
 
@@ -67,6 +71,6 @@ status are the confirmation authority.
 
 The current implementation was built from `004a1082` on a freshly erased iPhone 17 Pro Max
 simulator with Paykit UI enabled. A new wallet and Pubky profile reached the in-app scanner/paste
-handoff used by the prior wallet-leg proof. The run stopped before watch-only approval because the
-staging fixture repository and its setup URL were unavailable to the runner. This establishes the
+handoff used by the prior wallet-leg proof. The first run stopped before watch-only approval while
+the local `payments-env` fixture was being prepared for live wallet roles. This establishes the
 app-side baseline without claiming an end-to-end pass.
