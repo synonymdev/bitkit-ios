@@ -84,5 +84,57 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         try await app.handleScannedData(markerlessURL)
 
         XCTAssertNil(sheets.activeSheetConfiguration)
+
+        let duplicateRelayURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+            "&relay=https%3A%2F%2Fa&relay=https%3A%2F%2Fb" +
+            "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+        try await app.handleScannedData(duplicateRelayURL)
+        XCTAssertNil(sheets.activeSheetConfiguration)
+
+        let duplicateSecretURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+            "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
+            "&secret=first&secret=second&x-bitkit-claim=watch-only-account-v1"
+        try await app.handleScannedData(duplicateSecretURL)
+        XCTAssertNil(sheets.activeSheetConfiguration)
+    }
+
+    @MainActor
+    func testNonNodeDeepLinksReleaseAfterStartupGatesWithoutWaitingForLDK() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        let pubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+                "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"))
+        let httpURL = try XCTUnwrap(URL(string: "https://example.com/article"))
+        let ringURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/success"))
+        let lightningURL = try XCTUnwrap(URL(string: "lightning:lnbc1example"))
+
+        app.retainDeepLink(pubkyURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, pubkyURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(httpURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, httpURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(ringURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, ringURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(lightningURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { _ in
+            XCTFail("URLs that need the node must stay pending until LDK is running")
+        }
+        XCTAssertEqual(app.pendingDeepLinkURL, lightningURL)
+
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: true) { routedURL in
+            XCTAssertEqual(routedURL, lightningURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
     }
 }

@@ -121,10 +121,23 @@ class AppViewModel: ObservableObject {
         pendingDeepLinkURL = url
     }
 
-    func routePendingDeepLinkIfReady(_ isReady: Bool, handler: (URL) async -> Void) async {
+    func routePendingDeepLinkIfReady(_ isReady: Bool, nodeIsRunning: Bool = false, handler: (URL) async -> Void) async {
         guard isReady, let url = pendingDeepLinkURL else { return }
+        if Self.requiresLightningNode(url), !nodeIsRunning {
+            return
+        }
         pendingDeepLinkURL = nil
         await handler(url)
+    }
+
+    private static func requiresLightningNode(_ url: URL) -> Bool {
+        if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            return false
+        }
+        if PubkyRingAuthCallback.parse(url: url) != nil {
+            return false
+        }
+        return !PubkyAuthRequest.isProtocolURL(url.absoluteString)
     }
 
     private let lightningService: LightningService

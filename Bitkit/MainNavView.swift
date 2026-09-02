@@ -323,7 +323,7 @@ struct MainNavView: View {
                 notificationManager.unregister()
             }
         }
-        .task(id: canHandleDeepLinks) {
+        .task(id: [canHandleDeepLinks, wallet.nodeLifecycleState == .running]) {
             guard canHandleDeepLinks else { return }
             await handlePendingDeepLink()
         }
@@ -649,7 +649,10 @@ struct MainNavView: View {
     }
 
     private func handlePendingDeepLink() async {
-        await app.routePendingDeepLinkIfReady(canHandleDeepLinks) { url in
+        await app.routePendingDeepLinkIfReady(
+            canHandleDeepLinks,
+            nodeIsRunning: wallet.nodeLifecycleState == .running
+        ) { url in
             await handleDeepLink(url)
         }
     }
