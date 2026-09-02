@@ -8,4 +8,10 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
 
         XCTAssertTrue(schemes.contains("pubkyauth"))
     }
+
+    func testAppQueriesPubkyRingSpecificOutboundURLScheme() throws {
+        let schemes = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "LSApplicationQueriesSchemes") as? [String])
+
+        XCTAssertTrue(schemes.contains("pubkyring"))
+    }
 }

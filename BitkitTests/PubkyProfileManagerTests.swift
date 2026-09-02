@@ -46,6 +46,44 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertEqual(queryItems["x-error"], "bitkit://pubky-auth/error?nonce=12345678-1234-1234-1234-123456789ABC")
     }
 
+    func testPubkyRingAuthURLBuilderCreatesRingSpecificHandoff() throws {
+        let authUrl = "pubkyauth://signin?caps=/pub/bitkit.to/:rw&relay=https%3A%2F%2Frelay.example&secret=test"
+        let callbackAuthUrl = try XCTUnwrap(PubkyRingAuthURLBuilder.addingCallbacks(to: authUrl))
+        let ringUrl = try XCTUnwrap(PubkyRingAuthURLBuilder.ringHandoffURL(from: callbackAuthUrl))
+        let components = try XCTUnwrap(URLComponents(url: ringUrl, resolvingAgainstBaseURL: false))
+        let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        XCTAssertEqual(components.scheme, "pubkyring")
+        XCTAssertEqual(components.host, "signin")
+        XCTAssertEqual(components.path, "")
+        XCTAssertEqual(queryItems["caps"], "/pub/bitkit.to/:rw")
+        XCTAssertEqual(queryItems["relay"], "https://relay.example")
+        XCTAssertEqual(queryItems["secret"], "test")
+        XCTAssertEqual(queryItems["x-success"], PubkyRingAuthURLBuilder.successCallback)
+        XCTAssertEqual(queryItems["x-cancel"], PubkyRingAuthURLBuilder.cancelCallback)
+        XCTAssertEqual(queryItems["x-error"], PubkyRingAuthURLBuilder.errorCallback)
+        XCTAssertEqual(queryItems["x-source"], PubkyRingAuthURLBuilder.source)
+    }
+
+    func testPubkyRingAuthURLBuilderCreatesRingSpecificHandoffFromLegacyRootURL() throws {
+        let ringUrl = try XCTUnwrap(
+            PubkyRingAuthURLBuilder.ringHandoffURL(
+                from: "pubkyauth:///?caps=/pub/bitkit.to/:rw&relay=https%3A%2F%2Frelay.example&secret=test"
+            )
+        )
+        let components = try XCTUnwrap(URLComponents(url: ringUrl, resolvingAgainstBaseURL: false))
+
+        XCTAssertEqual(components.scheme, "pubkyring")
+        XCTAssertEqual(components.host, "signin")
+        XCTAssertEqual(components.path, "")
+    }
+
+    func testPubkyRingAuthURLBuilderRejectsOtherSchemes() {
+        XCTAssertNil(PubkyRingAuthURLBuilder.ringHandoffURL(from: "bitkit://pubky-auth/success"))
+    }
+
     func testPubkyRingAuthCallbackParsesNonce() throws {
         XCTAssertEqual(
             try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/error?nonce=abc&errorMessage=Denied"))),
