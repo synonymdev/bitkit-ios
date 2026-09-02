@@ -253,6 +253,15 @@ struct AppError: LocalizedError {
         case let .OnchainTxCreationFailed(message: ldkMessage):
             message = "Failed to create onchain transaction"
             debugMessage = ldkMessage
+        case let .OnchainTxBroadcastRejected(message: ldkMessage):
+            message = "Onchain transaction was rejected"
+            debugMessage = ldkMessage
+        case let .OnchainTxBroadcastFailed(message: ldkMessage):
+            message = "Failed to broadcast onchain transaction"
+            debugMessage = ldkMessage
+        case let .OnchainTxBroadcastTimeout(message: ldkMessage):
+            message = "Onchain transaction broadcast timed out"
+            debugMessage = ldkMessage
         case let .OnchainWalletAccountNotRegistered(message: ldkMessage):
             message = "Onchain wallet account is not registered"
             debugMessage = ldkMessage
