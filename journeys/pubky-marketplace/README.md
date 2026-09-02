@@ -2,37 +2,33 @@
 
 This suite covers the two-wallet Bitkit leg of a Pubky marketplace purchase: a seller grants a
 watch-only account claim, a linked buyer receives the resulting Payment Request, and the buyer pays
-the request on regtest through confirmation. It does not cover marketplace browsing, Locks content
-delivery, fiat payment, or Hypercolor.
+the request on regtest through confirmation. It does not cover marketplace browsing, fiat payment,
+or Hypercolor.
 
-## Required external fixture
+## Required integration fixture
 
-The journey needs a controlled marketplace fixture outside this repository. The fixture owns all
-server-side state and must provide:
+The journey needs a controlled integration fixture outside this repository. The test operator owns
+the fixture state and must provide:
 
 - A fresh Pubky testnet or isolated staging namespace reachable by both simulator wallets.
-- A Paykit Server with the marketplace wallet-interop fixes and a `/setup` flow whose auth URL
-  carries `x-bitkit-claim=watch-only-account-v1`.
-- A regtest bitcoind and Electrum/Fulcrum endpoint on the same chain. The endpoint must be configured
-  in both wallets before first launch so neither wallet retains a taller foreign regtest tip. The
-  reference fixture keeps Fulcrum internal, so a live wallet run must publish or proxy that endpoint
-  to the simulator host.
-- A clean seller wallet, a separate clean funded buyer wallet, and the seller Pubky public key.
-- A marketplace driver that can create one purchase for the buyer, expose its Payment Request id,
-  report Paykit delivery, return the derived on-chain address and expected amount, mine one block,
-  and report the transaction and purchase status.
+- A Paykit Server compatible with the watch-only setup contract merged in
+  [`pubky/paykit-server#2`](https://github.com/pubky/paykit-server/pull/2), including a `/setup` auth
+  URL whose payload carries `x-bitkit-claim=watch-only-account-v1`. Revision
+  [`867fc883`](https://github.com/pubky/paykit-server/commit/867fc883125c7b89a7b712c2551619cccdfdc0f7)
+  is the producer provenance used by the accepted run.
+- A regtest bitcoind and Electrum/Fulcrum endpoint on the same chain. Configure that endpoint in
+  both wallets before first launch so neither wallet retains a taller foreign regtest tip.
+- A clean seller wallet, a separate clean funded buyer wallet, and bilateral Paykit peer links at
+  `bitkit/server` and `bitkit/wallet`.
+- A driver that creates exactly one purchase for the buyer, reports the Payment Request id and
+  delivery state, returns the derived address and expected amount, mines exactly one authorized
+  block, and reports signed Paykit and marketplace completion state.
 
 The request and endpoint must satisfy the issuer contract from iOS issue
 [#713](https://github.com/synonymdev/bitkit-ios/issues/713): lowercase `btc`, a network-correct
 `btc-regtest-*` endpoint identifier, and a JSON endpoint payload with a non-empty string `value`.
-The fixture must keep watch-only account material and spending authority separate. Evidence must
-show the claimed account xpub and account index while omitting wallet seed material and tokens.
-
-The reference implementation is
-[`BitcoinErrorLog/pubky-marketplace/payments-env`](https://github.com/BitcoinErrorLog/pubky-marketplace/tree/ed03a32ecfe02deab40ad10ae1bac7fa18465c10/payments-env).
-Its `scripts/verify.sh` already proves the Locks, Paykit, Pubky, bitcoind, and Fulcrum protocol path.
-For this journey, the seller wallet replaces `paykit-companion-auth` and the buyer wallet replaces
-`paykit-reader-demo`; the other fixture roles remain unchanged.
+The fixture must keep watch-only account material and spending authority separate. Evidence records
+the claimed account xpub and account index while omitting wallet seed material and tokens.
 
 ## Required app changes
 
@@ -46,88 +42,69 @@ The full journey depends on the sibling work from the parent epic:
 - [#717](https://github.com/synonymdev/bitkit-ios/issues/717) prevents an Electrum-rejected broadcast
   from reaching `SendSuccess`.
 
-The linked-contact prerequisite is existing Paykit behavior: contact payments must be enabled in
-General Settings and the buyer and seller must save each other before Bitkit's
-`receivePrivateMessagesFromLinkedPeers()` poll can receive the request.
+Contact payments must be enabled in General Settings and the buyer and seller must save each other
+before Bitkit's `receivePrivateMessagesFromLinkedPeers()` poll can receive the request.
 
 ## Evidence contract
 
-Capture one timestamped evidence directory per run. Record the app commit, fixture commit, both
-simulator identifiers, Payment Request id, transaction id, and regtest block height. Keep these
+Capture one timestamped evidence directory per run. Record the app commit, integration revision,
+both simulator identifiers, Payment Request id, transaction id, and regtest block height. Keep these
 artifacts at each boundary:
 
-| Boundary | Bitkit evidence | Fixture evidence |
+| Boundary | Bitkit evidence | Integration evidence |
 | --- | --- | --- |
 | Watch-only claim | `PubkyAuthWatchOnlyConsent`, `PubkyAuthWatchOnlyApprove`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | Setup completion and the claimed xpub/account index, with no spending key |
 | Linked buyer | Enabled `ContactPaymentsToggle`, `Contact_<seller-public-key>`, and `Contact_<buyer-public-key>` snapshots | Seller and buyer peer-link state |
-| Incoming request | `PaymentRequestsSheet` and `PaymentRequestRow-<payment-request-id>` snapshots showing seller, amount, and note when present | Delivery record and exact Payment Request id |
+| Incoming request | `PaymentRequestsScreen` and `PaymentRequestRow-<payment-request-id>` snapshots showing seller, amount, and note when present | Delivery record and exact Payment Request id |
 | Payment approval | `PaymentRequestPay-<payment-request-id>`, `ReviewAmount`, and `ReviewContactRecipient` snapshots | Derived regtest address and expected amount |
 | Broadcast | `SendSuccess` snapshot and buyer activity details | Transaction in the fixture mempool with an amount-matched output |
-| Confirmation | Confirmed buyer activity snapshot | Transaction id at one or more confirmations and completed purchase status |
+| Confirmation | `StatusConfirmed`, `ActivityAmount`, and `ActivityTxDetails` snapshots | Transaction id at one or more confirmations and completed purchase status |
 
-`SendSuccess` is evidence of backend acceptance, not confirmation. The fixture's chain and purchase
-status are the confirmation authority.
+`SendSuccess` proves backend acceptance, not confirmation. The integration fixture's chain, signed
+Paykit state, and marketplace state are the confirmation authority. Android uses a transient request
+sheet; the iOS journey opens the persistent `PaymentRequestsScreen` before selecting the same
+request-row and per-request Pay identifiers.
 
-## Accepted corrected iOS run from 2026-09-02
+## Accepted exact-head run from 2026-09-02
 
-The complete journey passed on iOS app commit `c3791bbf7cccd9dfdd94f85081330ebe2d480692`
-against fixture commit `ed03a32ecfe02deab40ad10ae1bac7fa18465c10`, Paykit Server revision
-`867fc883125c7b89a7b712c2551619cccdfdc0f7`, and Paykit revision
-`6b241878a9bba5cecea919c0298c3f90624be6ff`. The Paykit Server image was
-`sha256:2e5c2e8391a4a9f60dfaed3326fce0b772f01e81b4a51b69cbf08c0b02bd89e8`.
+The final iOS acceptance replay used integration merge
+`a87d298939b868b899a1f1139ce84a5227703a51`, composed from merged Pay-selector head
+`70cd26346c6a539f792564e2e9bddb41cc00eecc` and this journey's pre-run documentation head
+`c0cf2d553b1cdcf6dd1bba6d8865a80292b4d7e8`. Its production tree was identical to the selector
+head. The installed Bitkit dylib SHA-256 was
+`6c5a1be9db1f5985d92629021db7836befd0a3d31c0db638ea284988b123467c`.
 
-- Seller simulator: `B379B7A4-715A-427F-8CB6-A6479BC73050`; Pubky
-  `pubkyhbn4tahj71yzpmtarz5amtqqf5fmicdd7rs8ao448tzaujdapfiy`.
-- Buyer simulator: `1B8D53BA-43F9-4799-AC0D-32EFDA4BDAF6`; Pubky
-  `pubkysqy1tx5poq5djne846r4rfbkca8ggmru9jp8d34tbjp74ngtzxno`.
-- The seller approved the watch-only claim and exact Paykit capabilities. The fixture persisted
-  account index `1` (`m/84h/1h/1h`) and its account tpub without Bitcoin spending authority.
-- Both wallets enabled `ContactPaymentsToggle` and displayed reciprocal `Contact_<public-key>`
-  rows before the fixture reported the buyer `Linked` at `bitkit/wallet` with failure count `0`.
-- Buyer funding transaction `0baf24337a58449816a18f0bb984e9dbc993fd9cb1bbf4391aff333280bcb908`
-  paid exactly 1,000,000 sats and was confirmed in block
-  `642c3864f623d376d04dbc1c6fba5b64f6e72cfcdbb6029fa7d0ade7dc24383f` at height `16400`.
-- Canonical request `60281cab-4914-40e9-979a-6572eebe69d6` used `0.00015000 btc`, endpoint identifier
-  `btc-regtest-p2wpkh`, and JSON endpoint value
-  `bcrt1qkhvgdehsp9y54tqp60f74phsqjjl77anrdmawn`. Its note was absent.
-- `PaymentRequestsSheet` showed Seller and 15,000 sats. The approval retained 15,000 sats,
-  `ReviewContactRecipient` resolved to Seller, and the 143-sat fee and enabled `GRAB` were visible.
-- Exactly one authorized swipe reached `SendSuccess` and broadcast transaction
-  `f15eb143e91904bac0b6d966627f60a37eb14862a96f7455a7ae00598ddb5150`. Output zero paid exactly
-  15,000 sats to the request address, output one returned 984,857 sats, and the fee was 143 sats.
-- Before mining, the transaction was the only mempool entry, Paykit reported `detected/0/true`, and
-  the Locks bundle remained pending. Exactly one block,
-  `4d607bf79dd4d94624f1f4fc6f8e90a38a25a474e9aa08298f85f971ecc2e0fc`, advanced the chain to
-  height `16401`; Paykit then reported `confirmed/1/true`, the Locks bundle completed without
-  failure, and the mempool was empty.
-- The buyer displayed `StatusConfirmed`, `ActivityAmount` with a 15,000-sat payment and 143-sat fee,
-  `ActivityTxDetails`, and Seller. Request history retained exactly
-  `PaymentRequestRow-60281cab-4914-40e9-979a-6572eebe69d6` without Pay or Dismiss actions.
-
-Android replays exercised the same corrected fixture and shared protocol vocabulary. They are
-diagnostic cross-platform evidence and are not the accepted iOS journey execution above.
-
-## Diagnostic baseline from 2026-09-02
-
-The journey branch at `32bd6948` was built for two freshly erased simulators with Paykit UI enabled
-against fixture commit `0259d994`. The preserved app evidence confirms the final `PubkyAuthOK`
-authorization success. The fixture's immutable protocol evidence independently passed all 15
-verification steps.
-
-An exploratory two-wallet run subsequently observed seller setup, a funded buyer, bilateral
-contacts, linked `bitkit/server` and `bitkit/wallet` receivers, and delivered requests. That run did
-not preserve the full boundary artifacts required above for consent and approval, exact
-capabilities, both toggles and contact rows, claimed account details, or raw SDK and outbox state.
-Those observations are diagnostic context, not passed journey boundaries.
-
-Paykit marked two iOS-targeted requests delivered, with Payment Request ids
-`43c0f7d4-92f7-4ec1-b9c4-5cff67d72381` and `436a1fb4-9109-4a8f-bcae-6c700e218634`. The buyer SDK
-received both as linked, proposed payer records for 15,000 sats, but the fixture emitted uppercase
-`BTC` and `btc-bitcoin-p2wpkh`. Those values violate the issuer contract above, so Bitkit correctly
-excluded the records from actionable requests and did not present `PaymentRequestsSheet`. A
-coordinated Android buyer reproduced the same no-request result from a separately delivered
-fixture request. The diagnostic baseline therefore stops at the issuer-contract assertion; the
-accepted corrected iOS run above supersedes its incomplete boundary coverage.
-
-The corrected fixture work is tracked in
-[`BitcoinErrorLog/pubky-marketplace#1`](https://github.com/BitcoinErrorLog/pubky-marketplace/issues/1).
+- The controlled seller identity was
+  `pubkyhbn4tahj71yzpmtarz5amtqqf5fmicdd7rs8ao448tzaujdapfiy`. The fresh buyer simulator was
+  `DED250A8-2952-42B9-B585-6654E361C87A`, with identity
+  `pubkyyrnr7smimj8fohmwk84jdoyn6xxdsgo175fu4xd844f1x3xk3xao`.
+- The seller setup retained watch-only account index `1` without Bitcoin spending authority. The
+  buyer enabled `ContactPaymentsToggle`, saved the seller as
+  `Contact_pubkyhbn4tahj71yzpmtarz5amtqqf5fmicdd7rs8ao448tzaujdapfiy`, and linked at
+  `bitkit/wallet` with failure count `0`.
+- Funding transaction `a57ec0f1b0ebaf493cb98799d3fbf126ecefa9f7f28dcb4f4f14386324b9faac`
+  paid the fresh buyer exactly 1,000,000 sats. One funding block advanced the shared chain to height
+  `16402` with tip `6b3dcd34ae81b07a064a1c3497ff47f60f2cda3cb5b27fc5b94777b829c6b6f1`.
+- Bundle `SSK4TAEXNRSY2RA8E0FCNVXDE4` produced request
+  `5f07c465-dc67-42ce-96a0-4209e5389618` for `0.00015000 btc`. Endpoint
+  `btc-regtest-p2wpkh` contained JSON value
+  `bcrt1qhlqp9nv4awtzl6psdqmuavanlxzyaemv3pce60`.
+- `PaymentRequestRow-5f07c465-dc67-42ce-96a0-4209e5389618` showed 15,000 sats and exposed
+  `PaymentRequestPay-5f07c465-dc67-42ce-96a0-4209e5389618`. Review preserved 15,000 sats,
+  `ReviewContactRecipient` resolved to `hbn4...pfiy`, and the 143-sat fee and enabled `GRAB` were
+  visible.
+- Exactly one swipe reached `SendSuccess` and broadcast
+  `2822f6b43aebeb228e0bfe96c1b201cf41e0ed46a677d704403dc629b09d6f2a`. Output zero paid the
+  request address exactly 15,000 sats, output one returned 984,857 sats, and the fee was 143 sats.
+- Before mining, the transaction was the only mempool entry, signed Paykit state was
+  `detected/0/true`, and the Locks bundle remained pending. Exactly one authorized block,
+  `6235eff06b00ed2b736635913e76269cd6524c4fed80f247d244102806816aed`, advanced the chain to
+  height `16403`.
+- Signed Paykit state then reached `confirmed/1/true`, the Locks bundle completed without a failure,
+  guarded content returned HTTP 200, and the mempool was empty. Bitkit independently synchronized
+  to the same height and tip.
+- The buyer displayed `StatusConfirmed`, a 15,000-sat payment, a 143-sat fee, the seller contact,
+  and the exact transaction under `ActivityTxDetails`. Request history retained exactly
+  `PaymentRequestRow-5f07c465-dc67-42ce-96a0-4209e5389618` without Pay or Dismiss actions.
+- The sanitized replay video SHA-256 is
+  `ec6f0819c9e4e4066e8969f092328615bb286925599b6f92c733eba4b999c122`.

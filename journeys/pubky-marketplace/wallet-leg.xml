@@ -2,7 +2,7 @@
   <description>
     Verifies a Bitkit seller grants a watch-only account claim and a separate linked Bitkit buyer
     receives, approves, pays, and confirms the resulting marketplace Payment Request on regtest.
-    Precondition: two clean simulator wallets and the external fixture described in this suite's
+    Precondition: two clean simulator wallets and the integration fixture described in this suite's
     README. Configure the fixture Electrum endpoint and Paykit UI before either wallet's first
     launch. Start with the seller wallet open and the fixture's fresh setup auth URL available.
   </description>
@@ -22,7 +22,7 @@
     <action>Verify the fixture reports the seller and buyer as linked peers</action>
     <action>Have the fixture create one marketplace purchase for the buyer and record its Payment Request id</action>
     <action>Verify the request uses lowercase "btc", a regtest endpoint identifier, and a JSON endpoint value</action>
-    <action>Wait for the incoming requests sheet (id "PaymentRequestsSheet")</action>
+    <action>Open the incoming requests screen (id "PaymentRequestsScreen")</action>
     <action>Verify the request row (id "PaymentRequestRow-&lt;payment-request-id&gt;") shows the seller and expected amount, plus the fixture note when present</action>
     <action>Capture the incoming-request evidence, then tap Pay (id "PaymentRequestPay-&lt;payment-request-id&gt;")</action>
     <action>Verify the review amount (id "ReviewAmount") matches the fixture amount</action>
