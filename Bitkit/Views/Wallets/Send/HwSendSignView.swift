@@ -10,6 +10,8 @@ struct HwSendSignView: View {
     @Binding var navigationPath: [SendRoute]
     let hwSend: HwSendCoordinator
     let prepareContactPayment: () async throws -> Void
+    let completeContactPayment: (String) async -> Void
+    let cancelContactPayment: () async -> Void
     @State private var signingTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
 
@@ -109,7 +111,10 @@ struct HwSendSignView: View {
                     address: invoice.address,
                     sats: amount,
                     satsPerVByte: UInt64(feeRate),
-                    beforeBroadcast: prepareContactPayment
+                    beforeBroadcast: prepareContactPayment,
+                    afterBroadcast: { result in
+                        await completeContactPayment(result.txId)
+                    }
                 )
                 await recordSentPayment(
                     result,
@@ -121,15 +126,24 @@ struct HwSendSignView: View {
                 hwSend.completeBroadcast()
                 navigationPath.append(.success(paymentId: result.txId, walletId: walletId))
             } catch is CancellationError {
+                await cancelContactPaymentIfBroadcastIsResolved()
                 return
             } catch is HwPassphraseError {
+                await cancelContactPaymentIfBroadcastIsResolved()
                 hwSend.requestPassphrase()
             } catch let error as HwTransferError {
+                await cancelContactPaymentIfBroadcastIsResolved()
                 app.toast(error)
             } catch {
+                await cancelContactPaymentIfBroadcastIsResolved()
                 showHardwareError(error)
             }
         }
+    }
+
+    private func cancelContactPaymentIfBroadcastIsResolved() async {
+        guard !hwSend.isBroadcastUnresolved else { return }
+        await cancelContactPayment()
     }
 
     private func reconnectWithPassphrase(_ passphrase: String) {

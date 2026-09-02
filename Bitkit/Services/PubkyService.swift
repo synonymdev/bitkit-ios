@@ -692,6 +692,22 @@ actor PaykitSdkService {
         }
     }
 
+    func submitPaymentProof(
+        counterparty: String,
+        counterpartyReceiverPath: String,
+        paymentRequestId: String,
+        proof: Paykit.PaymentProofSubmission
+    ) async throws -> Paykit.PaymentRequestRecord {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.submitPaymentProof(
+                counterparty: counterparty,
+                counterpartyReceiverPath: counterpartyReceiverPath,
+                paymentRequestId: paymentRequestId,
+                proof: proof
+            )
+        }
+    }
+
     func proposePaymentRequest(
         counterparty: String,
         counterpartyReceiverPath: String,

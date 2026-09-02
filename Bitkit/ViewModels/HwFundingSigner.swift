@@ -427,7 +427,8 @@ final class HwSendCoordinator {
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
-        beforeBroadcast: @escaping () async throws -> Void = {}
+        beforeBroadcast: @escaping () async throws -> Void = {},
+        afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in }
     ) async throws -> HwFundingBroadcastResult {
         guard let walletId else {
             throw AppError(message: "Unknown hardware wallet", debugMessage: "The send flow has no wallet id")
@@ -464,7 +465,9 @@ final class HwSendCoordinator {
 
             isBroadcastUnresolved = true
             do {
-                return try await signer.broadcastSignedFunding(signed)
+                let result = try await signer.broadcastSignedFunding(signed)
+                await afterBroadcast(result)
+                return result
             } catch {
                 let outcomeIsUncertain = (error as? HwTransferError) == .broadcastUncertain
                 if !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
