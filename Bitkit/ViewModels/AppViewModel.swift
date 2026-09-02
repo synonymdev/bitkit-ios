@@ -67,6 +67,8 @@ class AppViewModel: ObservableObject {
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
 
+    @Published private(set) var pendingDeepLinkURL: URL?
+
     // Onboarding
     @AppStorage("hasDismissedWidgetsOnboardingHint") var hasDismissedWidgetsOnboardingHint: Bool = false
     @AppStorage("hasSeenContactsIntro") var hasSeenContactsIntro: Bool = false
@@ -113,6 +115,15 @@ class AppViewModel: ObservableObject {
     /// Called when node reaches running state
     func markAppStatusInit() {
         appStatusInit = true
+    }
+
+    func retainDeepLink(_ url: URL) {
+        pendingDeepLinkURL = url
+    }
+
+    func takePendingDeepLink() -> URL? {
+        defer { pendingDeepLinkURL = nil }
+        return pendingDeepLinkURL
     }
 
     private let lightningService: LightningService
