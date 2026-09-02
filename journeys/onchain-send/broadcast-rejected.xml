@@ -1,0 +1,24 @@
+<journey name="onchain send rejected broadcast">
+  <description>
+    Verifies that a deterministic backend rejection never reaches Bitcoin Sent. Requires a funded
+    wallet, a valid destination address, camera permission already resolved, and the LDK Node
+    broadcast-result contract from synonymdev/ldk-node#112. Run scripts/reject-electrum-broadcast.js
+    on the host and configure Bitkit to use tcp://127.0.0.1:61001 before starting the send.
+  </description>
+  <actions>
+    <action>Verify the Bitkit wallet home screen is visible</action>
+    <action>Tap the Send button (id "Send")</action>
+    <action>Tap Enter Manually (id "RecipientManual")</action>
+    <action>Type the valid regtest destination address into the recipient field (id "RecipientInput")</action>
+    <action>Tap Continue (id "AddressContinue")</action>
+    <action>Verify the amount screen is visible (id "SendAmount")</action>
+    <action>Tap the 1 key (id "N1"), then the triple-zero key (id "N000"), to enter 1,000 sats</action>
+    <action>Tap Continue (id "ContinueAmount")</action>
+    <action>Verify the send review screen is visible</action>
+    <action>Swipe the confirm handle (id "GRAB") from left to right</action>
+    <action>Verify the transaction failure feedback is visible (id "SendFailure")</action>
+    <action>Verify the success screen is absent (id "SendSuccess")</action>
+    <action>Close the send sheet and open All Activity</action>
+    <action>Verify the rejected transaction is not listed as a sent on-chain activity</action>
+  </actions>
+</journey>

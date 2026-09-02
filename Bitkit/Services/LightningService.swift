@@ -785,27 +785,39 @@ class LightningService {
 
         do {
             return try await ServiceQueue.background(.ldk) {
-                if isMaxAmount {
-                    // For max amount sends, use sendAllToAddress to send all available funds
-                    try node.onchainPayment().sendAllToAddress(
-                        address: address,
-                        retainReserve: true,
-                        feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte)
-                    )
-                } else {
-                    // For normal sends, use sendToAddress with specific amount
-                    try node.onchainPayment().sendToAddress(
-                        address: address,
-                        amountSats: sats,
-                        feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
-                        utxosToSpend: utxosToSpend
-                    )
-                }
+                try Self.executeOnchainSend(
+                    onchainPayment: node.onchainPayment(),
+                    address: address,
+                    sats: sats,
+                    feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
+                    utxosToSpend: utxosToSpend,
+                    isMaxAmount: isMaxAmount
+                )
             }
         } catch {
             dumpLdkLogs()
             throw error
         }
+    }
+
+    static func executeOnchainSend(
+        onchainPayment: OnchainPayment,
+        address: String,
+        sats: UInt64,
+        feeRate: FeeRate,
+        utxosToSpend: [SpendableUtxo]?,
+        isMaxAmount: Bool
+    ) throws -> Txid {
+        if isMaxAmount {
+            return try onchainPayment.sendAllToAddress(address: address, retainReserve: true, feeRate: feeRate)
+        }
+
+        return try onchainPayment.sendToAddress(
+            address: address,
+            amountSats: sats,
+            feeRate: feeRate,
+            utxosToSpend: utxosToSpend
+        )
     }
 
     func send(bolt11: String, sats: UInt64? = nil, params: RouteParametersConfig? = nil) async throws -> PaymentHash {

@@ -102,6 +102,21 @@ maximum and the journeys pass for the wrong reason:
 exit status, so an empty response there is not a failure. Give the wallet ~20s to sync before
 reading the balance.
 
+The rejected-broadcast journey uses a local proxy that forwards normal Electrum requests and
+deterministically rejects `blockchain.transaction.broadcast`:
+
+```bash
+node scripts/reject-electrum-broadcast.js \
+  --listen-port 61001 \
+  --upstream-host 127.0.0.1 \
+  --upstream-port 60001 \
+  --message non-final
+```
+
+Configure the app's Electrum server as `tcp://127.0.0.1:61001` for the rejected case. Use the direct
+`tcp://127.0.0.1:60001` backend for the accepted counterexample. The proxy prints the rejected
+transaction ID for the backend mempool assertion.
+
 **The `lsp` helper is borrowed from the sibling Android checkout.** It is the `blocktank-api` plugin's
 script, and there is no iOS copy yet — #694 tracks porting it. The relative path assumes
 `bitkit-android` is cloned next to this repo, which is the usual layout here; the hardware-wallet
@@ -135,6 +150,7 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [notification-permission](notification-permission) | 4 | Background-setup toggles |
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
 | [hardware-wallet](hardware-wallet) | 15 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
+| [onchain-send](onchain-send) | 2 | Backend-accepted and backend-rejected send results |
 
 ## Not ported
 
