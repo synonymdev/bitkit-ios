@@ -76,6 +76,18 @@ struct SendConfirmationView: View {
             ?? t("hardware__device_model_trezor")
     }
 
+    private var isHardwarePreparationLoading: Bool {
+        hwSend.isActive && (hwSend.isFundingSourceLoading || hwSend.isPreviewLoading)
+    }
+
+    private var isHardwareConfirmationUnavailable: Bool {
+        hwSend.isActive && (isHardwarePreparationLoading || hwSend.previewFeeSats == 0)
+    }
+
+    private var displayedTransactionFee: Int {
+        transactionFee > 0 ? transactionFee : Int(hwSend.previewFeeSats)
+    }
+
     /// `.instant` is only valid when paying from Lightning; align `selectedSpeed` with the current sat/vB on savings.
     private func reconcileInstantSpeedWhenSwitchingToOnChain() async {
         guard wallet.selectedSpeed == .instant else { return }
@@ -202,7 +214,12 @@ struct SendConfirmationView: View {
                 .accessibilityIdentifier("SendConfirmToggleDetails")
             }
 
-            SwipeButton(title: t("wallet__send_swipe"), accentColor: accentColor, swipeProgress: $swipeProgress) {
+            SwipeButton(
+                title: t("wallet__send_swipe"),
+                accentColor: accentColor,
+                isDisabled: isHardwareConfirmationUnavailable,
+                swipeProgress: $swipeProgress
+            ) {
                 try await submitPayment()
             }
         }
@@ -272,7 +289,8 @@ struct SendConfirmationView: View {
                         imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
                         color: hwSend.isActive ? .blueAccent : .brandAccent,
                         variant: canSwitchFundingSource ? .primary : .secondary,
-                        disabled: !canSwitchFundingSource
+                        disabled: !canSwitchFundingSource || isHardwarePreparationLoading,
+                        isLoading: hwSend.isFundingSourceLoading
                     ) {
                         selectNextFundingSource()
                     }
@@ -307,29 +325,41 @@ struct SendConfirmationView: View {
                 }) {
                     SendSectionView(t("wallet__send_fee_and_speed")) {
                         HStack(spacing: 0) {
-                            Image(wallet.selectedSpeed.iconName)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .foregroundColor(wallet.selectedSpeed.iconColor)
-                                .frame(width: 16, height: 16)
-                                .padding(.trailing, 4)
+                            Group {
+                                if hwSend.isPreviewLoading {
+                                    ActivityIndicator(size: 10, tint: wallet.selectedSpeed.iconColor)
+                                } else {
+                                    Image(wallet.selectedSpeed.iconName)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .foregroundColor(wallet.selectedSpeed.iconColor)
+                                }
+                            }
+                            .frame(width: 16, height: 16)
+                            .padding(.trailing, 4)
 
-                            if transactionFee > 0 {
-                                let feeText = "\(wallet.selectedSpeed.title) ("
-                                HStack(spacing: 0) {
-                                    BodySSBText(feeText)
-                                    MoneyText(sats: transactionFee, size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+                            HStack(spacing: 0) {
+                                BodySSBText(wallet.selectedSpeed.title)
+                                if displayedTransactionFee > 0 {
+                                    BodySSBText(" (")
+                                    MoneyText(
+                                        sats: displayedTransactionFee,
+                                        size: .bodySSB,
+                                        symbol: true,
+                                        symbolColor: .textPrimary
+                                    )
                                     BodySSBText(")")
                                 }
-
-                                Image("pencil")
-                                    .foregroundColor(.textPrimary)
-                                    .frame(width: 12, height: 12)
-                                    .padding(.leading, 6)
                             }
+
+                            Image("pencil")
+                                .foregroundColor(.textPrimary)
+                                .frame(width: 12, height: 12)
+                                .padding(.leading, 6)
                         }
                     }
                 }
+                .disabled(isHardwarePreparationLoading)
 
                 SendSectionView(t("wallet__send_confirming_in")) {
                     HStack(spacing: 0) {
@@ -504,7 +534,8 @@ struct SendConfirmationView: View {
             )
             hwSend.selectWallet(
                 walletId,
-                initialAvailableSats: balance > reserve ? balance - reserve : 0
+                initialAvailableSats: balance > reserve ? balance - reserve : 0,
+                showsLoading: true
             )
             app.selectedWalletToPayFrom = .onchain
         }
@@ -986,14 +1017,34 @@ struct SendConfirmationView: View {
         }
 
         guard let address = app.scannedOnchainInvoice?.address,
-              let amountSats = wallet.sendAmountSats,
-              let feeRate = wallet.selectedFeeRateSatsPerVByte
+              let amountSats = wallet.sendAmountSats
         else {
+            if hwSend.isActive {
+                await hwSend.refreshAvailable(
+                    manager: hwWalletManager,
+                    destinationAddress: "",
+                    satsPerVByte: nil
+                )
+            }
+            return
+        }
+
+        guard let feeRate = wallet.selectedFeeRateSatsPerVByte else {
+            if hwSend.isActive {
+                await hwSend.refreshAvailable(
+                    manager: hwWalletManager,
+                    destinationAddress: address,
+                    satsPerVByte: nil
+                )
+            }
             return
         }
 
         do {
             if hwSend.isActive {
+                if transactionFee == 0, hwSend.previewFeeSats > 0 {
+                    apply(hwSend.previewFeeSats)
+                }
                 guard let fee = try await hwSend.preparePreview(
                     manager: hwWalletManager,
                     address: address,

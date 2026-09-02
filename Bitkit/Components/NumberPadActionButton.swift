@@ -11,6 +11,7 @@ struct NumberPadActionButton: View {
     var color: Color = .purpleAccent
     var variant: NumberPadActionButtonVariant = .primary
     var disabled: Bool = false
+    var isLoading: Bool = false
     var action: () -> Void
 
     @State private var isPressed = false
@@ -21,7 +22,10 @@ struct NumberPadActionButton: View {
             action()
         } label: {
             HStack(spacing: 8) {
-                if let imageName {
+                if isLoading {
+                    ActivityIndicator(size: 10, tint: color)
+                        .frame(width: 16, height: 16)
+                } else if let imageName {
                     Image(imageName)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -40,7 +44,7 @@ struct NumberPadActionButton: View {
             )
             .cornerRadius(8)
         }
-        .disabled(disabled)
+        .disabled(disabled || isLoading)
         .buttonStyle(NoAnimationButtonStyle())
         .pressEvents(
             onPress: {
@@ -50,6 +54,8 @@ struct NumberPadActionButton: View {
                 isPressed = false
             }
         )
+        .animation(.easeInOut(duration: 0.2), value: isLoading)
+        .animation(.easeInOut(duration: 0.2), value: text)
     }
 
     private var background: some View {

@@ -198,8 +198,8 @@ struct SendFeeCustom: View {
             do {
                 try await wallet.setFeeRate(speed: .custom(satsPerVByte: feeRate))
                 app.selectedWalletToPayFrom = .onchain
-                await refreshHardwareMaxIfNeeded()
                 navigationPath.removeLast()
+                await refreshHardwareMaxIfNeeded()
             } catch {
                 Logger.error("Failed to set custom fee rate: \(error)")
                 app.toast(

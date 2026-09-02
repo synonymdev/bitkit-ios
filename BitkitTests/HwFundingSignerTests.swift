@@ -64,6 +64,119 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(coordinator.availableSats, 42000)
     }
 
+    func testCoordinatorTracksFundingSourceRefresh() async {
+        let funding = MockHwFunding()
+        funding.maxSpendable = 42000
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: MockHwConnecting(),
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        coordinator.selectWallet("trezor:wallet", showsLoading: true)
+
+        XCTAssertTrue(coordinator.isFundingSourceLoading)
+        await coordinator.refreshAvailable(
+            manager: manager,
+            destinationAddress: "bc1qtest",
+            satsPerVByte: 2
+        )
+        XCTAssertFalse(coordinator.isFundingSourceLoading)
+        XCTAssertEqual(coordinator.availableSats, 42000)
+    }
+
+    func testCoordinatorSettlesFundingSourceLoadingWithoutFeeRate() async {
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator()
+        coordinator.selectWallet(
+            "trezor:wallet",
+            initialAvailableSats: 42000,
+            showsLoading: true
+        )
+
+        await coordinator.refreshAvailable(
+            manager: manager,
+            destinationAddress: "bc1qtest",
+            satsPerVByte: nil
+        )
+
+        XCTAssertFalse(coordinator.isFundingSourceLoading)
+        XCTAssertEqual(coordinator.availableSats, 42000)
+    }
+
+    func testCoordinatorTracksPreviewPreparation() async throws {
+        let funding = MockHwFunding()
+        funding.estimateDelay = 0.05
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: MockHwConnecting(),
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        coordinator.selectWallet("trezor:wallet", showsLoading: true)
+
+        let preview = Task {
+            try await coordinator.preparePreview(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2
+            )
+        }
+        await Task.yield()
+
+        XCTAssertTrue(coordinator.isFundingSourceLoading)
+        XCTAssertTrue(coordinator.isPreviewLoading)
+        XCTAssertEqual(coordinator.previewFeeSats, 0)
+        _ = try await preview.value
+        XCTAssertFalse(coordinator.isFundingSourceLoading)
+        XCTAssertFalse(coordinator.isPreviewLoading)
+        XCTAssertEqual(coordinator.previewFeeSats, funding.funding.miningFeeSats)
+    }
+
+    func testCoordinatorSettlesLoadingWhenPreviewFails() async {
+        let funding = MockHwFunding()
+        funding.composeError = MockHwFunding.TestError()
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: MockHwConnecting(),
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        coordinator.selectWallet("trezor:wallet", showsLoading: true)
+
+        do {
+            _ = try await coordinator.preparePreview(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2
+            )
+            XCTFail("Expected preview preparation to fail")
+        } catch {
+            XCTAssertTrue(error is MockHwFunding.TestError)
+        }
+
+        XCTAssertFalse(coordinator.isFundingSourceLoading)
+        XCTAssertFalse(coordinator.isPreviewLoading)
+        XCTAssertEqual(coordinator.previewFeeSats, 0)
+    }
+
     func testCoordinatorRetryReusesSignedPaymentAfterUncertainBroadcast() async throws {
         try await assertCoordinatorRetryReusesSignedPayment(error: HwTransferError.broadcastUncertain)
     }
