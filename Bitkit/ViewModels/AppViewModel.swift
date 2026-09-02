@@ -807,7 +807,11 @@ extension AppViewModel {
             sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(authUrl: authUrl, request: request))
         } catch {
             Logger.error("Failed to parse pubky auth URL: \(error)", context: "AppViewModel")
-            toast(type: .error, title: t("pubky_auth__invalid_request"))
+            toast(
+                type: .error,
+                title: t("pubky_auth__invalid_request"),
+                accessibilityIdentifier: "PubkyAuthInvalidRequestToast"
+            )
         }
     }
 
