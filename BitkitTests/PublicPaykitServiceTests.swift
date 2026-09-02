@@ -166,6 +166,21 @@ final class PublicPaykitServiceTests: XCTestCase {
         )
     }
 
+    func testPaymentLaunchResultHasReasonSpecificIncomingRequestFailures() {
+        XCTAssertNil(
+            PublicPaykitPaymentLaunchResult.opened(
+                paymentRequest: "bitcoin:bcrt1ptest",
+                privatePaymentContext: nil
+            ).incomingPaymentRequestFailureReason
+        )
+        XCTAssertEqual(PublicPaykitPaymentLaunchResult.noEndpoint.incomingPaymentRequestFailureReason, .noSupportedEndpoint)
+        XCTAssertEqual(PublicPaykitPaymentLaunchResult.notOpened.incomingPaymentRequestFailureReason, .endpointNotPayable)
+        XCTAssertEqual(
+            PublicPaykitPaymentLaunchResult.waitingForUpdatedPaymentList.incomingPaymentRequestFailureReason,
+            .paymentDetailsPending
+        )
+    }
+
     func testPayableEndpointsFiltersInvalidDecodedEndpoints() async {
         let payable = await PublicPaykitService.payableEndpoints(from: [
             endpoint(.bitcoinLightningBolt11, value: "not-a-bolt11"),
