@@ -403,7 +403,7 @@ struct AppScene: View {
                     }
                 )
             } else {
-                MainNavView()
+                MainNavView(canHandleDeepLinks: wallet.nodeLifecycleState == .running)
             }
         }
     }
