@@ -381,7 +381,7 @@ struct PubkyAuthApprovalSheet: View {
     private func performAuthorization() async {
         guard state == .authorizing else { return }
         do {
-            if config.request.isRingSignup {
+            if config.request.isSignup {
                 try await pubkyProfile.approveSignupAuth(request: config.request)
                 guard sheets.pubkyAuthApprovalSheetItem?.request.rawUrl == config.request.rawUrl else {
                     return

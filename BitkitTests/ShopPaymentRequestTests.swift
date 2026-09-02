@@ -23,6 +23,7 @@ final class ShopPaymentRequestTests: XCTestCase {
         let requests = [
             "https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123",
             pubkySignupUrl,
+            directPubkySignupUrl,
         ]
 
         for request in requests {
@@ -73,6 +74,10 @@ final class ShopPaymentRequestTests: XCTestCase {
             "&relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
             "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s" +
             "&caps=%2Fpub%2Fexample%2F%3Arw"
+    }
+
+    private var directPubkySignupUrl: String {
+        "pubkyauth://direct_signup?hs=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo&st=invite"
     }
 
     private var onchainInvoice: OnChainInvoice {
