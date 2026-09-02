@@ -710,6 +710,7 @@
 "pubky_auth__success_middle" = " and gave the service permission to access and edit your ";
 "pubky_auth__success_suffix" = " data.";
 "pubky_auth__biometric_failed" = "Authentication Failed";
+"pubky_auth__already_signed_in" = "Already signed in";
 "pubky_auth__no_identity" = "Pubky Identity Required";
 "pubky_auth__no_identity_desc" = "Create a Pubky identity in your profile to approve auth requests.";
 "pubky_auth__use_ring" = "Use Pubky Ring";

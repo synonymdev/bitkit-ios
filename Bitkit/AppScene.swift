@@ -878,6 +878,10 @@ struct AppScene: View {
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                             return
                         }
+                    } catch ScanHandlingError.pubkyAuthRequest {
+                        guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                        _ = paykitPaymentRequestManager.markPresentedIfPending(request)
+                        continue
                     } catch is CancellationError {
                         if app.ownsContactPaymentContext(contactPaymentContext) {
                             app.resetSendState()

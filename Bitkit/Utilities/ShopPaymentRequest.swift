@@ -24,6 +24,7 @@ enum ShopPaymentRequest {
 }
 
 enum ScanHandlingError: LocalizedError {
+    case pubkyAuthRequest
     case unsupportedRequest
 
     var errorDescription: String? {
