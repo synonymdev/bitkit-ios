@@ -84,3 +84,5 @@ excluded the records from actionable requests and did not present `PaymentReques
 coordinated Android buyer reproduced the same no-request result from a separately delivered
 fixture request. The baseline therefore stops at the issuer-contract assertion; approval,
 broadcast, and confirmation remain pending a fixture that emits the documented regtest contract.
+The shared fixture blocker is tracked in
+[`BitcoinErrorLog/pubky-marketplace#1`](https://github.com/BitcoinErrorLog/pubky-marketplace/issues/1).
