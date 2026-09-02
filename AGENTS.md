@@ -21,6 +21,52 @@ This app integrates with:
 
 ## Build & Development Commands
 
+### Agent CLI (XcodeBuildMCP)
+
+Agents should prefer the `xcodebuildmcp` CLI over raw `xcodebuild`, `xcrun`, and `simctl`. It wraps the
+same toolchain, parses build output, and adds simulator UI automation (AXe is bundled — no separate install).
+
+```bash
+# Install
+brew tap getsentry/xcodebuildmcp && brew install xcodebuildmcp
+
+# Discover commands and arguments — do not memorize tool lists
+xcodebuildmcp --help
+xcodebuildmcp <workflow> --help
+xcodebuildmcp <workflow> <tool> --help
+```
+
+Project defaults live in `.xcodebuildmcp/config.yaml`. It is gitignored because the CLI materializes a
+machine-local simulator UDID into it. Generate it with `xcodebuildmcp setup` (interactive), or write it by hand:
+
+```yaml
+schemaVersion: 1
+sessionDefaults:
+  projectPath: Bitkit.xcodeproj
+  scheme: Bitkit
+  configuration: Debug
+  simulatorName: iPhone 17
+setupPreferences:
+  platforms: [iOS]
+```
+
+With defaults set, most commands need no flags:
+
+```bash
+xcodebuildmcp simulator build-and-run   # build, install, launch, capture logs (preferred for run intent)
+xcodebuildmcp simulator test
+xcodebuildmcp simulator snapshot-ui     # semantic UI snapshot with elementRefs for tap/type-text
+xcodebuildmcp purge --report            # scratch storage lives in ~/Library/Developer/XcodeBuildMCP
+```
+
+**Notes:**
+- There is no standalone `.xcworkspace` here. Use `--project-path Bitkit.xcodeproj`, not `--workspace-path`.
+  The `-workspace Bitkit.xcodeproj/project.xcworkspace` form in the sections below applies to raw `xcodebuild` only.
+- Pass build settings and compilation conditions through `--extra-args`, e.g. for an E2E build:
+  `--extra-args "SWIFT_ACTIVE_COMPILATION_CONDITIONS=\$(inherited) E2E_BUILD"`.
+- `ARCHS` is already pinned to `arm64` in the project, so the arm64-only Rust xcframeworks build fine as long
+  as a concrete simulator is targeted (`--simulator-name` / `--simulator-id`), never a generic destination.
+
 ### Building
 ```bash
 # Standard build - Open Bitkit.xcodeproj in Xcode and build
@@ -100,10 +146,19 @@ node scripts/validate-translations.js
 **Note:** Localization files are synced from Transifex using [bitkit-transifex-sync](https://github.com/synonymdev/bitkit-transifex-sync).
 
 ### Testing
+
 ```bash
-# Run tests via Xcode Test Navigator or:
-# Cmd+U in Xcode
+# Unit and UI tests — Xcode Test Navigator, Cmd+U, or:
+xcodebuildmcp simulator test
+
+# AI device tests (Trezor emulator, developer-triggered) — see Docs/AI_DEVICE_TESTS.md
 ```
+
+Separately from the test suites, `journeys/` holds XML walkthroughs of app behaviour that an agent
+evaluates by driving a running simulator — number pad caps, notification permission, widget flows,
+hardware wallet pairing and transfers. They are developer assistance rather than a test layer:
+nothing runs them in CI and they gate nothing. Read `journeys/README.md` before running or writing
+one, and see the Journeys section under Code Style & Conventions.
 
 ## Architecture
 
@@ -206,6 +261,7 @@ While the project is transitioning away from traditional ViewModels, these still
 - `Extensions/`: Swift extensions for utilities and mock data
 - `Utilities/`: Helper utilities (Logger, Keychain, Crypto, Haptics, StateLocker)
 - `Models/`: Data models (Toast, ElectrumServer, NodeLifecycleState, etc.)
+- `journeys/`: XML behaviour specs evaluated by an agent on a simulator (see `journeys/README.md`)
 - `Styles/`: Fonts and sheet styles
 
 ### Service Queue Pattern
@@ -289,6 +345,72 @@ Ensure accessibility modifiers and labels are added to custom components.
 - Use descriptive names: `isLoadingUsers` not `loading`
 - Follow Apple's SwiftUI best practices
 - AVOID code comments on private functions, types, etc — PREFER self-documenting names that make intent obvious without explanation; only add a comment when the rationale is genuinely non-obvious (e.g. a workaround, an edge case, or a "why" the code itself can't convey)
+
+### Journeys
+
+`journeys/` holds XML behaviour specs evaluated by an agent driving a simulator — the iOS port of
+[`bitkit-android/journeys`](https://github.com/synonymdev/bitkit-android/tree/main/journeys). Read
+`journeys/README.md` before running or writing one.
+
+- **PORT the journeys whenever you port an Android feature.** If the Android change ships or touches
+  a journey under `bitkit-android/journeys/`, the iOS PR carries the matching journey. A ported
+  feature without its journey is an incomplete port.
+- KEEP the file name, `<journey name>` and `<action>` prose identical to the Android original so the
+  two platforms stay diffable. Change only what the platform forces: `adb` becomes `xcodebuildmcp`,
+  and Android `testTag`s become iOS `accessibilityIdentifier`s.
+- MATCH the Android identifier string when adding an `accessibilityIdentifier` for a journey — the
+  vocabulary is deliberately shared (`N9`, `NRemove`, `SpendingAmountContinue`, `HardwareTransferSign`).
+  Record any name that cannot match in the table in `journeys/README.md`.
+- PAIR a container identifier with `.accessibilityElement(children: .contain)` so it is queryable.
+- ADAPT rather than transcribe when iOS genuinely behaves differently, and say so in the journey's
+  `<description>` and the suite README — never assert Android behaviour iOS does not have.
+- SKIP a journey only when the iOS feature does not exist, and record it under "Not ported" in
+  `journeys/README.md` with what is missing.
+- Journeys are developer-assistance specs, not a QA gate. Nothing runs them in CI and no runner is
+  wired up for them; `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests` and never reads
+  `journeys/`. An agent runs one on request.
+- A journey that disagrees with the app is most likely stale rather than evidence of a bug. Say what
+  you found and update the journey; escalate only once you have separately confirmed the app is wrong.
+
+#### Running a journey on both platforms
+
+A journey is a shared spec, so when a behaviour is meant to match Android, run the same file on both
+sides rather than reasoning about the difference. iOS uses the XcodeBuildMCP CLI above; Android uses
+the `android` CLI against a `bitkit-android` checkout, which the `android-cli` agent skill drives:
+
+```bash
+android emulator list                  # AVD names; `start` requires one, it has no default
+android emulator start Pixel_9         # or `android run` against a connected device
+android layout --pretty                # flat JSON of on-screen elements — the snapshot-ui equivalent
+android layout --diff                  # only what changed, to keep context small
+android screen capture -o shot.png     # secondary; use when layout hits a WebView or animation
+```
+
+`android layout` reports each element's `resource-id`, `text`, `content-desc` and `interactions`
+(note the hyphens — the JSON keys are not camelCase), so a journey's testTag assertions map onto it
+the way the iOS ones map onto `snapshot-ui` identifiers.
+
+The vocabulary really is shared. Settings on both platforms, captured from a live emulator and
+simulator, agrees on `Tab-general`, `Tab-security`, `Tab-advanced`, `NavigationBack`, `HeaderMenu`,
+`CurrenciesSettings`, `UnitSettings`, `WidgetsSettings` and `QuickpaySettings` — so a comparison run
+is mostly signal, and the rows that disagree stand out.
+
+Driving Android input: taps are `adb shell input tap <x> <y>` using an element's `center`. Do not
+type long strings — `adb shell input text` silently drops characters (it lost 54 of a 397-character
+invoice in testing), and `adb shell cmd clipboard` does not exist on the emulator image. For an
+address or invoice, hand it to the app as a URI instead, which also skips the recipient screen:
+
+```bash
+adb shell am start -a android.intent.action.VIEW -d "lightning:<invoice>" to.bitkit.dev
+```
+
+A cross-platform payment is the sharpest check the two builds agree: take an invoice from one side
+(`xcrun simctl pbpaste <udid>` after tapping Copy on iOS) and pay it from the other.
+
+When the two platforms disagree on a journey, write down which it looks like — an intentional
+platform difference, or something worth a closer look — in the journey's `<description>` and the
+suite README, on both sides, so the next reader does not rediscover it. A disagreement is a prompt to
+investigate, not a bug report on its own.
 
 ### Changelog
 

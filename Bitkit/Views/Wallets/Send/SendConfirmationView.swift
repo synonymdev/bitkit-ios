@@ -12,8 +12,10 @@ struct SendConfirmationView: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var tagManager: TagManager
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
+    let hwSend: HwSendCoordinator
     let requestPinCheck: () async -> Bool
     let prepareIncomingPaymentRequest: () async throws -> Void
     let routingCacheResetAttempted: Bool
@@ -22,19 +24,56 @@ struct SendConfirmationView: View {
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var transactionFee: Int = 0
+    @State private var feeCalculationId = 0
     @State private var currentWarning: WarningType?
     @State private var pendingWarnings: [WarningType] = []
     @State private var warningContinuation: CheckedContinuation<Bool, Error>?
     @State private var swipeProgress: CGFloat = 0
 
     var accentColor: Color {
-        app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent
+        if hwSend.isActive { return .blueAccent }
+        return app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent
+    }
+
+    private var fundingSources: [SendFundingSource] {
+        var sources: [SendFundingSource] = []
+        if app.scannedLightningInvoice != nil {
+            sources.append(.spending)
+        }
+        if app.scannedOnchainInvoice != nil {
+            sources.append(.savings)
+            sources.append(contentsOf: hwWalletManager.wallets.compactMap { hardwareWallet in
+                guard hardwareWallet.fundingBalanceSats > 0 || hardwareWallet.walletId == hwSend.walletId else {
+                    return nil
+                }
+                return .hardware(walletId: hardwareWallet.walletId)
+            })
+        }
+        return sources
+    }
+
+    private var selectedFundingSource: SendFundingSource {
+        if let walletId = hwSend.walletId {
+            return .hardware(walletId: walletId)
+        }
+        return app.selectedWalletToPayFrom == .lightning ? .spending : .savings
+    }
+
+    private var canSwitchFundingSource: Bool {
+        fundingSources.count > 1
     }
 
     var canSwitchWallet: Bool {
+        guard !hwSend.isActive else { return false }
         guard app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil else { return false }
         let amount = wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis ?? 0
         return wallet.canSwitchWalletForUnifiedInvoice(amountSats: amount)
+    }
+
+    private var hardwareWalletName: String? {
+        guard let walletId = hwSend.walletId else { return nil }
+        return hwWalletManager.wallets.first(where: { $0.id == walletId })?.name
+            ?? t("hardware__device_model_trezor")
     }
 
     /// `.instant` is only valid when paying from Lightning; align `selectedSpeed` with the current sat/vB on savings.
@@ -184,11 +223,14 @@ struct SendConfirmationView: View {
         .onChange(of: app.selectedWalletToPayFrom) {
             Task {
                 if app.selectedWalletToPayFrom == .lightning {
-                    await MainActor.run { transactionFee = 0 }
+                    await calculateTransactionFee()
                 } else {
                     await onSwitchToOnchainWallet()
                 }
             }
+        }
+        .onChange(of: hwSend.walletId) {
+            Task { await calculateTransactionFee() }
         }
         .alert(
             t("security__bio_error_title"),
@@ -226,15 +268,13 @@ struct SendConfirmationView: View {
             HStack(alignment: .top, spacing: 16) {
                 SendSectionView(t("wallet__send_from")) {
                     NumberPadActionButton(
-                        text: t("wallet__savings__title"),
-                        imageName: canSwitchWallet ? "arrow-up-down" : nil,
-                        color: app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent,
-                        variant: canSwitchWallet ? .primary : .secondary,
-                        disabled: !canSwitchWallet
+                        text: hardwareWalletName ?? t("wallet__savings__title"),
+                        imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
+                        color: hwSend.isActive ? .blueAccent : .brandAccent,
+                        variant: canSwitchFundingSource ? .primary : .secondary,
+                        disabled: !canSwitchFundingSource
                     ) {
-                        if canSwitchWallet {
-                            app.selectedWalletToPayFrom.toggle()
-                        }
+                        selectNextFundingSource()
                     }
                     .accessibilityIdentifier("SendConfirmAssetButton")
                 }
@@ -332,14 +372,12 @@ struct SendConfirmationView: View {
                 SendSectionView(t("wallet__send_from")) {
                     NumberPadActionButton(
                         text: t("wallet__spending__title"),
-                        imageName: canSwitchWallet ? "arrow-up-down" : nil,
+                        imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
                         color: app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent,
-                        variant: canSwitchWallet ? .primary : .secondary,
-                        disabled: !canSwitchWallet
+                        variant: canSwitchFundingSource ? .primary : .secondary,
+                        disabled: !canSwitchFundingSource
                     ) {
-                        if canSwitchWallet {
-                            app.selectedWalletToPayFrom.toggle()
-                        }
+                        selectNextFundingSource()
                     }
                     .accessibilityIdentifier("SendConfirmAssetButton")
                 }
@@ -443,6 +481,35 @@ struct SendConfirmationView: View {
         }
     }
 
+    private func selectNextFundingSource() {
+        guard canSwitchFundingSource else { return }
+        let currentIndex = fundingSources.firstIndex(of: selectedFundingSource)
+        let nextIndex = currentIndex.map { ($0 + 1) % fundingSources.count } ?? 0
+        selectFundingSource(fundingSources[nextIndex])
+    }
+
+    private func selectFundingSource(_ source: SendFundingSource) {
+        switch source {
+        case .spending:
+            hwSend.selectWallet(nil)
+            app.selectedWalletToPayFrom = .lightning
+        case .savings:
+            hwSend.selectWallet(nil)
+            app.selectedWalletToPayFrom = .onchain
+        case let .hardware(walletId):
+            let balance = hwWalletManager.fundingBalance(walletId: walletId)
+            let reserve = HwFundingSigner.feeReserve(
+                balanceSats: balance,
+                satsPerVByte: wallet.selectedFeeRateSatsPerVByte.map(UInt64.init)
+            )
+            hwSend.selectWallet(
+                walletId,
+                initialAvailableSats: balance > reserve ? balance - reserve : 0
+            )
+            app.selectedWalletToPayFrom = .onchain
+        }
+    }
+
     private func submitPayment() async throws {
         // Validate payment and show warnings if needed
         let warnings = await validatePayment()
@@ -450,6 +517,23 @@ struct SendConfirmationView: View {
             let shouldProceed = try await showWarnings(warnings)
             if !shouldProceed {
                 throw CancellationError()
+            }
+        }
+
+        if hwSend.isActive {
+            do {
+                let context = app.contactPaymentContext
+                try validateIncomingPaymentRequestContext(context)
+                try validateIncomingPaymentRequestAmounts(context)
+            } catch {
+                Logger.error("Failed to validate hardware payment: \(error)")
+                navigationPath.append(.failure(SendFailureContext(
+                    error: error,
+                    retryRoute: .confirm,
+                    routingCacheResetAttempted: routingCacheResetAttempted,
+                    paymentRequest: nil
+                )))
+                return
             }
         }
 
@@ -475,7 +559,11 @@ struct SendConfirmationView: View {
             }
         }
 
-        try await performPayment()
+        if hwSend.isActive {
+            navigationPath.append(.hardwareSign)
+        } else {
+            try await performPayment()
+        }
     }
 
     private func contactRecipient(_ contact: PubkyContact) -> some View {
@@ -495,10 +583,7 @@ struct SendConfirmationView: View {
         let contactPublicKey = contactPaymentContext?.publicKey
 
         do {
-            try validateIncomingPaymentRequestContext(contactPaymentContext)
-            try validateIncomingPaymentRequestAmounts(contactPaymentContext)
-            try await prepareIncomingPaymentRequest()
-            try validateIncomingPaymentRequestContext(contactPaymentContext)
+            try await prepareContactPaymentIfNeeded()
 
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
@@ -518,9 +603,9 @@ struct SendConfirmationView: View {
                     try await wallet.sendWithTimeout(
                         bolt11: invoice.bolt11,
                         sats: paymentSats,
-                        onTimeout: {
-                            app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
-                            navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
+                        onTimeout: { timedOutHash in
+                            app.addPendingPaymentHash(timedOutHash, contactPublicKey: contactPublicKey)
+                            navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
                         }
                     )
                     await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
@@ -575,6 +660,14 @@ struct SendConfirmationView: View {
                 paymentRequest: app.selectedWalletToPayFrom == .lightning ? app.scannedLightningInvoice?.bolt11 : nil
             )))
         }
+    }
+
+    private func prepareContactPaymentIfNeeded() async throws {
+        let context = app.contactPaymentContext
+        try validateIncomingPaymentRequestContext(context)
+        try validateIncomingPaymentRequestAmounts(context)
+        try await prepareIncomingPaymentRequest()
+        try validateIncomingPaymentRequestContext(context)
     }
 
     private func validateIncomingPaymentRequestContext(_ context: ContactPaymentContext?) throws {
@@ -639,7 +732,7 @@ struct SendConfirmationView: View {
                 warnings.append(.balance)
             }
         } else {
-            let onchainBalance = wallet.totalOnchainSats
+            let onchainBalance = hwSend.isActive ? hwSend.availableSats : UInt64(clamping: wallet.totalOnchainSats)
             if amount > onchainBalance / 2 {
                 warnings.append(.balance)
             }
@@ -828,8 +921,18 @@ struct SendConfirmationView: View {
         await calculateTransactionFee()
     }
 
+    @MainActor
     private func calculateTransactionFee() async {
+        feeCalculationId += 1
+        let requestId = feeCalculationId
+
+        func apply(_ fee: UInt64) {
+            guard feeCalculationId == requestId else { return }
+            transactionFee = Int(fee)
+        }
+
         guard app.selectedWalletToPayFrom == .onchain else {
+            apply(0)
             return
         }
 
@@ -841,14 +944,23 @@ struct SendConfirmationView: View {
         }
 
         do {
+            if hwSend.isActive {
+                guard let fee = try await hwSend.preparePreview(
+                    manager: hwWalletManager,
+                    address: address,
+                    sats: amountSats,
+                    satsPerVByte: UInt64(feeRate)
+                ) else { return }
+                apply(fee)
+                return
+            }
+
             if await shouldUseMaxOnchainSend(address: address, amountSats: amountSats, feeRate: feeRate) {
                 let sendAllFee = try await wallet.estimateSendAllFee(
                     address: address,
                     satsPerVByte: feeRate
                 )
-                await MainActor.run {
-                    transactionFee = Int(sendAllFee)
-                }
+                apply(sendAllFee)
                 return
             }
 
@@ -859,15 +971,12 @@ struct SendConfirmationView: View {
                 satsPerVByte: feeRate,
                 utxosToSpend: wallet.selectedUtxos
             )
-            await MainActor.run {
-                transactionFee = Int(normalFee)
-            }
+            apply(normalFee)
         } catch {
+            guard feeCalculationId == requestId else { return }
             Logger.error("Failed to calculate actual fee: \(error)")
-            await MainActor.run {
-                transactionFee = 0
-                app.toast(type: .error, title: t("other__try_again"))
-            }
+            transactionFee = 0
+            app.toast(type: .error, title: t("other__try_again"))
         }
     }
 

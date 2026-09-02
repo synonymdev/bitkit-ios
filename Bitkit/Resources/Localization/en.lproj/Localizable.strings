@@ -67,7 +67,7 @@
 "hardware__passphrase_text" = "If you have funds protected by a passphrase, enter it below to add these funds to your wallet balance as well.";
 "hardware__passphrase_paired_header" = "Passphrase <accent>funds found</accent>";
 "hardware__passphrase_paired_text" = "Bitkit found funds behind a passphrase, and added these to your wallet balance.";
-"hardware__passphrase_sign_text" = "Enter the passphrase of this wallet so your hardware device can sign the transfer.";
+"hardware__passphrase_sign_text" = "Enter the passphrase of this wallet so your hardware device can sign the transaction.";
 "hardware__passphrase_disabled" = "Passphrase protection is turned off on this hardware device. Enable it in Trezor Suite, then try again.";
 "hardware__passphrase_duplicate" = "You are already watching this passphrase wallet.";
 "hardware__passphrase_error" = "Could not open the passphrase wallet. Make sure your hardware device is unlocked and try again.";
@@ -80,6 +80,9 @@
 "hardware__remove_dialog_keep" = "Back up name and tags";
 "hardware__remove_error" = "Could not remove the hardware wallet. Please try again.";
 "hardware__remove_keep_error" = "Could not keep this wallet's tags in your backup. Try again, or remove it without keeping them.";
+"hardware__send_confirm_address" = "To address (confirm on device)";
+"hardware__send_open_connect" = "Open Trezor Connect";
+"hardware__send_sign_title" = "Sign With Device";
 "cards__buyBitcoin__title" = "Buy";
 "cards__buyBitcoin__description" = "Buy some bitcoin";
 "cards__btFailed__title" = "Failed";
@@ -808,7 +811,11 @@
 "settings__quickpay__settings__toggle" = "Enable QuickPay";
 "settings__quickpay__settings__text" = "If enabled, scanned invoices below ${amount} will be paid automatically without requiring your confirmation or PIN*.";
 "settings__quickpay__settings__label" = "Quickpay threshold";
+"settings__quickpay__settings__daily_label" = "Daily QuickPay limit";
+"settings__quickpay__settings__daily_text" = "Pay up to ${limit} per day without entering your PIN. After that, confirm each payment.";
+"settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay exclusively supports payments from your Spending Balance.";
+"wallet__send_quickpay__currency_conversion" = "Currency conversion failed";
 "settings__security__title" = "Security And Privacy";
 "settings__security__swipe_balance_to_hide" = "Swipe balance to hide";
 "settings__security__hide_balance_on_open" = "Hide balance on open";

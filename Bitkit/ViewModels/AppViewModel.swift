@@ -9,11 +9,18 @@ struct SendSheetPendingResolution: Equatable {
     let paymentHash: String
     let success: Bool
     let failureReason: PaymentFailureReason?
+    let feePaidSats: UInt64?
 
-    init(paymentHash: String, success: Bool, failureReason: PaymentFailureReason? = nil) {
+    init(
+        paymentHash: String,
+        success: Bool,
+        failureReason: PaymentFailureReason? = nil,
+        feePaidSats: UInt64? = nil
+    ) {
         self.paymentHash = paymentHash
         self.success = success
         self.failureReason = failureReason
+        self.feePaidSats = feePaidSats
     }
 }
 
@@ -92,6 +99,8 @@ class AppViewModel: ObservableObject {
     /// When payment succeeds/fails, we show toast and publish resolution so SendPendingScreen can navigate.
     private var pendingPaymentHashes: Set<String> = []
     private var pendingContactPaymentContexts: [String: ContactPaymentContext] = [:]
+    private(set) var isQuickPayActive = false
+    private var quickPayPaymentHash: String?
 
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
@@ -389,6 +398,20 @@ extension AppViewModel {
         guard sendSheetPendingResolution?.paymentHash == hash else { return }
         sendSheetPendingResolution = nil
     }
+
+    func beginQuickPay(paymentHash: String) {
+        isQuickPayActive = true
+        quickPayPaymentHash = paymentHash
+    }
+
+    func isQuickPayHandling(paymentHash: String) -> Bool {
+        isQuickPayActive && quickPayPaymentHash == paymentHash
+    }
+
+    func resetQuickPay() {
+        isQuickPayActive = false
+        quickPayPaymentHash = nil
+    }
 }
 
 // MARK: Scanning/pasting handling
@@ -397,7 +420,8 @@ extension AppViewModel {
     func handleScannedData(
         _ uri: String,
         claimedContactPaymentContext: ContactPaymentContext? = nil,
-        scope: ScanHandlingScope = .unrestricted
+        scope: ScanHandlingScope = .unrestricted,
+        alternativeOnchainBalanceSats: UInt64 = 0
     ) async throws {
         let handlingId = claimedContactPaymentContext?.id ?? UUID()
         if let claimedContactPaymentContext {
@@ -418,7 +442,7 @@ extension AppViewModel {
             guard SamRockSetupRequest.parse(uri) == nil,
                   !SamRockSetupRequest.isProtocolURL(uri)
             else {
-                throw ShopPaymentRequestError.unsupportedRequest
+                throw ScanHandlingError.unsupportedRequest
             }
             if Bip21Utils.isDuplicatedBip21(uri) {
                 toast(
@@ -431,7 +455,7 @@ extension AppViewModel {
             }
             let data = try await decode(invoice: uri)
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
-            guard ShopPaymentRequest.isSupported(data) else { throw ShopPaymentRequestError.unsupportedRequest }
+            guard ShopPaymentRequest.isSupported(data) else { throw ScanHandlingError.unsupportedRequest }
             prevalidatedPaymentRequest = data
         } else {
             prevalidatedPaymentRequest = nil
@@ -469,6 +493,10 @@ extension AppViewModel {
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
         }
 
+        if scope == .onchainPayments {
+            guard ShopPaymentRequest.isOnchainPayment(data) else { throw ScanHandlingError.unsupportedRequest }
+        }
+
         switch data {
         // BIP21 (Unified) invoice handling
         case let .onChain(invoice):
@@ -485,7 +513,7 @@ extension AppViewModel {
                 return
             }
 
-            if let lnInvoice = invoice.params?["lightning"] {
+            if scope != .onchainPayments, let lnInvoice = invoice.params?["lightning"] {
                 // Lightning invoice param found, prefer lightning payment if invoice is valid
                 let lightningData = try await decode(invoice: lnInvoice)
                 try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
@@ -519,7 +547,10 @@ extension AppViewModel {
                             // Lightning insufficient for any other reason (no channels at all, or
                             // usable channels without capacity).
                             // Fall back to onchain and validate onchain balance immediately.
-                            let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
+                            let onchainBalance = max(
+                                lightningService.balances?.spendableOnchainBalanceSats ?? 0,
+                                alternativeOnchainBalanceSats
+                            )
                             guard validateOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance) else {
                                 return
                             }
@@ -543,7 +574,10 @@ extension AppViewModel {
 
             // If node is running, validate balance immediately
             if lightningService.status?.isRunning == true {
-                let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
+                let onchainBalance = max(
+                    lightningService.balances?.spendableOnchainBalanceSats ?? 0,
+                    alternativeOnchainBalanceSats
+                )
                 guard validateOnchainBalance(invoiceAmount: invoice.amountSatoshis, onchainBalance: onchainBalance) else {
                     return
                 }
@@ -801,6 +835,7 @@ extension AppViewModel {
         if !preservingContactPaymentContext {
             contactPaymentContext = nil
         }
+        resetQuickPay()
     }
 }
 
@@ -1039,11 +1074,24 @@ extension AppViewModel {
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
-        case let .paymentSuccessful(paymentId, paymentHash, _, _):
-            let hash = paymentId ?? paymentHash
-            if pendingPaymentHashes.contains(hash) {
+        case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
+            let outcome = QuickPayPaymentCoordinator.shared.complete(
+                paymentId: paymentId,
+                paymentHash: paymentHash,
+                success: true,
+                feePaidMsat: feePaidMsat
+            )
+            let hash = outcome.invoicePaymentHash ?? paymentHash
+            let awaitingSheet = pendingPaymentHashes.contains(hash)
+            if awaitingSheet {
                 pendingPaymentHashes.remove(hash)
-                sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: true)
+                sendSheetPendingResolution = SendSheetPendingResolution(
+                    paymentHash: hash,
+                    success: true,
+                    feePaidSats: outcome.wasQuickPay ? (feePaidMsat ?? 0) / 1000 : nil
+                )
+            }
+            if awaitingSheet || outcome.wasQuickPay, !isQuickPayHandling(paymentHash: hash) {
                 toast(
                     type: .lightning,
                     title: t("wallet__toast_payment_success_title"),
@@ -1052,10 +1100,19 @@ extension AppViewModel {
                 )
             }
         case let .paymentFailed(paymentId, paymentHash, reason):
-            let hash = paymentId ?? paymentHash
-            if let hash, pendingPaymentHashes.contains(hash) {
+            let outcome = QuickPayPaymentCoordinator.shared.complete(
+                paymentId: paymentId,
+                paymentHash: paymentHash,
+                success: false
+            )
+            let hash = paymentHash ?? outcome.invoicePaymentHash ?? paymentId
+            let awaitingSheet = hash.map { pendingPaymentHashes.contains($0) } ?? false
+            if let hash, awaitingSheet {
                 pendingPaymentHashes.remove(hash)
                 sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: reason)
+            }
+            let isHandledByQuickPay = hash.map { isQuickPayHandling(paymentHash: $0) } ?? false
+            if awaitingSheet || outcome.wasQuickPay, !isHandledByQuickPay {
                 toast(
                     type: .error,
                     title: t("wallet__toast_payment_failed_title"),

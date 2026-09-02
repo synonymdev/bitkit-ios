@@ -234,6 +234,9 @@ struct MainNavView: View {
             // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
             if needsCode {
                 guard !sheets.hardwareConnectHandlesPairing else { return }
+                if sheets.activeSheetConfiguration?.id == .send {
+                    return
+                }
                 sheets.showSheet(.hardwarePairing)
             } else {
                 sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")
@@ -354,7 +357,10 @@ struct MainNavView: View {
                 }
 
                 do {
-                    try await app.handleScannedData(url.absoluteString)
+                    try await app.handleScannedData(
+                        url.absoluteString,
+                        alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                    )
                     if shouldOpenPaymentSheet(for: url.absoluteString) {
                         PaymentNavigationHelper.openPaymentSheet(
                             app: app,
@@ -658,7 +664,10 @@ struct MainNavView: View {
 
                 await wallet.waitForNodeToRun()
                 try await Task.sleep(nanoseconds: Self.nodeReadyDelayNanoseconds)
-                try await app.handleScannedData(uri)
+                try await app.handleScannedData(
+                    uri,
+                    alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                )
 
                 try await Task.sleep(nanoseconds: Self.statePropagationDelayNanoseconds)
                 if shouldOpenPaymentSheet(for: uri) {

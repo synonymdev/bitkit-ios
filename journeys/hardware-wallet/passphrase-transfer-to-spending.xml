@@ -1,0 +1,36 @@
+<journey name="Hardware Wallet Passphrase Transfer To Spending">
+  <description>
+    Drives Transfer To Spending from a passphrase (hidden) wallet. While the Trezor session that
+    holds the passphrase is still open the transfer signs straight away; after the session is
+    dropped Bitkit asks for the passphrase again, and a wrong one is refused instead of signing
+    from whichever wallet the device happens to have open. Requires the emulator started with
+    passphrase protection enabled, the hidden wallet from passphrase-pairing.xml paired, and its
+    native-segwit account holding spendable regtest funds.
+  </description>
+  <actions>
+    <action>Launch the Bitkit app and go to the wallet home screen</action>
+    <action>Tap the hidden wallet tile ("Hidden Trezor") and verify its detail screen opens (id "HardwareWalletScreen")</action>
+    <action>Tap "Transfer To Spending" (id "HardwareTransferToSpending"), and if the first-run intro is shown tap "Get Started"</action>
+    <action>Tap the "25%" quick button (id "HardwareTransferAmountQuarter"), then "Continue" (id "HardwareTransferAmountContinue") and wait for the Blocktank order</action>
+    <action>Verify the sign screen opens (id "HardwareTransferSign") titled "SIGN WITH YOUR DEVICE"</action>
+    <action>Tap "Open Trezor Connect" (id "HardwareTransferOpenTrezorConnect") and verify no passphrase sheet appears, because the session opened at pairing still holds the hidden wallet</action>
+    <action>Approve the Recipient, Amount, Locktime, and Summary prompts on the Bridge emulator in order, and verify the transaction signed screen appears (id "HardwareTransferSigned")</action>
+    <action>Wait for the Processing Payment screen, tap "Continue Using Bitkit", and verify the app returns to the wallet home screen</action>
+    <action>Force-quit Bitkit: xcodebuildmcp simulator stop --bundle-id to.bitkit</action>
+    <action>Relaunch it: xcodebuildmcp simulator launch-app --bundle-id to.bitkit</action>
+    <action>Once the app is back on the home screen, open the hidden wallet tile and start Transfer To Spending again, setting an amount with the "25%" quick button and continuing to the sign screen</action>
+    <action>Tap "Open Trezor Connect" (id "HardwareTransferOpenTrezorConnect") and verify the passphrase sheet opens (id "HwTransferPassphraseSheet"), because the session that held the passphrase is gone</action>
+    <action>Type a wrong passphrase "not-the-one" into the input (id "HwTransferPassphraseInput") and tap "Continue" (id "HwTransferPassphraseContinue")</action>
+    <action>
+      Confirm on the emulated device for every account the passphrase session reads: the device
+      prompts once per address type and the call blocks until it is acknowledged. Either tap the
+      emulator UI or run: ../bitkit-docker/scripts/trezor-emulator send-json '{"type":"emulator-press-yes","id":1}'
+    </action>
+    <action>Verify an error toast says the passphrase opens a different wallet, that no signing prompt was shown on the emulator, and that no new transfer appears in the activity list</action>
+    <action>Navigate to the wallet home screen and verify the hardware tile count is unchanged: the wallet the wrong passphrase opened must not be added</action>
+    <action>Reopen the sign screen, tap "Open Trezor Connect", type the correct passphrase "bitkit-hidden" and tap "Continue"</action>
+    <action>Approve the Recipient, Amount, Locktime, and Summary prompts on the Bridge emulator, and verify the transaction signed screen appears (id "HardwareTransferSigned")</action>
+    <action>Scan the app group for both passphrases, treating only "no match" as clean: UDID=&lt;the simulator this journey is running on&gt;; GROUP=$(xcrun simctl get_app_container "$UDID" to.bitkit groups | awk '{print $2}'); [ -d "$GROUP" ] || { echo "LEAK_CHECK_INVALID: container not found"; exit 1; }; grep -rl -e "bitkit-hidden" -e "not-the-one" "$GROUP"; s=$?; case $s in 1) echo NO_PASSPHRASE_LEAK;; 0) echo "LEAK FOUND";; *) echo "LEAK_CHECK_INVALID: grep exit $s";; esac</action>
+    <action>Verify the previous command printed NO_PASSPHRASE_LEAK. LEAK_CHECK_INVALID means the check did not scan anything and the journey cannot conclude either way — treat it as a failed step, not a pass</action>
+  </actions>
+</journey>

@@ -114,6 +114,8 @@ final class TrezorManager {
     private let uiHandler = TrezorUiHandler.shared
     private var cancellables = Set<AnyCancellable>()
     private var hasSetupSubscriptions = false
+    private var isConnectionOperationActive = false
+    private var connectionOperationWaiters: [CheckedContinuation<Void, Never>] = []
 
     // MARK: - Initialization
 
@@ -156,6 +158,35 @@ final class TrezorManager {
         // is no reactive passphrase prompt to subscribe to here.
     }
 
+    private func withConnectionOperation<T>(
+        _ operation: @escaping @MainActor () async throws -> T
+    ) async throws -> T {
+        await acquireConnectionOperation()
+        defer { releaseConnectionOperation() }
+        try Task.checkCancellation()
+        return try await operation()
+    }
+
+    private func acquireConnectionOperation() async {
+        guard isConnectionOperationActive else {
+            isConnectionOperationActive = true
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            connectionOperationWaiters.append(continuation)
+        }
+    }
+
+    private func releaseConnectionOperation() {
+        guard !connectionOperationWaiters.isEmpty else {
+            isConnectionOperationActive = false
+            return
+        }
+
+        connectionOperationWaiters.removeFirst().resume()
+    }
+
     // MARK: - Debug Log Helper
 
     private func trezorLog(_ message: String, level: String = "info") {
@@ -175,7 +206,7 @@ final class TrezorManager {
         deviceFingerprint = nil
     }
 
-    func clearDisconnectedDeviceState(errorMessage: String? = nil) {
+    func clearDisconnectedDeviceState(errorMessage: String? = nil, preserveWalletMode: Bool = false) {
         connectedDevice = nil
         connectedWalletId = nil
         deviceFeatures = nil
@@ -186,8 +217,10 @@ final class TrezorManager {
         showConfirmOnDevice = false
         showPairingCode = false
         showWalletModeChooser = false
-        uiHandler.setWalletMode(.standard)
-        walletMode = .standard
+        if !preserveWalletMode {
+            uiHandler.setWalletMode(.standard)
+            walletMode = .standard
+        }
     }
 
     // MARK: - Manager Setup
@@ -224,11 +257,28 @@ final class TrezorManager {
     // MARK: - Device Scanning
 
     func startScan(clearExisting: Bool = true) async {
+        do {
+            try await withConnectionOperation {
+                try await self.performScan(clearExisting: clearExisting)
+            }
+        } catch is CancellationError {
+            // The caller no longer needs scan results.
+        } catch {
+            self.error = errorMessage(from: error)
+            trezorLog("Scan failed: \(error)", level: "error")
+        }
+    }
+
+    private func performScan(clearExisting: Bool) async throws {
         if !isInitialized {
             await initialize()
         }
 
         isScanning = true
+        defer {
+            transport.stopBLEScanning()
+            isScanning = false
+        }
         error = nil
 
         if clearExisting {
@@ -238,11 +288,7 @@ final class TrezorManager {
         if !transport.isBridgeEnabled {
             transport.startBLEScanning()
 
-            // Wait for BLE to discover devices (like Android's 3-second scan) before
-            // calling the FFI enumerate, then stop scanning to prevent race conditions.
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-
-            transport.stopBLEScanning()
+            try await Task.sleep(nanoseconds: 3_000_000_000)
         }
 
         do {
@@ -261,11 +307,10 @@ final class TrezorManager {
             devices = uniqueDevices
             trezorLog("Found \(uniqueDevices.count) Trezor devices (filtered from \(foundDevices.count))")
         } catch {
+            if error is CancellationError { throw error }
             self.error = errorMessage(from: error)
             trezorLog("Scan failed: \(error)", level: "error")
         }
-
-        isScanning = false
     }
 
     func stopScan() {
@@ -280,6 +325,19 @@ final class TrezorManager {
     /// reopened. Every other caller passes `.standard` explicitly, because a passphrase selection
     /// left over from a previously connected device must never silently apply to a newly picked one.
     func connect(device: TrezorDeviceInfo, mode: TrezorWalletMode? = .standard) async {
+        do {
+            try await withConnectionOperation {
+                try await self.connectThrowing(device: device, mode: mode)
+            }
+        } catch {
+            let errorMsg = errorMessage(from: error)
+            self.error = errorMsg
+            showConfirmOnDevice = false
+            trezorLog("Connection failed: \(error)", level: "error")
+        }
+    }
+
+    private func connectThrowing(device: TrezorDeviceInfo, mode: TrezorWalletMode?) async throws {
         error = nil
         suppressNextAutoReconnect = false
         showPairingCode = false
@@ -291,33 +349,55 @@ final class TrezorManager {
 
         trezorLog("=== Connecting to device: \(device.path) ===")
 
+        let features = try await connectWithSessionRetry(device: device)
+
+        if Task.isCancelled {
+            try? await trezorService.disconnect()
+            trezorLog("Connect cancelled before pairing; disconnected \(device.path)")
+            throw CancellationError()
+        }
+
+        connectedDevice = device
+        deviceFeatures = features
+        showConfirmOnDevice = false
+        // Unresolved until this session's accounts are read: reporting the previous session's
+        // identity would mark the wrong wallet as the one that can sign.
+        connectedWalletId = nil
+
+        let savedComplete = await saveCurrentDeviceAsKnown()
+        if savedComplete {
+            trezorLog("Connected to Trezor: \(device.path)")
+        } else {
+            trezorLog("Connected to Trezor: \(device.path) with incomplete account-key capture", level: "warn")
+        }
+    }
+
+    private func connectWithSessionRetry(device: TrezorDeviceInfo) async throws -> TrezorFeatures {
+        let selection = uiHandler.currentSelection()
         do {
-            let features = try await trezorService.connect(deviceId: device.path, selection: uiHandler.currentSelection())
-
-            if Task.isCancelled {
-                try? await trezorService.disconnect()
-                trezorLog("Connect cancelled before pairing; disconnected \(device.path)")
-                return
-            }
-
-            connectedDevice = device
-            deviceFeatures = features
-            showConfirmOnDevice = false
-            // Unresolved until this session's accounts are read: reporting the previous session's
-            // identity would mark the wrong wallet as the one that can sign.
-            connectedWalletId = nil
-
-            let savedComplete = await saveCurrentDeviceAsKnown()
-            if savedComplete {
-                trezorLog("Connected to Trezor: \(device.path)")
-            } else {
-                trezorLog("Connected to Trezor: \(device.path) with incomplete account-key capture", level: "warn")
-            }
+            return try await trezorService.connect(deviceId: device.path, selection: selection)
         } catch {
-            let errorMsg = errorMessage(from: error)
-            self.error = errorMsg
-            showConfirmOnDevice = false
-            trezorLog("Connection failed: \(error)", level: "error")
+            guard error.isTrezorSessionFailure() else { throw error }
+
+            trezorLog("Resetting stale session before reconnecting to \(device.path)", level: "warn")
+            await resetStaleSession(
+                deviceId: device.id,
+                transportPath: device.path,
+                preserveWalletMode: true
+            )
+
+            do {
+                return try await trezorService.connect(deviceId: device.path, selection: selection)
+            } catch {
+                if error.isTrezorSessionFailure() {
+                    await resetStaleSession(
+                        deviceId: device.id,
+                        transportPath: device.path,
+                        preserveWalletMode: false
+                    )
+                }
+                throw error
+            }
         }
     }
 
@@ -426,6 +506,16 @@ final class TrezorManager {
         mode: TrezorWalletMode,
         passphrase: String = ""
     ) async throws -> TrezorFeatures {
+        try await withConnectionOperation {
+            try await self.openWalletSession(deviceId: deviceId, mode: mode, passphrase: passphrase)
+        }
+    }
+
+    private func openWalletSession(
+        deviceId: String,
+        mode: TrezorWalletMode,
+        passphrase: String
+    ) async throws -> TrezorFeatures {
         isOpeningSession = true
         defer { isOpeningSession = false }
 
@@ -460,14 +550,11 @@ final class TrezorManager {
         // Any other device has no such handle, so it takes the known-device path with its scan and
         // bluetooth fallback.
         if hadSession, let reopening = connectedDevice, reopening.id == deviceId {
-            await connect(device: reopening, mode: nil)
+            try await connectThrowing(device: reopening, mode: nil)
         } else {
             try await reconnectKnownDevice(deviceId: deviceId, mode: nil)
         }
 
-        // `connect(device:)` reports failure on `error` and leaves the previous session's device and
-        // features in place, so identity alone would accept a failed reopen and let the caller read
-        // the wallet the old session had opened. The live session is the only proof.
         let isLive = await trezorService.isConnected()
         guard connectedDevice?.id == deviceId, isLive, let features = deviceFeatures else {
             let message = error ?? "Failed to open wallet on '\(deviceId)'"
@@ -770,6 +857,19 @@ final class TrezorManager {
     // MARK: - Auto-Reconnect
 
     func autoReconnect() async {
+        do {
+            try await withConnectionOperation {
+                try await self.performAutoReconnect()
+            }
+        } catch is CancellationError {
+            // Foreground reconnect is best effort.
+        } catch {
+            self.error = errorMessage(from: error)
+            trezorLog("Auto-reconnect failed: \(error)", level: "error")
+        }
+    }
+
+    private func performAutoReconnect() async throws {
         guard !knownDevices.isEmpty else { return }
         guard !isAutoReconnecting else { return }
         // A deliberate wallet-mode open is mid-flight; reconnecting now would race it and open the
@@ -786,23 +886,23 @@ final class TrezorManager {
         }
 
         isAutoReconnecting = true
+        defer {
+            isAutoReconnecting = false
+            autoReconnectStatus = nil
+        }
         autoReconnectStatus = "Scanning for known devices..."
         trezorLog("Auto-reconnect: starting scan")
 
-        await startScan(clearExisting: true)
+        try await performScan(clearExisting: true)
 
         let knownIds = Set(knownDevices.map(\.id))
         if let match = devices.first(where: { knownIds.contains($0.id) }) {
             autoReconnectStatus = "Connecting to \(match.label ?? match.name ?? "Trezor")..."
             trezorLog("Auto-reconnect: found known device \(match.path)")
-            await connect(device: match)
+            try await connectThrowing(device: match, mode: .standard)
         } else {
-            autoReconnectStatus = nil
             trezorLog("Auto-reconnect: no known devices found nearby")
         }
-
-        isAutoReconnecting = false
-        autoReconnectStatus = nil
     }
 
     // MARK: - Reconnect for on-device signing
@@ -811,17 +911,19 @@ final class TrezorManager {
     /// connection when it already matches the requested device; otherwise reconnects it. Throws on
     /// failure so the transfer flow can surface a reconnect error.
     func ensureConnected(deviceId: String) async throws {
-        if connectedDevice?.id == deviceId, await trezorService.isConnected() {
-            let features = try await refreshedFeaturesIfLocked()
-            try requireUnlocked(features: features)
-            return
+        try await withConnectionOperation {
+            if self.connectedDevice?.id == deviceId, await self.trezorService.isConnected() {
+                let features = try await self.refreshedFeaturesIfLocked()
+                try self.requireUnlocked(features: features)
+                return
+            }
+            // A stale or mismatched session blocks a clean reconnect — clear it first.
+            if self.connectedDevice != nil {
+                await self.disconnectStaleSession(deviceId: self.connectedDevice?.id ?? deviceId)
+            }
+            try await self.reconnectKnownDevice(deviceId: deviceId)
+            try self.requireUnlocked(features: self.deviceFeatures)
         }
-        // A stale or mismatched session blocks a clean reconnect — clear it first.
-        if connectedDevice != nil {
-            await disconnectStaleSession(deviceId: connectedDevice?.id ?? deviceId)
-        }
-        try await reconnectKnownDevice(deviceId: deviceId)
-        try requireUnlocked(features: deviceFeatures)
     }
 
     private func refreshedFeaturesIfLocked() async throws -> TrezorFeatures {
@@ -846,7 +948,8 @@ final class TrezorManager {
     }
 
     private func reconnectKnownDevice(deviceId: String, mode: TrezorWalletMode? = .standard) async throws {
-        await startScan(clearExisting: true)
+        try await performScan(clearExisting: true)
+        try Task.checkCancellation()
 
         let target: TrezorDeviceInfo
         if let scanned = devices.first(where: { $0.id == deviceId }) {
@@ -859,7 +962,7 @@ final class TrezorManager {
             throw AppError(message: "Reconnect Hardware Device", debugMessage: "Device '\(deviceId)' not found nearby")
         }
 
-        await connect(device: target, mode: mode)
+        try await connectThrowing(device: target, mode: mode)
 
         guard connectedDevice?.id == deviceId, await trezorService.isConnected() else {
             throw AppError(message: "Reconnect Hardware Device", debugMessage: error ?? "Failed to reconnect '\(deviceId)'")
@@ -873,17 +976,17 @@ final class TrezorManager {
     }
 
     /// Best-effort pre-connect of a known BLE Trezor before the sign screen asks for it, so tapping
-    /// Open Trezor Connect is less likely to hit a cold reconnect. Fire-and-forget; no-op when already
-    /// connected to it, a connect is in flight, or it isn't a known BLE device.
+    /// Open Trezor Connect is less likely to hit a cold reconnect. Fire-and-forget; serialized with
+    /// other connection work and skipped when already connected or the device is not known over BLE.
     func warmUpConnection(deviceId: String) {
-        guard connectedDevice?.id != deviceId else { return }
-        guard !isScanning else { return }
-        // Would race a deliberate wallet-mode open and land on the standard wallet.
-        guard !isOpeningSession else { return }
         guard isKnownBluetoothDevice(deviceId: deviceId) else { return }
         Task {
             do {
-                try await reconnectKnownDevice(deviceId: deviceId)
+                try await withConnectionOperation {
+                    guard self.connectedDevice?.id != deviceId else { return }
+                    guard !self.isOpeningSession else { return }
+                    try await self.reconnectKnownDevice(deviceId: deviceId)
+                }
             } catch {
                 trezorLog("Warm-up connect failed for '\(deviceId)': \(error)", level: "debug")
             }
@@ -893,14 +996,27 @@ final class TrezorManager {
     /// Tear down the current device session so the next connect establishes a fresh one. Used after
     /// a signing failure or timeout, where the transport session may be left in a bad state.
     func disconnectStaleSession(deviceId: String) async {
+        await resetStaleSession(deviceId: deviceId, preserveWalletMode: false)
+    }
+
+    private func resetStaleSession(
+        deviceId: String,
+        transportPath: String? = nil,
+        preserveWalletMode: Bool
+    ) async {
         await Task.detached { @MainActor [weak self] in
             guard let self else { return }
+            let path = transportPath ?? knownDevices.first(where: { $0.id == deviceId })?.path ?? deviceId
             do {
                 try await trezorService.disconnect()
             } catch {
                 trezorLog("Failed to disconnect stale session for '\(deviceId)': \(error)", level: "warn")
             }
-            clearDisconnectedDeviceState()
+            let closeResult = transport.closeDevice(path: path)
+            if !closeResult.success {
+                trezorLog("Failed to close stale transport for '\(deviceId)': \(closeResult.error)", level: "warn")
+            }
+            clearDisconnectedDeviceState(preserveWalletMode: preserveWalletMode)
         }.value
     }
 

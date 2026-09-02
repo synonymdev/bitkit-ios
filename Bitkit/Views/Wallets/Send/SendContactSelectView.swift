@@ -7,8 +7,10 @@ struct SendContactSelectView: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
+    let hwSend: HwSendCoordinator
     @State private var selectedContactKey: String?
 
     private var contacts: [PubkyContact] {
@@ -97,7 +99,9 @@ struct SendContactSelectView: View {
         do {
             try await app.handleScannedData(
                 paymentRequest,
-                claimedContactPaymentContext: contactPaymentContext
+                claimedContactPaymentContext: contactPaymentContext,
+                scope: hwSend.isActive ? .onchainPayments : .unrestricted,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
             )
         } catch is CancellationError {
             if app.ownsContactPaymentContext(contactPaymentContext) {

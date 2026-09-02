@@ -101,6 +101,7 @@ protocol HwTransferFunding: Sendable {
 protocol HwTransferConnecting: Sendable {
     func ensureConnected(walletId: String) async throws
     func disconnectStaleSession(walletId: String) async
+    func scheduleStaleSessionCleanup(walletId: String)
     /// Whether the wallet is reachable over a known Bluetooth device, so a reconnect failure can show
     /// the softer BLE "check that it is unlocked and try again" toast instead of the generic error.
     func isKnownBluetoothDevice(walletId: String) -> Bool

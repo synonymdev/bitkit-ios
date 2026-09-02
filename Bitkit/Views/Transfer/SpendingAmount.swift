@@ -52,17 +52,25 @@ struct SpendingAmount: View {
             DisplayText(t("lightning__spending_amount__title"), accentColor: .purpleAccent)
                 .fixedSize(horizontal: false, vertical: true)
 
-            NumberPadTextField(viewModel: amountViewModel, showConversion: false)
-                .onTapGesture {
-                    amountViewModel.togglePrimaryDisplay(currency: currency)
-                }
-                .padding(.top, 32)
+            NumberPadTextField(
+                viewModel: amountViewModel,
+                showConversion: false,
+                testIdentifier: "SpendingAmountNumberField"
+            )
+            .onTapGesture {
+                amountViewModel.togglePrimaryDisplay(currency: currency)
+            }
+            .padding(.top, 32)
 
             Spacer()
 
             HStack(alignment: .bottom) {
                 if let available = availableAmount {
-                    AvailableAmount(label: t("wallet__send_available"), amount: Int(available))
+                    AvailableAmount(
+                        label: t("wallet__send_available"),
+                        amount: Int(available),
+                        testIdentifier: "SpendingAmountAvailable"
+                    )
                 } else {
                     HStack(spacing: 4) {
                         CaptionMText(t("wallet__send_available"))
@@ -96,6 +104,8 @@ struct SpendingAmount: View {
             }
             .accessibilityIdentifier("SpendingAmountContinue")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SpendingAmount")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
@@ -130,7 +140,8 @@ struct SpendingAmount: View {
                 "lightning__spending_amount__error_max__description",
                 variables: ["amount": CurrencyFormatter.formatSats(maxTransferAmount ?? 0)]
             ),
-            visibilityTime: Toast.visibilityTimeShort
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "SpendingAmountExceededToast"
         )
     }
 

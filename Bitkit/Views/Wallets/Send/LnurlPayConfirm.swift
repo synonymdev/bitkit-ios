@@ -223,9 +223,9 @@ struct LnurlPayConfirm: View {
             try await wallet.sendWithTimeout(
                 bolt11: bolt11,
                 sats: nil,
-                onTimeout: {
-                    app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
-                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .lnurlPayConfirm, paymentRequest: bolt11))
+                onTimeout: { timedOutHash in
+                    app.addPendingPaymentHash(timedOutHash, contactPublicKey: contactPublicKey)
+                    navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .lnurlPayConfirm, paymentRequest: bolt11))
                 }
             )
             app.addPendingContactPaymentContext(paymentHash, contactPublicKey: contactPublicKey)

@@ -56,4 +56,29 @@ extension Error {
         let message = localizedDescription
         return message.contains("Device error (code \(firmwareErrorCode))") && message.contains("Firmware error")
     }
+
+    /// Whether the current Trezor channel can no longer be used and must be re-established.
+    func isTrezorSessionFailure() -> Bool {
+        if let trezorError = self as? TrezorError {
+            switch trezorError {
+            case .TransportError, .DeviceDisconnected, .ConnectionError, .Timeout, .NotConnected, .SessionError, .IoError:
+                return true
+            case let .ProtocolError(errorDetails):
+                let details = errorDetails.lowercased()
+                return details.contains("thp decryption")
+                    || details.contains("thp encryption")
+                    || details.contains("thp ack")
+                    || details.contains("thp invalid sync")
+                    || details.contains("thp state missing")
+            default:
+                return false
+            }
+        }
+
+        if let appError = self as? AppError, let underlyingError = appError.underlyingError {
+            return underlyingError.isTrezorSessionFailure()
+        }
+
+        return false
+    }
 }

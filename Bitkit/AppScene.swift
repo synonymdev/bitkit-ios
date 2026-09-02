@@ -150,7 +150,9 @@ struct AppScene: View {
             // TrezorManager bumps devicesRevision on any device/connection change.
             .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
             .onChange(of: isPinVerified) { _, verified in
-                if verified { Task { await trezorManager.autoReconnect() } }
+                if verified {
+                    Task { await trezorManager.autoReconnect() }
+                }
             }
             .onReceive(settings.settingsPublisher) { _ in hwWalletManager.reconcileForSettingsChange() }
             .onChange(of: migrations.isShowingMigrationLoading) { _, isLoading in
@@ -681,6 +683,7 @@ struct AppScene: View {
             walletInitShouldFinish = true
             app.markAppStatusInit()
             BackupService.shared.startObservingBackups()
+            QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
             Task {
                 if !PaykitFeatureFlags.isUIEnabled {
                     await retryPendingPaykitEndpointRemoval()
@@ -848,7 +851,8 @@ struct AppScene: View {
                     do {
                         try await app.handleScannedData(
                             paymentTarget,
-                            claimedContactPaymentContext: contactPaymentContext
+                            claimedContactPaymentContext: contactPaymentContext,
+                            alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
                         )
                         guard paykitPaymentRequestManager.isCurrentPresentation(request),
                               app.ownsContactPaymentContext(contactPaymentContext),
@@ -893,8 +897,12 @@ struct AppScene: View {
                         continue
                     }
 
-                    let route: SendRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
-                    guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
+                    guard let route = PaymentNavigationHelper.contactPaymentRoute(
+                        app: app,
+                        currency: currency,
+                        settings: settings
+                    ), paykitPaymentRequestManager.isCurrentPresentation(request)
+                    else {
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                         return

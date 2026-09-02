@@ -1,13 +1,11 @@
 import BitkitCore
+import Observation
 
-/// Orchestrates funding a Lightning channel from a hardware wallet: reconnect the device, compose
-/// the exact on-chain payment, sign it on-device, and broadcast. Owns the per-phase timeouts and the
-/// fee-reserve math.
+/// Orchestrates an on-chain payment from a hardware wallet: reconnect the device, compose the exact
+/// payment, sign it on-device, and broadcast. Owns the per-phase timeouts and fee-reserve math.
 ///
 /// Pure orchestration over the injected `HwTransferFunding` / `HwTransferConnecting` capabilities —
-/// it holds no UI state and doesn't touch `TransferViewModel`, so the device-signing flow can be
-/// tested in isolation. `TransferViewModel` keeps the coordination that genuinely reuses the transfer
-/// machinery (spending limits, order watching, published state).
+/// it holds no UI state, so device signing can be tested independently of its callers.
 @MainActor
 struct HwFundingSigner {
     /// Device balance and the amount available to fund after holding back an on-chain fee reserve.
@@ -74,9 +72,26 @@ struct HwFundingSigner {
         address: String,
         onComposed: (HwFundingTransaction) -> Void = { _ in }
     ) async throws -> HwFundingSignedTx {
-        try await ensureConnected(walletId: walletId)
         let satsPerVByte = await resolvedSatsPerVByte()
-        let tx = try await compose(walletId: walletId, address: address, sats: order.feeSat, satsPerVByte: satsPerVByte)
+        return try await prepareSignedPayment(
+            walletId: walletId,
+            address: address,
+            sats: order.feeSat,
+            satsPerVByte: satsPerVByte,
+            onComposed: onComposed
+        )
+    }
+
+    /// Reconnects, composes and signs a normal on-chain payment without broadcasting it.
+    func prepareSignedPayment(
+        walletId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        onComposed: (HwFundingTransaction) -> Void = { _ in }
+    ) async throws -> HwFundingSignedTx {
+        try await ensureConnected(walletId: walletId)
+        let tx = try await compose(walletId: walletId, address: address, sats: sats, satsPerVByte: satsPerVByte)
         onComposed(tx)
         return try await signStep(walletId: walletId, funding: tx)
     }
@@ -98,7 +113,7 @@ struct HwFundingSigner {
         connecting.warmUpConnection(walletId: walletId)
     }
 
-    /// Offline compose for the exact order amount; does not require a connected device.
+    /// Offline compose for the exact payment amount; does not require a connected device.
     func estimateOfflineFundingMiningFee(walletId: String, address: String, sats: UInt64) async throws -> UInt64 {
         let satsPerVByte = await resolvedSatsPerVByte()
         return try await funding.estimateOfflineFundingMiningFee(
@@ -117,6 +132,9 @@ struct HwFundingSigner {
             }
         } catch is CancellationError {
             throw CancellationError()
+        } catch is Timeout {
+            disconnectAfterTimeout(walletId: walletId)
+            throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(walletId: walletId))
         } catch {
             if error.isTrezorUserCancellation() { throw error }
             // Swift has no cause chain, so this must be rethrown explicitly: the catch-all below
@@ -147,7 +165,7 @@ struct HwFundingSigner {
         } catch is CancellationError {
             throw CancellationError()
         } catch is Timeout {
-            await connecting.disconnectStaleSession(walletId: walletId)
+            disconnectAfterTimeout(walletId: walletId)
             throw HwTransferError.signingTimeout
         } catch {
             let message = (error as? AppError)?.debugMessage ?? (error as? AppError)?.message ?? error.localizedDescription
@@ -157,16 +175,36 @@ struct HwFundingSigner {
 
     private func signStep(walletId: String, funding tx: HwFundingTransaction) async throws -> HwFundingSignedTx {
         do {
-            return try await withTimeout(timeouts.sign) {
-                try await funding.signFunding(walletId: walletId, funding: tx)
-            }
+            return try await signOnce(walletId: walletId, funding: tx)
         } catch is CancellationError {
             throw CancellationError()
         } catch is Timeout {
-            await connecting.disconnectStaleSession(walletId: walletId)
+            disconnectAfterTimeout(walletId: walletId)
             throw HwTransferError.signingTimeout
+        } catch {
+            guard error.isTrezorSessionFailure() else { throw error }
+
+            await connecting.disconnectStaleSession(walletId: walletId)
+            try await ensureConnected(walletId: walletId)
+
+            do {
+                return try await signOnce(walletId: walletId, funding: tx)
+            } catch is Timeout {
+                disconnectAfterTimeout(walletId: walletId)
+                throw HwTransferError.signingTimeout
+            } catch {
+                if error.isTrezorSessionFailure() {
+                    await connecting.disconnectStaleSession(walletId: walletId)
+                }
+                throw error
+            }
         }
-        // Any other (real signing) error propagates to the caller's generic handler.
+    }
+
+    private func signOnce(walletId: String, funding tx: HwFundingTransaction) async throws -> HwFundingSignedTx {
+        try await withTimeout(timeouts.sign) {
+            try await funding.signFunding(walletId: walletId, funding: tx)
+        }
     }
 
     /// Broadcast the signed tx under its own timeout, separate from signing. A broadcast that has
@@ -190,6 +228,12 @@ struct HwFundingSigner {
         await feeRateProvider() ?? fallbackSatsPerVByte
     }
 
+    /// Start recovery without making the timed-out UI operation wait on a transport that may also
+    /// be stuck. The next connect remains serialized behind this cleanup by the device manager.
+    private func disconnectAfterTimeout(walletId: String) {
+        connecting.scheduleStaleSessionCleanup(walletId: walletId)
+    }
+
     /// Pure fee-reserve computation. With a known fee rate: `rate × vbytes`. Without one (estimates
     /// unavailable): `max(minReserve, balance × fallbackPercent)`.
     static func feeReserve(
@@ -209,21 +253,295 @@ struct HwFundingSigner {
 
     private struct Timeout: Error {}
 
-    /// Race an async operation against a timeout. Cancellation (user dismiss) propagates as
-    /// `CancellationError`; the deadline throws `Timeout`.
+    /// Race an async operation against a timeout without structurally waiting for the losing task.
+    /// This matters for blocking service calls that cannot observe Swift task cancellation.
     private func withTimeout<T: Sendable>(
         _ seconds: Double,
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw Timeout()
+        let (stream, continuation) = AsyncStream<Result<T, Error>>.makeStream(
+            bufferingPolicy: .bufferingOldest(1)
+        )
+        let operationTask = Task {
+            do {
+                try await continuation.yield(.success(operation()))
+            } catch {
+                continuation.yield(.failure(error))
             }
-            defer { group.cancelAll() }
-            guard let result = try await group.next() else { throw Timeout() }
-            return result
         }
+        let timeoutTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                continuation.yield(.failure(Timeout()))
+            } catch is CancellationError {
+                // The operation completed or its caller was cancelled.
+            } catch {
+                continuation.yield(.failure(error))
+            }
+        }
+
+        return try await withTaskCancellationHandler {
+            defer {
+                operationTask.cancel()
+                timeoutTask.cancel()
+                continuation.finish()
+            }
+            for await result in stream {
+                try Task.checkCancellation()
+                return try result.get()
+            }
+            throw CancellationError()
+        } onCancel: {
+            operationTask.cancel()
+            timeoutTask.cancel()
+            continuation.finish()
+        }
+    }
+}
+
+/// Send-sheet state for a normal on-chain payment funded and signed by a paired hardware wallet.
+@Observable
+@MainActor
+final class HwSendCoordinator {
+    private(set) var walletId: String?
+
+    private(set) var availableSats: UInt64 = 0
+    private(set) var previewFeeSats: UInt64 = 0
+    private(set) var isSigning = false
+    private(set) var isBroadcastUnresolved = false
+    private(set) var isPassphraseRequired = false
+    private(set) var isVerifyingPassphrase = false
+
+    private var pendingPayment: PendingPayment?
+    private var operationTask: Task<HwFundingBroadcastResult, Error>?
+    private var operationRequest: PaymentRequest?
+    private var availabilityRequestId = 0
+    private var previewRequestId = 0
+    private let signerFactory: @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner
+
+    var isActive: Bool {
+        walletId != nil
+    }
+
+    var hasPendingBroadcast: Bool {
+        pendingPayment != nil
+    }
+
+    init(
+        walletId: String? = nil,
+        signerFactory: @escaping @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner = { manager, address, satsPerVByte in
+            HwSendCoordinator.signer(
+                manager: manager,
+                address: address,
+                satsPerVByte: satsPerVByte
+            )
+        }
+    ) {
+        self.walletId = walletId
+        self.signerFactory = signerFactory
+    }
+
+    func seedAvailable(walletId: String, availableSats: UInt64) {
+        guard self.walletId == walletId else { return }
+        self.availableSats = availableSats
+    }
+
+    func selectWallet(_ walletId: String?, initialAvailableSats: UInt64 = 0) {
+        guard self.walletId != walletId else { return }
+        guard operationTask == nil, !isBroadcastUnresolved else { return }
+
+        availabilityRequestId += 1
+        previewRequestId += 1
+        self.walletId = walletId
+        pendingPayment = nil
+        availableSats = walletId == nil ? 0 : initialAvailableSats
+        previewFeeSats = 0
+        isSigning = false
+        isBroadcastUnresolved = false
+        isPassphraseRequired = false
+        isVerifyingPassphrase = false
+    }
+
+    func refreshAvailable(
+        manager: HwWalletManager,
+        destinationAddress: String,
+        satsPerVByte: UInt64
+    ) async {
+        guard let walletId else { return }
+
+        guard !destinationAddress.isEmpty else {
+            if self.walletId == walletId {
+                availableSats = manager.fundingBalance(walletId: walletId)
+            }
+            return
+        }
+
+        availabilityRequestId += 1
+        let requestId = availabilityRequestId
+
+        func apply(_ available: UInt64) {
+            guard self.walletId == walletId, availabilityRequestId == requestId else { return }
+            availableSats = available
+        }
+
+        do {
+            let signer = signerFactory(manager, destinationAddress, satsPerVByte)
+            let available = try await signer.availability(walletId: walletId).available
+            apply(available)
+        } catch {
+            let balance = manager.fundingBalance(walletId: walletId)
+            let reserve = HwFundingSigner.feeReserve(
+                balanceSats: balance,
+                satsPerVByte: satsPerVByte
+            )
+            apply(balance > reserve ? balance - reserve : 0)
+        }
+    }
+
+    func preparePreview(
+        manager: HwWalletManager,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64
+    ) async throws -> UInt64? {
+        guard let walletId else { return nil }
+        previewRequestId += 1
+        let requestId = previewRequestId
+        let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
+        if pendingPayment?.request != request {
+            pendingPayment = nil
+        }
+        let fee = try await manager.estimateOfflineFundingMiningFee(
+            walletId: walletId,
+            address: address,
+            sats: sats,
+            satsPerVByte: satsPerVByte
+        )
+        guard self.walletId == walletId, previewRequestId == requestId else { return nil }
+        previewFeeSats = fee
+        return fee
+    }
+
+    func signAndBroadcast(
+        manager: HwWalletManager,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        beforeBroadcast: @escaping () async throws -> Void = {}
+    ) async throws -> HwFundingBroadcastResult {
+        guard let walletId else {
+            throw AppError(message: "Unknown hardware wallet", debugMessage: "The send flow has no wallet id")
+        }
+        let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
+        if let operationTask {
+            guard operationRequest == request else { throw HwTransferError.deviceBusy }
+            return try await operationTask.value
+        }
+
+        let task = Task { @MainActor in
+            isSigning = true
+            defer { isSigning = false }
+
+            let signer = signerFactory(manager, address, satsPerVByte)
+            let signed: HwFundingSignedTx
+            if let pendingPayment, pendingPayment.request == request {
+                signed = pendingPayment.signedTx
+            } else {
+                signed = try await signer.prepareSignedPayment(
+                    walletId: walletId,
+                    address: address,
+                    sats: sats,
+                    satsPerVByte: satsPerVByte,
+                    onComposed: { [weak self] in self?.previewFeeSats = $0.miningFeeSats }
+                )
+                pendingPayment = PendingPayment(request: request, signedTx: signed)
+            }
+
+            if pendingPayment?.isPreparedForBroadcast != true {
+                try await beforeBroadcast()
+                pendingPayment?.isPreparedForBroadcast = true
+            }
+
+            isBroadcastUnresolved = true
+            do {
+                return try await signer.broadcastSignedFunding(signed)
+            } catch {
+                let outcomeIsUncertain = (error as? HwTransferError) == .broadcastUncertain
+                if !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
+                    pendingPayment = nil
+                    isBroadcastUnresolved = false
+                }
+                throw error
+            }
+        }
+        operationRequest = request
+        operationTask = task
+        defer {
+            operationRequest = nil
+            operationTask = nil
+        }
+        return try await task.value
+    }
+
+    func reconnectWithPassphrase(
+        _ passphrase: String,
+        manager: HwWalletManager
+    ) async throws {
+        guard let walletId else { return }
+        isVerifyingPassphrase = true
+        defer { isVerifyingPassphrase = false }
+        try await manager.reconnectWithPassphrase(walletId: walletId, passphrase: passphrase)
+        guard isPassphraseRequired else { throw CancellationError() }
+        isPassphraseRequired = false
+    }
+
+    func requestPassphrase() {
+        isPassphraseRequired = true
+    }
+
+    func dismissPassphrase() {
+        isPassphraseRequired = false
+    }
+
+    func completeBroadcast() {
+        pendingPayment = nil
+        isBroadcastUnresolved = false
+    }
+
+    func cancel() {
+        isVerifyingPassphrase = false
+        isPassphraseRequired = false
+        guard !isBroadcastUnresolved else { return }
+        operationTask?.cancel()
+        operationTask = nil
+        operationRequest = nil
+        pendingPayment = nil
+        isSigning = false
+    }
+
+    private static func signer(
+        manager: HwWalletManager,
+        address: String,
+        satsPerVByte: UInt64
+    ) -> HwFundingSigner {
+        HwFundingSigner(
+            funding: manager,
+            connecting: manager,
+            feeRateProvider: { satsPerVByte },
+            addressProvider: { address },
+            timeouts: (reconnect: 30, compose: 45, sign: 120, broadcast: 120)
+        )
+    }
+
+    private struct PaymentRequest: Equatable {
+        let address: String
+        let sats: UInt64
+        let satsPerVByte: UInt64
+    }
+
+    private struct PendingPayment {
+        let request: PaymentRequest
+        let signedTx: HwFundingSignedTx
+        var isPreparedForBroadcast = false
     }
 }

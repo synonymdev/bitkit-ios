@@ -96,7 +96,6 @@ struct SwipeButton: View {
                                         Task { @MainActor in
                                             do {
                                                 try await onComplete()
-                                                reset()
                                             } catch {
                                                 reset()
                                             }

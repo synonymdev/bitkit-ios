@@ -28,10 +28,12 @@ struct TabBar: View {
                     TabBarButton(title: t("wallet__send"), icon: "arrow-up", variant: .left) {
                         onSendPress()
                     }
+                    .accessibilityIdentifier("Send")
 
                     TabBarButton(title: t("wallet__receive"), icon: "arrow-down", variant: .right) {
                         onReceivePress()
                     }
+                    .accessibilityIdentifier("Receive")
                 }
                 .overlay {
                     ScanButton {
@@ -47,7 +49,11 @@ struct TabBar: View {
     }
 
     private func onSendPress() {
-        sheets.showSheet(.send)
+        if case let .hardwareWallet(walletId) = navigation.currentRoute {
+            sheets.showSheet(.send, data: SendConfig(hardwareWalletId: walletId))
+        } else {
+            sheets.showSheet(.send)
+        }
     }
 
     private func onReceivePress() {

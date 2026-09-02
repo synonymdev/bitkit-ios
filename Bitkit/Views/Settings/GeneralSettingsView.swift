@@ -48,6 +48,7 @@ struct GeneralSettingsView: View {
                         rightText: languageManager.currentLanguageDisplayName
                     )
                 }
+                .accessibilityIdentifier("LanguageSettings")
 
                 NavigationLink(value: Route.currencySettings) {
                     SettingsRow(
@@ -98,7 +99,6 @@ struct GeneralSettingsView: View {
                         rightText: settings.defaultTransactionSpeed.title
                     )
                 }
-                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("TransactionSpeedSettings")
 
                 if isPaykitUIActive, pubkyProfile.isAuthenticated {
