@@ -26,6 +26,8 @@ enum PubkyAuthRequestError: Error, Equatable {
     case invalidUrl
     case missingBitkitClaim
     case duplicateBitkitClaim
+    case duplicateRelay
+    case duplicateSecret
     case unsupportedBitkitClaim(String)
     case invalidBitkitClaimCapabilities
 }
@@ -82,6 +84,7 @@ struct PubkyAuthRequest {
     static func parse(url: String) throws -> PubkyAuthRequest {
         let requiresBitkitClaim = isBitkitSetupHandoff(url.trimmingCharacters(in: .whitespacesAndNewlines))
         let normalizedURL = normalizedProtocolURL(url)
+        try rejectDuplicateRelayAndSecret(in: normalizedURL)
         let details = try Paykit.parsePubkyAuthUrl(authUrl: normalizedURL)
         let capabilities = details.capabilities ?? ""
         let permissions = parseCapabilities(capabilities)
@@ -103,6 +106,16 @@ struct PubkyAuthRequest {
             serviceNames: serviceNames,
             bitkitClaim: bitkitClaim
         )
+    }
+
+    private static func rejectDuplicateRelayAndSecret(in url: String) throws {
+        guard let items = URLComponents(string: url)?.queryItems else { return }
+        if items.filter({ $0.name == "relay" }).count > 1 {
+            throw PubkyAuthRequestError.duplicateRelay
+        }
+        if items.filter({ $0.name == "secret" }).count > 1 {
+            throw PubkyAuthRequestError.duplicateSecret
+        }
     }
 
     static func parseBitkitClaim(url: String, capabilities: String, requiresBitkitClaim: Bool = false) throws -> PubkyAuthClaim? {

@@ -194,6 +194,22 @@ final class PubkyAuthRequestTests: XCTestCase {
         }
     }
 
+    func testParseUrlRejectsDuplicateRelay() {
+        let url = "pubkyauth://signin?caps=/pub/example/:rw&relay=https://a&relay=https://b&secret=\(secret)"
+
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url)) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .duplicateRelay)
+        }
+    }
+
+    func testParseUrlRejectsDuplicateSecret() {
+        let url = "pubkyauth://signin?caps=/pub/example/:rw&relay=https://a&secret=first&secret=second"
+
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url)) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .duplicateSecret)
+        }
+    }
+
     func testParseUrlRejectsUnknownBitkitClaim() {
         let url = authUrl(capabilities: PubkyAuthClaim.watchOnlyAccountCapabilities, claimValues: ["unknown-v1"])
 
