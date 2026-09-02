@@ -14,10 +14,14 @@
     <action>Tap Authorize (id "PubkyAuthAuthorize")</action>
     <action>Verify authorization succeeds (id "PubkyAuthOK")</action>
     <action>Verify the fixture completes setup with the seller account xpub and no spending authority</action>
+    <action>Open General Settings in both wallets and verify contact payments (id "ContactPaymentsToggle") are enabled</action>
     <action>Open Contacts in the buyer wallet and save the fixture's seller public key</action>
     <action>Verify the seller contact (id "Contact_&lt;seller-public-key&gt;") is visible</action>
+    <action>Open Contacts in the seller wallet and save the buyer public key</action>
+    <action>Verify the buyer contact (id "Contact_&lt;buyer-public-key&gt;") is visible</action>
     <action>Verify the fixture reports the seller and buyer as linked peers</action>
     <action>Have the fixture create one marketplace purchase for the buyer and record its Payment Request id</action>
+    <action>Verify the request uses lowercase "btc", a regtest endpoint identifier, and a JSON endpoint value</action>
     <action>Wait for the incoming requests sheet (id "PaymentRequestsSheet")</action>
     <action>Verify the request row (id "PaymentRequestRow-&lt;payment-request-id&gt;") shows the seller, note, and expected amount</action>
     <action>Capture the incoming-request evidence, then tap Pay (id "PaymentRequestPay-&lt;payment-request-id&gt;")</action>

@@ -46,8 +46,9 @@ The full journey depends on the sibling work from the parent epic:
 - [#717](https://github.com/synonymdev/bitkit-ios/issues/717) prevents an Electrum-rejected broadcast
   from reaching `SendSuccess`.
 
-The linked-contact prerequisite is existing Paykit behavior: the buyer must save the seller before
-Bitkit's `receivePrivateMessagesFromLinkedPeers()` poll can receive the request.
+The linked-contact prerequisite is existing Paykit behavior: contact payments must be enabled in
+General Settings and the buyer and seller must save each other before Bitkit's
+`receivePrivateMessagesFromLinkedPeers()` poll can receive the request.
 
 ## Evidence contract
 
@@ -58,7 +59,7 @@ artifacts at each boundary:
 | Boundary | Bitkit evidence | Fixture evidence |
 | --- | --- | --- |
 | Watch-only claim | `PubkyAuthWatchOnlyConsent`, `PubkyAuthWatchOnlyApprove`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | Setup completion and the claimed xpub/account index, with no spending key |
-| Linked buyer | `Contact_<seller-public-key>` snapshot | Seller and buyer peer-link state |
+| Linked buyer | Enabled `ContactPaymentsToggle`, `Contact_<seller-public-key>`, and `Contact_<buyer-public-key>` snapshots | Seller and buyer peer-link state |
 | Incoming request | `PaymentRequestsSheet` and `PaymentRequestRow-<payment-request-id>` snapshots showing seller, note, and amount | Delivery record and exact Payment Request id |
 | Payment approval | `PaymentRequestPay-<payment-request-id>`, `ReviewAmount`, and `ReviewUri` snapshots | Derived regtest address and expected amount |
 | Broadcast | `SendSuccess` snapshot and buyer activity details | Transaction in the fixture mempool with an amount-matched output |
@@ -69,8 +70,17 @@ status are the confirmation authority.
 
 ## Baseline from 2026-09-02
 
-The current implementation was built from `004a1082` on a freshly erased iPhone 17 Pro Max
-simulator with Paykit UI enabled. A new wallet and Pubky profile reached the in-app scanner/paste
-handoff used by the prior wallet-leg proof. The first run stopped before watch-only approval while
-the local `payments-env` fixture was being prepared for live wallet roles. This establishes the
-app-side baseline without claiming an end-to-end pass.
+The journey branch at `32bd6948` was built for two freshly erased simulators with Paykit UI enabled
+against fixture commit `0259d994`. The seller completed the watch-only consent and exact Paykit
+capability authorization through `PubkyAuthOK`; fixture setup completed without spending authority.
+The buyer received 100,000 regtest sats, both wallets enabled contact payments, saved each other,
+and linked the seller's `bitkit/server` and `bitkit/wallet` receivers.
+
+Paykit marked two iOS-targeted requests delivered, with Payment Request ids
+`43c0f7d4-92f7-4ec1-b9c4-5cff67d72381` and `436a1fb4-9109-4a8f-bcae-6c700e218634`. The buyer SDK
+received both as linked, proposed payer records for 15,000 sats, but the fixture emitted uppercase
+`BTC` and `btc-bitcoin-p2wpkh`. Those values violate the issuer contract above, so Bitkit correctly
+excluded the records from actionable requests and did not present `PaymentRequestsSheet`. A
+coordinated Android buyer reproduced the same no-request result from a separately delivered
+fixture request. The baseline therefore stops at the issuer-contract assertion; approval,
+broadcast, and confirmation remain pending a fixture that emits the documented regtest contract.
