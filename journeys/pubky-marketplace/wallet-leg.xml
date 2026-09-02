@@ -3,8 +3,9 @@
     Verifies a Bitkit seller grants a watch-only account claim and a separate linked Bitkit buyer
     receives, approves, pays, and confirms the resulting marketplace Payment Request on regtest.
     Precondition: two clean simulator wallets and the integration fixture described in this suite's
-    README. Configure the fixture Electrum endpoint and Paykit UI before either wallet's first
-    launch. Start with the seller wallet open and the fixture's fresh setup auth URL available.
+    README. Publish fixture Fulcrum at tcp://127.0.0.1:60001 and build both wallets with the local
+    E2E regtest settings before first launch. Start with the seller wallet open and the fixture's
+    fresh setup auth URL available.
   </description>
   <actions>
     <action>Open the fixture setup auth URL in the seller wallet</action>
