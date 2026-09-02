@@ -8,6 +8,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>bitkit</string>
+				<string>pubkyauth</string>
 				<string>bitcoin</string>
 				<string>BITCOIN</string>
 				<string>lightning</string>
