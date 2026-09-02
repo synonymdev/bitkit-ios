@@ -29,7 +29,7 @@ The fixture must keep watch-only account material and spending authority separat
 show the claimed account xpub and account index while omitting wallet seed material and tokens.
 
 The reference implementation is
-[`BitcoinErrorLog/pubky-marketplace/payments-env`](https://github.com/BitcoinErrorLog/pubky-marketplace/tree/0259d994967961cb0b972eba2f11a567d7376dd7/payments-env).
+[`BitcoinErrorLog/pubky-marketplace/payments-env`](https://github.com/BitcoinErrorLog/pubky-marketplace/tree/ed03a32ecfe02deab40ad10ae1bac7fa18465c10/payments-env).
 Its `scripts/verify.sh` already proves the Locks, Paykit, Pubky, bitcoind, and Fulcrum protocol path.
 For this journey, the seller wallet replaces `paykit-companion-auth` and the buyer wallet replaces
 `paykit-reader-demo`; the other fixture roles remain unchanged.
@@ -60,15 +60,54 @@ artifacts at each boundary:
 | --- | --- | --- |
 | Watch-only claim | `PubkyAuthWatchOnlyConsent`, `PubkyAuthWatchOnlyApprove`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | Setup completion and the claimed xpub/account index, with no spending key |
 | Linked buyer | Enabled `ContactPaymentsToggle`, `Contact_<seller-public-key>`, and `Contact_<buyer-public-key>` snapshots | Seller and buyer peer-link state |
-| Incoming request | `PaymentRequestsSheet` and `PaymentRequestRow-<payment-request-id>` snapshots showing seller, note, and amount | Delivery record and exact Payment Request id |
-| Payment approval | `PaymentRequestPay-<payment-request-id>`, `ReviewAmount`, and `ReviewUri` snapshots | Derived regtest address and expected amount |
+| Incoming request | `PaymentRequestsSheet` and `PaymentRequestRow-<payment-request-id>` snapshots showing seller, amount, and note when present | Delivery record and exact Payment Request id |
+| Payment approval | `PaymentRequestPay-<payment-request-id>`, `ReviewAmount`, and `ReviewContactRecipient` snapshots | Derived regtest address and expected amount |
 | Broadcast | `SendSuccess` snapshot and buyer activity details | Transaction in the fixture mempool with an amount-matched output |
 | Confirmation | Confirmed buyer activity snapshot | Transaction id at one or more confirmations and completed purchase status |
 
 `SendSuccess` is evidence of backend acceptance, not confirmation. The fixture's chain and purchase
 status are the confirmation authority.
 
-## Baseline from 2026-09-02
+## Accepted corrected iOS run from 2026-09-02
+
+The complete journey passed on iOS app commit `c3791bbf7cccd9dfdd94f85081330ebe2d480692`
+against fixture commit `ed03a32ecfe02deab40ad10ae1bac7fa18465c10`, Paykit Server revision
+`867fc883125c7b89a7b712c2551619cccdfdc0f7`, and Paykit revision
+`6b241878a9bba5cecea919c0298c3f90624be6ff`. The Paykit Server image was
+`sha256:2e5c2e8391a4a9f60dfaed3326fce0b772f01e81b4a51b69cbf08c0b02bd89e8`.
+
+- Seller simulator: `B379B7A4-715A-427F-8CB6-A6479BC73050`; Pubky
+  `pubkyhbn4tahj71yzpmtarz5amtqqf5fmicdd7rs8ao448tzaujdapfiy`.
+- Buyer simulator: `1B8D53BA-43F9-4799-AC0D-32EFDA4BDAF6`; Pubky
+  `pubkysqy1tx5poq5djne846r4rfbkca8ggmru9jp8d34tbjp74ngtzxno`.
+- The seller approved the watch-only claim and exact Paykit capabilities. The fixture persisted
+  account index `1` (`m/84h/1h/1h`) and its account tpub without Bitcoin spending authority.
+- Both wallets enabled `ContactPaymentsToggle` and displayed reciprocal `Contact_<public-key>`
+  rows before the fixture reported the buyer `Linked` at `bitkit/wallet` with failure count `0`.
+- Buyer funding transaction `0baf24337a58449816a18f0bb984e9dbc993fd9cb1bbf4391aff333280bcb908`
+  paid exactly 1,000,000 sats and was confirmed in block
+  `642c3864f623d376d04dbc1c6fba5b64f6e72cfcdbb6029fa7d0ade7dc24383f` at height `16400`.
+- Canonical request `60281cab-4914-40e9-979a-6572eebe69d6` used `0.00015000 btc`, endpoint identifier
+  `btc-regtest-p2wpkh`, and JSON endpoint value
+  `bcrt1qkhvgdehsp9y54tqp60f74phsqjjl77anrdmawn`. Its note was absent.
+- `PaymentRequestsSheet` showed Seller and 15,000 sats. The approval retained 15,000 sats,
+  `ReviewContactRecipient` resolved to Seller, and the 143-sat fee and enabled `GRAB` were visible.
+- Exactly one authorized swipe reached `SendSuccess` and broadcast transaction
+  `f15eb143e91904bac0b6d966627f60a37eb14862a96f7455a7ae00598ddb5150`. Output zero paid exactly
+  15,000 sats to the request address, output one returned 984,857 sats, and the fee was 143 sats.
+- Before mining, the transaction was the only mempool entry, Paykit reported `detected/0/true`, and
+  the Locks bundle remained pending. Exactly one block,
+  `4d607bf79dd4d94624f1f4fc6f8e90a38a25a474e9aa08298f85f971ecc2e0fc`, advanced the chain to
+  height `16401`; Paykit then reported `confirmed/1/true`, the Locks bundle completed without
+  failure, and the mempool was empty.
+- The buyer displayed `StatusConfirmed`, `ActivityAmount` with a 15,000-sat payment and 143-sat fee,
+  `ActivityTxDetails`, and Seller. Request history retained exactly
+  `PaymentRequestRow-60281cab-4914-40e9-979a-6572eebe69d6` without Pay or Dismiss actions.
+
+Android replays exercised the same corrected fixture and shared protocol vocabulary. They are
+diagnostic cross-platform evidence and are not the accepted iOS journey execution above.
+
+## Diagnostic baseline from 2026-09-02
 
 The journey branch at `32bd6948` was built for two freshly erased simulators with Paykit UI enabled
 against fixture commit `0259d994`. The preserved app evidence confirms the final `PubkyAuthOK`
@@ -88,8 +127,7 @@ received both as linked, proposed payer records for 15,000 sats, but the fixture
 excluded the records from actionable requests and did not present `PaymentRequestsSheet`. A
 coordinated Android buyer reproduced the same no-request result from a separately delivered
 fixture request. The diagnostic baseline therefore stops at the issuer-contract assertion; the
-watch-only, linked-buyer, incoming-request, approval, broadcast, and confirmation boundaries all
-remain pending a clean run with the complete evidence contract.
+accepted corrected iOS run above supersedes its incomplete boundary coverage.
 
-The shared fixture blocker is tracked in
+The corrected fixture work is tracked in
 [`BitcoinErrorLog/pubky-marketplace#1`](https://github.com/BitcoinErrorLog/pubky-marketplace/issues/1).
