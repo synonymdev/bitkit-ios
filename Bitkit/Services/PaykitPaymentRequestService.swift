@@ -639,6 +639,7 @@ final class PaykitPaymentRequestManager {
     private(set) var isCreatingRequest = false
     private(set) var presentationRetryTrigger = 0
     private(set) var requestedPresentationExpirationTrigger = 0
+    private(set) var requestedPresentationUnavailableTrigger = 0
 
     private let service: PaykitPaymentRequestService
     private let presentationStore: any PaykitPaymentRequestPresentationStoring
@@ -651,6 +652,7 @@ final class PaykitPaymentRequestManager {
     private var presentationRetryAttempts: [PaykitPaymentRequest.ID: Int] = [:]
     private var presentationRetryDates: [PaykitPaymentRequest.ID: Date] = [:]
     private var expiredRequestedPresentations: [PaykitPaymentRequest] = []
+    private var unavailableRequestedPresentations: [PaykitPaymentRequest] = []
     private var isPresentingRequests = false
     private var refreshTask: Task<Void, Never>?
     private var expirationTask: Task<Void, Never>?
@@ -861,6 +863,7 @@ final class PaykitPaymentRequestManager {
         presentationRetryAttempts = [:]
         presentationRetryDates = [:]
         expiredRequestedPresentations = []
+        unavailableRequestedPresentations = []
         requestedPresentationId = nil
         isCreatingRequest = false
     }
@@ -920,6 +923,11 @@ final class PaykitPaymentRequestManager {
     func consumeExpiredRequestedPresentation() -> PaykitPaymentRequest? {
         guard !expiredRequestedPresentations.isEmpty else { return nil }
         return expiredRequestedPresentations.removeFirst()
+    }
+
+    func consumeUnavailableRequestedPresentation() -> PaykitPaymentRequest? {
+        guard !unavailableRequestedPresentations.isEmpty else { return nil }
+        return unavailableRequestedPresentations.removeFirst()
     }
 
     func reconcileExpiredRequests() {
@@ -989,6 +997,7 @@ final class PaykitPaymentRequestManager {
             let snapshot = try await service.synchronize()
             guard generation == refreshGeneration else { return }
             let handledRequestedExpirationId = recordRequestedPresentationExpiration(at: now())
+            let previousPending = pendingRequests
             let protectedRequests = pendingRequests.filter {
                 processingRequestIds.contains($0.id) && $0.id != excludingProtectedRequestId
             }
@@ -1003,8 +1012,14 @@ final class PaykitPaymentRequestManager {
             presentedRequestIds.formIntersection(requestIds)
             presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
             presentationRetryDates = presentationRetryDates.filter { requestIds.contains($0.key) }
-            if requestedPresentationId.map({ !requestIds.contains($0) }) == true {
+            if let requestedId = requestedPresentationId, !requestIds.contains(requestedId) {
                 presentationGeneration += 1
+                if requestedId != handledRequestedExpirationId,
+                   let request = previousPending.first(where: { $0.id == requestedId })
+                {
+                    unavailableRequestedPresentations.append(request)
+                    requestedPresentationUnavailableTrigger += 1
+                }
                 requestedPresentationId = nil
             }
             persistPresentedRequestIds()
