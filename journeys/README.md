@@ -135,7 +135,7 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [notification-permission](notification-permission) | 4 | Background-setup toggles |
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
 | [hardware-wallet](hardware-wallet) | 15 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
-| [pubky-marketplace](pubky-marketplace) | 1 | Two-wallet Paykit marketplace payment on regtest; external fixture required |
+| [pubky-marketplace](pubky-marketplace) | 1 | Two-wallet Paykit marketplace payment on regtest; integration fixture required |
 
 ## Not ported
 
