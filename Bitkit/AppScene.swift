@@ -39,10 +39,92 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
     }
 }
 
-private struct IncomingPaykitPaymentRequestPresentationState: Equatable {
+struct IncomingPaykitPaymentRequestPresentationState: Equatable {
     let requestedPresentationId: PaykitPaymentRequest.ID?
     let retryTrigger: Int
     let expirationTrigger: Int
+    let unavailableTrigger: Int
+
+    init(
+        requestedPresentationId: PaykitPaymentRequest.ID?,
+        retryTrigger: Int,
+        expirationTrigger: Int,
+        unavailableTrigger: Int
+    ) {
+        self.requestedPresentationId = requestedPresentationId
+        self.retryTrigger = retryTrigger
+        self.expirationTrigger = expirationTrigger
+        self.unavailableTrigger = unavailableTrigger
+    }
+
+    @MainActor
+    init(_ manager: PaykitPaymentRequestManager) {
+        self.init(
+            requestedPresentationId: manager.requestedPresentationId,
+            retryTrigger: manager.presentationRetryTrigger,
+            expirationTrigger: manager.requestedPresentationExpirationTrigger,
+            unavailableTrigger: manager.requestedPresentationUnavailableTrigger
+        )
+    }
+}
+
+enum IncomingPaykitPaymentRequestPresentationDispatch: Equatable {
+    case presentFeedback(IncomingPaykitPaymentRequestPresentationFeedback, PaykitPaymentRequest)
+    case presentNext
+}
+
+@MainActor
+enum IncomingPaykitPaymentRequestPresentationDispatcher {
+    static func feedback(
+        deferring request: PaykitPaymentRequest,
+        reason: IncomingPaykitPaymentRequestFailureReason,
+        with manager: PaykitPaymentRequestManager
+    ) -> IncomingPaykitPaymentRequestPresentationFeedback {
+        IncomingPaykitPaymentRequestPresentationFeedback(
+            deferral: manager.deferPresentation(request),
+            fallbackReason: reason
+        )
+    }
+
+    static func handleStateChange(
+        from previous: IncomingPaykitPaymentRequestPresentationState,
+        to current: IncomingPaykitPaymentRequestPresentationState,
+        manager: PaykitPaymentRequestManager
+    ) -> [IncomingPaykitPaymentRequestPresentationDispatch] {
+        var dispatches: [IncomingPaykitPaymentRequestPresentationDispatch] = []
+        if current.expirationTrigger != previous.expirationTrigger {
+            while let request = manager.consumeExpiredRequestedPresentation() {
+                dispatches.append(
+                    .presentFeedback(
+                        IncomingPaykitPaymentRequestPresentationFeedback(
+                            deferral: .requestExpired(wasRequested: true),
+                            fallbackReason: .resolutionFailed
+                        ),
+                        request
+                    )
+                )
+            }
+        }
+        if current.unavailableTrigger != previous.unavailableTrigger {
+            while let request = manager.consumeUnavailableRequestedPresentation() {
+                dispatches.append(
+                    .presentFeedback(
+                        IncomingPaykitPaymentRequestPresentationFeedback(
+                            deferral: .requestedPresentationEnded,
+                            fallbackReason: .resolutionFailed
+                        ),
+                        request
+                    )
+                )
+            }
+        }
+        if current.retryTrigger != previous.retryTrigger ||
+            previous.requestedPresentationId != current.requestedPresentationId && current.requestedPresentationId != nil
+        {
+            dispatches.append(.presentNext)
+        }
+        return dispatches
+    }
 }
 
 struct AppScene: View {
@@ -973,43 +1055,35 @@ struct AppScene: View {
         _ request: PaykitPaymentRequest,
         reason: IncomingPaykitPaymentRequestFailureReason
     ) {
-        let deferral = paykitPaymentRequestManager.deferPresentation(request)
-        let feedback = IncomingPaykitPaymentRequestPresentationFeedback(
-            deferral: deferral,
-            fallbackReason: reason
+        presentIncomingPaykitPaymentRequestFeedback(
+            IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+                deferring: request,
+                reason: reason,
+                with: paykitPaymentRequestManager
+            ),
+            for: request
         )
-        presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
-    }
-
-    private func presentExpiredRequestedPaykitPaymentRequests() {
-        while let request = paykitPaymentRequestManager.consumeExpiredRequestedPresentation() {
-            let feedback = IncomingPaykitPaymentRequestPresentationFeedback(
-                deferral: .requestExpired(wasRequested: true),
-                fallbackReason: .resolutionFailed
-            )
-            presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
-        }
     }
 
     private var incomingPaykitPaymentRequestPresentationState: IncomingPaykitPaymentRequestPresentationState {
-        IncomingPaykitPaymentRequestPresentationState(
-            requestedPresentationId: paykitPaymentRequestManager.requestedPresentationId,
-            retryTrigger: paykitPaymentRequestManager.presentationRetryTrigger,
-            expirationTrigger: paykitPaymentRequestManager.requestedPresentationExpirationTrigger
-        )
+        IncomingPaykitPaymentRequestPresentationState(paykitPaymentRequestManager)
     }
 
     private func handleIncomingPaykitPaymentRequestPresentationStateChange(
         from previous: IncomingPaykitPaymentRequestPresentationState,
         to current: IncomingPaykitPaymentRequestPresentationState
     ) {
-        if current.expirationTrigger != previous.expirationTrigger {
-            presentExpiredRequestedPaykitPaymentRequests()
-        }
-        if current.retryTrigger != previous.retryTrigger ||
-            previous.requestedPresentationId != current.requestedPresentationId && current.requestedPresentationId != nil
-        {
-            Task { await presentNextIncomingPaykitPaymentRequest() }
+        for dispatch in IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: previous,
+            to: current,
+            manager: paykitPaymentRequestManager
+        ) {
+            switch dispatch {
+            case let .presentFeedback(feedback, request):
+                presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+            case .presentNext:
+                Task { await presentNextIncomingPaykitPaymentRequest() }
+            }
         }
     }
 
