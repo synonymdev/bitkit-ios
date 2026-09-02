@@ -608,7 +608,9 @@ struct SendSheet: View {
             HwSendSignView(
                 navigationPath: $navigationPath,
                 hwSend: hwSend,
-                prepareContactPayment: prepareIncomingPaymentRequest
+                prepareContactPayment: prepareHardwareContactPayment,
+                completeContactPayment: completeHardwareContactPayment,
+                cancelContactPayment: cancelHardwareContactPayment
             )
         case .feeRate:
             SendFeeRate(navigationPath: $navigationPath, hwSend: hwSend)
@@ -680,6 +682,45 @@ struct SendSheet: View {
                 context: privatePaymentContext
             )
         }
+    }
+
+    private func prepareHardwareContactPayment() async throws {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest,
+              let address = app.scannedOnchainInvoice?.address
+        else {
+            try await prepareIncomingPaymentRequest()
+            return
+        }
+
+        let endpointIdentifier = PublicPaykitService.onchainMethodId(for: address).rawValue
+        try await PaykitPaymentProofService.shared.prepare(
+            request: request,
+            paymentEndpointIdentifier: endpointIdentifier,
+            kind: .onchain
+        )
+        do {
+            try await prepareIncomingPaymentRequest()
+        } catch {
+            await PaykitPaymentProofService.shared.cancelPreparation(request)
+            throw error
+        }
+    }
+
+    private func completeHardwareContactPayment(txid: String) async {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest,
+              let address = app.scannedOnchainInvoice?.address
+        else { return }
+
+        await PaykitPaymentProofService.shared.completeOnchainPayment(
+            request,
+            txid: txid,
+            paymentEndpointIdentifier: PublicPaykitService.onchainMethodId(for: address).rawValue
+        )
+    }
+
+    private func cancelHardwareContactPayment() async {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+        await PaykitPaymentProofService.shared.cancelPreparation(request)
     }
 
     private func replaceQuickPay(with route: SendRoute) {

@@ -773,6 +773,7 @@ struct AppScene: View {
             return false
         }
 
+        await PaykitPaymentProofService.shared.reconcile()
         let previousRequests = paykitPaymentRequestManager.pendingRequests
         await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         await paykitPaymentRequestManager.refresh()

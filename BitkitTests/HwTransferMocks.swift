@@ -14,6 +14,7 @@ final class MockHwFunding: HwTransferFunding {
     var maxSpendableError: Error?
     var composeError: Error?
     var composeDelay: Double = 0
+    var estimateDelay: Double = 0
     var signError: Error?
     var signErrors: [Error] = []
     var signDelay: Double = 0
@@ -68,6 +69,7 @@ final class MockHwFunding: HwTransferFunding {
         addressType _: AddressScriptType
     ) async throws -> UInt64 {
         estimateCalls.append((address, sats, satsPerVByte))
+        if estimateDelay > 0 { try await Task.sleep(nanoseconds: UInt64(estimateDelay * 1_000_000_000)) }
         if let composeError { throw composeError }
         return funding.miningFeeSats
     }
