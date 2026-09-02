@@ -16,8 +16,10 @@ the fixture state and must provide:
   URL whose payload carries `x-bitkit-claim=watch-only-account-v1`. Revision
   [`867fc883`](https://github.com/pubky/paykit-server/commit/867fc883125c7b89a7b712c2551619cccdfdc0f7)
   is the producer provenance used by the accepted run.
-- A regtest bitcoind and Electrum/Fulcrum endpoint on the same chain. Configure that endpoint in
-  both wallets before first launch so neither wallet retains a taller foreign regtest tip.
+- A regtest bitcoind and Electrum/Fulcrum endpoint on the same chain. Before launching either
+  wallet, publish the fixture's Fulcrum endpoint to the simulator host at
+  `tcp://127.0.0.1:60001`; this is Bitkit's local-E2E default and prevents either wallet from
+  retaining a taller foreign regtest tip.
 - A clean seller wallet, a separate clean funded buyer wallet, and bilateral Paykit peer links at
   `bitkit/server` and `bitkit/wallet`.
 - A driver that creates exactly one purchase for the buyer, reports the Payment Request id and
@@ -29,6 +31,18 @@ The request and endpoint must satisfy the issuer contract from iOS issue
 `btc-regtest-*` endpoint identifier, and a JSON endpoint payload with a non-empty string `value`.
 The fixture must keep watch-only account material and spending authority separate. Evidence records
 the claimed account xpub and account index while omitting wallet seed material and tokens.
+
+Build and run each clean simulator against that endpoint before its first launch:
+
+```bash
+xcodebuildmcp simulator build-and-run --simulator-id <simulator-id> \
+  --extra-args "SWIFT_ACTIVE_COMPILATION_CONDITIONS=\$(inherited) E2E_BUILD \
+E2E_BACKEND=local E2E_NETWORK=regtest \
+E2E_HOMESERVER_PUBKY=<homeserver-pubky>"
+```
+
+No stored Electrum override is required: `E2E_BUILD` with the local backend resolves Electrum to
+`tcp://127.0.0.1:60001`. Repeat the command for the seller and buyer simulator identifiers.
 
 ## Required app changes
 
