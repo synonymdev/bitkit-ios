@@ -71,10 +71,15 @@ status are the confirmation authority.
 ## Baseline from 2026-09-02
 
 The journey branch at `32bd6948` was built for two freshly erased simulators with Paykit UI enabled
-against fixture commit `0259d994`. The seller completed the watch-only consent and exact Paykit
-capability authorization through `PubkyAuthOK`; fixture setup completed without spending authority.
-The buyer received 100,000 regtest sats, both wallets enabled contact payments, saved each other,
-and linked the seller's `bitkit/server` and `bitkit/wallet` receivers.
+against fixture commit `0259d994`. The preserved app evidence confirms the final `PubkyAuthOK`
+authorization success. The fixture's immutable protocol evidence independently passed all 15
+verification steps.
+
+An exploratory two-wallet run subsequently observed seller setup, a funded buyer, bilateral
+contacts, linked `bitkit/server` and `bitkit/wallet` receivers, and delivered requests. That run did
+not preserve the full boundary artifacts required above for consent and approval, exact
+capabilities, both toggles and contact rows, claimed account details, or raw SDK and outbox state.
+Those observations are diagnostic context, not passed journey boundaries.
 
 Paykit marked two iOS-targeted requests delivered, with Payment Request ids
 `43c0f7d4-92f7-4ec1-b9c4-5cff67d72381` and `436a1fb4-9109-4a8f-bcae-6c700e218634`. The buyer SDK
@@ -82,7 +87,9 @@ received both as linked, proposed payer records for 15,000 sats, but the fixture
 `BTC` and `btc-bitcoin-p2wpkh`. Those values violate the issuer contract above, so Bitkit correctly
 excluded the records from actionable requests and did not present `PaymentRequestsSheet`. A
 coordinated Android buyer reproduced the same no-request result from a separately delivered
-fixture request. The baseline therefore stops at the issuer-contract assertion; approval,
-broadcast, and confirmation remain pending a fixture that emits the documented regtest contract.
+fixture request. The diagnostic baseline therefore stops at the issuer-contract assertion; the
+watch-only, linked-buyer, incoming-request, approval, broadcast, and confirmation boundaries all
+remain pending a clean run with the complete evidence contract.
+
 The shared fixture blocker is tracked in
 [`BitcoinErrorLog/pubky-marketplace#1`](https://github.com/BitcoinErrorLog/pubky-marketplace/issues/1).
