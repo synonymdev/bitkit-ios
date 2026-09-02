@@ -37,13 +37,14 @@ enum IncomingPaykitPaymentRequestFailureReason: String, Equatable {
     case paymentDetailsPending = "payment_details_pending"
     case invalidPaymentTarget = "invalid_payment_target"
     case paymentTargetNotRoutable = "payment_target_not_routable"
+    case requestExpired = "request_expired"
     case resolutionFailed = "resolution_failed"
 
     var category: String {
         switch self {
         case .noSupportedEndpoint, .endpointNotPayable, .paymentDetailsPending, .resolutionFailed:
             "resolution"
-        case .invalidPaymentTarget, .paymentTargetNotRoutable:
+        case .invalidPaymentTarget, .paymentTargetNotRoutable, .requestExpired:
             "presentation"
         }
     }

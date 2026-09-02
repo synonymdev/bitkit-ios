@@ -935,19 +935,36 @@ struct AppScene: View {
         _ request: PaykitPaymentRequest,
         reason: IncomingPaykitPaymentRequestFailureReason
     ) {
+        let deferral = paykitPaymentRequestManager.deferPresentation(request)
+        let diagnosticReason: IncomingPaykitPaymentRequestFailureReason = if case .requestExpired = deferral {
+            .requestExpired
+        } else {
+            reason
+        }
         Logger.warn(
-            "Rejected incoming Paykit payment request presentation: category=\(reason.category) reason=\(reason.rawValue) " +
+            "Rejected incoming Paykit payment request presentation: category=\(diagnosticReason.category) reason=\(diagnosticReason.rawValue) " +
                 "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))",
             context: "AppScene"
         )
 
-        guard paykitPaymentRequestManager.deferPresentation(request) == .requestedPresentationEnded else { return }
-        app.toast(
-            type: .error,
-            title: t("wallet__payment_request"),
-            description: t("wallet__payment_request_unavailable"),
-            accessibilityIdentifier: "PaymentRequestUnavailableToast"
-        )
+        switch deferral {
+        case .requestedPresentationEnded:
+            app.toast(
+                type: .error,
+                title: t("wallet__payment_request"),
+                description: t("wallet__payment_request_unavailable"),
+                accessibilityIdentifier: "PaymentRequestUnavailableToast"
+            )
+        case let .requestExpired(wasRequested) where wasRequested:
+            app.toast(
+                type: .error,
+                title: t("wallet__payment_request"),
+                description: t("wallet__payment_request_expired"),
+                accessibilityIdentifier: "PaymentRequestExpiredToast"
+            )
+        case .requestExpired, .retryScheduled, .ignored:
+            break
+        }
     }
 
     private func retryPendingPaykitEndpointRemoval() async {
