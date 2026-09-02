@@ -13,6 +13,51 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertFalse(PubkyAuthRequest.isProtocolURL("lightning:lnbc1example"))
     }
 
+    func testProtocolUrlNormalizesBitkitSpecificSetupHandoff() throws {
+        let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+            "&relay=\(relay)&secret=\(secret)&x-bitkit-claim=watch-only-account-v1"
+
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL(url))
+
+        let request = try PubkyAuthRequest.parse(url: url)
+
+        XCTAssertTrue(request.rawUrl.hasPrefix("pubkyauth://signin?"))
+        XCTAssertEqual(request.bitkitClaim, .watchOnlyAccountV1)
+        XCTAssertEqual(request.capabilities, PubkyAuthClaim.watchOnlyAccountCapabilities)
+    }
+
+    func testProtocolUrlDoesNotTreatPubkyRingCallbackAsSetupHandoff() {
+        let url = "bitkit://pubky-auth/success?nonce=123"
+
+        XCTAssertFalse(PubkyAuthRequest.isProtocolURL(url))
+        XCTAssertEqual(PubkyAuthRequest.normalizedProtocolURL(url), url)
+    }
+
+    func testProtocolUrlPreservesEncodedQueryOrderAndDropsFragment() {
+        let query = "caps=a%2Fb&relay=https%3A%2F%2Fx&secret=first&secret=second"
+
+        XCTAssertEqual(
+            PubkyAuthRequest.normalizedProtocolURL("bitkit://pubky-auth/setup?\(query)#ignored"),
+            "pubkyauth://signin?\(query)"
+        )
+    }
+
+    func testProtocolUrlDoesNotReserializeRawQueryBytes() {
+        let query = "caps=<approve>&relay=https%3A%2F%2Fx&secret=first&secret=second"
+
+        XCTAssertEqual(
+            PubkyAuthRequest.normalizedProtocolURL("bitkit://pubky-auth/setup?\(query)#ignored"),
+            "pubkyauth://signin?\(query)"
+        )
+    }
+
+    func testProtocolUrlRejectsBitkitSetupHandoffWithoutQuery() {
+        let url = "bitkit://pubky-auth/setup"
+
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL(url))
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url))
+    }
+
     func testParseUrlPreservesRequestedCapabilities() throws {
         let capabilities = "/pub/bitkit.to/:rw"
         let url = "pubkyauth://signin?caps=\(capabilities)&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"

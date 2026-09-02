@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MainNavView: View {
+    private let canHandleDeepLinks: Bool
+
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @EnvironmentObject private var app: AppViewModel
@@ -20,6 +22,10 @@ struct MainNavView: View {
 
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
+
+    init(canHandleDeepLinks: Bool = true) {
+        self.canHandleDeepLinks = canHandleDeepLinks
+    }
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
@@ -317,11 +323,12 @@ struct MainNavView: View {
                 notificationManager.unregister()
             }
         }
-        .task {
+        .task(id: canHandleDeepLinks) {
+            guard canHandleDeepLinks else { return }
             await handlePendingDeepLink()
         }
         .onChange(of: app.pendingDeepLinkURL) { _, url in
-            guard url != nil else { return }
+            guard canHandleDeepLinks, url != nil else { return }
             Task { await handlePendingDeepLink() }
         }
         .alert(
@@ -642,8 +649,12 @@ struct MainNavView: View {
     }
 
     private func handlePendingDeepLink() async {
-        guard let url = app.takePendingDeepLink() else { return }
+        await app.routePendingDeepLinkIfReady(canHandleDeepLinks) { url in
+            await handleDeepLink(url)
+        }
+    }
 
+    private func handleDeepLink(_ url: URL) async {
         Logger.info("Received deeplink: \(sanitizedDeeplinkDescription(url))")
 
         // Web URLs from widgets (e.g. news article tap) bypass payment handling

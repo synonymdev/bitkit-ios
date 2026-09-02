@@ -51,6 +51,9 @@ struct PubkyAuthPermission {
 // MARK: - PubkyAuth Request (parsed from pubkyauth:// URL)
 
 struct PubkyAuthRequest {
+    private static let bitkitSetupHost = "pubky-auth"
+    private static let bitkitSetupPath = "/setup"
+
     let rawUrl: String
     let kind: Paykit.PubkyAuthRequestKind
     let relay: String
@@ -60,20 +63,44 @@ struct PubkyAuthRequest {
     let bitkitClaim: PubkyAuthClaim?
 
     static func isProtocolURL(_ value: String) -> Bool {
-        URLComponents(string: value.trimmingCharacters(in: .whitespacesAndNewlines))?.scheme?.lowercased() == "pubkyauth"
+        URLComponents(string: normalizedProtocolURL(value).trimmingCharacters(in: .whitespacesAndNewlines))?.scheme?.lowercased() == "pubkyauth"
+    }
+
+    /// Normalizes Bitkit's unique iOS handoff because the OS cannot deterministically route a custom scheme shared with Pubky Ring.
+    static func normalizedProtocolURL(_ value: String) -> String {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let components = URLComponents(string: trimmedValue),
+              components.scheme?.lowercased() == "bitkit",
+              components.host?.lowercased() == bitkitSetupHost,
+              components.path == bitkitSetupPath,
+              components.user == nil,
+              components.password == nil,
+              components.port == nil
+        else {
+            return value
+        }
+
+        guard let queryDelimiter = trimmedValue.firstIndex(of: "?") else {
+            return "pubkyauth://signin"
+        }
+
+        let queryStart = trimmedValue.index(after: queryDelimiter)
+        let fragmentDelimiter = trimmedValue[queryStart...].firstIndex(of: "#") ?? trimmedValue.endIndex
+        return "pubkyauth://signin?\(trimmedValue[queryStart ..< fragmentDelimiter])"
     }
 
     static func parse(url: String) throws -> PubkyAuthRequest {
-        let details = try Paykit.parsePubkyAuthUrl(authUrl: url)
+        let normalizedURL = normalizedProtocolURL(url)
+        let details = try Paykit.parsePubkyAuthUrl(authUrl: normalizedURL)
         let capabilities = details.capabilities ?? ""
         let permissions = parseCapabilities(capabilities)
         var seenServiceNames = Set<String>()
         let serviceNames = permissions
             .compactMap { extractServiceName($0.path) }
             .filter { seenServiceNames.insert($0).inserted }
-        let bitkitClaim = try parseBitkitClaim(url: url, capabilities: capabilities)
+        let bitkitClaim = try parseBitkitClaim(url: normalizedURL, capabilities: capabilities)
         return PubkyAuthRequest(
-            rawUrl: url,
+            rawUrl: normalizedURL,
             kind: details.kind,
             relay: details.relayUrl ?? "",
             capabilities: capabilities,

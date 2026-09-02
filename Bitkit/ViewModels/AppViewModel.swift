@@ -121,9 +121,10 @@ class AppViewModel: ObservableObject {
         pendingDeepLinkURL = url
     }
 
-    func takePendingDeepLink() -> URL? {
-        defer { pendingDeepLinkURL = nil }
-        return pendingDeepLinkURL
+    func routePendingDeepLinkIfReady(_ isReady: Bool, handler: (URL) async -> Void) async {
+        guard isReady, let url = pendingDeepLinkURL else { return }
+        pendingDeepLinkURL = nil
+        await handler(url)
     }
 
     private let lightningService: LightningService
@@ -447,7 +448,7 @@ extension AppViewModel {
             }
         }
 
-        let uri = uri.removingLightningSchemes()
+        let uri = PubkyAuthRequest.normalizedProtocolURL(uri.removingLightningSchemes())
         let prevalidatedPaymentRequest: BitkitCore.Scanner?
         if scope == .paymentRequests {
             guard SamRockSetupRequest.parse(uri) == nil,
