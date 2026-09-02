@@ -25,6 +25,15 @@ struct MainNavView: View {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
     }
 
+    private var shouldResumePendingPubkyProfileSetup: Bool {
+        isPaykitUIActive &&
+            pubkyProfile.isProfileSetupPending &&
+            pubkyProfile.isAuthenticated &&
+            sheets.activeSheetConfiguration == nil &&
+            !sheets.isReplacingSheet &&
+            navigation.currentRoute != .createProfile
+    }
+
     // Delay constants for clipboard processing
     private static let nodeReadyDelayNanoseconds: UInt64 = 500_000_000 // 0.5 seconds
     private static let statePropagationDelayNanoseconds: UInt64 = 500_000_000 // 0.5 seconds
@@ -38,6 +47,10 @@ struct MainNavView: View {
                 transfer.consumeHwFundingComplete()
                 navigation.navigate(.spendingHwSigned)
             }
+        }
+        .onChange(of: shouldResumePendingPubkyProfileSetup, initial: true) { _, shouldResume in
+            guard shouldResume else { return }
+            navigation.navigate(.createProfile)
         }
         .sheet(
             item: $sheets.addTagSheetItem,

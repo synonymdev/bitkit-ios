@@ -1,3 +1,4 @@
+import BitkitCore
 import Foundation
 import Paykit
 
@@ -48,7 +49,7 @@ struct PubkyAuthPermission {
     }
 }
 
-// MARK: - PubkyAuth Request (parsed from pubkyauth:// URL)
+// MARK: - PubkyAuth Request
 
 struct PubkyAuthRequest {
     let rawUrl: String
@@ -59,14 +60,90 @@ struct PubkyAuthRequest {
     let permissions: [PubkyAuthPermission]
     let serviceNames: [String]
     let bitkitClaim: PubkyAuthClaim?
+    let homeserverPublicKey: String?
+    let signupToken: String?
+    let authorizationUrl: String
+
+    var isRingSignup: Bool {
+        guard let components = URLComponents(string: rawUrl) else { return false }
+        return components.scheme?.lowercased() == "pubkyring" && components.host?.lowercased() == "signup"
+    }
 
     static func isProtocolURL(_ value: String) -> Bool {
-        URLComponents(string: value.trimmingCharacters(in: .whitespacesAndNewlines))?.scheme?.lowercased() == "pubkyauth"
+        guard let components = URLComponents(string: value.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return false
+        }
+
+        switch components.scheme?.lowercased() {
+        case "pubkyauth":
+            return true
+        case "pubkyring":
+            return components.host?.lowercased() == "signup"
+        default:
+            return false
+        }
     }
 
     static func parse(url: String) throws -> PubkyAuthRequest {
+        if let components = URLComponents(string: url),
+           components.scheme?.lowercased() == "pubkyring",
+           components.host?.lowercased() == "signup"
+        {
+            return try parseRingSignup(url: url, components: components)
+        }
+
         let details = try Paykit.parsePubkyAuthUrl(authUrl: url)
-        let capabilities = details.capabilities ?? ""
+        let capabilities = details.capabilities
+        return try makeRequest(
+            url: url,
+            kind: details.kind,
+            clientID: details.clientId,
+            relay: details.relayUrl,
+            capabilities: capabilities,
+            homeserverPublicKey: nil,
+            signupToken: nil
+        )
+    }
+
+    private static func parseRingSignup(url: String, components: URLComponents) throws -> PubkyAuthRequest {
+        let values = Dictionary(grouping: components.queryItems ?? [], by: \.name)
+        let relay = try requiredQueryValue("relay", from: values)
+        let secret = try requiredQueryValue("secret", from: values)
+        let capabilities = try requiredQueryValue("caps", from: values)
+        let homeserver = try requiredQueryValue("hs", from: values)
+        let authorizationUrl = ringAuthorizationUrl(relay: relay, secret: secret, capabilities: capabilities)
+        do {
+            _ = try BitkitCore.parsePubkyAuthUrl(authUrl: authorizationUrl)
+            _ = try Paykit.normalizePubkyPublicKey(value: homeserver)
+        } catch {
+            throw PubkyAuthRequestError.invalidUrl
+        }
+        let request = try makeRequest(
+            url: url,
+            kind: .signUp,
+            clientID: "",
+            relay: relay,
+            capabilities: capabilities,
+            homeserverPublicKey: homeserver,
+            signupToken: optionalQueryValue("st", from: values),
+            authorizationUrl: authorizationUrl
+        )
+        guard request.bitkitClaim == nil else {
+            throw PubkyAuthRequestError.invalidUrl
+        }
+        return request
+    }
+
+    private static func makeRequest(
+        url: String,
+        kind: Paykit.PubkyAuthRequestKind,
+        clientID: String,
+        relay: String,
+        capabilities: String,
+        homeserverPublicKey: String?,
+        signupToken: String?,
+        authorizationUrl: String? = nil
+    ) throws -> PubkyAuthRequest {
         let permissions = parseCapabilities(capabilities)
         var seenServiceNames = Set<String>()
         let serviceNames = permissions
@@ -75,14 +152,48 @@ struct PubkyAuthRequest {
         let bitkitClaim = try parseBitkitClaim(url: url, capabilities: capabilities)
         return PubkyAuthRequest(
             rawUrl: url,
-            kind: details.kind,
-            clientID: details.clientId,
-            relay: details.relayUrl ?? "",
+            kind: kind,
+            clientID: clientID,
+            relay: relay,
             capabilities: capabilities,
             permissions: permissions,
             serviceNames: serviceNames,
-            bitkitClaim: bitkitClaim
+            bitkitClaim: bitkitClaim,
+            homeserverPublicKey: homeserverPublicKey,
+            signupToken: signupToken,
+            authorizationUrl: authorizationUrl ?? url
         )
+    }
+
+    private static func ringAuthorizationUrl(relay: String, secret: String, capabilities: String) -> String {
+        "pubkyauth:///?relay=\(encodeQueryComponent(relay))" +
+            "&secret=\(encodeQueryComponent(secret))&caps=\(encodeQueryComponent(capabilities))"
+    }
+
+    private static func encodeQueryComponent(_ value: String) -> String {
+        let unreserved = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        return value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
+    }
+
+    private static func requiredQueryValue(
+        _ name: String,
+        from values: [String: [URLQueryItem]]
+    ) throws -> String {
+        guard let value = try optionalQueryValue(name, from: values), !value.isEmpty else {
+            throw PubkyAuthRequestError.invalidUrl
+        }
+        return value
+    }
+
+    private static func optionalQueryValue(
+        _ name: String,
+        from values: [String: [URLQueryItem]]
+    ) throws -> String? {
+        let items = values[name] ?? []
+        guard items.count <= 1 else {
+            throw PubkyAuthRequestError.invalidUrl
+        }
+        return items.first?.value.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     static func parseBitkitClaim(url: String, capabilities: String) throws -> PubkyAuthClaim? {

@@ -267,8 +267,8 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .pubkyAuthApproval else { return nil }
             let pubkyConfig = config.data as? PubkyAuthApprovalConfig
-            guard let authUrl = pubkyConfig?.authUrl, let request = pubkyConfig?.request else { return nil }
-            return PubkyAuthApprovalSheetItem(authUrl: authUrl, request: request)
+            guard let request = pubkyConfig?.request else { return nil }
+            return PubkyAuthApprovalSheetItem(request: request)
         }
         set {
             if newValue == nil {
