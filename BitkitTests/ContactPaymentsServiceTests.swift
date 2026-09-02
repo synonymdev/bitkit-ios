@@ -144,7 +144,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
-    func testFailedPrivateDisableRestoresEnabledState() async throws {
+    func testFailedPrivateDisableKeepsContactPaymentsDisabled() async throws {
         try await withIsolatedDefaultsAsync { defaults in
             defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
             defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
@@ -153,29 +153,24 @@ final class ContactPaymentsServiceTests: XCTestCase {
             let operations = OperationsSpy()
             operations.privateRemovalFailures = [1]
 
-            do {
-                try await ContactPaymentsService.setEnabled(
-                    false,
-                    contactPublicKeys: ["contact-a"],
-                    canUsePrivatePayments: true,
-                    operations: operations.makeOperations(),
-                    defaults: defaults
-                )
-                XCTFail("Expected private endpoint removal to fail")
-            } catch {
-                XCTAssertEqual(error as? TestError, .operationFailed)
-            }
+            try await ContactPaymentsService.setEnabled(
+                false,
+                contactPublicKeys: ["contact-a"],
+                canUsePrivatePayments: true,
+                operations: operations.makeOperations(),
+                defaults: defaults
+            )
 
-            XCTAssertEqual(operations.publicPublicationValues, [true])
+            XCTAssertEqual(operations.publicPublicationValues, [false])
             XCTAssertEqual(operations.privateRemovalCount, 1)
-            XCTAssertEqual(operations.privatePublications.count, 1)
-            XCTAssertEqual(operations.privatePublications[0].contactPublicKeys, ["contact-a"])
-            XCTAssertTrue(operations.privatePublications[0].requiresImmediatePublication)
-            XCTAssertEqual(operations.publicCleanupValues, [true])
-            XCTAssertEqual(operations.privateCleanupValues, [true, false])
-            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
-            XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+            XCTAssertTrue(operations.privatePublications.isEmpty)
+            XCTAssertEqual(operations.calls, ["private:remove", "public:false"])
+            XCTAssertEqual(operations.publicCleanupValues, [false])
+            XCTAssertEqual(operations.privateCleanupValues, [true])
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+            XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
             XCTAssertTrue(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey))
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
         }
     }
 

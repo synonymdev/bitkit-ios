@@ -143,7 +143,10 @@ enum ContactPaymentsService {
             operations.setPrivateCleanupPending(false)
         } catch {
             operations.setPrivateCleanupPending(true)
-            throw error
+            Logger.warn(
+                "Deferred private Paykit endpoint cleanup after disable failed: \(error)",
+                context: "ContactPaymentsService"
+            )
         }
 
         do {
