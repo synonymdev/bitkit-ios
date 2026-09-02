@@ -820,6 +820,7 @@ struct SendSheet: View {
 
     private func cancelHardwareContactPayment() async {
         guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+        await PaykitPaymentProofService.shared.failOnchainPayment(request)
         await PaykitPaymentProofService.shared.cancelPreparation(request)
     }
 
