@@ -693,6 +693,7 @@
 "pubky_auth__title" = "Authorize";
 "pubky_auth__description_prefix" = "A service is requesting permission to access and edit your ";
 "pubky_auth__description_suffix" = " data.";
+"pubky_auth__requester" = "Requested by {clientId}";
 "pubky_auth__requested_permissions" = "REQUESTED PERMISSIONS";
 "pubky_auth__watch_only_account_default_name" = "{service} account";
 "pubky_auth__watch_only_account_fallback_name" = "Paykit server account";

@@ -20,6 +20,7 @@ final class PubkyAuthRequestTests: XCTestCase {
 
         let request = try PubkyAuthRequest.parse(url: url)
 
+        XCTAssertEqual(request.clientID, "paykit.test")
         XCTAssertEqual(request.capabilities, capabilities)
         XCTAssertEqual(request.permissions.count, 1)
         XCTAssertEqual(request.permissions[0].path, "/pub/bitkit.to/")

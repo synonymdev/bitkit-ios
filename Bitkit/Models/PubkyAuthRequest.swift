@@ -53,6 +53,7 @@ struct PubkyAuthPermission {
 struct PubkyAuthRequest {
     let rawUrl: String
     let kind: Paykit.PubkyAuthRequestKind
+    let clientID: String
     let relay: String
     let capabilities: String
     let permissions: [PubkyAuthPermission]
@@ -75,6 +76,7 @@ struct PubkyAuthRequest {
         return PubkyAuthRequest(
             rawUrl: url,
             kind: details.kind,
+            clientID: details.clientId,
             relay: details.relayUrl ?? "",
             capabilities: capabilities,
             permissions: permissions,
