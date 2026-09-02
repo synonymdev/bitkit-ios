@@ -368,14 +368,14 @@ class PubkyProfileManager: ObservableObject {
             throw PubkySignupError.alreadySignedIn
         }
 
-        try await PubkyService.registerIdentity(
+        let registeredSession = try await PubkyService.registerIdentity(
             secretKeyHex: secretKeyHex,
             homeserverZ32: homeserver,
             signupCode: request.signupToken
         )
         try await PubkyService.approveRingAuth(authUrl: request.authorizationUrl, secretKeyHex: secretKeyHex)
         setProfileSetupPending(true)
-        _ = try await PubkyService.signIn(secretKeyHex: secretKeyHex)
+        try await PubkyService.activateRegisteredIdentity(registeredSession)
 
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         Self.notifyAppStateBackupChanged()

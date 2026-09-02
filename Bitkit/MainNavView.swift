@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct MainNavView: View {
+    private enum PendingProfileSetupResumeState {
+        case inactive
+        case waiting
+        case ready
+    }
+
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @EnvironmentObject private var app: AppViewModel
@@ -20,18 +26,23 @@ struct MainNavView: View {
 
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
+    @State private var didResumePendingPubkyProfileSetup = false
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
     }
 
-    private var shouldResumePendingPubkyProfileSetup: Bool {
-        isPaykitUIActive &&
-            pubkyProfile.isProfileSetupPending &&
-            pubkyProfile.isAuthenticated &&
-            sheets.activeSheetConfiguration == nil &&
-            !sheets.isReplacingSheet &&
-            navigation.currentRoute != .createProfile
+    private var pendingProfileSetupResumeState: PendingProfileSetupResumeState {
+        guard pubkyProfile.isProfileSetupPending else { return .inactive }
+        guard isPaykitUIActive,
+              pubkyProfile.isAuthenticated,
+              sheets.activeSheetConfiguration == nil,
+              !sheets.isReplacingSheet,
+              navigation.currentRoute != .createProfile
+        else {
+            return .waiting
+        }
+        return .ready
     }
 
     // Delay constants for clipboard processing
@@ -48,8 +59,12 @@ struct MainNavView: View {
                 navigation.navigate(.spendingHwSigned)
             }
         }
-        .onChange(of: shouldResumePendingPubkyProfileSetup, initial: true) { _, shouldResume in
-            guard shouldResume else { return }
+        .onChange(of: pendingProfileSetupResumeState, initial: true) { _, resumeState in
+            if resumeState == .inactive {
+                didResumePendingPubkyProfileSetup = false
+            }
+            guard resumeState == .ready, !didResumePendingPubkyProfileSetup else { return }
+            didResumePendingPubkyProfileSetup = true
             navigation.navigate(.createProfile)
         }
         .sheet(

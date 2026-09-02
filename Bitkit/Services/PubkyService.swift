@@ -234,12 +234,16 @@ enum PubkyService {
         secretKeyHex: String,
         homeserverZ32: String,
         signupCode: String? = nil
-    ) async throws {
+    ) async throws -> PubkySessionBootstrapResult {
         try await PaykitSdkService.shared.registerIdentity(
             secretKeyHex: secretKeyHex,
             homeserverPublicKey: homeserverZ32,
             signupCode: signupCode
         )
+    }
+
+    static func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
+        try await PaykitSdkService.shared.activateRegisteredIdentity(result)
     }
 
     /// Sign in with an existing secret key. Returns new session secret.
@@ -416,15 +420,23 @@ actor PaykitSdkService {
         secretKeyHex: String,
         homeserverPublicKey: String,
         signupCode: String?
-    ) async throws {
+    ) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            _ = try await bootstrap().signUp(
+            try await bootstrap().signUp(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
                 receiverNoiseSecretKey: sessionProvider.loadOrDeriveReceiverNoiseSecretKey(),
                 homeserverPublicKey: homeserverPublicKey,
                 signupCode: signupCode,
                 requiredCapabilities: Self.requiredCapabilities()
             )
+        }
+    }
+
+    func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
+        try await operationLock.withLock {
+            let previousPublicKey = await currentSdkStatePublicKey()
+            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
+            markWalletBackupDataChanged()
         }
     }
 
