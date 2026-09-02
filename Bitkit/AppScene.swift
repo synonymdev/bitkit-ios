@@ -39,6 +39,12 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
     }
 }
 
+private struct IncomingPaykitPaymentRequestPresentationState: Equatable {
+    let requestedPresentationId: PaykitPaymentRequest.ID?
+    let retryTrigger: Int
+    let expirationTrigger: Int
+}
+
 struct AppScene: View {
     private static let paykitPaymentRequestRefreshIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
@@ -285,12 +291,8 @@ struct AppScene: View {
                     await presentNextIncomingPaykitPaymentRequest()
                 }
             }
-            .onChange(of: paykitPaymentRequestManager.requestedPresentationId) { _, requestId in
-                guard requestId != nil else { return }
-                Task { await presentNextIncomingPaykitPaymentRequest() }
-            }
-            .onChange(of: paykitPaymentRequestManager.presentationRetryTrigger) {
-                Task { await presentNextIncomingPaykitPaymentRequest() }
+            .onChange(of: incomingPaykitPaymentRequestPresentationState) { previous, current in
+                handleIncomingPaykitPaymentRequestPresentationStateChange(from: previous, to: current)
             }
             .onChange(of: paykitPaymentRequestManager.pendingRequests) { _, requests in
                 guard let request = app.contactPaymentContext?.incomingPaymentRequest,
@@ -976,6 +978,45 @@ struct AppScene: View {
             deferral: deferral,
             fallbackReason: reason
         )
+        presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+    }
+
+    private func presentExpiredRequestedPaykitPaymentRequests() {
+        while let request = paykitPaymentRequestManager.consumeExpiredRequestedPresentation() {
+            let feedback = IncomingPaykitPaymentRequestPresentationFeedback(
+                deferral: .requestExpired(wasRequested: true),
+                fallbackReason: .resolutionFailed
+            )
+            presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+        }
+    }
+
+    private var incomingPaykitPaymentRequestPresentationState: IncomingPaykitPaymentRequestPresentationState {
+        IncomingPaykitPaymentRequestPresentationState(
+            requestedPresentationId: paykitPaymentRequestManager.requestedPresentationId,
+            retryTrigger: paykitPaymentRequestManager.presentationRetryTrigger,
+            expirationTrigger: paykitPaymentRequestManager.requestedPresentationExpirationTrigger
+        )
+    }
+
+    private func handleIncomingPaykitPaymentRequestPresentationStateChange(
+        from previous: IncomingPaykitPaymentRequestPresentationState,
+        to current: IncomingPaykitPaymentRequestPresentationState
+    ) {
+        if current.expirationTrigger != previous.expirationTrigger {
+            presentExpiredRequestedPaykitPaymentRequests()
+        }
+        if current.retryTrigger != previous.retryTrigger ||
+            previous.requestedPresentationId != current.requestedPresentationId && current.requestedPresentationId != nil
+        {
+            Task { await presentNextIncomingPaykitPaymentRequest() }
+        }
+    }
+
+    private func presentIncomingPaykitPaymentRequestFeedback(
+        _ feedback: IncomingPaykitPaymentRequestPresentationFeedback,
+        for request: PaykitPaymentRequest
+    ) {
         Logger.warn(
             "Rejected incoming Paykit payment request presentation: category=\(feedback.diagnosticReason.category) " +
                 "reason=\(feedback.diagnosticReason.rawValue) " +
