@@ -205,21 +205,20 @@ struct PaymentNavigationHelper {
             return nil
         }
 
+        if app.contactPaymentContext?.incomingPaymentRequest != nil {
+            switch route {
+            case .quickpay, .amount:
+                return app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+            case .lnurlPayAmount:
+                return .lnurlPayConfirm
+            default:
+                return route
+            }
+        }
+
         switch route {
         case .quickpay:
             return confirmRouteAfterQuickPayCap(app: app)
-        case .confirm:
-            if let invoice = app.scannedLightningInvoice {
-                return invoice.amountSatoshis == 0 ? .amount : .confirm
-            }
-            return route
-        case .amount:
-            if app.contactPaymentContext?.incomingPaymentRequest != nil,
-               let invoice = app.scannedOnchainInvoice
-            {
-                return invoice.amountSatoshis == 0 ? .amount : .confirm
-            }
-            return route
         default:
             return route
         }

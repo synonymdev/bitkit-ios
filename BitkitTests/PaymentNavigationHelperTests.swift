@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import Paykit
 import XCTest
 
 @MainActor
@@ -149,6 +150,37 @@ final class PaymentNavigationHelperTests: XCTestCase {
         )
     }
 
+    func testIncomingRequestWithAmountlessLightningInvoiceOpensConfirm() throws {
+        let app = appWithInvoice(paymentHash: "incoming", amountSatoshis: 0)
+        app.contactPaymentContext = try ContactPaymentContext(
+            publicKey: "pubkycontact",
+            incomingPaymentRequest: incomingPaymentRequest(
+                endpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+            )
+        )
+
+        XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
+    }
+
+    func testIncomingRequestWithAmountlessOnchainInvoiceOpensConfirm() throws {
+        let app = AppViewModel()
+        app.scannedOnchainInvoice = OnChainInvoice(
+            address: "bcrt1qexample",
+            amountSatoshis: 0,
+            label: nil,
+            message: nil,
+            params: nil
+        )
+        app.contactPaymentContext = try ContactPaymentContext(
+            publicKey: "pubkycontact",
+            incomingPaymentRequest: incomingPaymentRequest(
+                endpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+            )
+        )
+
+        XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
+    }
+
     func testReserveRaceFallsBackToConfirm() {
         XCTAssertEqual(
             PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: appWithEligibleInvoice),
@@ -184,16 +216,25 @@ final class PaymentNavigationHelperTests: XCTestCase {
         )
     }
 
+    private func contactPaymentRoute(for app: AppViewModel) -> SendRoute? {
+        PaymentNavigationHelper.contactPaymentRoute(
+            app: app,
+            currency: CurrencyViewModel(),
+            settings: settings,
+            spendStore: spendStore
+        )
+    }
+
     private var appWithEligibleInvoice: AppViewModel {
         appWithInvoice(paymentHash: "")
     }
 
-    private func appWithInvoice(paymentHash: String) -> AppViewModel {
+    private func appWithInvoice(paymentHash: String, amountSatoshis: UInt64 = 1000) -> AppViewModel {
         let app = AppViewModel()
         app.scannedLightningInvoice = LightningInvoice(
             bolt11: "test-invoice",
             paymentHash: paymentHash.hexaData,
-            amountSatoshis: 1000,
+            amountSatoshis: amountSatoshis,
             timestampSeconds: 0,
             expirySeconds: 0,
             isExpired: false,
@@ -202,6 +243,41 @@ final class PaymentNavigationHelperTests: XCTestCase {
             payeeNodeId: nil
         )
         return app
+    }
+
+    private func incomingPaymentRequest(endpointIdentifier: String) throws -> PaykitPaymentRequest {
+        let record = try PaymentRequestRecord(
+            counterparty: "pubkycontact",
+            counterpartyReceiverPath: "bitkit/wallet",
+            paymentRequestId: "550e8400-e29b-41d4-a716-446655440000",
+            localRole: .payer,
+            state: .proposed,
+            proposalStreamItemId: 1,
+            proposalOutboundMessageId: nil,
+            proposalOutboundStatus: nil,
+            proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
+            terms: PaymentRequestTerms(
+                amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
+                paymentReference: PaymentReference(text: "invoice-123"),
+                proposalExpiresAt: nil,
+                recurrence: nil,
+                acceptedPaymentEndpointIdentifiers: [endpointIdentifier],
+                metadata: PrivateJsonObject(text: "{}")
+            ),
+            acceptedEventId: nil,
+            acceptedOutboundStatus: nil,
+            rejectedEventId: nil,
+            rejectedOutboundStatus: nil,
+            canceledEventId: nil,
+            canceledOutboundStatus: nil,
+            paymentProofs: [],
+            lastStreamItemId: 1,
+            lastOutboundMessageId: nil,
+            lastOutboundStatus: nil,
+            lastEventAt: "2027-01-15T08:00:00Z",
+            invalidReason: nil
+        )
+        return try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date(timeIntervalSince1970: 0)))
     }
 
     private var usdRate: FxRate {
