@@ -98,6 +98,12 @@ enum PubkyService {
         )
     }
 
+    static func approveRingAuth(authUrl: String, secretKeyHex: String) async throws {
+        try await ServiceQueue.background(.core) {
+            try await BitkitCore.approvePubkyAuth(authUrl: authUrl, secretKeyHex: secretKeyHex)
+        }
+    }
+
     static func approveAuthWithCompanionClaim(
         authUrl: String,
         approvedClientID: String,
@@ -222,6 +228,18 @@ enum PubkyService {
             signupCode: signupCode
         )
         return result.sessionAccess.exportSessionSecret()
+    }
+
+    static func registerIdentity(
+        secretKeyHex: String,
+        homeserverZ32: String,
+        signupCode: String? = nil
+    ) async throws {
+        try await PaykitSdkService.shared.registerIdentity(
+            secretKeyHex: secretKeyHex,
+            homeserverPublicKey: homeserverZ32,
+            signupCode: signupCode
+        )
     }
 
     /// Sign in with an existing secret key. Returns new session secret.
@@ -391,6 +409,22 @@ actor PaykitSdkService {
             try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
             markWalletBackupDataChanged()
             return result
+        }
+    }
+
+    func registerIdentity(
+        secretKeyHex: String,
+        homeserverPublicKey: String,
+        signupCode: String?
+    ) async throws {
+        try await operationLock.withLock {
+            _ = try await bootstrap().signUp(
+                localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
+                receiverNoiseSecretKey: sessionProvider.loadOrDeriveReceiverNoiseSecretKey(),
+                homeserverPublicKey: homeserverPublicKey,
+                signupCode: signupCode,
+                requiredCapabilities: Self.requiredCapabilities()
+            )
         }
     }
 
