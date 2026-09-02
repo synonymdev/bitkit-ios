@@ -367,13 +367,19 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             paymentRequestId: "550e8400-e29b-41d4-a716-446655440099"
         )
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
-        let store = PaymentProofMemoryStore()
+        let proofRemoved = expectation(description: "On-chain proof removed after submission")
+        let store = PaymentProofMemoryStore { proofs in
+            if proofs.isEmpty {
+                proofRemoved.fulfill()
+            }
+        }
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let txid = String(repeating: "ab", count: 32)
         let service = paymentProofService(sdk: sdk, store: store, onchainTxids: [txid])
         let resolutionExpectation = expectation(description: "On-chain payment resolution published")
         let resolution = PaykitPaymentProofService.onchainPaymentResolutionPublisher
             .filter { $0.requestId == request.id }
+            .first()
             .sink {
                 XCTAssertEqual($0.identity, self.identity)
                 XCTAssertEqual($0.transactionId, txid)
@@ -383,7 +389,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await service.reconcile()
-        await fulfillment(of: [resolutionExpectation], timeout: 1)
+        await sdk.waitForSubmissionStart()
+        await fulfillment(of: [resolutionExpectation, proofRemoved], timeout: 1)
         withExtendedLifetime(resolution) {}
 
         let submittedProof = await sdk.lastSubmission()
