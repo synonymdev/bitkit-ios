@@ -62,11 +62,10 @@ struct PubkyAuthRequest {
     let bitkitClaim: PubkyAuthClaim?
     let homeserverPublicKey: String?
     let signupToken: String?
-    let authorizationUrl: String
+    let authorizationUrl: String?
 
-    var isRingSignup: Bool {
-        guard let components = URLComponents(string: rawUrl) else { return false }
-        return components.scheme?.lowercased() == "pubkyring" && components.host?.lowercased() == "signup"
+    var isSignup: Bool {
+        Self.isSignupURL(rawUrl)
     }
 
     static func isProtocolURL(_ value: String) -> Bool {
@@ -85,11 +84,8 @@ struct PubkyAuthRequest {
     }
 
     static func parse(url: String) throws -> PubkyAuthRequest {
-        if let components = URLComponents(string: url),
-           components.scheme?.lowercased() == "pubkyring",
-           components.host?.lowercased() == "signup"
-        {
-            return try parseRingSignup(url: url, components: components)
+        if let components = URLComponents(string: url), isSignupURL(components) {
+            return try parseSignup(url: url, components: components)
         }
 
         let details = try Paykit.parsePubkyAuthUrl(authUrl: url)
@@ -101,19 +97,41 @@ struct PubkyAuthRequest {
             relay: details.relayUrl,
             capabilities: capabilities,
             homeserverPublicKey: nil,
-            signupToken: nil
+            signupToken: nil,
+            authorizationUrl: url
         )
     }
 
-    private static func parseRingSignup(url: String, components: URLComponents) throws -> PubkyAuthRequest {
+    static func isSignupURL(_ value: String) -> Bool {
+        guard let components = URLComponents(string: value) else { return false }
+        return isSignupURL(components)
+    }
+
+    private static func isSignupURL(_ components: URLComponents) -> Bool {
+        switch components.scheme?.lowercased() {
+        case "pubkyring":
+            return components.host?.lowercased() == "signup"
+        case "pubkyauth":
+            return ["direct_signup", "signup"].contains(components.host?.lowercased())
+        default:
+            return false
+        }
+    }
+
+    private static func parseSignup(url: String, components: URLComponents) throws -> PubkyAuthRequest {
         let values = Dictionary(grouping: components.queryItems ?? [], by: \.name)
-        let relay = try requiredQueryValue("relay", from: values)
-        let secret = try requiredQueryValue("secret", from: values)
-        let capabilities = try requiredQueryValue("caps", from: values)
         let homeserver = try requiredQueryValue("hs", from: values)
-        let authorizationUrl = ringAuthorizationUrl(relay: relay, secret: secret, capabilities: capabilities)
+        let authorizesApp = components.scheme?.lowercased() == "pubkyring"
+        let relay = authorizesApp ? try requiredQueryValue("relay", from: values) : ""
+        let secret = authorizesApp ? try requiredQueryValue("secret", from: values) : ""
+        let capabilities = authorizesApp ? try requiredQueryValue("caps", from: values) : ""
+        let authorizationUrl = authorizesApp
+            ? ringAuthorizationUrl(relay: relay, secret: secret, capabilities: capabilities)
+            : nil
         do {
-            _ = try BitkitCore.parsePubkyAuthUrl(authUrl: authorizationUrl)
+            if let authorizationUrl {
+                _ = try BitkitCore.parsePubkyAuthUrl(authUrl: authorizationUrl)
+            }
             _ = try Paykit.normalizePubkyPublicKey(value: homeserver)
         } catch {
             throw PubkyAuthRequestError.invalidUrl
@@ -142,7 +160,7 @@ struct PubkyAuthRequest {
         capabilities: String,
         homeserverPublicKey: String?,
         signupToken: String?,
-        authorizationUrl: String? = nil
+        authorizationUrl: String?
     ) throws -> PubkyAuthRequest {
         let permissions = parseCapabilities(capabilities)
         var seenServiceNames = Set<String>()
@@ -161,7 +179,7 @@ struct PubkyAuthRequest {
             bitkitClaim: bitkitClaim,
             homeserverPublicKey: homeserverPublicKey,
             signupToken: signupToken,
-            authorizationUrl: authorizationUrl ?? url
+            authorizationUrl: authorizationUrl
         )
     }
 

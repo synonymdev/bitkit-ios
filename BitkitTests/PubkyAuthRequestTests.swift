@@ -12,13 +12,14 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL("PUBKYAUTH://signin?caps=/pub/bitkit.to/:rw"))
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL("  pubkyauth://signin?caps=/pub/bitkit.to/:rw\n"))
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL(ringSignupUrl()))
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL(directSignupUrl(action: "direct_signup")))
         XCTAssertFalse(PubkyAuthRequest.isProtocolURL("lightning:lnbc1example"))
     }
 
     func testParseRingSignup() throws {
         let request = try PubkyAuthRequest.parse(url: ringSignupUrl(signupToken: "invite code"))
 
-        XCTAssertTrue(request.isRingSignup)
+        XCTAssertTrue(request.isSignup)
         XCTAssertEqual(request.kind, .signUp)
         XCTAssertEqual(request.homeserverPublicKey, publicKey)
         XCTAssertEqual(request.signupToken, "invite code")
@@ -29,6 +30,20 @@ final class PubkyAuthRequestTests: XCTestCase {
             "pubkyauth:///?relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
                 "&secret=\(secret)&caps=%2Fpub%2Fexample.app%2F%3Arw"
         )
+    }
+
+    func testParseDirectSignupAcceptsCanonicalAndLegacyFormats() throws {
+        for action in ["direct_signup", "signup"] {
+            let request = try PubkyAuthRequest.parse(url: directSignupUrl(action: action, signupToken: "invite code"))
+
+            XCTAssertTrue(request.isSignup)
+            XCTAssertEqual(request.kind, .signUp)
+            XCTAssertEqual(request.homeserverPublicKey, publicKey)
+            XCTAssertEqual(request.signupToken, "invite code")
+            XCTAssertEqual(request.relay, "")
+            XCTAssertEqual(request.capabilities, "")
+            XCTAssertNil(request.authorizationUrl)
+        }
     }
 
     func testParseRingSignupRejectsMissingOrDuplicateRequiredValues() {
@@ -48,7 +63,7 @@ final class PubkyAuthRequestTests: XCTestCase {
 
         let request = try PubkyAuthRequest.parse(url: url)
 
-        XCTAssertFalse(request.isRingSignup)
+        XCTAssertFalse(request.isSignup)
         XCTAssertEqual(request.clientID, "paykit.test")
         XCTAssertEqual(request.capabilities, capabilities)
         XCTAssertEqual(request.permissions.count, 1)
@@ -301,5 +316,12 @@ final class PubkyAuthRequestTests: XCTestCase {
         return "pubkyring://signup?hs=\(publicKey)" +
             "&relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
             "&secret=\(secret)&caps=%2Fpub%2Fexample.app%2F%3Arw\(token)"
+    }
+
+    private func directSignupUrl(action: String, signupToken: String? = nil) -> String {
+        let token = signupToken.map {
+            "&st=\($0.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0)"
+        } ?? ""
+        return "pubkyauth://\(action)?hs=\(publicKey)\(token)"
     }
 }

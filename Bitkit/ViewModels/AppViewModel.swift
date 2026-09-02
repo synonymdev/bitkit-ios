@@ -151,6 +151,7 @@ class AppViewModel: ObservableObject {
     private let sheetViewModel: SheetViewModel
     private let navigationViewModel: NavigationViewModel
     private let scanPaymentOperations: ScanPaymentOperations
+    private let pubkyProfile: PubkyProfileManager
     private var scannedDataHandlingId: UUID?
     private var manualEntryValidationSequence: UInt64 = 0
 
@@ -163,6 +164,7 @@ class AppViewModel: ObservableObject {
         coreService: CoreService = .shared,
         sheetViewModel: SheetViewModel,
         navigationViewModel: NavigationViewModel,
+        pubkyProfile: PubkyProfileManager,
         scanPaymentOperations: ScanPaymentOperations? = nil
     ) {
         self.lightningService = lightningService
@@ -170,6 +172,7 @@ class AppViewModel: ObservableObject {
         self.sheetViewModel = sheetViewModel
         self.navigationViewModel = navigationViewModel
         self.scanPaymentOperations = scanPaymentOperations ?? .live(lightningService: lightningService)
+        self.pubkyProfile = pubkyProfile
 
         setupManualEntryValidationDebounce()
 
@@ -282,7 +285,11 @@ class AppViewModel: ObservableObject {
 
     /// Convenience initializer for previews and testing
     convenience init() {
-        self.init(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        self.init(
+            sheetViewModel: SheetViewModel(),
+            navigationViewModel: NavigationViewModel(),
+            pubkyProfile: PubkyProfileManager()
+        )
     }
 
     deinit {}
@@ -543,7 +550,7 @@ extension AppViewModel {
                 )
                 return
             }
-            handlePubkyAuthApproval(uri)
+            await handlePubkyAuthApproval(uri)
             return
         }
 
@@ -734,7 +741,7 @@ extension AppViewModel {
                 )
                 return
             }
-            handlePubkyAuthApproval(authUrl)
+            await handlePubkyAuthApproval(authUrl)
         case let .gift(code, amount):
             sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
         default:
@@ -873,7 +880,7 @@ extension AppViewModel {
         sheetViewModel.showSheet(.lnurlAuth, data: LnurlAuthConfig(lnurl: lnurl, authData: data))
     }
 
-    private func handlePubkyAuthApproval(_ authUrl: String) {
+    private func handlePubkyAuthApproval(_ authUrl: String) async {
         let request: PubkyAuthRequest
 
         do {
@@ -884,7 +891,7 @@ extension AppViewModel {
             return
         }
 
-        if request.isRingSignup {
+        if request.isSignup {
             do {
                 guard try !PubkyProfileManager.hasStoredIdentity() else {
                     toast(type: .info, title: t("pubky_auth__already_signed_in"))
@@ -893,6 +900,19 @@ extension AppViewModel {
             } catch {
                 Logger.error("Failed to read stored Pubky identity: \(error)", context: "AppViewModel")
                 toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
+                return
+            }
+
+            if request.authorizationUrl == nil {
+                sheetViewModel.hideSheet()
+                do {
+                    try await pubkyProfile.approveSignupAuth(request: request)
+                } catch PubkySignupError.alreadySignedIn {
+                    toast(type: .info, title: t("pubky_auth__already_signed_in"))
+                } catch {
+                    Logger.error("Failed to complete direct Pubky signup: \(error)", context: "AppViewModel")
+                    toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
+                }
                 return
             }
 

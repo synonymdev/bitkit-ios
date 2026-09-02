@@ -354,9 +354,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func approveSignupAuth(request: PubkyAuthRequest) async throws {
-        guard request.isRingSignup,
-              let homeserver = request.homeserverPublicKey
-        else {
+        guard request.isSignup, let homeserver = request.homeserverPublicKey else {
             throw PubkyServiceError.invalidAuthUrl
         }
         guard publicKey == nil, try !Self.hasStoredIdentity() else {
@@ -373,7 +371,9 @@ class PubkyProfileManager: ObservableObject {
             homeserverZ32: homeserver,
             signupCode: request.signupToken
         )
-        try await PubkyService.approveRingAuth(authUrl: request.authorizationUrl, secretKeyHex: secretKeyHex)
+        if let authorizationUrl = request.authorizationUrl {
+            try await PubkyService.approveRingAuth(authUrl: authorizationUrl, secretKeyHex: secretKeyHex)
+        }
         setProfileSetupPending(true)
         try await PubkyService.activateRegisteredIdentity(registeredSession)
 
