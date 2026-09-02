@@ -825,6 +825,8 @@ actor PaykitSdkService {
 
     func forgetSessionAccess() async throws {
         try await withStateRevisionTracking { sdk in
+            activeAuthRequest = nil
+            activeAuthRequestID = nil
             _ = try await sdk.forgetSessionAccess()
         }
         resetRuntime()
@@ -1008,7 +1010,7 @@ actor PaykitSdkService {
             return false
         }
 
-        return context == "import Pubky session from platform provider"
+        return context == "restore Pubky grant session from platform provider"
     }
 
     private nonisolated static func canReceivePrivatePaymentDetails(marker: Paykit.PaykitReceiverMarker?) -> Bool {
