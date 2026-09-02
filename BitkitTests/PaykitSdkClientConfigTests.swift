@@ -22,13 +22,13 @@ final class PaykitSdkClientConfigTests: XCTestCase {
     }
 
     func testStoredSessionCanBeDeferredDuringSdkInitialization() {
-        let error = PaykitError.Identity(code: "identity_error", context: "import Pubky session from platform provider")
+        let error = PaykitError.Identity(code: "identity_error", context: "restore Pubky grant session from platform provider")
 
         XCTAssertTrue(PaykitSdkService.shouldDeferStaleSession(error: error, hasStoredSession: true))
     }
 
     func testMissingSessionOrUnrelatedIdentityFailureIsNotDeferred() {
-        let staleSession = PaykitError.Identity(code: "identity_error", context: "import Pubky session from platform provider")
+        let staleSession = PaykitError.Identity(code: "identity_error", context: "restore Pubky grant session from platform provider")
         let unrelatedError = PaykitError.Identity(code: "identity_error", context: "local Pubky secret key does not match session public key")
 
         XCTAssertFalse(PaykitSdkService.shouldDeferStaleSession(error: staleSession, hasStoredSession: false))
