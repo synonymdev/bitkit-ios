@@ -12,19 +12,24 @@ These journeys cover incoming Paykit Payment Requests that Bitkit can receive bu
 - An explicit Pay action tries immediately and fourteen more times at two-second intervals. After
   the fifteenth failure, Bitkit shows an error toast with localized keys `wallet__payment_request`
   and `wallet__payment_request_unavailable`, then leaves the request available for another attempt.
+- If the request expires during an explicit presentation attempt, Bitkit logs
+  `category=presentation reason=request_expired` and shows `PaymentRequestExpiredToast` with the
+  localized `wallet__payment_request_expired` message.
 - Automatic presentation uses the same initial retries, then continues every 120 seconds without
   showing terminal feedback.
 
 The failure reason vocabulary is:
 
-- Parse: `missing_local_role`, `missing_terms`, `recurring_request`, `unsupported_asset`,
-  `invalid_amount`, `amount_out_of_range`, `no_supported_endpoint`, `invalid_expiration`, `expired`.
+- Parse: `missing_local_role`, `outgoing_request`, `unsupported_local_role`, `missing_terms`,
+  `recurring_request`, `unsupported_asset`, `invalid_amount`, `amount_out_of_range`,
+  `no_supported_endpoint`, `invalid_expiration`, `expired`.
 - Resolution: `no_supported_endpoint`, `endpoint_not_payable`, `payment_details_pending`,
   `resolution_failed`.
-- Presentation: `invalid_payment_target`, `payment_target_not_routable`.
+- Presentation: `invalid_payment_target`, `payment_target_not_routable`, `request_expired`.
 
-`unsupported_local_role` and `non_actionable_state` are expected filtering of outgoing or completed
-records, so they do not emit incoming-rejection warnings.
+`outgoing_request` and `non_actionable_state` are expected filtering of outgoing or completed
+records, so they do not emit incoming-rejection warnings. `unsupported_local_role` identifies an
+unknown role and emits a privacy-safe warning with only the redacted counterparty.
 
 ## Mandatory setup
 
@@ -40,3 +45,4 @@ correctly prevents it from entering the presentation queue.
 - Request row: `PaymentRequestRow-<payment-request-id>`.
 - Pay action: `PaymentRequestPay-<payment-request-id>`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
+- Expiration feedback: `PaymentRequestExpiredToast`.

@@ -191,6 +191,19 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.requestExpired.category, "presentation")
     }
 
+    func testAppSceneFeedbackMapsRequestedExpirationToExpiredDiagnosticsAndToast() {
+        let feedback = IncomingPaykitPaymentRequestPresentationFeedback(
+            deferral: .requestExpired(wasRequested: true),
+            fallbackReason: .resolutionFailed
+        )
+
+        XCTAssertEqual(feedback.diagnosticReason, .requestExpired)
+        XCTAssertEqual(feedback.diagnosticReason.rawValue, "request_expired")
+        XCTAssertEqual(feedback.toast?.titleKey, "wallet__payment_request")
+        XCTAssertEqual(feedback.toast?.descriptionKey, "wallet__payment_request_expired")
+        XCTAssertEqual(feedback.toast?.accessibilityIdentifier, "PaymentRequestExpiredToast")
+    }
+
     func testPayableEndpointsFiltersInvalidDecodedEndpoints() async {
         let payable = await PublicPaykitService.payableEndpoints(from: [
             endpoint(.bitcoinLightningBolt11, value: "not-a-bolt11"),

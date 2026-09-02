@@ -3,6 +3,42 @@ import LDKNode
 import SwiftUI
 import UserNotifications
 
+struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
+    struct Toast: Equatable {
+        let titleKey: String
+        let descriptionKey: String
+        let accessibilityIdentifier: String
+    }
+
+    let diagnosticReason: IncomingPaykitPaymentRequestFailureReason
+    let toast: Toast?
+
+    init(
+        deferral: PaykitPaymentRequestPresentationDeferral,
+        fallbackReason: IncomingPaykitPaymentRequestFailureReason
+    ) {
+        switch deferral {
+        case .requestedPresentationEnded:
+            diagnosticReason = fallbackReason
+            toast = Toast(
+                titleKey: "wallet__payment_request",
+                descriptionKey: "wallet__payment_request_unavailable",
+                accessibilityIdentifier: "PaymentRequestUnavailableToast"
+            )
+        case let .requestExpired(wasRequested):
+            diagnosticReason = .requestExpired
+            toast = wasRequested ? Toast(
+                titleKey: "wallet__payment_request",
+                descriptionKey: "wallet__payment_request_expired",
+                accessibilityIdentifier: "PaymentRequestExpiredToast"
+            ) : nil
+        case .retryScheduled, .ignored:
+            diagnosticReason = fallbackReason
+            toast = nil
+        }
+    }
+}
+
 struct AppScene: View {
     private static let paykitPaymentRequestRefreshIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
@@ -936,35 +972,24 @@ struct AppScene: View {
         reason: IncomingPaykitPaymentRequestFailureReason
     ) {
         let deferral = paykitPaymentRequestManager.deferPresentation(request)
-        let diagnosticReason: IncomingPaykitPaymentRequestFailureReason = if case .requestExpired = deferral {
-            .requestExpired
-        } else {
-            reason
-        }
+        let feedback = IncomingPaykitPaymentRequestPresentationFeedback(
+            deferral: deferral,
+            fallbackReason: reason
+        )
         Logger.warn(
-            "Rejected incoming Paykit payment request presentation: category=\(diagnosticReason.category) reason=\(diagnosticReason.rawValue) " +
+            "Rejected incoming Paykit payment request presentation: category=\(feedback.diagnosticReason.category) " +
+                "reason=\(feedback.diagnosticReason.rawValue) " +
                 "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))",
             context: "AppScene"
         )
 
-        switch deferral {
-        case .requestedPresentationEnded:
-            app.toast(
-                type: .error,
-                title: t("wallet__payment_request"),
-                description: t("wallet__payment_request_unavailable"),
-                accessibilityIdentifier: "PaymentRequestUnavailableToast"
-            )
-        case let .requestExpired(wasRequested) where wasRequested:
-            app.toast(
-                type: .error,
-                title: t("wallet__payment_request"),
-                description: t("wallet__payment_request_expired"),
-                accessibilityIdentifier: "PaymentRequestExpiredToast"
-            )
-        case .requestExpired, .retryScheduled, .ignored:
-            break
-        }
+        guard let toast = feedback.toast else { return }
+        app.toast(
+            type: .error,
+            title: t(toast.titleKey),
+            description: t(toast.descriptionKey),
+            accessibilityIdentifier: toast.accessibilityIdentifier
+        )
     }
 
     private func retryPendingPaykitEndpointRemoval() async {
