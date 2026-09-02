@@ -1074,7 +1074,13 @@ extension AppViewModel {
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
-        case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
+        case let .paymentSuccessful(paymentId, paymentHash, paymentPreimage, feePaidMsat):
+            Task {
+                await PaykitPaymentProofService.shared.completeLightningPayment(
+                    paymentHash: paymentHash,
+                    preimage: paymentPreimage
+                )
+            }
             let outcome = QuickPayPaymentCoordinator.shared.complete(
                 paymentId: paymentId,
                 paymentHash: paymentHash,
@@ -1106,6 +1112,9 @@ extension AppViewModel {
                 success: false
             )
             let hash = paymentHash ?? outcome.invoicePaymentHash ?? paymentId
+            if let paymentHash = paymentHash ?? paymentId {
+                Task { await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash) }
+            }
             let awaitingSheet = hash.map { pendingPaymentHashes.contains($0) } ?? false
             if let hash, awaitingSheet {
                 pendingPaymentHashes.remove(hash)

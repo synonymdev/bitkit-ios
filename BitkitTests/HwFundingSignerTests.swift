@@ -90,6 +90,7 @@ final class HwFundingSignerTests: XCTestCase {
             }
         )
         var beforeBroadcastCalls = 0
+        var completedTransactionIds: [String] = []
         funding.broadcastError = error
 
         await assertThrowsAsync {
@@ -98,7 +99,8 @@ final class HwFundingSignerTests: XCTestCase {
                 address: "bc1qtest",
                 sats: 42000,
                 satsPerVByte: 2,
-                beforeBroadcast: { beforeBroadcastCalls += 1 }
+                beforeBroadcast: { beforeBroadcastCalls += 1 },
+                afterBroadcast: { completedTransactionIds.append($0.txId) }
             )
         }
 
@@ -111,7 +113,8 @@ final class HwFundingSignerTests: XCTestCase {
             address: "bc1qtest",
             sats: 42000,
             satsPerVByte: 2,
-            beforeBroadcast: { beforeBroadcastCalls += 1 }
+            beforeBroadcast: { beforeBroadcastCalls += 1 },
+            afterBroadcast: { completedTransactionIds.append($0.txId) }
         )
 
         XCTAssertEqual(funding.composeCalls.count, 1)
@@ -119,6 +122,7 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.broadcastCalls, 2)
         XCTAssertEqual(funding.broadcastTransactions, [funding.signedTx.serializedTx, funding.signedTx.serializedTx])
         XCTAssertEqual(beforeBroadcastCalls, 1)
+        XCTAssertEqual(completedTransactionIds, [funding.broadcastTxId])
     }
 
     // MARK: - Availability
