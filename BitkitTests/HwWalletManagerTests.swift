@@ -237,8 +237,13 @@ final class HwWalletManagerTests: XCTestCase {
             balance: balance,
             txCount: UInt32(activities.count),
             blockHeight: 100,
-            accountType: .nativeSegwit
+            accountType: .nativeSegwit,
+            nextUnusedExternalAddress: unusedAddress()
         )
+    }
+
+    private func unusedAddress() -> BitkitCore.AddressInfo {
+        BitkitCore.AddressInfo(address: "bc1qtestunused", path: "m/84'/0'/0'/0/0", transfers: 0)
     }
 
     /// Watcher ids are keyed by wallet identity, so they are derived from the device's xpubs.
