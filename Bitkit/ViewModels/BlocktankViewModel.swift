@@ -119,7 +119,16 @@ class BlocktankViewModel: ObservableObject {
         }
 
         let lspBalance = try await getDefaultLspBalance(clientBalance: amountSats)
+        guard amountSats <= UInt64.max - lspBalance else {
+            throw CustomServiceError.channelSizeExceedsMaximum
+        }
+
         let channelSizeSat = amountSats + lspBalance
+
+        if let maxChannelSizeSat = info?.options.maxChannelSizeSat, channelSizeSat > maxChannelSizeSat {
+            Logger.error("CJIT channel size exceeds maximum: \(channelSizeSat) > \(maxChannelSizeSat)")
+            throw CustomServiceError.channelSizeExceedsMaximum
+        }
 
         return try await coreService.blocktank.createCjit(
             channelSizeSat: channelSizeSat,
@@ -129,6 +138,47 @@ class BlocktankViewModel: ObservableObject {
             channelExpiryWeeks: defaultChannelExpiryWeeks,
             options: .init(source: defaultSource, discountCode: nil)
         )
+    }
+
+    func canCreateCjit(amountSats: UInt64) async throws -> Bool {
+        if info == nil {
+            try await refreshInfo()
+        }
+
+        guard let maxChannelSizeSat = info?.options.maxChannelSizeSat, maxChannelSizeSat > 0 else {
+            return true
+        }
+
+        let lspBalance = try await getDefaultLspBalance(clientBalance: amountSats)
+        guard amountSats <= maxChannelSizeSat else {
+            return false
+        }
+
+        return lspBalance <= maxChannelSizeSat - amountSats
+    }
+
+    func maxCjitAmountSats() async throws -> UInt64? {
+        if info == nil {
+            try await refreshInfo()
+        }
+
+        guard let maxChannelSizeSat = info?.options.maxChannelSizeSat, maxChannelSizeSat > 0 else {
+            return nil
+        }
+
+        var lowerBound: UInt64 = 0
+        var upperBound = maxChannelSizeSat
+
+        while lowerBound < upperBound {
+            let candidate = lowerBound + (upperBound - lowerBound + 1) / 2
+            if try await canCreateCjit(amountSats: candidate) {
+                lowerBound = candidate
+            } else {
+                upperBound = candidate - 1
+            }
+        }
+
+        return lowerBound
     }
 
     func createOrder(clientBalance: UInt64, lspBalance: UInt64? = nil) async throws -> IBtOrder {

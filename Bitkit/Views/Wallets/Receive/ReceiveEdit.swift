@@ -5,7 +5,6 @@ struct ReceiveEdit: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
-    @EnvironmentObject private var transfer: TransferViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var tagManager: TagManager
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
@@ -14,6 +13,7 @@ struct ReceiveEdit: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @Binding var navigationPath: [ReceiveRoute]
+    let sourceTab: ReceiveQr.ReceiveTab
     let onSendPaymentRequest: (PaykitPaymentRequestDraft) -> Void
 
     @State private var amountViewModel = AmountInputViewModel()
@@ -23,6 +23,17 @@ struct ReceiveEdit: View {
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
+    }
+
+    private var liquiditySource: ReceiveLiquiditySource {
+        switch sourceTab {
+        case .savings:
+            return .savings
+        case .unified:
+            return .auto
+        case .spending:
+            return .spending
+        }
     }
 
     var body: some View {
@@ -155,14 +166,25 @@ struct ReceiveEdit: View {
             do {
                 wallet.invoiceAmountSats = amountSats
                 wallet.invoiceNote = note
-                try await wallet.refreshBip21(forceRefreshBolt11: true)
 
-                // Check if CJIT flow should be shown
-                if needsAdditionalCjit() {
+                var maxCjitAmountSats: UInt64?
+                if needsCjitLimitsForAdditionalLiquidity() {
+                    try? await blocktank.refreshMinCjitSats()
+                    maxCjitAmountSats = try? await blocktank.maxCjitAmountSats()
+                }
+
+                switch additionalLiquidityAction(maxCjitAmountSats: maxCjitAmountSats) {
+                case .none:
+                    try await wallet.refreshBip21(forceRefreshBolt11: true)
+                    dismiss()
+                case .chooseAmount:
+                    try await wallet.refreshBip21(forceRefreshBolt11: true)
+                    navigationPath.append(.cjitAmount)
+                case let .createCjit(amountSats):
                     let entry = try await blocktank.createCjit(amountSats: amountSats, description: note)
                     navigationPath.append(.cjitConfirm(entry: entry, receiveAmountSats: amountSats, isAdditional: true))
-                } else {
-                    dismiss()
+                case .geoBlocked:
+                    navigationPath.append(.cjitGeoBlocked)
                 }
             } catch {
                 app.toast(error)
@@ -193,32 +215,24 @@ struct ReceiveEdit: View {
         }
     }
 
-    private func needsAdditionalCjit() -> Bool {
-        let isGeoBlocked = GeoService.shared.isGeoBlocked
-        let minimumAmount = blocktank.minCjitSats ?? 0
-        let inboundCapacity = wallet.totalInboundLightningSats ?? 0
-        let invoiceAmount = amountViewModel.amountSats
+    private func additionalLiquidityAction(maxCjitAmountSats: UInt64?) -> ReceiveAdditionalLiquidityAction {
+        ReceiveLiquidityDecision.additionalLiquidityAction(
+            source: liquiditySource,
+            invoiceAmountSats: amountViewModel.amountSats,
+            inboundCapacitySats: wallet.totalInboundLightningSats,
+            minCjitSats: blocktank.minCjitSats,
+            maxCjitAmountSats: maxCjitAmountSats,
+            isGeoBlocked: GeoService.shared.isGeoBlocked
+        )
+    }
 
-        // Calculate maxClientBalance using TransferViewModel
-        let maxChannelSize = blocktank.info?.options.maxChannelSizeSat ?? 0
-        let maxClientBalance = transfer.getMaxClientBalance(maxChannelSize: UInt64(maxChannelSize))
-
-        if
-            // user is geo-blocked
-            isGeoBlocked ||
-            // failed to get minimum amount
-            minimumAmount == 0 ||
-            // amount is less than minimum CJIT amount
-            invoiceAmount < minimumAmount ||
-            // there is enough inbound capacity
-            invoiceAmount <= inboundCapacity ||
-            // amount is above the maximum client balance
-            invoiceAmount > maxClientBalance
-        {
-            return false
-        }
-
-        return true
+    private func needsCjitLimitsForAdditionalLiquidity() -> Bool {
+        ReceiveLiquidityDecision.needsCjitLimitsForAdditionalLiquidity(
+            source: liquiditySource,
+            invoiceAmountSats: amountViewModel.amountSats,
+            inboundCapacitySats: wallet.totalInboundLightningSats,
+            isGeoBlocked: GeoService.shared.isGeoBlocked
+        )
     }
 
     @ViewBuilder
