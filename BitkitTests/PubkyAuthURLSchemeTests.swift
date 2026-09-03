@@ -106,6 +106,13 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
                 "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"))
         let httpURL = try XCTUnwrap(URL(string: "https://example.com/article"))
         let ringURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/success"))
+        let malformedPubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup"))
+        let lightningSamRockURL = try XCTUnwrap(
+            URL(string: "lightning:https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123")
+        )
+        let lnurlSamRockURL = try XCTUnwrap(
+            URL(string: "lnurl:https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123")
+        )
         let lightningURL = try XCTUnwrap(URL(string: "lightning:lnbc1example"))
 
         app.retainDeepLink(pubkyURL)
@@ -123,6 +130,24 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         app.retainDeepLink(ringURL)
         await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
             XCTAssertEqual(routedURL, ringURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(malformedPubkyURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, malformedPubkyURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(lightningSamRockURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, lightningSamRockURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(lnurlSamRockURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, lnurlSamRockURL)
         }
         XCTAssertNil(app.pendingDeepLinkURL)
 

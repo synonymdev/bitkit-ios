@@ -137,6 +137,15 @@ class AppViewModel: ObservableObject {
         if PubkyRingAuthCallback.parse(url: url) != nil {
             return false
         }
+        if url.scheme?.lowercased() == "bitkit",
+           url.host?.lowercased() == "pubky-auth",
+           url.path == "/setup"
+        {
+            return false
+        }
+        if SamRockSetupRequest.isProtocolURL(url.absoluteString) {
+            return false
+        }
         return !PubkyAuthRequest.isProtocolURL(url.absoluteString)
     }
 
