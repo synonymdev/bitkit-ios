@@ -134,7 +134,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     func testCompleteAuthenticationRevokesSessionWhenAuthIsCanceledAfterCompletion() async {
         let manager = PubkyProfileManager()
         let attemptID = UUID()
-        var didRevokeSession = false
+        var didDiscardSession = false
 
         manager.setActiveAuthAttemptIDForTesting(attemptID)
         manager.authState = .authenticating
@@ -147,17 +147,37 @@ final class PubkyProfileManagerTests: XCTestCase {
                 currentPublicKey: {
                     "pubky_test"
                 },
-                revokeSessionAccess: {
-                    didRevokeSession = true
+                discardSessionAccess: {
+                    didDiscardSession = true
                 }
             )
             XCTFail("Expected cancellation")
         } catch is CancellationError {
-            XCTAssertTrue(didRevokeSession)
+            XCTAssertTrue(didDiscardSession)
             XCTAssertNil(manager.activeAuthAttemptIDForTesting)
         } catch {
             XCTFail("Expected CancellationError, got \(error)")
         }
+    }
+
+    @MainActor
+    func testDiscardAbandonedSessionForgetsLocalAccessWhenRevocationFails() async {
+        let manager = PubkyProfileManager()
+        var didRevokeSession = false
+        var didForgetSession = false
+
+        await manager.discardAbandonedSessionForTesting(
+            revokeSessionAccess: {
+                didRevokeSession = true
+                throw PubkyServiceError.authFailed("offline")
+            },
+            forgetSessionAccess: {
+                didForgetSession = true
+            }
+        )
+
+        XCTAssertTrue(didRevokeSession)
+        XCTAssertTrue(didForgetSession)
     }
 
     // MARK: - HomegateResponse Decoding
