@@ -121,7 +121,12 @@ struct PubkyAuthRequest {
     private static func parseSignup(url: String, components: URLComponents) throws -> PubkyAuthRequest {
         let values = Dictionary(grouping: components.queryItems ?? [], by: \.name)
         let homeserver = try requiredQueryValue("hs", from: values)
-        let authorizesApp = components.scheme?.lowercased() == "pubkyring"
+        let authorizesApp = components.scheme?.lowercased() == "pubkyring" ||
+            (
+                components.scheme?.lowercased() == "pubkyauth" &&
+                    components.host?.lowercased() == "signup" &&
+                    ["relay", "secret", "caps"].contains { values[$0] != nil }
+            )
         let relay = authorizesApp ? try requiredQueryValue("relay", from: values) : ""
         let secret = authorizesApp ? try requiredQueryValue("secret", from: values) : ""
         let capabilities = authorizesApp ? try requiredQueryValue("caps", from: values) : ""

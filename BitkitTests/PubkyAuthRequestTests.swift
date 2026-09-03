@@ -16,20 +16,22 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertFalse(PubkyAuthRequest.isProtocolURL("lightning:lnbc1example"))
     }
 
-    func testParseRingSignup() throws {
-        let request = try PubkyAuthRequest.parse(url: ringSignupUrl(signupToken: "invite code"))
+    func testParseAuthorizedSignup() throws {
+        for scheme in ["pubkyring", "pubkyauth"] {
+            let request = try PubkyAuthRequest.parse(url: ringSignupUrl(signupToken: "invite code", scheme: scheme))
 
-        XCTAssertTrue(request.isSignup)
-        XCTAssertEqual(request.kind, .signUp)
-        XCTAssertEqual(request.homeserverPublicKey, publicKey)
-        XCTAssertEqual(request.signupToken, "invite code")
-        XCTAssertEqual(request.relay, "https://relay.example/inbox/")
-        XCTAssertEqual(request.capabilities, "/pub/example.app/:rw")
-        XCTAssertEqual(
-            request.authorizationUrl,
-            "pubkyauth:///?relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
-                "&secret=\(secret)&caps=%2Fpub%2Fexample.app%2F%3Arw"
-        )
+            XCTAssertTrue(request.isSignup)
+            XCTAssertEqual(request.kind, .signUp)
+            XCTAssertEqual(request.homeserverPublicKey, publicKey)
+            XCTAssertEqual(request.signupToken, "invite code")
+            XCTAssertEqual(request.relay, "https://relay.example/inbox/")
+            XCTAssertEqual(request.capabilities, "/pub/example.app/:rw")
+            XCTAssertEqual(
+                request.authorizationUrl,
+                "pubkyauth:///?relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
+                    "&secret=\(secret)&caps=%2Fpub%2Fexample.app%2F%3Arw"
+            )
+        }
     }
 
     func testParseDirectSignupAcceptsCanonicalAndLegacyFormats() throws {
@@ -50,6 +52,7 @@ final class PubkyAuthRequestTests: XCTestCase {
         let invalidUrls = [
             ringSignupUrl().replacingOccurrences(of: "&secret=\(secret)", with: ""),
             "\(ringSignupUrl())&hs=other",
+            directSignupUrl(action: "signup") + "&relay=https%3A%2F%2Frelay.example",
         ]
 
         for url in invalidUrls {
@@ -309,11 +312,11 @@ final class PubkyAuthRequestTests: XCTestCase {
             "&cid=paykit.test&cpk=\(publicKey)\(claims)"
     }
 
-    private func ringSignupUrl(signupToken: String? = nil) -> String {
+    private func ringSignupUrl(signupToken: String? = nil, scheme: String = "pubkyring") -> String {
         let token = signupToken.map {
             "&st=\($0.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0)"
         } ?? ""
-        return "pubkyring://signup?hs=\(publicKey)" +
+        return "\(scheme)://signup?hs=\(publicKey)" +
             "&relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
             "&secret=\(secret)&caps=%2Fpub%2Fexample.app%2F%3Arw\(token)"
     }
