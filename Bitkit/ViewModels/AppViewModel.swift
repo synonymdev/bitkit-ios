@@ -146,7 +146,18 @@ class AppViewModel: ObservableObject {
         if SamRockSetupRequest.isProtocolURL(url.absoluteString) {
             return false
         }
+        if url.scheme?.lowercased() == "bitcoin" {
+            return false
+        }
+        if isBolt11Invoice(url) {
+            return false
+        }
         return !PubkyAuthRequest.isProtocolURL(url.absoluteString)
+    }
+
+    private static func isBolt11Invoice(_ url: URL) -> Bool {
+        let invoice = url.absoluteString.removingLightningSchemes().trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return invoice.hasPrefix("lnbc") || invoice.hasPrefix("lntb")
     }
 
     private let lightningService: LightningService
