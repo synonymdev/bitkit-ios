@@ -753,10 +753,6 @@ final class PaykitPaymentRequestManager {
         historyRequests.filter { $0.direction == .outgoing }
     }
 
-    func acceptedAt(for subscription: PaykitSubscription) -> Date? {
-        subscriptionAcceptedAt[subscription.id]
-    }
-
     func hasDismissedSubscriptionPayment(matching target: PaykitSubscriptionNotificationTarget) -> Bool {
         dismissedSubscriptionPaymentIds.contains(where: target.matches)
     }
