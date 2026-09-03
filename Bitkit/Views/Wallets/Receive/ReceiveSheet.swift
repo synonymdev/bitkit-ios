@@ -3,7 +3,7 @@ import SwiftUI
 
 enum ReceiveRoute: Hashable {
     case qr(cjitInvoice: String?, tab: ReceiveQr.ReceiveTab?)
-    case edit
+    case edit(tab: ReceiveQr.ReceiveTab)
     case tag
     case cjitAmount
     case cjitConfirm(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
@@ -23,11 +23,12 @@ struct ReceiveConfig {
 }
 
 struct ReceiveSheetItem: SheetItem {
-    let id: SheetID = .receive
+    let id: UUID
     let size: SheetSize = .large
     let initialRoute: ReceiveRoute
 
-    init(initialRoute: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil)) {
+    init(id: UUID = UUID(), initialRoute: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil)) {
+        self.id = id
         self.initialRoute = initialRoute
     }
 }
@@ -48,9 +49,11 @@ struct ReceiveSheet: View {
                         viewForRoute(route)
                     }
             }
+            .id(config.id)
         }
         .offlineSheetOverlay(title: t("wallet__receive_bitcoin"))
         .onAppear {
+            navigationPath = []
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""
             tagManager.clearSelectedTags()
@@ -73,8 +76,8 @@ struct ReceiveSheet: View {
                 cjitInvoice: cjitInvoice,
                 tab: tab
             )
-        case .edit:
-            ReceiveEdit(navigationPath: $navigationPath) { draft in
+        case let .edit(tab):
+            ReceiveEdit(navigationPath: $navigationPath, sourceTab: tab) { draft in
                 navigationPath.append(.paymentRequestRecipient(draft))
             }
         case .tag:

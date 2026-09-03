@@ -13,6 +13,7 @@ struct CopyAddressPair {
 
 struct CopyAddressCard: View {
     let addresses: [CopyAddressPair]
+    let sourceTab: ReceiveQr.ReceiveTab
     @Binding var navigationPath: [ReceiveRoute]
     @State private var showTooltipForIndex: Int? = nil
 
@@ -38,7 +39,7 @@ struct CopyAddressCard: View {
                                 icon: Image("pencil").foregroundColor(pair.type == .lightning ? .purpleAccent : .brandAccent),
                                 shouldExpand: true
                             ) {
-                                navigationPath.append(.edit)
+                                navigationPath.append(.edit(tab: sourceTab))
                             }
 
                             CustomButton(

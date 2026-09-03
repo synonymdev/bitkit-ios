@@ -895,12 +895,6 @@ class TransferViewModel: ObservableObject {
         return (result, result)
     }
 
-    /// Calculates max client balance accounting for LDK reserve requirement
-    func getMaxClientBalance(maxChannelSize: UInt64) -> UInt64 {
-        let minRemoteBalance = UInt64(Double(maxChannelSize) * 0.025)
-        return maxChannelSize - minRemoteBalance
-    }
-
     // MARK: - Manual Channel Opening
 
     /// Opens a manual channel and tracks the transfer

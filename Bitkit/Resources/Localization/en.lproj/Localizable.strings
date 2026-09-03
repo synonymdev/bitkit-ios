@@ -1359,7 +1359,7 @@
 "wallet__receive_bitcoin_invoice" = "Bitcoin invoice";
 "wallet__receive_lightning_invoice" = "Lightning invoice";
 "wallet__receive_note_placeholder" = "Optional note to payer";
-"wallet__receive_show_qr" = "Show QR Code";
+"wallet__receive_show_qr" = "QR Code";
 "wallet__receive_text_lnfunds" = "Want to receive <accent>Lightning</accent> funds?";
 "wallet__receive_background_setup_text" = "Enable background setup to safely exit Bitkit while your balance is being configured.";
 "wallet__receive_background_setup_toggle" = "Enable background setup";
@@ -1376,6 +1376,8 @@
 "wallet__receive_liquidity__label_additional" = "Additional Spending Balance Liquidity";
 "wallet__receive_cjit_error" = "Transaction Failed";
 "wallet__receive_cjit_error_msg" = "Failed to send funds to your spending account.";
+"wallet__receive_cjit_error_max__title" = "Receiving Capacity Maximum";
+"wallet__receive_cjit_error_max__description" = "The maximum you can receive to your spending balance right now is ₿ {amount}.";
 "wallet__receive_will" = "You will receive";
 "wallet__receive_ldk_init" = "Spending Balance Initializing...";
 "wallet__minimum" = "MINIMUM";

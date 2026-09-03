@@ -5,6 +5,7 @@ struct QrArea: View {
     let uri: String
     let imageAsset: String?
     let accentColor: Color
+    let sourceTab: ReceiveQr.ReceiveTab
     @Binding var navigationPath: [ReceiveRoute]
 
     @State private var showCopyTooltip = false
@@ -39,7 +40,7 @@ struct QrArea: View {
                 icon: Image("pencil").foregroundColor(accentColor),
                 shouldExpand: true
             ) {
-                navigationPath.append(.edit)
+                navigationPath.append(.edit(tab: sourceTab))
             }
             .accessibilityIdentifier("SpecifyInvoiceButton")
 
