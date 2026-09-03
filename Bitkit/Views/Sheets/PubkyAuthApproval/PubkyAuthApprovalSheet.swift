@@ -232,6 +232,8 @@ struct PubkyAuthApprovalSheet: View {
                         .padding(.bottom, 8)
 
                     BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                         .padding(.bottom, 32)
 
                     permissionsSection
