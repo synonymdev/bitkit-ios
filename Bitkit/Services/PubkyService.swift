@@ -435,7 +435,15 @@ actor PaykitSdkService {
     func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
+            do {
+                try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
+            } catch {
+                try? sessionProvider.clearSessionAccess()
+                try? Keychain.delete(key: .paykitSdkState)
+                resetRuntime()
+                markWalletBackupDataChanged()
+                throw error
+            }
             markWalletBackupDataChanged()
         }
     }

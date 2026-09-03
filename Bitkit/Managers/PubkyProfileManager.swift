@@ -374,13 +374,18 @@ class PubkyProfileManager: ObservableObject {
         if let authorizationUrl = request.authorizationUrl {
             try await PubkyService.approveRingAuth(authUrl: authorizationUrl, secretKeyHex: secretKeyHex)
         }
-        setProfileSetupPending(true)
-        try await PubkyService.activateRegisteredIdentity(registeredSession)
+        do {
+            try await PubkyService.activateRegisteredIdentity(registeredSession)
+        } catch {
+            setProfileSetupPending(false)
+            throw error
+        }
 
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
-        Self.notifyAppStateBackupChanged()
         self.publicKey = publicKey
         authState = .authenticated
+        setProfileSetupPending(true)
+        Self.notifyAppStateBackupChanged()
     }
 
     func saveProfile(
