@@ -310,13 +310,7 @@ class PubkyProfileManager: ObservableObject {
             cacheProfileMetadata(createdProfile)
         } catch {
             let profileCreationError = error
-            do {
-                try await Task.detached {
-                    try await PubkyService.signOut()
-                }.value
-            } catch {
-                Logger.warn("Failed to revoke incomplete Pubky profile session: \(error)", context: "PubkyProfileManager")
-            }
+            await discardAbandonedSession()
             throw profileCreationError
         }
 
@@ -512,10 +506,8 @@ class PubkyProfileManager: ObservableObject {
         try await completeAuthentication(
             completeAuth: { _ = try await PubkyService.completeAuth() },
             currentPublicKey: { await PubkyService.currentPublicKey() },
-            revokeSessionAccess: {
-                try await Task.detached {
-                    try await PubkyService.signOut()
-                }.value
+            discardSessionAccess: {
+                await self.discardAbandonedSession()
             }
         )
     }
@@ -524,7 +516,7 @@ class PubkyProfileManager: ObservableObject {
     private func completeAuthentication(
         completeAuth: @escaping () async throws -> Void,
         currentPublicKey: @escaping () async -> String?,
-        revokeSessionAccess: @escaping () async throws -> Void
+        discardSessionAccess: @escaping () async -> Void
     ) async throws -> String {
         guard let attemptID = activeAuthAttemptID else {
             throw CancellationError()
@@ -557,14 +549,20 @@ class PubkyProfileManager: ObservableObject {
             await loadProfile()
             return pk
         } catch is CancellationError {
-            await revokeCompletedAuthSessionIfNeeded(didCompleteAuth, revokeSessionAccess: revokeSessionAccess)
+            await discardCompletedAuthSessionIfNeeded(
+                didCompleteAuth,
+                discardSessionAccess: discardSessionAccess
+            )
             if activeAuthAttemptID == attemptID {
                 activeAuthAttemptID = nil
                 restoreAuthStateAfterAuthFlow()
             }
             throw CancellationError()
         } catch let serviceError as PubkyServiceError {
-            await revokeCompletedAuthSessionIfNeeded(didCompleteAuth, revokeSessionAccess: revokeSessionAccess)
+            await discardCompletedAuthSessionIfNeeded(
+                didCompleteAuth,
+                discardSessionAccess: discardSessionAccess
+            )
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
@@ -573,7 +571,10 @@ class PubkyProfileManager: ObservableObject {
             restoreAuthStateAfterAuthFlow()
             throw serviceError
         } catch {
-            await revokeCompletedAuthSessionIfNeeded(didCompleteAuth, revokeSessionAccess: revokeSessionAccess)
+            await discardCompletedAuthSessionIfNeeded(
+                didCompleteAuth,
+                discardSessionAccess: discardSessionAccess
+            )
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
             }
@@ -584,15 +585,42 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    private func revokeCompletedAuthSessionIfNeeded(
+    private func discardCompletedAuthSessionIfNeeded(
         _ didCompleteAuth: Bool,
-        revokeSessionAccess: @escaping () async throws -> Void
+        discardSessionAccess: @escaping () async -> Void
     ) async {
         guard didCompleteAuth else { return }
+        await discardSessionAccess()
+    }
+
+    private func discardAbandonedSession() async {
+        await discardAbandonedSession(
+            revokeSessionAccess: {
+                try await Task.detached {
+                    try await PubkyService.signOut()
+                }.value
+            },
+            forgetSessionAccess: {
+                try await Task.detached {
+                    try await PubkyService.forgetSessionAccess()
+                }.value
+            }
+        )
+    }
+
+    private func discardAbandonedSession(
+        revokeSessionAccess: @escaping () async throws -> Void,
+        forgetSessionAccess: @escaping () async throws -> Void
+    ) async {
         do {
             try await revokeSessionAccess()
         } catch {
-            Logger.warn("Failed to revoke canceled Pubky auth session: \(error)", context: "PubkyProfileManager")
+            Logger.warn("Failed to revoke abandoned Pubky session: \(error)", context: "PubkyProfileManager")
+            do {
+                try await forgetSessionAccess()
+            } catch {
+                Logger.warn("Failed to forget abandoned Pubky session access: \(error)", context: "PubkyProfileManager")
+            }
         }
     }
 
@@ -630,12 +658,22 @@ class PubkyProfileManager: ObservableObject {
         func completeAuthenticationForTesting(
             completeAuth: @escaping () async throws -> Void,
             currentPublicKey: @escaping () async -> String?,
-            revokeSessionAccess: @escaping () async throws -> Void
+            discardSessionAccess: @escaping () async -> Void
         ) async throws -> String {
             try await completeAuthentication(
                 completeAuth: completeAuth,
                 currentPublicKey: currentPublicKey,
-                revokeSessionAccess: revokeSessionAccess
+                discardSessionAccess: discardSessionAccess
+            )
+        }
+
+        func discardAbandonedSessionForTesting(
+            revokeSessionAccess: @escaping () async throws -> Void,
+            forgetSessionAccess: @escaping () async throws -> Void
+        ) async {
+            await discardAbandonedSession(
+                revokeSessionAccess: revokeSessionAccess,
+                forgetSessionAccess: forgetSessionAccess
             )
         }
     #endif
