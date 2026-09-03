@@ -113,7 +113,9 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         let lnurlSamRockURL = try XCTUnwrap(
             URL(string: "lnurl:https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123")
         )
-        let lightningURL = try XCTUnwrap(URL(string: "lightning:lnbc1example"))
+        let bitcoinURL = try XCTUnwrap(URL(string: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq?amount=0.001"))
+        let bolt11URL = try XCTUnwrap(URL(string: "lightning:lnbc1example"))
+        let lnurlURL = try XCTUnwrap(URL(string: "lnurl:lnurl1example"))
 
         app.retainDeepLink(pubkyURL)
         await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
@@ -151,14 +153,26 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         }
         XCTAssertNil(app.pendingDeepLinkURL)
 
-        app.retainDeepLink(lightningURL)
+        app.retainDeepLink(bitcoinURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, bitcoinURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(bolt11URL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, bolt11URL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(lnurlURL)
         await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { _ in
             XCTFail("URLs that need the node must stay pending until LDK is running")
         }
-        XCTAssertEqual(app.pendingDeepLinkURL, lightningURL)
+        XCTAssertEqual(app.pendingDeepLinkURL, lnurlURL)
 
         await app.routePendingDeepLinkIfReady(true, nodeIsRunning: true) { routedURL in
-            XCTAssertEqual(routedURL, lightningURL)
+            XCTAssertEqual(routedURL, lnurlURL)
         }
         XCTAssertNil(app.pendingDeepLinkURL)
     }
