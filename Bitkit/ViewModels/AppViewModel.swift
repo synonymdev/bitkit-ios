@@ -66,6 +66,7 @@ class AppViewModel: ObservableObject {
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
+    @Published private(set) var isCompletingPubkySignup = false
 
     // Onboarding
     @AppStorage("hasDismissedWidgetsOnboardingHint") var hasDismissedWidgetsOnboardingHint: Bool = false
@@ -824,6 +825,7 @@ extension AppViewModel {
             request = try PubkyAuthRequest.parse(url: authUrl)
         } catch {
             Logger.error("Failed to parse pubky auth URL: \(error)", context: "AppViewModel")
+            sheetViewModel.hideSheetIfActive(.scanner, reason: "Invalid Pubky auth request")
             toast(type: .error, title: t("pubky_auth__invalid_request"))
             return
         }
@@ -831,17 +833,21 @@ extension AppViewModel {
         if request.isSignup {
             do {
                 guard try !PubkyProfileManager.hasStoredIdentity() else {
+                    sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity already exists")
                     toast(type: .info, title: t("pubky_auth__already_signed_in"))
                     return
                 }
             } catch {
                 Logger.error("Failed to read stored Pubky identity: \(error)", context: "AppViewModel")
+                sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity check failed")
                 toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
                 return
             }
 
             if request.authorizationUrl == nil {
                 sheetViewModel.hideSheet()
+                isCompletingPubkySignup = true
+                defer { isCompletingPubkySignup = false }
                 do {
                     try await pubkyProfile.approveSignupAuth(request: request)
                 } catch PubkySignupError.alreadySignedIn {
@@ -862,6 +868,7 @@ extension AppViewModel {
 
         let hasSession = (try? Keychain.loadString(key: .paykitSession))?.isEmpty == false
         guard hasSession else {
+            sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity is missing")
             toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
             return
         }
@@ -869,6 +876,7 @@ extension AppViewModel {
         guard let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
               !secretKey.isEmpty
         else {
+            sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity requires Ring")
             toast(type: .info, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
             return
         }
