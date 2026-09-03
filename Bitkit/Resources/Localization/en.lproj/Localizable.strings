@@ -1529,7 +1529,6 @@
 "subscriptions__daily" = "Daily";
 "subscriptions__daily_subscription" = "Daily Subscription";
 "subscriptions__details" = "Subscription Details";
-"subscriptions__due_this_month" = "Due This Month";
 "subscriptions__empty_description" = "At the moment, you don’t have any active subscriptions from any providers.";
 "subscriptions__empty_headline" = "Welcome To\n<accent>Subscriptions</accent>";
 "subscriptions__every_days" = "Every {count} days";
@@ -1544,6 +1543,7 @@
 "subscriptions__frequency" = "Frequency";
 "subscriptions__more_info" = "More Info";
 "subscriptions__monthly" = "Monthly";
+"subscriptions__monthly_cost" = "Monthly Cost";
 "subscriptions__monthly_subscription" = "Monthly Subscription";
 "subscriptions__ongoing" = "Ongoing";
 "subscriptions__overview" = "Overview";

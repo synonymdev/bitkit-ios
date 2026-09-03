@@ -135,9 +135,9 @@ struct SubscriptionsView: View {
 
     private var metrics: some View {
         HStack(spacing: 16) {
-            SubscriptionMetric(title: t("subscriptions__due_this_month"), icon: "calendar") {
+            SubscriptionMetric(title: t("subscriptions__monthly_cost"), icon: "calendar") {
                 MoneyText(
-                    sats: dueThisMonthSats,
+                    sats: monthlyCostSats,
                     unitType: .primary,
                     size: .bodyMSB,
                     prefix: "",
@@ -176,53 +176,42 @@ struct SubscriptionsView: View {
         }
     }
 
-    private var dueThisMonthSats: Int {
-        var calendar = Calendar.autoupdatingCurrent
-        calendar.timeZone = .autoupdatingCurrent
-        guard let monthInterval = calendar.dateInterval(of: .month, for: now) else { return 0 }
-        let paidRequestIds = Set(paymentRequests.historyRequests.lazy
-            .filter { $0.lifecycleState == .proofSubmitted }
-            .map(\.id))
+    private var monthlyCostSats: Int {
+        subscriptionMonthlyCostSats(subscriptions: paymentRequests.subscriptions, now: now)
+    }
+}
 
-        return paymentRequests.subscriptions
-            .filter { $0.lifecycleState == .activeRecurring }
-            .reduce(into: 0) { total, subscription in
-                guard let acceptedAt = paymentRequests.acceptedAt(for: subscription) else { return }
-                let dueCount = subscription.recurrence.periods(through: monthInterval.end, acceptedAt: acceptedAt).filter { period in
-                    let requestId = PaykitPaymentRequest.ID(
-                        paymentRequestId: subscription.paymentRequestId,
-                        counterparty: subscription.counterparty,
-                        counterpartyReceiverPath: subscription.counterpartyReceiverPath,
-                        billingPeriodStartsAt: period.startsAt
-                    )
-                    return period.startsAt >= monthInterval.start && period.startsAt < monthInterval.end
-                        && !subscription.paidPeriods.contains(period)
-                        && !paidRequestIds.contains(requestId)
-                }.count
-                let (subtotal, didOverflow) = Int(clamping: subscription.amountSats).multipliedReportingOverflow(by: dueCount)
-                guard !didOverflow else {
-                    total = .max
-                    return
-                }
-                let (sum, sumDidOverflow) = total.addingReportingOverflow(subtotal)
-                total = sumDidOverflow ? .max : sum
-            }
+func subscriptionMonthlyCostSats(subscriptions: [PaykitSubscription], now: Date) -> Int {
+    let annualPeriods: (PaykitSubscriptionRecurrence.Unit) -> Decimal = { unit in
+        switch unit {
+        case .minute: 525_600
+        case .hour: 8760
+        case .day: 365
+        case .week: 52
+        case .month: 12
+        case .year: 1
+        }
+    }
+    let maximum = NSDecimalNumber(value: Int.max)
+    return subscriptions.filter { $0.isActive(at: now) }.reduce(into: 0) { total, subscription in
+        var monthlyCost = Decimal(subscription.amountSats) * annualPeriods(subscription.recurrence.unit)
+            / Decimal(subscription.recurrence.every) / 12
+        var roundedMonthlyCost = Decimal()
+        NSDecimalRound(&roundedMonthlyCost, &monthlyCost, 0, .plain)
+        let number = NSDecimalNumber(decimal: roundedMonthlyCost)
+        total = total.saturatingAdd(number.compare(maximum) == .orderedDescending ? .max : number.intValue)
     }
 }
 
 func subscriptionNextTransitionDate(
     subscriptions: [PaykitSubscription],
-    now: Date,
-    calendar: Calendar = .autoupdatingCurrent
+    now: Date
 ) -> Date? {
     let activeSubscriptions = subscriptions.filter { $0.isActive(at: now) }
     var dates = subscriptions.flatMap {
         [$0.recurrence.startsAt, $0.proposalExpiresAt, $0.recurrence.endsAt].compactMap { $0 }
     }
     dates += activeSubscriptions.compactMap { $0.recurrence.nextPeriod(after: now)?.startsAt }
-    if !activeSubscriptions.isEmpty, let nextMonth = calendar.dateInterval(of: .month, for: now)?.end {
-        dates.append(nextMonth)
-    }
     return dates.filter { $0 > now }.min()
 }
 

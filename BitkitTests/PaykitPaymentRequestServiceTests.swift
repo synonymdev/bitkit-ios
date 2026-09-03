@@ -630,10 +630,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(remainingRecords.count, 1)
     }
 
-    func testActiveSubscriptionTransitionIncludesPeriodAndMonthBoundaries() throws {
+    func testActiveSubscriptionTransitionUsesNextPeriodBoundary() throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
         let weekly = PaymentRequestRecurrence(
             every: 1,
             unit: "week",
@@ -652,12 +650,100 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let yearlySubscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(state: .activeRecurring, recurrence: yearly)))
 
         XCTAssertEqual(
-            subscriptionNextTransitionDate(subscriptions: [weeklySubscription], now: now, calendar: calendar),
+            subscriptionNextTransitionDate(subscriptions: [weeklySubscription], now: now),
             ISO8601DateFormatter().date(from: "2027-01-22T08:00:00Z")
         )
         XCTAssertEqual(
-            subscriptionNextTransitionDate(subscriptions: [yearlySubscription], now: now, calendar: calendar),
-            ISO8601DateFormatter().date(from: "2027-02-01T00:00:00Z")
+            subscriptionNextTransitionDate(subscriptions: [yearlySubscription], now: now),
+            ISO8601DateFormatter().date(from: "2028-01-01T08:00:00Z")
+        )
+    }
+
+    func testMonthlySubscriptionCostNormalizesRecurrenceFrequencies() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let cases: [(unit: String, every: UInt32, amount: String, expectedSats: Int)] = [
+            ("day", 1, "0.000012", 36500),
+            ("week", 1, "0.000012", 5200),
+            ("month", 1, "0.000012", 1200),
+            ("month", 2, "0.000012", 600),
+            ("year", 1, "0.000012", 100),
+        ]
+
+        for testCase in cases {
+            let recurrence = PaymentRequestRecurrence(
+                every: testCase.every,
+                unit: testCase.unit,
+                startsAt: "2027-01-01T08:00:00Z",
+                anchor: "2027-01-01T08:00:00Z",
+                endsAt: nil
+            )
+            let subscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+                state: .activeRecurring,
+                amount: testCase.amount,
+                recurrence: recurrence
+            )))
+
+            XCTAssertEqual(
+                subscriptionMonthlyCostSats(subscriptions: [subscription], now: now),
+                testCase.expectedSats,
+                "Unexpected monthly cost for every \(testCase.every) \(testCase.unit)"
+            )
+        }
+
+        let lowCostYearlySubscriptions = try (0 ..< 3).map { index in
+            try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+                id: "low-cost-\(index)",
+                state: .activeRecurring,
+                amount: "0.0000001",
+                recurrence: PaymentRequestRecurrence(
+                    every: 1,
+                    unit: "year",
+                    startsAt: "2027-01-01T08:00:00Z",
+                    anchor: "2027-01-01T08:00:00Z",
+                    endsAt: nil
+                )
+            )))
+        }
+        XCTAssertEqual(subscriptionMonthlyCostSats(subscriptions: lowCostYearlySubscriptions, now: now), 3)
+    }
+
+    func testMonthlySubscriptionCostIncludesPaidActiveSubscriptionsOnly() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let paidPeriod = BillingPeriod(
+            startsAt: "2027-01-01T08:00:00Z",
+            endsAt: "2027-02-01T08:00:00Z"
+        )
+        let paidActive = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .activeRecurring,
+            amount: "0.000012",
+            recurrence: recurrence,
+            paymentProofs: [paymentProofRecord(
+                endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                kind: .lightning,
+                billingPeriod: paidPeriod
+            )]
+        )))
+        let canceled = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .canceled,
+            amount: "0.000012",
+            recurrence: recurrence
+        )))
+        let proposed = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .proposed,
+            amount: "0.000012",
+            recurrence: recurrence
+        )))
+
+        XCTAssertEqual(
+            subscriptionMonthlyCostSats(subscriptions: [paidActive, canceled, proposed], now: now),
+            1200
         )
     }
 
@@ -1940,7 +2026,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
     private func paymentProofRecord(
         endpoint: String,
-        kind: PaykitPaymentProofKind
+        kind: PaykitPaymentProofKind,
+        billingPeriod: BillingPeriod? = nil
     ) throws -> PaymentProofRecord {
         try PaymentProofRecord(
             eventId: "750e8400-e29b-41d4-a716-446655440000",
@@ -1948,7 +2035,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             outboundStatus: nil,
             streamItemId: 2,
             paymentReference: PaymentReference(text: "invoice-123"),
-            billingPeriod: nil,
+            billingPeriod: billingPeriod,
             paymentEndpointIdentifier: endpoint,
             proof: PrivateJsonObject(text: "{\"data\":\"proof\",\"type\":\"\(kind.rawValue)\"}"),
             recordedAt: "2027-01-15T08:01:00Z"
