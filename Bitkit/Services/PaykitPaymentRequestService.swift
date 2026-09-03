@@ -937,8 +937,10 @@ final class PaykitPaymentRequestManager {
     @discardableResult
     func deferPresentation(_ request: PaykitPaymentRequest) -> PaykitPaymentRequestPresentationDeferral {
         let wasRequestedPresentation = requestedPresentationId == request.id
-        let requestExpired = request.isExpired(at: now())
+        let presentationDate = now()
+        let requestExpired = request.isExpired(at: presentationDate)
         discardExpiredRequests(
+            at: presentationDate,
             handledRequestedExpirationId: requestExpired && wasRequestedPresentation ? request.id : nil
         )
         if requestExpired {
@@ -1094,8 +1096,11 @@ final class PaykitPaymentRequestManager {
         refreshTask = nil
     }
 
-    private func discardExpiredRequests(handledRequestedExpirationId: PaykitPaymentRequest.ID? = nil) {
-        let date = now()
+    private func discardExpiredRequests(
+        at: Date? = nil,
+        handledRequestedExpirationId: PaykitPaymentRequest.ID? = nil
+    ) {
+        let date = at ?? now()
         recordRequestedPresentationExpiration(at: date, excluding: handledRequestedExpirationId)
         pendingRequests.removeAll { $0.isExpired(at: date) }
         let requestIds = Set(pendingRequests.map(\.id))

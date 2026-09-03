@@ -119,7 +119,8 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
             }
         }
         if current.retryTrigger != previous.retryTrigger ||
-            previous.requestedPresentationId != current.requestedPresentationId && current.requestedPresentationId != nil
+            previous.requestedPresentationId != current.requestedPresentationId && current.requestedPresentationId != nil ||
+            current.expirationTrigger != previous.expirationTrigger
         {
             dispatches.append(.presentNext)
         }
