@@ -422,6 +422,19 @@ struct MainNavView: View {
         } message: {
             Text(t("other__clipboard_redirect_msg"))
         }
+        .overlay {
+            if app.isCompletingPubkySignup {
+                ZStack {
+                    Color.black.ignoresSafeArea()
+
+                    HStack(spacing: 12) {
+                        ActivityIndicator(size: 20)
+                        BodyMText(t("profile__deriving_keys"), textColor: .white64)
+                    }
+                }
+                .accessibilityIdentifier("PubkySignupLoading")
+            }
+        }
     }
 
     // MARK: - Loading View
