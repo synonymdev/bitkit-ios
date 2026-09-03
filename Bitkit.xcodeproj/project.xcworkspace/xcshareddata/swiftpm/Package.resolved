@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
-        "revision" : "4c859d3f2c0022fda25baa62a029e2c03d1892a7",
-        "version" : "0.5.3"
+        "revision" : "890502f241e12305325cdd0f5e46b2752b9aedf4",
+        "version" : "0.5.14"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
-        "revision" : "c9a41458a646324c6c8728b4de8329ad4d52ac8d",
-        "version" : "0.7.0-rc.63"
+        "revision" : "190a17d966cf5a685444cfa17c3a419c290bf26c",
+        "version" : "0.7.0-rc.66"
       }
     },
     {
