@@ -428,6 +428,24 @@ actor PaykitPaymentProofService {
         }
     }
 
+    func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
+        let underlyingError = (submissionError as? AppError)?.underlyingError ?? submissionError
+        if let serviceError = underlyingError as? CustomServiceError {
+            guard serviceError == .nodeNotSetup || serviceError == .nodeNotStarted else { return false }
+        } else if let nodeError = underlyingError as? NodeError {
+            switch nodeError {
+            case .NotRunning, .InvalidInvoice, .InvalidAmount, .PaymentSendingFailed:
+                break
+            default:
+                return false
+            }
+        } else {
+            return false
+        }
+        await failLightningPayment(paymentHash: paymentHash)
+        return true
+    }
+
     func failOnchainPayment(_ request: PaykitPaymentRequest) async {
         await removeRequestProofs(request) {
             $0.kind == .onchain &&

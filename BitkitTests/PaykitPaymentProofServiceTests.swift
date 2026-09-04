@@ -1,4 +1,5 @@
 @testable import Bitkit
+import LDKNode
 import Paykit
 import XCTest
 
@@ -187,6 +188,75 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let remainingProofs = await store.snapshot()
         XCTAssertEqual(submissionCount, 1)
         XCTAssertTrue(remainingProofs.isEmpty)
+    }
+
+    func testUncertainLightningSubmissionPreservesProofUntilSettlement() async throws {
+        let errors: [Error] = [
+            NodeError.PersistenceFailed(message: "io"),
+            Bitkit.AppError(error: NodeError.PersistenceFailed(message: "io")),
+            NodeError.DuplicatePayment(message: "pending"),
+            NSError(domain: "payment", code: 1),
+        ]
+        for error in errors {
+            let record = try paymentRequestRecord()
+            let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+            let store = PaymentProofMemoryStore()
+            let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+            let service = paymentProofService(sdk: sdk, store: store)
+            try await service.prepare(
+                request: request,
+                paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                kind: .lightning
+            )
+            try await service.associateLightningPayment(request, paymentHash: paymentHash)
+
+            let failed = await service.failLightningPayment(paymentHash: paymentHash, submissionError: error)
+            await service.cancelPreparation(request)
+            let restartedService = paymentProofService(sdk: sdk, store: store)
+            await restartedService.reconcile()
+
+            let inFlight = await restartedService.inFlightRequestIds(identity: identity)
+            XCTAssertFalse(failed)
+            XCTAssertEqual(inFlight, [request.id])
+            let proof = await store.snapshot().first
+            XCTAssertEqual(proof?.paymentIdentifier, paymentHash)
+
+            await restartedService.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+            let remainingProofs = await store.snapshot()
+            let submissionCount = await sdk.submissionCount()
+            XCTAssertTrue(remainingProofs.isEmpty)
+            XCTAssertEqual(submissionCount, 1)
+        }
+    }
+
+    func testDefiniteLightningSubmissionFailureClearsProof() async throws {
+        let errors: [Error] = [
+            Bitkit.CustomServiceError.nodeNotSetup,
+            Bitkit.AppError(serviceError: .nodeNotStarted),
+            NodeError.NotRunning(message: "stopped"),
+            NodeError.InvalidInvoice(message: "invalid"),
+            NodeError.InvalidAmount(message: "invalid"),
+            Bitkit.AppError(error: NodeError.PaymentSendingFailed(message: "no route")),
+        ]
+        for error in errors {
+            let record = try paymentRequestRecord()
+            let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+            let store = PaymentProofMemoryStore()
+            let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+            let service = paymentProofService(sdk: sdk, store: store)
+            try await service.prepare(
+                request: request,
+                paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                kind: .lightning
+            )
+            try await service.associateLightningPayment(request, paymentHash: paymentHash)
+
+            let failed = await service.failLightningPayment(paymentHash: paymentHash, submissionError: error)
+
+            let remainingProofs = await store.snapshot()
+            XCTAssertTrue(failed, "\(error)")
+            XCTAssertTrue(remainingProofs.isEmpty, "\(error)")
+        }
     }
 
     func testUnstartedSubscriptionPreparationIsDiscardedBeforeCancellation() async throws {

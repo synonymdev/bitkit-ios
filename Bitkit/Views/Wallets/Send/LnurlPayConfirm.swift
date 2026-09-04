@@ -251,6 +251,7 @@ struct LnurlPayConfirm: View {
         var bolt11Invoice: String?
         var lightningPaymentHash: String?
         var shouldCancelPaymentProof = false
+        var lightningPaymentSubmitted = false
 
         do {
             try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
@@ -276,13 +277,13 @@ struct LnurlPayConfirm: View {
 
             let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
             let paymentHash = String(describing: parsedInvoice.paymentHash())
-            lightningPaymentHash = paymentHash
             if let incomingPaymentRequest {
                 try await PaykitPaymentProofService.shared.associateLightningPayment(
                     incomingPaymentRequest,
                     paymentHash: paymentHash
                 )
             }
+            lightningPaymentHash = paymentHash
 
             // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
             // LNURL server returns invoices with the amount baked in, so pass sats: nil
@@ -290,6 +291,7 @@ struct LnurlPayConfirm: View {
             try await wallet.sendWithTimeout(
                 bolt11: bolt11,
                 sats: nil,
+                afterListening: { _ in lightningPaymentSubmitted = true },
                 onTimeout: { timedOutHash in
                     app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
                     navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .lnurlPayConfirm, paymentRequest: bolt11))
@@ -310,7 +312,24 @@ struct LnurlPayConfirm: View {
             return
         } catch {
             if let lightningPaymentHash {
-                await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: lightningPaymentHash)
+                if incomingPaymentRequest != nil, !lightningPaymentSubmitted {
+                    let failed = await PaykitPaymentProofService.shared.failLightningPayment(
+                        paymentHash: lightningPaymentHash,
+                        submissionError: error
+                    )
+                    if !failed {
+                        shouldCancelPaymentProof = false
+                        app.addPendingPaymentHash(lightningPaymentHash, contactPaymentContext: contactPaymentContext)
+                        navigationPath.append(.pending(
+                            paymentHash: lightningPaymentHash,
+                            retryRoute: .lnurlPayConfirm,
+                            paymentRequest: bolt11Invoice
+                        ))
+                        return
+                    }
+                } else {
+                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: lightningPaymentHash)
+                }
             }
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)

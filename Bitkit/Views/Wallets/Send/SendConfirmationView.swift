@@ -672,6 +672,7 @@ struct SendConfirmationView: View {
         var shouldCancelPaymentProof = false
         var preparedPaymentProof: (endpointIdentifier: String, kind: PaykitPaymentProofKind)?
         var onchainPaymentStarted = false
+        var lightningPaymentSubmitted = false
 
         do {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
@@ -713,6 +714,7 @@ struct SendConfirmationView: View {
                     try await wallet.sendWithTimeout(
                         bolt11: invoice.bolt11,
                         sats: paymentSats,
+                        afterListening: { _ in lightningPaymentSubmitted = true },
                         onTimeout: { timedOutHash in
                             app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
                             navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
@@ -729,7 +731,20 @@ struct SendConfirmationView: View {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
-                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                    if incomingPaymentRequest != nil, !lightningPaymentSubmitted {
+                        let failed = await PaykitPaymentProofService.shared.failLightningPayment(
+                            paymentHash: paymentHash,
+                            submissionError: error
+                        )
+                        if !failed {
+                            shouldCancelPaymentProof = false
+                            app.addPendingPaymentHash(paymentHash, contactPaymentContext: contactPaymentContext)
+                            navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
+                            return
+                        }
+                    } else {
+                        await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                    }
                     throw error
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
