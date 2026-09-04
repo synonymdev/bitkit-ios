@@ -562,7 +562,10 @@ extension AppViewModel {
                     let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
                     let lnNetworkMatch = !NetworkValidationHelper.isNetworkMismatch(addressNetwork: lnNetwork, currentNetwork: Env.network)
 
-                    if lnNetworkMatch, !lightningInvoice.isExpired {
+                    if lnNetworkMatch, !lightningInvoice.isExpired,
+                       contactPaymentContext?.incomingPaymentRequest?
+                       .acceptsLightningInvoiceAmount(satoshis: lightningInvoice.amountSatoshis) != false
+                    {
                         let nodeIsRunning = paymentState.isNodeRunning
 
                         if nodeIsRunning {
@@ -653,6 +656,10 @@ extension AppViewModel {
                 return
             }
 
+            guard contactPaymentContext?.incomingPaymentRequest?.acceptsLightningInvoiceAmount(satoshis: invoice.amountSatoshis) != false else {
+                throw PaykitPaymentRequestError.amountMismatch
+            }
+
             // If node is running, we can check for channels and validate immediately
             if paymentState.isNodeRunning {
                 let paymentAmount = requestedAmount ?? invoice.amountSatoshis
@@ -676,7 +683,7 @@ extension AppViewModel {
             handleScannedLightningInvoice(invoice, bolt11: uri)
         case let .lnurlPay(data: lnurlPayData):
             Logger.debug("LNURL: \(lnurlPayData)")
-            handleLnurlPayInvoice(lnurlPayData)
+            try handleLnurlPayInvoice(lnurlPayData)
         case let .lnurlWithdraw(data: lnurlWithdrawData):
             Logger.debug("LNURL: \(lnurlWithdrawData)")
             handleLnurlWithdraw(lnurlWithdrawData)
@@ -761,13 +768,25 @@ extension AppViewModel {
         scannedLightningInvoice = nil
     }
 
-    private func handleLnurlPayInvoice(_ data: LnurlPayData) {
-        guard lightningService.status?.isRunning == true else {
+    func handleLnurlPayInvoice(_ data: LnurlPayData) throws {
+        let requestedAmount = contactPaymentContext?.incomingPaymentRequest?.amountSats
+        if let requestedAmount,
+           requestedAmount < data.minSendableSat || requestedAmount > data.maxSendableSat
+        {
+            throw PaykitPaymentRequestError.amountMismatch
+        }
+
+        let paymentState = scanPaymentOperations.state()
+        guard paymentState.isNodeRunning else {
             toast(type: .error, title: "Lightning not running", description: "Please try again later.")
             return
         }
 
-        let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
+        let lightningBalance = paymentState.totalLightningBalanceSats
+        if let requestedAmount, !scanPaymentOperations.canSendLightning(requestedAmount) {
+            showInsufficientSpendingToast(invoiceAmount: requestedAmount, spendingBalance: lightningBalance)
+            return
+        }
         if lightningBalance < max(1, data.minSendableSat) {
             toast(
                 type: .warning,

@@ -183,6 +183,10 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         return !overflow && milliSatoshis == requestedMilliSatoshis
     }
 
+    func acceptsLightningInvoiceAmount(satoshis: UInt64) -> Bool {
+        satoshis == 0 || satoshis == amountSats
+    }
+
     func acceptsPaymentAmount(_ amountSats: UInt64) -> Bool {
         amountSats == self.amountSats
     }

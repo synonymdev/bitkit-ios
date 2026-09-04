@@ -18,27 +18,22 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(PrivatePaykitService.initialLinkBurstRetryDelays.allSatisfy { $0 == 2_000_000_000 })
     }
 
-    @MainActor
     func testPreparingSavedContactsDefersWhenPublicationIsUnavailable() async {
-        let defaults = UserDefaults.standard
-        let previousValue = defaults.object(forKey: PrivatePaykitService.publishingEnabledKey)
-        defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
-        defer {
-            if let previousValue {
-                defaults.set(previousValue, forKey: PrivatePaykitService.publishingEnabledKey)
-            } else {
-                defaults.removeObject(forKey: PrivatePaykitService.publishingEnabledKey)
-            }
-        }
-
         let service = PrivatePaykitService()
+        let contacts = ["pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"]
+        var preparedContacts = [String]()
         let error = await service.prepareSavedContacts(
-            ["pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"],
-            wallet: WalletViewModel(),
-            requireImmediatePublication: true
+            contacts,
+            publicationUnavailableReason: "the Lightning node is not running",
+            prepareLinks: { preparedContacts = $0 },
+            publishEndpoints: { _ in
+                XCTFail("Unavailable endpoints must not be published")
+                return PrivatePaykitError.privateUnavailable
+            }
         )
 
         XCTAssertNil(error)
+        XCTAssertEqual(preparedContacts, contacts)
     }
 
     func testReceiverNoiseDerivationMatchesCrossPlatformVector() {

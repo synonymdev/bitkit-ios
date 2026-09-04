@@ -118,6 +118,26 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    func testSwitchingToPublicOnlyMarksExistingPrivateEndpointsForCleanup() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+            let operations = OperationsSpy()
+
+            try await ContactPaymentsService.setEnabled(
+                true,
+                contactPublicKeys: ["contact-a"],
+                canUsePrivatePayments: false,
+                operations: operations.makeOperations(),
+                defaults: defaults
+            )
+
+            XCTAssertEqual(operations.privateCleanupValues, [true])
+            XCTAssertTrue(operations.privatePublications.isEmpty)
+            XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+            XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
+        }
+    }
+
     func testFailedPrivateEnableDoesNotPublishPublicEndpointAndRestoresDisabledState() async throws {
         try await withIsolatedDefaultsAsync { defaults in
             defaults.set(true, forKey: PublicPaykitService.cleanupPendingKey)

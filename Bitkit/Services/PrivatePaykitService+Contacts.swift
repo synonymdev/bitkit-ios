@@ -20,21 +20,35 @@ extension PrivatePaykitService {
         wallet: WalletViewModel,
         requireImmediatePublication: Bool = false
     ) async -> Error? {
+        await prepareSavedContacts(
+            publicKeys,
+            publicationUnavailableReason: privateEndpointPublicationUnavailabilityReason(wallet: wallet),
+            prepareLinks: { await self.prepareRelevantPrivateLinksIfAvailable($0, reason: "prepare") },
+            publishEndpoints: { publicKeys in
+                await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+                return await self.syncLocalEndpointPublication(
+                    for: publicKeys,
+                    wallet: wallet,
+                    reason: "prepare",
+                    requireImmediatePublication: requireImmediatePublication
+                )
+            }
+        )
+    }
+
+    func prepareSavedContacts(
+        _ publicKeys: [String],
+        publicationUnavailableReason: String?,
+        prepareLinks: ([String]) async -> Void,
+        publishEndpoints: ([String]) async -> Error?
+    ) async -> Error? {
         let publicKeys = rememberSavedContacts(publicKeys, replacing: true)
-        if let reason = await privateEndpointPublicationUnavailabilityReason(wallet: wallet) {
+        if let reason = publicationUnavailableReason {
             Logger.info("Deferring private Paykit endpoint publication during prepare: \(reason)", context: "PrivatePaykitService")
-            await prepareRelevantPrivateLinksIfAvailable(publicKeys, reason: "prepare")
+            await prepareLinks(publicKeys)
             return nil
         }
-
-        await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
-
-        return await syncLocalEndpointPublication(
-            for: publicKeys,
-            wallet: wallet,
-            reason: "prepare",
-            requireImmediatePublication: requireImmediatePublication
-        )
+        return await publishEndpoints(publicKeys)
     }
 
     func refreshSavedContactEndpoints(

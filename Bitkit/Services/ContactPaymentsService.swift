@@ -116,6 +116,9 @@ enum ContactPaymentsService {
         operations: Operations,
         defaults: UserDefaults
     ) async throws {
+        if !canUsePrivatePayments, defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey) {
+            operations.setPrivateCleanupPending(true)
+        }
         defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
         defaults.set(canUsePrivatePayments, forKey: PrivatePaykitService.publishingEnabledKey)
         defaults.set(true, forKey: confirmedPreferenceKey)
