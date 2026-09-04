@@ -150,7 +150,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         )
 
         XCTAssertFalse(sent)
-        guard case let .pending(paymentHash, retryRoute, _) = route else {
+        guard case let .pending(paymentHash, retryRoute, _, _) = route else {
             return XCTFail("Expected pending, got \(String(describing: route))")
         }
         XCTAssertEqual(paymentHash, invoiceHash)
@@ -231,7 +231,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             }
         )
 
-        guard case let .pending(paymentHash, retryRoute, _) = route else {
+        guard case let .pending(paymentHash, retryRoute, _, _) = route else {
             return XCTFail("Expected pending, got \(String(describing: route))")
         }
         XCTAssertEqual(paymentHash, invoiceHash)
@@ -271,7 +271,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             }
         )
 
-        guard case let .pending(paymentHash, retryRoute, _) = route else {
+        guard case let .pending(paymentHash, retryRoute, _, _) = route else {
             return XCTFail("Expected pending, got \(String(describing: route))")
         }
         XCTAssertEqual(paymentHash, invoiceHash)
@@ -298,7 +298,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             }
         )
 
-        guard case let .pending(paymentHash, _, _) = route else {
+        guard case let .pending(paymentHash, _, _, _) = route else {
             return XCTFail("Expected pending, got \(String(describing: route))")
         }
         XCTAssertEqual(paymentHash, invoiceHash)
@@ -410,7 +410,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             }
         )
 
-        guard case let .pending(paymentHash, _, _) = route else {
+        guard case let .pending(paymentHash, _, _, _) = route else {
             return XCTFail("Expected pending, got \(String(describing: route))")
         }
         XCTAssertEqual(paymentHash, invoiceHash)
@@ -445,7 +445,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         }
         coordinator.detach()
         let second = await firstRoute(from: coordinator)
-        guard case let .pending(paymentHash, _, _) = second else {
+        guard case let .pending(paymentHash, _, _, _) = second else {
             return XCTFail("Expected pending replay, got \(String(describing: second))")
         }
         XCTAssertEqual(paymentHash, invoiceHash)

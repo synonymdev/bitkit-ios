@@ -1,10 +1,13 @@
 import SwiftUI
 
 struct ReceiveQr: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Binding var navigationPath: [ReceiveRoute]
     let cjitInvoice: String?
     let tab: ReceiveTab?
@@ -99,7 +102,7 @@ struct ReceiveQr: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("wallet__receive_bitcoin"))
+            SheetHeader(title: t("wallet__receive_bitcoin"), action: paymentRequestAction)
                 .padding(.horizontal, 16)
                 .padding(.bottom, UIScreen.main.isSmall ? -16 : 0)
 
@@ -245,6 +248,27 @@ struct ReceiveQr: View {
             passphraseTask?.cancel()
             passphraseTask = nil
         }
+    }
+
+    private var paymentRequestAction: AnyView? {
+        guard PaykitFeatureFlags.isUIAvailable,
+              isPaykitUIEnabled,
+              !paymentRequests.eligibleTargets.isEmpty
+        else { return nil }
+
+        return AnyView(
+            Button {
+                navigationPath.append(.paymentRequestRecipient(ReceiveSheet.defaultPaymentRequestDraft))
+            } label: {
+                Image("users")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundColor(.textPrimary)
+                    .frame(width: 24, height: 24)
+            }
+            .accessibilityLabel(t("wallet__payment_request_request_payment"))
+            .accessibilityIdentifier("ReceiveRequestPayment")
+        )
     }
 
     func tabContent(for tab: ReceiveTab) -> some View {

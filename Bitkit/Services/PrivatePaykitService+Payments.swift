@@ -51,6 +51,16 @@ extension PrivatePaykitService {
         )
     }
 
+    func beginPaymentRequestWaitingForUpdatedList(_ request: PaykitPaymentRequest) async throws -> PublicPaykitPaymentLaunchResult {
+        var result = try await beginPaymentRequest(request)
+        for delay in Self.privatePaymentResolutionRetryDelays {
+            guard case .waitingForUpdatedPaymentList = result else { return result }
+            try await Task.sleep(nanoseconds: delay)
+            result = try await beginPaymentRequest(request)
+        }
+        return result
+    }
+
     private func beginContactPayment(
         to publicKey: String,
         receiverPath: String,

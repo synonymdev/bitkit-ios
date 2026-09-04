@@ -9,8 +9,10 @@ enum ReceiveRoute: Hashable {
     case cjitConfirm(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
     case cjitLearnMore(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
     case cjitGeoBlocked
-    case paymentRequestDetails(PaykitPaymentRequestDraft)
+    case requestOrPay(publicKey: String)
     case paymentRequestRecipient(PaykitPaymentRequestDraft)
+    case paymentRequestAmount(PaykitPaymentRequestDraft, PaykitPaymentRequestTarget)
+    case paymentRequestDetails(PaykitPaymentRequestDraft, PaykitPaymentRequestTarget)
     case paymentRequestSent(PaykitPaymentRequest)
 }
 
@@ -107,21 +109,34 @@ struct ReceiveSheet: View {
             ReceiveCjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditional)
         case .cjitGeoBlocked:
             ReceiveCjitGeoBlocked()
-        case let .paymentRequestDetails(draft):
-            PaymentRequestDetailsView(initialDraft: draft) { updatedDraft in
-                if navigationPath.count >= 2,
-                   case .paymentRequestDetails = navigationPath[navigationPath.count - 1],
-                   case .paymentRequestRecipient = navigationPath[navigationPath.count - 2]
-                {
-                    navigationPath.removeLast(2)
-                }
-                navigationPath.append(.paymentRequestRecipient(updatedDraft))
+        case let .requestOrPay(publicKey):
+            RequestOrPayView(publicKey: publicKey) { target in
+                navigationPath.append(.paymentRequestAmount(Self.defaultPaymentRequestDraft, target))
             }
         case let .paymentRequestRecipient(draft):
-            PaymentRequestRecipientView(
-                draft: draft,
-                onEditExpiration: {
-                    navigationPath.append(.paymentRequestDetails(draft))
+            PaymentRequestRecipientView { target in
+                if draft.amountSats == 0 {
+                    navigationPath.append(.paymentRequestAmount(draft, target))
+                } else {
+                    navigationPath.append(.paymentRequestDetails(draft, target))
+                }
+            }
+        case let .paymentRequestAmount(draft, target):
+            PaymentRequestAmountView(initialDraft: draft, target: target) { updatedDraft in
+                navigationPath.append(.paymentRequestDetails(updatedDraft, target))
+            }
+        case let .paymentRequestDetails(draft, target):
+            PaymentRequestDetailsView(
+                initialDraft: draft,
+                target: target,
+                onEditAmount: { updatedDraft in
+                    if let route = navigationPath.last, case .paymentRequestDetails = route {
+                        navigationPath.removeLast()
+                    }
+                    if let route = navigationPath.last, case .paymentRequestAmount = route {
+                        navigationPath.removeLast()
+                    }
+                    navigationPath.append(.paymentRequestAmount(updatedDraft, target))
                 },
                 onSent: { request in
                     navigationPath.append(.paymentRequestSent(request))
@@ -130,5 +145,13 @@ struct ReceiveSheet: View {
         case let .paymentRequestSent(request):
             PaymentRequestSentView(request: request)
         }
+    }
+
+    static var defaultPaymentRequestDraft: PaykitPaymentRequestDraft {
+        PaykitPaymentRequestDraft(
+            amountSats: 0,
+            note: "",
+            expiresAt: PaymentRequestExpiration.week.date(from: Date())
+        )
     }
 }

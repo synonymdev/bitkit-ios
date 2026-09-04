@@ -27,12 +27,14 @@ struct SendPendingScreen: View {
     let paymentHash: String
     let retryRoute: SendRetryRoute
     let paymentRequest: String?
+    let paykitPaymentRequestId: PaykitPaymentRequest.ID?
     let routingCacheResetAttempted: Bool
     @Binding var navigationPath: [SendRoute]
 
     @EnvironmentObject private var activityList: ActivityListViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
@@ -84,6 +86,20 @@ struct SendPendingScreen: View {
         .onChange(of: app.sendSheetPendingResolution) { _, resolution in
             applyPendingResolutionIfNeeded(resolution)
         }
+        .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
+            guard resolution.requestId == paykitPaymentRequestId,
+                  let identity = pubkyProfile.publicKey,
+                  PubkyPublicKeyFormat.matches(resolution.identity, identity)
+            else { return }
+            app.addPendingContactPaymentContext(
+                resolution.transactionId,
+                context: ContactPaymentContext(publicKey: resolution.requestId.counterparty)
+            )
+            Task {
+                await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution)
+                navigationPath.append(.success(paymentId: resolution.transactionId))
+            }
+        }
     }
 
     private func applyPendingResolutionIfNeeded(_ resolution: SendSheetPendingResolution?) {
@@ -101,12 +117,14 @@ struct SendPendingScreen: View {
                 navigationPath.append(.success(paymentId: paymentHash))
             }
         } else {
+            let contactPaymentContext = app.contactPaymentContext(forPendingPaymentHash: paymentHash) ?? app.contactPaymentContext
             app.consumeContactPaymentContext(forPendingPaymentHash: paymentHash)
             navigationPath.append(.failure(SendFailureContext(
                 error: AppError(paymentFailureReason: resolution.failureReason),
                 retryRoute: retryRoute,
                 routingCacheResetAttempted: routingCacheResetAttempted,
-                paymentRequest: paymentRequest
+                paymentRequest: paymentRequest,
+                contactPaymentContext: contactPaymentContext
             )))
         }
     }
