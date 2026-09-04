@@ -93,6 +93,12 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
 - Row identifiers are inconsistent in the app and this is not a typo in the journeys:
   `HardwareWalletRowName<id>` has **no** separator, while `HardwareWalletRowDelete_<id>` and
   `HardwareWalletRow_<id>` use an underscore. The `<id>` is the full `trezor:<hex>` device id.
+- **The amount number pad was ungated.** `SpendingAmountHw` observed `maxAllowed` without
+  `initial: true`, and that value lives on the shared `TransferViewModel`, so a screen that opens
+  with the limits already computed has no change to observe and the fresh `AmountInputViewModel`
+  keeps `maxAmountOverride` nil. Nine taps on `N9` entered **999 999 999** against an AVAILABLE of
+  610 015, with no toast and no snap; Continue stayed disabled, so no unaffordable order was
+  reachable. Fixed in #686 and covered by `transfer-to-spending-over-max.xml`.
 - Confirmed resolving without the emulator: `HardwareWalletsSettings`, `HardwareWalletsScreen`,
   `AddHardwareWallet`, `HardwareWalletIntroScreen`/`Continue`/`Cancel`, `HardwareWalletScreen`,
   `HardwareTransferToSpending`, `HardwareTransferAmount` and its Available/25%/MAX/Continue controls,
@@ -115,7 +121,8 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
 - Home and detail: tile `ActivityHardware`, screen `HardwareWalletScreen`, `RemoveHardwareWallet`,
   `RemoveHwWalletDialog`, `HwRemoveKeepBackupToggle`.
 - Transfer: `HardwareTransferToSpending`, `HardwareTransferAmount`,
-  `HardwareTransferAmountAvailable`/`Quarter`/`Max`/`Continue`, `HardwareTransferSign`,
+  `HardwareTransferAmountAvailable`/`Quarter`/`Max`/`Continue`,
+  over-max toast `HardwareTransferAmountExceededToast`, `HardwareTransferSign`,
   `HardwareTransferSignLearnMore`/`SignAdvanced`/`SignDefault`,
   `HardwareTransferOpenTrezorConnect`, `HardwareTransferSigned`,
   `HwTransferPassphraseSheet`/`Input`/`Continue`/`Cancel`.

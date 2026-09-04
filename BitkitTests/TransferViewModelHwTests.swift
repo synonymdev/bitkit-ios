@@ -240,6 +240,53 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertFalse(vm.hwSpending.isLoading)
     }
 
+    /// Regression: the funding guards must price a hardware transfer against the device account.
+    /// Reading on-chain savings here would reject every one of them — those funds never sit in this
+    /// wallet.
+    func testHwFundingBudgetReadsTheDeviceAccount() async {
+        let funding = MockHwFunding()
+        funding.account = HwFundingAccount(xpub: "zpubNS", addressType: .nativeSegwit, balanceSats: 1_000_000)
+        funding.maxSpendable = 990_000
+        let vm = TransferViewModel(
+            hwFunding: funding,
+            hwConnecting: MockHwConnecting(),
+            hwFeeRateProvider: { 2 },
+            hwAddressProvider: { "bcrt1qtest" }
+        )
+
+        let budget = await vm.hwFundingBudget(walletId: "trezor:wallet")
+
+        XCTAssertEqual(budget, 990_000)
+        XCTAssertEqual(funding.maxSpendableCalls.count, 1)
+    }
+
+    /// Without an address to compose against, the budget still comes from the device balance — via
+    /// the conservative reserve clamp rather than an exact `sendMax`.
+    func testHwFundingBudgetFallsBackToTheDeviceReserveClamp() async {
+        let funding = MockHwFunding()
+        funding.account = HwFundingAccount(xpub: "zpubNS", addressType: .nativeSegwit, balanceSats: 1_000_000)
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+
+        let budget = await vm.hwFundingBudget(walletId: "trezor:wallet")
+
+        XCTAssertEqual(funding.maxSpendableCalls.count, 0)
+        let clamped = try? XCTUnwrap(budget)
+        XCTAssertNotNil(clamped)
+        XCTAssertGreaterThan(clamped ?? 0, 0)
+        XCTAssertLessThan(clamped ?? 0, funding.account.balanceSats)
+    }
+
+    func testHwFundingBudgetIsNilWhenTheDeviceIsUnreachable() async {
+        let funding = MockHwFunding()
+        funding.accountError = MockHwFunding.TestError()
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+
+        let budget = await vm.hwFundingBudget(walletId: "trezor:wallet")
+
+        // An unreadable device balance leaves the guard non-blocking rather than rejecting.
+        XCTAssertNil(budget)
+    }
+
     func testUpdateHwLimitsClearsStalePreviousDeviceCap() async {
         let funding = MockHwFunding()
         funding.accountError = MockHwFunding.TestError()
