@@ -56,7 +56,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             XCTAssertEqual(operations.publicPublicationValues, [true])
             XCTAssertEqual(operations.privatePublications.count, 1)
             XCTAssertEqual(operations.privatePublications[0].contactPublicKeys, ["contact-a", "contact-b"])
-            XCTAssertFalse(operations.privatePublications[0].requiresImmediatePublication)
+            XCTAssertTrue(operations.privatePublications[0].requiresImmediatePublication)
             XCTAssertEqual(operations.calls, ["private:publish", "public:true"])
             XCTAssertEqual(operations.privateRemovalCount, 0)
             XCTAssertEqual(operations.publicCleanupValues, [false])
@@ -71,6 +71,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
 
     func testEnablingContactPaymentsWithoutPrivateCapabilityPublishesOnlyPublicEndpoints() async throws {
         try await withIsolatedDefaultsAsync { defaults in
+            defaults.set(true, forKey: PrivatePaykitService.cleanupPendingKey)
             let operations = OperationsSpy()
 
             try await ContactPaymentsService.setEnabled(
@@ -83,6 +84,8 @@ final class ContactPaymentsServiceTests: XCTestCase {
 
             XCTAssertEqual(operations.publicPublicationValues, [true])
             XCTAssertTrue(operations.privatePublications.isEmpty)
+            XCTAssertTrue(operations.privateCleanupValues.isEmpty)
+            XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
             XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
             XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
         }
@@ -137,6 +140,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             XCTAssertEqual(operations.publicPublicationValues, [false])
             XCTAssertFalse(operations.calls.contains("public:true"))
             XCTAssertEqual(operations.privatePublications.count, 1)
+            XCTAssertTrue(operations.privatePublications[0].requiresImmediatePublication)
             XCTAssertEqual(operations.privateRemovalCount, 1)
             XCTAssertEqual(operations.publicCleanupValues, [true])
             XCTAssertEqual(operations.privateCleanupValues, [false])

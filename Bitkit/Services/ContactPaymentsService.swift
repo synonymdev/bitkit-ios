@@ -123,7 +123,7 @@ enum ContactPaymentsService {
         if canUsePrivatePayments,
            let error = await operations.preparePrivateEndpoints(
                contactPublicKeys,
-               false
+               true
            )
         {
             throw error
@@ -132,7 +132,9 @@ enum ContactPaymentsService {
         try await operations.syncPublicEndpoints(true)
 
         operations.setPublicCleanupPending(false)
-        operations.setPrivateCleanupPending(false)
+        if canUsePrivatePayments {
+            operations.setPrivateCleanupPending(false)
+        }
     }
 
     @MainActor

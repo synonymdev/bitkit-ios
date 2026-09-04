@@ -24,7 +24,7 @@ extension PrivatePaykitService {
         if let reason = await privateEndpointPublicationUnavailabilityReason(wallet: wallet) {
             Logger.info("Deferring private Paykit endpoint publication during prepare: \(reason)", context: "PrivatePaykitService")
             await prepareRelevantPrivateLinksIfAvailable(publicKeys, reason: "prepare")
-            return requireImmediatePublication && !publicKeys.isEmpty ? PrivatePaykitError.privateUnavailable : nil
+            return nil
         }
 
         await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()

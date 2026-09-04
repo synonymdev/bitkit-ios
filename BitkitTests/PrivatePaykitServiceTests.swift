@@ -18,6 +18,29 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(PrivatePaykitService.initialLinkBurstRetryDelays.allSatisfy { $0 == 2_000_000_000 })
     }
 
+    @MainActor
+    func testPreparingSavedContactsDefersWhenPublicationIsUnavailable() async {
+        let defaults = UserDefaults.standard
+        let previousValue = defaults.object(forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: PrivatePaykitService.publishingEnabledKey)
+            } else {
+                defaults.removeObject(forKey: PrivatePaykitService.publishingEnabledKey)
+            }
+        }
+
+        let service = PrivatePaykitService()
+        let error = await service.prepareSavedContacts(
+            ["pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"],
+            wallet: WalletViewModel(),
+            requireImmediatePublication: true
+        )
+
+        XCTAssertNil(error)
+    }
+
     func testReceiverNoiseDerivationMatchesCrossPlatformVector() {
         let seed = (
             "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e534955" +
