@@ -58,14 +58,16 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertEqual(
             PublicPaykitService.parseEndpoint(
                 methodId: "btc-testnet-p2wpkh",
-                endpointData: #"{"value":"tb1qexample"}"#
+                endpointData: #"{"value":"tb1qexample"}"#,
+                network: .testnet
             )?.methodId,
             .testnetOnchainP2wpkh
         )
         XCTAssertEqual(
             PublicPaykitService.parseEndpoint(
                 methodId: "btc-regtest-p2tr",
-                endpointData: #"{"value":"bcrt1pexample"}"#
+                endpointData: #"{"value":"bcrt1pexample"}"#,
+                network: .regtest
             )?.methodId,
             .regtestOnchainP2tr
         )

@@ -59,7 +59,7 @@ extension PrivatePaykitService {
         let consumedVersion = state.contacts[publicKey]?.consumedPrivatePaymentListVersionsByReceiverPath[receiverPath]
         let previousPaymentListVersion = consumedVersion.map(String.init) ?? "none"
         let amount = paymentRequest.map {
-            PaymentAmountContext(value: $0.amountValue, asset: "btc")
+            PaymentAmountContext(value: $0.amountValue, asset: PaykitIssuerInterop.bitcoinAsset)
         }
 
         do {
