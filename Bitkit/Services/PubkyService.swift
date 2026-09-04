@@ -833,12 +833,12 @@ actor PaykitSdkService {
     }
 
     func forgetSessionAccess() async throws {
+        defer { resetRuntime() }
         try await withStateRevisionTracking { sdk in
             activeAuthRequest = nil
             activeAuthRequestID = nil
             _ = try await sdk.forgetSessionAccess()
         }
-        resetRuntime()
     }
 
     func clearState() async {
