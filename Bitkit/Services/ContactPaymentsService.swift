@@ -116,7 +116,9 @@ enum ContactPaymentsService {
         operations: Operations,
         defaults: UserDefaults
     ) async throws {
+        defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
         defaults.set(canUsePrivatePayments, forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set(true, forKey: confirmedPreferenceKey)
 
         if canUsePrivatePayments,
            let error = await operations.preparePrivateEndpoints(
@@ -128,9 +130,6 @@ enum ContactPaymentsService {
         }
 
         try await operations.syncPublicEndpoints(true)
-
-        defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
-        defaults.set(true, forKey: confirmedPreferenceKey)
 
         operations.setPublicCleanupPending(false)
         operations.setPrivateCleanupPending(false)

@@ -825,6 +825,7 @@ struct AppScene: View {
               app.contactPaymentContext == nil
         else { return }
 
+        var shouldPresentNextRequest = true
         let attemptedPresentation = await paykitPaymentRequestManager.presentRequests { requests in
             guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet, app.contactPaymentContext == nil else { return }
             for request in requests {
@@ -875,7 +876,8 @@ struct AppScene: View {
                                     wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                                 }
                             )
-                            continue
+                            shouldPresentNextRequest = false
+                            return
                         }
 
                         guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
@@ -926,6 +928,7 @@ struct AppScene: View {
         }
 
         guard attemptedPresentation,
+              shouldPresentNextRequest,
               paykitPaymentRequestManager.requestedPresentationId != nil ||
               !paykitPaymentRequestManager.requestsForPresentation().isEmpty,
               sheets.activeSheetConfiguration == nil,

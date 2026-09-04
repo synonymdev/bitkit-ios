@@ -40,7 +40,9 @@ final class ContactPaymentsServiceTests: XCTestCase {
         try await withIsolatedDefaultsAsync { defaults in
             let operations = OperationsSpy()
             operations.onPreparePrivateEndpoints = {
+                XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
                 XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+                XCTAssertTrue(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey))
             }
 
             try await ContactPaymentsService.setEnabled(
