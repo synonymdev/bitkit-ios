@@ -494,6 +494,62 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.pendingRequests.isEmpty)
     }
 
+    func testFailedSubscriptionDismissalKeepsPeriodQueued() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: timestamp(now), anchor: timestamp(now), endsAt: nil
+        )
+        let store = PaymentRequestSubscriptionStateMemoryStore()
+        let manager = try paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)]),
+            clock: PaymentRequestTestClock(now),
+            subscriptionStateStore: store
+        )
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        manager.requestPresentation(request)
+        store.shouldFailSave = true
+
+        XCTAssertFalse(manager.dismissSubscriptionPayment(request))
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertEqual(manager.requestedPresentationId, request.id)
+        await manager.refresh()
+        XCTAssertEqual(manager.pendingRequests, [request])
+
+        store.shouldFailSave = false
+        XCTAssertTrue(manager.dismissSubscriptionPayment(request))
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testSubscriptionDeadlinesExpireWithoutAnotherRefresh() async throws {
+        let deadline = Date().addingTimeInterval(2)
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: timestamp(Date()), anchor: timestamp(Date()), endsAt: timestamp(deadline)
+        )
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(id: "proposal-deadline", expiresAt: timestamp(deadline), recurrence: PaymentRequestRecurrence(
+                every: 1, unit: "month", startsAt: timestamp(Date()), anchor: timestamp(Date()), endsAt: nil
+            )),
+            paymentRequestRecord(id: "schedule-end", recurrence: recurrence),
+        ])
+        let manager = PaykitPaymentRequestManager(
+            service: PaykitPaymentRequestService(sdk: sdk, logWarning: { _ in }),
+            presentationStore: PaymentRequestPresentationMemoryStore(),
+            subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore(),
+            isAvailable: { true },
+            logWarning: { _ in }
+        )
+        manager.activate(identity: "pubky\(String(repeating: "z", count: 52))")
+        await manager.refresh()
+        XCTAssertEqual(manager.subscriptions.count, 2)
+        XCTAssertNotNil(manager.subscriptionProposalForPresentation())
+
+        try await waitUntil(timeout: .seconds(5)) {
+            manager.subscriptions.allSatisfy { $0.lifecycleState == .proposalExpired }
+        }
+        XCTAssertNil(manager.subscriptionProposalForPresentation())
+    }
+
     func testCompletedSubscriptionPaymentAwaitingProofSubmissionIsNotOfferedAgain() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let recurrence = PaymentRequestRecurrence(
@@ -2003,6 +2059,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     private func paymentRequestManager(
         sdk: PaymentRequestSdkMock,
         clock: PaymentRequestTestClock = PaymentRequestTestClock(Date()),
+        subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore = PaymentRequestSubscriptionStateMemoryStore(),
         isPrivatePaymentPublishingEnabled: Bool = true,
         completedPaymentProofKinds: [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = [:],
         inFlightPaymentRequestIds: Set<PaykitPaymentRequest.ID> = [],
@@ -2017,7 +2074,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 logWarning: { _ in }
             ),
             presentationStore: PaymentRequestPresentationMemoryStore(),
-            subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore(),
+            subscriptionStateStore: subscriptionStateStore,
             completedPaymentProofKinds: { _ in completedPaymentProofKinds },
             inFlightPaymentRequestIds: { _ in inFlightPaymentRequestIds },
             protectedRequestIdsForSubscriptionCancellation: { _, _ in protectedRequestIdsForSubscriptionCancellation },
@@ -2135,12 +2192,14 @@ private final class PaymentRequestPresentationMemoryStore: PaykitPaymentRequestP
 
 private final class PaymentRequestSubscriptionStateMemoryStore: PaykitSubscriptionStateStoring {
     private var states: [String: PaykitSubscriptionState] = [:]
+    var shouldFailSave = false
 
     func load(identity: String) -> PaykitSubscriptionState {
         states[identity] ?? PaykitSubscriptionState()
     }
 
-    func save(_ subscriptionState: PaykitSubscriptionState, identity: String) {
+    func save(_ subscriptionState: PaykitSubscriptionState, identity: String) throws {
+        if shouldFailSave { throw PaymentRequestSdkMockError.preparation }
         states[identity] = subscriptionState
     }
 }

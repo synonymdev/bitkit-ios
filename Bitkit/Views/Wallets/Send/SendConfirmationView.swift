@@ -30,6 +30,7 @@ struct SendConfirmationView: View {
     @State private var warningContinuation: CheckedContinuation<Bool, Error>?
     @State private var swipeProgress: CGFloat = 0
     @State private var hasStartedAutomaticPayment = false
+    @State private var requiresPaymentConfirmation = false
 
     var accentColor: Color {
         if hwSend.isActive { return .blueAccent }
@@ -151,10 +152,15 @@ struct SendConfirmationView: View {
         return contactsManager.contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) })
     }
 
+    private var shouldAutomaticallyPay: Bool {
+        app.contactPaymentContext?.isInitialSubscriptionPayment == true && app.selectedWalletToPayFrom == .lightning &&
+            !hwSend.isActive && !requiresPaymentConfirmation
+    }
+
     var body: some View {
         ZStack {
             confirmationContent
-            if app.contactPaymentContext?.isInitialSubscriptionPayment == true {
+            if shouldAutomaticallyPay {
                 InitialSubscriptionPaymentProgress()
             }
         }
@@ -242,9 +248,15 @@ struct SendConfirmationView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             ensureSendAmountFromScannedInvoicesIfNeeded()
+            if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
+                requiresPaymentConfirmation = true
+                showDetails = true
+            }
             await calculateTransactionFee()
             await calculateRoutingFee()
-            await startAutomaticPaymentIfNeeded()
+            guard !Task.isCancelled else { return }
+            // PIN navigation can cancel the view task while authorization is awaiting its result.
+            Task { @MainActor in await startAutomaticPaymentIfNeeded() }
         }
         .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
             Task {
@@ -300,16 +312,10 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
-        guard app.contactPaymentContext?.isInitialSubscriptionPayment == true,
-              !hasStartedAutomaticPayment
+        guard shouldAutomaticallyPay, !hasStartedAutomaticPayment
         else { return }
         hasStartedAutomaticPayment = true
         do {
-            if app.selectedWalletToPayFrom == .onchain,
-               wallet.selectedFeeRateSatsPerVByte == nil
-            {
-                try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
-            }
             try await submitPayment()
         } catch is CancellationError {
             navigationPath.append(.failure(SendFailureContext(

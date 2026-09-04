@@ -1032,6 +1032,10 @@ final class PaykitPaymentRequestManager {
         else { return false }
 
         dismissedSubscriptionPaymentIds.insert(request.id)
+        guard persistSubscriptionState() else {
+            dismissedSubscriptionPaymentIds.remove(request.id)
+            return false
+        }
         pendingRequests.removeAll { $0.id == request.id }
         presentedRequestIds.remove(request.id)
         presentationRetryAttempts.removeValue(forKey: request.id)
@@ -1040,7 +1044,6 @@ final class PaykitPaymentRequestManager {
             presentationGeneration += 1
             requestedPresentationId = nil
         }
-        persistSubscriptionState()
         persistPresentedRequestIds()
         schedulePresentationRetry()
         return true
@@ -1568,20 +1571,22 @@ final class PaykitPaymentRequestManager {
         }
     }
 
-    private func persistSubscriptionState(identity: String? = nil) {
+    @discardableResult
+    private func persistSubscriptionState(identity: String? = nil) -> Bool {
         let subscriptionState = PaykitSubscriptionState(
             acceptedAt: subscriptionAcceptedAt,
             presentedProposalIds: presentedSubscriptionProposalIds,
             dismissedPaymentIds: dismissedSubscriptionPaymentIds
         )
-        guard subscriptionState != persistedSubscriptionState,
-              let identity = identity ?? activeIdentity
-        else { return }
+        guard subscriptionState != persistedSubscriptionState else { return true }
+        guard let identity = identity ?? activeIdentity else { return false }
         do {
             try subscriptionStateStore.save(subscriptionState, identity: identity)
             persistedSubscriptionState = subscriptionState
+            return true
         } catch {
             logWarning("Failed to persist Paykit subscription state: \(error)")
+            return false
         }
     }
 

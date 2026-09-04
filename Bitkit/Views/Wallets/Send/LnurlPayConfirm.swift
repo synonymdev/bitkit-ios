@@ -55,7 +55,11 @@ struct LnurlPayConfirm: View {
         } message: {
             Text(biometricErrorMessage)
         }
-        .task { await startAutomaticPaymentIfNeeded() }
+        .task {
+            guard !Task.isCancelled else { return }
+            // PIN navigation can cancel the view task while authorization is awaiting its result.
+            Task { @MainActor in await startAutomaticPaymentIfNeeded() }
+        }
     }
 
     private var confirmationContent: some View {
