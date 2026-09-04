@@ -390,7 +390,27 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertEqual(manager.paymentRequestForRetry(request.id), request)
         XCTAssertTrue(manager.requestPresentation(request, isInitialSubscriptionPayment: true))
+        XCTAssertTrue(manager.isInitialSubscriptionPayment(request))
         XCTAssertTrue(manager.consumeInitialSubscriptionPayment(request))
+        XCTAssertFalse(manager.isInitialSubscriptionPayment(request))
+    }
+
+    func testAcceptedRequestPastProposalExpirationDoesNotRescheduleExpiration() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let record = try paymentRequestRecord(
+            state: .accepted,
+            expiresAt: timestamp(now.addingTimeInterval(-60))
+        )
+        let manager = paymentRequestManager(sdk: PaymentRequestSdkMock(records: [record]), clock: clock)
+
+        await manager.refresh()
+
+        XCTAssertEqual(manager.pendingRequests.count, 1)
+        let baseline = clock.invocationCount()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertLessThan(clock.invocationCount() - baseline, 10)
+        manager.clear()
     }
 
     func testAcceptingSubscriptionSelectsPeriodFromMatchingCounterpartyAndPath() async throws {
@@ -867,6 +887,25 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertEqual(period.sdkValue.startsAt, "2027-01-01T08:00:00.123100Z")
         XCTAssertEqual(period.sdkValue.endsAt, "2027-01-01T08:00:00.123900Z")
+    }
+
+    func testSubscriptionTimestampsPreserveFractionalOffset() throws {
+        let startsAt = "2027-01-01T08:00:00.500+01:00"
+        let endsAt = "2027-02-01T08:00:00.500+01:00"
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: startsAt,
+            anchor: startsAt,
+            endsAt: nil
+        )
+        let schedule = try XCTUnwrap(PaykitSubscriptionRecurrence(recurrence))
+        let expectedStart = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-01T07:00:00.500Z"))
+        let period = try XCTUnwrap(PaykitBillingPeriod(sdkPeriod: BillingPeriod(startsAt: startsAt, endsAt: endsAt)))
+
+        XCTAssertEqual(schedule.startsAt.timeIntervalSince1970, expectedStart.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(period.startsAt.timeIntervalSince1970, expectedStart.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(period.sdkValue.startsAt, startsAt)
     }
 
     func testSubscriptionTimestampUsesCanonicalInstantPrecision() {
@@ -2466,6 +2505,7 @@ private enum PaymentRequestSdkMockError: Error, Equatable {
 private final class PaymentRequestTestClock: @unchecked Sendable {
     private let lock = NSLock()
     private var date: Date
+    private var invocations = 0
 
     init(_ date: Date) {
         self.date = date
@@ -2474,7 +2514,14 @@ private final class PaymentRequestTestClock: @unchecked Sendable {
     func now() -> Date {
         lock.lock()
         defer { lock.unlock() }
+        invocations += 1
         return date
+    }
+
+    func invocationCount() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return invocations
     }
 
     func advance(by interval: TimeInterval) {

@@ -465,31 +465,35 @@ actor PaykitPaymentProofService {
                 PubkyPublicKeyFormat.matches($0.identity, identity)
             }
             for proof in identityProofs {
-                if proof.proofData != nil {
-                    await submit(proof)
-                    continue
-                }
-                if proof.kind == .onchain,
-                   proof.paymentStarted,
-                   let address = proof.onchainAddress,
-                   let amountSats = proof.onchainAmountSats,
-                   let txid = try await onchainPaymentLookup.transactionId(
-                       address: address,
-                       amountSats: amountSats,
-                       excluding: proof.onchainMatchingTransactionIdsBeforeAttempt ?? []
-                   )
-                {
-                    await completeOnchainPayment(requestId: proof.requestId, identity: proof.identity, txid: txid)
-                    continue
-                }
-                guard proof.kind == PaykitPaymentProofKind.lightning, let paymentHash = proof.paymentIdentifier else { continue }
-                switch await lightningPaymentLookup.status(paymentHash: paymentHash) {
-                case .pending, .unknown:
-                    continue
-                case .failed:
-                    await failLightningPayment(paymentHash: paymentHash)
-                case let .succeeded(preimage):
-                    await completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+                do {
+                    if proof.proofData != nil {
+                        await submit(proof)
+                        continue
+                    }
+                    if proof.kind == .onchain,
+                       proof.paymentStarted,
+                       let address = proof.onchainAddress,
+                       let amountSats = proof.onchainAmountSats,
+                       let txid = try await onchainPaymentLookup.transactionId(
+                           address: address,
+                           amountSats: amountSats,
+                           excluding: proof.onchainMatchingTransactionIdsBeforeAttempt ?? []
+                       )
+                    {
+                        await completeOnchainPayment(requestId: proof.requestId, identity: proof.identity, txid: txid)
+                        continue
+                    }
+                    guard proof.kind == PaykitPaymentProofKind.lightning, let paymentHash = proof.paymentIdentifier else { continue }
+                    switch await lightningPaymentLookup.status(paymentHash: paymentHash) {
+                    case .pending, .unknown:
+                        continue
+                    case .failed:
+                        await failLightningPayment(paymentHash: paymentHash)
+                    case let .succeeded(preimage):
+                        await completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+                    }
+                } catch {
+                    logWarning("Failed to reconcile a pending Paykit payment proof: \(error)")
                 }
             }
         } catch {

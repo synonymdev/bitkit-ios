@@ -361,17 +361,15 @@ struct PaymentRequestsView: View {
             ($0.lifecycleState == .proposed && !$0.isExpired(at: Date()))
                 || ($0.direction == .outgoing && $0.lifecycleState == .accepted)
         }
-        return (pending + historical).reduce(into: [PaykitPaymentRequest]()) { requests, request in
-            if !requests.contains(where: { $0.id == request.id }) {
-                requests.append(request)
-            }
-        }.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+        var requestIds = Set<PaykitPaymentRequest.ID>()
+        return (pending + historical)
+            .filter { requestIds.insert($0.id).inserted }
+            .sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
     }
 
     private var historicalRequests: [PaykitPaymentRequest] {
-        paymentRequests.historyRequests.filter { request in
-            !activeRequests.contains { $0.id == request.id }
-        }
+        let activeIds = Set(activeRequests.map(\.id))
+        return paymentRequests.historyRequests.filter { !activeIds.contains($0.id) }
     }
 
     private var historySections: [HistorySection] {

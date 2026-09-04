@@ -810,30 +810,31 @@ struct AppScene: View {
     }
 
     private func associateResolvedPaykitOnchainPayment(_ resolution: PaykitOnchainPaymentResolution) async {
-        guard let identity = pubkyProfile.publicKey,
-              PubkyPublicKeyFormat.matches(resolution.identity, identity)
-        else { return }
-        do {
-            _ = try await tryNTimes(
-                toTry: {
-                    try? await activity.syncLdkNodePayments()
-                    return try await activity.findActivity(byPaymentId: resolution.transactionId)
-                },
-                times: 12,
-                interval: 2
-            )
-            try await activity.setContact(
-                resolution.requestId.counterparty,
-                forPaymentId: resolution.transactionId,
-                syncLdkPayments: false
-            )
-            await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution)
-        } catch {
-            Logger.warn(
-                "Failed to associate resolved Paykit payment \(resolution.transactionId) with its contact: \(error)",
-                context: "AppScene"
-            )
+        if let identity = pubkyProfile.publicKey,
+           PubkyPublicKeyFormat.matches(resolution.identity, identity)
+        {
+            do {
+                _ = try await tryNTimes(
+                    toTry: {
+                        try? await activity.syncLdkNodePayments()
+                        return try await activity.findActivity(byPaymentId: resolution.transactionId)
+                    },
+                    times: 12,
+                    interval: 2
+                )
+                try await activity.setContact(
+                    resolution.requestId.counterparty,
+                    forPaymentId: resolution.transactionId,
+                    syncLdkPayments: false
+                )
+            } catch {
+                Logger.warn(
+                    "Failed to associate resolved Paykit payment \(resolution.transactionId) with its contact: \(error)",
+                    context: "AppScene"
+                )
+            }
         }
+        await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution)
     }
 
     private func pollIncomingPaykitPaymentRequests() async {
@@ -901,7 +902,7 @@ struct AppScene: View {
                         publicKey: request.counterparty,
                         privatePaymentContext: privatePaymentContext,
                         incomingPaymentRequest: request,
-                        isInitialSubscriptionPayment: paykitPaymentRequestManager.consumeInitialSubscriptionPayment(request)
+                        isInitialSubscriptionPayment: paykitPaymentRequestManager.isInitialSubscriptionPayment(request)
                     )
                     guard app.claimContactPaymentContext(contactPaymentContext) else { return }
 
@@ -964,6 +965,7 @@ struct AppScene: View {
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                         return
                     }
+                    _ = paykitPaymentRequestManager.consumeInitialSubscriptionPayment(request)
                     sheets.showSheet(.send, data: SendConfig(view: route))
                     return
                 } catch is CancellationError {

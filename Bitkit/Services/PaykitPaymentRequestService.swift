@@ -1135,6 +1135,10 @@ final class PaykitPaymentRequestManager {
         initialSubscriptionPaymentRequestIds.remove(request.id) != nil
     }
 
+    func isInitialSubscriptionPayment(_ request: PaykitPaymentRequest) -> Bool {
+        initialSubscriptionPaymentRequestIds.contains(request.id)
+    }
+
     func clear() {
         stateGeneration += 1
         let clearedStateGeneration = stateGeneration
@@ -1545,7 +1549,7 @@ final class PaykitPaymentRequestManager {
         expirationTask?.cancel()
         expirationTask = nil
 
-        let requestExpirations = pendingRequests.compactMap(\.expiresAt)
+        let requestExpirations = pendingRequests.filter { $0.lifecycleState == .proposed }.compactMap(\.expiresAt)
         let subscriptionExpirations = subscriptions.filter {
             $0.isProposal || $0.lifecycleState == .activeRecurring
         }.flatMap {

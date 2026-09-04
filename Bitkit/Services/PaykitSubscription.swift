@@ -14,12 +14,16 @@ private struct PaykitPreciseInstant: Comparable, Hashable {
     init?(timestamp: String) {
         let canonical = PaykitSubscriptionTimestamp.canonical(timestamp)
         let fraction = PaykitSubscriptionTimestamp.fractionalSeconds(from: canonical) ?? ""
-        let wholeSecondTimestamp = canonical.firstIndex(of: ".").map { String(canonical[..<$0]) } ?? String(canonical.dropLast())
         let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        guard let date = formatter.date(from: wholeSecondTimestamp + "Z") else { return nil }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var parsedDate = formatter.date(from: canonical)
+        if parsedDate == nil {
+            formatter.formatOptions = [.withInternetDateTime]
+            parsedDate = formatter.date(from: canonical)
+        }
+        guard let date = parsedDate else { return nil }
 
-        seconds = Int64(date.timeIntervalSince1970)
+        seconds = Int64(floor(date.timeIntervalSince1970))
         nanoseconds = Int(fraction.padding(toLength: 9, withPad: "0", startingAt: 0)) ?? 0
         self.timestamp = canonical
     }
@@ -693,7 +697,7 @@ enum PaykitSubscriptionTimestamp {
     static func fractionalSeconds(from timestamp: String) -> String? {
         let timestamp = canonical(timestamp)
         guard let periodIndex = timestamp.firstIndex(of: "."),
-              let zoneIndex = timestamp[periodIndex...].firstIndex(of: "Z")
+              let zoneIndex = timestamp[periodIndex...].firstIndex(where: { $0 == "Z" || $0 == "+" || $0 == "-" })
         else { return nil }
         let fraction = timestamp[timestamp.index(after: periodIndex) ..< zoneIndex]
         return fraction.isEmpty ? nil : String(fraction)

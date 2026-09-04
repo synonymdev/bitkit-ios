@@ -430,6 +430,60 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(storedProof.onchainMatchingTransactionIdsBeforeAttempt, [oldTransactionId])
     }
 
+    func testReconcileContinuesAfterOnchainLookupFailure() async throws {
+        let onchainEndpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let lightningEndpoint = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+        let onchainRecord = try paymentRequestRecord(
+            endpoints: [onchainEndpoint],
+            paymentRequestId: "550e8400-e29b-41d4-a716-446655440001"
+        )
+        let lightningRecord = try paymentRequestRecord(
+            endpoints: [lightningEndpoint],
+            paymentRequestId: "550e8400-e29b-41d4-a716-446655440002"
+        )
+        let onchainRequest = try XCTUnwrap(PaykitPaymentRequest(record: onchainRecord, now: Date()))
+        let lightningRequest = try XCTUnwrap(PaykitPaymentRequest(record: lightningRecord, now: Date()))
+        let onchainProof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: onchainRequest.id,
+            paymentEndpointIdentifier: onchainEndpoint,
+            kind: .onchain,
+            paymentStarted: true,
+            paymentIdentifier: nil,
+            proofData: nil,
+            onchainAddress: onchainAddress,
+            onchainAmountSats: onchainRequest.amountSats,
+            onchainMatchingTransactionIdsBeforeAttempt: []
+        )
+        let lightningProof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: lightningRequest.id,
+            paymentEndpointIdentifier: lightningEndpoint,
+            kind: .lightning,
+            paymentStarted: true,
+            paymentIdentifier: paymentHash,
+            proofData: nil
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([onchainProof, lightningProof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [onchainRecord, lightningRecord])
+        let service = paymentProofService(
+            sdk: sdk,
+            store: store,
+            lightningStatus: .succeeded(preimage: preimage),
+            onchainLookupFails: true
+        )
+
+        await service.reconcile()
+
+        let submissionCount = await sdk.submissionCount()
+        let submittedEndpoint = await sdk.lastSubmission()?.paymentEndpointIdentifier
+        let remainingProofs = await store.snapshot()
+        XCTAssertEqual(submissionCount, 1)
+        XCTAssertEqual(submittedEndpoint, lightningEndpoint)
+        XCTAssertEqual(remainingProofs, [onchainProof])
+    }
+
     func testDefiniteOnchainFailureClearsStartedProof() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
@@ -681,7 +735,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         store: PaymentProofMemoryStore,
         lightningStatus: PaykitLightningPaymentProofStatus = .unknown,
         onchainTxids: [String] = [],
-        existingOnchainTxids: Set<String> = []
+        existingOnchainTxids: Set<String> = [],
+        onchainLookupFails: Bool = false
     ) -> PaykitPaymentProofService {
         PaykitPaymentProofService(
             sdk: sdk,
@@ -689,7 +744,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             lightningPaymentLookup: PaymentProofLightningLookup(status: lightningStatus),
             onchainPaymentLookup: PaymentProofOnchainLookup(
                 transactionIds: onchainTxids,
-                existingTransactionIds: existingOnchainTxids
+                existingTransactionIds: existingOnchainTxids,
+                transactionLookupFails: onchainLookupFails
             ),
             logInfo: { _ in },
             logWarning: { _ in }
@@ -820,13 +876,17 @@ private struct PaymentProofLightningLookup: PaykitLightningPaymentProofLookingUp
 private struct PaymentProofOnchainLookup: PaykitOnchainPaymentProofLookingUp {
     let transactionIds: [String]
     let existingTransactionIds: Set<String>
+    let transactionLookupFails: Bool
 
     func existingTransactionIds(address _: String, amountSats _: UInt64) async throws -> Set<String> {
         existingTransactionIds
     }
 
     func transactionId(address _: String, amountSats _: UInt64, excluding transactionIds: Set<String>) async throws -> String? {
-        self.transactionIds.first { !transactionIds.contains($0) }
+        if transactionLookupFails {
+            throw PaymentProofLookupMockError.transactionLookup
+        }
+        return self.transactionIds.first { !transactionIds.contains($0) }
     }
 }
 
@@ -945,4 +1005,8 @@ private enum PaymentProofSdkMockError: Error {
 private enum PaymentProofStoreMockError: Error {
     case load
     case save
+}
+
+private enum PaymentProofLookupMockError: Error {
+    case transactionLookup
 }

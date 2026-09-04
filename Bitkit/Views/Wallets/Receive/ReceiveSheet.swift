@@ -130,6 +130,12 @@ struct ReceiveSheet: View {
                 initialDraft: draft,
                 target: target,
                 onEditAmount: { updatedDraft in
+                    if let route = navigationPath.last, case .paymentRequestDetails = route {
+                        navigationPath.removeLast()
+                    }
+                    if let route = navigationPath.last, case .paymentRequestAmount = route {
+                        navigationPath.removeLast()
+                    }
                     navigationPath.append(.paymentRequestAmount(updatedDraft, target))
                 },
                 onSent: { request in
