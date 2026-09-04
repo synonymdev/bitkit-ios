@@ -25,7 +25,11 @@ final class PaykitIssuerInteropTests: XCTestCase {
         let fixtures = try loadFixtures()
 
         for fixture in fixtures.endpointFixtures {
-            let endpoint = PublicPaykitService.parseEndpoint(methodId: fixture.identifier, endpointData: fixture.payload)
+            let endpoint = PublicPaykitService.parseEndpoint(
+                methodId: fixture.identifier,
+                endpointData: fixture.payload,
+                network: .regtest
+            )
 
             XCTAssertEqual(endpoint != nil, fixture.accepted, fixture.name)
             XCTAssertEqual(endpoint?.value, fixture.expectedValue, fixture.name)

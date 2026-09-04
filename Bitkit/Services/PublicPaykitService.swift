@@ -218,8 +218,15 @@ enum PublicPaykitService {
         return MethodId.payablePreferenceOrder.compactMap { endpointsByMethodId[$0] }
     }
 
-    static func parseEndpoint(methodId rawMethodId: String, endpointData: String) -> Endpoint? {
+    static func parseEndpoint(
+        methodId rawMethodId: String,
+        endpointData: String,
+        network: LDKNode.Network = Env.network
+    ) -> Endpoint? {
         guard let methodId = MethodId(rawValue: rawMethodId) else {
+            return nil
+        }
+        if let onchainNetwork = methodId.onchainNetwork, onchainNetwork != network {
             return nil
         }
 
