@@ -6,6 +6,24 @@ struct QrArea: View {
     let imageAsset: String?
     let accentColor: Color
     @Binding var navigationPath: [ReceiveRoute]
+    let copyValue: String?
+    let editRoute: ReceiveRoute?
+
+    init(
+        uri: String,
+        imageAsset: String?,
+        accentColor: Color,
+        navigationPath: Binding<[ReceiveRoute]>,
+        copyValue: String? = nil,
+        editRoute: ReceiveRoute? = .edit(onchainOnly: false)
+    ) {
+        self.uri = uri
+        self.imageAsset = imageAsset
+        self.accentColor = accentColor
+        _navigationPath = navigationPath
+        self.copyValue = copyValue
+        self.editRoute = editRoute
+    }
 
     @State private var showCopyTooltip = false
     @State private var showShareSheet = false
@@ -33,15 +51,17 @@ struct QrArea: View {
         }
 
         HStack {
-            CustomButton(
-                title: t("common__edit"),
-                size: .small,
-                icon: Image("pencil").foregroundColor(accentColor),
-                shouldExpand: true
-            ) {
-                navigationPath.append(.edit)
+            if let editRoute {
+                CustomButton(
+                    title: t("common__edit"),
+                    size: .small,
+                    icon: Image("pencil").foregroundColor(accentColor),
+                    shouldExpand: true
+                ) {
+                    navigationPath.append(editRoute)
+                }
+                .accessibilityIdentifier("SpecifyInvoiceButton")
             }
-            .accessibilityIdentifier("SpecifyInvoiceButton")
 
             CustomButton(
                 title: t("common__copy"),
@@ -115,7 +135,7 @@ struct QrArea: View {
     }
 
     private func onCopy() {
-        UIPasteboard.general.string = uri
+        UIPasteboard.general.string = copyValue ?? uri
         Haptics.play(.copiedToClipboard)
 
         // Show tooltip

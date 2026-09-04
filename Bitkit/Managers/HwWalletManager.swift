@@ -19,6 +19,15 @@ import Foundation
 @Observable
 @MainActor
 final class HwWalletManager {
+    typealias AccountInfoProvider = @MainActor (
+        String,
+        String,
+        TrezorCoinType,
+        UInt32,
+        AccountType
+    ) async throws -> AccountInfoResult
+    typealias AddressProvider = @MainActor (TrezorGetAddressParams) async throws -> TrezorAddressResponse
+
     private enum Constants {
         static let watcherIdSeparator = "|"
         static let watcherStartRetryDelay: Duration = .seconds(30)
@@ -54,6 +63,8 @@ final class HwWalletManager {
     private let monitoredTypesProvider: () -> Set<String>
     private let electrumUrlProvider: () -> String
     private let networkProvider: () -> TrezorCoinType
+    private let accountInfoProvider: AccountInfoProvider
+    private let addressProvider: AddressProvider
     private let persistSnapshot: @MainActor (HwWalletSnapshot) async throws -> Void
     private let deleteActivities: @MainActor (String) async throws -> Void
     private let readTagMetadata: @MainActor (String) async throws -> [PreActivityMetadata]
@@ -117,6 +128,18 @@ final class HwWalletManager {
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
+        accountInfoProvider: @escaping AccountInfoProvider = { extendedKey, electrumUrl, network, gapLimit, scriptType in
+            try await OnChainHwService.shared.getAccountInfo(
+                extendedKey: extendedKey,
+                electrumUrl: electrumUrl,
+                network: network,
+                gapLimit: gapLimit,
+                scriptType: scriptType
+            )
+        },
+        addressProvider: @escaping AddressProvider = { params in
+            try await TrezorService.shared.getAddress(params: params)
+        },
         persistSnapshot: (@MainActor (HwWalletSnapshot) async throws -> Void)? = nil,
         deleteActivities: (@MainActor (String) async throws -> Void)? = nil,
         readTagMetadata: (@MainActor (String) async throws -> [PreActivityMetadata])? = nil,
@@ -129,6 +152,8 @@ final class HwWalletManager {
             Set(SettingsViewModel.shared.addressTypesToMonitor.map(\.stringValue))
         }
         electrumUrlProvider = electrumUrl ?? { OnChainHwService.getElectrumUrl() }
+        self.accountInfoProvider = accountInfoProvider
+        self.addressProvider = addressProvider
         // Both seams are plain writes: queueing, failure handling and cache repair live in
         // `persist(_:)` / `delete(walletId:)`, so an injected seam exercises them too.
         self.persistSnapshot = persistSnapshot ?? { snapshot in
@@ -626,17 +651,32 @@ final class HwWalletManager {
 
     /// Update aggregated state from a watcher event. The first event after a watcher starts
     /// delivers the full history (baseline); only later inbound txs are surfaced as received.
-    /// Core builds the persistence-ready activities (core 0.3.4 watch-only watcher); the manager
-    /// stores, aggregates, and scopes them to the wallet.
+    /// Core builds the persistence-ready activities; the manager stores, aggregates, and scopes
+    /// them to the wallet.
     func handleWatcherEvent(watcherId: String, event: WatcherEvent) {
-        guard case let .transactionsChanged(activities, transactionDetails, balance, _, _, _, _) = event else { return }
+        guard case let .transactionsChanged(
+            activities,
+            transactionDetails,
+            balance,
+            _,
+            _,
+            _,
+            nextUnusedExternalAddress
+        ) = event,
+            let addressType = AddressScriptType.from(string: addressType(fromWatcherId: watcherId))
+        else { return }
         let walletId = walletId(fromWatcherId: watcherId)
         let previous = watcherData[watcherId]
         watcherData[watcherId] = HwWatcherData(
             walletId: walletId,
             balanceSats: balance.total,
             activities: activities,
-            transactionDetails: transactionDetails
+            transactionDetails: transactionDetails,
+            receiveAddress: HwReceiveAddress(
+                address: nextUnusedExternalAddress.address,
+                path: nextUnusedExternalAddress.path,
+                addressType: addressType
+            )
         )
         let groups = deviceGroups()
         recomputeDerivedState(groups: groups)
@@ -901,6 +941,80 @@ final class HwWalletManager {
         )
     }
 
+    func watcherReceiveAddress(
+        walletId: String,
+        addressType: AddressScriptType = hwFundingDefaultAddressType
+    ) -> HwReceiveAddress? {
+        let watcherId = "\(walletId)\(Constants.watcherIdSeparator)\(addressType.stringValue)"
+        return watcherData[watcherId]?.receiveAddress
+    }
+
+    /// Resolves the next unused external address from watcher state, falling back to an account scan.
+    func getReceiveAddress(
+        walletId: String,
+        addressType: AddressScriptType = hwFundingDefaultAddressType
+    ) async throws -> HwReceiveAddress {
+        if let address = watcherReceiveAddress(walletId: walletId, addressType: addressType) {
+            return address
+        }
+        let account = try getFundingAccount(walletId: walletId, addressType: addressType)
+        let info = try await accountInfoProvider(
+            account.xpub,
+            electrumUrlProvider(),
+            networkProvider(),
+            Constants.defaultGapLimit,
+            account.accountType
+        )
+        guard let unused = info.account.addresses.unused.first else {
+            throw AppError(
+                message: t("hardware__receive_address_error"),
+                debugMessage: "No unused external address returned for wallet '\(walletId)'"
+            )
+        }
+        let scannedAddress = HwReceiveAddress(address: unused.address, path: unused.path, addressType: addressType)
+        return watcherReceiveAddress(walletId: walletId, addressType: addressType) ?? scannedAddress
+    }
+
+    /// Displays the exact address currently shown by Bitkit on the device and rejects a mismatch.
+    func verifyReceiveAddress(walletId: String, receiveAddress: HwReceiveAddress) async throws {
+        try await ensureConnected(walletId: walletId)
+
+        let response: TrezorAddressResponse
+        do {
+            response = try await readAddressOnDevice(receiveAddress)
+        } catch {
+            guard error.isTrezorSessionFailure() else { throw error }
+            await disconnectStaleSession(walletId: walletId)
+            try await ensureConnected(walletId: walletId)
+            do {
+                response = try await readAddressOnDevice(receiveAddress)
+            } catch {
+                if error.isTrezorSessionFailure() {
+                    await disconnectStaleSession(walletId: walletId)
+                }
+                throw error
+            }
+        }
+
+        guard response.address == receiveAddress.address else {
+            throw AppError(
+                message: t("hardware__verify_address_error"),
+                debugMessage: "Trezor returned '\(response.address)' for '\(receiveAddress.path)', expected '\(receiveAddress.address)'"
+            )
+        }
+    }
+
+    private func readAddressOnDevice(_ receiveAddress: HwReceiveAddress) async throws -> TrezorAddressResponse {
+        try await addressProvider(
+            TrezorGetAddressParams(
+                path: receiveAddress.path,
+                coin: networkProvider(),
+                showOnTrezor: true,
+                scriptType: receiveAddress.addressType.trezorScriptType
+            )
+        )
+    }
+
     /// The exact amount spendable from the funding account after the real coin-selection mining fee,
     /// computed offline via a `sendMax` compose. No connected device is needed — `fingerprint` is only
     /// required for signing — so this mirrors the software wallet's max-sendable estimate.
@@ -1096,6 +1210,18 @@ final class HwWalletManager {
         let balanceSats: UInt64
         let activities: [Activity]
         let transactionDetails: [TransactionDetails]
+        let receiveAddress: HwReceiveAddress
+    }
+}
+
+private extension AddressScriptType {
+    var trezorScriptType: TrezorScriptType {
+        switch self {
+        case .legacy: .spendAddress
+        case .nestedSegwit: .spendP2shWitness
+        case .nativeSegwit: .spendWitness
+        case .taproot: .spendTaproot
+        }
     }
 }
 
