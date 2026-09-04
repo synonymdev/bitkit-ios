@@ -187,15 +187,20 @@ final class PublicPaykitServiceTests: XCTestCase {
         }
     }
 
-    func testPendingReconciliationRestoresPrivateOnlyReceiverMarker() throws {
-        try withIsolatedDefaults { defaults in
-            defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
-            defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+    func testPendingReconciliationHandlesWriterProducedSharingStates() throws {
+        let expectedModes: [(publicEnabled: Bool, privateEnabled: Bool, mode: PublicPaykitService.PendingReconciliationMode)] = [
+            (true, true, .publishEndpoints),
+            (true, false, .publishEndpoints),
+            (false, false, .removePublishedState),
+        ]
 
-            XCTAssertEqual(
-                PublicPaykitService.pendingReconciliationMode(defaults: defaults),
-                .publishReceiverMarker
-            )
+        for expected in expectedModes {
+            try withIsolatedDefaults { defaults in
+                defaults.set(expected.publicEnabled, forKey: PublicPaykitService.publishingEnabledKey)
+                defaults.set(expected.privateEnabled, forKey: PrivatePaykitService.publishingEnabledKey)
+
+                XCTAssertEqual(PublicPaykitService.pendingReconciliationMode(defaults: defaults), expected.mode)
+            }
         }
     }
 

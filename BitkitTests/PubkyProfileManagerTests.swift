@@ -120,7 +120,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         var privatePending = false
 
         PubkyProfileManager.markPaykitReconciliationPendingAfterFailedSignOut(
-            publicSharingEnabled: false,
+            publicSharingEnabled: true,
             privateSharingEnabled: true,
             setPublicReconciliationPending: { publicPending = $0 },
             setPrivateReconciliationPending: { privatePending = $0 }
@@ -128,6 +128,24 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         XCTAssertTrue(publicPending)
         XCTAssertTrue(privatePending)
+    }
+
+    @MainActor
+    func testProfileDeletionQueuesRemovalRatherThanRepublish() throws {
+        try withIsolatedDefaults { defaults in
+            defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+            defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+            var publicPending = false
+
+            PubkyProfileManager.clearPaykitSharingAfterProfileDeletion(
+                defaults: defaults,
+                setPublicReconciliationPending: { publicPending = $0 }
+            )
+
+            XCTAssertTrue(publicPending)
+            XCTAssertEqual(PublicPaykitService.pendingReconciliationMode(defaults: defaults), .removePublishedState)
+            XCTAssertEqual(PrivatePaykitService.fullCleanupReconciliationMode(defaults: defaults), .removePublishedState)
+        }
     }
 
     @MainActor
@@ -157,6 +175,29 @@ final class PubkyProfileManagerTests: XCTestCase {
             XCTAssertNil(manager.activeAuthAttemptIDForTesting)
         } catch {
             XCTFail("Expected CancellationError, got \(error)")
+        }
+    }
+
+    @MainActor
+    func testCompleteAuthenticationRevokesSessionWhenActivationThrows() async {
+        let errors: [Error] = [PubkyServiceError.authFailed("offline"), CancellationError()]
+
+        for thrownError in errors {
+            let manager = PubkyProfileManager()
+            manager.setActiveAuthAttemptIDForTesting(UUID())
+            manager.authState = .authenticating
+            var didDiscardSession = false
+
+            do {
+                try await manager.completeAuthenticationForTesting(
+                    completeAuth: { throw thrownError },
+                    currentPublicKey: { "pubky_test" },
+                    discardSessionAccess: { didDiscardSession = true }
+                )
+                XCTFail("Expected authentication activation to fail")
+            } catch {
+                XCTAssertTrue(didDiscardSession)
+            }
         }
     }
 
@@ -524,6 +565,59 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertNil(store[KeychainEntryType.pubkySecretKey.storageKey])
     }
 
+    func testRestoreSessionBackupStateReplacesSessionWhenForgetFails() async throws {
+        var store = makeKeychainStore(
+            paykitSession: "stale-session",
+            pubkySecretKey: "stale-local-secret"
+        )
+
+        try await PubkyProfileManager.restoreSessionBackupState(
+            PubkySessionBackupV1(kind: .externalSession, sessionSecret: "backup-session"),
+            loadKeychainString: { store[$0.storageKey] },
+            persistKeychainString: { store[$0.storageKey] = $1 },
+            deleteKeychainValue: { store.removeValue(forKey: $0.storageKey) },
+            forgetSessionAccess: { throw PubkyServiceError.authFailed("offline") },
+            signInWithSecretKey: { _ in
+                XCTFail("External session restore should not sign in with a local secret")
+                return "unused-session"
+            },
+            importExternalSession: { session in
+                store[KeychainEntryType.paykitSession.storageKey] = session
+                store.removeValue(forKey: KeychainEntryType.pubkySecretKey.storageKey)
+                return "pubky_external"
+            }
+        )
+
+        XCTAssertEqual(store[KeychainEntryType.paykitSession.storageKey], "backup-session")
+        XCTAssertNil(store[KeychainEntryType.pubkySecretKey.storageKey])
+    }
+
+    func testRestoreSessionBackupStateClearsCredentialsWhenForgetFailsWithoutBackup() async throws {
+        var store = makeKeychainStore(
+            paykitSession: "stale-session",
+            pubkySecretKey: "stale-local-secret"
+        )
+
+        try await PubkyProfileManager.restoreSessionBackupState(
+            nil,
+            loadKeychainString: { store[$0.storageKey] },
+            persistKeychainString: { store[$0.storageKey] = $1 },
+            deleteKeychainValue: { store.removeValue(forKey: $0.storageKey) },
+            forgetSessionAccess: { throw PubkyServiceError.authFailed("offline") },
+            signInWithSecretKey: { _ in
+                XCTFail("Missing pubky state should not sign in")
+                return "unused-session"
+            },
+            importExternalSession: { _ in
+                XCTFail("Missing pubky state should not import a session")
+                return "pubky_unused"
+            }
+        )
+
+        XCTAssertNil(store[KeychainEntryType.paykitSession.storageKey])
+        XCTAssertNil(store[KeychainEntryType.pubkySecretKey.storageKey])
+    }
+
     func testRestoreSessionBackupStateForLocalSeedDerivesSecretAndClearsSession() async throws {
         var store = makeKeychainStore(
             mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -687,6 +781,15 @@ final class PubkyProfileManagerTests: XCTestCase {
             tags: [],
             status: nil
         )
+    }
+
+    private func withIsolatedDefaults(_ body: (UserDefaults) throws -> Void) throws {
+        let suiteName = "PubkyProfileManagerTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        try body(defaults)
     }
 
     private func makeKeychainStore(

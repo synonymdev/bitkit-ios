@@ -364,6 +364,7 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Bitkit profile storage already missing, continuing sign out", context: "PubkyProfileManager")
         }
 
+        Self.clearPaykitSharingAfterProfileDeletion()
         try await signOut(cleanPrivatePaykitEndpoints: false)
     }
 
@@ -524,8 +525,8 @@ class PubkyProfileManager: ObservableObject {
         var didCompleteAuth = false
 
         do {
-            try await completeAuth()
             didCompleteAuth = true
+            try await completeAuth()
             try Task.checkCancellation()
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
@@ -844,6 +845,19 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
+    static func clearPaykitSharingAfterProfileDeletion(
+        defaults: UserDefaults = .standard,
+        setPublicReconciliationPending: (Bool) -> Void = PublicPaykitService.setCleanupPending
+    ) {
+        let hadPublishedState = defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) ||
+            defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+        defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        if hadPublishedState {
+            setPublicReconciliationPending(true)
+        }
+    }
+
     func refreshSessionIfPossible(after error: Error) async -> Bool {
         await Self.refreshSessionIfPossible(
             after: error,
@@ -962,7 +976,11 @@ class PubkyProfileManager: ObservableObject {
             try await PubkyService.importExternalSession(secret: $0)
         }
     ) async throws {
-        try await forgetSessionAccess()
+        do {
+            try await forgetSessionAccess()
+        } catch {
+            Logger.warn("Failed to forget existing Pubky session before restore: \(error)", context: "PubkyProfileManager")
+        }
 
         switch backup?.kind {
         case .none:

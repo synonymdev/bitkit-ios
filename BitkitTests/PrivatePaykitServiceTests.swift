@@ -42,6 +42,29 @@ final class PrivatePaykitServiceTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testPendingEndpointReconciliationKeepsKnownContactsWhenLoadedListIsEmpty() async {
+        let defaults = UserDefaults.standard
+        let previousCleanupPending = defaults.object(forKey: PrivatePaykitService.cleanupPendingKey)
+        let previousPublishingEnabled = defaults.object(forKey: PrivatePaykitService.publishingEnabledKey)
+        defer {
+            defaults.set(previousCleanupPending, forKey: PrivatePaykitService.cleanupPendingKey)
+            defaults.set(previousPublishingEnabled, forKey: PrivatePaykitService.publishingEnabledKey)
+        }
+
+        defaults.set(true, forKey: PrivatePaykitService.cleanupPendingKey)
+        defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let service = PrivatePaykitService()
+        _ = await service.rememberSavedContacts([publicKey], replacing: true)
+
+        await service.retryPendingEndpointReconciliation(wallet: WalletViewModel(), savedPublicKeys: [])
+
+        let knownSavedContactKeys = await service.knownSavedContactKeys
+        XCTAssertEqual(knownSavedContactKeys, [publicKey])
+        XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
+    }
+
     func testPreparingSavedContactsDefersWhenPublicationIsUnavailable() async {
         let service = PrivatePaykitService()
         let contacts = ["pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"]

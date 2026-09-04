@@ -97,16 +97,12 @@ enum PublicPaykitService {
 
     enum PendingReconciliationMode: Equatable {
         case publishEndpoints
-        case publishReceiverMarker
         case removePublishedState
     }
 
     static func pendingReconciliationMode(defaults: UserDefaults = .standard) -> PendingReconciliationMode {
         if defaults.bool(forKey: publishingEnabledKey) {
             return .publishEndpoints
-        }
-        if defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey) {
-            return .publishReceiverMarker
         }
         return .removePublishedState
     }
