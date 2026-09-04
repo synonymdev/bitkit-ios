@@ -444,8 +444,17 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
 
     private func scrollTo(_ element: XCUIElement, maxSwipes: Int = 8) {
         guard !element.isHittable else { return }
+
         for _ in 0 ..< maxSwipes where !element.isHittable {
             app.swipeUp()
+        }
+
+        // swipeUp only moves the content one way, so an element sitting above the
+        // viewport is pushed further off by the loop above until it reports a null
+        // frame and can no longer be tapped. Sweep back far enough to undo those
+        // swipes and reach the top of the scroll view.
+        for _ in 0 ..< (maxSwipes * 2) where !element.isHittable {
+            app.swipeDown()
         }
     }
 }
