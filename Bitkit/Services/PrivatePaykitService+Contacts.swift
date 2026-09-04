@@ -270,8 +270,11 @@ extension PrivatePaykitService {
         if isFullCleanupPending,
            Self.fullCleanupReconciliationMode() == .restoreSavedContacts
         {
+            let restoreKeys = savedKeys.union(knownSavedContactKeys)
+            guard !restoreKeys.isEmpty else { return }
+
             let error = await prepareSavedContacts(
-                Array(savedKeys),
+                Array(restoreKeys),
                 wallet: wallet,
                 requireImmediatePublication: true
             )

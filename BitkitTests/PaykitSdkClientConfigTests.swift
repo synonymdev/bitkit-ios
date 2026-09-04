@@ -72,4 +72,22 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         XCTAssertFalse(PaykitSdkService.shouldDeferStaleSession(error: staleSession, hasStoredSession: false))
         XCTAssertFalse(PaykitSdkService.shouldDeferStaleSession(error: unrelatedError, hasStoredSession: true))
     }
+
+    func testSessionAccessTeardownAttemptsBothCredentialsWithSessionFirst() {
+        var attemptedKeys: [String] = []
+
+        XCTAssertThrowsError(
+            try PubkySessionAccessTeardown.clear { key in
+                attemptedKeys.append(key.storageKey)
+                if key.storageKey == KeychainEntryType.paykitSession.storageKey {
+                    throw KeychainError.failedToDelete
+                }
+            }
+        )
+
+        XCTAssertEqual(
+            attemptedKeys,
+            [KeychainEntryType.paykitSession.storageKey, KeychainEntryType.pubkySecretKey.storageKey]
+        )
+    }
 }

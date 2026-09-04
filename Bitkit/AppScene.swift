@@ -936,11 +936,6 @@ struct AppScene: View {
                 switch PublicPaykitService.pendingReconciliationMode() {
                 case .publishEndpoints:
                     try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet)
-                case .publishReceiverMarker:
-                    try await PublicPaykitService.syncLocalReceiverMarker(
-                        publicSharingEnabled: false,
-                        privateSharingEnabled: true
-                    )
                 case .removePublishedState:
                     try await PublicPaykitService.removePublishedEndpoints()
                     try await PublicPaykitService.syncLocalReceiverMarker(

@@ -1217,8 +1217,7 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
 
     func clearSessionAccess() throws {
         clearLiveSessionAccess()
-        try Keychain.delete(key: .pubkySecretKey)
-        try Keychain.delete(key: .paykitSession)
+        try PubkySessionAccessTeardown.clear { try Keychain.delete(key: $0) }
     }
 
     func loadLocalSecretKey() throws -> PubkyLocalSecretKey? {
@@ -1235,6 +1234,22 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
 
     func persistReceiverNoiseSecretKey(_ key: ReceiverNoiseSecretKey) throws {
         try receiverNoiseKeyStore.persist(key)
+    }
+}
+
+enum PubkySessionAccessTeardown {
+    static func clear(deleteKeychainValue: (KeychainEntryType) throws -> Void) throws {
+        var firstError: Error?
+        for key in [KeychainEntryType.paykitSession, .pubkySecretKey] {
+            do {
+                try deleteKeychainValue(key)
+            } catch {
+                firstError = firstError ?? error
+            }
+        }
+        if let firstError {
+            throw firstError
+        }
     }
 }
 
