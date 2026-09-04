@@ -32,14 +32,12 @@ func pubkyAuthDisplayPublicKey(_ publicKey: String?) -> String {
 }
 
 struct PubkyAuthApprovalConfig {
-    let authUrl: String
     let request: PubkyAuthRequest
 }
 
 struct PubkyAuthApprovalSheetItem: SheetItem {
     let id: SheetID = .pubkyAuthApproval
     let size: SheetSize = .large
-    let authUrl: String
     let request: PubkyAuthRequest
 }
 
@@ -231,10 +229,14 @@ struct PubkyAuthApprovalSheet: View {
                     descriptionText
                         .padding(.bottom, 8)
 
-                    BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .padding(.bottom, 32)
+                    if !config.request.clientID.isEmpty {
+                        BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.bottom, 32)
+                    } else {
+                        Spacer().frame(height: 24)
+                    }
 
                     permissionsSection
 
@@ -379,6 +381,15 @@ struct PubkyAuthApprovalSheet: View {
     private func performAuthorization() async {
         guard state == .authorizing else { return }
         do {
+            if config.request.isSignup {
+                try await pubkyProfile.approveSignupAuth(request: config.request)
+                guard sheets.pubkyAuthApprovalSheetItem?.request.rawUrl == config.request.rawUrl else {
+                    return
+                }
+                sheets.hideSheet()
+                return
+            }
+
             guard let secretKey = try Keychain.loadString(key: .pubkySecretKey),
                   !secretKey.isEmpty
             else {
@@ -389,13 +400,18 @@ struct PubkyAuthApprovalSheet: View {
 
             try await PubkyService.approveAuthRequest(
                 request: config.request,
-                authUrl: config.authUrl,
+                authUrl: config.request.rawUrl,
                 accountName: watchOnlyAccountName,
                 secretKeyHex: secretKey
             )
 
             state = .success
         } catch {
+            if case PubkySignupError.alreadySignedIn = error {
+                app.toast(type: .info, title: t("pubky_auth__already_signed_in"))
+                sheets.hideSheet()
+                return
+            }
             Logger.error("Failed to approve pubky auth: \(error)", context: "PubkyAuthApprovalSheet")
             app.toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
             state = .authorize

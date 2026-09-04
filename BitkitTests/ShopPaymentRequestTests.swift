@@ -18,20 +18,40 @@ final class ShopPaymentRequestTests: XCTestCase {
         XCTAssertFalse(ShopPaymentRequest.isOnchainPayment(.lightning(invoice: lightningInvoice)))
     }
 
-    func testNonPaymentRequestDoesNotClearExistingPaymentState() async {
+    func testNonPaymentRequestsDoNotClearExistingPaymentState() async {
         let app = AppViewModel()
+        let requests = [
+            "https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123",
+            pubkySignupUrl,
+            directPubkySignupUrl,
+        ]
+
+        for request in requests {
+            app.scannedLightningInvoice = lightningInvoice
+            do {
+                try await app.handleScannedData(request, scope: .paymentRequests)
+                XCTFail("Expected the shop payment scope to reject a non-payment request")
+            } catch {
+                XCTAssertTrue(error is ScanHandlingError)
+            }
+            XCTAssertNotNil(app.scannedLightningInvoice)
+        }
+    }
+
+    func testContactPaymentRejectsPubkySignupWithoutClearingSendState() async {
+        let app = AppViewModel()
+        let context = ContactPaymentContext(publicKey: "pubkycontact")
+        XCTAssertTrue(app.claimContactPaymentContext(context))
         app.scannedLightningInvoice = lightningInvoice
 
         do {
-            try await app.handleScannedData(
-                "https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123",
-                scope: .paymentRequests
-            )
-            XCTFail("Expected the shop payment scope to reject a setup request")
+            try await app.handleScannedData(pubkySignupUrl, claimedContactPaymentContext: context)
+            XCTFail("Expected contact payment to reject Pubky signup")
         } catch {
             XCTAssertTrue(error is ScanHandlingError)
         }
 
+        XCTAssertFalse(app.ownsContactPaymentContext(context))
         XCTAssertNotNil(app.scannedLightningInvoice)
     }
 
@@ -47,6 +67,17 @@ final class ShopPaymentRequestTests: XCTestCase {
             networkType: .regtest,
             payeeNodeId: nil
         )
+    }
+
+    private var pubkySignupUrl: String {
+        "pubkyring://signup?hs=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo" +
+            "&relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
+            "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s" +
+            "&caps=%2Fpub%2Fexample%2F%3Arw"
+    }
+
+    private var directPubkySignupUrl: String {
+        "pubkyauth://direct_signup?hs=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo&st=invite"
     }
 
     private var onchainInvoice: OnChainInvoice {

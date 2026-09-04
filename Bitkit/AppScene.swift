@@ -31,7 +31,7 @@ struct AppScene: View {
     @StateObject private var channelDetails = ChannelDetailsViewModel.shared
     @StateObject private var migrations = MigrationsService.shared
     @StateObject private var languageManager = LanguageManager.shared
-    @StateObject private var pubkyProfile = PubkyProfileManager()
+    @StateObject private var pubkyProfile: PubkyProfileManager
     @StateObject private var contactsManager = ContactsManager()
     @State private var keyboardManager = KeyboardManager()
     @State private var trezorManager: TrezorManager
@@ -56,6 +56,7 @@ struct AppScene: View {
     init() {
         let sheetViewModel = SheetViewModel()
         let navigationViewModel = NavigationViewModel()
+        let pubkyProfile = PubkyProfileManager()
         let transferService = TransferService(
             lightningService: LightningService.shared,
             blocktankService: CoreService.shared.blocktank
@@ -66,9 +67,14 @@ struct AppScene: View {
         PaykitFeatureFlags.enforceBuildAvailability()
         ContactPaymentsService.enableAllPaymentOptions()
 
-        _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
+        _app = StateObject(wrappedValue: AppViewModel(
+            sheetViewModel: sheetViewModel,
+            navigationViewModel: navigationViewModel,
+            pubkyProfile: pubkyProfile
+        ))
         _sheets = StateObject(wrappedValue: sheetViewModel)
         _navigation = StateObject(wrappedValue: navigationViewModel)
+        _pubkyProfile = StateObject(wrappedValue: pubkyProfile)
         let feeEstimatesManager = FeeEstimatesManager()
         let walletVm = WalletViewModel(
             transferService: transferService,
@@ -878,6 +884,10 @@ struct AppScene: View {
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                             return
                         }
+                    } catch ScanHandlingError.pubkyAuthRequest {
+                        guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                        _ = paykitPaymentRequestManager.markPresentedIfPending(request)
+                        continue
                     } catch is CancellationError {
                         if app.ownsContactPaymentContext(contactPaymentContext) {
                             app.resetSendState()

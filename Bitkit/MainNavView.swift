@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct MainNavView: View {
+    private enum PendingProfileSetupResumeState {
+        case inactive
+        case waiting
+        case ready
+    }
+
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @EnvironmentObject private var app: AppViewModel
@@ -20,9 +26,23 @@ struct MainNavView: View {
 
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
+    @State private var didResumePendingPubkyProfileSetup = false
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    private var pendingProfileSetupResumeState: PendingProfileSetupResumeState {
+        guard pubkyProfile.isProfileSetupPending else { return .inactive }
+        guard isPaykitUIActive,
+              pubkyProfile.isAuthenticated,
+              sheets.activeSheetConfiguration == nil,
+              !sheets.isReplacingSheet,
+              navigation.currentRoute != .createProfile
+        else {
+            return .waiting
+        }
+        return .ready
     }
 
     // Delay constants for clipboard processing
@@ -38,6 +58,14 @@ struct MainNavView: View {
                 transfer.consumeHwFundingComplete()
                 navigation.navigate(.spendingHwSigned)
             }
+        }
+        .onChange(of: pendingProfileSetupResumeState, initial: true) { _, resumeState in
+            if resumeState == .inactive {
+                didResumePendingPubkyProfileSetup = false
+            }
+            guard resumeState == .ready, !didResumePendingPubkyProfileSetup else { return }
+            didResumePendingPubkyProfileSetup = true
+            navigation.navigate(.createProfile)
         }
         .sheet(
             item: $sheets.addTagSheetItem,
@@ -393,6 +421,19 @@ struct MainNavView: View {
             }
         } message: {
             Text(t("other__clipboard_redirect_msg"))
+        }
+        .overlay {
+            if app.isCompletingPubkySignup {
+                ZStack {
+                    Color.black.ignoresSafeArea()
+
+                    HStack(spacing: 12) {
+                        ActivityIndicator(size: 20)
+                        BodyMText(t("profile__deriving_keys"), textColor: .white64)
+                    }
+                }
+                .accessibilityIdentifier("PubkySignupLoading")
+            }
         }
     }
 

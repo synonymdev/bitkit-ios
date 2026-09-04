@@ -66,6 +66,7 @@ class AppViewModel: ObservableObject {
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
+    @Published private(set) var isCompletingPubkySignup = false
 
     // Onboarding
     @AppStorage("hasDismissedWidgetsOnboardingHint") var hasDismissedWidgetsOnboardingHint: Bool = false
@@ -119,6 +120,7 @@ class AppViewModel: ObservableObject {
     private let coreService: CoreService
     private let sheetViewModel: SheetViewModel
     private let navigationViewModel: NavigationViewModel
+    private let pubkyProfile: PubkyProfileManager
     private var scannedDataHandlingId: UUID?
     private var manualEntryValidationSequence: UInt64 = 0
 
@@ -130,12 +132,14 @@ class AppViewModel: ObservableObject {
         lightningService: LightningService = .shared,
         coreService: CoreService = .shared,
         sheetViewModel: SheetViewModel,
-        navigationViewModel: NavigationViewModel
+        navigationViewModel: NavigationViewModel,
+        pubkyProfile: PubkyProfileManager
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
         self.sheetViewModel = sheetViewModel
         self.navigationViewModel = navigationViewModel
+        self.pubkyProfile = pubkyProfile
 
         setupManualEntryValidationDebounce()
 
@@ -245,7 +249,11 @@ class AppViewModel: ObservableObject {
 
     /// Convenience initializer for previews and testing
     convenience init() {
-        self.init(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        self.init(
+            sheetViewModel: SheetViewModel(),
+            navigationViewModel: NavigationViewModel(),
+            pubkyProfile: PubkyProfileManager()
+        )
     }
 
     deinit {}
@@ -437,8 +445,15 @@ extension AppViewModel {
         }
 
         let uri = uri.removingLightningSchemes()
+        if let claimedContactPaymentContext, PubkyAuthRequest.isProtocolURL(uri) {
+            releaseContactPaymentContext(claimedContactPaymentContext)
+            throw ScanHandlingError.pubkyAuthRequest
+        }
         let prevalidatedPaymentRequest: BitkitCore.Scanner?
         if scope == .paymentRequests {
+            if PubkyAuthRequest.isProtocolURL(uri) {
+                throw ScanHandlingError.pubkyAuthRequest
+            }
             guard SamRockSetupRequest.parse(uri) == nil,
                   !SamRockSetupRequest.isProtocolURL(uri)
             else {
@@ -482,6 +497,23 @@ extension AppViewModel {
                 description: t("other__scan__error__generic"),
                 accessibilityIdentifier: "InvalidAddressToast"
             )
+            return
+        }
+
+        if PubkyAuthRequest.isProtocolURL(uri) {
+            guard scope == .unrestricted else {
+                throw ScanHandlingError.pubkyAuthRequest
+            }
+            guard PaykitFeatureFlags.isUIEnabled else {
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__generic"),
+                    accessibilityIdentifier: "InvalidAddressToast"
+                )
+                return
+            }
+            await handlePubkyAuthApproval(uri)
             return
         }
 
@@ -659,7 +691,7 @@ extension AppViewModel {
                 )
                 return
             }
-            handlePubkyAuthApproval(authUrl)
+            await handlePubkyAuthApproval(authUrl)
         case let .gift(code, amount):
             sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
         default:
@@ -786,29 +818,70 @@ extension AppViewModel {
         sheetViewModel.showSheet(.lnurlAuth, data: LnurlAuthConfig(lnurl: lnurl, authData: data))
     }
 
-    private func handlePubkyAuthApproval(_ authUrl: String) {
-        // State 1: No Pubky identity at all
-        guard (try? Keychain.loadString(key: .paykitSession))?.isEmpty == false else {
+    private func handlePubkyAuthApproval(_ authUrl: String) async {
+        let request: PubkyAuthRequest
+
+        do {
+            request = try PubkyAuthRequest.parse(url: authUrl)
+        } catch {
+            Logger.error("Failed to parse pubky auth URL: \(error)", context: "AppViewModel")
+            sheetViewModel.hideSheetIfActive(.scanner, reason: "Invalid Pubky auth request")
+            toast(type: .error, title: t("pubky_auth__invalid_request"))
+            return
+        }
+
+        if request.isSignup {
+            do {
+                guard try !PubkyProfileManager.hasStoredIdentity() else {
+                    sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity already exists")
+                    toast(type: .info, title: t("pubky_auth__already_signed_in"))
+                    return
+                }
+            } catch {
+                Logger.error("Failed to read stored Pubky identity: \(error)", context: "AppViewModel")
+                sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity check failed")
+                toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
+                return
+            }
+
+            if request.authorizationUrl == nil {
+                sheetViewModel.hideSheet()
+                isCompletingPubkySignup = true
+                defer { isCompletingPubkySignup = false }
+                do {
+                    try await pubkyProfile.approveSignupAuth(request: request)
+                } catch PubkySignupError.alreadySignedIn {
+                    toast(type: .info, title: t("pubky_auth__already_signed_in"))
+                } catch {
+                    Logger.error("Failed to complete direct Pubky signup: \(error)", context: "AppViewModel")
+                    toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
+                }
+                return
+            }
+
+            sheetViewModel.showSheet(
+                .pubkyAuthApproval,
+                data: PubkyAuthApprovalConfig(request: request)
+            )
+            return
+        }
+
+        let hasSession = (try? Keychain.loadString(key: .paykitSession))?.isEmpty == false
+        guard hasSession else {
+            sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity is missing")
             toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
             return
         }
 
-        // State 2: Ring-authenticated (has session but no local secret key)
         guard let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
               !secretKey.isEmpty
         else {
+            sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity requires Ring")
             toast(type: .info, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
             return
         }
 
-        // State 3: Bitkit-generated identity — can approve
-        do {
-            let request = try PubkyAuthRequest.parse(url: authUrl)
-            sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(authUrl: authUrl, request: request))
-        } catch {
-            Logger.error("Failed to parse pubky auth URL: \(error)", context: "AppViewModel")
-            toast(type: .error, title: t("pubky_auth__invalid_request"))
-        }
+        sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(request: request))
     }
 
     private func handleNodeUri(_ url: String) {
@@ -824,6 +897,11 @@ extension AppViewModel {
 
     func ownsContactPaymentContext(_ context: ContactPaymentContext) -> Bool {
         contactPaymentContext?.id == context.id
+    }
+
+    private func releaseContactPaymentContext(_ context: ContactPaymentContext) {
+        guard ownsContactPaymentContext(context) else { return }
+        contactPaymentContext = nil
     }
 
     func resetSendState(preservingContactPaymentContext: Bool = false) {
