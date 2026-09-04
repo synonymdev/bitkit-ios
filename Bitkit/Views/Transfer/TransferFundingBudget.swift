@@ -13,15 +13,25 @@ enum TransferFundingBudget {
         return try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
     }
 
-    /// Nil when the fee estimates or the sweep calculation are unavailable: sizing then falls back to
-    /// a cheaper estimate, while a funding check skips rather than blocks.
+    /// Re-read on every Continue, so it uses cached fee rates rather than forcing a refresh that
+    /// would sit between the tap and the confirm screen.
+    ///
+    /// Nil when the fee estimates or the sweep fee are unavailable: sizing then falls back to a
+    /// cheaper estimate, while a funding check skips rather than blocks.
     static func onchainBudget(
         address: String,
         feeEstimatesManager: FeeEstimatesManager,
         wallet: WalletViewModel
     ) async -> UInt64? {
-        guard let feeEstimates = await feeEstimatesManager.getEstimates(refresh: true) else { return nil }
+        guard let feeEstimates = await feeEstimatesManager.getEstimates() else { return nil }
         let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeEstimates)
-        return try? await wallet.calculateMaxSendableAmount(address: address, satsPerVByte: fastFeeRate)
+        let spendable = UInt64(max(0, wallet.spendableOnchainBalanceSats))
+
+        guard let sweepFee = try? await LightningService.shared.estimateSendAllFee(
+            address: address,
+            satsPerVByte: fastFeeRate
+        ) else { return nil }
+
+        return spendable.saturatingSub(sweepFee)
     }
 }
