@@ -140,8 +140,13 @@ final class TrezorViewModelWatcherTests: XCTestCase {
             balance: sampleBalance,
             txCount: 3,
             blockHeight: 850_000,
-            accountType: .nativeSegwit
+            accountType: .nativeSegwit,
+            nextUnusedExternalAddress: unusedAddress()
         )
+    }
+
+    private static func unusedAddress() -> BitkitCore.AddressInfo {
+        BitkitCore.AddressInfo(address: "bc1qtestunused", path: "m/84'/0'/0'/0/0", transfers: 0)
     }
 
     // MARK: - Helpers

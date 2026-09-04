@@ -629,7 +629,7 @@ final class HwWalletManager {
     /// Core builds the persistence-ready activities (core 0.3.4 watch-only watcher); the manager
     /// stores, aggregates, and scopes them to the wallet.
     func handleWatcherEvent(watcherId: String, event: WatcherEvent) {
-        guard case let .transactionsChanged(activities, transactionDetails, balance, _, _, _) = event else { return }
+        guard case let .transactionsChanged(activities, transactionDetails, balance, _, _, _, _) = event else { return }
         let walletId = walletId(fromWatcherId: watcherId)
         let previous = watcherData[watcherId]
         watcherData[watcherId] = HwWatcherData(
