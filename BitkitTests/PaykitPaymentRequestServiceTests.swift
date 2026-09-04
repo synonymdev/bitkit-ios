@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import Foundation
 import Paykit
 import XCTest
@@ -162,6 +163,61 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_500_000))
         XCTAssertFalse(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_499_999))
         XCTAssertFalse(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_500_001))
+        XCTAssertTrue(request.acceptsLightningInvoiceAmount(satoshis: 0))
+        XCTAssertTrue(request.acceptsLightningInvoiceAmount(satoshis: 2500))
+        XCTAssertFalse(request.acceptsLightningInvoiceAmount(satoshis: 2501))
+    }
+
+    func testLnurlRequestValidatesBoundsAndCapacityBeforeOpeningPayment() throws {
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(amount: "0.000025"), now: Date()))
+        var hasCapacity = false
+        var checkedAmount: UInt64?
+        let app = AppViewModel(
+            sheetViewModel: SheetViewModel(),
+            navigationViewModel: NavigationViewModel(),
+            scanPaymentOperations: ScanPaymentOperations(
+                state: {
+                    ScanPaymentState(
+                        isNodeRunning: true,
+                        spendableOnchainBalanceSats: 0,
+                        totalLightningBalanceSats: 10000,
+                        hasChannels: true,
+                        hasUsableChannels: true
+                    )
+                },
+                canSendLightning: {
+                    checkedAmount = $0
+                    return hasCapacity
+                }
+            )
+        )
+        XCTAssertTrue(app.claimContactPaymentContext(ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)))
+        var data = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback",
+            minSendable: 1_000_000, maxSendable: 5_000_000,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+
+        try app.handleLnurlPayInvoice(data)
+        XCTAssertEqual(checkedAmount, request.amountSats)
+        XCTAssertTrue(app.didRejectScannedPaymentForInsufficientBalance)
+        XCTAssertNil(app.lnurlPayData)
+
+        hasCapacity = true
+        for bounds in [(UInt64(1_000_000), UInt64(2_000_000)), (3_000_000, 5_000_000)] {
+            data.minSendable = bounds.0
+            data.maxSendable = bounds.1
+            XCTAssertThrowsError(try app.handleLnurlPayInvoice(data)) {
+                XCTAssertEqual($0 as? PaykitPaymentRequestError, .amountMismatch)
+            }
+            XCTAssertNil(app.lnurlPayData)
+        }
+
+        data.minSendable = 1_000_000
+        data.maxSendable = 5_000_000
+        try app.handleLnurlPayInvoice(data)
+        XCTAssertNotNil(app.lnurlPayData)
+        XCTAssertEqual(app.selectedWalletToPayFrom, .lightning)
     }
 
     func testRefreshContinuesWhenPendingResponseDeliveryFails() async throws {
@@ -214,6 +270,58 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.markPresentedIfPending(request))
         await manager.refresh()
 
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+    }
+
+    func testUnaffordableRequestUsesRequestedAmountAndStopsAutomaticPresentation() async throws {
+        let clock = PaymentRequestTestClock(Date())
+        let onchainMethod = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(amount: "0.00001", endpoints: [onchainMethod.rawValue]),
+        ])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+        let app = AppViewModel(
+            sheetViewModel: SheetViewModel(),
+            navigationViewModel: NavigationViewModel(),
+            scanPaymentOperations: ScanPaymentOperations(
+                state: {
+                    ScanPaymentState(
+                        isNodeRunning: true,
+                        spendableOnchainBalanceSats: 100,
+                        totalLightningBalanceSats: 0,
+                        hasChannels: false,
+                        hasUsableChannels: false
+                    )
+                },
+                canSendLightning: { _ in false }
+            )
+        )
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+
+        try await app.handleScannedData(
+            "bitcoin:bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x",
+            claimedContactPaymentContext: context
+        )
+
+        XCTAssertNil(app.scannedOnchainInvoice)
+        XCTAssertNil(app.scannedLightningInvoice)
+        XCTAssertTrue(app.didRejectScannedPaymentForInsufficientBalance)
+
+        var didResetWalletSendState = false
+        PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(
+            request,
+            app: app,
+            manager: manager,
+            resetWalletSendState: { didResetWalletSendState = true }
+        )
+        clock.advance(by: 2)
+
+        XCTAssertTrue(didResetWalletSendState)
+        XCTAssertNil(app.contactPaymentContext)
         XCTAssertEqual(manager.pendingRequests, [request])
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }

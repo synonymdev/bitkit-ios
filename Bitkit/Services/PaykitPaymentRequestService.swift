@@ -183,6 +183,10 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         return !overflow && milliSatoshis == requestedMilliSatoshis
     }
 
+    func acceptsLightningInvoiceAmount(satoshis: UInt64) -> Bool {
+        satoshis == 0 || satoshis == amountSats
+    }
+
     func acceptsPaymentAmount(_ amountSats: UInt64) -> Bool {
         amountSats == self.amountSats
     }
@@ -542,6 +546,21 @@ protocol PaykitPaymentRequestPresentationStoring {
     func save(_ ids: Set<PaykitPaymentRequest.ID>, identity: String) throws
 }
 
+enum PaykitPaymentRequestPresentationCoordinator {
+    @MainActor
+    static func handleUnavailablePaymentRoute(
+        _ request: PaykitPaymentRequest,
+        app: AppViewModel,
+        manager: PaykitPaymentRequestManager,
+        resetWalletSendState: () -> Void
+    ) {
+        let insufficientBalance = app.didRejectScannedPaymentForInsufficientBalance
+        app.resetSendState()
+        resetWalletSendState()
+        manager.handleUnavailablePaymentRoute(request, insufficientBalance: insufficientBalance)
+    }
+}
+
 struct PaykitPaymentRequestPresentationStore: PaykitPaymentRequestPresentationStoring {
     private struct State: Codable {
         var idsByIdentity: [String: [PaykitPaymentRequest.ID]]
@@ -896,6 +915,14 @@ final class PaykitPaymentRequestManager {
         schedulePresentationRetry()
         persistPresentedRequestIds()
         return true
+    }
+
+    func handleUnavailablePaymentRoute(_ request: PaykitPaymentRequest, insufficientBalance: Bool) {
+        if insufficientBalance {
+            _ = markPresentedIfPending(request)
+        } else {
+            deferPresentation(request)
+        }
     }
 
     private func performRefresh(
