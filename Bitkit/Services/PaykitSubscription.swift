@@ -231,26 +231,29 @@ struct PaykitSubscriptionRecurrence: Hashable {
 
     func nextPeriod(after date: Date) -> PaykitBillingPeriod? {
         let preciseDate = PaykitPreciseInstant(date: date)
-        var start = preciseStartsAt
-        guard var index = firstBoundaryIndex(after: preciseStartsAt) else { return nil }
-
-        for _ in 0 ..< Self.maximumPeriods {
-            guard var end = boundary(at: index) else { return nil }
-            index += 1
-            if end <= start {
-                guard let fallback = addingInterval(to: start) else { return nil }
-                end = fallback
-            }
-            if let preciseEndsAt {
-                guard start < preciseEndsAt else { return nil }
-                end = min(end, preciseEndsAt)
-            }
-            if start > preciseDate {
-                return period(startsAt: start, endsAt: end)
-            }
-            start = end
+        let start: PaykitPreciseInstant
+        let endIndex: Int
+        if preciseStartsAt > preciseDate {
+            start = preciseStartsAt
+            guard let index = firstBoundaryIndex(after: start) else { return nil }
+            endIndex = index
+        } else {
+            guard let startIndex = firstBoundaryIndex(after: preciseDate),
+                  let boundary = boundary(at: startIndex)
+            else { return nil }
+            start = boundary
+            endIndex = startIndex + 1
         }
-        return nil
+        guard var end = boundary(at: endIndex) else { return nil }
+        if end <= start {
+            guard let fallback = addingInterval(to: start) else { return nil }
+            end = fallback
+        }
+        if let preciseEndsAt {
+            guard start < preciseEndsAt else { return nil }
+            end = min(end, preciseEndsAt)
+        }
+        return period(startsAt: start, endsAt: end)
     }
 
     func upcomingPeriods(after date: Date, limit: Int) -> [PaykitBillingPeriod] {
@@ -267,23 +270,22 @@ struct PaykitSubscriptionRecurrence: Hashable {
     }
 
     private func firstBoundaryIndex(after date: PaykitPreciseInstant) -> Int? {
-        var index = 0
-        guard let anchorBoundary = boundary(at: index) else { return nil }
-
-        if anchorBoundary > date {
-            while index > -Self.maximumPeriods, let previous = boundary(at: index - 1), previous > date {
-                index -= 1
-            }
-        } else {
-            while index < Self.maximumPeriods, let candidate = boundary(at: index), candidate <= date {
-                index += 1
+        var lowerBound = -Self.maximumPeriods + 1
+        var upperBound = Self.maximumPeriods
+        while lowerBound < upperBound {
+            let index = lowerBound + (upperBound - lowerBound) / 2
+            guard let candidate = boundary(at: index) else { return nil }
+            if candidate <= date {
+                lowerBound = index + 1
+            } else {
+                upperBound = index
             }
         }
 
-        guard boundary(at: index).map({ $0 > date }) == true,
-              let previous = boundary(at: index - 1), previous <= date
+        guard boundary(at: lowerBound).map({ $0 > date }) == true,
+              let previous = boundary(at: lowerBound - 1), previous <= date
         else { return nil }
-        return index
+        return lowerBound
     }
 
     private func boundary(at index: Int) -> PaykitPreciseInstant? {

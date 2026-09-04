@@ -429,11 +429,8 @@ actor PaykitPaymentProofService {
     }
 
     func failOnchainPayment(_ request: PaykitPaymentRequest) async {
-        guard let identity = try? await currentIdentity() else { return }
-        await removeProofs {
-            PubkyPublicKeyFormat.matches($0.identity, identity) &&
-                $0.requestId == request.id &&
-                $0.kind == .onchain &&
+        await removeRequestProofs(request) {
+            $0.kind == .onchain &&
                 $0.paymentStarted &&
                 $0.paymentIdentifier == nil &&
                 $0.proofData == nil
@@ -441,11 +438,8 @@ actor PaykitPaymentProofService {
     }
 
     func cancelPreparation(_ request: PaykitPaymentRequest) async {
-        guard let identity = try? await currentIdentity() else { return }
-        await removeProofs {
-            PubkyPublicKeyFormat.matches($0.identity, identity) &&
-                $0.requestId == request.id &&
-                !$0.paymentStarted &&
+        await removeRequestProofs(request) {
+            !$0.paymentStarted &&
                 $0.paymentIdentifier == nil &&
                 $0.proofData == nil
         }
@@ -670,6 +664,30 @@ actor PaykitPaymentProofService {
     private func removeRequestProofs(_ proof: PendingPaykitPaymentProof) async {
         await removeProofs {
             PubkyPublicKeyFormat.matches($0.identity, proof.identity) && $0.requestId == proof.requestId
+        }
+    }
+
+    private func removeRequestProofs(
+        _ request: PaykitPaymentRequest,
+        where shouldRemove: (PendingPaykitPaymentProof) -> Bool
+    ) async {
+        do {
+            let pendingProofs = try await loadProofs()
+            let candidates = pendingProofs.filter { $0.requestId == request.id && shouldRemove($0) }
+            let candidateIdentities = Set(candidates.compactMap { PubkyPublicKeyFormat.normalized($0.identity) })
+            let identity = try? await currentIdentity()
+            guard let targetIdentity = identity ?? (candidateIdentities.count == 1 ? candidateIdentities.first : nil) else { return }
+
+            let remainingProofs = pendingProofs.filter {
+                !($0.requestId == request.id &&
+                    PubkyPublicKeyFormat.matches($0.identity, targetIdentity) &&
+                    shouldRemove($0))
+            }
+            guard remainingProofs != pendingProofs else { return }
+            try await persist(remainingProofs)
+            Self.proofStateChangedSubject.send()
+        } catch {
+            logWarning("Failed to clear a pending Paykit payment proof: \(error)")
         }
     }
 

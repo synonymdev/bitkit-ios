@@ -499,6 +499,39 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(storedProofs.isEmpty)
     }
 
+    func testOnchainFailureClearsStartedProofWithoutLiveIdentity() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.markOnchainPaymentStarted(request, address: onchainAddress)
+        await sdk.setIdentityAvailable(false)
+
+        await service.failOnchainPayment(request)
+
+        let storedProofs = await store.snapshot()
+        XCTAssertTrue(storedProofs.isEmpty)
+    }
+
+    func testCancelPreparationClearsProofWithoutLiveIdentity() async throws {
+        let endpoint = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .lightning)
+        await sdk.setIdentityAvailable(false)
+
+        await service.cancelPreparation(request)
+
+        let storedProofs = await store.snapshot()
+        XCTAssertTrue(storedProofs.isEmpty)
+    }
+
     func testRecurringPaymentSubmitsExactBillingPeriod() async throws {
         let recurrence = PaymentRequestRecurrence(
             every: 1,
@@ -897,6 +930,7 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var shouldFailSubmission = false
     private var privateMessageProcessCallCount = 0
     private var identityStatusCalls = 0
+    private var isIdentityAvailable = true
     private var shouldSuspendSubmission = false
     private var submissionContinuation: CheckedContinuation<Void, Never>?
     private var submissionStartContinuations: [CheckedContinuation<Void, Never>] = []
@@ -908,7 +942,12 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
 
     func identityStatus() -> IdentityStatus? {
         identityStatusCalls += 1
+        guard isIdentityAvailable else { return nil }
         return IdentityStatus(publicKey: identity, liveSessionAvailable: true)
+    }
+
+    func setIdentityAvailable(_ isAvailable: Bool) {
+        isIdentityAvailable = isAvailable
     }
 
     func paymentRequests() -> [PaymentRequestRecord] {

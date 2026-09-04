@@ -871,6 +871,23 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         ])
     }
 
+    func testOldDailyRecurrenceFindsNextPeriodDirectly() throws {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "day",
+            startsAt: "2020-01-01T08:00:00Z",
+            anchor: "2020-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let schedule = try XCTUnwrap(PaykitSubscriptionRecurrence(recurrence))
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-14T12:00:00Z"))
+
+        let period = try XCTUnwrap(schedule.nextPeriod(after: date))
+
+        XCTAssertEqual(period.startsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z")))
+        XCTAssertEqual(period.endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-16T08:00:00Z")))
+    }
+
     func testRecurrencePreservesNanosecondBillingBoundaries() throws {
         let recurrence = PaymentRequestRecurrence(
             every: 1,
