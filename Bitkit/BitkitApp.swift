@@ -5,6 +5,7 @@ import SwiftUI
 /// Communication bridge between delegates and SwiftUI views
 extension Notification.Name {
     static let quickActionSelected = Notification.Name("quickActionSelected")
+    static let deepLinkReceived = Notification.Name("deepLinkReceived")
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate {
