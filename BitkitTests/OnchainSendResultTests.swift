@@ -39,36 +39,55 @@ final class OnchainSendResultTests: XCTestCase {
 
     func testRejectedBroadcastIsPropagated() {
         assertBroadcastErrorIsPropagated(
-            .OnchainTxBroadcastRejected(message: "non-final"),
+            .OnchainTxBroadcastRejected(txid: "rejected-txid"),
             expectedFailureType: "OnchainTxBroadcastRejected"
         )
     }
 
     func testFailedBroadcastIsPropagated() {
         assertBroadcastErrorIsPropagated(
-            .OnchainTxBroadcastFailed(message: "connection closed"),
+            .OnchainTxBroadcastFailed(txid: "failed-txid"),
             expectedFailureType: "OnchainTxBroadcastFailed"
         )
     }
 
     func testTimedOutBroadcastIsPropagated() {
         assertBroadcastErrorIsPropagated(
-            .OnchainTxBroadcastTimeout(message: "timed out"),
+            .OnchainTxBroadcastTimeout(txid: "timed-out-txid"),
             expectedFailureType: "OnchainTxBroadcastTimeout"
         )
     }
 
+    func testNotDispatchedBroadcastIsPropagated() {
+        assertBroadcastErrorIsPropagated(
+            .OnchainTxBroadcastNotDispatched(txid: "not-dispatched-txid"),
+            expectedFailureType: "OnchainTxBroadcastNotDispatched"
+        )
+    }
+
     func testBroadcastErrorsRemainIdentifiableWhenWrapped() {
-        let cases: [(NodeError, String, String)] = [
-            (.OnchainTxBroadcastRejected(message: "non-final"), "Onchain transaction was rejected", "OnchainTxBroadcastRejected"),
-            (.OnchainTxBroadcastFailed(message: "connection closed"), "Failed to broadcast onchain transaction", "OnchainTxBroadcastFailed"),
-            (.OnchainTxBroadcastTimeout(message: "timed out"), "Onchain transaction broadcast timed out", "OnchainTxBroadcastTimeout"),
+        let cases: [(NodeError, String, String, String)] = [
+            (.OnchainTxBroadcastRejected(txid: "rejected-txid"), "Onchain transaction was rejected", "OnchainTxBroadcastRejected", "rejected-txid"),
+            (.OnchainTxBroadcastFailed(txid: "failed-txid"), "Failed to broadcast onchain transaction", "OnchainTxBroadcastFailed", "failed-txid"),
+            (
+                .OnchainTxBroadcastTimeout(txid: "timed-out-txid"),
+                "Onchain transaction broadcast timed out",
+                "OnchainTxBroadcastTimeout",
+                "timed-out-txid"
+            ),
+            (
+                .OnchainTxBroadcastNotDispatched(txid: "not-dispatched-txid"),
+                "Onchain transaction was not dispatched",
+                "OnchainTxBroadcastNotDispatched",
+                "not-dispatched-txid"
+            ),
         ]
 
-        for (nodeError, expectedMessage, expectedFailureType) in cases {
+        for (nodeError, expectedMessage, expectedFailureType, expectedTxid) in cases {
             let appError = Bitkit.AppError(error: nodeError)
 
             XCTAssertEqual(appError.message, expectedMessage)
+            XCTAssertTrue(appError.debugMessage?.contains(expectedTxid) == true)
             XCTAssertEqual(sendFailureType(for: appError), expectedFailureType)
         }
     }
