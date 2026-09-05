@@ -10,6 +10,11 @@ final class DeepLinkRouter {
         pendingURL = url
     }
 
+    func forward(_ url: URL) {
+        retain(url)
+        NotificationCenter.default.post(name: .deepLinkReceived, object: url)
+    }
+
     func consume() -> URL? {
         defer { pendingURL = nil }
         return pendingURL
@@ -76,7 +81,6 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
     }
 
     func forwardDeepLink(_ url: URL) {
-        DeepLinkRouter.shared.retain(url)
-        NotificationCenter.default.post(name: .deepLinkReceived, object: url)
+        DeepLinkRouter.shared.forward(url)
     }
 }
