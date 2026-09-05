@@ -2,8 +2,8 @@
 
 This suite covers the two-wallet Bitkit leg of a Pubky marketplace purchase: a seller grants a
 watch-only account claim, a linked buyer receives the resulting Payment Request, and the buyer pays
-the request on regtest through confirmation. It does not cover marketplace browsing, fiat payment,
-or Hypercolor.
+the request on regtest through confirmation. It does not cover marketplace browsing, Locks content
+delivery, fiat payment, or Hypercolor.
 
 ## Required integration fixture
 

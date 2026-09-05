@@ -2,6 +2,8 @@
   <description>
     Verifies a Bitkit seller grants a watch-only account claim and a separate linked Bitkit buyer
     receives, approves, pays, and confirms the resulting marketplace Payment Request on regtest.
+    iOS opens the persistent PaymentRequestsScreen instead of Android's transient incoming-request
+    sheet.
     Precondition: two clean simulator wallets and the integration fixture described in this suite's
     README. Publish fixture Fulcrum at tcp://127.0.0.1:60001 and build both wallets with the local
     E2E regtest settings before first launch. Start with the seller wallet open and the fixture's
