@@ -53,23 +53,23 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
     }
 
     func testDuplicatePaymentIsNotHardReject() {
-        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(NodeError.DuplicatePayment(message: "dup")))
+        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(NodeError.DuplicatePayment))
     }
 
     func testInvalidInvoiceIsHardReject() {
-        XCTAssertTrue(QuickPayPaymentCoordinator.isHardReject(NodeError.InvalidInvoice(message: "bad")))
+        XCTAssertTrue(QuickPayPaymentCoordinator.isHardReject(NodeError.InvalidInvoice))
     }
 
     func testPersistenceIsNotHardReject() {
-        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(NodeError.PersistenceFailed(message: "io")))
+        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(NodeError.PersistenceFailed))
     }
 
     func testWrappedInvalidInvoiceIsHardReject() {
-        XCTAssertTrue(QuickPayPaymentCoordinator.isHardReject(Bitkit.AppError(error: NodeError.InvalidInvoice(message: "bad"))))
+        XCTAssertTrue(QuickPayPaymentCoordinator.isHardReject(Bitkit.AppError(error: NodeError.InvalidInvoice)))
     }
 
     func testWrappedDuplicatePaymentIsDuplicateNotHardReject() {
-        let wrapped = Bitkit.AppError(error: NodeError.DuplicatePayment(message: "dup"))
+        let wrapped = Bitkit.AppError(error: NodeError.DuplicatePayment)
         XCTAssertTrue(QuickPayPaymentCoordinator.isDuplicatePayment(wrapped))
         XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(wrapped))
     }
@@ -86,14 +86,14 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
     }
 
     func testWrappedPersistenceIsNotHardReject() {
-        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(Bitkit.AppError(error: NodeError.PersistenceFailed(message: "io"))))
+        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(Bitkit.AppError(error: NodeError.PersistenceFailed)))
     }
 
     func testWrappedHardRejectReleasesSpendAndFails() async throws {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
-                throw Bitkit.AppError(error: NodeError.InvalidInvoice(message: "bad"))
+                throw Bitkit.AppError(error: NodeError.InvalidInvoice)
             }
         )
 
@@ -108,7 +108,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
-                throw Bitkit.AppError(error: NodeError.DuplicatePayment(message: "dup"))
+                throw Bitkit.AppError(error: NodeError.DuplicatePayment)
             },
             listRows: {
                 [
@@ -227,7 +227,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
-                throw NodeError.PersistenceFailed(message: "io")
+                throw NodeError.PersistenceFailed
             }
         )
 
@@ -243,7 +243,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
-                throw NodeError.PersistenceFailed(message: "io")
+                throw NodeError.PersistenceFailed
             },
             listRows: {
                 [
@@ -267,7 +267,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
-                throw NodeError.DuplicatePayment(message: "dup")
+                throw NodeError.DuplicatePayment
             }
         )
 
@@ -284,7 +284,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
-                throw NodeError.DuplicatePayment(message: "dup")
+                throw NodeError.DuplicatePayment
             },
             listRows: {
                 [
@@ -310,7 +310,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
-                throw NodeError.DuplicatePayment(message: "dup")
+                throw NodeError.DuplicatePayment
             },
             listRows: {
                 [
@@ -335,7 +335,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
-                throw NodeError.PersistenceFailed(message: "io")
+                throw NodeError.PersistenceFailed
             },
             listRows: {
                 [
@@ -368,7 +368,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
                     store?.signalCompletion(paymentId: nil, paymentHash: invoiceHash, success: true)
                     return invoiceHash
                 }
-                throw NodeError.DuplicatePayment(message: "dup")
+                throw NodeError.DuplicatePayment
             },
             listRows: {
                 [
@@ -403,7 +403,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(
             sendBolt11: { _ in
-                throw NodeError.DuplicatePayment(message: "dup")
+                throw NodeError.DuplicatePayment
             },
             listRows: {
                 throw NSError(domain: "QuickPayLookup", code: 1)
@@ -425,7 +425,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             store: store,
             sendBolt11: { _ in
                 sendCount += 1
-                throw NodeError.DuplicatePayment(message: "dup")
+                throw NodeError.DuplicatePayment
             },
             listRows: {
                 [
@@ -548,7 +548,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let invoiceHash = try Self.invoiceHash
         let coordinator = QuickPayPaymentCoordinator(
             store: store,
-            sendBolt11: { _ in throw NodeError.DuplicatePayment(message: "dup") },
+            sendBolt11: { _ in throw NodeError.DuplicatePayment },
             listRows: { [] }
         )
         XCTAssertFalse(coordinator.hasOpen(invoiceHash))
