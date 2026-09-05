@@ -5,6 +5,7 @@ import SwiftUI
 /// Communication bridge between delegates and SwiftUI views
 extension Notification.Name {
     static let quickActionSelected = Notification.Name("quickActionSelected")
+    static let deepLinkReceived = Notification.Name("deepLinkReceived")
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -37,6 +38,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
         config.delegateClass = SceneDelegate.self
         return config
+    }
+
+    func application(
+        _ application: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        DeepLinkRouter.shared.forward(url)
+        return true
     }
 
     // MARK: - App Termination

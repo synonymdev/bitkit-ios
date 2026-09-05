@@ -1,0 +1,14 @@
+<journey name="open watch-only auth link">
+  <description>Precondition: an onboarded E2E Bitkit build with Paykit UI enabled and a Bitkit-generated Pubky identity. This journey launches the terminated app with a local-only dummy setup request and cancels before account material is exported.</description>
+  <actions>
+    <action>Run `xcrun simctl terminate &lt;UDID&gt; to.bitkit`</action>
+    <action>Run `xcrun simctl openurl &lt;UDID&gt; "bitkit://pubky-auth/setup?caps=/pub/paykit/v0/bitkit/server/:rw,/pub/paykit/v0/private/bitkit/server/:rw&amp;relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F&amp;secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&amp;x-bitkit-claim=watch-only-account-v1"`</action>
+    <action>If the simulator asks to open the link in Bitkit, tap Open</action>
+    <action>Verify the watch-only consent screen (id "PubkyAuthWatchOnlyConsent") is visible</action>
+    <action>Tap Cancel (id "PubkyAuthWatchOnlyCancel")</action>
+    <action>Verify the watch-only consent screen (id "PubkyAuthWatchOnlyConsent") is no longer visible</action>
+    <action>Run `xcrun simctl openurl &lt;UDID&gt; "bitkit://pubky-auth/setup?caps=/pub/paykit/v0/bitkit/server/:rw,/pub/paykit/v0/private/bitkit/server/:rw&amp;relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F&amp;secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&amp;x-bitkit-claim=unsupported-v1"`</action>
+    <action>Verify the invalid request toast (id "PubkyAuthInvalidRequestToast") is visible</action>
+    <action>Verify the watch-only consent screen (id "PubkyAuthWatchOnlyConsent") is not visible</action>
+  </actions>
+</journey>

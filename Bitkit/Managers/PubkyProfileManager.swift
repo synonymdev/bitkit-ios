@@ -95,6 +95,17 @@ enum PubkyRingAuthURLBuilder {
         return components.url?.absoluteString
     }
 
+    static func ringHandoffURL(from authUrl: String) -> URL? {
+        guard var components = URLComponents(string: authUrl), components.scheme?.lowercased() == "pubkyauth" else {
+            return nil
+        }
+
+        components.scheme = "pubkyring"
+        components.host = "signin"
+        components.path = ""
+        return components.url
+    }
+
     private static func callbackUrl(_ baseUrl: String, nonce: UUID?) -> String {
         guard let nonce else {
             return baseUrl
@@ -389,7 +400,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     static func isRingAvailable() -> Bool {
-        guard let url = URL(string: "pubkyauth://check") else {
+        guard let url = URL(string: "pubkyring://check") else {
             return false
         }
 
@@ -477,7 +488,7 @@ class PubkyProfileManager: ObservableObject {
 
         let callbackAuthUrl = PubkyRingAuthURLBuilder.addingCallbacks(to: authUrl, nonce: attemptID) ?? authUrl
 
-        guard let url = URL(string: callbackAuthUrl) else {
+        guard let url = PubkyRingAuthURLBuilder.ringHandoffURL(from: callbackAuthUrl) else {
             await cancelPendingAuthSetup()
             activeAuthAttemptID = nil
             restoreAuthStateAfterAuthFlow()

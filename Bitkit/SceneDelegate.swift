@@ -1,6 +1,26 @@
 import SwiftUI
 import UIKit
 
+final class DeepLinkRouter {
+    static let shared = DeepLinkRouter()
+
+    private var pendingURL: URL?
+
+    func retain(_ url: URL) {
+        pendingURL = url
+    }
+
+    func forward(_ url: URL) {
+        retain(url)
+        NotificationCenter.default.post(name: .deepLinkReceived, object: url)
+    }
+
+    func consume() -> URL? {
+        defer { pendingURL = nil }
+        return pendingURL
+    }
+}
+
 // MARK: - Scene Delegate for Quick Actions
 
 /// Handles scene lifecycle and quick actions for SwiftUI apps
@@ -8,6 +28,7 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
     // MARK: - Quick Action State
 
     var savedShortCutItem: UIApplicationShortcutItem?
+    var savedDeepLinkURL: URL?
 
     // MARK: - Scene Connection
 
@@ -16,6 +37,7 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
         if let shortcutItem = connectionOptions.shortcutItem {
             savedShortCutItem = shortcutItem
         }
+        savedDeepLinkURL = connectionOptions.urlContexts.first?.url
     }
 
     // MARK: - Scene Activation
@@ -25,6 +47,10 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
         if let shortcutItem = savedShortCutItem {
             handleQuickAction(shortcutItem)
             savedShortCutItem = nil
+        }
+        if let url = savedDeepLinkURL {
+            forwardDeepLink(url)
+            savedDeepLinkURL = nil
         }
     }
 
@@ -40,11 +66,21 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
         completionHandler(true)
     }
 
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        for context in URLContexts {
+            forwardDeepLink(context.url)
+        }
+    }
+
     // MARK: - Quick Action Processing
 
     /// Process quick action and notify SwiftUI views
     private func handleQuickAction(_ shortcutItem: UIApplicationShortcutItem) {
         let userInfo = ["shortcutType": shortcutItem.type]
         NotificationCenter.default.post(name: .quickActionSelected, object: nil, userInfo: userInfo)
+    }
+
+    func forwardDeepLink(_ url: URL) {
+        DeepLinkRouter.shared.forward(url)
     }
 }

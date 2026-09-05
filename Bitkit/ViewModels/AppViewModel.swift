@@ -67,6 +67,8 @@ class AppViewModel: ObservableObject {
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
 
+    @Published private(set) var pendingDeepLinkURL: URL?
+
     // Onboarding
     @AppStorage("hasDismissedWidgetsOnboardingHint") var hasDismissedWidgetsOnboardingHint: Bool = false
     @AppStorage("hasSeenContactsIntro") var hasSeenContactsIntro: Bool = false
@@ -113,6 +115,54 @@ class AppViewModel: ObservableObject {
     /// Called when node reaches running state
     func markAppStatusInit() {
         appStatusInit = true
+    }
+
+    func retainDeepLink(_ url: URL) {
+        pendingDeepLinkURL = url
+    }
+
+    func routePendingDeepLinkIfReady(_ isReady: Bool, nodeIsRunning: Bool = false, handler: (URL) async -> Void) async {
+        guard isReady, let url = pendingDeepLinkURL else { return }
+        if Self.requiresLightningNode(url), !nodeIsRunning {
+            return
+        }
+        pendingDeepLinkURL = nil
+        await handler(url)
+    }
+
+    private static func requiresLightningNode(_ url: URL) -> Bool {
+        if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            return false
+        }
+        if PubkyRingAuthCallback.parse(url: url) != nil {
+            return false
+        }
+        if url.scheme?.lowercased() == "bitkit",
+           url.host?.lowercased() == "pubky-auth",
+           url.path == "/setup"
+        {
+            return false
+        }
+        if SamRockSetupRequest.isProtocolURL(url.absoluteString) {
+            return false
+        }
+        if url.scheme?.lowercased() == "bitcoin" {
+            return false
+        }
+        if isBolt11Invoice(url) {
+            return false
+        }
+        if url.scheme?.lowercased() == "bitkit",
+           url.host?.lowercased().hasPrefix("gift-") == true
+        {
+            return false
+        }
+        return !PubkyAuthRequest.isProtocolURL(url.absoluteString)
+    }
+
+    private static func isBolt11Invoice(_ url: URL) -> Bool {
+        let invoice = url.absoluteString.removingLightningSchemes().trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return invoice.hasPrefix("lnbc") || invoice.hasPrefix("lntb")
     }
 
     private let lightningService: LightningService
@@ -436,7 +486,8 @@ extension AppViewModel {
             }
         }
 
-        let uri = uri.removingLightningSchemes()
+        let sourceURI = uri.removingLightningSchemes()
+        let uri = PubkyAuthRequest.normalizedProtocolURL(sourceURI)
         let prevalidatedPaymentRequest: BitkitCore.Scanner?
         if scope == .paymentRequests {
             guard SamRockSetupRequest.parse(uri) == nil,
@@ -649,7 +700,7 @@ extension AppViewModel {
             }
 
             handleNodeUri(url)
-        case let .pubkyAuth(data: authUrl):
+        case .pubkyAuth:
             guard PaykitFeatureFlags.isUIEnabled else {
                 toast(
                     type: .error,
@@ -659,7 +710,7 @@ extension AppViewModel {
                 )
                 return
             }
-            handlePubkyAuthApproval(authUrl)
+            handlePubkyAuthApproval(sourceURI)
         case let .gift(code, amount):
             sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
         default:
@@ -786,7 +837,7 @@ extension AppViewModel {
         sheetViewModel.showSheet(.lnurlAuth, data: LnurlAuthConfig(lnurl: lnurl, authData: data))
     }
 
-    private func handlePubkyAuthApproval(_ authUrl: String) {
+    private func handlePubkyAuthApproval(_ sourceURL: String) {
         // State 1: No Pubky identity at all
         guard (try? Keychain.loadString(key: .paykitSession))?.isEmpty == false else {
             toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
@@ -803,11 +854,15 @@ extension AppViewModel {
 
         // State 3: Bitkit-generated identity — can approve
         do {
-            let request = try PubkyAuthRequest.parse(url: authUrl)
-            sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(authUrl: authUrl, request: request))
+            let request = try PubkyAuthRequest.parse(url: sourceURL)
+            sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(authUrl: request.rawUrl, request: request))
         } catch {
             Logger.error("Failed to parse pubky auth URL: \(error)", context: "AppViewModel")
-            toast(type: .error, title: t("pubky_auth__invalid_request"))
+            toast(
+                type: .error,
+                title: t("pubky_auth__invalid_request"),
+                accessibilityIdentifier: "PubkyAuthInvalidRequestToast"
+            )
         }
     }
 
