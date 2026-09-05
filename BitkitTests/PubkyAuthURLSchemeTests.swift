@@ -115,6 +115,7 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         )
         let bitcoinURL = try XCTUnwrap(URL(string: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq?amount=0.001"))
         let bolt11URL = try XCTUnwrap(URL(string: "lightning:lnbc1example"))
+        let giftURL = try XCTUnwrap(URL(string: "bitkit://gift-code-1000"))
         let lnurlURL = try XCTUnwrap(URL(string: "lnurl:lnurl1example"))
 
         app.retainDeepLink(pubkyURL)
@@ -162,6 +163,12 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         app.retainDeepLink(bolt11URL)
         await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
             XCTAssertEqual(routedURL, bolt11URL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(giftURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, giftURL)
         }
         XCTAssertNil(app.pendingDeepLinkURL)
 

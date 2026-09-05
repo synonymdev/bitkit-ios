@@ -26,6 +26,15 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertEqual(request.capabilities, PubkyAuthClaim.watchOnlyAccountCapabilities)
     }
 
+    func testRelayOriginShowsOnlyTheAuthorizationDestination() throws {
+        let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+            "&relay=https%3A%2F%2FRelay.Example%3A8443%2Finbox%2F&secret=\(secret)&x-bitkit-claim=watch-only-account-v1"
+
+        let request = try PubkyAuthRequest.parse(url: url)
+
+        XCTAssertEqual(request.relayOrigin, "https://relay.example:8443")
+    }
+
     func testProtocolUrlRejectsBitkitSpecificSetupHandoffWithoutClaimMarker() {
         let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
             "&relay=\(relay)&secret=\(secret)"

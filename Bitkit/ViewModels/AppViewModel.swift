@@ -152,6 +152,11 @@ class AppViewModel: ObservableObject {
         if isBolt11Invoice(url) {
             return false
         }
+        if url.scheme?.lowercased() == "bitkit",
+           url.host?.lowercased().hasPrefix("gift-") == true
+        {
+            return false
+        }
         return !PubkyAuthRequest.isProtocolURL(url.absoluteString)
     }
 
