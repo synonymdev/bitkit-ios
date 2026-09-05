@@ -1,7 +1,7 @@
 # Payment-request journeys
 
 These journeys cover incoming Paykit Payment Requests that Bitkit can receive but cannot open.
-This suite is iOS-only; there is no Android companion under `bitkit-android/journeys`.
+This suite is ported alongside Android's matching `requested-resolution-failure.xml` journey.
 
 ## Failure contract
 
