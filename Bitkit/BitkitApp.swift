@@ -40,6 +40,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return config
     }
 
+    func application(
+        _ application: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        DeepLinkRouter.shared.forward(url)
+        return true
+    }
+
     // MARK: - App Termination
 
     func applicationWillTerminate(_ application: UIApplication) {
