@@ -131,7 +131,7 @@ struct PubkyAuthApprovalSheet: View {
         SheetIntro(
             navTitle: t("pubky_auth__watch_only_intro_nav_title"),
             title: t("pubky_auth__watch_only_intro_title"),
-            description: t("pubky_auth__watch_only_intro_description"),
+            description: watchOnlyConsentDescription,
             image: "coin-stack",
             continueText: t("pubky_auth__watch_only_intro_approve"),
             cancelText: t("common__cancel"),
@@ -231,6 +231,11 @@ struct PubkyAuthApprovalSheet: View {
                     descriptionText
                         .padding(.bottom, 32)
 
+                    if let relayOrigin = config.request.relayOrigin {
+                        relayOriginSection(relayOrigin)
+                            .padding(.bottom, 24)
+                    }
+
                     permissionsSection
 
                     Spacer(minLength: 32)
@@ -258,6 +263,25 @@ struct PubkyAuthApprovalSheet: View {
             accentFont: Fonts.bold
         )
         .lineSpacing(4)
+    }
+
+    private var watchOnlyConsentDescription: String {
+        let description = t("pubky_auth__watch_only_intro_description")
+        guard let relayOrigin = config.request.relayOrigin else { return description }
+
+        return description + "\n\n" + t(
+            "pubky_auth__watch_only_intro_relay",
+            variables: ["relay": relayOrigin]
+        )
+    }
+
+    private func relayOriginSection(_ relayOrigin: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("pubky_auth__authorization_relay"), textColor: .white64)
+            BodySSBText(relayOrigin)
+                .accessibilityIdentifier("PubkyAuthRelayOrigin")
+            CustomDivider(color: .white10)
+        }
     }
 
     private var successDescriptionText: some View {

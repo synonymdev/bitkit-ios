@@ -64,6 +64,21 @@ struct PubkyAuthRequest {
     let serviceNames: [String]
     let bitkitClaim: PubkyAuthClaim?
 
+    /// The network origin that receives the authorization. This is a delivery destination, not a service identity.
+    var relayOrigin: String? {
+        guard let components = URLComponents(string: relay),
+              let scheme = components.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              let host = components.host?.lowercased(),
+              !host.isEmpty
+        else {
+            return nil
+        }
+
+        let port = components.port.map { ":\($0)" } ?? ""
+        return "\(scheme)://\(host)\(port)"
+    }
+
     static func isProtocolURL(_ value: String) -> Bool {
         URLComponents(string: normalizedProtocolURL(value).trimmingCharacters(in: .whitespacesAndNewlines))?.scheme?.lowercased() == "pubkyauth"
     }
