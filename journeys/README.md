@@ -136,7 +136,7 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [notification-permission](notification-permission) | 4 | Background-setup toggles |
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
 | [hardware-wallet](hardware-wallet) | 15 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
-| [payment-requests](payment-requests) | 1 | iOS-only — no Android companion |
+| [payment-requests](payment-requests) | 1 | Ported — matches Android's resolution-failure journey |
 
 ## Not ported
 
