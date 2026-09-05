@@ -31,6 +31,25 @@ struct PrivatePaykitPaymentContext: Equatable {
     let paymentListVersion: UInt64
 }
 
+enum IncomingPaykitPaymentRequestFailureReason: String, Equatable {
+    case noSupportedEndpoint = "no_supported_endpoint"
+    case endpointNotPayable = "endpoint_not_payable"
+    case paymentDetailsPending = "payment_details_pending"
+    case invalidPaymentTarget = "invalid_payment_target"
+    case paymentTargetNotRoutable = "payment_target_not_routable"
+    case requestExpired = "request_expired"
+    case resolutionFailed = "resolution_failed"
+
+    var category: String {
+        switch self {
+        case .noSupportedEndpoint, .endpointNotPayable, .paymentDetailsPending, .resolutionFailed:
+            "resolution"
+        case .invalidPaymentTarget, .paymentTargetNotRoutable, .requestExpired:
+            "presentation"
+        }
+    }
+}
+
 enum PublicPaykitPaymentLaunchResult {
     case opened(paymentRequest: String, privatePaymentContext: PrivatePaykitPaymentContext?)
     case noEndpoint
@@ -45,6 +64,19 @@ enum PublicPaykitPaymentLaunchResult {
             "slashtags__error_pay_empty_msg"
         case .notOpened:
             "slashtags__error_pay_not_opened_msg"
+        }
+    }
+
+    var incomingPaymentRequestFailureReason: IncomingPaykitPaymentRequestFailureReason? {
+        switch self {
+        case .opened:
+            nil
+        case .noEndpoint:
+            .noSupportedEndpoint
+        case .notOpened:
+            .endpointNotPayable
+        case .waitingForUpdatedPaymentList:
+            .paymentDetailsPending
         }
     }
 }
