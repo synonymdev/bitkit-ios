@@ -191,6 +191,7 @@ final class PublicPaykitServiceTests: XCTestCase {
         let expectedModes: [(publicEnabled: Bool, privateEnabled: Bool, mode: PublicPaykitService.PendingReconciliationMode)] = [
             (true, true, .publishEndpoints),
             (true, false, .publishEndpoints),
+            (false, true, .removePublishedState),
             (false, false, .removePublishedState),
         ]
 

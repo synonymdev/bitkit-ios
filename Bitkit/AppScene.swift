@@ -938,10 +938,7 @@ struct AppScene: View {
                     try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet)
                 case .removePublishedState:
                     try await PublicPaykitService.removePublishedEndpoints()
-                    try await PublicPaykitService.syncLocalReceiverMarker(
-                        publicSharingEnabled: false,
-                        privateSharingEnabled: false
-                    )
+                    try await PublicPaykitService.syncLocalReceiverMarker()
                 }
                 PublicPaykitService.setCleanupPending(false)
             } catch {
