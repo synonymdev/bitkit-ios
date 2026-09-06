@@ -1,4 +1,5 @@
 import Foundation
+import struct Paykit.PubkySessionBootstrapResult
 import SwiftUI
 
 enum PubkyAuthState: Equatable {
@@ -258,10 +259,7 @@ class PubkyProfileManager: ObservableObject {
         existingImageUrl: String? = nil,
         avatarImage: UIImage? = nil
     ) async throws {
-        if isProfileSetupPending {
-            guard let publicKey else {
-                throw PubkyServiceError.sessionNotActive
-            }
+        if isProfileSetupPending, let publicKey {
             try await createProfile(
                 publicKey: publicKey,
                 name: name,
@@ -274,6 +272,7 @@ class PubkyProfileManager: ObservableObject {
             return
         }
 
+        setProfileSetupPending(false)
         let (publicKeyZ32, secretKeyHex) = try await deriveKeys()
 
         _ = try await Task.detached {
@@ -366,20 +365,34 @@ class PubkyProfileManager: ObservableObject {
             throw PubkySignupError.alreadySignedIn
         }
 
-        let registeredSession = try await PubkyService.registerIdentity(
-            secretKeyHex: secretKeyHex,
-            homeserverZ32: homeserver,
-            signupCode: request.signupToken
+        try await completeSignupAuthentication(
+            publicKey: publicKey,
+            registerIdentity: {
+                try await PubkyService.registerIdentity(
+                    secretKeyHex: secretKeyHex,
+                    homeserverZ32: homeserver,
+                    signupCode: request.signupToken
+                )
+            },
+            approveAuth: {
+                if let authorizationUrl = request.authorizationUrl {
+                    try await PubkyService.approveRingAuth(authUrl: authorizationUrl, secretKeyHex: secretKeyHex)
+                }
+            },
+            activateIdentity: { try await PubkyService.activateRegisteredIdentity($0) }
         )
-        if let authorizationUrl = request.authorizationUrl {
-            try await PubkyService.approveRingAuth(authUrl: authorizationUrl, secretKeyHex: secretKeyHex)
-        }
-        do {
-            try await PubkyService.activateRegisteredIdentity(registeredSession)
-        } catch {
-            setProfileSetupPending(false)
-            throw error
-        }
+    }
+
+    private func completeSignupAuthentication(
+        publicKey: String,
+        registerIdentity: () async throws -> PubkySessionBootstrapResult,
+        approveAuth: () async throws -> Void,
+        activateIdentity: (PubkySessionBootstrapResult) async throws -> Void
+    ) async throws {
+        setProfileSetupPending(false)
+        let registeredSession = try await registerIdentity()
+        try await approveAuth()
+        try await activateIdentity(registeredSession)
 
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         self.publicKey = publicKey
@@ -719,6 +732,20 @@ class PubkyProfileManager: ObservableObject {
     }
 
     #if DEBUG
+        func completeSignupAuthenticationForTesting(
+            publicKey: String,
+            registerIdentity: () async throws -> PubkySessionBootstrapResult,
+            approveAuth: () async throws -> Void,
+            activateIdentity: (PubkySessionBootstrapResult) async throws -> Void
+        ) async throws {
+            try await completeSignupAuthentication(
+                publicKey: publicKey,
+                registerIdentity: registerIdentity,
+                approveAuth: approveAuth,
+                activateIdentity: activateIdentity
+            )
+        }
+
         func setActiveAuthAttemptIDForTesting(_ attemptID: UUID?) {
             activeAuthAttemptID = attemptID
         }

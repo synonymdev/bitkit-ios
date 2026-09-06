@@ -145,13 +145,7 @@ struct CreateProfileView: View {
     // MARK: - Loading
 
     private var loadingView: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            ActivityIndicator(size: 32)
-            BodyMText(t("profile__deriving_keys"), textColor: .white64)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        PubkyKeyDerivationLoadingView()
     }
 
     // MARK: - Image Selection
