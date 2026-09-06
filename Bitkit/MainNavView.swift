@@ -427,10 +427,7 @@ struct MainNavView: View {
                 ZStack {
                     Color.black.ignoresSafeArea()
 
-                    HStack(spacing: 12) {
-                        ActivityIndicator(size: 20)
-                        BodyMText(t("profile__deriving_keys"), textColor: .white64)
-                    }
+                    PubkyKeyDerivationLoadingView()
                 }
                 .accessibilityIdentifier("PubkySignupLoading")
             }

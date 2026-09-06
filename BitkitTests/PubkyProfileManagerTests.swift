@@ -1,7 +1,75 @@
 @testable import Bitkit
+import class Paykit.PubkySessionAccess
+import struct Paykit.PubkySessionBootstrapResult
 import XCTest
 
 final class PubkyProfileManagerTests: XCTestCase {
+    @MainActor
+    func testCreateIdentityRecoversStalePendingSetupWithoutPublicKey() async {
+        let defaults = UserDefaults.standard
+        let previousPending = defaults.object(forKey: "pubky_profile_setup_pending")
+        defer { defaults.set(previousPending, forKey: "pubky_profile_setup_pending") }
+        defaults.set(true, forKey: "pubky_profile_setup_pending")
+        let manager = KeyDerivationProbeProfileManager()
+
+        do {
+            try await manager.createIdentity(name: "Test", bio: "", links: [])
+            XCTFail("Expected key derivation probe to stop creation")
+        } catch {
+            XCTAssertTrue(manager.didDeriveKeys)
+            XCTAssertFalse(manager.isProfileSetupPending)
+        }
+    }
+
+    @MainActor
+    func testSignupFinishesProfileSetupOnlyAfterActivation() async throws {
+        let defaults = UserDefaults.standard
+        let previousPending = defaults.object(forKey: "pubky_profile_setup_pending")
+        let previousSharing = defaults.object(forKey: PrivatePaykitService.publishingEnabledKey)
+        defer {
+            defaults.set(previousPending, forKey: "pubky_profile_setup_pending")
+            defaults.set(previousSharing, forKey: PrivatePaykitService.publishingEnabledKey)
+        }
+
+        for failingStep in [nil, "register", "authorize", "activate"] {
+            defaults.set(true, forKey: "pubky_profile_setup_pending")
+            let manager = PubkyProfileManager()
+            let session = PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test")
+            var events: [String] = []
+            func perform(_ step: String) throws {
+                XCTAssertFalse(manager.isProfileSetupPending)
+                XCTAssertNil(manager.publicKey)
+                events.append(step)
+                if step == failingStep { throw PubkyServiceError.authFailed(step) }
+            }
+
+            do {
+                try await manager.completeSignupAuthenticationForTesting(
+                    publicKey: "pubky_test",
+                    registerIdentity: {
+                        try perform("register")
+                        return session
+                    },
+                    approveAuth: { try perform("authorize") },
+                    activateIdentity: {
+                        XCTAssertTrue($0.sessionAccess === session.sessionAccess)
+                        try perform("activate")
+                    }
+                )
+                XCTAssertNil(failingStep)
+                XCTAssertEqual(events, ["register", "authorize", "activate"])
+                XCTAssertTrue(manager.isProfileSetupPending)
+                XCTAssertEqual(manager.publicKey, "pubky_test")
+                XCTAssertEqual(manager.authState, .authenticated)
+            } catch {
+                XCTAssertEqual(events.last, failingStep)
+                XCTAssertFalse(manager.isProfileSetupPending)
+                XCTAssertNil(manager.publicKey)
+                XCTAssertEqual(manager.authState, .idle)
+            }
+        }
+    }
+
     // MARK: - Ring callbacks
 
     func testPubkyRingAuthURLBuilderAddsXCallbackParams() throws {
@@ -858,6 +926,16 @@ final class PubkyProfileManagerTests: XCTestCase {
             dismissedSuggestions: [],
             lastUsedTags: []
         )
+    }
+}
+
+@MainActor
+private class KeyDerivationProbeProfileManager: PubkyProfileManager {
+    var didDeriveKeys = false
+
+    override func deriveKeys() async throws -> (String, String) {
+        didDeriveKeys = true
+        throw PubkyServiceError.authFailed("key derivation probe")
     }
 }
 
