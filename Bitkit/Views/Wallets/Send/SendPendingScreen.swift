@@ -24,7 +24,7 @@ struct HourglassLoadingView: View {
 }
 
 struct SendPendingScreen: View {
-    let paymentHash: String
+    let paymentHash: String?
     let retryRoute: SendRetryRoute
     let paymentRequest: String?
     let paykitPaymentRequestId: PaykitPaymentRequest.ID?
@@ -103,7 +103,7 @@ struct SendPendingScreen: View {
     }
 
     private func applyPendingResolutionIfNeeded(_ resolution: SendSheetPendingResolution?) {
-        guard let resolution, resolution.paymentHash == paymentHash else { return }
+        guard let paymentHash, let resolution, resolution.paymentHash == paymentHash else { return }
         app.consumeSendSheetPendingResolution(paymentHash: paymentHash)
         if resolution.success {
             Task { @MainActor in
@@ -130,6 +130,7 @@ struct SendPendingScreen: View {
     }
 
     private func searchForActivity() async {
+        guard let paymentHash else { return }
         do {
             try? await activityList.syncLdkNodePayments()
 
@@ -147,7 +148,9 @@ struct SendPendingScreen: View {
     }
 
     private func applyPendingContactContextIfNeeded() async {
-        guard let contactPublicKey = app.contactPaymentContext(forPendingPaymentHash: paymentHash)?.publicKey else {
+        guard let paymentHash,
+              let contactPublicKey = app.contactPaymentContext(forPendingPaymentHash: paymentHash)?.publicKey
+        else {
             return
         }
 

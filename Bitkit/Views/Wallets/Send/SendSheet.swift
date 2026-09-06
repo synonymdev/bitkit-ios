@@ -61,7 +61,7 @@ enum SendRoute: Hashable {
     case quickpay
     case pin
     case pending(
-        paymentHash: String,
+        paymentHash: String?,
         retryRoute: SendRetryRoute,
         paymentRequest: String?,
         paykitPaymentRequestId: PaykitPaymentRequest.ID? = nil

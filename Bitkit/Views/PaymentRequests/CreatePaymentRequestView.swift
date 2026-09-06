@@ -226,10 +226,7 @@ struct PaymentRequestRecipientView: View {
             } label: {
                 HStack(spacing: 16) {
                     ContactAvatarLetter(source: target.publicKey, size: 48)
-                    VStack(alignment: .leading, spacing: 4) {
-                        CaptionText(PubkyPublicKeyFormat.displayTruncated(target.publicKey).localizedUppercase)
-                        BodyMSBText(PubkyPublicKeyFormat.displayTruncated(target.publicKey))
-                    }
+                    BodyMSBText(PubkyPublicKeyFormat.displayTruncated(target.publicKey))
                     Spacer()
                 }
                 .padding(.vertical, 20)

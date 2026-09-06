@@ -811,7 +811,7 @@ struct SendConfirmationView: View {
                     wallet.sendAmountSats = incomingPaymentRequest.amountSats
                     Logger.warn("On-chain payment outcome is uncertain after broadcast started: \(error)", context: "SendConfirmation")
                     navigationPath.append(.pending(
-                        paymentHash: incomingPaymentRequest.paymentRequestId,
+                        paymentHash: nil,
                         retryRoute: .confirm,
                         paymentRequest: nil,
                         paykitPaymentRequestId: incomingPaymentRequest.id
