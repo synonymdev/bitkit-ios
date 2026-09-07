@@ -326,6 +326,57 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
 
+    func testAmountMismatchIsVisibleAndStopsAutomaticPresentationUntilExplicitRetry() async throws {
+        for userRequested in [false, true] {
+            let clock = PaymentRequestTestClock(Date())
+            let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+            let manager = paymentRequestManager(sdk: sdk, clock: clock)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            if userRequested {
+                XCTAssertTrue(manager.requestPresentation(request))
+            }
+            var shownErrors: [PaykitPaymentRequestError] = []
+
+            XCTAssertTrue(PaykitPaymentRequestPresentationCoordinator.handleAmountMismatch(
+                PaykitPaymentRequestError.amountMismatch,
+                request: request,
+                manager: manager,
+                showError: {
+                    if let error = $0 as? PaykitPaymentRequestError {
+                        shownErrors.append(error)
+                    }
+                }
+            ))
+
+            XCTAssertEqual(shownErrors, [.amountMismatch])
+            clock.advance(by: 300)
+            await manager.refresh()
+            XCTAssertEqual(manager.pendingRequests, [request])
+            XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+            XCTAssertTrue(manager.requestPresentation(request))
+            XCTAssertEqual(manager.requestsForPresentation(), [request])
+        }
+    }
+
+    func testTransientPresentationErrorRemainsRetryableWithoutMismatchToast() async throws {
+        let clock = PaymentRequestTestClock(Date())
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+
+        XCTAssertFalse(PaykitPaymentRequestPresentationCoordinator.handleAmountMismatch(
+            PaykitPaymentRequestError.requestUnavailable,
+            request: request,
+            manager: manager,
+            showError: { _ in XCTFail("Transient errors must not show a mismatch toast") }
+        ))
+        manager.deferPresentation(request)
+        clock.advance(by: 2)
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+    }
+
     func testDeferredRequestUsesIncreasingPresentationBackoff() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let clock = PaymentRequestTestClock(now)

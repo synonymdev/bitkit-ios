@@ -548,6 +548,19 @@ protocol PaykitPaymentRequestPresentationStoring {
 
 enum PaykitPaymentRequestPresentationCoordinator {
     @MainActor
+    static func handleAmountMismatch(
+        _ error: Error,
+        request: PaykitPaymentRequest,
+        manager: PaykitPaymentRequestManager,
+        showError: (Error) -> Void
+    ) -> Bool {
+        guard error as? PaykitPaymentRequestError == .amountMismatch else { return false }
+        showError(error)
+        _ = manager.markPresentedIfPending(request)
+        return true
+    }
+
+    @MainActor
     static func handleUnavailablePaymentRoute(
         _ request: PaykitPaymentRequest,
         app: AppViewModel,
