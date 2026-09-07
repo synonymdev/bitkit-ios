@@ -60,9 +60,15 @@ final class PaykitSdkClientConfigTests: XCTestCase {
     }
 
     func testStoredSessionCanBeDeferredDuringSdkInitialization() {
-        let error = PaykitError.Identity(code: "identity_error", context: "restore Pubky grant session from platform provider")
-
-        XCTAssertTrue(PaykitSdkService.shouldDeferStaleSession(error: error, hasStoredSession: true))
+        for context in [
+            "restore Pubky grant session from platform provider",
+            "Pubky session must be grant-backed",
+            "Pubky grant client ID `old.bitkit.to` did not match `staging.bitkit.to`",
+        ] {
+            let error = PaykitError.Identity(code: "identity_error", context: context)
+            XCTAssertTrue(PaykitSdkService.shouldDeferStaleSession(error: error, hasStoredSession: true))
+            XCTAssertFalse(PaykitSdkService.shouldDeferStaleSession(error: error, hasStoredSession: false))
+        }
     }
 
     func testMissingSessionOrUnrelatedIdentityFailureIsNotDeferred() {

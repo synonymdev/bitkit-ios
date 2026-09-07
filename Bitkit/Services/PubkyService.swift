@@ -1095,6 +1095,8 @@ actor PaykitSdkService {
         }
 
         return context == "restore Pubky grant session from platform provider"
+            || context == "Pubky session must be grant-backed"
+            || context.hasPrefix("Pubky grant client ID `")
     }
 
     private nonisolated static func canReceivePrivatePaymentDetails(marker: Paykit.PaykitReceiverMarker?) -> Bool {
