@@ -555,6 +555,15 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
     }
 
     func testDefiniteOnchainFailureClearsStartedProof() async throws {
+        let errors: [Error] = [
+            NodeError.WalletOperationFailed(message: "wallet"),
+            NodeError.PersistenceFailed(message: "io"),
+            Bitkit.AppError(error: NodeError.PersistenceFailed(message: "io")),
+        ]
+        for error in errors {
+            XCTAssertTrue(PaykitPaymentProofService.isDefiniteOnchainPreBroadcastFailure(error))
+        }
+        XCTAssertFalse(PaykitPaymentProofService.isDefiniteOnchainPreBroadcastFailure(NSError(domain: "unknown", code: 1)))
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))

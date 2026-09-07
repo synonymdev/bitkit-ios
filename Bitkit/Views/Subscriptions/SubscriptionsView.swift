@@ -526,6 +526,15 @@ struct SubscriptionSheet: View {
             }
             .allowsHitTesting(!isAccepting)
 
+            if let period = subscription.paymentDueOnAcceptance(at: now)?.billingPeriod {
+                BodySText(
+                    t("subscriptions__first_period_ends", variables: ["date": period.endsAt.formatted(date: .abbreviated, time: .shortened)]),
+                    textColor: .white64
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 16)
+            }
+
             if !subscription.recurrence.unit.isSupported {
                 BodyMText(t("subscriptions__unsupported_description"), textColor: .white64)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -675,10 +684,15 @@ struct SubscriptionSheet: View {
 
     private var reviewTransitionDate: Date? {
         guard case let .review(subscription) = route else { return nil }
-        return [subscription.recurrence.startsAt, subscription.proposalExpiresAt, subscription.recurrence.endsAt]
-            .compactMap { $0 }
-            .filter { $0 > now }
-            .min()
+        return [
+            subscription.recurrence.startsAt,
+            subscription.proposalExpiresAt,
+            subscription.recurrence.endsAt,
+            subscription.paymentDueOnAcceptance(at: now)?.billingPeriod?.endsAt,
+        ]
+        .compactMap { $0 }
+        .filter { $0 > now }
+        .min()
     }
 
     private func moreInfo(_ subscription: PaykitSubscription) -> some View {

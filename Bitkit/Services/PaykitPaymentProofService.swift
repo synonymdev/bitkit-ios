@@ -721,6 +721,28 @@ actor PaykitPaymentProofService {
         }
     }
 
+    static func isDefiniteOnchainPreBroadcastFailure(_ error: Error) -> Bool {
+        let underlyingError = (error as? AppError)?.underlyingError ?? error
+        if let serviceError = underlyingError as? CustomServiceError {
+            switch serviceError {
+            case .nodeNotSetup, .nodeNotStarted:
+                return true
+            default:
+                return false
+            }
+        }
+        guard let nodeError = underlyingError as? NodeError else { return false }
+
+        switch nodeError {
+        case .NotRunning, .OnchainTxCreationFailed, .OnchainWalletAccountNotRegistered,
+             .OnchainTxSigningFailed, .WalletOperationFailed, .PersistenceFailed, .InvalidAddress, .InvalidAmount, .InvalidNetwork,
+             .InvalidFeeRate, .InsufficientFunds, .CoinSelectionFailed, .NoSpendableOutputs:
+            return true
+        default:
+            return false
+        }
+    }
+
     private static func endpoint(_ identifier: String, supports kind: PaykitPaymentProofKind) -> Bool {
         guard let methodId = PublicPaykitService.MethodId(rawValue: identifier) else { return false }
         switch kind {

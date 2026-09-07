@@ -1539,6 +1539,7 @@
 "subscriptions__expires" = "Expires";
 "subscriptions__first_payment_failed" = "First Payment Failed";
 "subscriptions__first_payment_failed_description" = "You’re subscribed, but your first payment wasn’t sent.";
+"subscriptions__first_period_ends" = "First billing period ends {date}. Each period is charged in full.";
 "subscriptions__expires_date" = "Expires {date}";
 "subscriptions__frequency" = "Frequency";
 "subscriptions__more_info" = "More Info";
