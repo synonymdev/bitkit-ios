@@ -78,7 +78,7 @@ struct PaymentRequestCard: View {
                         await onReject?()
                         isRejecting = false
                     }
-                    .accessibilityIdentifier("PaymentRequestReject\(request.paymentRequestId)")
+                    .accessibilityIdentifier("PaymentRequestDismiss-\(request.paymentRequestId)")
 
                     CustomButton(
                         title: t("common__pay"),
@@ -89,7 +89,7 @@ struct PaymentRequestCard: View {
                     ) {
                         onPay?()
                     }
-                    .accessibilityIdentifier("PaymentRequestPay\(request.paymentRequestId)")
+                    .accessibilityIdentifier("PaymentRequestPay-\(request.paymentRequestId)")
                 }
                 .padding(16)
                 .background(Color.gray5)
