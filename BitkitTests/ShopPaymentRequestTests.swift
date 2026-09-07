@@ -55,6 +55,31 @@ final class ShopPaymentRequestTests: XCTestCase {
         XCTAssertNotNil(app.scannedLightningInvoice)
     }
 
+    func testSignupScannerRoutesRequireApproval() async throws {
+        let defaults = UserDefaults.standard
+        let previousEnabled = defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey)
+        defer { defaults.set(previousEnabled, forKey: PaykitFeatureFlags.uiEnabledKey) }
+        defaults.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        XCTAssertFalse(try PubkyProfileManager.hasStoredIdentity())
+
+        for url in [pubkySignupUrl, directPubkySignupUrl, directPubkySignupUrl.replacingOccurrences(of: "direct_signup", with: "signup")] {
+            let sheets = SheetViewModel()
+            let app = AppViewModel(
+                sheetViewModel: sheets,
+                navigationViewModel: NavigationViewModel(),
+                pubkyProfile: PubkyProfileManager()
+            )
+
+            try await app.handleScannedData(url)
+
+            XCTAssertEqual(sheets.activeSheetConfiguration?.id, .pubkyAuthApproval)
+            let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? PubkyAuthApprovalConfig)
+            XCTAssertTrue(config.request.isSignup)
+            XCTAssertEqual(config.request.homeserverPublicKey, "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo")
+            XCTAssertFalse(try PubkyProfileManager.hasStoredIdentity())
+        }
+    }
+
     private var lightningInvoice: LightningInvoice {
         LightningInvoice(
             bolt11: "test-invoice",

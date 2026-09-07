@@ -66,7 +66,6 @@ class AppViewModel: ObservableObject {
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
-    @Published private(set) var isCompletingPubkySignup = false
 
     // Onboarding
     @AppStorage("hasDismissedWidgetsOnboardingHint") var hasDismissedWidgetsOnboardingHint: Bool = false
@@ -841,21 +840,6 @@ extension AppViewModel {
                 Logger.error("Failed to read stored Pubky identity: \(error)", context: "AppViewModel")
                 sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity check failed")
                 toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
-                return
-            }
-
-            if request.authorizationUrl == nil {
-                sheetViewModel.hideSheet()
-                isCompletingPubkySignup = true
-                defer { isCompletingPubkySignup = false }
-                do {
-                    try await pubkyProfile.approveSignupAuth(request: request)
-                } catch PubkySignupError.alreadySignedIn {
-                    toast(type: .info, title: t("pubky_auth__already_signed_in"))
-                } catch {
-                    Logger.error("Failed to complete direct Pubky signup: \(error)", context: "AppViewModel")
-                    toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
-                }
                 return
             }
 
