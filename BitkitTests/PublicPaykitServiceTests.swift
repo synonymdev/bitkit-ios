@@ -199,6 +199,7 @@ final class PublicPaykitServiceTests: XCTestCase {
 
         XCTAssertEqual(feedback.diagnosticReason, .requestExpired)
         XCTAssertEqual(feedback.diagnosticReason.rawValue, "request_expired")
+        XCTAssertTrue(feedback.isTerminal)
         XCTAssertEqual(feedback.toast?.titleKey, "wallet__payment_request")
         XCTAssertEqual(feedback.toast?.descriptionKey, "wallet__payment_request_expired")
         XCTAssertEqual(feedback.toast?.accessibilityIdentifier, "PaymentRequestExpiredToast")

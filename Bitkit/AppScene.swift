@@ -11,6 +11,7 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
     }
 
     let diagnosticReason: IncomingPaykitPaymentRequestFailureReason
+    let isTerminal: Bool
     let toast: Toast?
 
     init(
@@ -20,6 +21,7 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
         switch deferral {
         case .requestedPresentationEnded:
             diagnosticReason = fallbackReason
+            isTerminal = true
             toast = Toast(
                 titleKey: "wallet__payment_request",
                 descriptionKey: "wallet__payment_request_unavailable",
@@ -27,6 +29,7 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
             )
         case let .requestExpired(wasRequested):
             diagnosticReason = .requestExpired
+            isTerminal = true
             toast = wasRequested ? Toast(
                 titleKey: "wallet__payment_request",
                 descriptionKey: "wallet__payment_request_expired",
@@ -34,6 +37,7 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
             ) : nil
         case .retryScheduled, .ignored:
             diagnosticReason = fallbackReason
+            isTerminal = false
             toast = nil
         }
     }
@@ -1092,12 +1096,14 @@ struct AppScene: View {
         _ feedback: IncomingPaykitPaymentRequestPresentationFeedback,
         for request: PaykitPaymentRequest
     ) {
-        Logger.warn(
-            "Rejected incoming Paykit payment request presentation: category=\(feedback.diagnosticReason.category) " +
-                "reason=\(feedback.diagnosticReason.rawValue) " +
-                "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))",
-            context: "AppScene"
-        )
+        if feedback.isTerminal {
+            Logger.warn(
+                "Rejected incoming Paykit payment request presentation: category=\(feedback.diagnosticReason.category) " +
+                    "reason=\(feedback.diagnosticReason.rawValue) " +
+                    "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))",
+                context: "AppScene"
+            )
+        }
 
         guard let toast = feedback.toast else { return }
         app.toast(

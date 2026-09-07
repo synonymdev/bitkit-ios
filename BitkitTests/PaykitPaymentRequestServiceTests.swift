@@ -514,9 +514,25 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             with: retryManager
         )
         XCTAssertEqual(exhaustedFeedback.diagnosticReason, .resolutionFailed)
+        XCTAssertTrue(exhaustedFeedback.isTerminal)
         XCTAssertEqual(exhaustedFeedback.toast?.titleKey, "wallet__payment_request")
         XCTAssertEqual(exhaustedFeedback.toast?.descriptionKey, "wallet__payment_request_unavailable")
         XCTAssertEqual(exhaustedFeedback.toast?.accessibilityIdentifier, "PaymentRequestUnavailableToast")
+    }
+
+    func testPresentationDispatcherSuppressesNonTerminalRetryDiagnostics() async throws {
+        let manager = try paymentRequestManager(sdk: PaymentRequestSdkMock(records: [paymentRequestRecord()]))
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+
+        let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+            deferring: request,
+            reason: .resolutionFailed,
+            with: manager
+        )
+
+        XCTAssertFalse(feedback.isTerminal)
+        XCTAssertNil(feedback.toast)
     }
 
     func testPresentationDispatcherAdvancesQueueAfterRequestedExpiration() async throws {
