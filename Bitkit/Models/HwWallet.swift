@@ -71,6 +71,13 @@ struct HwWalletReceivedTx: Equatable {
     let sats: UInt64
 }
 
+/// The next unused external address for a paired hardware-wallet account.
+struct HwReceiveAddress: Equatable {
+    let address: String
+    let path: String
+    let addressType: AddressScriptType
+}
+
 extension HwWallet {
     var toBalance: HwWalletBalance {
         HwWalletBalance(id: id, sats: balanceSats)

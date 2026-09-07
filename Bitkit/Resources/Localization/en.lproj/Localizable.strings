@@ -74,6 +74,7 @@
 "hardware__passphrase_mismatch" = "That passphrase opens a different wallet. Enter the one you paired this wallet with.";
 "hardware__pairing_title" = "Pair Device";
 "hardware__pairing_text" = "Enter the 6-digit code shown on your hardware device.";
+"hardware__receive_address_error" = "Could not load the hardware wallet address.";
 "hardware__remove_button" = "Remove {name}";
 "hardware__remove_dialog_title" = "Remove {name}";
 "hardware__remove_dialog_text" = "Don't worry, your funds are safe and your coins won't be deleted. Bitkit will simply stop displaying the amounts in the wallet.";
@@ -83,6 +84,8 @@
 "hardware__send_confirm_address" = "To address (confirm on device)";
 "hardware__send_open_connect" = "Open Trezor Connect";
 "hardware__send_sign_title" = "Sign With Device";
+"hardware__verify_address" = "Verify on Device";
+"hardware__verify_address_error" = "Address verification failed. Check the address on your device and try again.";
 "cards__buyBitcoin__title" = "Buy";
 "cards__buyBitcoin__description" = "Buy some bitcoin";
 "cards__btFailed__title" = "Failed";

@@ -3,7 +3,7 @@ import SwiftUI
 
 enum ReceiveRoute: Hashable {
     case qr(cjitInvoice: String?, tab: ReceiveQr.ReceiveTab?)
-    case edit
+    case edit(onchainOnly: Bool)
     case tag
     case cjitAmount
     case cjitConfirm(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
@@ -16,9 +16,11 @@ enum ReceiveRoute: Hashable {
 
 struct ReceiveConfig {
     let initialRoute: ReceiveRoute
+    let hardwareWalletId: String?
 
-    init(view: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil)) {
+    init(view: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil), hardwareWalletId: String? = nil) {
         initialRoute = view
+        self.hardwareWalletId = hardwareWalletId
     }
 }
 
@@ -26,15 +28,18 @@ struct ReceiveSheetItem: SheetItem {
     let id: SheetID = .receive
     let size: SheetSize = .large
     let initialRoute: ReceiveRoute
+    let hardwareWalletId: String?
 
-    init(initialRoute: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil)) {
+    init(initialRoute: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil), hardwareWalletId: String? = nil) {
         self.initialRoute = initialRoute
+        self.hardwareWalletId = hardwareWalletId
     }
 }
 
 struct ReceiveSheet: View {
     @EnvironmentObject private var tagManager: TagManager
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(TrezorManager.self) private var trezorManager
 
     let config: ReceiveSheetItem
 
@@ -50,6 +55,9 @@ struct ReceiveSheet: View {
             }
         }
         .offlineSheetOverlay(title: t("wallet__receive_bitcoin"))
+        .sheet(isPresented: reconnectPairingBinding) {
+            HardwarePairingSheet(config: HardwarePairingSheetItem())
+        }
         .onAppear {
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""
@@ -64,6 +72,17 @@ struct ReceiveSheet: View {
         }
     }
 
+    private var reconnectPairingBinding: Binding<Bool> {
+        Binding(
+            get: { trezorManager.showPairingCode },
+            set: { isPresented in
+                if !isPresented, trezorManager.showPairingCode {
+                    trezorManager.cancelPairingCode()
+                }
+            }
+        )
+    }
+
     @ViewBuilder
     private func viewForRoute(_ route: ReceiveRoute) -> some View {
         switch route {
@@ -71,10 +90,11 @@ struct ReceiveSheet: View {
             ReceiveQr(
                 navigationPath: $navigationPath,
                 cjitInvoice: cjitInvoice,
-                tab: tab
+                tab: tab,
+                hardwareWalletId: config.hardwareWalletId
             )
-        case .edit:
-            ReceiveEdit(navigationPath: $navigationPath) { draft in
+        case let .edit(onchainOnly):
+            ReceiveEdit(navigationPath: $navigationPath, onchainOnly: onchainOnly) { draft in
                 navigationPath.append(.paymentRequestRecipient(draft))
             }
         case .tag:

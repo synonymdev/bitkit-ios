@@ -57,6 +57,17 @@ struct TabBar: View {
     }
 
     private func onReceivePress() {
+        if case let .hardwareWallet(walletId) = navigation.currentRoute {
+            sheets.showSheet(
+                .receive,
+                data: ReceiveConfig(
+                    view: .qr(cjitInvoice: nil, tab: .trezor),
+                    hardwareWalletId: walletId
+                )
+            )
+            return
+        }
+
         let hasInboundCapacity = (wallet.totalInboundLightningSats ?? 0) > 0
         let hasPendingTransfersToSpending = wallet.balanceInTransferToSpending > 0
 

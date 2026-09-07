@@ -31,7 +31,9 @@ enum PaykitIssuerInterop {
               let data = trimmedPayload.data(using: .utf8),
               let payloadObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let value = (payloadObject["value"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty
+              !value.isEmpty,
+              payloadObject["min"] == nil || payloadObject["min"] is String || payloadObject["min"] is NSNull,
+              payloadObject["max"] == nil || payloadObject["max"] is String || payloadObject["max"] is NSNull
         else { return nil }
 
         return EndpointPayload(

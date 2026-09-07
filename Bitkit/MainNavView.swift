@@ -234,7 +234,9 @@ struct MainNavView: View {
             // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
             if needsCode {
                 guard !sheets.hardwareConnectHandlesPairing else { return }
-                if sheets.activeSheetConfiguration?.id == .send {
+                if let activeId = sheets.activeSheetConfiguration?.id,
+                   activeId == .send || activeId == .receive
+                {
                     return
                 }
                 sheets.showSheet(.hardwarePairing)

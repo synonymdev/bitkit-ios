@@ -14,6 +14,7 @@ struct ReceiveEdit: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @Binding var navigationPath: [ReceiveRoute]
+    let onchainOnly: Bool
     let onSendPaymentRequest: (PaykitPaymentRequestDraft) -> Void
 
     @State private var amountViewModel = AmountInputViewModel()
@@ -56,7 +57,7 @@ struct ReceiveEdit: View {
                         isFocused: $isNoteEditorFocused
                     )
 
-                    if !isNoteEditorFocused {
+                    if !isNoteEditorFocused, !onchainOnly {
                         VStack(alignment: .leading, spacing: 0) {
                             CaptionMText(t("wallet__tags"))
                                 .padding(.top, 16)
@@ -80,7 +81,8 @@ struct ReceiveEdit: View {
 
                     Spacer()
 
-                    if PaykitFeatureFlags.isUIAvailable,
+                    if !onchainOnly,
+                       PaykitFeatureFlags.isUIAvailable,
                        isPaykitUIEnabled,
                        !paymentRequests.eligibleTargets.isEmpty
                     {
@@ -150,11 +152,32 @@ struct ReceiveEdit: View {
     }
 
     private func onShowQR() async {
+        wallet.invoiceAmountSats = amountSats
+        wallet.invoiceNote = note
+
+        await Self.finishEditing(
+            onchainOnly: onchainOnly,
+            dismiss: { dismiss() },
+            prepareLightningInvoice: prepareLightningInvoice
+        )
+    }
+
+    static func finishEditing(
+        onchainOnly: Bool,
+        dismiss: () -> Void,
+        prepareLightningInvoice: () async -> Void
+    ) async {
+        guard !onchainOnly else {
+            dismiss()
+            return
+        }
+        await prepareLightningInvoice()
+    }
+
+    private func prepareLightningInvoice() async {
         // Wait until node is running if it's in starting state
         if await wallet.waitForNodeToRun() {
             do {
-                wallet.invoiceAmountSats = amountSats
-                wallet.invoiceNote = note
                 try await wallet.refreshBip21(forceRefreshBolt11: true)
 
                 // Check if CJIT flow should be shown
