@@ -187,6 +187,50 @@ final class HwFundingSignerTests: XCTestCase {
         )
     }
 
+    func testCoordinatorCancelDropsSignedPaymentAfterFailedBroadcast() async throws {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            walletId: "trezor:wallet",
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: connecting,
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2
+            )
+        }
+
+        XCTAssertTrue(coordinator.hasPendingBroadcast)
+
+        coordinator.cancel()
+
+        XCTAssertFalse(coordinator.hasPendingBroadcast)
+
+        funding.broadcastError = nil
+        _ = try await coordinator.signAndBroadcast(
+            manager: manager,
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2
+        )
+
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(funding.broadcastCalls, 2)
+    }
+
     private func assertCoordinatorRetryReusesSignedPayment(error: Error) async throws {
         let funding = MockHwFunding()
         let connecting = MockHwConnecting()
@@ -218,7 +262,8 @@ final class HwFundingSignerTests: XCTestCase {
         }
 
         XCTAssertTrue(coordinator.hasPendingBroadcast)
-        XCTAssertTrue(coordinator.isBroadcastUnresolved)
+        XCTAssertFalse(coordinator.isBroadcastUnresolved)
+        XCTAssertFalse(coordinator.isSigning)
 
         funding.broadcastError = nil
         _ = try await coordinator.signAndBroadcast(
