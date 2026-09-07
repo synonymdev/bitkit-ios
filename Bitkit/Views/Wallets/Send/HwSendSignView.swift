@@ -78,7 +78,11 @@ struct HwSendSignView: View {
             signingTask = nil
             passphraseTask?.cancel()
             passphraseTask = nil
+            let droppedSignedTransaction = hwSend.hasPendingBroadcast
             hwSend.cancel()
+            if droppedSignedTransaction {
+                Task { await cancelContactPayment() }
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareSendSign")
@@ -126,23 +130,23 @@ struct HwSendSignView: View {
                 hwSend.completeBroadcast()
                 navigationPath.append(.success(paymentId: result.txId, walletId: walletId))
             } catch is CancellationError {
-                await cancelContactPaymentIfBroadcastIsResolved()
+                await cancelContactPaymentIfBroadcastIsRetryable()
                 return
             } catch is HwPassphraseError {
-                await cancelContactPaymentIfBroadcastIsResolved()
+                await cancelContactPaymentIfBroadcastIsRetryable()
                 hwSend.requestPassphrase()
             } catch let error as HwTransferError {
-                await cancelContactPaymentIfBroadcastIsResolved()
+                await cancelContactPaymentIfBroadcastIsRetryable()
                 app.toast(error)
             } catch {
-                await cancelContactPaymentIfBroadcastIsResolved()
+                await cancelContactPaymentIfBroadcastIsRetryable()
                 showHardwareError(error)
             }
         }
     }
 
-    private func cancelContactPaymentIfBroadcastIsResolved() async {
-        guard !hwSend.isBroadcastUnresolved else { return }
+    private func cancelContactPaymentIfBroadcastIsRetryable() async {
+        guard !hwSend.hasPendingBroadcast else { return }
         await cancelContactPayment()
     }
 
