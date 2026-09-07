@@ -5,6 +5,95 @@ import XCTest
 
 final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
+    func testIdentityRestorationPreservesCredentialsForRetry() async throws {
+        for failedStep in ["load", "signIn", "profile"] {
+            for failure in [PubkyServiceError.authFailed("offline") as Error, CancellationError()] {
+                var storedKey: String? = "existing-key"
+                var shouldFail = true
+                var profilePublicKey: String?
+
+                func complete() async throws {
+                    try await PubkyProfileManager.completeIdentityCreation(
+                        loadStoredSecretKey: {
+                            if shouldFail, failedStep == "load" { throw failure }
+                            return storedKey
+                        },
+                        signIn: {
+                            XCTAssertEqual($0, "existing-key")
+                            if shouldFail, failedStep == "signIn" { throw failure }
+                            return "pubky_existing"
+                        },
+                        signUp: {
+                            XCTFail("An existing identity must not be registered on another homeserver")
+                            return "pubky_new"
+                        },
+                        createProfile: {
+                            if shouldFail, failedStep == "profile" { throw failure }
+                            profilePublicKey = $0
+                        },
+                        discardSessionAccess: {
+                            storedKey = nil
+                            XCTFail("Recovery must preserve the existing identity")
+                        }
+                    )
+                }
+
+                do {
+                    try await complete()
+                    XCTFail("Expected recovery to fail")
+                } catch {
+                    XCTAssertEqual(error is CancellationError, failure is CancellationError)
+                    XCTAssertEqual(error.localizedDescription, failure.localizedDescription)
+                }
+                XCTAssertNil(profilePublicKey)
+                XCTAssertEqual(storedKey, "existing-key")
+
+                shouldFail = false
+                try await complete()
+                XCTAssertEqual(profilePublicKey, "pubky_existing")
+                XCTAssertEqual(storedKey, "existing-key")
+            }
+        }
+    }
+
+    @MainActor
+    func testIdentityCreationWithoutLocalKeyKeepsSignupAndCleanup() async throws {
+        for storedKey in [nil, ""] as [String?] {
+            for failsToSaveProfile in [false, true] {
+                var didSignUp = false
+                var didDiscard = false
+                var profilePublicKey: String?
+
+                do {
+                    try await PubkyProfileManager.completeIdentityCreation(
+                        loadStoredSecretKey: { storedKey },
+                        signIn: { _ in
+                            XCTFail("No local identity exists to restore")
+                            return "pubky_existing"
+                        },
+                        signUp: {
+                            didSignUp = true
+                            return "pubky_new"
+                        },
+                        createProfile: {
+                            if failsToSaveProfile { throw PubkyServiceError.authFailed("profile") }
+                            profilePublicKey = $0
+                        },
+                        discardSessionAccess: { didDiscard = true }
+                    )
+                    XCTAssertFalse(failsToSaveProfile)
+                } catch {
+                    XCTAssertTrue(failsToSaveProfile)
+                }
+
+                XCTAssertTrue(didSignUp)
+                XCTAssertEqual(didDiscard, failsToSaveProfile)
+                XCTAssertEqual(profilePublicKey, failsToSaveProfile ? nil : "pubky_new")
+            }
+        }
+    }
+
+    @MainActor
     func testCreateIdentityRecoversStalePendingSetupWithoutPublicKey() async {
         let defaults = UserDefaults.standard
         let previousPending = defaults.object(forKey: "pubky_profile_setup_pending")
@@ -13,7 +102,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         let manager = KeyDerivationProbeProfileManager()
 
         do {
-            try await manager.createIdentity(name: "Test", bio: "", links: [])
+            try await manager.createIdentity(name: "Test", bio: "", links: [], loadStoredSecretKey: { nil })
             XCTFail("Expected key derivation probe to stop creation")
         } catch {
             XCTAssertTrue(manager.didDeriveKeys)

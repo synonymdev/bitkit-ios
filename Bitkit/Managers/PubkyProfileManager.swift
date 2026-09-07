@@ -257,7 +257,10 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String] = [],
         existingImageUrl: String? = nil,
-        avatarImage: UIImage? = nil
+        avatarImage: UIImage? = nil,
+        loadStoredSecretKey: () async throws -> String? = {
+            try await Task.detached { try Keychain.loadString(key: .pubkySecretKey) }.value
+        }
     ) async throws {
         if isProfileSetupPending, let publicKey {
             try await createProfile(
@@ -273,49 +276,73 @@ class PubkyProfileManager: ObservableObject {
         }
 
         setProfileSetupPending(false)
-        let (publicKeyZ32, secretKeyHex) = try await deriveKeys()
+        try await Self.completeIdentityCreation(
+            loadStoredSecretKey: loadStoredSecretKey,
+            signIn: { secretKeyHex in
+                try await Task.detached {
+                    _ = try await PubkyService.signIn(secretKeyHex: secretKeyHex)
+                    return try Self.publicKeyFromSecretKey(secretKeyHex)
+                }.value
+            },
+            signUp: {
+                let (publicKey, secretKeyHex) = try await self.deriveKeys()
+                _ = try await Task.detached {
+                    let signupDetails: (homeserverPubky: String, signupCode: String?)
+                    if let homeserverPubky = Env.e2eHomeserverPubky {
+                        signupDetails = (homeserverPubky, nil)
+                    } else {
+                        let homegate = try await Self.fetchHomegateSignupCode()
+                        signupDetails = (homegate.homeserverPubky, homegate.signupCode)
+                    }
 
-        _ = try await Task.detached {
-            let signupDetails: (homeserverPubky: String, signupCode: String?)
-            if let homeserverPubky = Env.e2eHomeserverPubky {
-                signupDetails = (homeserverPubky, nil)
-            } else {
-                let homegate = try await Self.fetchHomegateSignupCode()
-                signupDetails = (homegate.homeserverPubky, homegate.signupCode)
-            }
-
-            var session: String
-            do {
-                session = try await PubkyService.signUp(
-                    secretKeyHex: secretKeyHex,
-                    homeserverZ32: signupDetails.homeserverPubky,
-                    signupCode: signupDetails.signupCode
+                    do {
+                        return try await PubkyService.signUp(
+                            secretKeyHex: secretKeyHex,
+                            homeserverZ32: signupDetails.homeserverPubky,
+                            signupCode: signupDetails.signupCode
+                        )
+                    } catch {
+                        Logger.info("signUp failed (likely already registered), trying signIn: \(error)", context: "PubkyProfileManager")
+                        return try await PubkyService.signIn(secretKeyHex: secretKeyHex)
+                    }
+                }.value
+                return publicKey
+            },
+            createProfile: { publicKey in
+                try await self.createProfile(
+                    publicKey: publicKey,
+                    name: name,
+                    bio: bio,
+                    links: links,
+                    tags: tags,
+                    existingImageUrl: existingImageUrl,
+                    avatarImage: avatarImage
                 )
-            } catch {
-                Logger.info("signUp failed (likely already registered), trying signIn: \(error)", context: "PubkyProfileManager")
-                session = try await PubkyService.signIn(secretKeyHex: secretKeyHex)
-            }
+            },
+            discardSessionAccess: { await self.discardAbandonedSession() }
+        )
+    }
 
-            return session
-        }.value
-
-        do {
-            try await createProfile(
-                publicKey: publicKeyZ32,
-                name: name,
-                bio: bio,
-                links: links,
-                tags: tags,
-                existingImageUrl: existingImageUrl,
-                avatarImage: avatarImage
-            )
-        } catch {
-            let profileCreationError = error
-            await discardAbandonedSession()
-            throw profileCreationError
+    static func completeIdentityCreation(
+        loadStoredSecretKey: () async throws -> String?,
+        signIn: (String) async throws -> String,
+        signUp: () async throws -> String,
+        createProfile: (String) async throws -> Void,
+        discardSessionAccess: () async -> Void
+    ) async throws {
+        if let secretKeyHex = try await loadStoredSecretKey(), !secretKeyHex.isEmpty {
+            let publicKey = try await signIn(secretKeyHex)
+            try await createProfile(publicKey)
+            return
         }
 
-        Logger.info("Pubky identity created for \(publicKeyZ32)", context: "PubkyProfileManager")
+        let publicKey = try await signUp()
+        do {
+            try await createProfile(publicKey)
+        } catch {
+            await discardSessionAccess()
+            throw error
+        }
     }
 
     private func createProfile(
