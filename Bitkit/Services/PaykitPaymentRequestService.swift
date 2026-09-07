@@ -2,7 +2,7 @@ import Foundation
 import Paykit
 
 struct PaykitPaymentRequest: Identifiable, Hashable {
-    enum ParseFailure: String, Error, Equatable {
+    enum ParseFailure: String, Error, Equatable, Sendable {
         case missingLocalRole = "missing_local_role"
         case outgoingRequest = "outgoing_request"
         case unsupportedLocalRole = "unsupported_local_role"
@@ -308,6 +308,37 @@ struct PaykitPaymentRequestSnapshot: Equatable {
     let history: [PaykitPaymentRequest]
 }
 
+private struct IncomingPaykitPaymentRequestRejection: Sendable {
+    struct ID: Hashable, Sendable {
+        let paymentRequestId: String
+        let reason: PaykitPaymentRequest.ParseFailure
+        let redactedCounterparty: String
+    }
+
+    let id: ID
+    let message: String
+}
+
+private actor IncomingPaykitPaymentRequestRejectionLog {
+    private var loggedIds: Set<IncomingPaykitPaymentRequestRejection.ID> = []
+
+    func newlySeen(
+        _ rejections: [IncomingPaykitPaymentRequestRejection]
+    ) -> [IncomingPaykitPaymentRequestRejection] {
+        var currentIds: Set<IncomingPaykitPaymentRequestRejection.ID> = []
+        var newRejections: [IncomingPaykitPaymentRequestRejection] = []
+
+        for rejection in rejections where currentIds.insert(rejection.id).inserted {
+            if !loggedIds.contains(rejection.id) {
+                newRejections.append(rejection)
+            }
+        }
+
+        loggedIds = currentIds
+        return newRejections
+    }
+}
+
 enum PaykitPaymentRequestDiagnostics {
     static func redactedCounterparty(_ input: String) -> String {
         guard let publicKey = PubkyPublicKeyFormat.normalized(input) else { return "<invalid>" }
@@ -368,6 +399,7 @@ struct PaykitPaymentRequestService {
     private let now: @Sendable () -> Date
     private let isPrivatePaymentPublishingEnabled: @Sendable () -> Bool
     private let logWarning: @Sendable (String) -> Void
+    private let incomingRejectionLog = IncomingPaykitPaymentRequestRejectionLog()
 
     init(
         sdk: any PaykitPaymentRequestSdkHandling = PaykitSdkService.shared,
@@ -391,19 +423,29 @@ struct PaykitPaymentRequestService {
         logIntakeFailures(intakeReports)
         let synchronizationDate = now()
         let records = try await sdk.paymentRequests()
+        var rejections: [IncomingPaykitPaymentRequestRejection] = []
         let incoming = records.compactMap { record in
             switch PaykitPaymentRequest.parseIncoming(record: record, now: synchronizationDate) {
             case let .success(request):
                 return request
             case let .failure(reason):
                 if reason.shouldLogIncomingRejection {
-                    logWarning(
-                        "Rejected incoming Paykit payment request: category=parse reason=\(reason.rawValue) " +
-                            "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(record.counterparty))"
-                    )
+                    let redactedCounterparty = PaykitPaymentRequestDiagnostics.redactedCounterparty(record.counterparty)
+                    rejections.append(IncomingPaykitPaymentRequestRejection(
+                        id: IncomingPaykitPaymentRequestRejection.ID(
+                            paymentRequestId: record.paymentRequestId,
+                            reason: reason,
+                            redactedCounterparty: redactedCounterparty
+                        ),
+                        message: "Rejected incoming Paykit payment request: category=parse reason=\(reason.rawValue) " +
+                            "counterparty=\(redactedCounterparty)"
+                    ))
                 }
                 return nil
             }
+        }
+        for rejection in await incomingRejectionLog.newlySeen(rejections) {
+            logWarning(rejection.message)
         }
         let history = records.compactMap {
             PaykitPaymentRequest(historyRecord: $0, now: synchronizationDate)

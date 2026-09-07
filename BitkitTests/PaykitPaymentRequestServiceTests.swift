@@ -139,9 +139,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
 
         let snapshot = try await service.synchronize()
+        let firstMessages = recorder.messages
+        _ = try await service.synchronize()
 
         XCTAssertTrue(snapshot.incoming.isEmpty)
         let output = recorder.messages.joined(separator: "\n")
+        XCTAssertEqual(recorder.messages, firstMessages)
         XCTAssertTrue(output.contains("category=parse reason=unsupported_asset"))
         XCTAssertTrue(output.contains("category=parse reason=no_supported_endpoint"))
         XCTAssertTrue(output.contains("category=parse reason=unsupported_local_role"))
