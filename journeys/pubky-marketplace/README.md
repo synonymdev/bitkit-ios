@@ -71,15 +71,15 @@ artifacts at each boundary:
 | --- | --- | --- |
 | Watch-only claim | `PubkyAuthWatchOnlyConsent`, `PubkyAuthWatchOnlyApprove`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | Setup completion and the claimed xpub/account index, with no spending key |
 | Linked buyer | Enabled `ContactPaymentsToggle`, `Contact_<seller-public-key>`, and `Contact_<buyer-public-key>` snapshots | Seller and buyer peer-link state |
-| Incoming request | `PaymentRequestsScreen` and `PaymentRequestRow-<payment-request-id>` snapshots showing seller, amount, and note when present | Delivery record and exact Payment Request id |
+| Incoming request | `ReviewAmount`, `PaymentRequestsBell`, `PaymentRequestsSheet`, and `PaymentRequestRow-<payment-request-id>` snapshots showing the automatic review, seller, amount, and note when present | Delivery record and exact Payment Request id |
 | Payment approval | `PaymentRequestPay-<payment-request-id>`, `ReviewAmount`, and `ReviewContactRecipient` snapshots | Derived regtest address and expected amount |
 | Broadcast | `SendSuccess` snapshot and buyer activity details | Transaction in the fixture mempool with an amount-matched output |
 | Confirmation | `StatusConfirmed`, `ActivityAmount`, and `ActivityTxDetails` snapshots | Transaction id at one or more confirmations and completed purchase status |
 
 `SendSuccess` proves backend acceptance, not confirmation. The integration fixture's chain, signed
-Paykit state, and marketplace state are the confirmation authority. Android uses a transient request
-sheet; the iOS journey opens the persistent `PaymentRequestsScreen` before selecting the same
-request-row and per-request Pay identifiers.
+Paykit state, and marketplace state are the confirmation authority. Both platforms open fresh
+requests in payment review automatically, dismiss that review, and open `PaymentRequestsSheet` from
+`PaymentRequestsBell`; iOS uses the review's in-sheet back control instead of Android system back.
 
 ## Accepted exact-head run from 2026-09-02
 
