@@ -448,10 +448,85 @@ actor PaykitSdkService {
             }
 
             let previousPublicKey = await currentSdkStatePublicKey()
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: false)
+            let sessionSecret = try await Self.completeAuthActivation(
+                sessionSecret: result.sessionAccess.exportSessionSecret(),
+                activate: {
+                    try await self.activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: false)
+                },
+                discardSessionAccess: { sessionSecret in
+                    await Task.detached {
+                        await self.discardCompletedAuthSessionLocked(sessionSecret: sessionSecret)
+                    }.value
+                }
+            )
             markWalletBackupDataChanged()
-            return result.sessionAccess.exportSessionSecret()
+            return sessionSecret
         }
+    }
+
+    func discardCompletedAuthSession(sessionSecret: String) async {
+        await operationLock.withLock {
+            await discardCompletedAuthSessionLocked(sessionSecret: sessionSecret)
+        }
+    }
+
+    private func discardCompletedAuthSessionLocked(sessionSecret: String) async {
+        let didMatchSession = await Self.discardAuthSession(
+            sessionSecret: sessionSecret,
+            storedSessionSecret: { try Keychain.loadString(key: .paykitSession) },
+            revoke: { _ = try await self.handle().signOut() },
+            forget: {
+                do {
+                    _ = try await self.handle().forgetSessionAccess()
+                } catch {
+                    try self.sessionProvider.clearSessionAccess()
+                    throw error
+                }
+            }
+        )
+        if didMatchSession {
+            resetRuntime()
+            markWalletBackupDataChanged()
+        }
+    }
+
+    static func completeAuthActivation(
+        sessionSecret: String,
+        activate: () async throws -> Void,
+        discardSessionAccess: (String) async -> Void
+    ) async throws -> String {
+        do {
+            try await activate()
+            return sessionSecret
+        } catch {
+            await discardSessionAccess(sessionSecret)
+            throw error
+        }
+    }
+
+    static func discardAuthSession(
+        sessionSecret: String,
+        storedSessionSecret: () throws -> String?,
+        revoke: () async throws -> Void,
+        forget: () async throws -> Void
+    ) async -> Bool {
+        do {
+            guard try storedSessionSecret() == sessionSecret else { return false }
+        } catch {
+            Logger.warn("Failed to identify abandoned Pubky session: \(error)", context: "PaykitSdkService")
+            return false
+        }
+        do {
+            try await revoke()
+        } catch {
+            Logger.warn("Failed to revoke abandoned Pubky session: \(error)", context: "PaykitSdkService")
+            do {
+                try await forget()
+            } catch {
+                Logger.warn("Failed to forget abandoned Pubky session: \(error)", context: "PaykitSdkService")
+            }
+        }
+        return true
     }
 
     func cancelAuth() {
@@ -1020,6 +1095,8 @@ actor PaykitSdkService {
         }
 
         return context == "restore Pubky grant session from platform provider"
+            || context == "Pubky session must be grant-backed"
+            || context.hasPrefix("Pubky grant client ID `")
     }
 
     private nonisolated static func canReceivePrivatePaymentDetails(marker: Paykit.PaykitReceiverMarker?) -> Bool {

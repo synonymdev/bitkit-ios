@@ -161,11 +161,13 @@ final class PubkyProfileManagerTests: XCTestCase {
             try await manager.completeAuthenticationForTesting(
                 completeAuth: {
                     manager.setActiveAuthAttemptIDForTesting(nil)
+                    return "new-session"
                 },
                 currentPublicKey: {
                     "pubky_test"
                 },
-                discardSessionAccess: {
+                discardSessionAccess: { sessionSecret in
+                    XCTAssertEqual(sessionSecret, "new-session")
                     didDiscardSession = true
                 }
             )
@@ -179,7 +181,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testCompleteAuthenticationRevokesSessionWhenActivationThrows() async {
+    func testCompleteAuthenticationPreservesSessionWhenRelayFails() async {
         let errors: [Error] = [PubkyServiceError.authFailed("offline"), CancellationError()]
 
         for thrownError in errors {
@@ -192,12 +194,35 @@ final class PubkyProfileManagerTests: XCTestCase {
                 try await manager.completeAuthenticationForTesting(
                     completeAuth: { throw thrownError },
                     currentPublicKey: { "pubky_test" },
-                    discardSessionAccess: { didDiscardSession = true }
+                    discardSessionAccess: { _ in didDiscardSession = true }
                 )
                 XCTFail("Expected authentication activation to fail")
             } catch {
-                XCTAssertTrue(didDiscardSession)
+                XCTAssertFalse(didDiscardSession)
             }
+        }
+    }
+
+    @MainActor
+    func testSupersededAuthenticationPreservesNewAttempt() async {
+        let manager = PubkyProfileManager()
+        manager.setActiveAuthAttemptIDForTesting(UUID())
+        manager.authState = .authenticating
+        let newAttemptID = UUID()
+
+        do {
+            try await manager.completeAuthenticationForTesting(
+                completeAuth: {
+                    manager.setActiveAuthAttemptIDForTesting(newAttemptID)
+                    throw CancellationError()
+                },
+                currentPublicKey: { nil },
+                discardSessionAccess: { _ in XCTFail("No session was activated") }
+            )
+            XCTFail("Expected cancellation")
+        } catch {
+            XCTAssertEqual(manager.activeAuthAttemptIDForTesting, newAttemptID)
+            XCTAssertEqual(manager.authState, .authenticating)
         }
     }
 

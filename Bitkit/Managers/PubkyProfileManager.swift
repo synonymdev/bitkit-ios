@@ -505,28 +505,29 @@ class PubkyProfileManager: ObservableObject {
     @discardableResult
     func completeAuthentication() async throws -> String {
         try await completeAuthentication(
-            completeAuth: { _ = try await PubkyService.completeAuth() },
+            completeAuth: { try await PubkyService.completeAuth() },
             currentPublicKey: { await PubkyService.currentPublicKey() },
-            discardSessionAccess: {
-                await self.discardAbandonedSession()
+            discardSessionAccess: { sessionSecret in
+                await Task.detached {
+                    await PaykitSdkService.shared.discardCompletedAuthSession(sessionSecret: sessionSecret)
+                }.value
             }
         )
     }
 
     @discardableResult
     private func completeAuthentication(
-        completeAuth: @escaping () async throws -> Void,
+        completeAuth: @escaping () async throws -> String,
         currentPublicKey: @escaping () async -> String?,
-        discardSessionAccess: @escaping () async -> Void
+        discardSessionAccess: @escaping (String) async -> Void
     ) async throws -> String {
         guard let attemptID = activeAuthAttemptID else {
             throw CancellationError()
         }
-        var didCompleteAuth = false
+        var completedSessionSecret: String?
 
         do {
-            didCompleteAuth = true
-            try await completeAuth()
+            completedSessionSecret = try await completeAuth()
             try Task.checkCancellation()
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
@@ -551,7 +552,7 @@ class PubkyProfileManager: ObservableObject {
             return pk
         } catch is CancellationError {
             await discardCompletedAuthSessionIfNeeded(
-                didCompleteAuth,
+                completedSessionSecret,
                 discardSessionAccess: discardSessionAccess
             )
             if activeAuthAttemptID == attemptID {
@@ -561,7 +562,7 @@ class PubkyProfileManager: ObservableObject {
             throw CancellationError()
         } catch let serviceError as PubkyServiceError {
             await discardCompletedAuthSessionIfNeeded(
-                didCompleteAuth,
+                completedSessionSecret,
                 discardSessionAccess: discardSessionAccess
             )
             guard activeAuthAttemptID == attemptID else {
@@ -573,7 +574,7 @@ class PubkyProfileManager: ObservableObject {
             throw serviceError
         } catch {
             await discardCompletedAuthSessionIfNeeded(
-                didCompleteAuth,
+                completedSessionSecret,
                 discardSessionAccess: discardSessionAccess
             )
             guard activeAuthAttemptID == attemptID else {
@@ -587,11 +588,11 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func discardCompletedAuthSessionIfNeeded(
-        _ didCompleteAuth: Bool,
-        discardSessionAccess: @escaping () async -> Void
+        _ completedSessionSecret: String?,
+        discardSessionAccess: @escaping (String) async -> Void
     ) async {
-        guard didCompleteAuth else { return }
-        await discardSessionAccess()
+        guard let completedSessionSecret else { return }
+        await discardSessionAccess(completedSessionSecret)
     }
 
     private func discardAbandonedSession() async {
@@ -657,9 +658,9 @@ class PubkyProfileManager: ObservableObject {
 
         @discardableResult
         func completeAuthenticationForTesting(
-            completeAuth: @escaping () async throws -> Void,
+            completeAuth: @escaping () async throws -> String,
             currentPublicKey: @escaping () async -> String?,
-            discardSessionAccess: @escaping () async -> Void
+            discardSessionAccess: @escaping (String) async -> Void
         ) async throws -> String {
             try await completeAuthentication(
                 completeAuth: completeAuth,
