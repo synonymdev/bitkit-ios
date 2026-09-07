@@ -56,7 +56,9 @@ The full journey depends on the sibling work from the parent epic:
 - [#717](https://github.com/synonymdev/bitkit-ios/issues/717) prevents an Electrum-rejected broadcast
   from reaching `SendSuccess`.
 
-Contact payments must be enabled in General Settings and the buyer and seller must save each other
+Before opening the fixture setup auth URL, enable Paykit UI on both wallets through Settings →
+Advanced → Dev Settings → Enable Paykit UI (`PaykitUiToggle`) and confirm the warning. Contact
+payments must then be enabled in General Settings, and the buyer and seller must save each other
 before Bitkit's `receivePrivateMessagesFromLinkedPeers()` poll can receive the request.
 
 ## Evidence contract

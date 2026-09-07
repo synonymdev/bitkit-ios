@@ -6,14 +6,15 @@
     sheet.
     Precondition: two clean simulator wallets and the integration fixture described in this suite's
     README. Publish fixture Fulcrum at tcp://127.0.0.1:60001 and build both wallets with the local
-    E2E regtest settings before first launch. Start with the seller wallet open and the fixture's
-    fresh setup auth URL available.
+    E2E regtest settings before first launch. In both wallets, enable Paykit UI in Dev Settings (id
+    "PaykitUiToggle") and confirm the warning before opening the fixture's fresh setup auth URL in
+    the seller wallet.
   </description>
   <actions>
     <action>Open the fixture setup auth URL in the seller wallet</action>
     <action>Verify the watch-only consent screen (id "PubkyAuthWatchOnlyConsent") is visible</action>
     <action>Capture the watch-only consent evidence, then tap Approve (id "PubkyAuthWatchOnlyApprove")</action>
-    <action>Verify the authorization screen shows only the requested Paykit capabilities</action>
+    <action>Verify the authorization screen shows exactly /pub/paykit/v0/bitkit/server and /pub/paykit/v0/private/bitkit/server, each with READ, WRITE access</action>
     <action>Tap Authorize (id "PubkyAuthAuthorize")</action>
     <action>Verify authorization succeeds (id "PubkyAuthOK")</action>
     <action>Verify the fixture completes setup with the seller account xpub and no spending authority</action>
