@@ -422,16 +422,6 @@ struct MainNavView: View {
         } message: {
             Text(t("other__clipboard_redirect_msg"))
         }
-        .overlay {
-            if app.isCompletingPubkySignup {
-                ZStack {
-                    Color.black.ignoresSafeArea()
-
-                    PubkyKeyDerivationLoadingView()
-                }
-                .accessibilityIdentifier("PubkySignupLoading")
-            }
-        }
     }
 
     // MARK: - Loading View

@@ -226,8 +226,15 @@ struct PubkyAuthApprovalSheet: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    descriptionText
-                        .padding(.bottom, 8)
+                    if config.request.isSignup {
+                        BodyMText(t("pubky_auth__signup_description"))
+                            .padding(.bottom, 16)
+                    }
+
+                    if !config.request.permissions.isEmpty {
+                        descriptionText
+                            .padding(.bottom, 8)
+                    }
 
                     if !config.request.clientID.isEmpty {
                         BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
@@ -238,15 +245,32 @@ struct PubkyAuthApprovalSheet: View {
                         Spacer().frame(height: 24)
                     }
 
-                    permissionsSection
+                    if !config.request.permissions.isEmpty {
+                        permissionsSection
+                    }
 
                     Spacer(minLength: 32)
 
                     trustWarning
                         .padding(.bottom, 16)
 
-                    profileCard
+                    if let homeserver = config.request.homeserverPublicKey {
+                        VStack(alignment: .leading, spacing: 8) {
+                            CaptionMText(t("pubky_auth__homeserver"), textColor: .white64)
+                            BodyMSBText(homeserver)
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(24)
+                        .background(Color.gray6)
+                        .cornerRadius(16)
                         .padding(.bottom, 16)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("PubkySignupHomeserver")
+                    } else {
+                        profileCard
+                            .padding(.bottom, 16)
+                    }
                 }
                 .frame(minHeight: geometry.size.height, alignment: .top)
             }
