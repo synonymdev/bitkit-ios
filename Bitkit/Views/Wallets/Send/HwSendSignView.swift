@@ -78,11 +78,7 @@ struct HwSendSignView: View {
             signingTask = nil
             passphraseTask?.cancel()
             passphraseTask = nil
-            let droppedSignedTransaction = hwSend.hasPendingBroadcast
             hwSend.cancel()
-            if droppedSignedTransaction {
-                Task { await cancelContactPayment() }
-            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareSendSign")
