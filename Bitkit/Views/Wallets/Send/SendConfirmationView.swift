@@ -316,7 +316,7 @@ struct SendConfirmationView: View {
         else { return }
         hasStartedAutomaticPayment = true
         do {
-            try await submitPayment()
+            try await submitPayment(isAutomatic: true)
         } catch is CancellationError {
             navigationPath.append(.failure(SendFailureContext(
                 error: CancellationError(),
@@ -597,7 +597,7 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func submitPayment() async throws {
+    private func submitPayment(isAutomatic: Bool = false) async throws {
         // Validate payment and show warnings if needed
         let warnings = await validatePayment()
         if !warnings.isEmpty {
@@ -646,11 +646,34 @@ struct SendConfirmationView: View {
             }
         }
 
+        if requiresManualConfirmation(isAutomatic: isAutomatic) {
+            showManualConfirmation()
+            return
+        }
+
         if hwSend.isActive {
             navigationPath.append(.hardwareSign)
         } else {
-            try await performPayment()
+            try await performPayment(isAutomatic: isAutomatic)
         }
+    }
+
+    static func requiresManualConfirmation(isAutomatic: Bool, walletType: WalletType, isHardwarePayment: Bool) -> Bool {
+        isAutomatic && (walletType != .lightning || isHardwarePayment)
+    }
+
+    private func requiresManualConfirmation(isAutomatic: Bool) -> Bool {
+        Self.requiresManualConfirmation(
+            isAutomatic: isAutomatic,
+            walletType: app.selectedWalletToPayFrom,
+            isHardwarePayment: hwSend.isActive
+        )
+    }
+
+    private func showManualConfirmation() {
+        hasStartedAutomaticPayment = false
+        requiresPaymentConfirmation = true
+        showDetails = true
     }
 
     private func contactRecipient(_ contact: PubkyContact) -> some View {
@@ -664,7 +687,7 @@ struct SendConfirmationView: View {
         .accessibilityIdentifier("ReviewContactRecipient")
     }
 
-    private func performPayment() async throws {
+    private func performPayment(isAutomatic: Bool) async throws {
         var createdMetadataPaymentId: String? = nil
         let contactPaymentContext = app.contactPaymentContext
         let contactPublicKey = contactPaymentContext?.publicKey
@@ -689,6 +712,14 @@ struct SendConfirmationView: View {
             }
             try await prepareIncomingPaymentRequest()
             try validateIncomingPaymentRequestContext(contactPaymentContext)
+
+            if requiresManualConfirmation(isAutomatic: isAutomatic) {
+                if shouldCancelPaymentProof, let incomingPaymentRequest {
+                    await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
+                }
+                showManualConfirmation()
+                return
+            }
 
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis

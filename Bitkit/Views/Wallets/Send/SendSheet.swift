@@ -883,10 +883,7 @@ struct SendSheet: View {
 
         app.resetSendState()
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-        _ = paykitPaymentRequestManager.requestPresentation(
-            request,
-            isInitialSubscriptionPayment: isInitialSubscriptionPayment
-        )
+        _ = paykitPaymentRequestManager.requestPresentation(request)
         sheets.hideSheet(reason: "Retrying incoming payment request with fresh private payment details")
     }
 

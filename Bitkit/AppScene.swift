@@ -901,8 +901,7 @@ struct AppScene: View {
                     let contactPaymentContext = ContactPaymentContext(
                         publicKey: request.counterparty,
                         privatePaymentContext: privatePaymentContext,
-                        incomingPaymentRequest: request,
-                        isInitialSubscriptionPayment: paykitPaymentRequestManager.isInitialSubscriptionPayment(request)
+                        incomingPaymentRequest: request
                     )
                     guard app.claimContactPaymentContext(contactPaymentContext) else { return }
 
@@ -965,7 +964,6 @@ struct AppScene: View {
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                         return
                     }
-                    _ = paykitPaymentRequestManager.consumeInitialSubscriptionPayment(request)
                     sheets.showSheet(.send, data: SendConfig(view: route))
                     return
                 } catch is CancellationError {

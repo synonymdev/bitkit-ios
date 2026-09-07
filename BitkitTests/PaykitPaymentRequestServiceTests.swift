@@ -372,7 +372,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.pendingRequests.isEmpty)
     }
 
-    func testInitialSubscriptionPaymentRetryKeepsInitialPaymentSemantics() async throws {
+    func testSubscriptionPaymentCanBeReopenedForManualRetry() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let recurrence = PaymentRequestRecurrence(
             every: 1,
@@ -389,10 +389,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let request = try XCTUnwrap(manager.pendingRequests.first)
 
         XCTAssertEqual(manager.paymentRequestForRetry(request.id), request)
-        XCTAssertTrue(manager.requestPresentation(request, isInitialSubscriptionPayment: true))
-        XCTAssertTrue(manager.isInitialSubscriptionPayment(request))
-        XCTAssertTrue(manager.consumeInitialSubscriptionPayment(request))
-        XCTAssertFalse(manager.isInitialSubscriptionPayment(request))
+        XCTAssertTrue(manager.requestPresentation(request))
+        XCTAssertEqual(manager.requestedPresentationId, request.id)
     }
 
     func testAcceptedRequestPastProposalExpirationDoesNotRescheduleExpiration() async throws {

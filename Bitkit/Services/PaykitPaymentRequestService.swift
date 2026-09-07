@@ -728,7 +728,6 @@ final class PaykitPaymentRequestManager {
     private let isAvailable: @MainActor () -> Bool
     private var processingRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var approvedPaymentRequestIds: Set<PaykitPaymentRequest.ID> = []
-    private var initialSubscriptionPaymentRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentedRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentationRetryAttempts: [PaykitPaymentRequest.ID: Int] = [:]
     private var presentationRetryDates: [PaykitPaymentRequest.ID: Date] = [:]
@@ -1117,7 +1116,7 @@ final class PaykitPaymentRequestManager {
     }
 
     @discardableResult
-    func requestPresentation(_ request: PaykitPaymentRequest, isInitialSubscriptionPayment: Bool = false) -> Bool {
+    func requestPresentation(_ request: PaykitPaymentRequest) -> Bool {
         discardExpiredRequests()
         guard pendingRequests.contains(where: { $0.id == request.id }),
               !processingRequestIds.contains(request.id),
@@ -1126,20 +1125,9 @@ final class PaykitPaymentRequestManager {
         presentationGeneration += 1
         presentationRetryAttempts.removeValue(forKey: request.id)
         presentationRetryDates.removeValue(forKey: request.id)
-        if isInitialSubscriptionPayment {
-            initialSubscriptionPaymentRequestIds.insert(request.id)
-        }
         requestedPresentationId = request.id
         schedulePresentationRetry()
         return true
-    }
-
-    func consumeInitialSubscriptionPayment(_ request: PaykitPaymentRequest) -> Bool {
-        initialSubscriptionPaymentRequestIds.remove(request.id) != nil
-    }
-
-    func isInitialSubscriptionPayment(_ request: PaykitPaymentRequest) -> Bool {
-        initialSubscriptionPaymentRequestIds.contains(request.id)
     }
 
     func clear() {
@@ -1158,7 +1146,6 @@ final class PaykitPaymentRequestManager {
         eligibleTargets = []
         processingRequestIds = []
         approvedPaymentRequestIds = []
-        initialSubscriptionPaymentRequestIds = []
         activeIdentity = nil
         savedPublicKeys = []
         presentedRequestIds = []
@@ -1393,7 +1380,6 @@ final class PaykitPaymentRequestManager {
                 now: refreshDate
             )
             let requestIds = Set(pendingRequests.map(\.id))
-            initialSubscriptionPaymentRequestIds.formIntersection(requestIds)
             presentedRequestIds.formIntersection(requestIds)
             presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
             presentationRetryDates = presentationRetryDates.filter { requestIds.contains($0.key) }
