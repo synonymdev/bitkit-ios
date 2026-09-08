@@ -31,7 +31,7 @@ struct PrivatePaykitPaymentContext: Equatable {
     let paymentListVersion: UInt64
 }
 
-enum IncomingPaykitPaymentRequestFailureReason: String, Equatable {
+enum IncomingPaykitPaymentRequestFailureReason: String, Hashable {
     case noSupportedEndpoint = "no_supported_endpoint"
     case endpointNotPayable = "endpoint_not_payable"
     case paymentDetailsPending = "payment_details_pending"

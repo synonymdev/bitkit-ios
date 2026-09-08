@@ -693,6 +693,8 @@ final class PaykitPaymentRequestManager {
     private var presentedRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentationRetryAttempts: [PaykitPaymentRequest.ID: Int] = [:]
     private var presentationRetryDates: [PaykitPaymentRequest.ID: Date] = [:]
+    private var automaticPresentationDiagnosticReasons:
+        [PaykitPaymentRequest.ID: Set<IncomingPaykitPaymentRequestFailureReason>] = [:]
     private var expiredRequestedPresentations: [PaykitPaymentRequest] = []
     private var unavailableRequestedPresentations: [PaykitPaymentRequest] = []
     private var isPresentingRequests = false
@@ -904,6 +906,7 @@ final class PaykitPaymentRequestManager {
         persistedPresentedRequestIds = []
         presentationRetryAttempts = [:]
         presentationRetryDates = [:]
+        automaticPresentationDiagnosticReasons = [:]
         expiredRequestedPresentations = []
         unavailableRequestedPresentations = []
         requestedPresentationId = nil
@@ -1018,6 +1021,21 @@ final class PaykitPaymentRequestManager {
         return .retryScheduled
     }
 
+    func deferPresentation(
+        _ request: PaykitPaymentRequest,
+        diagnosticReason: IncomingPaykitPaymentRequestFailureReason
+    ) -> (deferral: PaykitPaymentRequestPresentationDeferral, shouldLogDiagnostic: Bool) {
+        let wasRequestedPresentation = requestedPresentationId == request.id
+        let deferral = deferPresentation(request)
+        guard !wasRequestedPresentation, deferral == .retryScheduled else {
+            return (deferral, false)
+        }
+
+        let shouldLogDiagnostic = automaticPresentationDiagnosticReasons[request.id, default: []]
+            .insert(diagnosticReason).inserted
+        return (deferral, shouldLogDiagnostic)
+    }
+
     func markPresentedIfPending(_ request: PaykitPaymentRequest) -> Bool {
         discardExpiredRequests()
         guard pendingRequests.contains(where: { $0.id == request.id }) else { return false }
@@ -1028,6 +1046,7 @@ final class PaykitPaymentRequestManager {
         }
         presentationRetryAttempts.removeValue(forKey: request.id)
         presentationRetryDates.removeValue(forKey: request.id)
+        automaticPresentationDiagnosticReasons.removeValue(forKey: request.id)
         schedulePresentationRetry()
         persistPresentedRequestIds()
         return true
@@ -1056,6 +1075,7 @@ final class PaykitPaymentRequestManager {
             presentedRequestIds.formIntersection(requestIds)
             presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
             presentationRetryDates = presentationRetryDates.filter { requestIds.contains($0.key) }
+            automaticPresentationDiagnosticReasons = automaticPresentationDiagnosticReasons.filter { requestIds.contains($0.key) }
             if let requestedId = requestedPresentationId, !requestIds.contains(requestedId) {
                 presentationGeneration += 1
                 if requestedId != handledRequestedExpirationId,
@@ -1115,6 +1135,7 @@ final class PaykitPaymentRequestManager {
             presentedRequestIds.remove(request.id)
             presentationRetryAttempts.removeValue(forKey: request.id)
             presentationRetryDates.removeValue(forKey: request.id)
+            automaticPresentationDiagnosticReasons.removeValue(forKey: request.id)
             schedulePresentationRetry()
             if requestedPresentationId == request.id {
                 presentationGeneration += 1
@@ -1149,6 +1170,7 @@ final class PaykitPaymentRequestManager {
         presentedRequestIds.formIntersection(requestIds)
         presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
         presentationRetryDates = presentationRetryDates.filter { requestIds.contains($0.key) }
+        automaticPresentationDiagnosticReasons = automaticPresentationDiagnosticReasons.filter { requestIds.contains($0.key) }
         if requestedPresentationId.map({ !requestIds.contains($0) }) == true {
             presentationGeneration += 1
             requestedPresentationId = nil

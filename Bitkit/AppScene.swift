@@ -12,16 +12,19 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
 
     let diagnosticReason: IncomingPaykitPaymentRequestFailureReason
     let isTerminal: Bool
+    let shouldLogDiagnostic: Bool
     let toast: Toast?
 
     init(
         deferral: PaykitPaymentRequestPresentationDeferral,
-        fallbackReason: IncomingPaykitPaymentRequestFailureReason
+        fallbackReason: IncomingPaykitPaymentRequestFailureReason,
+        shouldLogNonTerminalDiagnostic: Bool = false
     ) {
         switch deferral {
         case .requestedPresentationEnded:
             diagnosticReason = fallbackReason
             isTerminal = true
+            shouldLogDiagnostic = true
             toast = Toast(
                 titleKey: "wallet__payment_request",
                 descriptionKey: "wallet__payment_request_unavailable",
@@ -30,16 +33,30 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
         case let .requestExpired(wasRequested):
             diagnosticReason = .requestExpired
             isTerminal = true
+            shouldLogDiagnostic = true
             toast = wasRequested ? Toast(
                 titleKey: "wallet__payment_request",
                 descriptionKey: "wallet__payment_request_expired",
                 accessibilityIdentifier: "PaymentRequestExpiredToast"
             ) : nil
-        case .retryScheduled, .ignored:
+        case .retryScheduled:
             diagnosticReason = fallbackReason
             isTerminal = false
+            shouldLogDiagnostic = shouldLogNonTerminalDiagnostic
+            toast = nil
+        case .ignored:
+            diagnosticReason = fallbackReason
+            isTerminal = false
+            shouldLogDiagnostic = false
             toast = nil
         }
+    }
+
+    func diagnosticMessage(for request: PaykitPaymentRequest) -> String? {
+        guard shouldLogDiagnostic else { return nil }
+        return "Rejected incoming Paykit payment request presentation: category=\(diagnosticReason.category) " +
+            "reason=\(diagnosticReason.rawValue) " +
+            "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))"
     }
 }
 
@@ -84,9 +101,11 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
         reason: IncomingPaykitPaymentRequestFailureReason,
         with manager: PaykitPaymentRequestManager
     ) -> IncomingPaykitPaymentRequestPresentationFeedback {
-        IncomingPaykitPaymentRequestPresentationFeedback(
-            deferral: manager.deferPresentation(request),
-            fallbackReason: reason
+        let result = manager.deferPresentation(request, diagnosticReason: reason)
+        return IncomingPaykitPaymentRequestPresentationFeedback(
+            deferral: result.deferral,
+            fallbackReason: reason,
+            shouldLogNonTerminalDiagnostic: result.shouldLogDiagnostic
         )
     }
 
@@ -1096,13 +1115,8 @@ struct AppScene: View {
         _ feedback: IncomingPaykitPaymentRequestPresentationFeedback,
         for request: PaykitPaymentRequest
     ) {
-        if feedback.isTerminal {
-            Logger.warn(
-                "Rejected incoming Paykit payment request presentation: category=\(feedback.diagnosticReason.category) " +
-                    "reason=\(feedback.diagnosticReason.rawValue) " +
-                    "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))",
-                context: "AppScene"
-            )
+        if let diagnosticMessage = feedback.diagnosticMessage(for: request) {
+            Logger.warn(diagnosticMessage, context: "AppScene")
         }
 
         guard let toast = feedback.toast else { return }

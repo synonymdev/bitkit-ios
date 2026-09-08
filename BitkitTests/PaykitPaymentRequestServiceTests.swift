@@ -518,21 +518,64 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(exhaustedFeedback.toast?.titleKey, "wallet__payment_request")
         XCTAssertEqual(exhaustedFeedback.toast?.descriptionKey, "wallet__payment_request_unavailable")
         XCTAssertEqual(exhaustedFeedback.toast?.accessibilityIdentifier, "PaymentRequestUnavailableToast")
+        XCTAssertNotNil(exhaustedFeedback.diagnosticMessage(for: retryRequest))
     }
 
-    func testPresentationDispatcherSuppressesNonTerminalRetryDiagnostics() async throws {
-        let manager = try paymentRequestManager(sdk: PaymentRequestSdkMock(records: [paymentRequestRecord()]))
+    func testPresentationDispatcherLogsFirstAutomaticFailurePerReasonAndLifecycle() async throws {
+        let counterparty = "pubky\(String(repeating: "y", count: 52))"
+        let record = try paymentRequestRecord(counterparty: counterparty)
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let clock = PaymentRequestTestClock(Date())
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
         await manager.refresh()
         let request = try XCTUnwrap(manager.pendingRequests.first)
 
-        let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+        let firstFeedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
             deferring: request,
-            reason: .resolutionFailed,
+            reason: .noSupportedEndpoint,
+            with: manager
+        )
+        clock.advance(by: 2)
+        let repeatedFeedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+            deferring: request,
+            reason: .noSupportedEndpoint,
+            with: manager
+        )
+        clock.advance(by: 2)
+        let changedReasonFeedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+            deferring: request,
+            reason: .invalidPaymentTarget,
             with: manager
         )
 
-        XCTAssertFalse(feedback.isTerminal)
-        XCTAssertNil(feedback.toast)
+        let firstMessage = try XCTUnwrap(firstFeedback.diagnosticMessage(for: request))
+        XCTAssertFalse(firstFeedback.isTerminal)
+        XCTAssertNil(firstFeedback.toast)
+        XCTAssertEqual(
+            firstMessage,
+            "Rejected incoming Paykit payment request presentation: category=resolution reason=no_supported_endpoint " +
+                "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(counterparty))"
+        )
+        XCTAssertFalse(firstMessage.contains(counterparty))
+        XCTAssertNil(repeatedFeedback.diagnosticMessage(for: request))
+        XCTAssertEqual(
+            changedReasonFeedback.diagnosticMessage(for: request),
+            "Rejected incoming Paykit payment request presentation: category=presentation reason=invalid_payment_target " +
+                "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(counterparty))"
+        )
+
+        await sdk.setRecords([])
+        await manager.refresh()
+        await sdk.setRecords([record])
+        await manager.refresh()
+        let reappearedRequest = try XCTUnwrap(manager.pendingRequests.first)
+        let reappearedFeedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+            deferring: reappearedRequest,
+            reason: .noSupportedEndpoint,
+            with: manager
+        )
+
+        XCTAssertNotNil(reappearedFeedback.diagnosticMessage(for: reappearedRequest))
     }
 
     func testPresentationDispatcherAdvancesQueueAfterRequestedExpiration() async throws {
