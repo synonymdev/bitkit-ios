@@ -238,6 +238,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         _coinSelectionAlgorithm = CoinSelectionAlgorithm.branchAndBound.stringValue
         _selectedAddressType = "nativeSegwit"
         _addressTypesToMonitor = "nativeSegwit"
+        BlocktankRefundAddressStore().clear()
         pinEnabled = false
         isChangingAddressType = false
         restoredMonitoredTypesFromBackup = false
@@ -304,9 +305,6 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     /// Address Type Settings
-    /// Address types that support native SegWit scripts (required for Lightning).
-    private static let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
-
     @AppStorage("selectedAddressType") private var _selectedAddressType: String = "nativeSegwit"
 
     @AppStorage("addressTypesToMonitor") private var _addressTypesToMonitor: String = "nativeSegwit"
@@ -352,6 +350,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
         guard !isChangingAddressType else { return false }
+        guard enabled || addressType != .nativeSegwit else { return false }
 
         isChangingAddressType = true
         lastAddressTypeError = nil
@@ -397,11 +396,6 @@ class SettingsViewModel: NSObject, ObservableObject {
             } catch {
                 Logger.error("Failed to check balance for \(addressType), preventing disable: \(error)")
                 lastAddressTypeError = error
-                return false
-            }
-
-            let remainingNativeWitness = current.filter { $0 != addressType && Self.nativeWitnessTypes.contains($0) }
-            if remainingNativeWitness.isEmpty {
                 return false
             }
 
@@ -452,6 +446,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         let nodeMonitored = lightningService.listMonitoredAddressTypes()
         var combined = Set(nodeMonitored)
         combined.insert(selectedAddressType)
+        combined.insert(.nativeSegwit)
         addressTypesToMonitor = AddressScriptType.allAddressTypes.filter { combined.contains($0) }
     }
 
@@ -490,12 +485,9 @@ class SettingsViewModel: NSObject, ObservableObject {
             }
         }
 
-        // Ensure at least one native witness type
-        if !newMonitored.contains(where: { Self.nativeWitnessTypes.contains($0) }) {
-            if !newMonitored.contains(.nativeSegwit) {
-                newMonitored.append(.nativeSegwit)
-                changed = true
-            }
+        if !newMonitored.contains(.nativeSegwit) {
+            newMonitored.append(.nativeSegwit)
+            changed = true
         }
 
         guard changed else { return }
@@ -520,12 +512,9 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
-    /// True if disabling this would leave no native witness wallet (required for Lightning).
-    func isLastRequiredNativeWitnessWallet(_ addressType: AddressScriptType) -> Bool {
-        guard Self.nativeWitnessTypes.contains(addressType) else { return false }
-
-        let remainingNativeWitness = addressTypesToMonitor.filter { $0 != addressType && Self.nativeWitnessTypes.contains($0) }
-        return remainingNativeWitness.isEmpty
+    /// Native SegWit monitoring is required to detect delayed automatic Blocktank refunds.
+    func isRequiredRefundAddressType(_ addressType: AddressScriptType) -> Bool {
+        addressType == .nativeSegwit
     }
 
     var selectedAddressType: AddressScriptType {
@@ -832,6 +821,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         syncAppStorageFromDefaults()
+        ensureMonitoring(.nativeSegwit)
 
         let restoredMonitored = addressTypesToMonitor
         let restoredPrimary = selectedAddressType
@@ -866,8 +856,9 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     /// Gets the current app cache data for backup
-    func getAppCacheData() -> AppCacheData {
+    func getAppCacheData() throws -> AppCacheData {
         let spend = QuickPaySpendStore.shared.backupSnapshot()
+        let refundAddress = try BlocktankRefundAddressStore().load()
         return AppCacheData(
             hasSeenContactsIntro: defaults.bool(forKey: "hasSeenContactsIntro"),
             hasSeenProfileIntro: defaults.bool(forKey: "hasSeenProfileIntro"),
@@ -885,12 +876,13 @@ class SettingsViewModel: NSObject, ObservableObject {
             highBalanceIgnoreTimestamp: defaults.double(forKey: "highBalanceIgnoreTimestamp"),
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
             lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
-            quickPayLedger: spend
+            quickPayLedger: spend,
+            blocktankRefundAddress: refundAddress
         )
     }
 
     /// Restores app cache data from backup
-    func restoreAppCacheData(_ cache: AppCacheData) {
+    func restoreAppCacheData(_ cache: AppCacheData) throws {
         defaults.set(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
         defaults.set(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
         defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
@@ -908,5 +900,11 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
         defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
         QuickPaySpendStore.shared.restoreFromBackup(ledger: cache.quickPayLedger)
+        let refundAddressStore = BlocktankRefundAddressStore()
+        if let refundAddress = cache.blocktankRefundAddress {
+            try refundAddressStore.save(refundAddress)
+        } else {
+            refundAddressStore.clear()
+        }
     }
 }

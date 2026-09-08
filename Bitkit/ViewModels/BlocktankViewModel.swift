@@ -1,6 +1,47 @@
 import BitkitCore
 import SwiftUI
 
+struct BlocktankOrderClient {
+    typealias Submit = (UInt64, UInt32, CreateOrderOptions) async throws -> IBtOrder
+    typealias Estimate = (UInt64, UInt32, CreateOrderOptions) async throws -> IBtEstimateFeeResponse2
+
+    let nodeId: () -> String?
+    let sign: (String) async throws -> String
+    let submit: Submit
+    let estimate: Estimate
+
+    init(coreService: CoreService, lightningService: LightningService) {
+        nodeId = { lightningService.nodeId }
+        sign = { try await lightningService.sign(message: $0) }
+        submit = { lspBalanceSat, channelExpiryWeeks, options in
+            try await coreService.blocktank.newOrder(
+                lspBalanceSat: lspBalanceSat,
+                channelExpiryWeeks: channelExpiryWeeks,
+                options: options
+            )
+        }
+        estimate = { lspBalanceSat, channelExpiryWeeks, options in
+            try await coreService.blocktank.estimateFee(
+                lspBalanceSat: lspBalanceSat,
+                channelExpiryWeeks: channelExpiryWeeks,
+                options: options
+            )
+        }
+    }
+
+    init(
+        nodeId: @escaping () -> String?,
+        sign: @escaping (String) async throws -> String,
+        submit: @escaping Submit,
+        estimate: @escaping Estimate
+    ) {
+        self.nodeId = nodeId
+        self.sign = sign
+        self.submit = submit
+        self.estimate = estimate
+    }
+}
+
 @MainActor
 class BlocktankViewModel: ObservableObject {
     @Published var orders: [IBtOrder]? = nil
@@ -23,20 +64,32 @@ class BlocktankViewModel: ObservableObject {
     private let coreService: CoreService
     private let lightningService: LightningService
     private let currencyService: CurrencyService
+    private let orderClient: BlocktankOrderClient
+    private let refundAddressProvider: any BlocktankRefundAddressProviding
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
 
     init(
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
-        currencyService: CurrencyService = .shared
+        currencyService: CurrencyService = .shared,
+        orderClient: BlocktankOrderClient? = nil,
+        refundAddressProvider: (any BlocktankRefundAddressProviding)? = nil,
+        startPolling: Bool = true
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
         self.currencyService = currencyService
+        self.orderClient = orderClient ?? BlocktankOrderClient(coreService: coreService, lightningService: lightningService)
+        self.refundAddressProvider = refundAddressProvider ?? BlocktankRefundAddressProvider(
+            lightningService: lightningService,
+            utilityService: coreService.utility
+        )
 
-        Task { try? await refreshInfo() }
-        startPolling()
+        if startPolling {
+            Task { try? await refreshInfo() }
+            self.startPolling()
+        }
     }
 
     deinit {
@@ -144,15 +197,22 @@ class BlocktankViewModel: ObservableObject {
             Logger.warn("Has not refreshed Blocktank info yet, skipping validation of limits")
         }
 
-        let options = try await defaultCreateOrderOptions(clientBalanceSat: clientBalance)
-
-        Logger.debug("Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and options: \(options)")
-
-        return try await coreService.blocktank.newOrder(
-            lspBalanceSat: finalReceivingBalanceSats,
-            channelExpiryWeeks: defaultChannelExpiryWeeks,
-            options: options
+        guard orderClient.nodeId() != nil else {
+            throw CustomServiceError.nodeNotStarted
+        }
+        try Task.checkCancellation()
+        let refundAddress = try await refundAddressProvider.addressForOrder()
+        let options = try await defaultCreateOrderOptions(
+            clientBalanceSat: clientBalance,
+            refundOnchainAddress: refundAddress
         )
+
+        Logger.debug(
+            "Buying channel with lspBalanceSat: \(finalReceivingBalanceSats), clientBalanceSat: \(clientBalance), expiryWeeks: \(defaultChannelExpiryWeeks)"
+        )
+
+        try Task.checkCancellation()
+        return try await orderClient.submit(finalReceivingBalanceSats, defaultChannelExpiryWeeks, options)
     }
 
     func openChannel(orderId: String) async throws -> IBtOrder {
@@ -172,11 +232,7 @@ class BlocktankViewModel: ObservableObject {
     ) {
         let options = try await defaultCreateOrderOptions(clientBalanceSat: clientBalance)
 
-        let estimate = try await coreService.blocktank.estimateFee(
-            lspBalanceSat: lspBalance,
-            channelExpiryWeeks: defaultChannelExpiryWeeks,
-            options: options
-        )
+        let estimate = try await orderClient.estimate(lspBalance, defaultChannelExpiryWeeks, options)
 
         return (
             feeSat: estimate.feeSat,
@@ -186,13 +242,16 @@ class BlocktankViewModel: ObservableObject {
     }
 
     /// Creates default options for channel creation or fee estimation
-    private func defaultCreateOrderOptions(clientBalanceSat: UInt64) async throws -> CreateOrderOptions {
-        guard let nodeId = lightningService.nodeId else {
+    private func defaultCreateOrderOptions(
+        clientBalanceSat: UInt64,
+        refundOnchainAddress: String? = nil
+    ) async throws -> CreateOrderOptions {
+        guard let nodeId = orderClient.nodeId() else {
             throw CustomServiceError.nodeNotStarted
         }
 
         let timestamp = Date().formatted(.iso8601)
-        let signature = try await lightningService.sign(message: "channelOpen-\(timestamp)")
+        let signature = try await orderClient.sign("channelOpen-\(timestamp)")
 
         return CreateOrderOptions(
             clientBalanceSat: clientBalanceSat,
@@ -206,7 +265,7 @@ class BlocktankViewModel: ObservableObject {
             clientNodeId: nodeId,
             signature: signature,
             timestamp: timestamp,
-            refundOnchainAddress: nil,
+            refundOnchainAddress: refundOnchainAddress,
             announceChannel: false
         )
     }
