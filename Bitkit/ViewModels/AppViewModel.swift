@@ -119,7 +119,6 @@ class AppViewModel: ObservableObject {
     private let coreService: CoreService
     private let sheetViewModel: SheetViewModel
     private let navigationViewModel: NavigationViewModel
-    private let pubkyProfile: PubkyProfileManager
     private var scannedDataHandlingId: UUID?
     private var manualEntryValidationSequence: UInt64 = 0
 
@@ -131,14 +130,12 @@ class AppViewModel: ObservableObject {
         lightningService: LightningService = .shared,
         coreService: CoreService = .shared,
         sheetViewModel: SheetViewModel,
-        navigationViewModel: NavigationViewModel,
-        pubkyProfile: PubkyProfileManager
+        navigationViewModel: NavigationViewModel
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
         self.sheetViewModel = sheetViewModel
         self.navigationViewModel = navigationViewModel
-        self.pubkyProfile = pubkyProfile
 
         setupManualEntryValidationDebounce()
 
@@ -250,8 +247,7 @@ class AppViewModel: ObservableObject {
     convenience init() {
         self.init(
             sheetViewModel: SheetViewModel(),
-            navigationViewModel: NavigationViewModel(),
-            pubkyProfile: PubkyProfileManager()
+            navigationViewModel: NavigationViewModel()
         )
     }
 
