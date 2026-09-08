@@ -490,10 +490,10 @@ final class HwSendCoordinator {
                 await afterBroadcast(result)
                 return result
             } catch {
+                isBroadcastUnresolved = false
                 let outcomeIsUncertain = (error as? HwTransferError) == .broadcastUncertain
                 if !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
                     pendingPayment = nil
-                    isBroadcastUnresolved = false
                 }
                 throw error
             }
