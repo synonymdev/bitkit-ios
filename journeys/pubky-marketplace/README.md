@@ -57,9 +57,11 @@ The full journey depends on the sibling work from the parent epic:
   from reaching `SendSuccess`.
 
 Before opening the fixture setup auth URL, enable Paykit UI on both wallets through Settings →
-Advanced → Dev Settings → Enable Paykit UI (`PaykitUiToggle`) and confirm the warning. Contact
-payments must then be enabled in General Settings, and the buyer and seller must save each other
-before Bitkit's `receivePrivateMessagesFromLinkedPeers()` poll can receive the request.
+Advanced → Dev Settings → Enable Paykit UI (`PaykitUiToggle`) and confirm the warning. Then use the
+header profile button and Create path to give each wallet a Bitkit-generated Pubky identity; an
+identity imported through Pubky Ring cannot approve the setup auth URL. Contact payments must then
+be enabled in General Settings, and the buyer and seller must save each other before Bitkit's
+`receivePrivateMessagesFromLinkedPeers()` poll can receive the request.
 
 ## Evidence contract
 

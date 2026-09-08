@@ -7,8 +7,9 @@
     Precondition: two clean simulator wallets and the integration fixture described in this suite's
     README. Publish fixture Fulcrum at tcp://127.0.0.1:60001 and build both wallets with the local
     E2E regtest settings before first launch. In both wallets, enable Paykit UI in Dev Settings (id
-    "PaykitUiToggle") and confirm the warning before opening the fixture's fresh setup auth URL in
-    the seller wallet.
+    "PaykitUiToggle") and confirm the warning, then use the header profile button and Create path to
+    create a Bitkit-generated Pubky identity. A Pubky Ring-imported identity cannot approve the
+    fixture setup auth URL. Open the fixture's fresh setup auth URL in the seller wallet.
   </description>
   <actions>
     <action>Open the fixture setup auth URL in the seller wallet</action>
