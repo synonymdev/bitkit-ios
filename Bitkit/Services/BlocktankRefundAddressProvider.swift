@@ -25,17 +25,45 @@ enum BlocktankRefundAddressError: LocalizedError, Equatable {
 }
 
 struct BlocktankRefundAddressStore {
-    static let key = "blocktankRefundAddress"
+    static let legacyKey = "blocktankRefundAddress"
+    static var key: String { key(for: Env.network) }
 
     private let defaults: UserDefaults
+    private let network: LDKNode.Network
 
-    init(defaults: UserDefaults = .standard) {
+    private var key: String {
+        Self.key(for: network)
+    }
+
+    init(defaults: UserDefaults = .standard, network: LDKNode.Network = Env.network) {
         self.defaults = defaults
+        self.network = network
+    }
+
+    static func key(for network: LDKNode.Network) -> String {
+        "\(legacyKey)_\(Env.networkName(for: network))"
     }
 
     func load() throws -> BlocktankRefundAddress? {
-        guard defaults.object(forKey: Self.key) != nil else { return nil }
-        guard let data = defaults.data(forKey: Self.key) else {
+        if let value = try load(forKey: key) {
+            return value
+        }
+
+        guard let legacy = try load(forKey: Self.legacyKey) else { return nil }
+        let matchingNetworks = Self.matchingNetworks(for: legacy.address)
+        guard !matchingNetworks.isEmpty else {
+            throw BlocktankRefundAddressError.invalidCache
+        }
+        guard matchingNetworks == [network] else { return nil }
+
+        try save(legacy)
+        defaults.removeObject(forKey: Self.legacyKey)
+        return legacy
+    }
+
+    private func load(forKey key: String) throws -> BlocktankRefundAddress? {
+        guard defaults.object(forKey: key) != nil else { return nil }
+        guard let data = defaults.data(forKey: key) else {
             throw BlocktankRefundAddressError.invalidCache
         }
 
@@ -48,15 +76,31 @@ struct BlocktankRefundAddressStore {
 
     func save(_ value: BlocktankRefundAddress) throws {
         let data = try JSONEncoder().encode(value)
-        defaults.set(data, forKey: Self.key)
+        defaults.set(data, forKey: key)
 
-        guard try load() == value else {
+        guard try load(forKey: key) == value else {
             throw BlocktankRefundAddressError.persistenceFailed
         }
     }
 
     func clear() {
-        defaults.removeObject(forKey: Self.key)
+        defaults.removeObject(forKey: key)
+
+        guard defaults.object(forKey: Self.legacyKey) != nil else { return }
+        guard let legacy = try? load(forKey: Self.legacyKey) else {
+            defaults.removeObject(forKey: Self.legacyKey)
+            return
+        }
+        let matchingNetworks = Self.matchingNetworks(for: legacy.address)
+        if matchingNetworks.isEmpty || matchingNetworks == [network] {
+            defaults.removeObject(forKey: Self.legacyKey)
+        }
+    }
+
+    private static func matchingNetworks(for address: String) -> [LDKNode.Network] {
+        [LDKNode.Network.bitcoin, .testnet, .signet, .regtest].filter {
+            AddressScriptType.nativeSegwit.matchesAddressFormat(address, network: $0)
+        }
     }
 }
 

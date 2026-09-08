@@ -197,6 +197,53 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
         XCTAssertNil(cache.blocktankRefundAddress)
     }
 
+    func testStoreKeepsRefundAddressesSeparateByNetwork() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defer { defaults.removePersistentDomain(forName: #function) }
+        let regtestStore = BlocktankRefundAddressStore(defaults: defaults, network: .regtest)
+        let bitcoinStore = BlocktankRefundAddressStore(defaults: defaults, network: .bitcoin)
+        let regtestAddress = BlocktankRefundAddress(address: "bcrt1qrefund", index: 7)
+        let bitcoinAddress = BlocktankRefundAddress(address: "bc1qrefund", index: 9)
+
+        try regtestStore.save(regtestAddress)
+        XCTAssertEqual(try regtestStore.load(), regtestAddress)
+        XCTAssertNil(try bitcoinStore.load())
+
+        try bitcoinStore.save(bitcoinAddress)
+        XCTAssertEqual(try bitcoinStore.load(), bitcoinAddress)
+        XCTAssertEqual(try regtestStore.load(), regtestAddress)
+    }
+
+    func testLegacyCacheMigratesOnlyOnMatchingNetwork() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defer { defaults.removePersistentDomain(forName: #function) }
+        let legacy = BlocktankRefundAddress(address: "bcrt1qrefund", index: 7)
+        defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+
+        let bitcoinStore = BlocktankRefundAddressStore(defaults: defaults, network: .bitcoin)
+        XCTAssertNil(try bitcoinStore.load())
+        XCTAssertNotNil(defaults.data(forKey: BlocktankRefundAddressStore.legacyKey))
+        XCTAssertNil(defaults.data(forKey: BlocktankRefundAddressStore.key(for: .bitcoin)))
+
+        let regtestStore = BlocktankRefundAddressStore(defaults: defaults, network: .regtest)
+        XCTAssertEqual(try regtestStore.load(), legacy)
+        XCTAssertNil(defaults.object(forKey: BlocktankRefundAddressStore.legacyKey))
+        XCTAssertNotNil(defaults.data(forKey: BlocktankRefundAddressStore.key(for: .regtest)))
+    }
+
+    func testClearPreservesLegacyCacheFromAnotherNetwork() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defer { defaults.removePersistentDomain(forName: #function) }
+        let legacy = BlocktankRefundAddress(address: "bcrt1qrefund", index: 7)
+        defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+
+        BlocktankRefundAddressStore(defaults: defaults, network: .bitcoin).clear()
+        XCTAssertNotNil(defaults.data(forKey: BlocktankRefundAddressStore.legacyKey))
+
+        BlocktankRefundAddressStore(defaults: defaults, network: .regtest).clear()
+        XCTAssertNil(defaults.object(forKey: BlocktankRefundAddressStore.legacyKey))
+    }
+
     func testSettingsCacheRestoreRoundTripAndWipe() throws {
         let json = #"{"blocktankRefundAddress":{"address":"bcrt1refund","index":7}}"#
         let restored = try JSONDecoder().decode(AppCacheData.self, from: Data(json.utf8))
