@@ -1,5 +1,35 @@
 import SwiftUI
 
+enum PendingProfileSetupResumeState {
+    case inactive
+    case waiting
+    case ready
+
+    func shouldResume(didResume: inout Bool) -> Bool {
+        if self == .inactive {
+            didResume = false
+        }
+        guard self == .ready, !didResume else { return false }
+        didResume = true
+        return true
+    }
+}
+
+func resolvePendingProfileSetupResumeState(
+    isProfileSetupPending: Bool,
+    isPaykitUIActive: Bool,
+    isAuthenticated: Bool,
+    hasActiveSheet: Bool,
+    isReplacingSheet: Bool,
+    currentRoute: Route?
+) -> PendingProfileSetupResumeState {
+    guard isProfileSetupPending else { return .inactive }
+    guard isPaykitUIActive, isAuthenticated, !hasActiveSheet, !isReplacingSheet, currentRoute != .createProfile else {
+        return .waiting
+    }
+    return .ready
+}
+
 struct MainNavView: View {
     private let canHandleDeepLinks: Bool
 
@@ -22,6 +52,7 @@ struct MainNavView: View {
 
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
+    @State private var didResumePendingPubkyProfileSetup = false
 
     init(canHandleDeepLinks: Bool = true) {
         self.canHandleDeepLinks = canHandleDeepLinks
@@ -29,6 +60,17 @@ struct MainNavView: View {
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    private var pendingProfileSetupResumeState: PendingProfileSetupResumeState {
+        resolvePendingProfileSetupResumeState(
+            isProfileSetupPending: pubkyProfile.isProfileSetupPending,
+            isPaykitUIActive: isPaykitUIActive,
+            isAuthenticated: pubkyProfile.isAuthenticated,
+            hasActiveSheet: sheets.activeSheetConfiguration != nil,
+            isReplacingSheet: sheets.isReplacingSheet,
+            currentRoute: navigation.currentRoute
+        )
     }
 
     // Delay constants for clipboard processing
@@ -44,6 +86,10 @@ struct MainNavView: View {
                 transfer.consumeHwFundingComplete()
                 navigation.navigate(.spendingHwSigned)
             }
+        }
+        .onChange(of: pendingProfileSetupResumeState, initial: true) { _, resumeState in
+            guard resumeState.shouldResume(didResume: &didResumePendingPubkyProfileSetup) else { return }
+            navigation.navigate(.createProfile)
         }
         .sheet(
             item: $sheets.addTagSheetItem,

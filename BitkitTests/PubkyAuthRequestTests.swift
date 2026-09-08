@@ -5,30 +5,34 @@ import XCTest
 final class PubkyAuthRequestTests: XCTestCase {
     private let relay = "https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F"
     private let secret = "e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+    private let publicKey = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
 
     func testProtocolUrlRecognizesPubkyAuthSchemeCaseInsensitively() {
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL("pubkyauth://signin?caps=/pub/bitkit.to/:rw"))
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL("PUBKYAUTH://signin?caps=/pub/bitkit.to/:rw"))
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL("  pubkyauth://signin?caps=/pub/bitkit.to/:rw\n"))
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL(ringSignupUrl()))
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL(directSignupUrl(action: "direct_signup")))
         XCTAssertFalse(PubkyAuthRequest.isProtocolURL("lightning:lnbc1example"))
     }
 
     func testProtocolUrlNormalizesBitkitSpecificSetupHandoff() throws {
         let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
-            "&relay=\(relay)&secret=\(secret)&x-bitkit-claim=watch-only-account-v1"
+            "&relay=\(relay)&secret=\(secret)&cid=paykit.test&cpk=\(publicKey)&x-bitkit-claim=watch-only-account-v1"
 
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL(url))
 
         let request = try PubkyAuthRequest.parse(url: url)
 
-        XCTAssertTrue(request.rawUrl.hasPrefix("pubkyauth://signin?"))
+        XCTAssertTrue(request.rawUrl.hasPrefix("pubkyauth://signin_grant?"))
         XCTAssertEqual(request.bitkitClaim, .watchOnlyAccountV1)
         XCTAssertEqual(request.capabilities, PubkyAuthClaim.watchOnlyAccountCapabilities)
     }
 
     func testRelayOriginShowsOnlyTheAuthorizationDestination() throws {
         let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
-            "&relay=https%3A%2F%2FRelay.Example%3A8443%2Finbox%2F&secret=\(secret)&x-bitkit-claim=watch-only-account-v1"
+            "&relay=https%3A%2F%2FRelay.Example%3A8443%2Finbox%2F&secret=\(secret)" +
+            "&cid=paykit.test&cpk=\(publicKey)&x-bitkit-claim=watch-only-account-v1"
 
         let request = try PubkyAuthRequest.parse(url: url)
 
@@ -37,7 +41,7 @@ final class PubkyAuthRequestTests: XCTestCase {
 
     func testProtocolUrlRejectsBitkitSpecificSetupHandoffWithoutClaimMarker() {
         let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
-            "&relay=\(relay)&secret=\(secret)"
+            "&relay=\(relay)&secret=\(secret)&cid=paykit.test&cpk=\(publicKey)"
 
         XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url)) {
             XCTAssertEqual($0 as? PubkyAuthRequestError, .missingBitkitClaim)
@@ -45,7 +49,8 @@ final class PubkyAuthRequestTests: XCTestCase {
     }
 
     func testProtocolUrlRejectsGenericBitkitSetupHandoffWithoutClaimMarker() {
-        let url = "bitkit://pubky-auth/setup?caps=/pub/locks.app/:rw&relay=\(relay)&secret=\(secret)"
+        let url = "bitkit://pubky-auth/setup?caps=/pub/locks.app/:rw&relay=\(relay)&secret=\(secret)" +
+            "&cid=paykit.test&cpk=\(publicKey)"
 
         XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url)) {
             XCTAssertEqual($0 as? PubkyAuthRequestError, .missingBitkitClaim)
@@ -86,7 +91,7 @@ final class PubkyAuthRequestTests: XCTestCase {
 
         XCTAssertEqual(
             PubkyAuthRequest.normalizedProtocolURL("bitkit://pubky-auth/setup?\(query)"),
-            "pubkyauth://signin?\(query)"
+            "pubkyauth://signin_grant?\(query)"
         )
     }
 
@@ -119,12 +124,58 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url))
     }
 
+    func testParseAuthorizedSignup() throws {
+        for scheme in ["pubkyring", "pubkyauth"] {
+            let request = try PubkyAuthRequest.parse(url: ringSignupUrl(signupToken: "invite code", scheme: scheme))
+
+            XCTAssertTrue(request.isSignup)
+            XCTAssertEqual(request.kind, .signUp)
+            XCTAssertEqual(request.homeserverPublicKey, publicKey)
+            XCTAssertEqual(request.signupToken, "invite code")
+            XCTAssertEqual(request.relay, "https://relay.example/inbox/")
+            XCTAssertEqual(request.capabilities, "/pub/example.app/:rw")
+            XCTAssertEqual(
+                request.authorizationUrl,
+                "pubkyauth:///?relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
+                    "&secret=\(secret)&caps=%2Fpub%2Fexample.app%2F%3Arw"
+            )
+        }
+    }
+
+    func testParseDirectSignupAcceptsCanonicalAndLegacyFormats() throws {
+        for action in ["direct_signup", "signup"] {
+            let request = try PubkyAuthRequest.parse(url: directSignupUrl(action: action, signupToken: "invite code"))
+
+            XCTAssertTrue(request.isSignup)
+            XCTAssertEqual(request.kind, .signUp)
+            XCTAssertEqual(request.homeserverPublicKey, publicKey)
+            XCTAssertEqual(request.signupToken, "invite code")
+            XCTAssertEqual(request.relay, "")
+            XCTAssertEqual(request.capabilities, "")
+            XCTAssertNil(request.authorizationUrl)
+        }
+    }
+
+    func testParseRingSignupRejectsMissingOrDuplicateRequiredValues() {
+        let invalidUrls = [
+            ringSignupUrl().replacingOccurrences(of: "&secret=\(secret)", with: ""),
+            "\(ringSignupUrl())&hs=other",
+            directSignupUrl(action: "signup") + "&relay=https%3A%2F%2Frelay.example",
+        ]
+
+        for url in invalidUrls {
+            XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url))
+        }
+    }
+
     func testParseUrlPreservesRequestedCapabilities() throws {
         let capabilities = "/pub/bitkit.to/:rw"
-        let url = "pubkyauth://signin?caps=\(capabilities)&relay=https://httprelay.pubky.app/inbox/&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+        let url = authUrl(capabilities: capabilities)
 
         let request = try PubkyAuthRequest.parse(url: url)
 
+        XCTAssertFalse(request.isSignup)
+        XCTAssertEqual(request.clientID, "paykit.test")
         XCTAssertEqual(request.capabilities, capabilities)
         XCTAssertEqual(request.permissions.count, 1)
         XCTAssertEqual(request.permissions[0].path, "/pub/bitkit.to/")
@@ -169,13 +220,10 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertEqual(request.bitkitClaim, .watchOnlyAccountV1)
     }
 
-    func testParseUrlRecognizesWatchOnlyAccountClaimWithCapabilityWhitespace() throws {
+    func testWatchOnlyCapabilityMatcherAllowsWhitespace() {
         let capabilities = PubkyAuthClaim.watchOnlyAccountCapabilities.replacingOccurrences(of: ",", with: " , ")
-        let url = authUrl(capabilities: capabilities, claimValues: [PubkyAuthClaim.watchOnlyAccountV1.rawValue])
 
-        let request = try PubkyAuthRequest.parse(url: url)
-
-        XCTAssertEqual(request.bitkitClaim, .watchOnlyAccountV1)
+        XCTAssertTrue(PubkyAuthClaim.matchesWatchOnlyAccountCapabilities(capabilities))
     }
 
     func testParseUrlWithoutBitkitClaimPreservesNormalAuth() throws {
@@ -384,6 +432,23 @@ final class PubkyAuthRequestTests: XCTestCase {
         let claims = claimValues
             .map { "&\(PubkyAuthClaim.queryParameter)=\($0)" }
             .joined()
-        return "pubkyauth://signin?caps=\(capabilities)&relay=\(relay)&secret=\(secret)\(claims)"
+        return "pubkyauth://signin_grant?caps=\(capabilities)&relay=\(relay)&secret=\(secret)" +
+            "&cid=paykit.test&cpk=\(publicKey)\(claims)"
+    }
+
+    private func ringSignupUrl(signupToken: String? = nil, scheme: String = "pubkyring") -> String {
+        let token = signupToken.map {
+            "&st=\($0.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0)"
+        } ?? ""
+        return "\(scheme)://signup?hs=\(publicKey)" +
+            "&relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
+            "&secret=\(secret)&caps=%2Fpub%2Fexample.app%2F%3Arw\(token)"
+    }
+
+    private func directSignupUrl(action: String, signupToken: String? = nil) -> String {
+        let token = signupToken.map {
+            "&st=\($0.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0)"
+        } ?? ""
+        return "pubkyauth://\(action)?hs=\(publicKey)\(token)"
     }
 }

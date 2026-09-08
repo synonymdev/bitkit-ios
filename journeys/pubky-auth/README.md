@@ -1,6 +1,6 @@
 # Pubky auth
 
-This suite covers the uniquely targetable `bitkit://pubky-auth/setup` OS handoff into Bitkit. Raw `pubkyauth` setup requests remain supported through QR scanning and clipboard paste for compatibility with the Pubky protocol.
+This suite covers the uniquely targetable `bitkit://pubky-auth/setup` OS handoff into Bitkit. The wrapper carries the Paykit grant-auth requester fields and normalizes to `pubkyauth://signin_grant`; raw Pubky auth and signup requests remain supported through QR scanning and clipboard paste.
 It stops at explicit watch-only consent and never authorizes or exports account material.
 Bitkit retains links delivered during startup, restoration, or PIN entry and presents consent only after the main wallet UI is available.
 

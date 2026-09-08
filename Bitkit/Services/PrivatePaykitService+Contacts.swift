@@ -4,6 +4,15 @@ import Paykit
 // MARK: - Saved Contacts
 
 extension PrivatePaykitService {
+    enum FullCleanupReconciliationMode: Equatable {
+        case restoreSavedContacts
+        case removePublishedState
+    }
+
+    static func fullCleanupReconciliationMode(defaults: UserDefaults = .standard) -> FullCleanupReconciliationMode {
+        return defaults.bool(forKey: publishingEnabledKey) ? .restoreSavedContacts : .removePublishedState
+    }
+
     @discardableResult
     func prepareSavedContacts(
         _ publicKeys: [String],
@@ -255,9 +264,28 @@ extension PrivatePaykitService {
         }
     }
 
-    func retryPendingEndpointRemoval(wallet _: WalletViewModel, savedPublicKeys publicKeys: [String]) async {
+    func retryPendingEndpointReconciliation(wallet: WalletViewModel, savedPublicKeys publicKeys: [String]) async {
         let savedKeys = Set(normalizedSavedContactKeys(publicKeys))
         let isFullCleanupPending = UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
+        if isFullCleanupPending,
+           Self.fullCleanupReconciliationMode() == .restoreSavedContacts
+        {
+            let restoreKeys = savedKeys.union(knownSavedContactKeys)
+            guard !restoreKeys.isEmpty else { return }
+
+            let error = await prepareSavedContacts(
+                Array(restoreKeys),
+                wallet: wallet,
+                requireImmediatePublication: true
+            )
+            if let error {
+                Logger.warn("Failed to reconcile private Paykit endpoints: \(error)", context: "PrivatePaykit")
+            } else {
+                Self.setContactSharingCleanupPending(false)
+            }
+            return
+        }
+
         let cleanupKeys = isFullCleanupPending
             ? Set(knownSavedContactKeys).union(state.contacts.keys).union(Self.pendingDeletedContactCleanupKeys())
             : Set(pendingPrivateEndpointRemovalKeys(savedPublicKeys: publicKeys))

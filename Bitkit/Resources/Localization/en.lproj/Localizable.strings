@@ -695,6 +695,7 @@
 "pubky_auth__title" = "Authorize";
 "pubky_auth__description_prefix" = "A service is requesting permission to access and edit your ";
 "pubky_auth__description_suffix" = " data.";
+"pubky_auth__requester" = "Requester ID: {clientId}";
 "pubky_auth__requested_permissions" = "REQUESTED PERMISSIONS";
 "pubky_auth__watch_only_account_default_name" = "{service} account";
 "pubky_auth__watch_only_account_fallback_name" = "Paykit server account";
@@ -713,11 +714,14 @@
 "pubky_auth__success_middle" = " and gave the service permission to access and edit your ";
 "pubky_auth__success_suffix" = " data.";
 "pubky_auth__biometric_failed" = "Authentication Failed";
+"pubky_auth__already_signed_in" = "Already signed in";
 "pubky_auth__no_identity" = "Pubky Identity Required";
 "pubky_auth__no_identity_desc" = "Create a Pubky identity in your profile to approve auth requests.";
 "pubky_auth__use_ring" = "Use Pubky Ring";
 "pubky_auth__use_ring_desc" = "Your identity was created with Pubky Ring. Open Ring to approve this request.";
 "pubky_auth__invalid_request" = "Invalid auth request";
+"pubky_auth__homeserver" = "Homeserver";
+"pubky_auth__signup_description" = "Create a new Pubky identity on this homeserver. Only continue if you trust it.";
 "pubky_auth__approval_failed" = "Authorization Failed";
 "watch_only_accounts__active_section" = "Active accounts";
 "watch_only_accounts__copy_xpub" = "Copy xpub";

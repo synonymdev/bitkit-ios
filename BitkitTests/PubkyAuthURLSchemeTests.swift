@@ -2,6 +2,8 @@
 import XCTest
 
 final class PubkyAuthURLSchemeTests: XCTestCase {
+    private let grantRequester = "&cid=paykit.test&cpk=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
+
     func testAppUsesUniqueBitkitSchemeInsteadOfSharedPubkyAuthScheme() throws {
         let urlTypes = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]])
         let schemes = urlTypes.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
@@ -47,7 +49,7 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
         let url = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
                 "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
-                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"))
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)&x-bitkit-claim=watch-only-account-v1"))
         var routeCount = 0
 
         app.retainDeepLink(url)
@@ -75,25 +77,25 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         XCTAssertEqual(sheets.activeSheetConfiguration?.id, .pubkyAuthApproval)
         let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? PubkyAuthApprovalConfig)
         XCTAssertEqual(config.request.bitkitClaim, .watchOnlyAccountV1)
-        XCTAssertTrue(config.authUrl.hasPrefix("pubkyauth://signin?"))
+        XCTAssertTrue(config.request.rawUrl.hasPrefix("pubkyauth://signin_grant?"))
 
         sheets.hideSheet()
         let markerlessURL = "bitkit://pubky-auth/setup?caps=/pub/locks.app/:rw" +
             "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
-            "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+            "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)"
         try await app.handleScannedData(markerlessURL)
 
         XCTAssertNil(sheets.activeSheetConfiguration)
 
         let duplicateRelayURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
             "&relay=https%3A%2F%2Fa&relay=https%3A%2F%2Fb" +
-            "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"
+            "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)&x-bitkit-claim=watch-only-account-v1"
         try await app.handleScannedData(duplicateRelayURL)
         XCTAssertNil(sheets.activeSheetConfiguration)
 
         let duplicateSecretURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
             "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
-            "&secret=first&secret=second&x-bitkit-claim=watch-only-account-v1"
+            "&secret=first&secret=second\(grantRequester)&x-bitkit-claim=watch-only-account-v1"
         try await app.handleScannedData(duplicateSecretURL)
         XCTAssertNil(sheets.activeSheetConfiguration)
     }
@@ -103,7 +105,7 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
         let pubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
                 "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
-                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&x-bitkit-claim=watch-only-account-v1"))
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)&x-bitkit-claim=watch-only-account-v1"))
         let httpURL = try XCTUnwrap(URL(string: "https://example.com/article"))
         let ringURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/success"))
         let malformedPubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup"))

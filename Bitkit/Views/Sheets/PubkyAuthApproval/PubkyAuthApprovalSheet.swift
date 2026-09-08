@@ -32,14 +32,12 @@ func pubkyAuthDisplayPublicKey(_ publicKey: String?) -> String {
 }
 
 struct PubkyAuthApprovalConfig {
-    let authUrl: String
     let request: PubkyAuthRequest
 }
 
 struct PubkyAuthApprovalSheetItem: SheetItem {
     let id: SheetID = .pubkyAuthApproval
     let size: SheetSize = .large
-    let authUrl: String
     let request: PubkyAuthRequest
 }
 
@@ -228,23 +226,56 @@ struct PubkyAuthApprovalSheet: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    descriptionText
-                        .padding(.bottom, 32)
+                    if config.request.isSignup {
+                        BodyMText(t("pubky_auth__signup_description"))
+                            .padding(.bottom, 16)
+                    }
+
+                    if !config.request.permissions.isEmpty {
+                        descriptionText
+                            .padding(.bottom, 8)
+                    }
+
+                    if !config.request.clientID.isEmpty {
+                        BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.bottom, 32)
+                    } else {
+                        Spacer().frame(height: 24)
+                    }
 
                     if let relayOrigin = config.request.relayOrigin {
                         relayOriginSection(relayOrigin)
                             .padding(.bottom, 24)
                     }
 
-                    permissionsSection
+                    if !config.request.permissions.isEmpty {
+                        permissionsSection
+                    }
 
                     Spacer(minLength: 32)
 
                     trustWarning
                         .padding(.bottom, 16)
 
-                    profileCard
+                    if let homeserver = config.request.homeserverPublicKey {
+                        VStack(alignment: .leading, spacing: 8) {
+                            CaptionMText(t("pubky_auth__homeserver"), textColor: .white64)
+                            BodyMSBText(homeserver)
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(24)
+                        .background(Color.gray6)
+                        .cornerRadius(16)
                         .padding(.bottom, 16)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("PubkySignupHomeserver")
+                    } else {
+                        profileCard
+                            .padding(.bottom, 16)
+                    }
                 }
                 .frame(minHeight: geometry.size.height, alignment: .top)
             }
@@ -398,6 +429,15 @@ struct PubkyAuthApprovalSheet: View {
     private func performAuthorization() async {
         guard state == .authorizing else { return }
         do {
+            if config.request.isSignup {
+                try await pubkyProfile.approveSignupAuth(request: config.request)
+                guard sheets.pubkyAuthApprovalSheetItem?.request.rawUrl == config.request.rawUrl else {
+                    return
+                }
+                sheets.hideSheet()
+                return
+            }
+
             guard let secretKey = try Keychain.loadString(key: .pubkySecretKey),
                   !secretKey.isEmpty
             else {
@@ -408,13 +448,18 @@ struct PubkyAuthApprovalSheet: View {
 
             try await PubkyService.approveAuthRequest(
                 request: config.request,
-                authUrl: config.authUrl,
+                authUrl: config.request.rawUrl,
                 accountName: watchOnlyAccountName,
                 secretKeyHex: secretKey
             )
 
             state = .success
         } catch {
+            if case PubkySignupError.alreadySignedIn = error {
+                app.toast(type: .info, title: t("pubky_auth__already_signed_in"))
+                sheets.hideSheet()
+                return
+            }
             Logger.error("Failed to approve pubky auth: \(error)", context: "PubkyAuthApprovalSheet")
             app.toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
             state = .authorize
