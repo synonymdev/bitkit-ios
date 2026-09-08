@@ -825,6 +825,7 @@ struct AppScene: View {
               app.contactPaymentContext == nil
         else { return }
 
+        var shouldPresentNextRequest = true
         let attemptedPresentation = await paykitPaymentRequestManager.presentRequests { requests in
             guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet, app.contactPaymentContext == nil else { return }
             for request in requests {
@@ -867,10 +868,16 @@ struct AppScene: View {
                             return
                         }
                         guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
-                            app.resetSendState()
-                            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-                            paykitPaymentRequestManager.deferPresentation(request)
-                            continue
+                            PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(
+                                request,
+                                app: app,
+                                manager: paykitPaymentRequestManager,
+                                resetWalletSendState: {
+                                    wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                                }
+                            )
+                            shouldPresentNextRequest = false
+                            return
                         }
 
                         guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
@@ -894,6 +901,15 @@ struct AppScene: View {
                         Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        if PaykitPaymentRequestPresentationCoordinator.handleAmountMismatch(
+                            error,
+                            request: request,
+                            manager: paykitPaymentRequestManager,
+                            showError: { app.toast($0) }
+                        ) {
+                            shouldPresentNextRequest = false
+                            return
+                        }
                         paykitPaymentRequestManager.deferPresentation(request)
                         continue
                     }
@@ -921,6 +937,7 @@ struct AppScene: View {
         }
 
         guard attemptedPresentation,
+              shouldPresentNextRequest,
               paykitPaymentRequestManager.requestedPresentationId != nil ||
               !paykitPaymentRequestManager.requestsForPresentation().isEmpty,
               sheets.activeSheetConfiguration == nil,

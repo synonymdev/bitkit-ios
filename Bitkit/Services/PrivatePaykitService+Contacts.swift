@@ -4,26 +4,51 @@ import Paykit
 // MARK: - Saved Contacts
 
 extension PrivatePaykitService {
+    struct EndpointPublicationOperations {
+        let currentPublicKey: () async -> String?
+        let linkedReceiverPaths: (_ reason: String) async -> (paths: [String: Set<String>], error: Error?)
+        let receiverPaths: (_ publicKey: String) async throws -> [String]
+        let receiverPathSelection: (_ publicKey: String, _ receiverPaths: [String]) async throws -> PrivateReceiverPathSelection
+        let ensureLink: (_ publicKey: String, _ receiverPath: String) async throws -> Void
+        let buildEndpoints: (_ publicKey: String, _ receiverPath: String) async throws -> [PublicPaykitService.Endpoint]
+        let syncPaymentLists: (_ updates: [PrivatePaymentListReservationUpdateInput]) async throws -> PrivatePaymentListDeliveryReport
+    }
+
     @discardableResult
     func prepareSavedContacts(
         _ publicKeys: [String],
         wallet: WalletViewModel,
         requireImmediatePublication: Bool = false
     ) async -> Error? {
-        let publicKeys = rememberSavedContacts(publicKeys, replacing: true)
-        guard await canPublishPrivateEndpoints(wallet: wallet) else {
-            await prepareRelevantPrivateLinksIfAvailable(publicKeys, reason: "prepare")
-            return requireImmediatePublication && !publicKeys.isEmpty ? PrivatePaykitError.privateUnavailable : nil
-        }
-
-        await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
-
-        return await syncLocalEndpointPublication(
-            for: publicKeys,
-            wallet: wallet,
-            reason: "prepare",
-            requireImmediatePublication: requireImmediatePublication
+        await prepareSavedContacts(
+            publicKeys,
+            publicationUnavailableReason: privateEndpointPublicationUnavailabilityReason(wallet: wallet),
+            prepareLinks: { await self.prepareRelevantPrivateLinksIfAvailable($0, reason: "prepare") },
+            publishEndpoints: { publicKeys in
+                await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+                return await self.syncLocalEndpointPublication(
+                    for: publicKeys,
+                    wallet: wallet,
+                    reason: "prepare",
+                    requireImmediatePublication: requireImmediatePublication
+                )
+            }
         )
+    }
+
+    func prepareSavedContacts(
+        _ publicKeys: [String],
+        publicationUnavailableReason: String?,
+        prepareLinks: ([String]) async -> Void,
+        publishEndpoints: ([String]) async -> Error?
+    ) async -> Error? {
+        let publicKeys = rememberSavedContacts(publicKeys, replacing: true)
+        if let reason = publicationUnavailableReason {
+            Logger.info("Deferring private Paykit endpoint publication during prepare: \(reason)", context: "PrivatePaykitService")
+            await prepareLinks(publicKeys)
+            return nil
+        }
+        return await publishEndpoints(publicKeys)
     }
 
     func refreshSavedContactEndpoints(
@@ -294,14 +319,31 @@ extension PrivatePaykitService {
         forceRefreshLightning: Bool = false,
         requireImmediatePublication: Bool
     ) async -> Error? {
+        let operations = endpointPublicationOperations(
+            wallet: wallet,
+            forceRefreshLightning: forceRefreshLightning
+        )
+        return await syncLocalEndpointPublication(
+            for: publicKeys,
+            reason: reason,
+            requireImmediatePublication: requireImmediatePublication,
+            operations: operations
+        )
+    }
+
+    func syncLocalEndpointPublication(
+        for publicKeys: [String],
+        reason: String,
+        requireImmediatePublication: Bool,
+        operations: EndpointPublicationOperations
+    ) async -> Error? {
         do {
             return try await withPublicationLock {
                 await syncLocalEndpointPublicationLocked(
                     for: publicKeys,
-                    wallet: wallet,
                     reason: reason,
-                    forceRefreshLightning: forceRefreshLightning,
-                    requireImmediatePublication: requireImmediatePublication
+                    requireImmediatePublication: requireImmediatePublication,
+                    operations: operations
                 )
             }
         } catch {
@@ -309,21 +351,60 @@ extension PrivatePaykitService {
         }
     }
 
+    private func endpointPublicationOperations(
+        wallet: WalletViewModel,
+        forceRefreshLightning: Bool
+    ) -> EndpointPublicationOperations {
+        EndpointPublicationOperations(
+            currentPublicKey: {
+                await PubkyService.currentPublicKey()
+            },
+            linkedReceiverPaths: { reason in
+                await self.linkedReceiverPathsSnapshot(reason: reason)
+            },
+            receiverPaths: { publicKey in
+                try await self.receiverPathsForSavedContact(publicKey: publicKey)
+            },
+            receiverPathSelection: { publicKey, receiverPaths in
+                try await PaykitSdkService.shared.privateReceiverPathSelection(
+                    publicKey: publicKey,
+                    savedReceiverPaths: receiverPaths
+                )
+            },
+            ensureLink: { publicKey, receiverPath in
+                _ = try await PaykitSdkService.shared.ensureLinkWithPeer(publicKey, receiverPath: receiverPath)
+            },
+            buildEndpoints: { publicKey, receiverPath in
+                try await self.buildLocalEndpoints(
+                    for: publicKey,
+                    receiverPath: receiverPath,
+                    wallet: wallet,
+                    forceRefreshLightning: forceRefreshLightning
+                )
+            },
+            syncPaymentLists: { updates in
+                try await PaykitSdkService.shared.syncPrivatePaymentListsWithReservations(
+                    updates,
+                    clearUnlistedLinkedPeers: false
+                )
+            }
+        )
+    }
+
     private func syncLocalEndpointPublicationLocked(
         for publicKeys: [String],
-        wallet: WalletViewModel,
         reason: String,
-        forceRefreshLightning: Bool = false,
-        requireImmediatePublication: Bool
+        requireImmediatePublication: Bool,
+        operations: EndpointPublicationOperations
     ) async -> Error? {
         let publicKeys = normalizedSavedContactKeys(publicKeys)
         guard !publicKeys.isEmpty else { return nil }
 
-        guard await PubkyService.currentPublicKey() != nil else {
+        guard await operations.currentPublicKey() != nil else {
             return requireImmediatePublication ? PubkyServiceError.sessionNotActive : nil
         }
 
-        let linkedReceiverPathsSnapshot = await linkedReceiverPathsSnapshot(reason: reason)
+        let linkedReceiverPathsSnapshot = await operations.linkedReceiverPaths(reason)
         var firstError = linkedReceiverPathsSnapshot.error
         var updates = [PrivatePaymentListReservationUpdateInput]()
         var linkRetryKeys = [PrivateMessageDrainRetryKey]()
@@ -331,7 +412,7 @@ extension PrivatePaykitService {
         for publicKey in publicKeys {
             let receiverPaths: [String]
             do {
-                receiverPaths = try await receiverPathsForSavedContact(publicKey: publicKey)
+                receiverPaths = try await operations.receiverPaths(publicKey)
             } catch {
                 firstError = firstError ?? error
                 Logger.warn(
@@ -342,17 +423,18 @@ extension PrivatePaykitService {
             }
             let receiverPathSelection: PrivateReceiverPathSelection
             do {
-                receiverPathSelection = try await PaykitSdkService.shared.privateReceiverPathSelection(
-                    publicKey: publicKey,
-                    savedReceiverPaths: receiverPaths
-                )
+                receiverPathSelection = try await operations.receiverPathSelection(publicKey, receiverPaths)
             } catch {
-                return error
+                firstError = firstError ?? error
+                Logger.warn(
+                    "Failed to select private Paykit receiver paths for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(error)",
+                    context: "PrivatePaykit"
+                )
+                continue
             }
             let linkableReceiverPaths = receiverPathSelection.linkableReceiverPaths
             let publicationReceiverPaths = receiverPathSelection.publishableReceiverPaths
             if let error = receiverPathSelection.error {
-                firstError = firstError ?? error
                 Logger.warn(
                     "Failed to inspect private Paykit receiver markers for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(error)",
                     context: "PrivatePaykit"
@@ -367,7 +449,7 @@ extension PrivatePaykitService {
             for receiverPath in Set(linkableReceiverPaths).union(cleanupReceiverPaths) {
                 linkRetryKeys.append(PrivateMessageDrainRetryKey(publicKey: publicKey, receiverPath: receiverPath))
                 do {
-                    _ = try await PaykitSdkService.shared.ensureLinkWithPeer(publicKey, receiverPath: receiverPath)
+                    try await operations.ensureLink(publicKey, receiverPath)
                 } catch {
                     Logger.warn(
                         "Failed to prepare private Paykit link for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(error)",
@@ -386,12 +468,7 @@ extension PrivatePaykitService {
 
             for receiverPath in publicationReceiverPaths {
                 do {
-                    let endpoints = try await buildLocalEndpoints(
-                        for: publicKey,
-                        receiverPath: receiverPath,
-                        wallet: wallet,
-                        forceRefreshLightning: forceRefreshLightning
-                    )
+                    let endpoints = try await operations.buildEndpoints(publicKey, receiverPath)
                     let reservations = reservations(from: endpoints, publicKey: publicKey, receiverPath: receiverPath)
                     let update = PrivatePaymentListReservationUpdateInput(
                         counterparty: publicKey,
@@ -415,10 +492,7 @@ extension PrivatePaykitService {
         }
 
         do {
-            let report = try await PaykitSdkService.shared.syncPrivatePaymentListsWithReservations(
-                updates,
-                clearUnlistedLinkedPeers: false
-            )
+            let report = try await operations.syncPaymentLists(updates)
             let deliveryError = applyPrivatePaymentListDeliveryReport(report, reason: reason)
             firstError = firstError ?? deliveryError
             let retryKeys = linkRetryKeys + privatePaymentListDeliveryRetryKeys(from: report)
