@@ -118,7 +118,7 @@ class BlocktankViewModel: ObservableObject {
             throw CustomServiceError.nodeNotStarted
         }
 
-        let maxChannelSizeSat = try await freshMaxChannelSizeSat()
+        let maxChannelSizeSat = await freshMaxChannelSizeSat()
         let lspBalance = try await getDefaultLspBalance(clientBalance: amountSats)
         guard amountSats <= UInt64.max - lspBalance else {
             throw CustomServiceError.channelSizeExceedsMaximum
@@ -149,7 +149,7 @@ class BlocktankViewModel: ObservableObject {
     }
 
     func canCreateCjit(amountSats: UInt64) async throws -> Bool {
-        guard let maxChannelSizeSat = try await freshMaxChannelSizeSat() else {
+        guard let maxChannelSizeSat = await freshMaxChannelSizeSat() else {
             return true
         }
 
@@ -166,7 +166,7 @@ class BlocktankViewModel: ObservableObject {
     }
 
     func maxCjitAmountSats() async throws -> UInt64? {
-        guard let maxChannelSizeSat = try await freshMaxChannelSizeSat() else {
+        guard let maxChannelSizeSat = await freshMaxChannelSizeSat() else {
             return nil
         }
 
@@ -185,8 +185,13 @@ class BlocktankViewModel: ObservableObject {
         return lowerBound
     }
 
-    private func freshMaxChannelSizeSat() async throws -> UInt64? {
-        try await refreshInfo()
+    private func freshMaxChannelSizeSat() async -> UInt64? {
+        do {
+            try await refreshInfo()
+        } catch {
+            Logger.warn("Failed to refresh Blocktank info before CJIT max check; using cached info: \(error)")
+        }
+
         guard let maxChannelSizeSat = info?.options.maxChannelSizeSat, maxChannelSizeSat > 0 else {
             return nil
         }

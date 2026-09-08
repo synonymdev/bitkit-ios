@@ -11,6 +11,7 @@ struct ReceiveCjitAmount: View {
 
     @State private var amountViewModel = AmountInputViewModel()
     @State private var maxCjitAmount: UInt64?
+    @State private var isCreatingCjit = false
 
     var minimumAmount: UInt64 {
         blocktank.minCjitSats ?? 0
@@ -65,7 +66,7 @@ struct ReceiveCjitAmount: View {
                 }
             }
 
-            CustomButton(title: t("common__continue"), isDisabled: amountSats < minimumAmount) {
+            CustomButton(title: t("common__continue"), isDisabled: amountSats < minimumAmount, isLoading: isCreatingCjit) {
                 Task {
                     await onContinue()
                 }
@@ -96,6 +97,13 @@ struct ReceiveCjitAmount: View {
     }
 
     private func onContinue() async {
+        guard !isCreatingCjit else {
+            return
+        }
+
+        isCreatingCjit = true
+        defer { isCreatingCjit = false }
+
         if maxCjitAmount == nil {
             await refreshMaxCjitAmount()
             updateInputCap()

@@ -63,21 +63,15 @@ struct ReceiveQr: View {
     }
 
     private var availableTabItems: [TabItem<ReceiveTab>] {
-        var items: [TabItem<ReceiveTab>]
-            // Show unified tab when we have a Lightning invoice (even if channels not yet usable)
-            = if !wallet.bolt11.isEmpty
-        {
-            [
-                TabItem(.savings),
-                TabItem(.unified),
-                TabItem(.spending),
-            ]
-        } else {
-            [
-                TabItem(.savings),
-                TabItem(.spending),
-            ]
+        var items: [TabItem<ReceiveTab>] = [
+            TabItem(.savings),
+            TabItem(.spending),
+        ]
+
+        if canShowUnifiedReceive {
+            items.insert(TabItem(.unified), at: 1)
         }
+
         if selectedHardwareWalletId != nil {
             items.insert(TabItem(.trezor), at: 0)
         }
@@ -93,6 +87,10 @@ struct ReceiveQr: View {
     private var displayedHardwareAddress: HwReceiveAddress? {
         guard let walletId = selectedHardwareWalletId else { return nil }
         return hwWalletManager.watcherReceiveAddress(walletId: walletId) ?? hardwareAddress
+    }
+
+    private var canShowUnifiedReceive: Bool {
+        !wallet.bolt11.isEmpty && cjitInvoice == nil
     }
 
     private var selectedTabBinding: Binding<ReceiveTab> {
@@ -128,7 +126,7 @@ struct ReceiveQr: View {
 
                     tabContent(for: .savings)
 
-                    if !wallet.bolt11.isEmpty {
+                    if canShowUnifiedReceive {
                         tabContent(for: .unified)
                     }
 
@@ -259,7 +257,7 @@ struct ReceiveQr: View {
     }
 
     private func applyDefaultTabIfNeeded() {
-        guard tab == nil, !hasAppliedDefaultTab, !hasUserSelectedTab, !wallet.bolt11.isEmpty else {
+        guard tab == nil, !hasAppliedDefaultTab, !hasUserSelectedTab, canShowUnifiedReceive else {
             return
         }
 

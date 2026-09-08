@@ -19,6 +19,7 @@ struct ReceiveEdit: View {
 
     @State private var amountViewModel = AmountInputViewModel()
     @State private var note = ""
+    @State private var isPreparingReceive = false
     @State private var isAmountInputFocused: Bool = false
     @FocusState private var isNoteEditorFocused: Bool
 
@@ -116,7 +117,7 @@ struct ReceiveEdit: View {
                         .accessibilityIdentifier("PaymentRequestSendButton")
                     }
 
-                    CustomButton(title: t("wallet__receive_show_qr")) {
+                    CustomButton(title: t("wallet__receive_show_qr"), isLoading: isPreparingReceive) {
                         Task {
                             await onShowQR()
                         }
@@ -165,6 +166,13 @@ struct ReceiveEdit: View {
     }
 
     private func onShowQR() async {
+        guard !isPreparingReceive else {
+            return
+        }
+
+        isPreparingReceive = true
+        defer { isPreparingReceive = false }
+
         wallet.invoiceAmountSats = amountSats
         wallet.invoiceNote = note
 
@@ -211,6 +219,11 @@ struct ReceiveEdit: View {
                     navigationPath.append(.cjitGeoBlocked)
                 }
             } catch {
+                if error.isChannelSizeExceedsMaximum {
+                    navigationPath.append(.cjitAmount)
+                    return
+                }
+
                 app.toast(error)
             }
         } else {
