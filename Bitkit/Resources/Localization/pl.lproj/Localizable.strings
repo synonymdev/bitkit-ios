@@ -1048,6 +1048,8 @@
 "wallet__receive_liquidity__label_additional" = "Dodatkowa płynność salda wydatków";
 "wallet__receive_cjit_error" = "Transakcja nie powiodła się";
 "wallet__receive_cjit_error_msg" = "Nie udało się wysłać środków na Twoje saldo wydatków.";
+"wallet__receive_cjit_error_node_capacity__title" = "Dodatkowa pojemność niedostępna";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit nie może teraz dodać więcej pojemności wydatków do tego portfela.";
 "wallet__receive_will" = "Otrzymasz";
 "wallet__receive_ldk_init" = "Inicjalizacja salda wydatków...";
 "wallet__minimum" = "MINIMUM";

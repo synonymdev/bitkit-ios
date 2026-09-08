@@ -1047,6 +1047,8 @@
 "wallet__receive_liquidity__label_additional" = "Liquidité supplémentaire du solde Dépenses";
 "wallet__receive_cjit_error" = "Échec de la transaction";
 "wallet__receive_cjit_error_msg" = "Échec de l’envoi vers Dépenses.";
+"wallet__receive_cjit_error_node_capacity__title" = "Capacité supplémentaire indisponible";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit ne peut pas ajouter plus de capacité de dépenses à ce portefeuille pour le moment.";
 "wallet__receive_will" = "Vous recevrez";
 "wallet__receive_ldk_init" = "Initialisation du solde Dépenses…";
 "wallet__minimum" = "MINIMUM";

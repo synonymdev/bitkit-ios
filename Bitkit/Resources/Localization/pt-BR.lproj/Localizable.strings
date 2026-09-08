@@ -1049,6 +1049,8 @@
 "wallet__receive_liquidity__label_additional" = "Liquidez adicional do saldo de gastos";
 "wallet__receive_cjit_error" = "Falha na Transação";
 "wallet__receive_cjit_error_msg" = "Falha ao enviar fundos para sua conta de gastos.";
+"wallet__receive_cjit_error_node_capacity__title" = "Capacidade adicional indisponível";
+"wallet__receive_cjit_error_node_capacity__description" = "O Bitkit não pode adicionar mais capacidade de gastos a esta carteira no momento.";
 "wallet__receive_will" = "Você receberá";
 "wallet__receive_ldk_init" = "Carregando saldo de gastos...";
 "wallet__minimum" = "MÍNIMO";

@@ -70,7 +70,11 @@ struct TabBar: View {
 
         let hasPendingTransfersToSpending = wallet.balanceInTransferToSpending > 0
 
-        if navigation.currentRoute == .spendingWallet && !wallet.canCreateReceiveLightningInvoice && !hasPendingTransfersToSpending {
+        if Self.shouldOpenSpendingCjitEntry(
+            isSpendingWallet: navigation.currentRoute == .spendingWallet,
+            canCreateVariableLightningInvoice: wallet.canCreateReceiveLightningInvoice(amountSats: nil),
+            hasPendingTransfersToSpending: hasPendingTransfersToSpending
+        ) {
             // On spending wallet screen, show CJIT flow when user can't receive normally
             sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
         } else {
@@ -80,6 +84,14 @@ struct TabBar: View {
 
     private func onScanPress() {
         sheets.showSheet(.scanner)
+    }
+
+    static func shouldOpenSpendingCjitEntry(
+        isSpendingWallet: Bool,
+        canCreateVariableLightningInvoice: Bool,
+        hasPendingTransfersToSpending: Bool
+    ) -> Bool {
+        isSpendingWallet && !canCreateVariableLightningInvoice && !hasPendingTransfersToSpending
     }
 }
 

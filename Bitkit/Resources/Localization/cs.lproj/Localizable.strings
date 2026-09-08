@@ -1023,6 +1023,8 @@
 "wallet__receive_liquidity__label_additional" = "Dodatečná likvidita disponibilního zůstatku";
 "wallet__receive_cjit_error" = "Transakce selhala";
 "wallet__receive_cjit_error_msg" = "Nepodařilo se odeslat prostředky na váš disponibilní účet.";
+"wallet__receive_cjit_error_node_capacity__title" = "Dodatečná kapacita není k dispozici";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit teď nemůže do této peněženky přidat další disponibilní kapacitu.";
 "wallet__receive_will" = "Obdržíte";
 "wallet__receive_ldk_init" = "Inicializace disponibilního zůstatku...";
 "wallet__minimum" = "MINIMUM";

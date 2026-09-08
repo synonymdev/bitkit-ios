@@ -762,6 +762,8 @@
 "wallet__receive_liquidity__label" = "Ρευστότητα Υπολοίπου Δαπανών";
 "wallet__receive_liquidity__label_additional" = "Πρόσθετη Ρευστότητα Υπολοίπου Δαπανών";
 "wallet__receive_cjit_error" = "Η Συναλλαγή Απέτυχε";
+"wallet__receive_cjit_error_node_capacity__title" = "Η πρόσθετη χωρητικότητα δεν είναι διαθέσιμη";
+"wallet__receive_cjit_error_node_capacity__description" = "Το Bitkit δεν μπορεί να προσθέσει περισσότερη χωρητικότητα δαπανών σε αυτό το πορτοφόλι αυτήν τη στιγμή.";
 "wallet__receive_will" = "Θα λάβετε";
 "wallet__activity" = "Δραστηριότητα";
 "wallet__activity_no" = "Δεν υπάρχει δραστηριότητα ακόμα";

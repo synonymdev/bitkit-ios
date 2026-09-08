@@ -1381,6 +1381,8 @@
 "wallet__receive_cjit_error_msg" = "Failed to send funds to your spending account.";
 "wallet__receive_cjit_error_max__title" = "Receiving Capacity Maximum";
 "wallet__receive_cjit_error_max__description" = "The maximum you can receive to your spending balance right now is ₿ {amount}.";
+"wallet__receive_cjit_error_node_capacity__title" = "Additional Capacity Unavailable";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit cannot add more spending capacity to this wallet right now.";
 "wallet__receive_will" = "You will receive";
 "wallet__receive_ldk_init" = "Spending Balance Initializing...";
 "wallet__minimum" = "MINIMUM";

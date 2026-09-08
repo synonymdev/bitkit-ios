@@ -47,3 +47,6 @@
 "widgets__weather__current_fee" = "Tarifa média atual";
 "widgets__weather__next_block" = "Inclusão no próximo bloco";
 "wallet__payment_request" = "Pedido de pagamento";
+
+"wallet__receive_cjit_error_node_capacity__title" = "Capacidade adicional indisponível";
+"wallet__receive_cjit_error_node_capacity__description" = "O Bitkit não pode adicionar mais capacidade de gastos a esta carteira neste momento.";

@@ -51,6 +51,7 @@ This document describes how the receive flow decides whether to show a normal Li
   - The direct additional CJIT path must not regenerate the normal receive invoice before creating CJIT.
   - If editing from Spending and the amount is too large for CJIT, or the maximum cannot be calculated, the edit flow routes to CJIT amount entry.
   - The CJIT amount screen enforces the real maximum receivable amount, calculated from `invoiceSat + defaultLspBalance(invoiceSat) <= maxChannelSizeSat`.
+  - If Blocktank rejects additional CJIT because the node is already at its total capacity limit, the app explains that additional spending capacity is unavailable instead of showing the per-channel maximum.
   - Editing from Savings or Auto returns to the normal QR with Savings/onchain only.
 
 - Geo-blocked and liquidity is needed:

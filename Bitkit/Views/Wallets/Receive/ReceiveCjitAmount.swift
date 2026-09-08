@@ -121,6 +121,12 @@ struct ReceiveCjitAmount: View {
                 let entry = try await blocktank.createCjit(amountSats: amountSats, description: "Bitkit")
                 navigationPath.append(.cjitConfirm(entry: entry, receiveAmountSats: amountSats, isAdditional: false))
             } catch {
+                if error.isCjitNodeCapacityExceeded {
+                    showNodeCapacityExceededToast()
+                    Logger.error(error)
+                    return
+                }
+
                 if isMaxCjitAmountError(error) {
                     if maxCjitAmount == nil {
                         await refreshMaxCjitAmount()
@@ -170,6 +176,15 @@ struct ReceiveCjitAmount: View {
                 variables: ["amount": CurrencyFormatter.formatSats(maxCjitAmount ?? 0)]
             ),
             accessibilityIdentifier: "ReceiveCjitAmountExceededToast"
+        )
+    }
+
+    private func showNodeCapacityExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("wallet__receive_cjit_error_node_capacity__title"),
+            description: t("wallet__receive_cjit_error_node_capacity__description"),
+            accessibilityIdentifier: "ReceiveCjitNodeCapacityExceededToast"
         )
     }
 

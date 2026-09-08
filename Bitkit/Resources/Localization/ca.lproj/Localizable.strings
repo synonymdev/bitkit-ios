@@ -890,6 +890,8 @@
 "wallet__receive_liquidity__label" = "Liquiditat del saldo de despesa";
 "wallet__receive_liquidity__label_additional" = "Liquiditat addicional del saldo de despesa";
 "wallet__receive_cjit_error" = "Transacció fallida";
+"wallet__receive_cjit_error_node_capacity__title" = "Capacitat addicional no disponible";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit no pot afegir més capacitat de despesa a aquesta cartera ara mateix.";
 "wallet__receive_will" = "Rebràs";
 "wallet__minimum" = "MÍNIM";
 "wallet__activity" = "Activitat";

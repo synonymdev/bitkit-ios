@@ -1020,6 +1020,8 @@
 "wallet__receive_liquidity__label_additional" = "Zusätzliche Ausgaben Saldo Liquidität";
 "wallet__receive_cjit_error" = "Transaktion fehlgeschlagen";
 "wallet__receive_cjit_error_msg" = "Fehler beim Senden der Gelder auf dein Ausgabenkonto.";
+"wallet__receive_cjit_error_node_capacity__title" = "Zusätzliche Kapazität nicht verfügbar";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit kann dieser Wallet derzeit keine weitere Ausgabenkapazität hinzufügen.";
 "wallet__receive_will" = "Du wirst empfangen";
 "wallet__receive_ldk_init" = "Ausgabensaldo Initialisierung...";
 "wallet__minimum" = "MINIMUM";

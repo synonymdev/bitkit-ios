@@ -1007,6 +1007,8 @@
 "wallet__receive_liquidity__label_additional" = "Liquidità Aggiuntiva Saldo di Spesa";
 "wallet__receive_cjit_error" = "Transazione Fallita";
 "wallet__receive_cjit_error_msg" = "Impossibile inviare fondi al tuo conto di spesa.";
+"wallet__receive_cjit_error_node_capacity__title" = "Capacità aggiuntiva non disponibile";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit non può aggiungere altra capacità di spesa a questo portafoglio in questo momento.";
 "wallet__receive_will" = "Riceverai";
 "wallet__minimum" = "MINIMO";
 "wallet__activity" = "Attività";

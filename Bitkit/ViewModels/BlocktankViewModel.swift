@@ -141,19 +141,15 @@ class BlocktankViewModel: ObservableObject {
                 options: .init(source: defaultSource, discountCode: nil)
             )
         } catch {
+            if isNodeCapacityError(error) {
+                throw CustomServiceError.cjitNodeCapacityExceeded
+            }
+
             if isMaxChannelSizeError(error) {
                 throw CustomServiceError.channelSizeExceedsMaximum
             }
             throw error
         }
-    }
-
-    func canCreateCjit(amountSats: UInt64) async throws -> Bool {
-        guard let maxChannelSizeSat = await freshMaxChannelSizeSat() else {
-            return true
-        }
-
-        return try await canCreateCjit(amountSats: amountSats, maxChannelSizeSat: maxChannelSizeSat)
     }
 
     private func canCreateCjit(amountSats: UInt64, maxChannelSizeSat: UInt64) async throws -> Bool {
@@ -199,6 +195,15 @@ class BlocktankViewModel: ObservableObject {
         return maxChannelSizeSat
     }
 
+    private func isNodeCapacityError(_ error: Error) -> Bool {
+        if error.isCjitNodeCapacityExceeded {
+            return true
+        }
+
+        let description = String(describing: error)
+        return description.localizedCaseInsensitiveContains("capacity is above our capacity limit")
+    }
+
     private func isMaxChannelSizeError(_ error: Error) -> Bool {
         if error.isChannelSizeExceedsMaximum {
             return true
@@ -208,7 +213,6 @@ class BlocktankViewModel: ObservableObject {
         return description.localizedCaseInsensitiveContains("Channel size is too big")
             || description.localizedCaseInsensitiveContains("channelSizeExceedsMaximum")
             || description.localizedCaseInsensitiveContains("maxChannelSizeSat")
-            || description.localizedCaseInsensitiveContains("capacity is above our capacity limit")
     }
 
     func createOrder(clientBalance: UInt64, lspBalance: UInt64? = nil) async throws -> IBtOrder {

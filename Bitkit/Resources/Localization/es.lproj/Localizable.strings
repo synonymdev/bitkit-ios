@@ -913,6 +913,8 @@
 "wallet__receive_liquidity__label_additional" = "Liquidez Adicional del Saldo de Gasto";
 "wallet__receive_cjit_error" = "Transacción ha fallado";
 "wallet__receive_cjit_error_msg" = "Fallo al enviar fondos a la cuenta de gastos.";
+"wallet__receive_cjit_error_node_capacity__title" = "Capacidad adicional no disponible";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit no puede añadir más capacidad de gasto a esta cartera en este momento.";
 "wallet__receive_will" = "Recibirás";
 "wallet__minimum" = "MÍNIMO";
 "wallet__activity" = "Actividad";

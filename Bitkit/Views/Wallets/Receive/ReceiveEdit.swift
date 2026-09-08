@@ -219,6 +219,11 @@ struct ReceiveEdit: View {
                     navigationPath.append(.cjitGeoBlocked)
                 }
             } catch {
+                if error.isCjitNodeCapacityExceeded {
+                    showNodeCapacityExceededToast()
+                    return
+                }
+
                 if error.isChannelSizeExceedsMaximum {
                     navigationPath.append(.cjitAmount)
                     return
@@ -234,6 +239,14 @@ struct ReceiveEdit: View {
                 description: "Lightning node must be running to create an invoice"
             )
         }
+    }
+
+    private func showNodeCapacityExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("wallet__receive_cjit_error_node_capacity__title"),
+            description: t("wallet__receive_cjit_error_node_capacity__description")
+        )
     }
 
     private func deleteTag(_ tag: String) async {

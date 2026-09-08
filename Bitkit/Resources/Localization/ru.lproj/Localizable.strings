@@ -1037,6 +1037,8 @@
 "wallet__receive_liquidity__label_additional" = "Дополнительная Ликвидность Баланса Расходов";
 "wallet__receive_cjit_error" = "Транзакция не удалась";
 "wallet__receive_cjit_error_msg" = "Не удалось отправить средства на ваш Баланс Расходов.";
+"wallet__receive_cjit_error_node_capacity__title" = "Дополнительная емкость недоступна";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit сейчас не может добавить больше емкости для расходов в этот кошелек.";
 "wallet__receive_will" = "Вы получите";
 "wallet__receive_ldk_init" = "Инициализация Баланса Расходов...";
 "wallet__minimum" = "МИНИМУМ";

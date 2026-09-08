@@ -12,6 +12,7 @@ enum CustomServiceError: LocalizedError {
     case invalidNodeSigningMessage
     case regtestOnlyMethod
     case channelSizeExceedsMaximum
+    case cjitNodeCapacityExceeded
     case currencyRateUnavailable
 
     var errorDescription: String? {
@@ -36,6 +37,8 @@ enum CustomServiceError: LocalizedError {
             return "Method only available in regtest environment"
         case .channelSizeExceedsMaximum:
             return "Channel size exceeds maximum allowed size"
+        case .cjitNodeCapacityExceeded:
+            return "Additional spending capacity is unavailable right now."
         case .currencyRateUnavailable:
             return "Currency rate unavailable"
         }
@@ -77,6 +80,18 @@ extension Error {
 
         if let appError = self as? AppError, let underlyingError = appError.underlyingError {
             return underlyingError.isChannelSizeExceedsMaximum
+        }
+
+        return false
+    }
+
+    var isCjitNodeCapacityExceeded: Bool {
+        if let serviceError = self as? CustomServiceError {
+            return serviceError == .cjitNodeCapacityExceeded
+        }
+
+        if let appError = self as? AppError, let underlyingError = appError.underlyingError {
+            return underlyingError.isCjitNodeCapacityExceeded
         }
 
         return false
@@ -178,6 +193,9 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .channelSizeExceedsMaximum:
             message = "Channel size exceeds maximum allowed size"
+            debugMessage = nil
+        case .cjitNodeCapacityExceeded:
+            message = "Additional spending capacity is unavailable right now."
             debugMessage = nil
         case .currencyRateUnavailable:
             message = "Currency rate unavailable"
