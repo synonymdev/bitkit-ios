@@ -69,6 +69,41 @@ enum PaymentTimeoutError: Error {
     case timedOut
 }
 
+struct ExistingPendingOnchainBroadcastError: LocalizedError {
+    let txid: Txid
+
+    var errorDescription: String? {
+        "An on-chain transaction still requires broadcast reconciliation."
+    }
+}
+
+enum PendingOnchainBroadcastSource: Equatable {
+    case currentPayment
+    case existingPayment
+}
+
+struct PendingOnchainBroadcastErrorContext: Equatable {
+    let txid: Txid
+    let source: PendingOnchainBroadcastSource
+}
+
+func pendingOnchainBroadcastContext(for error: Error) -> PendingOnchainBroadcastErrorContext? {
+    let underlyingError = (error as? AppError)?.underlyingError ?? error
+
+    if let existingPendingError = underlyingError as? ExistingPendingOnchainBroadcastError {
+        return PendingOnchainBroadcastErrorContext(txid: existingPendingError.txid, source: .existingPayment)
+    }
+
+    guard let nodeError = underlyingError as? NodeError else { return nil }
+
+    switch nodeError {
+    case let .OnchainTxBroadcastFailed(txid), let .OnchainTxBroadcastTimeout(txid):
+        return PendingOnchainBroadcastErrorContext(txid: txid, source: .currentPayment)
+    default:
+        return nil
+    }
+}
+
 /// Translates LDK and BDK error messages into translated messages that can be displayed to end users
 struct AppError: LocalizedError {
     static let genericMessage = "App Error"

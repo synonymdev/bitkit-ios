@@ -95,12 +95,39 @@ struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
     }
 }
 
+enum PaykitOnchainPaymentProofStatus: Equatable {
+    case pending(activeTxid: Txid)
+    case accepted(txid: Txid)
+    case unknown
+}
+
+protocol PaykitOnchainPaymentProofLookingUp: Sendable {
+    func status(txid: Txid) async -> PaykitOnchainPaymentProofStatus
+}
+
+struct PaykitOnchainPaymentProofLookup: PaykitOnchainPaymentProofLookingUp {
+    func status(txid: Txid) async -> PaykitOnchainPaymentProofStatus {
+        do {
+            if let pendingBroadcast = try await LightningService.shared.pendingOnchainBroadcast(txid: txid) {
+                return .pending(activeTxid: pendingBroadcast.txid)
+            }
+            if let acceptedTxid = try await LightningService.shared.acceptedOnchainTransaction(reconciling: txid) {
+                return .accepted(txid: acceptedTxid)
+            }
+            return .unknown
+        } catch {
+            return .unknown
+        }
+    }
+}
+
 actor PaykitPaymentProofService {
     static let shared = PaykitPaymentProofService()
 
     private let sdk: any PaykitPaymentProofSdkHandling
     private let store: any PaykitPaymentProofStoring
     private let lightningPaymentLookup: any PaykitLightningPaymentProofLookingUp
+    private let onchainPaymentLookup: any PaykitOnchainPaymentProofLookingUp
     private let logInfo: @Sendable (String) -> Void
     private let logWarning: @Sendable (String) -> Void
 
@@ -108,6 +135,7 @@ actor PaykitPaymentProofService {
         sdk: any PaykitPaymentProofSdkHandling = PaykitSdkService.shared,
         store: any PaykitPaymentProofStoring = PaykitPaymentProofStore(),
         lightningPaymentLookup: any PaykitLightningPaymentProofLookingUp = PaykitLightningPaymentProofLookup(),
+        onchainPaymentLookup: any PaykitOnchainPaymentProofLookingUp = PaykitOnchainPaymentProofLookup(),
         logInfo: @escaping @Sendable (String) -> Void = {
             Logger.info($0, context: "PaykitPaymentProof")
         },
@@ -118,6 +146,7 @@ actor PaykitPaymentProofService {
         self.sdk = sdk
         self.store = store
         self.lightningPaymentLookup = lightningPaymentLookup
+        self.onchainPaymentLookup = onchainPaymentLookup
         self.logInfo = logInfo
         self.logWarning = logWarning
     }
@@ -187,6 +216,24 @@ actor PaykitPaymentProofService {
         try await persist(pendingProofs)
     }
 
+    func associateOnchainPayment(_ request: PaykitPaymentRequest, txid: Txid) async throws {
+        guard Self.isHex(txid, byteCount: 32) else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+
+        var pendingProofs = try await loadProofs()
+        guard let index = pendingProofs.lastIndex(where: {
+            $0.requestId == request.id &&
+                $0.kind == .onchain &&
+                $0.paymentIdentifier == nil &&
+                $0.proofData == nil
+        }) else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        pendingProofs[index].paymentIdentifier = txid.lowercased()
+        try await persist(pendingProofs)
+    }
+
     func completeLightningPayment(paymentHash: String, preimage: String?) async {
         guard let preimage,
               Self.preimage(preimage, matchesPaymentHash: paymentHash)
@@ -217,7 +264,8 @@ actor PaykitPaymentProofService {
     func completeOnchainPayment(
         _ request: PaykitPaymentRequest,
         txid: String,
-        paymentEndpointIdentifier: String
+        paymentEndpointIdentifier: String,
+        associatedTxid: Txid? = nil
     ) async {
         guard Self.isHex(txid, byteCount: 32) else {
             logWarning("Ignored a Paykit on-chain proof with an invalid transaction id")
@@ -229,7 +277,9 @@ actor PaykitPaymentProofService {
             guard let index = pendingProofs.lastIndex(where: {
                 $0.requestId == request.id &&
                     $0.kind == .onchain &&
-                    $0.paymentIdentifier == nil &&
+                    ($0.paymentIdentifier == nil ||
+                        $0.paymentIdentifier?.caseInsensitiveCompare(txid) == .orderedSame ||
+                        $0.paymentIdentifier?.caseInsensitiveCompare(associatedTxid ?? "") == .orderedSame) &&
                     $0.proofData == nil
             }) else { return }
             pendingProofs[index].paymentIdentifier = txid.lowercased()
@@ -283,18 +333,69 @@ actor PaykitPaymentProofService {
                     await submit(proof)
                     continue
                 }
-                guard proof.kind == PaykitPaymentProofKind.lightning, let paymentHash = proof.paymentIdentifier else { continue }
-                switch await lightningPaymentLookup.status(paymentHash: paymentHash) {
-                case .pending, .unknown:
-                    continue
-                case .failed:
-                    await failLightningPayment(paymentHash: paymentHash)
-                case let .succeeded(preimage):
-                    await completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+
+                guard let paymentIdentifier = proof.paymentIdentifier else { continue }
+                switch proof.kind {
+                case .lightning:
+                    switch await lightningPaymentLookup.status(paymentHash: paymentIdentifier) {
+                    case .pending, .unknown:
+                        continue
+                    case .failed:
+                        await failLightningPayment(paymentHash: paymentIdentifier)
+                    case let .succeeded(preimage):
+                        await completeLightningPayment(paymentHash: paymentIdentifier, preimage: preimage)
+                    }
+                case .onchain:
+                    switch await onchainPaymentLookup.status(txid: paymentIdentifier) {
+                    case let .pending(activeTxid):
+                        if activeTxid != paymentIdentifier {
+                            await updatePersistedOnchainAssociation(proof, txid: activeTxid)
+                        }
+                    case let .accepted(txid):
+                        await completePersistedOnchainPayment(proof, acceptedTxid: txid)
+                    case .unknown:
+                        continue
+                    }
                 }
             }
         } catch {
             logWarning("Failed to reconcile pending Paykit payment proofs: \(error)")
+        }
+    }
+
+    private func updatePersistedOnchainAssociation(_ proof: PendingPaykitPaymentProof, txid: Txid) async {
+        do {
+            var pendingProofs = try await loadProofs()
+            guard let index = pendingProofs.lastIndex(where: {
+                $0.requestId == proof.requestId &&
+                    $0.kind == .onchain &&
+                    $0.paymentIdentifier == proof.paymentIdentifier &&
+                    $0.proofData == nil
+            }) else { return }
+            pendingProofs[index].paymentIdentifier = txid.lowercased()
+            try await persist(pendingProofs)
+        } catch {
+            logWarning("Failed to update a pending Paykit on-chain payment proof: \(error)")
+        }
+    }
+
+    private func completePersistedOnchainPayment(_ proof: PendingPaykitPaymentProof, acceptedTxid: Txid) async {
+        guard let associatedTxid = proof.paymentIdentifier else { return }
+
+        do {
+            var pendingProofs = try await loadProofs()
+            guard let index = pendingProofs.lastIndex(where: {
+                $0.requestId == proof.requestId &&
+                    $0.kind == .onchain &&
+                    $0.paymentIdentifier?.caseInsensitiveCompare(associatedTxid) == .orderedSame &&
+                    $0.proofData == nil
+            }) else { return }
+            pendingProofs[index].paymentIdentifier = acceptedTxid.lowercased()
+            pendingProofs[index].proofData = acceptedTxid.lowercased()
+            let completedProof = pendingProofs[index]
+            await persistAndSubmit([completedProof], allProofs: pendingProofs)
+        } catch {
+            logWarning("Failed to complete a reconciled Paykit on-chain payment proof: \(error)")
         }
     }
 

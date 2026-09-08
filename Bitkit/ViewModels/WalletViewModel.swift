@@ -622,6 +622,24 @@ class WalletViewModel: ObservableObject {
         return txid
     }
 
+    func pendingOnchainBroadcast(txid: Txid) async throws -> PendingBroadcastInfo? {
+        try await lightningService.pendingOnchainBroadcast(txid: txid)
+    }
+
+    func acceptedOnchainTransaction(reconciling txid: Txid) async throws -> Txid? {
+        try await lightningService.acceptedOnchainTransaction(reconciling: txid)
+    }
+
+    func rebroadcastOnchainTransaction(txid: Txid) async throws -> Txid {
+        let acceptedTxid = try await lightningService.rebroadcastOnchainTransaction(txid: txid)
+
+        Task {
+            try await sync()
+        }
+
+        return acceptedTxid
+    }
+
     /// Sets the fee rate for the send flow
     /// - Parameter speed: The transaction speed determining the fee rate. If nil, the user's default transaction speed will be used.
     func setFeeRate(speed: TransactionSpeed) async throws {
