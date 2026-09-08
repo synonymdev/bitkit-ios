@@ -436,13 +436,29 @@ struct MainNavView: View {
                         ContactsIntroView()
                     }
                 case .contactsIntro:
-                    if isPaykitUIActive { ContactsIntroView() } else { ComingSoonScreen() }
+                    if isPaykitUIActive {
+                        ContactsIntroView()
+                    } else {
+                        ComingSoonScreen()
+                    }
                 case let .contactDetail(publicKey):
-                    if isPaykitUIActive { ContactDetailView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        ContactDetailView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .contactSaved(publicKey):
-                    if isPaykitUIActive { ContactDetailView(publicKey: publicKey, showsDeleteAction: true) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        ContactDetailView(publicKey: publicKey, showsDeleteAction: true)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .contactActivity(publicKey):
-                    if isPaykitUIActive { ContactActivityView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        ContactActivityView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .assignActivityContact(activityId, walletId):
                     if isPaykitUIActive {
                         AssignActivityContactView(activityId: activityId, walletId: walletId)
@@ -471,9 +487,17 @@ struct MainNavView: View {
                         ContactImportSelectView(contacts: contactsManager.pendingImportContacts)
                     }
                 case let .addContact(publicKey):
-                    if isPaykitUIActive { AddContactView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        AddContactView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .editContact(publicKey):
-                    if isPaykitUIActive { EditContactView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        EditContactView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .profile:
                     if !isPaykitUIActive {
                         ComingSoonScreen()
@@ -489,17 +513,41 @@ struct MainNavView: View {
                         ProfileIntroView()
                     }
                 case .profileIntro:
-                    if isPaykitUIActive { ProfileIntroView() } else { ComingSoonScreen() }
+                    if isPaykitUIActive {
+                        ProfileIntroView()
+                    } else {
+                        ComingSoonScreen()
+                    }
                 case .pubkyChoice:
-                    if isPaykitUIActive { PubkyChoiceView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        PubkyChoiceView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .createProfile:
-                    if isPaykitUIActive { CreateProfileView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        CreateProfileView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .editProfile:
-                    if isPaykitUIActive { EditProfileView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        EditProfileView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .payContacts:
-                    if isPaykitUIActive { PayContactsView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        PayContactsView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .paymentRequests:
-                    if isPaykitUIActive { PaymentRequestsView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        PaymentRequestsView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
 
                 // Shop
                 case .shopIntro: ShopIntro()
