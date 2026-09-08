@@ -344,8 +344,8 @@ extension AppViewModel {
         case .broadcastConnectivity:
             toast(
                 type: .warning,
-                title: t("other__connection_issue"),
-                description: t("other__connection_issue_explain")
+                title: t("hardware__send_broadcast_failed_title"),
+                description: t("hardware__send_broadcast_failed_text")
             )
         case .deviceBusy:
             toast(type: .info, title: t("hardware__device_busy"))
