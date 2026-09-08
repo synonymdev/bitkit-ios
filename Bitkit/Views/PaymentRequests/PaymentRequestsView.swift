@@ -469,7 +469,6 @@ struct PaymentRequestsView: View {
 struct PaymentRequestDetailView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var contactsManager: ContactsManager
-    @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var tagManager: TagManager
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
@@ -556,13 +555,19 @@ struct PaymentRequestDetailView: View {
         }
 
         return VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(currency.convert(sats: request.amountSats)?.formatted ?? "", textColor: .white64)
+            MoneyText(
+                sats: Int(clamping: request.amountSats),
+                unitType: .secondary,
+                size: .caption,
+                symbol: true,
+                color: .white64
+            )
             HStack(spacing: 16) {
                 MoneyText(
                     sats: Int(clamping: request.amountSats),
                     unitType: .primary,
                     size: .display,
-                    symbol: false,
+                    symbol: true,
                     prefix: request.direction == .incoming ? "-" : "",
                     color: .textPrimary,
                     symbolColor: .textSecondary

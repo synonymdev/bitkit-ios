@@ -305,7 +305,6 @@ struct PaymentRequestAmountView: View {
 struct PaymentRequestDetailsView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var contactsManager: ContactsManager
-    @EnvironmentObject private var currency: CurrencyViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     let initialDraft: PaykitPaymentRequestDraft
@@ -363,7 +362,13 @@ struct PaymentRequestDetailsView: View {
 
     private var amount: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(currency.convert(sats: initialDraft.amountSats)?.formatted ?? "", textColor: .white64)
+            MoneyText(
+                sats: Int(clamping: initialDraft.amountSats),
+                unitType: .secondary,
+                size: .caption,
+                symbol: true,
+                color: .white64
+            )
             Button {
                 onEditAmount(currentDraft)
             } label: {
