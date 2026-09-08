@@ -8,6 +8,16 @@ Please include a summary of changes and which issues are fixed. Please also incl
 
 Add any links to GitHub issues or Asana tasks that are relevant to this pull request.
 
+### Design
+
+<!--
+- Existing UI design: link the relevant Figma frames, using the screens map as the starting point.
+- No available design, including new features: `N/A — no design available.`
+- No user-visible UI changes: `N/A — no UI changes.`
+- Missing or uncertain screens-map entry: state the uncertainty.
+- Never invent a Figma link or require a new design.
+-->
+
 ### Screenshot / Video
 
 Insert relevant screenshot / recording
