@@ -366,7 +366,7 @@ final class TransferViewModelTests: XCTestCase {
 
         await viewModel.updateAdvancedTransferValues(
             clientBalanceSat: Self.advancedClientBalance,
-            budget: Self.advancedBudget,
+            budget: { Self.advancedBudget },
             transferValues: { _ in values },
             estimateOrderFee: { _, lspBalance in (Self.capacityPricedFee(lspBalance), 0) }
         )
@@ -389,13 +389,71 @@ final class TransferViewModelTests: XCTestCase {
 
         await viewModel.updateAdvancedTransferValues(
             clientBalanceSat: Self.advancedClientBalance,
-            budget: Self.advancedBudget,
+            budget: { Self.advancedBudget },
             transferValues: { _ in values },
             estimateOrderFee: { _, lspBalance in (Self.capacityPricedFee(lspBalance), 0) }
         )
 
         XCTAssertEqual(viewModel.transferValues.maxLspBalance, 400_000)
         XCTAssertEqual(viewModel.transferValues.defaultLspBalance, 100_000)
+    }
+
+    /// Reading the budget is itself a round trip. Taking it as a value would resolve it before the
+    /// call, leaving the number pad live against the previous screen's cap — or none at all on a
+    /// first entry, where `transferValues` is still zeroed.
+    @MainActor
+    func testUpdateAdvancedTransferValuesHoldsTheFlagWhileTheBudgetIsRead() async {
+        let viewModel = TransferViewModel()
+        let values = TransferValues(
+            defaultLspBalance: 1_500_000,
+            minLspBalance: 50000,
+            maxLspBalance: 2_000_000,
+            maxClientBalance: Self.optionMaxClientBalance
+        )
+        var settlingWhileBudgetRead: Bool?
+        var maxWhileBudgetRead: UInt64?
+
+        await viewModel.updateAdvancedTransferValues(
+            clientBalanceSat: Self.advancedClientBalance,
+            budget: {
+                settlingWhileBudgetRead = viewModel.isSettlingAdvancedCapacity
+                maxWhileBudgetRead = viewModel.transferValues.maxLspBalance
+                return Self.advancedBudget
+            },
+            transferValues: { _ in values },
+            estimateOrderFee: { _, lspBalance in (Self.capacityPricedFee(lspBalance), 0) }
+        )
+
+        XCTAssertEqual(settlingWhileBudgetRead, true)
+        // The advertised max is published first, so an early Min/Default/Max tap has a cap to land on.
+        XCTAssertEqual(maxWhileBudgetRead, 2_000_000)
+        XCTAssertFalse(viewModel.isSettlingAdvancedCapacity)
+    }
+
+    /// No range to settle means no reason to pay for the budget round trip.
+    @MainActor
+    func testUpdateAdvancedTransferValuesSkipsTheBudgetReadWithoutARange() async {
+        let viewModel = TransferViewModel()
+        let values = TransferValues(
+            defaultLspBalance: 50000,
+            minLspBalance: 50000,
+            maxLspBalance: 50000,
+            maxClientBalance: Self.optionMaxClientBalance
+        )
+        var budgetReads = 0
+
+        await viewModel.updateAdvancedTransferValues(
+            clientBalanceSat: Self.advancedClientBalance,
+            budget: {
+                budgetReads += 1
+                return Self.advancedBudget
+            },
+            transferValues: { _ in values },
+            estimateOrderFee: { _, lspBalance in (Self.capacityPricedFee(lspBalance), 0) }
+        )
+
+        XCTAssertEqual(budgetReads, 0)
+        XCTAssertEqual(viewModel.transferValues.maxLspBalance, 50000)
     }
 
     // MARK: - Funding guards

@@ -129,7 +129,7 @@ struct SpendingAdvancedView: View {
         .task {
             await transfer.updateAdvancedTransferValues(
                 clientBalanceSat: order.clientBalanceSat,
-                budget: fundingBudget(),
+                budget: { await fundingBudget() },
                 transferValues: { transfer.calculateTransferValues(clientBalanceSat: $0, blocktankInfo: blocktank.info) },
                 estimateOrderFee: estimateOrderFee
             )

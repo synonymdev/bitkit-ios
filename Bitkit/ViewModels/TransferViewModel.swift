@@ -862,17 +862,19 @@ class TransferViewModel: ObservableObject {
     /// maximum knows nothing of the client balance already committed.
     func updateAdvancedTransferValues(
         clientBalanceSat: UInt64,
-        budget: UInt64?,
+        budget: () async -> UInt64?,
         transferValues: (_ clientBalanceSat: UInt64) -> TransferValues,
         estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
     ) async {
         isSettlingAdvancedCapacity = true
         defer { isSettlingAdvancedCapacity = false }
 
+        // Publish the advertised options before the budget is read: until they land the screen has no
+        // cap at all, and reading the budget is itself a round trip.
         var values = transferValues(clientBalanceSat)
         self.transferValues = values
 
-        guard let budget, values.maxLspBalance > values.minLspBalance else { return }
+        guard values.maxLspBalance > values.minLspBalance, let budget = await budget() else { return }
 
         let settled = await settleAdvancedLspBalance(
             clientBalance: clientBalanceSat,
