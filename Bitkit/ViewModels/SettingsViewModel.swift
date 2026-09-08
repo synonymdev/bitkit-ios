@@ -512,7 +512,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
-    /// Native SegWit monitoring is required to detect delayed automatic Blocktank refunds.
+    /// Native SegWit monitoring is required to detect delayed Blocktank refund payments.
     func isRequiredRefundAddressType(_ addressType: AddressScriptType) -> Bool {
         addressType == .nativeSegwit
     }

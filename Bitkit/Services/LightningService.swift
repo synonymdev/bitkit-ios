@@ -1296,7 +1296,7 @@ extension LightningService {
     }
 
     /// Reads selected and monitored address types from UserDefaults and keeps native SegWit enabled
-    /// so delayed automatic Blocktank refunds remain detectable.
+    /// so delayed Blocktank refund payments remain detectable.
     static func addressTypeStateFromUserDefaults(_ defaults: UserDefaults = .standard)
         -> (selectedType: LDKNode.AddressType, monitoredTypes: [LDKNode.AddressType])
     {
