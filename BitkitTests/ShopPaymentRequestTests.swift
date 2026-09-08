@@ -66,8 +66,7 @@ final class ShopPaymentRequestTests: XCTestCase {
             let sheets = SheetViewModel()
             let app = AppViewModel(
                 sheetViewModel: sheets,
-                navigationViewModel: NavigationViewModel(),
-                pubkyProfile: PubkyProfileManager()
+                navigationViewModel: NavigationViewModel()
             )
 
             try await app.handleScannedData(url)

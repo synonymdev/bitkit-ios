@@ -1,12 +1,36 @@
 import SwiftUI
 
-struct MainNavView: View {
-    private enum PendingProfileSetupResumeState {
-        case inactive
-        case waiting
-        case ready
-    }
+enum PendingProfileSetupResumeState {
+    case inactive
+    case waiting
+    case ready
 
+    func shouldResume(didResume: inout Bool) -> Bool {
+        if self == .inactive {
+            didResume = false
+        }
+        guard self == .ready, !didResume else { return false }
+        didResume = true
+        return true
+    }
+}
+
+func resolvePendingProfileSetupResumeState(
+    isProfileSetupPending: Bool,
+    isPaykitUIActive: Bool,
+    isAuthenticated: Bool,
+    hasActiveSheet: Bool,
+    isReplacingSheet: Bool,
+    currentRoute: Route?
+) -> PendingProfileSetupResumeState {
+    guard isProfileSetupPending else { return .inactive }
+    guard isPaykitUIActive, isAuthenticated, !hasActiveSheet, !isReplacingSheet, currentRoute != .createProfile else {
+        return .waiting
+    }
+    return .ready
+}
+
+struct MainNavView: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @EnvironmentObject private var app: AppViewModel
@@ -33,16 +57,14 @@ struct MainNavView: View {
     }
 
     private var pendingProfileSetupResumeState: PendingProfileSetupResumeState {
-        guard pubkyProfile.isProfileSetupPending else { return .inactive }
-        guard isPaykitUIActive,
-              pubkyProfile.isAuthenticated,
-              sheets.activeSheetConfiguration == nil,
-              !sheets.isReplacingSheet,
-              navigation.currentRoute != .createProfile
-        else {
-            return .waiting
-        }
-        return .ready
+        resolvePendingProfileSetupResumeState(
+            isProfileSetupPending: pubkyProfile.isProfileSetupPending,
+            isPaykitUIActive: isPaykitUIActive,
+            isAuthenticated: pubkyProfile.isAuthenticated,
+            hasActiveSheet: sheets.activeSheetConfiguration != nil,
+            isReplacingSheet: sheets.isReplacingSheet,
+            currentRoute: navigation.currentRoute
+        )
     }
 
     // Delay constants for clipboard processing
@@ -60,11 +82,7 @@ struct MainNavView: View {
             }
         }
         .onChange(of: pendingProfileSetupResumeState, initial: true) { _, resumeState in
-            if resumeState == .inactive {
-                didResumePendingPubkyProfileSetup = false
-            }
-            guard resumeState == .ready, !didResumePendingPubkyProfileSetup else { return }
-            didResumePendingPubkyProfileSetup = true
+            guard resumeState.shouldResume(didResume: &didResumePendingPubkyProfileSetup) else { return }
             navigation.navigate(.createProfile)
         }
         .sheet(
