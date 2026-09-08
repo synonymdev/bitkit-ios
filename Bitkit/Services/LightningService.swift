@@ -10,7 +10,6 @@ class LightningService {
 
     private var node: Node?
     var currentWalletIndex: Int = 0
-    private let pendingOnchainBroadcastStore: any PendingOnchainBroadcastStoring = PendingOnchainBroadcastStore.shared
 
     private let syncStatusChangedSubject = PassthroughSubject<UInt64, Never>()
 
@@ -791,9 +790,7 @@ class LightningService {
                 sats: sats,
                 feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
                 utxosToSpend: utxosToSpend,
-                isMaxAmount: isMaxAmount,
-                intentStore: pendingOnchainBroadcastStore,
-                walletIndex: currentWalletIndex
+                isMaxAmount: isMaxAmount
             )
         } catch {
             dumpLdkLogs()
@@ -807,9 +804,7 @@ class LightningService {
         sats: UInt64,
         feeRate: FeeRate,
         utxosToSpend: [SpendableUtxo]?,
-        isMaxAmount: Bool,
-        intentStore: any PendingOnchainBroadcastStoring,
-        walletIndex: Int
+        isMaxAmount: Bool
     ) async throws -> Txid {
         try await ServiceQueue.background(.ldk) {
             try executeOnchainSend(
@@ -818,9 +813,7 @@ class LightningService {
                 sats: sats,
                 feeRate: feeRate,
                 utxosToSpend: utxosToSpend,
-                isMaxAmount: isMaxAmount,
-                intentStore: intentStore,
-                walletIndex: walletIndex
+                isMaxAmount: isMaxAmount
             )
         }
     }
@@ -831,78 +824,42 @@ class LightningService {
         sats: UInt64,
         feeRate: FeeRate,
         utxosToSpend: [SpendableUtxo]?,
-        isMaxAmount: Bool,
-        intentStore: any PendingOnchainBroadcastStoring,
-        walletIndex: Int
+        isMaxAmount: Bool
     ) throws -> Txid {
         let pendingBroadcasts = try onchainPayment.listPendingBroadcasts()
-        for pendingBroadcast in pendingBroadcasts {
-            intentStore.record(
-                PendingOnchainBroadcastIntent(activeTxid: pendingBroadcast.txid, lineage: pendingBroadcast.lineage),
-                walletIndex: walletIndex
-            )
-        }
-
         if let pendingBroadcast = pendingBroadcasts.first {
             throw ExistingPendingOnchainBroadcastError(txid: pendingBroadcast.txid)
         }
 
-        if let persistedIntent = intentStore.intents(walletIndex: walletIndex).first {
-            throw ExistingPendingOnchainBroadcastError(txid: persistedIntent.activeTxid)
+        if isMaxAmount {
+            return try onchainPayment.sendAllToAddress(address: address, retainReserve: true, feeRate: feeRate)
         }
 
-        do {
-            if isMaxAmount {
-                return try onchainPayment.sendAllToAddress(address: address, retainReserve: true, feeRate: feeRate)
-            }
-
-            return try onchainPayment.sendToAddress(
-                address: address,
-                amountSats: sats,
-                feeRate: feeRate,
-                utxosToSpend: utxosToSpend
-            )
-        } catch {
-            if let pendingContext = pendingOnchainBroadcastContext(for: error), pendingContext.source == .currentPayment {
-                intentStore.record(
-                    PendingOnchainBroadcastIntent(activeTxid: pendingContext.txid, lineage: [pendingContext.txid]),
-                    walletIndex: walletIndex
-                )
-            }
-            throw error
-        }
+        return try onchainPayment.sendToAddress(
+            address: address,
+            amountSats: sats,
+            feeRate: feeRate,
+            utxosToSpend: utxosToSpend
+        )
     }
 
-    func pendingOnchainBroadcast(txid: Txid) async throws -> PendingBroadcastInfo? {
+    func onchainBroadcastOutcome(txid: Txid) async throws -> BroadcastOutcome? {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
         return try await ServiceQueue.background(.ldk) {
-            let pendingBroadcast = try Self.pendingOnchainBroadcast(onchainPayment: node.onchainPayment(), txid: txid)
-            if let pendingBroadcast {
-                pendingOnchainBroadcastStore.record(
-                    PendingOnchainBroadcastIntent(activeTxid: pendingBroadcast.txid, lineage: pendingBroadcast.lineage),
-                    walletIndex: currentWalletIndex
-                )
-            }
-            return pendingBroadcast
+            try Self.onchainBroadcastOutcome(onchainPayment: node.onchainPayment(), txid: txid)
         }
     }
 
-    func acceptedOnchainTransaction(reconciling txid: Txid) async throws -> Txid? {
+    func acknowledgeOnchainBroadcastOutcome(txid: Txid) async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        return try await ServiceQueue.background(.ldk) {
-            let intent = pendingOnchainBroadcastStore.intents(walletIndex: currentWalletIndex).first(where: { $0.contains(txid) })
-            let candidateTxids = intent.map { $0.lineage + [$0.activeTxid] } ?? [txid]
-            guard let acceptedTxid = Self.acceptedOnchainTransaction(payments: node.listPayments(), candidateTxids: candidateTxids) else {
-                return nil
-            }
-            pendingOnchainBroadcastStore.remove(matching: acceptedTxid, walletIndex: currentWalletIndex)
-            return acceptedTxid
+        try await ServiceQueue.background(.ldk) {
+            try Self.acknowledgeOnchainBroadcastOutcome(onchainPayment: node.onchainPayment(), txid: txid)
         }
     }
 
@@ -912,27 +869,20 @@ class LightningService {
         }
 
         return try await ServiceQueue.background(.ldk) {
-            let acceptedTxid = try Self.rebroadcastOnchainTransaction(onchainPayment: node.onchainPayment(), txid: txid)
-            pendingOnchainBroadcastStore.remove(matching: txid, walletIndex: currentWalletIndex)
-            return acceptedTxid
+            try Self.rebroadcastOnchainTransaction(onchainPayment: node.onchainPayment(), txid: txid)
         }
     }
 
-    static func pendingOnchainBroadcast(onchainPayment: OnchainPayment, txid: Txid) throws -> PendingBroadcastInfo? {
-        try onchainPayment.listPendingBroadcasts().first { $0.txid == txid || $0.lineage.contains(txid) }
+    static func onchainBroadcastOutcome(onchainPayment: OnchainPayment, txid: Txid) throws -> BroadcastOutcome? {
+        try onchainPayment.broadcastOutcome(txid: txid)
+    }
+
+    static func acknowledgeOnchainBroadcastOutcome(onchainPayment: OnchainPayment, txid: Txid) throws {
+        try onchainPayment.acknowledgeBroadcastOutcome(txid: txid)
     }
 
     static func rebroadcastOnchainTransaction(onchainPayment: OnchainPayment, txid: Txid) throws -> Txid {
         try onchainPayment.rebroadcastTransaction(txid: txid)
-    }
-
-    static func acceptedOnchainTransaction(payments: [PaymentDetails], candidateTxids: [Txid]) -> Txid? {
-        for payment in payments {
-            guard payment.direction == .outbound, payment.status != .failed else { continue }
-            guard case let .onchain(txid, _) = payment.kind, candidateTxids.contains(txid) else { continue }
-            return txid
-        }
-        return nil
     }
 
     func send(bolt11: String, sats: UInt64? = nil, params: RouteParametersConfig? = nil) async throws -> PaymentHash {

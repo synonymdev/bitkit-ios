@@ -4,12 +4,6 @@ import XCTest
 
 final class OnchainSendResultTests: XCTestCase {
     private let feeRate = FeeRate.fromSatPerKwu(satKwu: 253)
-    private var intentStore: PendingOnchainBroadcastMemoryStore!
-
-    override func setUp() {
-        super.setUp()
-        intentStore = PendingOnchainBroadcastMemoryStore()
-    }
 
     func testAmountSendReturnsAcceptedTransactionId() throws {
         let payment = FakeOnchainPayment { "accepted-txid" }
@@ -20,9 +14,7 @@ final class OnchainSendResultTests: XCTestCase {
             sats: 1000,
             feeRate: feeRate,
             utxosToSpend: nil,
-            isMaxAmount: false,
-            intentStore: intentStore,
-            walletIndex: 0
+            isMaxAmount: false
         )
 
         XCTAssertEqual(txid, "accepted-txid")
@@ -38,9 +30,7 @@ final class OnchainSendResultTests: XCTestCase {
             sats: 1000,
             feeRate: feeRate,
             utxosToSpend: nil,
-            isMaxAmount: true,
-            intentStore: intentStore,
-            walletIndex: 0
+            isMaxAmount: true
         )
 
         XCTAssertEqual(txid, "accepted-max-txid")
@@ -135,9 +125,7 @@ final class OnchainSendResultTests: XCTestCase {
             sats: 1000,
             feeRate: feeRate,
             utxosToSpend: nil,
-            isMaxAmount: false,
-            intentStore: intentStore,
-            walletIndex: 0
+            isMaxAmount: false
         )) { error in
             XCTAssertEqual(
                 pendingOnchainBroadcastContext(for: error),
@@ -160,9 +148,7 @@ final class OnchainSendResultTests: XCTestCase {
             sats: 1000,
             feeRate: feeRate,
             utxosToSpend: nil,
-            isMaxAmount: true,
-            intentStore: intentStore,
-            walletIndex: 0
+            isMaxAmount: true
         ))
         XCTAssertNil(payment.invocation)
     }
@@ -172,13 +158,11 @@ final class OnchainSendResultTests: XCTestCase {
 
         async let firstResult = pendingContextForSerializedSend(
             payment: payment,
-            feeRate: feeRate,
-            intentStore: intentStore
+            feeRate: feeRate
         )
         async let secondResult = pendingContextForSerializedSend(
             payment: payment,
-            feeRate: feeRate,
-            intentStore: intentStore
+            feeRate: feeRate
         )
         let contexts = await [firstResult, secondResult]
 
@@ -196,52 +180,32 @@ final class OnchainSendResultTests: XCTestCase {
         XCTAssertEqual(payment.invocation, .rebroadcast(txid: "pending-txid"))
     }
 
-    func testPendingLookupFollowsOriginalTransactionToActiveReplacement() throws {
-        let replacement = PendingBroadcastInfo(
+    func testPendingOutcomeFollowsOriginalTransactionToActiveReplacement() throws {
+        let replacement = BroadcastOutcome(
+            status: .pending,
             txid: "replacement-txid",
             lineage: ["original-txid", "replacement-txid"]
         )
-        let payment = FakeOnchainPayment(pendingResult: { [replacement] }) { "unused" }
+        let payment = FakeOnchainPayment(outcomeResult: { _ in replacement }) { "unused" }
 
-        let pending = try LightningService.pendingOnchainBroadcast(
+        let outcome = try LightningService.onchainBroadcastOutcome(
             onchainPayment: payment,
             txid: "original-txid"
         )
 
-        XCTAssertEqual(pending, replacement)
+        XCTAssertEqual(outcome, replacement)
+        XCTAssertEqual(payment.invocation, .broadcastOutcome(txid: "original-txid"))
     }
 
-    func testAcceptanceUnknownIntentBlocksFreshSpendAfterPendingListDisappears() {
-        let firstPayment = FakeOnchainPayment { throw NodeError.OnchainTxBroadcastTimeout(txid: "pending-txid") }
+    func testTerminalOutcomeAcknowledgesOriginalLineageTransaction() throws {
+        let payment = FakeOnchainPayment { "unused" }
 
-        XCTAssertThrowsError(try LightningService.executeOnchainSend(
-            onchainPayment: firstPayment,
-            address: "recipient",
-            sats: 1000,
-            feeRate: feeRate,
-            utxosToSpend: nil,
-            isMaxAmount: false,
-            intentStore: intentStore,
-            walletIndex: 0
-        ))
+        try LightningService.acknowledgeOnchainBroadcastOutcome(
+            onchainPayment: payment,
+            txid: "original-txid"
+        )
 
-        let reopenedPayment = FakeOnchainPayment { "unsafe-fresh-txid" }
-        XCTAssertThrowsError(try LightningService.executeOnchainSend(
-            onchainPayment: reopenedPayment,
-            address: "recipient",
-            sats: 1000,
-            feeRate: feeRate,
-            utxosToSpend: nil,
-            isMaxAmount: false,
-            intentStore: intentStore,
-            walletIndex: 0
-        )) { error in
-            XCTAssertEqual(
-                pendingOnchainBroadcastContext(for: error),
-                PendingOnchainBroadcastErrorContext(txid: "pending-txid", source: .existingPayment)
-            )
-        }
-        XCTAssertNil(reopenedPayment.invocation)
+        XCTAssertEqual(payment.invocation, .acknowledgeOutcome(txid: "original-txid"))
     }
 
     func testConclusiveErrorsDoNotPersistFreshSpendBlocker() throws {
@@ -256,9 +220,7 @@ final class OnchainSendResultTests: XCTestCase {
                 sats: 1000,
                 feeRate: feeRate,
                 utxosToSpend: nil,
-                isMaxAmount: false,
-                intentStore: intentStore,
-                walletIndex: 0
+                isMaxAmount: false
             ))
 
             let nextPayment = FakeOnchainPayment { "accepted-txid" }
@@ -268,54 +230,25 @@ final class OnchainSendResultTests: XCTestCase {
                 sats: 1000,
                 feeRate: feeRate,
                 utxosToSpend: nil,
-                isMaxAmount: false,
-                intentStore: intentStore,
-                walletIndex: 0
+                isMaxAmount: false
             ), "accepted-txid")
         }
     }
 
-    func testMissedAcceptedReplacementRemainsUnresolvedWithoutVisibleLineage() {
-        let replacement = PaymentDetails(
-            id: "replacement-txid",
-            kind: .onchain(txid: "replacement-txid", status: .unconfirmed),
-            amountMsat: 1_000_000,
-            feePaidMsat: 1000,
-            direction: .outbound,
-            status: .pending,
-            latestUpdateTimestamp: 1
+    func testAcceptedReplacementRemainsResolvableAfterPendingWindow() throws {
+        let replacement = BroadcastOutcome(
+            status: .accepted,
+            txid: "replacement-txid",
+            lineage: ["original-txid", "replacement-txid"]
+        )
+        let payment = FakeOnchainPayment(outcomeResult: { _ in replacement }) { "unused" }
+
+        let outcome = try LightningService.onchainBroadcastOutcome(
+            onchainPayment: payment,
+            txid: "original-txid"
         )
 
-        XCTAssertNil(LightningService.acceptedOnchainTransaction(
-            payments: [replacement],
-            candidateTxids: ["original-txid"]
-        ))
-        XCTAssertEqual(LightningService.acceptedOnchainTransaction(
-            payments: [replacement],
-            candidateTxids: ["original-txid", "replacement-txid"]
-        ), "replacement-txid")
-    }
-
-    func testPendingIntentPersistsAcrossStoreInstancesAndTracksReplacementLineage() throws {
-        let suiteName = "PendingOnchainBroadcastStoreTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        PendingOnchainBroadcastStore(defaults: defaults).record(
-            PendingOnchainBroadcastIntent(activeTxid: "original-txid", lineage: ["original-txid"]),
-            walletIndex: 0
-        )
-        PendingOnchainBroadcastStore(defaults: defaults).record(
-            PendingOnchainBroadcastIntent(activeTxid: "replacement-txid", lineage: ["original-txid", "replacement-txid"]),
-            walletIndex: 0
-        )
-
-        let restartedStore = PendingOnchainBroadcastStore(defaults: defaults)
-        let intent = try XCTUnwrap(restartedStore.intents(walletIndex: 0).first)
-        XCTAssertEqual(intent.activeTxid, "replacement-txid")
-        XCTAssertTrue(intent.contains("original-txid"))
-        XCTAssertTrue(intent.contains("replacement-txid"))
-        XCTAssertTrue(restartedStore.intents(walletIndex: 1).isEmpty)
+        XCTAssertEqual(outcome, replacement)
     }
 
     private func assertBroadcastErrorIsPropagated(
@@ -332,9 +265,7 @@ final class OnchainSendResultTests: XCTestCase {
             sats: 1000,
             feeRate: feeRate,
             utxosToSpend: nil,
-            isMaxAmount: false,
-            intentStore: intentStore,
-            walletIndex: 0
+            isMaxAmount: false
         ), file: file, line: line) { error in
             XCTAssertEqual(sendFailureType(for: error), expectedFailureType, file: file, line: line)
         }
@@ -343,8 +274,7 @@ final class OnchainSendResultTests: XCTestCase {
 
 private func pendingContextForSerializedSend(
     payment: OnchainPayment,
-    feeRate: FeeRate,
-    intentStore: any PendingOnchainBroadcastStoring
+    feeRate: FeeRate
 ) async -> PendingOnchainBroadcastErrorContext? {
     do {
         _ = try await LightningService.performOnchainSend(
@@ -353,9 +283,7 @@ private func pendingContextForSerializedSend(
             sats: 1000,
             feeRate: feeRate,
             utxosToSpend: nil,
-            isMaxAmount: false,
-            intentStore: intentStore,
-            walletIndex: 0
+            isMaxAmount: false
         )
         return nil
     } catch {
@@ -368,21 +296,26 @@ private final class FakeOnchainPayment: OnchainPayment {
         case sendToAddress(address: String, amountSats: UInt64)
         case sendAllToAddress(address: String, retainReserve: Bool)
         case rebroadcast(txid: Txid)
+        case broadcastOutcome(txid: Txid)
+        case acknowledgeOutcome(txid: Txid)
     }
 
     private let result: () throws -> Txid
     private let pendingResult: () throws -> [PendingBroadcastInfo]
     private let rebroadcastResult: (Txid) throws -> Txid
+    private let outcomeResult: (Txid) throws -> BroadcastOutcome?
     private(set) var invocation: Invocation?
 
     init(
         pendingResult: @escaping () throws -> [PendingBroadcastInfo] = { [] },
         rebroadcastResult: @escaping (Txid) throws -> Txid = { $0 },
+        outcomeResult: @escaping (Txid) throws -> BroadcastOutcome? = { _ in nil },
         result: @escaping () throws -> Txid
     ) {
         self.result = result
         self.pendingResult = pendingResult
         self.rebroadcastResult = rebroadcastResult
+        self.outcomeResult = outcomeResult
         super.init(noPointer: .init())
     }
 
@@ -413,6 +346,15 @@ private final class FakeOnchainPayment: OnchainPayment {
     override func rebroadcastTransaction(txid: Txid) throws -> Txid {
         invocation = .rebroadcast(txid: txid)
         return try rebroadcastResult(txid)
+    }
+
+    override func broadcastOutcome(txid: Txid) throws -> BroadcastOutcome? {
+        invocation = .broadcastOutcome(txid: txid)
+        return try outcomeResult(txid)
+    }
+
+    override func acknowledgeBroadcastOutcome(txid: Txid) throws {
+        invocation = .acknowledgeOutcome(txid: txid)
     }
 }
 
@@ -446,21 +388,5 @@ private final class SerializingFakeOnchainPayment: OnchainPayment {
         sendInvocationCount += 1
         pendingBroadcast = PendingBroadcastInfo(txid: "pending-txid", lineage: ["pending-txid"])
         throw NodeError.OnchainTxBroadcastTimeout(txid: "pending-txid")
-    }
-}
-
-private final class PendingOnchainBroadcastMemoryStore: PendingOnchainBroadcastStoring {
-    private var records: [Int: [PendingOnchainBroadcastIntent]] = [:]
-
-    func intents(walletIndex: Int) -> [PendingOnchainBroadcastIntent] {
-        records[walletIndex] ?? []
-    }
-
-    func record(_ intent: PendingOnchainBroadcastIntent, walletIndex: Int) {
-        records[walletIndex] = [intent]
-    }
-
-    func remove(matching txid: Txid, walletIndex: Int) {
-        records[walletIndex]?.removeAll { $0.contains(txid) }
     }
 }
