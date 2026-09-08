@@ -68,10 +68,9 @@ struct TabBar: View {
             return
         }
 
-        let hasInboundCapacity = (wallet.totalInboundLightningSats ?? 0) > 0
         let hasPendingTransfersToSpending = wallet.balanceInTransferToSpending > 0
 
-        if navigation.currentRoute == .spendingWallet && !hasInboundCapacity && !hasPendingTransfersToSpending {
+        if navigation.currentRoute == .spendingWallet && !wallet.canCreateReceiveLightningInvoice && !hasPendingTransfersToSpending {
             // On spending wallet screen, show CJIT flow when user can't receive normally
             sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
         } else {

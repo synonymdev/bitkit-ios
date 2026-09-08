@@ -118,17 +118,92 @@ class BlocktankViewModel: ObservableObject {
             throw CustomServiceError.nodeNotStarted
         }
 
+        let maxChannelSizeSat = try await freshMaxChannelSizeSat()
         let lspBalance = try await getDefaultLspBalance(clientBalance: amountSats)
+        guard amountSats <= UInt64.max - lspBalance else {
+            throw CustomServiceError.channelSizeExceedsMaximum
+        }
+
         let channelSizeSat = amountSats + lspBalance
 
-        return try await coreService.blocktank.createCjit(
-            channelSizeSat: channelSizeSat,
-            invoiceSat: amountSats,
-            invoiceDescription: description,
-            nodeId: nodeId,
-            channelExpiryWeeks: defaultChannelExpiryWeeks,
-            options: .init(source: defaultSource, discountCode: nil)
-        )
+        if let maxChannelSizeSat, channelSizeSat > maxChannelSizeSat {
+            Logger.error("CJIT channel size exceeds maximum: \(channelSizeSat) > \(maxChannelSizeSat)")
+            throw CustomServiceError.channelSizeExceedsMaximum
+        }
+
+        do {
+            return try await coreService.blocktank.createCjit(
+                channelSizeSat: channelSizeSat,
+                invoiceSat: amountSats,
+                invoiceDescription: description,
+                nodeId: nodeId,
+                channelExpiryWeeks: defaultChannelExpiryWeeks,
+                options: .init(source: defaultSource, discountCode: nil)
+            )
+        } catch {
+            if isMaxChannelSizeError(error) {
+                throw CustomServiceError.channelSizeExceedsMaximum
+            }
+            throw error
+        }
+    }
+
+    func canCreateCjit(amountSats: UInt64) async throws -> Bool {
+        guard let maxChannelSizeSat = try await freshMaxChannelSizeSat() else {
+            return true
+        }
+
+        return try await canCreateCjit(amountSats: amountSats, maxChannelSizeSat: maxChannelSizeSat)
+    }
+
+    private func canCreateCjit(amountSats: UInt64, maxChannelSizeSat: UInt64) async throws -> Bool {
+        let lspBalance = try await getDefaultLspBalance(clientBalance: amountSats)
+        guard amountSats <= maxChannelSizeSat else {
+            return false
+        }
+
+        return lspBalance <= maxChannelSizeSat - amountSats
+    }
+
+    func maxCjitAmountSats() async throws -> UInt64? {
+        guard let maxChannelSizeSat = try await freshMaxChannelSizeSat() else {
+            return nil
+        }
+
+        var lowerBound: UInt64 = 0
+        var upperBound = maxChannelSizeSat
+
+        while lowerBound < upperBound {
+            let candidate = lowerBound + (upperBound - lowerBound + 1) / 2
+            if try await canCreateCjit(amountSats: candidate, maxChannelSizeSat: maxChannelSizeSat) {
+                lowerBound = candidate
+            } else {
+                upperBound = candidate - 1
+            }
+        }
+
+        return lowerBound
+    }
+
+    private func freshMaxChannelSizeSat() async throws -> UInt64? {
+        try await refreshInfo()
+        guard let maxChannelSizeSat = info?.options.maxChannelSizeSat, maxChannelSizeSat > 0 else {
+            return nil
+        }
+
+        return maxChannelSizeSat
+    }
+
+    private func isMaxChannelSizeError(_ error: Error) -> Bool {
+        if error.isChannelSizeExceedsMaximum {
+            return true
+        }
+
+        let description = String(describing: error)
+        return description.localizedCaseInsensitiveContains("Channel size is too big")
+            || description.localizedCaseInsensitiveContains("channelSizeExceedsMaximum")
+            || description.localizedCaseInsensitiveContains("maxChannelSizeSat")
+            || description.localizedCaseInsensitiveContains("capacity is above our capacity limit")
     }
 
     func createOrder(clientBalance: UInt64, lspBalance: UInt64? = nil) async throws -> IBtOrder {

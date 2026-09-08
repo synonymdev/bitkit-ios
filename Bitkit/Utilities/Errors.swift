@@ -69,6 +69,20 @@ enum PaymentTimeoutError: Error {
     case timedOut
 }
 
+extension Error {
+    var isChannelSizeExceedsMaximum: Bool {
+        if let serviceError = self as? CustomServiceError {
+            return serviceError == .channelSizeExceedsMaximum
+        }
+
+        if let appError = self as? AppError, let underlyingError = appError.underlyingError {
+            return underlyingError.isChannelSizeExceedsMaximum
+        }
+
+        return false
+    }
+}
+
 /// Translates LDK and BDK error messages into translated messages that can be displayed to end users
 struct AppError: LocalizedError {
     static let genericMessage = "App Error"
