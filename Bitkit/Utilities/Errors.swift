@@ -77,6 +77,12 @@ struct ExistingPendingOnchainBroadcastError: LocalizedError {
     }
 }
 
+struct AbandonedOnchainBroadcastError: LocalizedError {
+    var errorDescription: String? {
+        "The on-chain transaction was abandoned before broadcast."
+    }
+}
+
 enum PendingOnchainBroadcastSource: Equatable {
     case currentPayment
     case existingPayment

@@ -622,12 +622,12 @@ class WalletViewModel: ObservableObject {
         return txid
     }
 
-    func pendingOnchainBroadcast(txid: Txid) async throws -> PendingBroadcastInfo? {
-        try await lightningService.pendingOnchainBroadcast(txid: txid)
+    func onchainBroadcastOutcome(txid: Txid) async throws -> BroadcastOutcome? {
+        try await lightningService.onchainBroadcastOutcome(txid: txid)
     }
 
-    func acceptedOnchainTransaction(reconciling txid: Txid) async throws -> Txid? {
-        try await lightningService.acceptedOnchainTransaction(reconciling: txid)
+    func acknowledgeOnchainBroadcastOutcome(txid: Txid) async throws {
+        try await lightningService.acknowledgeOnchainBroadcastOutcome(txid: txid)
     }
 
     func rebroadcastOnchainTransaction(txid: Txid) async throws -> Txid {

@@ -173,6 +173,9 @@ struct SendConfirmationView: View {
                 amountSats: pendingOnchainBroadcast.completion?.amountSats,
                 onAccepted: { acceptedTxid in
                     await resolvePendingOnchainBroadcast(pendingOnchainBroadcast, acceptedTxid: acceptedTxid)
+                },
+                onAbandoned: {
+                    await resolveAbandonedOnchainBroadcast(pendingOnchainBroadcast)
                 }
             )
         } else {
@@ -809,6 +812,39 @@ struct SendConfirmationView: View {
     }
 
     @MainActor
+    private func resolveAbandonedOnchainBroadcast(_ pending: PendingOnchainBroadcast) async {
+        guard pendingOnchainBroadcast?.txid == pending.txid else { return }
+
+        if let completion = pending.completion {
+            try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: pending.txid)
+            app.consumeContactPaymentContext(forPendingPaymentHash: pending.txid)
+            pendingOnchainBroadcast = nil
+            navigationPath.append(.failure(SendFailureContext(
+                error: AbandonedOnchainBroadcastError(),
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: nil
+            )))
+
+            if let incomingPaymentRequest = completion.incomingPaymentRequest {
+                await PaykitPaymentProofService.shared.abandonOnchainPayment(
+                    incomingPaymentRequest,
+                    txid: pending.txid
+                )
+            } else {
+                do {
+                    try await wallet.acknowledgeOnchainBroadcastOutcome(txid: pending.txid)
+                } catch {
+                    Logger.warn("Failed to acknowledge abandoned on-chain broadcast: \(error)", context: "SendConfirmationView")
+                }
+            }
+        } else {
+            pendingOnchainBroadcast = nil
+            swipeProgress = 0
+        }
+    }
+
+    @MainActor
     private func completeOnchainSend(
         txid: Txid,
         completion: OnchainSendCompletion,
@@ -853,6 +889,15 @@ struct SendConfirmationView: View {
 
         wallet.sendAmountSats = completion.amountSats
         pendingOnchainBroadcast = nil
+
+        if let associatedTxid, completion.incomingPaymentRequest == nil {
+            do {
+                try await wallet.acknowledgeOnchainBroadcastOutcome(txid: associatedTxid)
+            } catch {
+                Logger.warn("Failed to acknowledge accepted on-chain broadcast: \(error)", context: "SendConfirmationView")
+            }
+        }
+
         Logger.info("Onchain send result txid: \(txid)")
         navigationPath.append(.success(paymentId: txid))
     }

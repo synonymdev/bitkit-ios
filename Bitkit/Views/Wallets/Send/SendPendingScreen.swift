@@ -28,6 +28,7 @@ struct OnchainBroadcastPendingScreen: View {
     let txid: Txid
     let amountSats: UInt64?
     let onAccepted: (Txid) async -> Void
+    let onAbandoned: () async -> Void
 
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
@@ -37,10 +38,16 @@ struct OnchainBroadcastPendingScreen: View {
     @State private var hasResolved = false
     @State private var activeTxid: Txid
 
-    init(txid: Txid, amountSats: UInt64?, onAccepted: @escaping (Txid) async -> Void) {
+    init(
+        txid: Txid,
+        amountSats: UInt64?,
+        onAccepted: @escaping (Txid) async -> Void,
+        onAbandoned: @escaping () async -> Void
+    ) {
         self.txid = txid
         self.amountSats = amountSats
         self.onAccepted = onAccepted
+        self.onAbandoned = onAbandoned
         _activeTxid = State(initialValue: txid)
     }
 
@@ -98,14 +105,9 @@ struct OnchainBroadcastPendingScreen: View {
         }
 
         do {
-            if let pendingBroadcast = try await wallet.pendingOnchainBroadcast(txid: txid) {
-                activeTxid = pendingBroadcast.txid
-                return
-            }
-            guard let acceptedTxid = try await wallet.acceptedOnchainTransaction(reconciling: txid) else { return }
-            await accept(acceptedTxid)
+            try await applyBroadcastOutcome()
         } catch {
-            Logger.warn("Failed to read pending on-chain broadcasts: \(error)", context: "OnchainBroadcastPendingScreen")
+            Logger.warn("Failed to reconcile on-chain broadcast outcome: \(error)", context: "OnchainBroadcastPendingScreen")
         }
     }
 
@@ -120,16 +122,26 @@ struct OnchainBroadcastPendingScreen: View {
             await accept(acceptedTxid)
         } catch {
             do {
-                if let pendingBroadcast = try await wallet.pendingOnchainBroadcast(txid: txid) {
-                    activeTxid = pendingBroadcast.txid
-                } else if let acceptedTxid = try await wallet.acceptedOnchainTransaction(reconciling: txid) {
-                    await accept(acceptedTxid)
-                    return
-                }
+                try await applyBroadcastOutcome()
             } catch {
                 Logger.warn("Failed to reconcile on-chain rebroadcast error: \(error)", context: "OnchainBroadcastPendingScreen")
             }
+            guard !hasResolved else { return }
             app.toast(error)
+        }
+    }
+
+    @MainActor
+    private func applyBroadcastOutcome() async throws {
+        guard let outcome = try await wallet.onchainBroadcastOutcome(txid: txid) else { return }
+
+        switch outcome.status {
+        case .pending:
+            activeTxid = outcome.txid
+        case .accepted:
+            await accept(outcome.txid)
+        case .abandoned:
+            await abandon()
         }
     }
 
@@ -138,6 +150,13 @@ struct OnchainBroadcastPendingScreen: View {
         guard !hasResolved else { return }
         hasResolved = true
         await onAccepted(acceptedTxid)
+    }
+
+    @MainActor
+    private func abandon() async {
+        guard !hasResolved else { return }
+        hasResolved = true
+        await onAbandoned()
     }
 }
 

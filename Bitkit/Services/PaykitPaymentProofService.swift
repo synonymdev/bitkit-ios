@@ -98,26 +98,31 @@ struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
 enum PaykitOnchainPaymentProofStatus: Equatable {
     case pending(activeTxid: Txid)
     case accepted(txid: Txid)
+    case abandoned
     case unknown
 }
 
 protocol PaykitOnchainPaymentProofLookingUp: Sendable {
     func status(txid: Txid) async -> PaykitOnchainPaymentProofStatus
+    func acknowledge(txid: Txid) async throws
 }
 
 struct PaykitOnchainPaymentProofLookup: PaykitOnchainPaymentProofLookingUp {
     func status(txid: Txid) async -> PaykitOnchainPaymentProofStatus {
         do {
-            if let pendingBroadcast = try await LightningService.shared.pendingOnchainBroadcast(txid: txid) {
-                return .pending(activeTxid: pendingBroadcast.txid)
+            guard let outcome = try await LightningService.shared.onchainBroadcastOutcome(txid: txid) else { return .unknown }
+            return switch outcome.status {
+            case .pending: .pending(activeTxid: outcome.txid)
+            case .accepted: .accepted(txid: outcome.txid)
+            case .abandoned: .abandoned
             }
-            if let acceptedTxid = try await LightningService.shared.acceptedOnchainTransaction(reconciling: txid) {
-                return .accepted(txid: acceptedTxid)
-            }
-            return .unknown
         } catch {
             return .unknown
         }
+    }
+
+    func acknowledge(txid: Txid) async throws {
+        try await LightningService.shared.acknowledgeOnchainBroadcastOutcome(txid: txid)
     }
 }
 
@@ -285,10 +290,15 @@ actor PaykitPaymentProofService {
             pendingProofs[index].paymentIdentifier = txid.lowercased()
             pendingProofs[index].proofData = txid.lowercased()
             let completedProof = pendingProofs[index]
+            var didPersist = false
             do {
                 try await persist(pendingProofs)
+                didPersist = true
             } catch {
                 logWarning("Failed to persist a completed Paykit payment proof; attempting immediate delivery: \(error)")
+            }
+            if didPersist, let associatedTxid {
+                await acknowledgeOnchainOutcome(txid: associatedTxid)
             }
             submitInBackground(completedProof)
         } catch {
@@ -298,6 +308,20 @@ actor PaykitPaymentProofService {
                 txid: txid,
                 paymentEndpointIdentifier: paymentEndpointIdentifier
             )
+        }
+    }
+
+    func abandonOnchainPayment(_ request: PaykitPaymentRequest, txid: Txid) async {
+        do {
+            let pendingProofs = try await loadProofs()
+            let remainingProofs = pendingProofs.filter {
+                !($0.requestId == request.id && $0.kind == .onchain && $0.proofData == nil)
+            }
+            guard remainingProofs != pendingProofs else { return }
+            try await persist(remainingProofs)
+            await acknowledgeOnchainOutcome(txid: txid)
+        } catch {
+            logWarning("Failed to clear an abandoned Paykit on-chain payment proof: \(error)")
         }
     }
 
@@ -353,6 +377,8 @@ actor PaykitPaymentProofService {
                         }
                     case let .accepted(txid):
                         await completePersistedOnchainPayment(proof, acceptedTxid: txid)
+                    case .abandoned:
+                        await abandonPersistedOnchainPayment(proof)
                     case .unknown:
                         continue
                     }
@@ -393,9 +419,41 @@ actor PaykitPaymentProofService {
             pendingProofs[index].paymentIdentifier = acceptedTxid.lowercased()
             pendingProofs[index].proofData = acceptedTxid.lowercased()
             let completedProof = pendingProofs[index]
-            await persistAndSubmit([completedProof], allProofs: pendingProofs)
+            var didPersist = false
+            do {
+                try await persist(pendingProofs)
+                didPersist = true
+            } catch {
+                logWarning("Failed to persist a completed Paykit payment proof; attempting immediate delivery: \(error)")
+            }
+            if didPersist {
+                await acknowledgeOnchainOutcome(txid: associatedTxid)
+            }
+            await submit(completedProof)
         } catch {
             logWarning("Failed to complete a reconciled Paykit on-chain payment proof: \(error)")
+        }
+    }
+
+    private func abandonPersistedOnchainPayment(_ proof: PendingPaykitPaymentProof) async {
+        guard let associatedTxid = proof.paymentIdentifier else { return }
+
+        do {
+            let pendingProofs = try await loadProofs()
+            let remainingProofs = pendingProofs.filter { $0 != proof }
+            guard remainingProofs != pendingProofs else { return }
+            try await persist(remainingProofs)
+            await acknowledgeOnchainOutcome(txid: associatedTxid)
+        } catch {
+            logWarning("Failed to clear an abandoned Paykit on-chain payment proof: \(error)")
+        }
+    }
+
+    private func acknowledgeOnchainOutcome(txid: Txid) async {
+        do {
+            try await onchainPaymentLookup.acknowledge(txid: txid)
+        } catch {
+            logWarning("Failed to acknowledge a handled on-chain broadcast outcome: \(error)")
         }
     }
 
