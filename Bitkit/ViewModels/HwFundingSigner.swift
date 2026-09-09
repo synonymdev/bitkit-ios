@@ -136,12 +136,18 @@ struct HwFundingSigner {
             disconnectAfterTimeout(walletId: walletId)
             throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(walletId: walletId))
         } catch {
-            if error.isTrezorUserCancellation() { throw error }
+            if error.isTrezorUserCancellation() {
+                throw error
+            }
             // Swift has no cause chain, so this must be rethrown explicitly: the catch-all below
             // would otherwise bury "this wallet needs its passphrase" under a reconnect failure and
             // the prompt would never open.
-            if let passphrase = error as? HwPassphraseError { throw passphrase }
-            if error.isTrezorDeviceBusy() { throw HwTransferError.deviceBusy }
+            if let passphrase = error as? HwPassphraseError {
+                throw passphrase
+            }
+            if error.isTrezorDeviceBusy() {
+                throw HwTransferError.deviceBusy
+            }
             throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(walletId: walletId))
         }
     }

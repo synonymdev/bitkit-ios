@@ -87,7 +87,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
             return false
         }
 
-        if case .AddressTypeAlreadyMonitored = nodeError { return true }
+        if case .AddressTypeAlreadyMonitored = nodeError {
+            return true
+        }
         return false
     }
 
@@ -109,7 +111,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
             do {
                 try await syncWithRetry()
                 lastBalance = try await settings.lightningService.getBalanceForAddressType(addressType).totalSats
-                if lastBalance >= minimumSats { return lastBalance }
+                if lastBalance >= minimumSats {
+                    return lastBalance
+                }
                 Logger.test(
                     "Waiting for \(addressType.stringValue) balance: \(lastBalance)/\(minimumSats) sats",
                     context: "AddressTypeIntegrationTests"
@@ -139,7 +143,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
         line: UInt = #line
     ) async {
         for attempt in 1 ... attempts {
-            if await settings.setMonitoring(addressType, enabled: true, wallet: nil) { return }
+            if await settings.setMonitoring(addressType, enabled: true, wallet: nil) {
+                return
+            }
 
             Logger.test(
                 "Enabling \(addressType.stringValue) monitoring failed on attempt \(attempt)/\(attempts): \(addressTypeFailureCause)",
@@ -165,7 +171,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
         line: UInt = #line
     ) async {
         for attempt in 1 ... attempts {
-            if await settings.updateAddressType(addressType, wallet: nil) { return }
+            if await settings.updateAddressType(addressType, wallet: nil) {
+                return
+            }
 
             Logger.test(
                 "Selecting \(addressType.stringValue) failed on attempt \(attempt)/\(attempts): \(addressTypeFailureCause)",
