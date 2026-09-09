@@ -10,7 +10,7 @@
     <action>Dismiss the Payment Request confirmation screen without paying</action>
     <action>Tap the pending Payment Requests bell (id "PaymentRequestsBell")</action>
     <action>Verify the incoming Payment Requests sheet (id "PaymentRequestsSheet") appears</action>
-    <action>Using the saved issuer public key, verify the one-time request row (id "PaymentRequestRow-71300000-0000-4000-8000-000000000001-&lt;fixture-issuer-public-key&gt;-bitkit/server-one-time") shows 100,000 sats</action>
+    <action>Using the saved issuer public key and negotiated receiver path, verify the one-time request row (id "PaymentRequestRow-71300000-0000-4000-8000-000000000001-&lt;fixture-issuer-public-key&gt;-&lt;negotiated-receiver-path&gt;-one-time") shows 100,000 sats</action>
     <action>Tap Pay (id "PaymentRequestPay-71300000-0000-4000-8000-000000000001")</action>
     <action>Verify the Payment Request confirmation screen (id "PaymentRequestConfirm") shows 100,000 sats</action>
     <action>Tap Show details (id "SendConfirmToggleDetails")</action>
