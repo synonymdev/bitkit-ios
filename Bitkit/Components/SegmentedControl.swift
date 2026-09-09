@@ -3,10 +3,12 @@ import SwiftUI
 struct TabItem<T: Hashable & CustomStringConvertible> {
     let tab: T
     let activeColor: Color?
+    let badge: Int?
 
-    init(_ tab: T, activeColor: Color? = nil) {
+    init(_ tab: T, activeColor: Color? = nil, badge: Int? = nil) {
         self.tab = tab
         self.activeColor = activeColor
+        self.badge = badge
     }
 }
 
@@ -37,8 +39,18 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                     }
                 }) {
                     VStack(spacing: 8) {
-                        CaptionBText(tabItem.tab.description, textColor: selectedTab == tabItem.tab ? .white : .secondary)
-                            .frame(maxWidth: .infinity)
+                        HStack(spacing: 8) {
+                            CaptionBText(tabItem.tab.description, textColor: selectedTab == tabItem.tab ? .white : .secondary)
+
+                            if let badge = tabItem.badge, badge > 0 {
+                                CaptionBText("\(badge)", textColor: .black)
+                                    .frame(minWidth: 20, minHeight: 20)
+                                    .background(Color.brandAccent)
+                                    .clipShape(Circle())
+                                    .accessibilityLabel(t("wallet__payment_requests_count", variables: ["count": "\(badge)"]))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
                         ZStack {
                             Rectangle()
                                 .frame(height: 2)
