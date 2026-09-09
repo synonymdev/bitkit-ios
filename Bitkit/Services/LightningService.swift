@@ -986,8 +986,12 @@ class LightningService {
         for (index, channel) in channels.enumerated() {
             totalOutboundMsat += channel.outboundCapacityMsat
             totalInboundMsat += channel.inboundCapacityMsat
-            if channel.isUsable { usableChannels += 1 }
-            if channel.isAnnounced { announcedChannels += 1 }
+            if channel.isUsable {
+                usableChannels += 1
+            }
+            if channel.isAnnounced {
+                announcedChannels += 1
+            }
 
             sb += "  Channel \(index + 1):\n"
             sb += "    - Channel ID: \(channel.channelId)\n"

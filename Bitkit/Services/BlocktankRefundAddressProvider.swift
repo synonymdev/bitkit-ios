@@ -32,7 +32,9 @@ enum BlocktankRefundAddressError: LocalizedError, Equatable {
 
 struct BlocktankRefundAddressStore {
     static let legacyKey = "blocktankRefundAddress"
-    static var key: String { key(for: Env.network) }
+    static var key: String {
+        key(for: Env.network)
+    }
 
     private let defaults: UserDefaults
     private let network: LDKNode.Network

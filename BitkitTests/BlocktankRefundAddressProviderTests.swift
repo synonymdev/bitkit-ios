@@ -291,7 +291,7 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
             let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
             defer { defaults.removePersistentDomain(forName: suiteName) }
             let legacy = BlocktankRefundAddress(address: testCase.1, index: 7)
-            defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+            try defaults.set(JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
 
             let store = BlocktankRefundAddressStore(defaults: defaults, network: testCase.0)
             XCTAssertEqual(try store.load(), legacy)
@@ -310,7 +310,7 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defer { defaults.removePersistentDomain(forName: #function) }
         let legacy = BlocktankRefundAddress(address: "bcrt1qrefund", index: 7)
-        defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+        try defaults.set(JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
 
         BlocktankRefundAddressStore(defaults: defaults, network: .bitcoin).clear()
         XCTAssertNotNil(defaults.data(forKey: BlocktankRefundAddressStore.legacyKey))
@@ -323,7 +323,7 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defer { defaults.removePersistentDomain(forName: #function) }
         let legacy = BlocktankRefundAddress(address: "tb1qrefund", index: 7)
-        defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+        try defaults.set(JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
 
         XCTAssertNil(try BlocktankRefundAddressStore(defaults: defaults, network: .testnet).load())
         XCTAssertNil(try BlocktankRefundAddressStore(defaults: defaults, network: .signet).load())
@@ -339,7 +339,7 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
         let scoped = BlocktankRefundAddress(address: "bcrt1qscoped", index: 8)
         let legacy = BlocktankRefundAddress(address: "bc1qlegacy", index: 7)
         try store.save(scoped)
-        defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+        try defaults.set(JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
 
         XCTAssertEqual(try store.load(), scoped)
         XCTAssertNotNil(defaults.data(forKey: BlocktankRefundAddressStore.legacyKey))
@@ -349,7 +349,7 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defer { defaults.removePersistentDomain(forName: #function) }
         let legacy = BlocktankRefundAddress(address: "unknown", index: 7)
-        defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+        try defaults.set(JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
         let store = BlocktankRefundAddressStore(defaults: defaults, network: .regtest)
 
         XCTAssertThrowsError(try store.load()) { error in
