@@ -2754,7 +2754,9 @@ private final class PaymentRequestSubscriptionStateMemoryStore: PaykitSubscripti
     }
 
     func save(_ subscriptionState: PaykitSubscriptionState, identity: String) throws {
-        if shouldFailSave { throw PaymentRequestSdkMockError.preparation }
+        if shouldFailSave {
+            throw PaymentRequestSdkMockError.preparation
+        }
         states[identity] = subscriptionState
     }
 }

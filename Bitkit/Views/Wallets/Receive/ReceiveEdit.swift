@@ -204,13 +204,17 @@ struct ReceiveEdit: View {
 
         var replacementStartIndex = currentRouteIndex
         if let qrIndex = navigationPath[..<currentRouteIndex].lastIndex(where: { route in
-            if case .qr = route { return true }
+            if case .qr = route {
+                return true
+            }
             return false
         }) {
             replacementStartIndex = qrIndex
 
             if let editIndex = navigationPath[..<qrIndex].lastIndex(where: { route in
-                if case .edit = route { return true }
+                if case .edit = route {
+                    return true
+                }
                 return false
             }) {
                 replacementStartIndex = editIndex

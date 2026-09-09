@@ -225,7 +225,9 @@ final class TransferViewModelHwTests: XCTestCase {
     func testConfirmWithoutHwCapabilitiesSurfacesGenericError() {
         let vm = TransferViewModel() // no signer injected
         vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
-        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
+        if case .generic = vm.hwTransferError {} else {
+            XCTFail("expected .generic error")
+        }
         XCTAssertFalse(vm.hwSpending.isSigning)
     }
 
@@ -236,7 +238,9 @@ final class TransferViewModelHwTests: XCTestCase {
 
         await vm.updateHwLimits(walletId: "trezor:wallet", blocktankInfo: nil, estimateOrderFee: { _, _ in (0, 0) })
 
-        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
+        if case .generic = vm.hwTransferError {} else {
+            XCTFail("expected .generic error")
+        }
         XCTAssertFalse(vm.hwSpending.isLoading)
     }
 
@@ -333,7 +337,9 @@ final class TransferViewModelHwTests: XCTestCase {
         vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
-        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error, got \(String(describing: vm.hwTransferError))") }
+        if case .generic = vm.hwTransferError {} else {
+            XCTFail("expected .generic error, got \(String(describing: vm.hwTransferError))")
+        }
         XCTAssertTrue(connecting.staleDisconnects.isEmpty)
     }
 
@@ -512,7 +518,9 @@ final class TransferViewModelHwTests: XCTestCase {
         await awaitSigningComplete(vm)
 
         XCTAssertFalse(vm.hwSpending.hasPendingBroadcast)
-        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
+        if case .generic = vm.hwTransferError {} else {
+            XCTFail("expected .generic error")
+        }
     }
 
     func testElectrumBroadcastRejectionClearsPendingState() async {
@@ -526,7 +534,9 @@ final class TransferViewModelHwTests: XCTestCase {
         await awaitSigningComplete(vm)
 
         XCTAssertFalse(vm.hwSpending.hasPendingBroadcast)
-        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
+        if case .generic = vm.hwTransferError {} else {
+            XCTFail("expected .generic error")
+        }
         XCTAssertEqual(funding.signCalls, 1)
     }
 
@@ -583,7 +593,9 @@ final class TransferViewModelHwTests: XCTestCase {
 
         vm.onTransferToSpendingHwConfirm(order: order, walletId: "trezor:wallet")
 
-        if case .generic = vm.hwTransferError {} else { XCTFail("expected .generic error") }
+        if case .generic = vm.hwTransferError {} else {
+            XCTFail("expected .generic error")
+        }
         XCTAssertFalse(vm.hwSpending.isSigning)
         XCTAssertEqual(connecting.ensureCalls, 0)
     }

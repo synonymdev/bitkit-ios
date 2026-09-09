@@ -60,7 +60,9 @@ struct AppStatus: View {
         // Always show error when offline so the header reflects no network.
         if !app.appStatusInit && realStatus == .error {
             let internet = AppStatusHelper.internetStatus(network: network)
-            if internet == .error { return .error }
+            if internet == .error {
+                return .error
+            }
             return .ready
         }
 

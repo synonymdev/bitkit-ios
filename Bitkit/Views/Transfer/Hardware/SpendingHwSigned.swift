@@ -11,12 +11,10 @@ struct SpendingHwSigned: View {
     private let autoForwardDelay: UInt64 = 1_000_000_000
 
     var body: some View {
-        Group {
-            if let order = transfer.uiState.order {
-                content(order: transfer.displayOrder(for: order))
-            } else {
-                Color.clear.onAppear { navigation.reset() }
-            }
+        if let order = transfer.uiState.order {
+            content(order: transfer.displayOrder(for: order))
+        } else {
+            Color.clear.onAppear { navigation.reset() }
         }
     }
 
