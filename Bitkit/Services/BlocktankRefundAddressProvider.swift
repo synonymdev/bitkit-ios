@@ -7,6 +7,8 @@ enum BlocktankRefundAddressError: LocalizedError, Equatable {
     case indexOutOfRange(UInt32)
     case ownershipMismatch
     case persistenceFailed
+    case allocationDidNotAdvance
+    case allocationAttemptsExhausted
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +22,10 @@ enum BlocktankRefundAddressError: LocalizedError, Equatable {
             "The saved Blocktank refund address does not belong to the active wallet and network."
         case .persistenceFailed:
             "The Blocktank refund address could not be saved."
+        case .allocationDidNotAdvance:
+            "The Blocktank refund address index did not advance."
+        case .allocationAttemptsExhausted:
+            "No unused Blocktank refund address was found."
         }
     }
 }
@@ -76,9 +82,19 @@ struct BlocktankRefundAddressStore {
 
     func save(_ value: BlocktankRefundAddress) throws {
         let data = try JSONEncoder().encode(value)
+        let previousValue = defaults.object(forKey: key)
         defaults.set(data, forKey: key)
 
-        guard try load(forKey: key) == value else {
+        do {
+            guard try load(forKey: key) == value else {
+                throw BlocktankRefundAddressError.persistenceFailed
+            }
+        } catch {
+            if let previousValue {
+                defaults.set(previousValue, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
             throw BlocktankRefundAddressError.persistenceFailed
         }
     }
@@ -98,9 +114,17 @@ struct BlocktankRefundAddressStore {
     }
 
     private static func matchingNetworks(for address: String) -> [LDKNode.Network] {
-        [LDKNode.Network.bitcoin, .testnet, .signet, .regtest].filter {
-            AddressScriptType.nativeSegwit.matchesAddressFormat(address, network: $0)
+        let trimmed = address.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("bc1q") {
+            return [.bitcoin]
         }
+        if trimmed.hasPrefix("bcrt1q") {
+            return [.regtest]
+        }
+        if trimmed.hasPrefix("tb1q") {
+            return [.testnet, .signet]
+        }
+        return []
     }
 }
 
@@ -112,6 +136,7 @@ protocol BlocktankRefundAddressProviding: AnyObject {
 @MainActor
 final class BlocktankRefundAddressProvider: BlocktankRefundAddressProviding {
     static let maximumExternalIndex = UInt32(Int32.max)
+    static let maximumAllocationAttempts = 20
 
     typealias Load = () throws -> BlocktankRefundAddress?
     typealias Save = (BlocktankRefundAddress) throws -> Void
@@ -201,6 +226,8 @@ final class BlocktankRefundAddressProvider: BlocktankRefundAddressProviding {
         isUsed: IsUsed,
         allocate: Allocate
     ) async throws -> String {
+        var previousIndex: UInt32?
+
         if let cached = try load() {
             try validate(cached)
 
@@ -213,12 +240,26 @@ final class BlocktankRefundAddressProvider: BlocktankRefundAddressProviding {
             if try await isUsed(cached.address) == false {
                 return cached.address
             }
+            previousIndex = cached.index
         }
 
-        let generated = try await allocate()
-        try validate(generated)
-        try save(generated)
-        return generated.address
+        for _ in 0 ..< maximumAllocationAttempts {
+            let generated = try await allocate()
+            try validate(generated)
+            if let previousIndex, generated.index <= previousIndex {
+                throw BlocktankRefundAddressError.allocationDidNotAdvance
+            }
+            previousIndex = generated.index
+
+            if try await isUsed(generated.address) {
+                continue
+            }
+
+            try save(generated)
+            return generated.address
+        }
+
+        throw BlocktankRefundAddressError.allocationAttemptsExhausted
     }
 
     private static func validate(_ value: BlocktankRefundAddress) throws {

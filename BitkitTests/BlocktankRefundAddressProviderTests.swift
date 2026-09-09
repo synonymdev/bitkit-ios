@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import LDKNode
 import XCTest
 
 @MainActor
@@ -8,6 +9,7 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
         case lookup
         case reveal
         case persist
+        case usage
         case estimate
         case submit
     }
@@ -49,6 +51,8 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
         lookup: ((UInt32) async throws -> BlocktankRefundAddress)? = nil,
         reveal: ((UInt32) async throws -> Void)? = nil,
         save: ((BlocktankRefundAddress) throws -> Void)? = nil,
+        isUsed: ((String) async throws -> Bool)? = nil,
+        allocate: (() async throws -> BlocktankRefundAddress)? = nil,
         allocationDelayNanoseconds: UInt64 = 0
     ) -> BlocktankRefundAddressProvider {
         BlocktankRefundAddressProvider(
@@ -60,8 +64,8 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
                 return BlocktankRefundAddress(address: cached.address, index: index)
             },
             reveal: reveal ?? { _ in state.revealCount += 1 },
-            isUsed: { state.usedAddresses.contains($0) },
-            allocate: {
+            isUsed: isUsed ?? { state.usedAddresses.contains($0) },
+            allocate: allocate ?? {
                 if allocationDelayNanoseconds > 0 {
                     try await Task.sleep(nanoseconds: allocationDelayNanoseconds)
                 }
@@ -99,6 +103,68 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
         XCTAssertEqual(reusedAddress, "refund-1")
         XCTAssertEqual(state.allocationCount, 2)
         XCTAssertEqual(state.cached, BlocktankRefundAddress(address: "refund-1", index: 1))
+    }
+
+    func testAllocationSkipsUsedCandidatesUntilFirstUnusedAddress() async throws {
+        let state = State()
+        state.usedAddresses = ["refund-0", "refund-1"]
+        let provider = makeProvider(state: state)
+
+        let address = try await provider.addressForOrder()
+
+        XCTAssertEqual(address, "refund-2")
+        XCTAssertEqual(state.allocationCount, 3)
+        XCTAssertEqual(state.cached, BlocktankRefundAddress(address: "refund-2", index: 2))
+    }
+
+    func testAllocationStopsAfterTwentyUsedCandidatesAndPreservesCache() async {
+        let state = State()
+        state.cached = BlocktankRefundAddress(address: "refund-0", index: 0)
+        state.allocationCount = 1
+        state.usedAddresses = Set((0 ... 20).map { "refund-\($0)" })
+        let provider = makeProvider(state: state)
+
+        await XCTAssertThrowsErrorAsync({ try await provider.addressForOrder() }) { error in
+            XCTAssertEqual(error as? BlocktankRefundAddressError, .allocationAttemptsExhausted)
+        }
+        XCTAssertEqual(state.allocationCount, 21)
+        XCTAssertEqual(state.cached, BlocktankRefundAddress(address: "refund-0", index: 0))
+    }
+
+    func testAllocationUsageCheckFailurePreservesCache() async {
+        let state = State()
+        state.cached = BlocktankRefundAddress(address: "refund-0", index: 0)
+        state.allocationCount = 1
+        let provider = makeProvider(state: state, isUsed: { address in
+            if address == "refund-0" {
+                return true
+            }
+            throw StubError.usage
+        })
+
+        await XCTAssertThrowsErrorAsync({ try await provider.addressForOrder() }) { error in
+            XCTAssertTrue(error is StubError)
+        }
+        XCTAssertEqual(state.allocationCount, 2)
+        XCTAssertEqual(state.cached, BlocktankRefundAddress(address: "refund-0", index: 0))
+    }
+
+    func testAllocationRejectsNonAdvancingIndex() async {
+        let state = State()
+        var candidates = [
+            BlocktankRefundAddress(address: "refund-used", index: 7),
+            BlocktankRefundAddress(address: "refund-unused", index: 7),
+        ]
+        let provider = makeProvider(
+            state: state,
+            isUsed: { $0 == "refund-used" },
+            allocate: { candidates.removeFirst() }
+        )
+
+        await XCTAssertThrowsErrorAsync({ try await provider.addressForOrder() }) { error in
+            XCTAssertEqual(error as? BlocktankRefundAddressError, .allocationDidNotAdvance)
+        }
+        XCTAssertNil(state.cached)
     }
 
     func testConcurrentCallsCoalesceOneAllocation() async throws {
@@ -214,21 +280,30 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
         XCTAssertEqual(try regtestStore.load(), regtestAddress)
     }
 
-    func testLegacyCacheMigratesOnlyOnMatchingNetwork() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
-        defer { defaults.removePersistentDomain(forName: #function) }
-        let legacy = BlocktankRefundAddress(address: "bcrt1qrefund", index: 7)
-        defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+    func testLegacyCacheMigratesOnlyWhenPrefixIdentifiesNetwork() throws {
+        let cases: [(LDKNode.Network, String)] = [
+            (.bitcoin, " bc1qrefund "),
+            (.regtest, " bcrt1qrefund "),
+        ]
 
-        let bitcoinStore = BlocktankRefundAddressStore(defaults: defaults, network: .bitcoin)
-        XCTAssertNil(try bitcoinStore.load())
-        XCTAssertNotNil(defaults.data(forKey: BlocktankRefundAddressStore.legacyKey))
-        XCTAssertNil(defaults.data(forKey: BlocktankRefundAddressStore.key(for: .bitcoin)))
+        for (offset, testCase) in cases.enumerated() {
+            let suiteName = "\(#function)-\(offset)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let legacy = BlocktankRefundAddress(address: testCase.1, index: 7)
+            defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
 
-        let regtestStore = BlocktankRefundAddressStore(defaults: defaults, network: .regtest)
-        XCTAssertEqual(try regtestStore.load(), legacy)
-        XCTAssertNil(defaults.object(forKey: BlocktankRefundAddressStore.legacyKey))
-        XCTAssertNotNil(defaults.data(forKey: BlocktankRefundAddressStore.key(for: .regtest)))
+            let store = BlocktankRefundAddressStore(defaults: defaults, network: testCase.0)
+            XCTAssertEqual(try store.load(), legacy)
+            XCTAssertNil(defaults.object(forKey: BlocktankRefundAddressStore.legacyKey))
+            let migrated = try XCTUnwrap(
+                defaults.data(forKey: BlocktankRefundAddressStore.key(for: testCase.0))
+            )
+            XCTAssertEqual(
+                try JSONDecoder().decode(BlocktankRefundAddress.self, from: migrated),
+                legacy
+            )
+        }
     }
 
     func testClearPreservesLegacyCacheFromAnotherNetwork() throws {
@@ -241,6 +316,46 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
         XCTAssertNotNil(defaults.data(forKey: BlocktankRefundAddressStore.legacyKey))
 
         BlocktankRefundAddressStore(defaults: defaults, network: .regtest).clear()
+        XCTAssertNil(defaults.object(forKey: BlocktankRefundAddressStore.legacyKey))
+    }
+
+    func testAmbiguousTestnetLegacyCacheIsPreserved() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defer { defaults.removePersistentDomain(forName: #function) }
+        let legacy = BlocktankRefundAddress(address: "tb1qrefund", index: 7)
+        defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+
+        XCTAssertNil(try BlocktankRefundAddressStore(defaults: defaults, network: .testnet).load())
+        XCTAssertNil(try BlocktankRefundAddressStore(defaults: defaults, network: .signet).load())
+        BlocktankRefundAddressStore(defaults: defaults, network: .testnet).clear()
+        BlocktankRefundAddressStore(defaults: defaults, network: .signet).clear()
+        XCTAssertNotNil(defaults.data(forKey: BlocktankRefundAddressStore.legacyKey))
+    }
+
+    func testScopedCacheTakesPrecedenceOverLegacyCache() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defer { defaults.removePersistentDomain(forName: #function) }
+        let store = BlocktankRefundAddressStore(defaults: defaults, network: .regtest)
+        let scoped = BlocktankRefundAddress(address: "bcrt1qscoped", index: 8)
+        let legacy = BlocktankRefundAddress(address: "bc1qlegacy", index: 7)
+        try store.save(scoped)
+        defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+
+        XCTAssertEqual(try store.load(), scoped)
+        XCTAssertNotNil(defaults.data(forKey: BlocktankRefundAddressStore.legacyKey))
+    }
+
+    func testUnknownLegacyCacheFailsClosedAndIsCleared() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defer { defaults.removePersistentDomain(forName: #function) }
+        let legacy = BlocktankRefundAddress(address: "unknown", index: 7)
+        defaults.set(try JSONEncoder().encode(legacy), forKey: BlocktankRefundAddressStore.legacyKey)
+        let store = BlocktankRefundAddressStore(defaults: defaults, network: .regtest)
+
+        XCTAssertThrowsError(try store.load()) { error in
+            XCTAssertEqual(error as? BlocktankRefundAddressError, .invalidCache)
+        }
+        store.clear()
         XCTAssertNil(defaults.object(forKey: BlocktankRefundAddressStore.legacyKey))
     }
 
