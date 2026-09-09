@@ -54,9 +54,7 @@ struct SubscriptionsView: View {
     }
 
     private var expired: [PaykitSubscription] {
-        paymentRequests.subscriptions.filter {
-            $0.isPayer && $0.isExpired(at: now) && $0.wasAccepted
-        }
+        paymentRequests.subscriptions.filter { $0.isExpiredVisible(at: now) }
     }
 
     private var created: [PaykitSubscription] {

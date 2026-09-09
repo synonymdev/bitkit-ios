@@ -384,6 +384,40 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(received.first?.paymentProofKind, .lightning)
     }
 
+    func testExpiredCreatorSubscriptionsKeepPaidHistoryAccessible() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-15T08:00:00Z"))
+        let period = BillingPeriod(startsAt: "2027-01-01T08:00:00Z", endsAt: "2027-02-01T08:00:00Z")
+        let proof = try paymentProofRecord(
+            endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            billingPeriod: period
+        )
+        for state in [PaymentRequestLifecycleState.canceled, .activeRecurring] {
+            for hasPayments in [false, true] {
+                let record = try paymentRequestRecord(
+                    state: state,
+                    role: .payee,
+                    recurrence: PaymentRequestRecurrence(
+                        every: 1,
+                        unit: "month",
+                        startsAt: period.startsAt,
+                        anchor: period.startsAt,
+                        endsAt: state == .activeRecurring ? period.endsAt : nil
+                    ),
+                    paymentProofs: hasPayments ? [proof] : []
+                )
+                let manager = paymentRequestManager(sdk: PaymentRequestSdkMock(records: [record]), clock: PaymentRequestTestClock(now))
+                await manager.refresh()
+                let subscription = try XCTUnwrap(manager.subscriptions.first)
+                XCTAssertFalse(subscription.isCreatedVisible(at: now))
+                XCTAssertEqual(subscription.isExpiredVisible(at: now), hasPayments)
+                XCTAssertEqual(subscription.receivedPaymentRequests().count, hasPayments ? 1 : 0)
+                XCTAssertFalse(subscription.canCancel(at: now))
+                XCTAssertTrue(manager.pendingRequests.isEmpty)
+            }
+        }
+    }
+
     func testFractionalBillingProofsRemainPaidForCreatorAndPayer() throws {
         for fraction in ["123", "123456789", "999999999"] {
             let first = BillingPeriod(
