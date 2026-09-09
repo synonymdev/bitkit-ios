@@ -21,6 +21,14 @@ struct ReceiveCjitAmount: View {
         amountViewModel.amountSats
     }
 
+    private var canContinue: Bool {
+        guard blocktank.minCjitSats != nil else {
+            return false
+        }
+
+        return amountSats >= minimumAmount
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__receive_bitcoin"), showBackButton: true)
@@ -66,7 +74,7 @@ struct ReceiveCjitAmount: View {
                 }
             }
 
-            CustomButton(title: t("common__continue"), isDisabled: amountSats < minimumAmount, isLoading: isCreatingCjit) {
+            CustomButton(title: t("common__continue"), isDisabled: !canContinue, isLoading: isCreatingCjit) {
                 Task {
                     await onContinue()
                 }
@@ -79,7 +87,11 @@ struct ReceiveCjitAmount: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .task {
-            try? await blocktank.refreshMinCjitSats()
+            do {
+                try await blocktank.refreshMinCjitSats()
+            } catch {
+                app.toast(error)
+            }
             await refreshMaxCjitAmount()
             updateInputCap()
         }
@@ -98,6 +110,10 @@ struct ReceiveCjitAmount: View {
 
     private func onContinue() async {
         guard !isCreatingCjit else {
+            return
+        }
+
+        guard canContinue else {
             return
         }
 

@@ -13,6 +13,7 @@ enum CustomServiceError: LocalizedError {
     case regtestOnlyMethod
     case channelSizeExceedsMaximum
     case cjitNodeCapacityExceeded
+    case invalidCjitQuote
     case currencyRateUnavailable
 
     var errorDescription: String? {
@@ -39,6 +40,8 @@ enum CustomServiceError: LocalizedError {
             return "Channel size exceeds maximum allowed size"
         case .cjitNodeCapacityExceeded:
             return "Additional spending capacity is unavailable right now."
+        case .invalidCjitQuote:
+            return NSLocalizedString("wallet__receive_liquidity__invalid_quote", comment: "")
         case .currencyRateUnavailable:
             return "Currency rate unavailable"
         }
@@ -196,6 +199,9 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .cjitNodeCapacityExceeded:
             message = "Additional spending capacity is unavailable right now."
+            debugMessage = nil
+        case .invalidCjitQuote:
+            message = "wallet__receive_liquidity__invalid_quote"
             debugMessage = nil
         case .currencyRateUnavailable:
             message = "Currency rate unavailable"

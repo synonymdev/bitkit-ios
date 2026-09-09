@@ -1373,6 +1373,7 @@
 "wallet__receive_connect_additional" = "To receive more instant Bitcoin, Bitkit has to increase your liquidity. A <accent>{networkFee}</accent> network fee and <accent>{serviceFee}</accent> service provider fee will be deducted from the amount you specified.";
 "wallet__receive_liquidity__nav_title" = "Spending Balance Setup";
 "wallet__receive_liquidity__nav_title_additional" = "Increase Receiving Capacity";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit received an invalid liquidity quote. Please try again.";
 "wallet__receive_liquidity__text" = "Your Spending Balance uses the Lightning Network to make your payments cheaper, faster, and more private.\n\nThis works like internet access, but you pay for liquidity & routing instead of bandwidth.\n\nThis setup includes some one-time costs.";
 "wallet__receive_liquidity__text_additional" = "Your Spending Balance uses the Lightning Network to make your payments cheaper, faster, and more private.\n\nThis works like internet access, but you pay for liquidity & routing instead of bandwidth.\n\nBitkit needs to increase the receiving capacity of your spending balance to process this payment.";
 "wallet__receive_liquidity__label" = "Spending Balance Liquidity";

@@ -132,7 +132,7 @@ class BlocktankViewModel: ObservableObject {
         }
 
         do {
-            return try await coreService.blocktank.createCjit(
+            let entry = try await coreService.blocktank.createCjit(
                 channelSizeSat: channelSizeSat,
                 invoiceSat: amountSats,
                 invoiceDescription: description,
@@ -140,16 +140,34 @@ class BlocktankViewModel: ObservableObject {
                 channelExpiryWeeks: defaultChannelExpiryWeeks,
                 options: .init(source: defaultSource, discountCode: nil)
             )
+            try Self.validateCjitEntry(entry, receiveAmountSats: amountSats)
+            return entry
         } catch {
-            if isNodeCapacityError(error) {
-                throw CustomServiceError.cjitNodeCapacityExceeded
-            }
-
-            if isMaxChannelSizeError(error) {
-                throw CustomServiceError.channelSizeExceedsMaximum
-            }
-            throw error
+            throw Self.normalizedCreateCjitError(error)
         }
+    }
+
+    nonisolated static func validateCjitEntry(_ entry: IcJitEntry, receiveAmountSats: UInt64) throws {
+        guard entry.feeSat < receiveAmountSats else {
+            throw CustomServiceError.invalidCjitQuote
+        }
+
+        let userBalanceSats = receiveAmountSats - entry.feeSat
+        guard entry.channelSizeSat >= userBalanceSats else {
+            throw CustomServiceError.invalidCjitQuote
+        }
+    }
+
+    nonisolated static func normalizedCreateCjitError(_ error: Error) -> Error {
+        if isNodeCapacityError(error) {
+            return CustomServiceError.cjitNodeCapacityExceeded
+        }
+
+        if isMaxChannelSizeError(error) {
+            return CustomServiceError.channelSizeExceedsMaximum
+        }
+
+        return error
     }
 
     private func canCreateCjit(amountSats: UInt64, maxChannelSizeSat: UInt64) async throws -> Bool {
@@ -195,24 +213,75 @@ class BlocktankViewModel: ObservableObject {
         return maxChannelSizeSat
     }
 
-    private func isNodeCapacityError(_ error: Error) -> Bool {
+    private nonisolated static func isNodeCapacityError(_ error: Error) -> Bool {
         if error.isCjitNodeCapacityExceeded {
             return true
         }
 
-        let description = String(describing: error)
-        return description.localizedCaseInsensitiveContains("capacity is above our capacity limit")
+        return errorDescriptionCandidates(error).contains {
+            $0.localizedCaseInsensitiveContains("capacity is above our capacity limit")
+        }
     }
 
-    private func isMaxChannelSizeError(_ error: Error) -> Bool {
+    private nonisolated static func isMaxChannelSizeError(_ error: Error) -> Bool {
         if error.isChannelSizeExceedsMaximum {
             return true
         }
 
-        let description = String(describing: error)
-        return description.localizedCaseInsensitiveContains("Channel size is too big")
-            || description.localizedCaseInsensitiveContains("channelSizeExceedsMaximum")
-            || description.localizedCaseInsensitiveContains("maxChannelSizeSat")
+        return errorDescriptionCandidates(error).contains {
+            $0.localizedCaseInsensitiveContains("Channel size is too big")
+                || $0.localizedCaseInsensitiveContains("channelSizeExceedsMaximum")
+                || $0.localizedCaseInsensitiveContains("maxChannelSizeSat")
+        }
+    }
+
+    private nonisolated static func errorDescriptionCandidates(_ error: Error) -> [String] {
+        var candidates = [
+            String(describing: error),
+            String(reflecting: error),
+            error.localizedDescription,
+        ]
+
+        if let appError = error as? AppError {
+            candidates.append(appError.message)
+            if let debugMessage = appError.debugMessage {
+                candidates.append(debugMessage)
+            }
+            if let underlyingError = appError.underlyingError {
+                candidates.append(String(describing: underlyingError))
+                candidates.append(underlyingError.localizedDescription)
+            }
+        }
+
+        appendMirroredErrorDescriptions(from: error, to: &candidates)
+
+        return candidates
+    }
+
+    private nonisolated static func appendMirroredErrorDescriptions(from value: Any, to candidates: inout [String]) {
+        for child in Mirror(reflecting: value).children {
+            appendMirroredErrorDescription(from: child.value, to: &candidates)
+        }
+    }
+
+    private nonisolated static func appendMirroredErrorDescription(from value: Any, to candidates: inout [String]) {
+        if let string = value as? String {
+            candidates.append(string)
+            return
+        }
+
+        if let error = value as? Error {
+            candidates.append(String(describing: error))
+            candidates.append(error.localizedDescription)
+            return
+        }
+
+        let mirror = Mirror(reflecting: value)
+        guard mirror.displayStyle == .optional, let wrappedValue = mirror.children.first?.value else {
+            return
+        }
+
+        appendMirroredErrorDescription(from: wrappedValue, to: &candidates)
     }
 
     func createOrder(clientBalance: UInt64, lspBalance: UInt64? = nil) async throws -> IBtOrder {

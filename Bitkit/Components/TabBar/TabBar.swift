@@ -72,7 +72,7 @@ struct TabBar: View {
 
         if Self.shouldOpenSpendingCjitEntry(
             isSpendingWallet: navigation.currentRoute == .spendingWallet,
-            canCreateVariableLightningInvoice: wallet.canCreateReceiveLightningInvoice(amountSats: nil),
+            wallet: wallet,
             hasPendingTransfersToSpending: hasPendingTransfersToSpending
         ) {
             // On spending wallet screen, show CJIT flow when user can't receive normally
@@ -88,10 +88,10 @@ struct TabBar: View {
 
     static func shouldOpenSpendingCjitEntry(
         isSpendingWallet: Bool,
-        canCreateVariableLightningInvoice: Bool,
+        wallet: WalletViewModel,
         hasPendingTransfersToSpending: Bool
     ) -> Bool {
-        isSpendingWallet && !canCreateVariableLightningInvoice && !hasPendingTransfersToSpending
+        isSpendingWallet && !wallet.canCreateReceiveLightningInvoice(amountSats: nil) && !hasPendingTransfersToSpending
     }
 }
 

@@ -320,7 +320,7 @@ struct ReceiveQr: View {
                     imageAsset: config.imageAsset,
                     accentColor: config.accentColor,
                     navigationPath: $navigationPath,
-                    editRoute: .edit(tab: tab, onchainOnly: false)
+                    editRoute: editRoute(for: tab)
                 )
             } else {
                 ProgressView()
@@ -465,13 +465,17 @@ struct ReceiveQr: View {
                 CopyAddressCard(
                     addresses: addressPairs,
                     navigationPath: $navigationPath,
-                    editRoute: .edit(tab: tab, onchainOnly: tab == .trezor),
+                    editRoute: editRoute(for: tab),
                     accentColor: tab == .trezor ? .blueAccent : nil
                 )
             }
 
             Spacer()
         }
+    }
+
+    private func editRoute(for tab: ReceiveTab) -> ReceiveRoute? {
+        .edit(tab: tab, onchainOnly: tab == .trezor, replacesCurrentQr: tab == .spending && cjitInvoice != nil)
     }
 
     private struct ImageConfig {

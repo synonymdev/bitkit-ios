@@ -50,3 +50,4 @@
 
 "wallet__receive_cjit_error_node_capacity__title" = "Capacidade adicional indisponível";
 "wallet__receive_cjit_error_node_capacity__description" = "O Bitkit não pode adicionar mais capacidade de gastos a esta carteira neste momento.";
+"wallet__receive_liquidity__invalid_quote" = "A Bitkit recebeu uma cotação de liquidez inválida. Tente novamente.";

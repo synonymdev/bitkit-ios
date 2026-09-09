@@ -1042,6 +1042,7 @@
 "wallet__receive_connect_additional" = "Bitkit musi zwiększyć Twoją płynność, abyś mógł otrzymywać więcej natychmiastowych płatności. Od wskazanej kwoty zostanie pobrana opłata sieciowa <accent>{networkFee}</accent> i serwisowa <accent>{serviceFee}</accent>.";
 "wallet__receive_liquidity__nav_title" = "Konfiguracja salda wydatków";
 "wallet__receive_liquidity__nav_title_additional" = "Zwiększenie zdolności odbioru";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit otrzymał nieprawidłową ofertę płynności. Spróbuj ponownie.";
 "wallet__receive_liquidity__text" = "Saldo Wydatków wykorzystuje sieć Lightning, aby Twoje płatności były tańsze, szybsze i bardziej prywatne.\n\nDziała to podobnie jak dostęp do Internetu, ale płacą Państwo za płynność i routing zamiast za przepustowość.\n\nTa konfiguracja obejmuje pewne jednorazowe koszty.";
 "wallet__receive_liquidity__text_additional" = "Saldo Wydatków wykorzystuje sieć Lightning, aby Twoje płatności były tańsze, szybsze i bardziej prywatne.\n\nDziała to podobnie jak dostęp do Internetu, ale płacą Państwo za płynność i routing zamiast za przepustowość.\n\nBitkit musi zwiększyć zdolność odbiorczą Państwa salda wydatków, aby przetworzyć tę płatność.";
 "wallet__receive_liquidity__label" = "Saldo wydatków Płynność";

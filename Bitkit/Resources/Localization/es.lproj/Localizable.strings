@@ -907,6 +907,7 @@
 "wallet__receive_connect_additional" = "Para recibir más Bitcoin instantáneo, Bitkit tiene que aumentar tu liquidez. Una comisión de red de <accent>{networkFee}</accent> y una comisión del proveedor de servicio de <accent>{serviceFee}</accent> se deducirán de la cantidad que especificaste.";
 "wallet__receive_liquidity__nav_title" = "Configuración del Saldo de Gasto";
 "wallet__receive_liquidity__nav_title_additional" = "Incrementar Capacidad de Recepción";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit recibió una cotización de liquidez no válida. Inténtalo de nuevo.";
 "wallet__receive_liquidity__text" = "Tu Saldo de Gasto usa la Red Lightning para hacer tus pagos más baratos, rápidos y privados.\n\nEsto funciona como el acceso a Internet, pero pagas por liquidez y enrutamiento en lugar de ancho de banda.\n\nEsta configuración incluye algunos costos únicos.";
 "wallet__receive_liquidity__text_additional" = "Tu Saldo de Gasto usa la Red Lightning para hacer tus pagos más baratos, rápidos y privados.\n\nEsto funciona como el acceso a Internet, pero pagas por liquidez y enrutamiento en lugar de ancho de banda.\n\nBitkit necesita aumentar la capacidad de recepción de tu saldo de gasto para procesar este pago.";
 "wallet__receive_liquidity__label" = "Liquidez del Saldo de Gasto";

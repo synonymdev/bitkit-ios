@@ -1017,6 +1017,7 @@
 "wallet__receive_connect_additional" = "Chcete-li získat více okamžitých bitcoinů, musí Bitkit navýšit vaši likviditu. Od vámi zadané částky bude odečten síťový poplatek <accent>{networkFee}</accent> a <accent>{serviceFee}</accent> poplatek poskytovatele služeb  .";
 "wallet__receive_liquidity__nav_title" = "Nastavení disponibilního zůstatku";
 "wallet__receive_liquidity__nav_title_additional" = "Zvýšení přijímací kapacity";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit obdržel neplatnou nabídku likvidity. Zkuste to prosím znovu.";
 "wallet__receive_liquidity__text" = "Váš zůstatek na účtu využívá síť lightning network, aby byly vaše platby levnější, rychlejší a soukromější.\n\nFunguje to jako přístup k internetu, ale místo za šířku pásma platíte za likviditu a směrování.\n\nToto nastavení zahrnuje některé jednorázové náklady.";
 "wallet__receive_liquidity__text_additional" = "Váš zůstatek na účtu využívá síť lightning network, aby byly vaše platby levnější, rychlejší a soukromější.\n\nFunguje to jako přístup k internetu, ale místo za šířku pásma platíte za likviditu a směrování.\n\nBitkit potřebuje zvýšit přijímací kapacitu vašeho výdajového zůstatku, aby mohl tuto platbu zpracovat.";
 "wallet__receive_liquidity__label" = "Likvidita disponibilního zůstatku";
