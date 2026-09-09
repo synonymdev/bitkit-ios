@@ -123,10 +123,32 @@ struct RequestOrPayView: View {
 }
 
 struct PaymentRequestRecipientView: View {
+    let onSelect: (PaykitPaymentRequestTarget) -> Void
+
+    var body: some View {
+        PaykitRecipientPicker(
+            selectedTarget: nil,
+            onSelect: onSelect,
+            accessibilityIdentifier: "PaymentRequestRecipient",
+            testIdentifierPrefix: "PaymentRequest"
+        ) {
+            SheetHeader(title: t("wallet__payment_request_choose_recipient"), showBackButton: true)
+        } footer: {
+            EmptyView()
+        }
+    }
+}
+
+struct PaykitRecipientPicker<Header: View, Footer: View>: View {
     @EnvironmentObject private var contactsManager: ContactsManager
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
+    let selectedTarget: PaykitPaymentRequestTarget?
     let onSelect: (PaykitPaymentRequestTarget) -> Void
+    let accessibilityIdentifier: String
+    let testIdentifierPrefix: String
+    @ViewBuilder let header: () -> Header
+    @ViewBuilder let footer: () -> Footer
 
     @State private var recipientQuery = ""
 
@@ -145,7 +167,7 @@ struct PaymentRequestRecipientView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("wallet__payment_request_choose_recipient"), showBackButton: true)
+            header()
 
             recipientInput
                 .padding(.bottom, 16)
@@ -160,11 +182,13 @@ struct PaymentRequestRecipientView: View {
                     }
                 }
             }
+
+            footer()
         }
         .padding(.horizontal, 16)
         .sheetBackground()
         .navigationBarHidden(true)
-        .accessibilityIdentifier("PaymentRequestRecipient")
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     private var recipientInput: some View {
@@ -177,7 +201,7 @@ struct PaymentRequestRecipientView: View {
                     text: $recipientQuery,
                     backgroundColor: .clear,
                     font: .custom(Fonts.regular, size: 17),
-                    testIdentifier: "PaymentRequestRecipientFilter"
+                    testIdentifier: "\(testIdentifierPrefix)RecipientFilter"
                 )
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -198,7 +222,7 @@ struct PaymentRequestRecipientView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("PaymentRequestRecipientPaste")
+                .accessibilityIdentifier("\(testIdentifierPrefix)RecipientPaste")
             }
             .padding(16)
             .background(Color.white08)
@@ -217,10 +241,20 @@ struct PaymentRequestRecipientView: View {
     @ViewBuilder
     private func recipientRow(_ target: PaykitPaymentRequestTarget) -> some View {
         if let contact = contact(for: target) {
-            PubkyContactRow(contact: contact, verticalPadding: 20) {
-                onSelect(target)
+            ZStack(alignment: .trailing) {
+                PubkyContactRow(contact: contact, verticalPadding: 20) {
+                    onSelect(target)
+                }
+                if selectedTarget == target {
+                    Image("check-mark")
+                        .resizable()
+                        .frame(width: 24, height: 24)
+                        .foregroundColor(.purpleAccent)
+                        .padding(.trailing, 16)
+                        .accessibilityHidden(true)
+                }
             }
-            .accessibilityIdentifier("PaymentRequestContact-\(contact.publicKey)")
+            .accessibilityIdentifier("\(testIdentifierPrefix)Contact-\(contact.publicKey)")
         } else {
             Button {
                 onSelect(target)
@@ -229,12 +263,19 @@ struct PaymentRequestRecipientView: View {
                     ContactAvatarLetter(source: target.publicKey, size: 48)
                     BodyMSBText(PubkyPublicKeyFormat.displayTruncated(target.publicKey))
                     Spacer()
+                    if selectedTarget == target {
+                        Image("check-mark")
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.purpleAccent)
+                            .accessibilityHidden(true)
+                    }
                 }
                 .padding(.vertical, 20)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("PaymentRequestTarget-\(target.id)")
+            .accessibilityIdentifier("\(testIdentifierPrefix)Target-\(target.id)")
             CustomDivider()
         }
     }
