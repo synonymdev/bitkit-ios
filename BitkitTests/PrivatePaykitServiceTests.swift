@@ -1,4 +1,5 @@
 @testable import Bitkit
+import Paykit
 import XCTest
 
 final class PrivatePaykitServiceTests: XCTestCase {
@@ -15,6 +16,24 @@ final class PrivatePaykitServiceTests: XCTestCase {
     func testInitialLinkBurstUsesBoundedTwoSecondRetryCadence() {
         XCTAssertEqual(PrivatePaykitService.initialLinkBurstRetryDelays.count, 14)
         XCTAssertTrue(PrivatePaykitService.initialLinkBurstRetryDelays.allSatisfy { $0 == 2_000_000_000 })
+    }
+
+    func testPreparingSavedContactsDefersWhenPublicationIsUnavailable() async {
+        let service = PrivatePaykitService()
+        let contacts = ["pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"]
+        var preparedContacts = [String]()
+        let error = await service.prepareSavedContacts(
+            contacts,
+            publicationUnavailableReason: "the Lightning node is not running",
+            prepareLinks: { preparedContacts = $0 },
+            publishEndpoints: { _ in
+                XCTFail("Unavailable endpoints must not be published")
+                return PrivatePaykitError.privateUnavailable
+            }
+        )
+
+        XCTAssertNil(error)
+        XCTAssertEqual(preparedContacts, contacts)
     }
 
     func testReceiverNoiseDerivationMatchesCrossPlatformVector() {
@@ -348,6 +367,108 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertNil(successfulContactState)
         XCTAssertNotNil(failedContactState)
         XCTAssertEqual(PrivatePaykitService.pendingDeletedContactCleanupKeys(), [failedPublicKey])
+    }
+
+    func testImmediatePublicationContinuesAfterMarkerInspectionFailure() async throws {
+        let failedPublicKey = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let successfulPublicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let markerError = NSError(domain: "PrivatePaykitServiceTests", code: 1)
+        let endpoint = PublicPaykitService.Endpoint(
+            methodId: .regtestOnchainP2wpkh,
+            value: "bcrt1qendpoint",
+            min: nil,
+            max: nil,
+            rawPayload: #"{"value":"bcrt1qendpoint"}"#
+        )
+        var syncedUpdates = [PrivatePaymentListReservationUpdateInput]()
+        let operations = PrivatePaykitService.EndpointPublicationOperations(
+            currentPublicKey: { "pubkylocal" },
+            linkedReceiverPaths: { _ in ([:], nil) },
+            receiverPaths: { _ in [PaykitReceiverPath.wallet] },
+            receiverPathSelection: { publicKey, _ in
+                if publicKey == failedPublicKey {
+                    return PrivateReceiverPathSelection(
+                        linkableReceiverPaths: [],
+                        publishableReceiverPaths: [],
+                        cleanupProtectedReceiverPaths: [PaykitReceiverPath.wallet],
+                        error: markerError
+                    )
+                }
+                return PrivateReceiverPathSelection(
+                    linkableReceiverPaths: [],
+                    publishableReceiverPaths: [PaykitReceiverPath.wallet],
+                    cleanupProtectedReceiverPaths: [],
+                    error: nil
+                )
+            },
+            ensureLink: { _, _ in
+                XCTFail("No link should be prepared for this fixture")
+            },
+            buildEndpoints: { publicKey, receiverPath in
+                XCTAssertEqual(publicKey, successfulPublicKey)
+                XCTAssertEqual(receiverPath, PaykitReceiverPath.wallet)
+                return [endpoint]
+            },
+            syncPaymentLists: { updates in
+                syncedUpdates = updates
+                return PrivatePaymentListDeliveryReport(
+                    queued: [],
+                    cleared: [],
+                    failedToQueue: [],
+                    failedToDeliver: []
+                )
+            }
+        )
+        let service = PrivatePaykitService()
+
+        let error = await service.syncLocalEndpointPublication(
+            for: [failedPublicKey, successfulPublicKey],
+            reason: "test",
+            requireImmediatePublication: true,
+            operations: operations
+        )
+
+        XCTAssertNil(error)
+        XCTAssertEqual(syncedUpdates.count, 1)
+        let update = try XCTUnwrap(syncedUpdates.first)
+        XCTAssertEqual(update.counterparty, successfulPublicKey)
+        XCTAssertEqual(update.counterpartyReceiverPath, PaykitReceiverPath.wallet)
+        XCTAssertFalse(update.reservations.isEmpty)
+    }
+
+    func testDeferredPublicationIgnoresReceiverPathSelectionFailure() async {
+        let publicKey = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let markerError = NSError(domain: "PrivatePaykitServiceTests", code: 1)
+        let operations = PrivatePaykitService.EndpointPublicationOperations(
+            currentPublicKey: { "pubkylocal" },
+            linkedReceiverPaths: { _ in ([:], nil) },
+            receiverPaths: { _ in [PaykitReceiverPath.wallet] },
+            receiverPathSelection: { _, _ in throw markerError },
+            ensureLink: { _, _ in XCTFail("No link should be prepared") },
+            buildEndpoints: { _, _ in
+                XCTFail("No endpoint should be built")
+                return []
+            },
+            syncPaymentLists: { _ in
+                XCTFail("No payment list should be synced")
+                return PrivatePaymentListDeliveryReport(
+                    queued: [],
+                    cleared: [],
+                    failedToQueue: [],
+                    failedToDeliver: []
+                )
+            }
+        )
+        let service = PrivatePaykitService()
+
+        let error = await service.syncLocalEndpointPublication(
+            for: [publicKey],
+            reason: "test",
+            requireImmediatePublication: false,
+            operations: operations
+        )
+
+        XCTAssertNil(error)
     }
 }
 

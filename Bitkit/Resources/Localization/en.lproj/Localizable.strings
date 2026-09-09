@@ -81,6 +81,8 @@
 "hardware__remove_dialog_keep" = "Back up name and tags";
 "hardware__remove_error" = "Could not remove the hardware wallet. Please try again.";
 "hardware__remove_keep_error" = "Could not keep this wallet's tags in your backup. Try again, or remove it without keeping them.";
+"hardware__send_broadcast_failed_text" = "Check your connection and try again.";
+"hardware__send_broadcast_failed_title" = "Payment not confirmed";
 "hardware__send_confirm_address" = "To address (confirm on device)";
 "hardware__send_open_connect" = "Open Trezor Connect";
 "hardware__send_sign_title" = "Sign With Device";

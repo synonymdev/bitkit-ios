@@ -240,6 +240,10 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         return !overflow && milliSatoshis == requestedMilliSatoshis
     }
 
+    func acceptsLightningInvoiceAmount(satoshis: UInt64) -> Bool {
+        satoshis == 0 || satoshis == amountSats
+    }
+
     func acceptsPaymentAmount(_ amountSats: UInt64) -> Bool {
         amountSats == self.amountSats
     }
@@ -671,6 +675,34 @@ struct PaykitPaymentRequestService {
 protocol PaykitPaymentRequestPresentationStoring {
     func load(identity: String) throws -> Set<PaykitPaymentRequest.ID>
     func save(_ ids: Set<PaykitPaymentRequest.ID>, identity: String) throws
+}
+
+enum PaykitPaymentRequestPresentationCoordinator {
+    @MainActor
+    static func handleAmountMismatch(
+        _ error: Error,
+        request: PaykitPaymentRequest,
+        manager: PaykitPaymentRequestManager,
+        showError: (Error) -> Void
+    ) -> Bool {
+        guard error as? PaykitPaymentRequestError == .amountMismatch else { return false }
+        showError(error)
+        _ = manager.markPresentedIfPending(request)
+        return true
+    }
+
+    @MainActor
+    static func handleUnavailablePaymentRoute(
+        _ request: PaykitPaymentRequest,
+        app: AppViewModel,
+        manager: PaykitPaymentRequestManager,
+        resetWalletSendState: () -> Void
+    ) {
+        let insufficientBalance = app.didRejectScannedPaymentForInsufficientBalance
+        app.resetSendState()
+        resetWalletSendState()
+        manager.handleUnavailablePaymentRoute(request, insufficientBalance: insufficientBalance)
+    }
 }
 
 struct PaykitPaymentRequestPresentationStore: PaykitPaymentRequestPresentationStoring {
@@ -1293,6 +1325,14 @@ final class PaykitPaymentRequestManager {
         schedulePresentationRetry()
         persistPresentedRequestIds()
         return true
+    }
+
+    func handleUnavailablePaymentRoute(_ request: PaykitPaymentRequest, insufficientBalance: Bool) {
+        if insufficientBalance {
+            _ = markPresentedIfPending(request)
+        } else {
+            deferPresentation(request)
+        }
     }
 
     private func performRefresh(
