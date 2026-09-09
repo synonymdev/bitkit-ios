@@ -15,6 +15,7 @@ enum SheetID: String, CaseIterable {
     case pubkyAuthApproval
     case notifications
     case paymentRequests
+    case subscription
     case quickpay
     case receive
     case receivedTx
@@ -293,6 +294,18 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .paymentRequests else { return nil }
             return PaymentRequestsSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var subscriptionSheetItem: SubscriptionSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .subscription else { return nil }
+            return config.data as? SubscriptionSheetItem
         }
         set {
             if newValue == nil {
