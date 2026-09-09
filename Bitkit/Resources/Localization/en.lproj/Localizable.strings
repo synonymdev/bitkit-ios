@@ -1543,7 +1543,7 @@
 "subscriptions__custom_icon" = "Icon";
 "subscriptions__custom_icon_description" = "Tap to upload a custom icon";
 "subscriptions__daily" = "Daily";
-"subscriptions__daily_subscription" = "Daily Subscription";
+"subscriptions__daily_subscription" = "Daily subscription";
 "subscriptions__details" = "Subscription Details";
 "subscriptions__delete_subscription" = "Delete Subscription";
 "subscriptions__description" = "Description";
@@ -1564,7 +1564,7 @@
 "subscriptions__more_info" = "More Info";
 "subscriptions__monthly" = "Monthly";
 "subscriptions__monthly_cost" = "Monthly Cost";
-"subscriptions__monthly_subscription" = "Monthly Subscription";
+"subscriptions__monthly_subscription" = "Monthly subscription";
 "subscriptions__name" = "Subscription Name";
 "subscriptions__name_placeholder" = "Subscription name";
 "subscriptions__ongoing" = "Ongoing";
@@ -1581,7 +1581,7 @@
 "subscriptions__proposal_queued_headline" = "Queued\n<accent>Proposal</accent>";
 "subscriptions__proposal_queued_title" = "Queued";
 "subscriptions__proposal_queued_status" = "Proposal queued";
-"subscriptions__proposal_sent_description" = "You have sent a subscription proposal.";
+"subscriptions__proposal_sent_description" = "You have sent a subscription proposal to";
 "subscriptions__proposal_sent_headline" = "Sent\n<accent>Proposal</accent>";
 "subscriptions__proposal_sent_status" = "Proposal sent";
 "subscriptions__propose_subscription" = "Propose Subscription";
@@ -1604,9 +1604,9 @@
 "subscriptions__unsupported_frequency" = "Unsupported frequency";
 "subscriptions__unsupported_payment_description" = "This subscription uses payment details that Bitkit does not support yet.";
 "subscriptions__weekly" = "Weekly";
-"subscriptions__weekly_subscription" = "Weekly Subscription";
+"subscriptions__weekly_subscription" = "Weekly subscription";
 "subscriptions__yearly" = "Yearly";
-"subscriptions__yearly_subscription" = "Yearly Subscription";
+"subscriptions__yearly_subscription" = "Yearly subscription";
 "wallet__instant_payment_received" = "Received Instant Bitcoin";
 "wallet__error_create_tx" = "Transaction Creation Failed";
 "wallet__error_create_tx_msg" = "An error occurred. Please try again {raw}";

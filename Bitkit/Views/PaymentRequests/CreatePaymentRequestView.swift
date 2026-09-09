@@ -170,12 +170,12 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
             header()
 
             recipientInput
-                .padding(.bottom, 16)
+                .padding(.bottom, 32)
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64)
-                        .padding(.vertical, 16)
+                        .padding(.bottom, 16)
                     CustomDivider()
                     ForEach(recipientTargets) { target in
                         recipientRow(target)
@@ -200,9 +200,10 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
                     t("wallet__payment_request_enter_pubky"),
                     text: $recipientQuery,
                     backgroundColor: .clear,
-                    font: .custom(Fonts.regular, size: 17),
-                    testIdentifier: "\(testIdentifierPrefix)RecipientFilter"
+                    testIdentifier: "\(testIdentifierPrefix)RecipientFilter",
+                    contentPadding: 0
                 )
+                .frame(minHeight: 20)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.asciiCapable)
@@ -218,14 +219,15 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
                             .scaledToFit()
                             .frame(width: 16, height: 16)
                             .accessibilityHidden(true)
-                        BodyMSBText(t("common__paste"))
+                        CaptionBText(t("common__paste"), textColor: .textPrimary)
                     }
+                    .padding(.horizontal, 8)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("\(testIdentifierPrefix)RecipientPaste")
             }
             .padding(16)
-            .background(Color.white08)
+            .background(Color.white10)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
@@ -241,7 +243,7 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
     @ViewBuilder
     private func recipientRow(_ target: PaykitPaymentRequestTarget) -> some View {
         if let contact = contact(for: target) {
-            PubkyContactRow(contact: contact, verticalPadding: 20, isSelected: selectedTarget == target) {
+            PubkyContactRow(contact: contact, verticalPadding: 24, isSelected: selectedTarget == target) {
                 onSelect(target)
             }
             .accessibilityIdentifier("\(testIdentifierPrefix)Contact-\(contact.publicKey)")
@@ -261,7 +263,7 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
                             .accessibilityHidden(true)
                     }
                 }
-                .padding(.vertical, 20)
+                .padding(.vertical, 24)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
