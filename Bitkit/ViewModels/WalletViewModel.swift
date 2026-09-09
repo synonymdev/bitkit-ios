@@ -595,7 +595,12 @@ class WalletViewModel: ObservableObject {
     ///   - isMaxAmount: Whether this is a max amount send (uses sendAllToAddress)
     /// - Returns: The transaction ID (txid) of the sent transaction
     /// - Throws: An error if the transaction fails or if fee rates cannot be retrieved
-    func send(address: String, sats: UInt64, isMaxAmount: Bool = false) async throws -> Txid {
+    func send(
+        address: String,
+        sats: UInt64,
+        isMaxAmount: Bool = false,
+        beforeBroadcastAttempt: () async throws -> Void = {}
+    ) async throws -> Txid {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
@@ -606,6 +611,7 @@ class WalletViewModel: ObservableObject {
             Logger.warn("No UTXO selected, using default selection algorithm.")
         }
 
+        try await beforeBroadcastAttempt()
         let txid = try await lightningService.send(
             address: address,
             sats: sats,
