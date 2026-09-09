@@ -83,6 +83,27 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(preparedContacts, contacts)
     }
 
+    func testPreparingSavedContactsReportsUnavailableImmediatePublication() async {
+        let service = PrivatePaykitService()
+        let contacts = ["pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"]
+        var preparedContacts = [String]()
+        let error = await service.prepareSavedContacts(
+            contacts,
+            publicationUnavailableReason: "the Lightning node is not running",
+            requireImmediatePublication: true,
+            prepareLinks: { preparedContacts = $0 },
+            publishEndpoints: { _ in
+                XCTFail("Unavailable endpoints must not be published")
+                return nil
+            }
+        )
+
+        guard case .privateUnavailable = error as? PrivatePaykitError else {
+            return XCTFail("Immediate publication must report that endpoints were not restored")
+        }
+        XCTAssertEqual(preparedContacts, contacts)
+    }
+
     func testReceiverNoiseDerivationMatchesCrossPlatformVector() {
         let seed = (
             "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e534955" +

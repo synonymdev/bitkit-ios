@@ -32,6 +32,7 @@ extension PrivatePaykitService {
         await prepareSavedContacts(
             publicKeys,
             publicationUnavailableReason: privateEndpointPublicationUnavailabilityReason(wallet: wallet),
+            requireImmediatePublication: requireImmediatePublication,
             prepareLinks: { await self.prepareRelevantPrivateLinksIfAvailable($0, reason: "prepare") },
             publishEndpoints: { publicKeys in
                 await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
@@ -48,6 +49,7 @@ extension PrivatePaykitService {
     func prepareSavedContacts(
         _ publicKeys: [String],
         publicationUnavailableReason: String?,
+        requireImmediatePublication: Bool = false,
         prepareLinks: ([String]) async -> Void,
         publishEndpoints: ([String]) async -> Error?
     ) async -> Error? {
@@ -55,7 +57,7 @@ extension PrivatePaykitService {
         if let reason = publicationUnavailableReason {
             Logger.info("Deferring private Paykit endpoint publication during prepare: \(reason)", context: "PrivatePaykitService")
             await prepareLinks(publicKeys)
-            return nil
+            return requireImmediatePublication && !publicKeys.isEmpty ? PrivatePaykitError.privateUnavailable : nil
         }
         return await publishEndpoints(publicKeys)
     }
