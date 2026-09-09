@@ -69,3 +69,7 @@
 "widgets__weather__next_block" = "تضمين الكتلة التالية";
 "wallet__payment_request" = "طلب دفع";
 "wallet__send_error_support" = "الدعم";
+
+"wallet__receive_cjit_error_node_capacity__title" = "السعة الإضافية غير متاحة";
+"wallet__receive_cjit_error_node_capacity__description" = "لا يستطيع Bitkit إضافة المزيد من سعة الإنفاق إلى هذه المحفظة في الوقت الحالي.";
+"wallet__receive_liquidity__invalid_quote" = "تلقى Bitkit عرض سيولة غير صالح. يرجى المحاولة مرة أخرى.";

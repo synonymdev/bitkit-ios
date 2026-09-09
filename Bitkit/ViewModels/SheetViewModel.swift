@@ -15,6 +15,7 @@ enum SheetID: String, CaseIterable {
     case pubkyAuthApproval
     case notifications
     case paymentRequests
+    case subscription
     case quickpay
     case receive
     case receivedTx
@@ -33,6 +34,7 @@ enum SheetID: String, CaseIterable {
 struct SheetConfiguration {
     let id: SheetID
     let data: Any?
+    let presentationID = UUID()
 }
 
 class SheetViewModel: ObservableObject {
@@ -301,6 +303,18 @@ class SheetViewModel: ObservableObject {
         }
     }
 
+    var subscriptionSheetItem: SubscriptionSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .subscription else { return nil }
+            return config.data as? SubscriptionSheetItem
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
     var quickpaySheetItem: QuickpaySheetItem? {
         get {
             guard let config = activeSheetConfiguration, config.id == .quickpay else { return nil }
@@ -318,7 +332,7 @@ class SheetViewModel: ObservableObject {
             guard let config = activeSheetConfiguration, config.id == .receive else { return nil }
             let receiveConfig = config.data as? ReceiveConfig
             let initialRoute = receiveConfig?.initialRoute ?? .qr(cjitInvoice: nil, tab: nil)
-            return ReceiveSheetItem(initialRoute: initialRoute, hardwareWalletId: receiveConfig?.hardwareWalletId)
+            return ReceiveSheetItem(id: config.presentationID, initialRoute: initialRoute, hardwareWalletId: receiveConfig?.hardwareWalletId)
         }
         set {
             if newValue == nil {

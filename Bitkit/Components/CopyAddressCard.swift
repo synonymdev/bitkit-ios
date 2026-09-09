@@ -14,7 +14,7 @@ struct CopyAddressPair {
 struct CopyAddressCard: View {
     let addresses: [CopyAddressPair]
     @Binding var navigationPath: [ReceiveRoute]
-    var editRoute: ReceiveRoute? = .edit(onchainOnly: false)
+    var editRoute: ReceiveRoute?
     var accentColor: Color?
     @State private var showTooltipForIndex: Int? = nil
 

@@ -1,25 +1,50 @@
 <journey name="receiving capacity amount over max is blocked">
   <description>
-    Verifies the receiving capacity (advanced) number pad blocks input exceeding the maximum LSP
-    balance, shows the "Receiving Capacity Maximum" warning toast, and still allows deleting digits
-    while at the cap.
+    Verifies the receiving capacity (advanced) screen settles its maximum on a capacity the wallet
+    can pay the order fee for before offering it, holds the number pad disabled while that settles,
+    and snaps an entered capacity above the settled maximum down to it with the "Receiving Capacity
+    Maximum" warning toast — while still allowing deleting digits at the cap.
 
     Precondition: onboarded dev wallet with a POSITIVE on-chain Savings balance and a running node
     connected to the LSP. Start on the wallet home screen. The advanced screen is reached by first
-    setting a valid spending amount and continuing to the confirm screen.
+    setting a spending amount and continuing to the confirm screen.
+
+    Adapted from Android on purpose, for the behaviour PR #686 ports from bitkit-android#1179 and
+    bitkit-android#1180. Three deviations, all deliberate:
+    * The transfer is sized at MAX rather than 25%. Settling only bites when the receiving capacity
+      and the client balance together crowd the funding budget; at 25% there is enough headroom that
+      the settled maximum is the LSP's advertised maximum and every "comes down" step is a no-op.
+    * iOS snaps the entered capacity down to the settled maximum, the way `SpendingAmount` already
+      does; Android rejects the keypress and leaves the display at the largest all-9s value still
+      under the cap. Both satisfy "does not exceed the maximum".
+    * iOS disables the number pad and Continue while the maximum settles, but leaves Min, Default
+      and Max tappable — tapping Max early is corrected once the maximum settles. Android disables
+      the amount buttons too.
+
+    Walked on an iPhone 17 simulator against the stag0 regtest LSP, where two findings shaped the
+    steps below. The settle finished faster than a single snapshot round-trip, so the disabled number
+    pad was never caught — the step is written to accept "already settled". And with the LSP headroom
+    already consumed by two channels, the offered minimum (77 984) sat above the offered maximum
+    (564), which leaves Continue disabled at every capacity: the cap steps still hold, the
+    order-creation tail cannot be walked. Both are properties of the regtest allocation rather than
+    of the app; `README.md` has the detail. Regtest is regression coverage for this journey, not
+    proof of the fix — the unit tests are that.
   </description>
   <actions>
     <action>Tap the Savings balance card on the home screen (id "ActivitySavings")</action>
     <action>Tap "Transfer To Spending" (id "TransferToSpending")</action>
     <action>If a transfer intro screen appears, tap "Get Started"</action>
     <action>Wait until the spending amount screen (id "SpendingAmount") has loaded a positive maximum (id "SpendingAmountAvailable")</action>
-    <action>Tap "25%" (id "SpendingAmountQuarter") to set a valid amount within range</action>
+    <action>Tap "MAX" (id "SpendingAmountMax") to size the transfer at the ceiling, where the least headroom is left for the receiving capacity</action>
     <action>Tap Continue (id "SpendingAmountContinue")</action>
     <action>On the confirm screen, tap "Advanced" (id "SpendingConfirmAdvanced")</action>
     <action>Verify the receiving capacity screen (id "SpendingAdvanced") is visible</action>
+    <action>Verify the number pad and Continue are disabled while the maximum settles — a disabled button drops out of the snapshot's Targets list, so "N9" and "SpendingAdvancedContinue" missing from Targets is the signal, not an enabled flag. Against a warm LSP the settle finishes faster than one snapshot round-trip; report "already settled" rather than failing the step</action>
+    <action>Tap "MAX" (id "SpendingAdvancedMax") — unlike the number pad it stays tappable while the maximum settles</action>
+    <action>Wait for the number pad to be enabled (id "N9", predicate enabled), then verify the amount in the input field (id "SpendingAdvancedNumberField") does not exceed the maximum receiving capacity now offered</action>
     <action>Tap the "9" key (id "N9") nine times to enter a capacity far larger than the maximum allowed</action>
-    <action>Verify a "Receiving Capacity Maximum" warning toast appears (id "SpendingAdvancedExceededToast")</action>
-    <action>Verify the amount in the input field (id "SpendingAdvancedNumberField") does not exceed the maximum receiving capacity</action>
+    <action>Verify a "Receiving Capacity Maximum" warning toast appears (id "SpendingAdvancedExceededToast") and names the settled maximum</action>
+    <action>Verify the amount in the input field (id "SpendingAdvancedNumberField") snapped to the maximum receiving capacity exactly, and does not exceed it</action>
     <action>Tap the delete key (id "NRemove") once</action>
     <action>Verify the amount in the input field (id "SpendingAdvancedNumberField") decreased after the delete</action>
   </actions>
