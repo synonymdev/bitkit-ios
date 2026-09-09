@@ -180,52 +180,50 @@ struct CustomButton: View {
     }
 
     var body: some View {
-        Group {
-            if let destination {
-                NavigationLink(destination: destination) {
-                    buttonVariantView
-                }
-                .buttonStyle(
-                    CustomButtonStyle(
-                        variant: variant,
-                        isDisabled: isDisabled,
-                        isLoading: isLoading,
-                        isPressed: $isPressed
-                    )
-                )
-                .disabled(effectiveIsDisabled)
-                .simultaneousGesture(
-                    TapGesture().onEnded {
-                        if !effectiveIsDisabled {
-                            Haptics.play(.buttonTap)
-                        }
-                    }
-                )
-            } else if let action {
-                Button {
-                    guard !isLoading, !effectiveIsDisabled else { return }
-
-                    Haptics.play(.buttonTap)
-
-                    Task { @MainActor in
-                        await action()
-                    }
-                } label: {
-                    buttonVariantView
-                }
-                .buttonStyle(
-                    CustomButtonStyle(
-                        variant: variant,
-                        isDisabled: isDisabled,
-                        isLoading: isLoading,
-                        isPressed: $isPressed
-                    )
-                )
-                .disabled(effectiveIsDisabled || isLoading)
-            } else {
+        if let destination {
+            NavigationLink(destination: destination) {
                 buttonVariantView
-                    .opacity(effectiveIsDisabled ? 0.5 : 1)
             }
+            .buttonStyle(
+                CustomButtonStyle(
+                    variant: variant,
+                    isDisabled: isDisabled,
+                    isLoading: isLoading,
+                    isPressed: $isPressed
+                )
+            )
+            .disabled(effectiveIsDisabled)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    if !effectiveIsDisabled {
+                        Haptics.play(.buttonTap)
+                    }
+                }
+            )
+        } else if let action {
+            Button {
+                guard !isLoading, !effectiveIsDisabled else { return }
+
+                Haptics.play(.buttonTap)
+
+                Task { @MainActor in
+                    await action()
+                }
+            } label: {
+                buttonVariantView
+            }
+            .buttonStyle(
+                CustomButtonStyle(
+                    variant: variant,
+                    isDisabled: isDisabled,
+                    isLoading: isLoading,
+                    isPressed: $isPressed
+                )
+            )
+            .disabled(effectiveIsDisabled || isLoading)
+        } else {
+            buttonVariantView
+                .opacity(effectiveIsDisabled ? 0.5 : 1)
         }
     }
 }

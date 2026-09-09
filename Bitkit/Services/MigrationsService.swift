@@ -71,7 +71,9 @@ struct MMKVParser {
             }
 
             shift += 7
-            if shift >= 64 { return nil }
+            if shift >= 64 {
+                return nil
+            }
         }
 
         return nil
@@ -1921,9 +1923,15 @@ extension MigrationsService {
         func getBool(from dict: [String: Any], key: String, fallbackKey: String? = nil, defaultValue: Bool) -> Bool {
             let keys = fallbackKey != nil ? [key, fallbackKey!] : [key]
             for k in keys {
-                if let val = dict[k] as? Bool { return val }
-                if let val = dict[k] as? Int { return val != 0 }
-                if let val = dict[k] as? NSNumber { return val.boolValue }
+                if let val = dict[k] as? Bool {
+                    return val
+                }
+                if let val = dict[k] as? Int {
+                    return val != 0
+                }
+                if let val = dict[k] as? NSNumber {
+                    return val.boolValue
+                }
             }
             return defaultValue
         }
@@ -1933,7 +1941,9 @@ extension MigrationsService {
             var selectedPairs = ["BTC/USD"]
             if let pairsArray = (prefs["pairs"] as? [String]) ?? (prefs["enabledPairs"] as? [String]) {
                 selectedPairs = pairsArray.map { $0.replacingOccurrences(of: "_", with: "/") }
-                if selectedPairs.isEmpty { selectedPairs = ["BTC/USD"] }
+                if selectedPairs.isEmpty {
+                    selectedPairs = ["BTC/USD"]
+                }
             }
             let rnPeriod = prefs["period"] as? String ?? "1D"
             let periodMap = ["ONE_DAY": "1D", "ONE_WEEK": "1W", "ONE_MONTH": "1M", "ONE_YEAR": "1Y"]

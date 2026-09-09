@@ -82,7 +82,9 @@ struct ReceiveQr: View {
     }
 
     private var selectedHardwareWalletId: String? {
-        if let hardwareWalletId { return hardwareWalletId }
+        if let hardwareWalletId {
+            return hardwareWalletId
+        }
         guard hwWalletManager.wallets.count == 1 else { return nil }
         return hwWalletManager.wallets.first?.id
     }
@@ -519,7 +521,11 @@ struct ReceiveQr: View {
     private var passphrasePromptBinding: Binding<Bool> {
         Binding(
             get: { isPassphraseRequired },
-            set: { if !$0 { dismissPassphrase() } }
+            set: {
+                if !$0 {
+                    dismissPassphrase()
+                }
+            }
         )
     }
 

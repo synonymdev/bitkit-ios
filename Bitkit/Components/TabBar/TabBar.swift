@@ -7,8 +7,12 @@ struct TabBar: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     var shouldShow: Bool {
-        if calculatorInput.isPresented { return false }
-        if navigation.path.isEmpty { return true }
+        if calculatorInput.isPresented {
+            return false
+        }
+        if navigation.path.isEmpty {
+            return true
+        }
         guard let route = navigation.currentRoute else { return false }
 
         switch route {
