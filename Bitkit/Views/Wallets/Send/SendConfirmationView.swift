@@ -30,6 +30,8 @@ struct SendConfirmationView: View {
     @State private var warningContinuation: CheckedContinuation<Bool, Error>?
     @State private var swipeProgress: CGFloat = 0
     @State private var pendingOnchainBroadcast: PendingOnchainBroadcast?
+    @State private var hasStartedAutomaticPayment = false
+    @State private var requiresPaymentConfirmation = false
 
     private struct OnchainSendCompletion {
         let address: String
@@ -166,6 +168,11 @@ struct SendConfirmationView: View {
         return contactsManager.contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) })
     }
 
+    private var shouldAutomaticallyPay: Bool {
+        app.contactPaymentContext?.isInitialSubscriptionPayment == true && app.selectedWalletToPayFrom == .lightning &&
+            !hwSend.isActive && !requiresPaymentConfirmation
+    }
+
     var body: some View {
         if let pendingOnchainBroadcast {
             OnchainBroadcastPendingScreen(
@@ -179,14 +186,19 @@ struct SendConfirmationView: View {
                 }
             )
         } else {
-            confirmationContent
+            ZStack {
+                confirmationContent
+                if shouldAutomaticallyPay {
+                    InitialSubscriptionPaymentProgress()
+                }
+            }
         }
     }
 
     private var confirmationContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
-                title: app.contactPaymentContext?.incomingPaymentRequest == nil ? t("wallet__send_review") : t("wallet__payment_request"),
+                title: reviewTitle,
                 showBackButton: !navigationPath.isEmpty,
                 action: AnyView(SendContactHeaderAvatar())
             )
@@ -248,9 +260,12 @@ struct SendConfirmationView: View {
             }
 
             SwipeButton(
-                title: t("wallet__send_swipe"),
+                title: app.contactPaymentContext?.isInitialSubscriptionPayment == true
+                    ? t("subscriptions__swipe_to_subscribe_and_pay")
+                    : t("wallet__send_swipe"),
                 accentColor: accentColor,
                 isDisabled: isHardwareConfirmationUnavailable,
+                isLoading: hasStartedAutomaticPayment,
                 swipeProgress: $swipeProgress
             ) {
                 try await submitPayment()
@@ -262,8 +277,15 @@ struct SendConfirmationView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             ensureSendAmountFromScannedInvoicesIfNeeded()
+            if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
+                requiresPaymentConfirmation = true
+                showDetails = true
+            }
             await calculateTransactionFee()
             await calculateRoutingFee()
+            guard !Task.isCancelled else { return }
+            // PIN navigation can cancel the view task while authorization is awaiting its result.
+            Task { @MainActor in await startAutomaticPaymentIfNeeded() }
         }
         .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
             Task {
@@ -310,6 +332,36 @@ struct SendConfirmationView: View {
             if let warning = currentWarning {
                 Text(warning.message)
             }
+        }
+    }
+
+    private var reviewTitle: String {
+        paykitPaymentReviewTitle(context: app.contactPaymentContext, fallback: t("wallet__send_review"))
+    }
+
+    @MainActor
+    private func startAutomaticPaymentIfNeeded() async {
+        guard shouldAutomaticallyPay, !hasStartedAutomaticPayment
+        else { return }
+        hasStartedAutomaticPayment = true
+        do {
+            try await submitPayment(isAutomatic: true)
+        } catch is CancellationError {
+            navigationPath.append(.failure(SendFailureContext(
+                error: CancellationError(),
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: app.scannedLightningInvoice?.bolt11,
+                contactPaymentContext: app.contactPaymentContext
+            )))
+        } catch {
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: app.scannedLightningInvoice?.bolt11,
+                contactPaymentContext: app.contactPaymentContext
+            )))
         }
     }
 
@@ -574,7 +626,7 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func submitPayment() async throws {
+    private func submitPayment(isAutomatic: Bool = false) async throws {
         // Validate payment and show warnings if needed
         let warnings = await validatePayment()
         if !warnings.isEmpty {
@@ -623,11 +675,34 @@ struct SendConfirmationView: View {
             }
         }
 
+        if requiresManualConfirmation(isAutomatic: isAutomatic) {
+            showManualConfirmation()
+            return
+        }
+
         if hwSend.isActive {
             navigationPath.append(.hardwareSign)
         } else {
-            try await performPayment()
+            try await performPayment(isAutomatic: isAutomatic)
         }
+    }
+
+    static func requiresManualConfirmation(isAutomatic: Bool, walletType: WalletType, isHardwarePayment: Bool) -> Bool {
+        isAutomatic && (walletType != .lightning || isHardwarePayment)
+    }
+
+    private func requiresManualConfirmation(isAutomatic: Bool) -> Bool {
+        Self.requiresManualConfirmation(
+            isAutomatic: isAutomatic,
+            walletType: app.selectedWalletToPayFrom,
+            isHardwarePayment: hwSend.isActive
+        )
+    }
+
+    private func showManualConfirmation() {
+        hasStartedAutomaticPayment = false
+        requiresPaymentConfirmation = true
+        showDetails = true
     }
 
     private func contactRecipient(_ contact: PubkyContact) -> some View {
@@ -641,13 +716,15 @@ struct SendConfirmationView: View {
         .accessibilityIdentifier("ReviewContactRecipient")
     }
 
-    private func performPayment() async throws {
+    private func performPayment(isAutomatic: Bool) async throws {
         var createdMetadataPaymentId: String? = nil
         let contactPaymentContext = app.contactPaymentContext
         let contactPublicKey = contactPaymentContext?.publicKey
         let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
         var shouldCancelPaymentProof = false
         var preparedPaymentProof: (endpointIdentifier: String, kind: PaykitPaymentProofKind)?
+        var onchainPaymentStarted = false
+        var lightningPaymentSubmitted = false
 
         do {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
@@ -664,6 +741,14 @@ struct SendConfirmationView: View {
             }
             try await prepareIncomingPaymentRequest()
             try validateIncomingPaymentRequestContext(contactPaymentContext)
+
+            if requiresManualConfirmation(isAutomatic: isAutomatic) {
+                if shouldCancelPaymentProof, let incomingPaymentRequest {
+                    await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
+                }
+                showManualConfirmation()
+                return
+            }
 
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
@@ -689,8 +774,9 @@ struct SendConfirmationView: View {
                     try await wallet.sendWithTimeout(
                         bolt11: invoice.bolt11,
                         sats: paymentSats,
+                        afterListening: { _ in lightningPaymentSubmitted = true },
                         onTimeout: { timedOutHash in
-                            app.addPendingPaymentHash(timedOutHash, contactPublicKey: contactPublicKey)
+                            app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
                             navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
                         }
                     )
@@ -705,7 +791,20 @@ struct SendConfirmationView: View {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
-                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                    if incomingPaymentRequest != nil, !lightningPaymentSubmitted {
+                        let failed = await PaykitPaymentProofService.shared.failLightningPayment(
+                            paymentHash: paymentHash,
+                            submissionError: error
+                        )
+                        if !failed {
+                            shouldCancelPaymentProof = false
+                            app.addPendingPaymentHash(paymentHash, contactPaymentContext: contactPaymentContext)
+                            navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
+                            return
+                        }
+                    } else {
+                        await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                    }
                     throw error
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
@@ -722,14 +821,28 @@ struct SendConfirmationView: View {
                 )
 
                 do {
-                    let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: useMaxAmount)
+                    let txid = try await wallet.send(
+                        address: invoice.address,
+                        sats: amount,
+                        isMaxAmount: useMaxAmount
+                    ) {
+                        if let incomingPaymentRequest {
+                            try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
+                                incomingPaymentRequest,
+                                address: invoice.address
+                            )
+                            onchainPaymentStarted = true
+                        }
+                    }
                     shouldCancelPaymentProof = false
+                    onchainPaymentStarted = false
                     await completeOnchainSend(txid: txid, completion: completion, createMetadata: true)
                 } catch {
                     guard let pendingContext = pendingOnchainBroadcastContext(for: error) else { throw error }
 
                     if pendingContext.source == .currentPayment {
                         shouldCancelPaymentProof = false
+                        onchainPaymentStarted = false
                         wallet.sendAmountSats = amount
                         await createPreActivityMetadata(
                             paymentId: pendingContext.txid,
@@ -752,8 +865,13 @@ struct SendConfirmationView: View {
                         }
                         pendingOnchainBroadcast = PendingOnchainBroadcast(txid: pendingContext.txid, completion: completion)
                     } else {
-                        if shouldCancelPaymentProof, let incomingPaymentRequest {
-                            await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
+                        if let incomingPaymentRequest {
+                            if onchainPaymentStarted {
+                                await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest)
+                                onchainPaymentStarted = false
+                            } else if shouldCancelPaymentProof {
+                                await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
+                            }
                         }
                         shouldCancelPaymentProof = false
                         pendingOnchainBroadcast = PendingOnchainBroadcast(txid: pendingContext.txid, completion: nil)
@@ -776,6 +894,23 @@ struct SendConfirmationView: View {
             }
             return
         } catch {
+            if onchainPaymentStarted, let incomingPaymentRequest {
+                if PaykitPaymentProofService.isDefiniteOnchainFailure(error) {
+                    await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest)
+                    onchainPaymentStarted = false
+                } else {
+                    shouldCancelPaymentProof = false
+                    wallet.sendAmountSats = incomingPaymentRequest.amountSats
+                    Logger.warn("On-chain payment outcome is uncertain after broadcast started: \(error)", context: "SendConfirmation")
+                    navigationPath.append(.pending(
+                        paymentHash: nil,
+                        retryRoute: .confirm,
+                        paymentRequest: nil,
+                        paykitPaymentRequestId: incomingPaymentRequest.id
+                    ))
+                    return
+                }
+            }
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
@@ -789,7 +924,8 @@ struct SendConfirmationView: View {
                 error: error,
                 retryRoute: .confirm,
                 routingCacheResetAttempted: routingCacheResetAttempted,
-                paymentRequest: app.selectedWalletToPayFrom == .lightning ? app.scannedLightningInvoice?.bolt11 : nil
+                paymentRequest: app.selectedWalletToPayFrom == .lightning ? app.scannedLightningInvoice?.bolt11 : nil,
+                contactPaymentContext: contactPaymentContext
             )))
         }
     }
@@ -816,6 +952,7 @@ struct SendConfirmationView: View {
         guard pendingOnchainBroadcast?.txid == pending.txid else { return }
 
         if let completion = pending.completion {
+            let contactPaymentContext = app.contactPaymentContext
             try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: pending.txid)
             app.consumeContactPaymentContext(forPendingPaymentHash: pending.txid)
             pendingOnchainBroadcast = nil
@@ -823,7 +960,8 @@ struct SendConfirmationView: View {
                 error: AbandonedOnchainBroadcastError(),
                 retryRoute: .confirm,
                 routingCacheResetAttempted: routingCacheResetAttempted,
-                paymentRequest: nil
+                paymentRequest: nil,
+                contactPaymentContext: contactPaymentContext
             )))
 
             if let incomingPaymentRequest = completion.incomingPaymentRequest {
@@ -851,14 +989,17 @@ struct SendConfirmationView: View {
         createMetadata: Bool,
         associatedTxid: Txid? = nil
     ) async {
+        let outcomeTxid = associatedTxid ?? txid
+        var outcomeHandledByPaykit = false
         if let incomingPaymentRequest = completion.incomingPaymentRequest,
            let paymentEndpointIdentifier = completion.paymentEndpointIdentifier
         {
+            outcomeHandledByPaykit = true
             await PaykitPaymentProofService.shared.completeOnchainPayment(
                 incomingPaymentRequest,
                 txid: txid,
                 paymentEndpointIdentifier: paymentEndpointIdentifier,
-                associatedTxid: associatedTxid
+                associatedTxid: outcomeTxid
             )
         }
 
@@ -890,9 +1031,9 @@ struct SendConfirmationView: View {
         wallet.sendAmountSats = completion.amountSats
         pendingOnchainBroadcast = nil
 
-        if let associatedTxid, completion.incomingPaymentRequest == nil {
+        if !outcomeHandledByPaykit {
             do {
-                try await wallet.acknowledgeOnchainBroadcastOutcome(txid: associatedTxid)
+                try await wallet.acknowledgeOnchainBroadcastOutcome(txid: outcomeTxid)
             } catch {
                 Logger.warn("Failed to acknowledge accepted on-chain broadcast: \(error)", context: "SendConfirmationView")
             }
@@ -952,7 +1093,7 @@ struct SendConfirmationView: View {
         }
 
         do {
-            app.addPendingContactPaymentContext(paymentId, contactPublicKey: contactPublicKey)
+            app.addPendingContactPaymentContext(paymentId, context: app.contactPaymentContext)
             try await activityList.setContact(contactPublicKey, forPaymentId: paymentId)
             app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
         } catch {

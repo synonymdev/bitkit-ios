@@ -12,6 +12,8 @@ enum CustomServiceError: LocalizedError {
     case invalidNodeSigningMessage
     case regtestOnlyMethod
     case channelSizeExceedsMaximum
+    case cjitNodeCapacityExceeded
+    case invalidCjitQuote
     case currencyRateUnavailable
 
     var errorDescription: String? {
@@ -36,6 +38,10 @@ enum CustomServiceError: LocalizedError {
             return "Method only available in regtest environment"
         case .channelSizeExceedsMaximum:
             return "Channel size exceeds maximum allowed size"
+        case .cjitNodeCapacityExceeded:
+            return "Additional spending capacity is unavailable right now."
+        case .invalidCjitQuote:
+            return NSLocalizedString("wallet__receive_liquidity__invalid_quote", comment: "")
         case .currencyRateUnavailable:
             return "Currency rate unavailable"
         }
@@ -107,6 +113,32 @@ func pendingOnchainBroadcastContext(for error: Error) -> PendingOnchainBroadcast
         return PendingOnchainBroadcastErrorContext(txid: txid, source: .currentPayment)
     default:
         return nil
+    }
+}
+
+extension Error {
+    var isChannelSizeExceedsMaximum: Bool {
+        if let serviceError = self as? CustomServiceError {
+            return serviceError == .channelSizeExceedsMaximum
+        }
+
+        if let appError = self as? AppError, let underlyingError = appError.underlyingError {
+            return underlyingError.isChannelSizeExceedsMaximum
+        }
+
+        return false
+    }
+
+    var isCjitNodeCapacityExceeded: Bool {
+        if let serviceError = self as? CustomServiceError {
+            return serviceError == .cjitNodeCapacityExceeded
+        }
+
+        if let appError = self as? AppError, let underlyingError = appError.underlyingError {
+            return underlyingError.isCjitNodeCapacityExceeded
+        }
+
+        return false
     }
 }
 
@@ -206,6 +238,12 @@ struct AppError: LocalizedError {
         case .channelSizeExceedsMaximum:
             message = "Channel size exceeds maximum allowed size"
             debugMessage = nil
+        case .cjitNodeCapacityExceeded:
+            message = "Additional spending capacity is unavailable right now."
+            debugMessage = nil
+        case .invalidCjitQuote:
+            message = "wallet__receive_liquidity__invalid_quote"
+            debugMessage = nil
         case .currencyRateUnavailable:
             message = "Currency rate unavailable"
             debugMessage = nil
@@ -284,152 +322,212 @@ struct AppError: LocalizedError {
     private init(ldkError: NodeError) {
         underlyingError = ldkError
         paymentFailureReason = nil
-        debugMessage = String(describing: ldkError)
         switch ldkError as NodeError {
-        case .AlreadyRunning:
+        case let .AlreadyRunning(message: ldkMessage):
             message = "Node is already running"
-        case .NotRunning:
+            debugMessage = ldkMessage
+        case let .NotRunning(message: ldkMessage):
             message = "Node is not running"
-        case .OnchainTxCreationFailed:
+            debugMessage = ldkMessage
+        case let .OnchainTxCreationFailed(message: ldkMessage):
             message = "Failed to create onchain transaction"
-        case .OnchainTxBroadcastRejected:
-            message = "Onchain transaction was rejected"
-        case .OnchainTxBroadcastFailed:
-            message = "Failed to broadcast onchain transaction"
-        case .OnchainTxBroadcastTimeout:
-            message = "Onchain transaction broadcast timed out"
-        case .OnchainTxBroadcastNotDispatched:
-            message = "Onchain transaction was not dispatched"
-        case .OnchainWalletAccountNotRegistered:
+            debugMessage = ldkMessage
+        case let .OnchainWalletAccountNotRegistered(message: ldkMessage):
             message = "Onchain wallet account is not registered"
-        case .ConnectionFailed:
+            debugMessage = ldkMessage
+        case let .ConnectionFailed(message: ldkMessage):
             message = "Failed to connect to node"
-        case .InvoiceCreationFailed:
+            debugMessage = ldkMessage
+        case let .InvoiceCreationFailed(message: ldkMessage):
             message = "Failed to create invoice"
-        case .InvoiceRequestCreationFailed:
+            debugMessage = ldkMessage
+        case let .InvoiceRequestCreationFailed(message: ldkMessage):
             message = "Failed to create invoice request"
-        case .OfferCreationFailed:
+            debugMessage = ldkMessage
+        case let .OfferCreationFailed(message: ldkMessage):
             message = "Failed to create offer"
-        case .RefundCreationFailed:
+            debugMessage = ldkMessage
+        case let .RefundCreationFailed(message: ldkMessage):
             message = "Failed to create refund"
-        case .PaymentSendingFailed:
-            message = "Failed to send payment"
-        case .ProbeSendingFailed:
+            debugMessage = ldkMessage
+        case let .PaymentSendingFailed(message: ldkMessage):
+            //            message = "Failed to send payment. \(ldkMessage)"
+            message = ldkMessage
+            debugMessage = ldkMessage
+        case let .ProbeSendingFailed(message: ldkMessage):
             message = "Failed to send probe"
-        case .RouteNotFound:
+            debugMessage = ldkMessage
+        case let .RouteNotFound(message: ldkMessage):
             message = "Failed to find a route for fee estimation"
-        case .ChannelCreationFailed:
+            debugMessage = ldkMessage
+        case let .ChannelCreationFailed(message: ldkMessage):
             message = "Failed to create channel"
-        case .ChannelClosingFailed:
+            debugMessage = ldkMessage
+        case let .ChannelClosingFailed(message: ldkMessage):
             message = "Failed to close channel"
-        case .ChannelSplicingFailed:
+            debugMessage = ldkMessage
+        case let .ChannelSplicingFailed(message: ldkMessage):
             message = "Failed to splice channel"
-        case .ChannelConfigUpdateFailed:
+            debugMessage = ldkMessage
+        case let .ChannelConfigUpdateFailed(message: ldkMessage):
             message = "Failed to update channel config"
-        case .PersistenceFailed:
+            debugMessage = ldkMessage
+        case let .PersistenceFailed(message: ldkMessage):
             message = "Failed to persist data"
-        case .FeerateEstimationUpdateFailed:
+            debugMessage = ldkMessage
+        case let .FeerateEstimationUpdateFailed(message: ldkMessage):
             message = "Failed to update feerate estimation"
-        case .FeerateEstimationUpdateTimeout:
+            debugMessage = ldkMessage
+        case let .FeerateEstimationUpdateTimeout(message: ldkMessage):
             message = "Failed to update feerate estimation due to timeout"
-        case .WalletOperationFailed:
+            debugMessage = ldkMessage
+        case let .WalletOperationFailed(message: ldkMessage):
             message = "Failed to perform wallet operation"
-        case .WalletOperationTimeout:
+            debugMessage = ldkMessage
+        case let .WalletOperationTimeout(message: ldkMessage):
             message = "Failed to perform wallet operation due to timeout"
-        case .OnchainTxSigningFailed:
+            debugMessage = ldkMessage
+        case let .OnchainTxSigningFailed(message: ldkMessage):
             message = "Failed to sign onchain transaction"
-        case .TxSyncFailed:
+            debugMessage = ldkMessage
+        case let .TxSyncFailed(message: ldkMessage):
             message = "Failed to sync transaction"
-        case .TxSyncTimeout:
+            debugMessage = ldkMessage
+        case let .TxSyncTimeout(message: ldkMessage):
             message = "Failed to sync transaction due to timeout"
-        case .GossipUpdateFailed:
+            debugMessage = ldkMessage
+        case let .GossipUpdateFailed(message: ldkMessage):
             message = "Failed to update gossip"
-        case .GossipUpdateTimeout:
+            debugMessage = ldkMessage
+        case let .GossipUpdateTimeout(message: ldkMessage):
             message = "Failed to update gossip due to timeout"
-        case .LiquidityRequestFailed:
+            debugMessage = ldkMessage
+        case let .LiquidityRequestFailed(message: ldkMessage):
             message = "Failed to request liquidity"
-        case .UriParameterParsingFailed:
+            debugMessage = ldkMessage
+        case let .UriParameterParsingFailed(message: ldkMessage):
             message = "Failed to parse URI parameters"
-        case .InvalidAddress:
+            debugMessage = ldkMessage
+        case let .InvalidAddress(message: ldkMessage):
             message = "Invalid address"
-        case .InvalidSocketAddress:
+            debugMessage = ldkMessage
+        case let .InvalidSocketAddress(message: ldkMessage):
             message = "Invalid socket address"
-        case .InvalidPublicKey:
+            debugMessage = ldkMessage
+        case let .InvalidPublicKey(message: ldkMessage):
             message = "Invalid public key"
-        case .InvalidSecretKey:
+            debugMessage = ldkMessage
+        case let .InvalidSecretKey(message: ldkMessage):
             message = "Invalid secret key"
-        case .InvalidOfferId:
+            debugMessage = ldkMessage
+        case let .InvalidOfferId(message: ldkMessage):
             message = "Invalid offer ID"
-        case .InvalidNodeId:
+            debugMessage = ldkMessage
+        case let .InvalidNodeId(message: ldkMessage):
             message = "Invalid node ID"
-        case .InvalidPaymentId:
+            debugMessage = ldkMessage
+        case let .InvalidPaymentId(message: ldkMessage):
             message = "Invalid payment ID"
-        case .InvalidPaymentHash:
+            debugMessage = ldkMessage
+        case let .InvalidPaymentHash(message: ldkMessage):
             message = "Invalid payment hash"
-        case .InvalidPaymentPreimage:
+            debugMessage = ldkMessage
+        case let .InvalidPaymentPreimage(message: ldkMessage):
             message = "Invalid payment preimage"
-        case .InvalidPaymentSecret:
+            debugMessage = ldkMessage
+        case let .InvalidPaymentSecret(message: ldkMessage):
             message = "Invalid payment secret"
-        case .InvalidAmount:
+            debugMessage = ldkMessage
+        case let .InvalidAmount(message: ldkMessage):
             message = "Invalid amount"
-        case .InvalidInvoice:
+            debugMessage = ldkMessage
+        case let .InvalidInvoice(message: ldkMessage):
             message = "Invalid invoice"
-        case .InvalidOffer:
+            debugMessage = ldkMessage
+        case let .InvalidOffer(message: ldkMessage):
             message = "Invalid offer"
-        case .InvalidRefund:
+            debugMessage = ldkMessage
+        case let .InvalidRefund(message: ldkMessage):
             message = "Invalid refund"
-        case .InvalidChannelId:
+            debugMessage = ldkMessage
+        case let .InvalidChannelId(message: ldkMessage):
             message = "Invalid channel ID"
-        case .InvalidNetwork:
+            debugMessage = ldkMessage
+        case let .InvalidNetwork(message: ldkMessage):
             message = "Invalid network"
-        case .DuplicatePayment:
+            debugMessage = ldkMessage
+        case let .DuplicatePayment(message: ldkMessage):
             message = "Duplicate payment"
-        case .UnsupportedCurrency:
+            debugMessage = ldkMessage
+        case let .UnsupportedCurrency(message: ldkMessage):
             message = "Unsupported currency"
-        case .InsufficientFunds:
+            debugMessage = ldkMessage
+        case let .InsufficientFunds(message: ldkMessage):
             message = "Insufficient funds"
-        case .LiquiditySourceUnavailable:
+            debugMessage = ldkMessage
+        case let .LiquiditySourceUnavailable(message: ldkMessage):
             message = "Liquidity source unavailable"
-        case .LiquidityFeeTooHigh:
+            debugMessage = ldkMessage
+        case let .LiquidityFeeTooHigh(message: ldkMessage):
             message = "Liquidity fee too high"
-        case .InvalidBlindedPaths:
+            debugMessage = ldkMessage
+        case let .InvalidBlindedPaths(message: ldkMessage):
             message = "Invalid blinded paths"
-        case .AsyncPaymentServicesDisabled:
+            debugMessage = ldkMessage
+        case let .AsyncPaymentServicesDisabled(message: ldkMessage):
             message = "Async payment services disabled"
-        case .InvalidUri:
+            debugMessage = ldkMessage
+        case let .InvalidUri(message: ldkMessage):
             message = "Invalid URI"
-        case .InvalidQuantity:
+            debugMessage = ldkMessage
+        case let .InvalidQuantity(message: ldkMessage):
             message = "Invalid quantity"
-        case .InvalidNodeAlias:
+            debugMessage = ldkMessage
+        case let .InvalidNodeAlias(message: ldkMessage):
             message = "Invalid node alias"
-        case .InvalidCustomTlvs:
+            debugMessage = ldkMessage
+        case let .InvalidCustomTlvs(message: ldkMessage):
             message = "Invalid custom TLVs"
-        case .InvalidDateTime:
+            debugMessage = ldkMessage
+        case let .InvalidDateTime(message: ldkMessage):
             message = "Invalid date time"
-        case .InvalidFeeRate:
+            debugMessage = ldkMessage
+        case let .InvalidFeeRate(message: ldkMessage):
             message = "Invalid fee rate"
-        case .CannotRbfFundingTransaction:
+            debugMessage = ldkMessage
+        case let .CannotRbfFundingTransaction(ldkMessage):
             message = "Cannot RBF funding transaction"
-        case .TransactionNotFound:
+            debugMessage = ldkMessage
+        case let .TransactionNotFound(ldkMessage):
             message = "Transaction not found"
-        case .TransactionAlreadyConfirmed:
+            debugMessage = ldkMessage
+        case let .TransactionAlreadyConfirmed(ldkMessage):
             message = "Transaction already confirmed"
-        case .NoSpendableOutputs:
+            debugMessage = ldkMessage
+        case let .NoSpendableOutputs(ldkMessage):
             message = "No spendable outputs"
-        case .CoinSelectionFailed:
+            debugMessage = ldkMessage
+        case let .CoinSelectionFailed(ldkMessage):
             message = "Coin selection failed"
-        case .InvalidMnemonic:
+            debugMessage = ldkMessage
+        case let .InvalidMnemonic(ldkMessage):
             message = "Invalid mnemonic"
-        case .BackgroundSyncNotEnabled:
+            debugMessage = ldkMessage
+        case let .BackgroundSyncNotEnabled(ldkMessage):
             message = "Background sync not enabled"
-        case .AddressTypeAlreadyMonitored:
+            debugMessage = ldkMessage
+        case let .AddressTypeAlreadyMonitored(message: ldkMessage):
             message = "Address type already monitored"
-        case .AddressTypeIsPrimary:
+            debugMessage = ldkMessage
+        case let .AddressTypeIsPrimary(message: ldkMessage):
             message = "Address type is primary"
-        case .AddressTypeNotMonitored:
+            debugMessage = ldkMessage
+        case let .AddressTypeNotMonitored(message: ldkMessage):
             message = "Address type not monitored"
-        case .InvalidSeedBytes:
+            debugMessage = ldkMessage
+        case let .InvalidSeedBytes(message: ldkMessage):
             message = "Invalid seed bytes"
+            debugMessage = ldkMessage
         }
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "ldk-node error")
     }

@@ -10,6 +10,12 @@ Dimensions covered:
 
 **Note:** If the node is **not running** when scanning, expect the **sync overlay** to appear first. After the node becomes running and validation completes, the behavior matches the test cases below (same as if the node was already running).
 
+### Fresh Lightning fixtures
+
+BOLT11 samples below are format examples and expire. For every non-expiry Lightning or unified case, generate a fresh invoice from a second live regtest wallet or peer, with the scenario amount (or no amount) and enough expiry for the test run. Replace the `lightning` parameter in unified samples too. An expired invoice tests expiry rejection, not balance validation. Keep the intentionally expired samples only for expiry cases.
+
+To check incoming Paykit request balance validation and suppression, send a real request from a second Pubky identity for more than the payer's Spending balance, then open it. Check that it does not keep reopening automatically and can still be opened manually from request history. A plain Lightning link has no incoming Paykit request context and cannot verify that behavior.
+
 ---
 
 ### Legend

@@ -775,7 +775,8 @@ class LightningService {
         sats: UInt64,
         satsPerVbyte: UInt32,
         utxosToSpend: [SpendableUtxo]? = nil,
-        isMaxAmount: Bool = false
+        isMaxAmount: Bool = false,
+        beforeBroadcastAttempt: @escaping () async throws -> Void = {}
     ) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -790,7 +791,8 @@ class LightningService {
                 sats: sats,
                 feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
                 utxosToSpend: utxosToSpend,
-                isMaxAmount: isMaxAmount
+                isMaxAmount: isMaxAmount,
+                beforeBroadcastAttempt: beforeBroadcastAttempt
             )
         } catch {
             dumpLdkLogs()
@@ -804,8 +806,14 @@ class LightningService {
         sats: UInt64,
         feeRate: FeeRate,
         utxosToSpend: [SpendableUtxo]?,
-        isMaxAmount: Bool
+        isMaxAmount: Bool,
+        beforeBroadcastAttempt: @escaping () async throws -> Void = {}
     ) async throws -> Txid {
+        try await ServiceQueue.background(.ldk) {
+            try ensureNoPendingOnchainBroadcast(onchainPayment: onchainPayment)
+        }
+        try await beforeBroadcastAttempt()
+
         try await ServiceQueue.background(.ldk) {
             try executeOnchainSend(
                 onchainPayment: onchainPayment,
@@ -826,10 +834,7 @@ class LightningService {
         utxosToSpend: [SpendableUtxo]?,
         isMaxAmount: Bool
     ) throws -> Txid {
-        let pendingBroadcasts = try onchainPayment.listPendingBroadcasts()
-        if let pendingBroadcast = pendingBroadcasts.first {
-            throw ExistingPendingOnchainBroadcastError(txid: pendingBroadcast.txid)
-        }
+        try ensureNoPendingOnchainBroadcast(onchainPayment: onchainPayment)
 
         if isMaxAmount {
             return try onchainPayment.sendAllToAddress(address: address, retainReserve: true, feeRate: feeRate)
@@ -841,6 +846,12 @@ class LightningService {
             feeRate: feeRate,
             utxosToSpend: utxosToSpend
         )
+    }
+
+    private static func ensureNoPendingOnchainBroadcast(onchainPayment: OnchainPayment) throws {
+        if let pendingBroadcast = try onchainPayment.listPendingBroadcasts().first {
+            throw ExistingPendingOnchainBroadcastError(txid: pendingBroadcast.txid)
+        }
     }
 
     func onchainBroadcastOutcome(txid: Txid) async throws -> BroadcastOutcome? {
