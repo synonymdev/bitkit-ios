@@ -122,7 +122,7 @@ Known naming differences:
 | Send available balance | `AvailableAmount` and `available_balance` (Android emits both) | `AvailableAmount` |
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
-| Payment Request row | `PaymentRequestRow<id>` | `PaymentRequestRow-<id>` |
+| Payment Request row | `PaymentRequestRow<id>` | `PaymentRequestRow-<id>-<counterparty>-<receiverPath>-<period>` |
 
 Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `SpendingAdvanced*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.
@@ -131,11 +131,11 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 
 | Suite | Journeys | Notes |
 | --- | --- | --- |
-| [amount-limits](amount-limits) | 4 | Number pad caps on all four amount screens |
+| [amount-limits](amount-limits) | 4 | Number pad caps on all four amount screens; the two transfer journeys are adapted — iOS snaps to the max where Android rejects the keypress |
 | [widgets](widgets) | 2 | Widgets intro and add-widget flow |
 | [notification-permission](notification-permission) | 4 | Background-setup toggles |
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
-| [hardware-wallet](hardware-wallet) | 15 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
+| [hardware-wallet](hardware-wallet) | 16 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
 | [payment-requests](payment-requests) | 1 | Requires a linked fixture issuer; rejected shapes are unit fixtures |
 
 ## Not ported
