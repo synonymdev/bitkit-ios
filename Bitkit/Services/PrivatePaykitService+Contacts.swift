@@ -32,7 +32,6 @@ extension PrivatePaykitService {
         await prepareSavedContacts(
             publicKeys,
             publicationUnavailableReason: privateEndpointPublicationUnavailabilityReason(wallet: wallet),
-            requireImmediatePublication: requireImmediatePublication,
             prepareLinks: { await self.prepareRelevantPrivateLinksIfAvailable($0, reason: "prepare") },
             publishEndpoints: { publicKeys in
                 await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
@@ -49,7 +48,6 @@ extension PrivatePaykitService {
     func prepareSavedContacts(
         _ publicKeys: [String],
         publicationUnavailableReason: String?,
-        requireImmediatePublication: Bool = false,
         prepareLinks: ([String]) async -> Void,
         publishEndpoints: ([String]) async -> Error?
     ) async -> Error? {
@@ -57,7 +55,7 @@ extension PrivatePaykitService {
         if let reason = publicationUnavailableReason {
             Logger.info("Deferring private Paykit endpoint publication during prepare: \(reason)", context: "PrivatePaykitService")
             await prepareLinks(publicKeys)
-            return requireImmediatePublication && !publicKeys.isEmpty ? PrivatePaykitError.privateUnavailable : nil
+            return nil
         }
         return await publishEndpoints(publicKeys)
     }
@@ -299,11 +297,16 @@ extension PrivatePaykitService {
         {
             let restoreKeys = savedKeys.union(knownSavedContactKeys)
             guard !restoreKeys.isEmpty else { return }
+            guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
 
-            let error = await prepareSavedContacts(
-                Array(restoreKeys),
+            let publicKeys = rememberSavedContacts(Array(restoreKeys), replacing: true)
+            await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+            let error = await refreshSavedContactEndpointsReturningError(
+                for: publicKeys,
                 wallet: wallet,
-                requireImmediatePublication: true
+                forceRefreshLightning: false,
+                requireImmediatePublication: true,
+                reason: "reconcile"
             )
             if let error {
                 Logger.warn("Failed to reconcile private Paykit endpoints: \(error)", context: "PrivatePaykit")
