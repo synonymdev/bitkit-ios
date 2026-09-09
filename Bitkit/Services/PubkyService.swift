@@ -759,6 +759,22 @@ actor PaykitSdkService {
         }
     }
 
+    func cancelPaymentRequest(
+        counterparty: String,
+        counterpartyReceiverPath: String,
+        paymentRequestId: String,
+        reason: String? = nil
+    ) async throws -> Paykit.PaymentRequestRecord {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.cancelPaymentRequest(
+                counterparty: counterparty,
+                counterpartyReceiverPath: counterpartyReceiverPath,
+                paymentRequestId: paymentRequestId,
+                reason: reason
+            )
+        }
+    }
+
     func linkedPeers() async throws -> [LinkedPeerRecord] {
         try await operationLock.withLock {
             try await handle().linkedPeers()

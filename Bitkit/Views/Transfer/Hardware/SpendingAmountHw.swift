@@ -118,7 +118,9 @@ struct SpendingAmountHw: View {
                 }
             )
         }
-        .onChange(of: maxAllowed) { updateInputCap() }
+        // `initial: true` because `maxAllowed` outlives this screen: arriving with the limits
+        // already computed leaves no change to observe, and the input would go uncapped.
+        .onChange(of: maxAllowed, initial: true) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { onMaxExceeded() }
         .onChange(of: transfer.hwTransferError) { _, error in
             guard let error else { return }
@@ -140,7 +142,8 @@ struct SpendingAmountHw: View {
                 "lightning__spending_amount__error_max__description",
                 variables: ["amount": CurrencyFormatter.formatSats(maxAllowed)]
             ),
-            visibilityTime: Toast.visibilityTimeShort
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "HardwareTransferAmountExceededToast"
         )
     }
 
@@ -185,6 +188,26 @@ struct SpendingAmountHw: View {
         }
 
         do {
+            // The device account, never on-chain savings, which would reject every hardware transfer.
+            let canFund = await transfer.canFundOrder(
+                clientBalance: amountSats,
+                budget: transfer.hwFundingBudget(walletId: walletId),
+                transferValues: { transfer.calculateTransferValues(clientBalanceSat: $0, blocktankInfo: blocktank.info) },
+                estimateOrderFee: { clientBalance, lspBalance in
+                    let estimate = try await blocktank.estimateOrderFee(clientBalance: clientBalance, lspBalance: lspBalance)
+                    return (estimate.networkFeeSat, estimate.serviceFeeSat)
+                }
+            )
+            guard canFund else {
+                app.toast(
+                    type: .warning,
+                    title: t("lightning__spending_amount__error_balance__title"),
+                    description: t("lightning__spending_amount__error_balance__description"),
+                    visibilityTime: Toast.visibilityTimeShort
+                )
+                return
+            }
+
             let values = transfer.calculateTransferValues(clientBalanceSat: amountSats, blocktankInfo: blocktank.info)
             let lspBalance = max(values.defaultLspBalance, values.minLspBalance)
             let order = try await blocktank.createOrder(clientBalance: amountSats, lspBalance: lspBalance)
