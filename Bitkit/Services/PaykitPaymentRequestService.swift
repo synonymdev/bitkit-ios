@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import Paykit
 import UIKit
 
@@ -379,6 +380,7 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
     case requestExpired
     case operationInProgress
     case amountMismatch
+    case subscriptionTooLong
 
     var errorDescription: String? {
         switch self {
@@ -390,6 +392,8 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
             t("wallet__payment_request_in_progress")
         case .amountMismatch:
             t("wallet__payment_request_mismatch")
+        case .subscriptionTooLong:
+            t("subscriptions__content_too_long")
         }
     }
 }
@@ -407,7 +411,7 @@ protocol PaykitPaymentRequestSdkHandling: Sendable {
         terms: Paykit.PaymentRequestTerms,
         expectedIdentity: String
     ) async throws -> Paykit.PaymentRequestRecord
-    func uploadProfileAvatar(bytes: Data, contentType: String) async throws -> String
+    func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String?) async throws -> String
     func acceptPaymentRequest(
         counterparty: String,
         counterpartyReceiverPath: String,
@@ -565,8 +569,7 @@ struct PaykitPaymentRequestService {
     ) async throws -> PaykitSubscription {
         let acceptedPaymentEndpointIdentifiers = Self.acceptedPaymentEndpointIdentifiers()
         let validationDate = now()
-        let name = String(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(256))
-        let description = String(draft.description.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1024))
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard draft.amountSats > 0,
               !name.isEmpty,
               draft.frequency.isSupported,
@@ -581,10 +584,17 @@ struct PaykitPaymentRequestService {
             throw PaykitPaymentRequestError.requestUnavailable
         }
 
+        try PaykitSubscriptionProposal.validate(subscriptionTerms(
+            draft,
+            iconURI: draft.iconData == nil ? nil : PaykitSubscriptionProposal.reservedIconURI,
+            endpoints: acceptedPaymentEndpointIdentifiers,
+            proposalDate: validationDate
+        ))
         let iconURI: String? = if let iconData = draft.iconData {
             try await sdk.uploadProfileAvatar(
                 bytes: Self.compressedSubscriptionIcon(iconData),
-                contentType: "image/jpeg"
+                contentType: "image/jpeg",
+                expectedIdentity: expectedIdentity
             )
         } else {
             nil
@@ -593,35 +603,13 @@ struct PaykitPaymentRequestService {
         guard draft.expiresAt > proposalDate else {
             throw PaykitPaymentRequestError.requestExpired
         }
-        var subscriptionMetadata: [String: Any] = [
-            "version": 1,
-            "description": description,
-            "benefits": [],
-        ]
-        if let iconURI {
-            subscriptionMetadata["icon_uri"] = iconURI
-        }
-        let metadataData = try JSONSerialization.data(withJSONObject: [
-            "note": name,
-            "subscription": subscriptionMetadata,
-        ])
-        let metadataText = String(decoding: metadataData, as: UTF8.self)
-        let timestamp = Self.timestamp(proposalDate)
-        let recurrence = Paykit.PaymentRequestRecurrence(
-            every: 1,
-            unit: draft.frequency.rawValue,
-            startsAt: timestamp,
-            anchor: timestamp,
-            endsAt: nil
+        let terms = try subscriptionTerms(
+            draft,
+            iconURI: iconURI,
+            endpoints: acceptedPaymentEndpointIdentifiers,
+            proposalDate: proposalDate
         )
-        let terms = try Paykit.PaymentRequestTerms(
-            amount: Paykit.PaymentRequestAmount(value: WalletViewModel.formatBitcoinAmount(sats: draft.amountSats), asset: "btc"),
-            paymentReference: Paykit.PaymentReference(text: "bitkit-\(UUID().uuidString)"),
-            proposalExpiresAt: Self.timestamp(draft.expiresAt),
-            recurrence: recurrence,
-            acceptedPaymentEndpointIdentifiers: acceptedPaymentEndpointIdentifiers,
-            metadata: Paykit.PrivateJsonObject(text: metadataText)
-        )
+        try PaykitSubscriptionProposal.validate(terms)
         let record = try await sdk.proposePaymentRequest(
             counterparty: target.publicKey,
             counterpartyReceiverPath: target.receiverPath,
@@ -636,6 +624,43 @@ struct PaykitPaymentRequestService {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         return subscription
+    }
+
+    private func subscriptionTerms(
+        _ draft: PaykitSubscriptionDraft,
+        iconURI: String?,
+        endpoints: [String],
+        proposalDate: Date
+    ) throws -> Paykit.PaymentRequestTerms {
+        var subscriptionMetadata: [String: Any] = [
+            "version": 1,
+            "description": draft.description.trimmingCharacters(in: .whitespacesAndNewlines),
+            "benefits": [],
+        ]
+        if let iconURI {
+            subscriptionMetadata["icon_uri"] = iconURI
+        }
+        let metadataData = try JSONSerialization.data(withJSONObject: [
+            "note": draft.name.trimmingCharacters(in: .whitespacesAndNewlines),
+            "subscription": subscriptionMetadata,
+        ])
+        let metadataText = String(decoding: metadataData, as: UTF8.self)
+        let timestamp = Self.timestamp(proposalDate)
+        let recurrence = Paykit.PaymentRequestRecurrence(
+            every: 1,
+            unit: draft.frequency.rawValue,
+            startsAt: timestamp,
+            anchor: timestamp,
+            endsAt: nil
+        )
+        return try Paykit.PaymentRequestTerms(
+            amount: Paykit.PaymentRequestAmount(value: WalletViewModel.formatBitcoinAmount(sats: draft.amountSats), asset: "btc"),
+            paymentReference: Paykit.PaymentReference(text: "bitkit-\(UUID().uuidString)"),
+            proposalExpiresAt: Self.timestamp(draft.expiresAt),
+            recurrence: recurrence,
+            acceptedPaymentEndpointIdentifiers: endpoints,
+            metadata: Paykit.PrivateJsonObject(text: metadataText)
+        )
     }
 
     func accept(_ request: PaykitPaymentRequest) async throws {
@@ -728,21 +753,17 @@ struct PaykitPaymentRequestService {
         return formatter.string(from: date)
     }
 
-    private static func compressedSubscriptionIcon(_ data: Data) throws -> Data {
-        guard let image = UIImage(data: data), image.size.width > 0, image.size.height > 0 else {
+    static func compressedSubscriptionIcon(_ data: Data) throws -> Data {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 400,
+              ] as CFDictionary)
+        else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
-        let maximumDimension = CGFloat(400)
-        let scale = min(maximumDimension / image.size.width, maximumDimension / image.size.height, 1)
-        let size = CGSize(
-            width: max(1, image.size.width * scale),
-            height: max(1, image.size.height * scale)
-        )
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let resized = renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: size))
-        }
-        guard let compressed = resized.jpegData(compressionQuality: 0.8) else {
+        guard let compressed = UIImage(cgImage: thumbnail).jpegData(compressionQuality: 0.8) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         return compressed

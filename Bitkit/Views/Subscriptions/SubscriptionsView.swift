@@ -265,6 +265,7 @@ private struct SubscriptionMetric<Content: View>: View {
 struct SubscriptionRow: View {
     let subscription: PaykitSubscription
     let now: Date
+    var subtitle: String?
 
     var body: some View {
         HStack(spacing: 16) {
@@ -273,7 +274,7 @@ struct SubscriptionRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 BodyMSBText(subscription.note ?? t("subscriptions__subscription"))
                     .lineLimit(1)
-                CaptionText(subscription.rowSubtitle(at: now), textColor: .white64)
+                CaptionText(subtitle ?? subscription.rowSubtitle(at: now), textColor: .white64)
                     .lineLimit(1)
             }
 
@@ -305,6 +306,14 @@ struct SubscriptionAvatar: View {
     var body: some View {
         if let iconURI = subscription.metadata.iconURI {
             PubkyImage(uri: iconURI, size: size)
+        } else if subscription.isCreatedByUser {
+            Image("subscription-default-icon")
+                .resizable()
+                .scaledToFit()
+                .padding(size / 8)
+                .frame(width: size, height: size)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: size / 5))
         } else if let contact {
             PubkyContactAvatar(contact: contact, size: size)
         } else {

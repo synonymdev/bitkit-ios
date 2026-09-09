@@ -351,6 +351,85 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.historyRequests.isEmpty)
     }
 
+    func testCreatorPaymentsAggregateDuplicateProofEventsForOneBillingPeriod() throws {
+        let period = BillingPeriod(startsAt: "2027-01-01T08:00:00Z", endsAt: "2027-02-01T08:00:00Z")
+        let first = try paymentProofRecord(
+            endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            billingPeriod: period
+        )
+        var second = first
+        second.eventId = "850e8400-e29b-41d4-a716-446655440000"
+        var offSchedule = first
+        offSchedule.eventId = "950e8400-e29b-41d4-a716-446655440000"
+        offSchedule.billingPeriod = BillingPeriod(startsAt: period.startsAt, endsAt: "2027-02-02T08:00:00Z")
+        let record = try paymentRequestRecord(
+            state: .activeRecurring,
+            role: .payee,
+            recurrence: PaymentRequestRecurrence(
+                every: 1,
+                unit: "month",
+                startsAt: period.startsAt,
+                anchor: period.startsAt,
+                endsAt: nil
+            ),
+            paymentProofs: [first, second, offSchedule]
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        XCTAssertEqual(subscription.payments.count, 1)
+        let received = subscription.receivedPaymentRequests()
+        XCTAssertEqual(received.count, 1)
+        XCTAssertEqual(received.first?.direction, .outgoing)
+        XCTAssertEqual(received.first?.lifecycleState, .proofSubmitted)
+        XCTAssertEqual(received.first?.paymentProofKind, .lightning)
+    }
+
+    func testFractionalBillingProofsRemainPaidForCreatorAndPayer() throws {
+        for fraction in ["123", "123456789", "999999999"] {
+            let first = BillingPeriod(
+                startsAt: "2027-01-15T08:00:00.\(fraction)Z",
+                endsAt: "2027-02-15T08:00:00.\(fraction)Z"
+            )
+            let second = BillingPeriod(
+                startsAt: first.endsAt,
+                endsAt: "2027-03-15T08:00:00.\(fraction)Z"
+            )
+            let proofs = try [first, second].map {
+                try paymentProofRecord(
+                    endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                    kind: .lightning,
+                    billingPeriod: $0
+                )
+            }
+            for role in [PaymentRequestLocalRole.payee, .payer] {
+                let record = try paymentRequestRecord(
+                    state: .activeRecurring,
+                    role: role,
+                    recurrence: PaymentRequestRecurrence(
+                        every: 1,
+                        unit: "month",
+                        startsAt: first.startsAt,
+                        anchor: first.startsAt,
+                        endsAt: nil
+                    ),
+                    paymentProofs: proofs
+                )
+                let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+                XCTAssertEqual(subscription.payments.count, 2)
+                let requests = if role == .payee {
+                    subscription.receivedPaymentRequests()
+                } else {
+                    try subscription.requests(
+                        through: XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-16T08:00:00Z")),
+                        acceptedAt: XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:01Z"))
+                    )
+                }
+                XCTAssertEqual(requests.count, 2)
+                XCTAssertTrue(requests.allSatisfy { $0.lifecycleState == .proofSubmitted })
+            }
+        }
+    }
+
     func testCreatorProposalBuildsRecurringTermsAndStaysQueuedUntilDelivery() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let expiresAt = now.addingTimeInterval(60)
@@ -398,6 +477,44 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(subscription.isCreatedByUser)
         XCTAssertEqual(subscription.deliveryStatus, .queued)
         XCTAssertEqual(manager.subscriptions, [subscription])
+    }
+
+    func testOversizedCreatorProposalIsRejectedBeforeIconUploadOrEnqueue() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]]
+        )
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+        let target = try XCTUnwrap(manager.eligibleTargets.first)
+
+        for iconData in [nil, Data([0, 1, 2])] as [Data?] {
+            do {
+                _ = try await manager.proposeSubscription(
+                    PaykitSubscriptionDraft(
+                        amountSats: 1000,
+                        name: "Support",
+                        description: String(repeating: "💜", count: 256),
+                        frequency: .month,
+                        expiresAt: now.addingTimeInterval(60),
+                        iconData: iconData
+                    ),
+                    to: target
+                )
+                XCTFail("Oversized proposals must be rejected before external writes")
+            } catch {
+                XCTAssertEqual(error as? PaykitPaymentRequestError, .subscriptionTooLong)
+            }
+        }
+
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.uploadCount, 0)
+        XCTAssertTrue(snapshot.proposedRequests.isEmpty)
+        XCTAssertTrue(manager.subscriptions.isEmpty)
+        XCTAssertFalse(manager.isCreatingRequest)
     }
 
     func testCreatorPendingProposalCanBeDeletedButFixedEndProposalCannot() throws {
@@ -2478,6 +2595,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
     private var receiverPathsByPublicKey: [String: [String]] = [:]
     private var liveSessionAvailable = true
     private var proposalResult: PaymentRequestRecord?
+    private var uploadCount = 0
     private var processCallCount = 0
     private var receiveCallCount = 0
     private var processFailuresRemaining = 0
@@ -2563,8 +2681,12 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         receiverPathsByPublicKey[publicKey] ?? []
     }
 
-    func uploadProfileAvatar(bytes _: Data, contentType _: String) -> String {
-        "pubky://\(activeIdentity)/pub/paykit/blobs/subscription-icon.jpg"
+    func uploadProfileAvatar(bytes _: Data, contentType _: String, expectedIdentity: String?) throws -> String {
+        guard expectedIdentity == nil || PubkyPublicKeyFormat.matches(activeIdentity, expectedIdentity ?? "") else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        uploadCount += 1
+        return "pubky://\(activeIdentity)/pub/paykit/blobs/subscription-icon.jpg"
     }
 
     func proposePaymentRequest(
@@ -2793,6 +2915,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
 
     func snapshot() -> PaymentRequestSdkSnapshot {
         PaymentRequestSdkSnapshot(
+            uploadCount: uploadCount,
             processCallCount: processCallCount,
             receiveCallCount: receiveCallCount,
             acceptedRequests: acceptedRequests,
@@ -2818,6 +2941,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
 }
 
 private struct PaymentRequestSdkSnapshot {
+    let uploadCount: Int
     let processCallCount: Int
     let receiveCallCount: Int
     let acceptedRequests: [PaymentRequestInvocation]

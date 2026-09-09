@@ -2,16 +2,22 @@ import PhotosUI
 import SwiftUI
 
 struct CreateSubscriptionView: View {
-    @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var app: AppViewModel
 
     @Binding var draft: PaykitSubscriptionDraft
     let onEditAmount: () -> Void
     let onChooseRecipient: () -> Void
 
     @State private var selectedPhotoItem: PhotosPickerItem?
-    @State private var iconImage: UIImage?
-    @State private var isLoadingIcon = false
     @FocusState private var isDescriptionFocused: Bool
+
+    private var isLoadingIcon: Bool {
+        selectedPhotoItem != nil
+    }
+
+    private var iconImage: UIImage? {
+        draft.iconData.flatMap { UIImage(data: $0) }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,7 +36,6 @@ struct CreateSubscriptionView: View {
 
             CustomButton(
                 title: t("subscriptions__choose_recipient"),
-                icon: Image("user-plus").resizable().frame(width: 16, height: 16),
                 isDisabled: draft.amountSats == 0 ||
                     draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                     isLoadingIcon
@@ -53,15 +58,15 @@ struct CreateSubscriptionView: View {
                 draft.description = String(value.prefix(1024))
             }
         }
-        .onChange(of: selectedPhotoItem) { _, item in
-            Task { await loadIcon(item) }
+        .task(id: selectedPhotoItem) {
+            await loadIcon(selectedPhotoItem)
         }
         .accessibilityIdentifier("CreateSubscription")
     }
 
     private var amount: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(currency.convert(sats: draft.amountSats)?.formatted ?? "", textColor: .white64)
+            CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64)
             Button(action: onEditAmount) {
                 HStack(spacing: 8) {
                     MoneyText(
@@ -140,86 +145,60 @@ struct CreateSubscriptionView: View {
                                 .resizable()
                                 .scaledToFill()
                         } else {
-                            Image("house")
+                            Image("subscription-default-icon")
                                 .resizable()
                                 .scaledToFit()
-                                .padding(10)
-                                .foregroundColor(.purpleAccent)
+                                .padding(5)
+                                .background(Color.white)
                         }
                     }
-                    .frame(width: 48, height: 48)
-                    .background(Color.white08)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        BodyMSBText(t("subscriptions__custom_icon"))
-                        CaptionText(t("subscriptions__custom_icon_description"), textColor: .white64)
-                    }
+                    BodyMText(t("subscriptions__custom_icon_description"), textColor: .white64)
                     Spacer()
-                    Image("chevron")
-                        .resizable()
-                        .frame(width: 24, height: 24)
-                        .foregroundColor(.white64)
                 }
                 .padding(16)
                 .background(Color.gray6)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
             }
+            .disabled(isLoadingIcon)
             .accessibilityIdentifier("SubscriptionIconPicker")
         }
     }
 
     private func loadIcon(_ item: PhotosPickerItem?) async {
         guard let item else { return }
-        isLoadingIcon = true
-        defer {
-            isLoadingIcon = false
-            selectedPhotoItem = nil
+        defer { if selectedPhotoItem == item { selectedPhotoItem = nil } }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
+            try Task.checkCancellation()
+            let compressed = try PaykitPaymentRequestService.compressedSubscriptionIcon(data)
+            guard selectedPhotoItem == item else { return }
+            draft.iconData = compressed
+        } catch is CancellationError {
+            return
+        } catch {
+            app.toast(type: .error, title: t("common__error"), description: t("subscriptions__icon_error"))
         }
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data)
-        else { return }
-        iconImage = image
-        draft.iconData = data
     }
 }
 
 struct SubscriptionAmountView: View {
-    @EnvironmentObject private var currency: CurrencyViewModel
-
     let initialAmountSats: UInt64
     let onBack: () -> Void
     let onContinue: (UInt64) -> Void
 
-    @State private var amountViewModel = AmountInputViewModel()
-
     var body: some View {
-        VStack(spacing: 0) {
-            SheetHeader(title: t("wallet__payment_request_amount"), showBackButton: true, onBack: onBack)
-            NumberPadTextField(
-                viewModel: amountViewModel,
-                showEditButton: false,
-                isFocused: true,
-                testIdentifier: "SubscriptionAmountField"
-            )
-            Spacer()
-            NumberPad(
-                type: amountViewModel.getNumberPadType(currency: currency),
-                errorKey: amountViewModel.errorKey
-            ) { key in
-                amountViewModel.handleNumberPadInput(key, currency: currency)
-            }
-            CustomButton(title: t("common__continue"), isDisabled: amountViewModel.amountSats == 0) {
-                onContinue(amountViewModel.amountSats)
-            }
-            .accessibilityIdentifier("SubscriptionAmountContinue")
-        }
-        .padding(.horizontal, 16)
-        .sheetBackground()
-        .navigationBarHidden(true)
-        .task {
-            amountViewModel.updateFromSats(initialAmountSats, currency: currency)
-        }
+        PaymentRequestAmountView(
+            initialDraft: PaykitPaymentRequestDraft(amountSats: initialAmountSats, note: "", expiresAt: .distantFuture),
+            target: nil,
+            onContinue: { onContinue($0.amountSats) },
+            onBack: onBack,
+            testIdentifierPrefix: "Subscription"
+        )
         .accessibilityIdentifier("SubscriptionAmount")
     }
 }
@@ -302,34 +281,50 @@ struct SubscriptionProposalSentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: t("wallet__payment_request_sent_title"))
-            Spacer(minLength: 8)
-            Image("check")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 256, height: 256)
-                .frame(maxWidth: .infinity)
-                .accessibilityHidden(true)
-            Spacer(minLength: 8)
-            DisplayText(t("subscriptions__proposal_sent_headline"), accentColor: .purpleAccent)
-                .padding(.bottom, 8)
-            BodyMText(
-                subscription.deliveryStatus == .sent
-                    ? t("subscriptions__proposal_sent_description")
-                    : t("subscriptions__proposal_queued_description"),
-                textColor: .white64
-            )
-            .padding(.bottom, 16)
-            if let contact {
-                PubkyContactRow(contact: contact, verticalPadding: 16) {}
-                    .allowsHitTesting(false)
+            SheetHeader(title: t(subscription.deliveryStatus == .sent
+                    ? "wallet__payment_request_sent_title"
+                    : "subscriptions__proposal_queued_title"))
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Image("check")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 256, height: 256)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityHidden(true)
+                    Spacer().frame(height: 16)
+                    DisplayText(t(subscription.deliveryStatus == .sent
+                            ? "subscriptions__proposal_sent_headline"
+                            : "subscriptions__proposal_queued_headline"), accentColor: .purpleAccent)
+                        .padding(.bottom, 8)
+                    BodyMText(
+                        subscription.deliveryStatus == .sent
+                            ? t("subscriptions__proposal_sent_description")
+                            : t("subscriptions__proposal_queued_description"),
+                        textColor: .white64
+                    )
+                    .padding(.bottom, 16)
+                    if let contact {
+                        PubkyContactRow(contact: contact, verticalPadding: 16, showsDivider: false) {}
+                            .padding(.horizontal, 16)
+                            .background(Color.gray6)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .allowsHitTesting(false)
+                    }
+                    SubscriptionRow(
+                        subscription: subscription,
+                        now: Date(),
+                        subtitle: subscription.recurrence.frequencyValue
+                    )
+                    .padding(.top, 8)
+                    Spacer().frame(height: 24)
+                }
+                .padding(.top, 16)
             }
-            SubscriptionRow(subscription: subscription, now: Date())
-                .padding(.top, 8)
-            Spacer(minLength: 24)
             CustomButton(title: t("common__ok")) {
                 sheets.hideSheet(reason: "Subscription proposal created")
             }
+            .padding(.bottom, 16)
         }
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
