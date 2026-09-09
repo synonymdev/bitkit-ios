@@ -471,6 +471,10 @@ struct PaykitSubscription: Identifiable, Hashable {
         isCreatedByUser && (isProposalVisible(at: date) || isActive(at: date))
     }
 
+    func isExpiredVisible(at date: Date) -> Bool {
+        isExpired(at: date) && (isPayer ? wasAccepted : !payments.isEmpty)
+    }
+
     func canCancel(at date: Date) -> Bool {
         guard recurrence.endsAt == nil else { return false }
         if isCreatedByUser {
