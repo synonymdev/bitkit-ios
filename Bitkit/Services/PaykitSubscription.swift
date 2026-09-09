@@ -11,17 +11,17 @@ private struct PaykitPreciseInstant: Comparable, Hashable {
         Date(timeIntervalSince1970: Double(seconds) + Double(nanoseconds) / 1_000_000_000)
     }
 
+    var wholeSecondDate: Date {
+        Date(timeIntervalSince1970: TimeInterval(seconds))
+    }
+
     init?(timestamp: String) {
         let canonical = PaykitSubscriptionTimestamp.canonical(timestamp)
         let fraction = PaykitSubscriptionTimestamp.fractionalSeconds(from: canonical) ?? ""
         let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var parsedDate = formatter.date(from: canonical)
-        if parsedDate == nil {
-            formatter.formatOptions = [.withInternetDateTime]
-            parsedDate = formatter.date(from: canonical)
-        }
-        guard let date = parsedDate else { return nil }
+        formatter.formatOptions = [.withInternetDateTime]
+        let wholeSecondTimestamp = fraction.isEmpty ? canonical : canonical.replacingOccurrences(of: ".\(fraction)", with: "")
+        guard let date = formatter.date(from: wholeSecondTimestamp) else { return nil }
 
         seconds = Int64(floor(date.timeIntervalSince1970))
         nanoseconds = Int(fraction.padding(toLength: 9, withPad: "0", startingAt: 0)) ?? 0
@@ -202,8 +202,18 @@ struct PaykitSubscriptionRecurrence: Hashable {
     }
 
     func periods(through date: Date, acceptedAt: Date) -> [PaykitBillingPeriod] {
-        let preciseDate = PaykitPreciseInstant(date: date)
-        let preciseAcceptedAt = PaykitPreciseInstant(date: acceptedAt)
+        periods(through: PaykitPreciseInstant(date: date), acceptedAt: PaykitPreciseInstant(date: acceptedAt))
+    }
+
+    func contains(_ period: PaykitBillingPeriod) -> Bool {
+        guard let start = PaykitPreciseInstant(timestamp: period.sdkValue.startsAt) else { return false }
+        return periods(through: start, acceptedAt: start).first == period
+    }
+
+    private func periods(
+        through preciseDate: PaykitPreciseInstant,
+        acceptedAt preciseAcceptedAt: PaykitPreciseInstant
+    ) -> [PaykitBillingPeriod] {
         guard unit.isSupported, preciseStartsAt <= preciseDate else { return [] }
 
         var periods: [PaykitBillingPeriod] = []
@@ -299,17 +309,17 @@ struct PaykitSubscriptionRecurrence: Hashable {
 
         let boundaryDate: Date? = switch unit {
         case .minute:
-            calendar.date(byAdding: .minute, value: value, to: preciseAnchor.date)
+            calendar.date(byAdding: .minute, value: value, to: preciseAnchor.wholeSecondDate)
         case .hour:
-            calendar.date(byAdding: .hour, value: value, to: preciseAnchor.date)
+            calendar.date(byAdding: .hour, value: value, to: preciseAnchor.wholeSecondDate)
         case .day:
-            calendar.date(byAdding: .day, value: value, to: preciseAnchor.date)
+            calendar.date(byAdding: .day, value: value, to: preciseAnchor.wholeSecondDate)
         case .week:
-            calendar.date(byAdding: .weekOfYear, value: value, to: preciseAnchor.date)
+            calendar.date(byAdding: .weekOfYear, value: value, to: preciseAnchor.wholeSecondDate)
         case .month:
-            Self.monthBoundary(from: preciseAnchor.date, offset: value, calendar: calendar)
+            Self.monthBoundary(from: preciseAnchor.wholeSecondDate, offset: value, calendar: calendar)
         case .year:
-            Self.yearBoundary(from: preciseAnchor.date, offset: value, calendar: calendar)
+            Self.yearBoundary(from: preciseAnchor.wholeSecondDate, offset: value, calendar: calendar)
         }
         guard let boundaryDate else { return nil }
         return PaykitPreciseInstant(seconds: Int64(floor(boundaryDate.timeIntervalSince1970)), nanoseconds: preciseAnchor.nanoseconds)
@@ -320,17 +330,17 @@ struct PaykitSubscriptionRecurrence: Hashable {
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let result: Date? = switch unit {
         case .minute:
-            calendar.date(byAdding: .minute, value: every, to: date.date)
+            calendar.date(byAdding: .minute, value: every, to: date.wholeSecondDate)
         case .hour:
-            calendar.date(byAdding: .hour, value: every, to: date.date)
+            calendar.date(byAdding: .hour, value: every, to: date.wholeSecondDate)
         case .day:
-            calendar.date(byAdding: .day, value: every, to: date.date)
+            calendar.date(byAdding: .day, value: every, to: date.wholeSecondDate)
         case .week:
-            calendar.date(byAdding: .weekOfYear, value: every, to: date.date)
+            calendar.date(byAdding: .weekOfYear, value: every, to: date.wholeSecondDate)
         case .month:
-            calendar.date(byAdding: .month, value: every, to: date.date)
+            calendar.date(byAdding: .month, value: every, to: date.wholeSecondDate)
         case .year:
-            calendar.date(byAdding: .year, value: every, to: date.date)
+            calendar.date(byAdding: .year, value: every, to: date.wholeSecondDate)
         }
         guard let result else { return nil }
         return PaykitPreciseInstant(seconds: Int64(floor(result.timeIntervalSince1970)), nanoseconds: date.nanoseconds)
@@ -527,13 +537,17 @@ struct PaykitSubscription: Identifiable, Hashable {
             ? deliveryStatusOverride ?? Self.deliveryStatus(from: record.proposalOutboundStatus)
             : nil
         lifecycleState = record.state
-        payments = record.paymentProofs.compactMap { proof in
-            guard let billingPeriod = proof.billingPeriod.flatMap(PaykitBillingPeriod.init) else { return nil }
-            return Payment(
+        var paymentsByPeriod: [PaykitBillingPeriod: Payment] = [:]
+        for proof in record.paymentProofs {
+            guard let billingPeriod = proof.billingPeriod.flatMap(PaykitBillingPeriod.init),
+                  recurrence.contains(billingPeriod)
+            else { continue }
+            paymentsByPeriod[billingPeriod] = Payment(
                 billingPeriod: billingPeriod,
                 proofKind: PaykitPaymentProofKind(paymentEndpointIdentifier: proof.paymentEndpointIdentifier)
             )
         }
+        payments = paymentsByPeriod.values.sorted { $0.billingPeriod.startsAt < $1.billingPeriod.startsAt }
     }
 
     func requests(through date: Date, acceptedAt: Date) -> [PaykitPaymentRequest] {

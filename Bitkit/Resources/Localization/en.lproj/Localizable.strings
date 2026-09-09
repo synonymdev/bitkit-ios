@@ -1534,11 +1534,13 @@
 "subscriptions__cancel_subscription" = "Cancel Subscription";
 "subscriptions__choose_recipient" = "Choose Recipient";
 "subscriptions__create" = "Create";
+"subscriptions__content_too_long" = "Shorten the subscription name or description and try again.";
+"subscriptions__icon_error" = "Could not load this image. Choose another image and try again.";
 "subscriptions__create_subscription" = "Create Subscription";
 "subscriptions__created" = "Created";
 "subscriptions__created_summary" = "1 subscriber · {count} payments";
 "subscriptions__created_summary_single_payment" = "1 subscriber · 1 payment";
-"subscriptions__custom_icon" = "Custom Icon";
+"subscriptions__custom_icon" = "Icon";
 "subscriptions__custom_icon_description" = "Tap to upload a custom icon";
 "subscriptions__daily" = "Daily";
 "subscriptions__daily_subscription" = "Daily Subscription";
@@ -1563,7 +1565,7 @@
 "subscriptions__monthly" = "Monthly";
 "subscriptions__monthly_cost" = "Monthly Cost";
 "subscriptions__monthly_subscription" = "Monthly Subscription";
-"subscriptions__name" = "Name";
+"subscriptions__name" = "Subscription Name";
 "subscriptions__name_placeholder" = "Subscription name";
 "subscriptions__ongoing" = "Ongoing";
 "subscriptions__overview" = "Overview";
@@ -1576,9 +1578,11 @@
 "subscriptions__per_year" = "per year";
 "subscriptions__pending" = "Pending";
 "subscriptions__proposal_queued_description" = "Your subscription proposal is queued and will send automatically.";
+"subscriptions__proposal_queued_headline" = "Queued\n<accent>Proposal</accent>";
+"subscriptions__proposal_queued_title" = "Queued";
 "subscriptions__proposal_queued_status" = "Proposal queued";
 "subscriptions__proposal_sent_description" = "You have sent a subscription proposal.";
-"subscriptions__proposal_sent_headline" = "Sent <accent>Proposal</accent>";
+"subscriptions__proposal_sent_headline" = "Sent\n<accent>Proposal</accent>";
 "subscriptions__proposal_sent_status" = "Proposal sent";
 "subscriptions__propose_subscription" = "Propose Subscription";
 "subscriptions__proposals" = "Proposals";
