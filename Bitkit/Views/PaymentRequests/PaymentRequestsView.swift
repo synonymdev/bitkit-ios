@@ -227,6 +227,7 @@ struct PaymentRequestsSheet: View {
             }
             .padding(.horizontal, 16)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("PaymentRequestsSheet")
         .onChange(of: paymentRequests.pendingRequests) { _, requests in
             if requests.isEmpty {
@@ -331,6 +332,7 @@ struct PaymentRequestsView: View {
         }
         .background(Color.black)
         .navigationBarHidden(true)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("PaymentRequestsScreen")
     }
 
@@ -528,6 +530,7 @@ struct PaymentRequestDetailView: View {
         .padding(.horizontal, 16)
         .background(Color.black)
         .navigationBarHidden(true)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("PaymentRequestDetailScreen")
         .task {
             tagManager.clearSelectedTags()

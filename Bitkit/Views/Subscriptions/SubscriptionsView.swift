@@ -90,6 +90,7 @@ struct SubscriptionsView: View {
         .padding(.horizontal, 16)
         .background(Color.black)
         .navigationBarHidden(true)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SubscriptionsScreen")
         .task {
             await paymentRequests.refresh()

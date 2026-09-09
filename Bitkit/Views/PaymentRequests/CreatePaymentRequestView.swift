@@ -102,6 +102,7 @@ struct RequestOrPayView: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .navigationBarHidden(true)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("RequestOrPay")
     }
 
