@@ -113,11 +113,14 @@ When the user provides custom instructions after `--`:
 
 **Design:**
 - Always include a `### Design` section.
-- For user-visible UI changes with an existing design, link the relevant Figma frames, using the screens map as the starting point.
+- For user-visible UI changes with an existing design, link the relevant Figma frames, starting with the latest `Bitkit - Handoff vNN` page.
 - For user-visible UI changes with no available design, including new features, write `N/A — no design available.`
 - For changes without user-visible UI changes, write `N/A — no UI changes.`
-- If a screens-map entry is missing or uncertain, state the uncertainty.
+- If the relevant Figma frame is missing or uncertain, state the uncertainty.
 - Never invent a Figma link or require a new design.
+- Reviewers may make at most one advisory request when an existing-design UI PR omits its Figma link.
+- Explicit `N/A` cases need no review request.
+- Missing Figma links never block approval or CI.
 
 **QA Notes / Validation:**
 - QA Notes separate actionable human QA instructions from automated verification coverage.

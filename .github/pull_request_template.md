@@ -11,10 +11,10 @@ Add any links to GitHub issues or Asana tasks that are relevant to this pull req
 ### Design
 
 <!--
-- Existing UI design: link the relevant Figma frames, using the screens map as the starting point.
+- Existing UI design: link the relevant Figma frames, starting with the latest `Bitkit - Handoff vNN` page.
 - No available design, including new features: `N/A — no design available.`
 - No user-visible UI changes: `N/A — no UI changes.`
-- Missing or uncertain screens-map entry: state the uncertainty.
+- Missing or uncertain Figma frame: state the uncertainty.
 - Never invent a Figma link or require a new design.
 -->
 
