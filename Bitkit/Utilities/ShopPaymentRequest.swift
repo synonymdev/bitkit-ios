@@ -18,7 +18,9 @@ enum ShopPaymentRequest {
     }
 
     static func isOnchainPayment(_ data: BitkitCore.Scanner) -> Bool {
-        if case .onChain = data { return true }
+        if case .onChain = data {
+            return true
+        }
         return false
     }
 }

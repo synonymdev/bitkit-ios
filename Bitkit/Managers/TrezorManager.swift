@@ -307,7 +307,9 @@ final class TrezorManager {
             devices = uniqueDevices
             trezorLog("Found \(uniqueDevices.count) Trezor devices (filtered from \(foundDevices.count))")
         } catch {
-            if error is CancellationError { throw error }
+            if error is CancellationError {
+                throw error
+            }
             self.error = errorMessage(from: error)
             trezorLog("Scan failed: \(error)", level: "error")
         }

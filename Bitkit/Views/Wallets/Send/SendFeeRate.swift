@@ -23,9 +23,15 @@ struct SendFeeRate: View {
     }
 
     private var currentCustomFeeRate: UInt32 {
-        if case let .custom(rate) = wallet.selectedSpeed { return rate }
-        if case let .custom(rate) = settings.defaultTransactionSpeed { return rate }
-        if let estimates = feeEstimatesManager.estimates { return estimates.slow }
+        if case let .custom(rate) = wallet.selectedSpeed {
+            return rate
+        }
+        if case let .custom(rate) = settings.defaultTransactionSpeed {
+            return rate
+        }
+        if let estimates = feeEstimatesManager.estimates {
+            return estimates.slow
+        }
         return 1
     }
 
