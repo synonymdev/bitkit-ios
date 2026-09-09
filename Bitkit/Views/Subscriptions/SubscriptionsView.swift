@@ -75,7 +75,8 @@ struct SubscriptionsView: View {
                 tabItems: [
                     TabItem(.overview),
                     TabItem(.payments, badge: paymentRequests.pendingRequests.count),
-                ]
+                ],
+                inactiveColor: .white.opacity(0.5)
             )
 
             if selectedTab == .payments {
@@ -99,7 +100,7 @@ struct SubscriptionsView: View {
             if selectedTab == .overview {
                 CustomButton(
                     title: t("subscriptions__create"),
-                    icon: Image("plus").resizable().frame(width: 16, height: 16)
+                    variant: .secondary
                 ) {
                     sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .create))
                 }
@@ -137,21 +138,21 @@ struct SubscriptionsView: View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer()
 
-            Image("subscription-clock")
+            Image("subscription-intro-clock")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 256, height: 256)
                 .frame(maxWidth: .infinity)
                 .accessibilityHidden(true)
 
-            Spacer()
+            Spacer().frame(height: 32)
 
             DisplayText(t("subscriptions__empty_headline"), accentColor: .purpleAccent)
-            Spacer().frame(height: 12)
+            Spacer().frame(height: 8)
             BodyMText(t("subscriptions__empty_description"), textColor: .white64)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, 24)
+        .padding(.bottom, 32)
     }
 
     private var metrics: some View {
@@ -161,23 +162,28 @@ struct SubscriptionsView: View {
                     sats: monthlyCostSats,
                     unitType: .primary,
                     size: .bodyMSB,
-                    prefix: "",
+                    symbol: true,
                     color: .textPrimary,
                     symbolColor: .textSecondary
                 )
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Rectangle()
                 .fill(Color.white16)
                 .frame(width: 1, height: 50)
             SubscriptionMetric(title: t("subscriptions__active"), icon: "arrows-clockwise") {
                 BodyMSBText("\(active.count)")
             }
+            .fixedSize(horizontal: true, vertical: false)
             Rectangle()
                 .fill(Color.white16)
                 .frame(width: 1, height: 50)
-            SubscriptionMetric(title: t("subscriptions__created"), icon: "plus") {
+            SubscriptionMetric(title: t("subscriptions__created"), icon: "asterisk") {
                 BodyMSBText("\(created.count)")
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
     }
 
@@ -248,7 +254,7 @@ private struct SubscriptionMetric<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             CaptionMText(title.localizedUppercase, textColor: .white64)
             HStack(spacing: 8) {
                 Image(icon)
@@ -258,7 +264,6 @@ private struct SubscriptionMetric<Content: View>: View {
                 content()
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -271,16 +276,16 @@ struct SubscriptionRow: View {
         HStack(spacing: 16) {
             SubscriptionAvatar(subscription: subscription, size: 40)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 0) {
                 BodyMSBText(subscription.note ?? t("subscriptions__subscription"))
                     .lineLimit(1)
-                CaptionText(subtitle ?? subscription.rowSubtitle(at: now), textColor: .white64)
+                CaptionBText(subtitle ?? subscription.rowSubtitle(at: now), textColor: .white64)
                     .lineLimit(1)
             }
 
             Spacer(minLength: 8)
 
-            MoneyCell(sats: Int(clamping: subscription.amountSats), prefix: "")
+            MoneyCell(sats: Int(clamping: subscription.amountSats), prefix: "", symbol: true)
         }
         .padding(16)
         .background(Color.gray6)
@@ -305,20 +310,28 @@ struct SubscriptionAvatar: View {
 
     var body: some View {
         if let iconURI = subscription.metadata.iconURI {
-            PubkyImage(uri: iconURI, size: size)
+            PubkyImage(uri: iconURI, size: size, cornerRadius: size / 5)
         } else if subscription.isCreatedByUser {
-            Image("subscription-default-icon")
-                .resizable()
-                .scaledToFit()
-                .padding(size / 8)
-                .frame(width: size, height: size)
-                .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: size / 5))
+            SubscriptionDefaultIcon(size: size)
         } else if let contact {
             PubkyContactAvatar(contact: contact, size: size)
         } else {
             ContactAvatarLetter(source: subscription.counterparty, size: size)
         }
+    }
+}
+
+struct SubscriptionDefaultIcon: View {
+    let size: CGFloat
+
+    var body: some View {
+        Image("subscription-default-icon")
+            .resizable()
+            .scaledToFit()
+            .padding(size / 8)
+            .frame(width: size, height: size)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: size / 5))
     }
 }
 

@@ -9,6 +9,7 @@ struct CreateSubscriptionView: View {
     let onChooseRecipient: () -> Void
 
     @State private var selectedPhotoItem: PhotosPickerItem?
+    @FocusState private var isNameFocused: Bool
     @FocusState private var isDescriptionFocused: Bool
 
     private var isLoadingIcon: Bool {
@@ -23,15 +24,27 @@ struct CreateSubscriptionView: View {
         VStack(spacing: 0) {
             SheetHeader(title: t("subscriptions__create_subscription"))
 
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    amount
-                    frequency
-                    name
-                    description
-                    customIcon
+            ScrollViewReader { proxy in
+                GeometryReader { geometry in
+                    ScrollView(showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 24) {
+                            amount
+                            frequency
+                            name
+                            description
+                                .id("SubscriptionDescription")
+                            customIcon
+                        }
+                        .padding(.bottom, 24)
+                    }
+                    .onChange(of: isDescriptionFocused ? geometry.size.height : nil) { _, focusedHeight in
+                        if focusedHeight != nil {
+                            withAnimation {
+                                proxy.scrollTo("SubscriptionDescription", anchor: .bottom)
+                            }
+                        }
+                    }
                 }
-                .padding(.bottom, 24)
             }
 
             CustomButton(
@@ -42,7 +55,7 @@ struct CreateSubscriptionView: View {
             ) {
                 onChooseRecipient()
             }
-            .buttonBottomPadding(isFocused: isDescriptionFocused)
+            .buttonBottomPadding(isFocused: isNameFocused || isDescriptionFocused)
             .accessibilityIdentifier("SubscriptionChooseRecipient")
         }
         .padding(.horizontal, 16)
@@ -65,7 +78,7 @@ struct CreateSubscriptionView: View {
     }
 
     private var amount: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64)
             Button(action: onEditAmount) {
                 HStack(spacing: 8) {
@@ -75,8 +88,11 @@ struct CreateSubscriptionView: View {
                         size: .display,
                         symbol: true,
                         color: .textPrimary,
-                        symbolColor: .textSecondary
+                        symbolColor: .textSecondary,
+                        fillsWidth: false
                     )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                     Image("pencil")
                         .resizable()
                         .frame(width: 24, height: 24)
@@ -91,23 +107,14 @@ struct CreateSubscriptionView: View {
     private var frequency: some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("subscriptions__frequency").localizedUppercase, textColor: .white64)
-            HStack(spacing: 8) {
-                ForEach(SubscriptionFrequencyOption.allCases) { option in
-                    Button {
-                        draft.frequency = option.unit
-                    } label: {
-                        VStack(spacing: 8) {
-                            CaptionBText(option.description, textColor: draft.frequency == option.unit ? .white : .secondary)
-                                .frame(maxWidth: .infinity)
-                            Rectangle()
-                                .fill(draft.frequency == option.unit ? Color.white : Color.white16)
-                                .frame(height: 2)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("SubscriptionFrequency-\(option.rawValue)")
-                }
-            }
+            SegmentedControl(
+                selectedTab: Binding(
+                    get: { SubscriptionFrequencyOption.allCases.first { $0.unit == draft.frequency } ?? .month },
+                    set: { draft.frequency = $0.unit }
+                ),
+                tabs: SubscriptionFrequencyOption.allCases,
+                inactiveColor: .white.opacity(0.5)
+            )
         }
     }
 
@@ -119,6 +126,7 @@ struct CreateSubscriptionView: View {
                 text: $draft.name,
                 testIdentifier: "SubscriptionName"
             )
+            .focused($isNameFocused)
         }
     }
 
@@ -129,7 +137,10 @@ struct CreateSubscriptionView: View {
                 text: $draft.description,
                 placeholder: t("subscriptions__description_placeholder"),
                 testIdentifier: "SubscriptionDescription",
-                isFocused: $isDescriptionFocused
+                isFocused: $isDescriptionFocused,
+                minHeight: 60,
+                maxHeight: 60,
+                backgroundColor: .white10
             )
         }
     }
@@ -145,22 +156,18 @@ struct CreateSubscriptionView: View {
                                 .resizable()
                                 .scaledToFill()
                         } else {
-                            Image("subscription-default-icon")
-                                .resizable()
-                                .scaledToFit()
-                                .padding(5)
-                                .background(Color.white)
+                            SubscriptionDefaultIcon(size: 40)
                         }
                     }
                     .frame(width: 40, height: 40)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    BodyMText(t("subscriptions__custom_icon_description"), textColor: .white64)
+                    CaptionBText(t("subscriptions__custom_icon_description"), textColor: .white64)
                     Spacer()
                 }
                 .padding(16)
-                .background(Color.gray6)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .background(Color.white10)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .disabled(isLoadingIcon)
             .accessibilityIdentifier("SubscriptionIconPicker")
@@ -228,7 +235,6 @@ struct SubscriptionRecipientView: View {
         } footer: {
             CustomButton(
                 title: t("subscriptions__propose_subscription"),
-                icon: Image("airplane").resizable().frame(width: 16, height: 16),
                 isDisabled: selectedTarget == nil,
                 isLoading: paymentRequests.isCreatingRequest
             ) {
@@ -248,9 +254,10 @@ struct SubscriptionRecipientView: View {
                 }
             }
         } label: {
-            Image("timer")
+            Image("timer-outline")
                 .resizable()
-                .frame(width: 24, height: 24)
+                .frame(width: 18, height: 21)
+                .frame(width: 24, height: 24, alignment: .top)
                 .foregroundColor(.textPrimary)
         }
         .accessibilityLabel(t("wallet__payment_request_expires"))
@@ -284,42 +291,43 @@ struct SubscriptionProposalSentView: View {
             SheetHeader(title: t(subscription.deliveryStatus == .sent
                     ? "wallet__payment_request_sent_title"
                     : "subscriptions__proposal_queued_title"))
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Image("check")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 256, height: 256)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityHidden(true)
-                    Spacer().frame(height: 16)
-                    DisplayText(t(subscription.deliveryStatus == .sent
-                            ? "subscriptions__proposal_sent_headline"
-                            : "subscriptions__proposal_queued_headline"), accentColor: .purpleAccent)
-                        .padding(.bottom, 8)
-                    BodyMText(
-                        subscription.deliveryStatus == .sent
-                            ? t("subscriptions__proposal_sent_description")
-                            : t("subscriptions__proposal_queued_description"),
-                        textColor: .white64
-                    )
-                    .padding(.bottom, 16)
-                    if let contact {
-                        PubkyContactRow(contact: contact, verticalPadding: 16, showsDivider: false) {}
-                            .padding(.horizontal, 16)
-                            .background(Color.gray6)
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                            .allowsHitTesting(false)
+            GeometryReader { geometry in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Image("check")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 256, height: 256)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityHidden(true)
+                        DisplayText(t(subscription.deliveryStatus == .sent
+                                ? "subscriptions__proposal_sent_headline"
+                                : "subscriptions__proposal_queued_headline"), accentColor: .purpleAccent)
+                            .padding(.bottom, 8)
+                        BodyMText(
+                            subscription.deliveryStatus == .sent
+                                ? t("subscriptions__proposal_sent_description")
+                                : t("subscriptions__proposal_queued_description"),
+                            textColor: .white64
+                        )
+                        .padding(.bottom, 16)
+                        if let contact {
+                            PubkyContactRow(contact: contact, verticalPadding: 16, showsDivider: false) {}
+                                .padding(.horizontal, 16)
+                                .background(Color.gray6)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .allowsHitTesting(false)
+                        }
+                        SubscriptionRow(
+                            subscription: subscription,
+                            now: Date(),
+                            subtitle: subscription.recurrence.subscriptionFrequencyLabel
+                        )
+                        .padding(.top, 16)
+                        Spacer().frame(height: 24)
                     }
-                    SubscriptionRow(
-                        subscription: subscription,
-                        now: Date(),
-                        subtitle: subscription.recurrence.frequencyValue
-                    )
-                    .padding(.top, 8)
-                    Spacer().frame(height: 24)
+                    .frame(minHeight: geometry.size.height, alignment: .bottom)
                 }
-                .padding(.top, 16)
             }
             CustomButton(title: t("common__ok")) {
                 sheets.hideSheet(reason: "Subscription proposal created")
@@ -335,15 +343,11 @@ struct SubscriptionProposalSentView: View {
     }
 }
 
-private enum SubscriptionFrequencyOption: String, CaseIterable, Identifiable, CustomStringConvertible {
+private enum SubscriptionFrequencyOption: String, CaseIterable, CustomStringConvertible {
     case day
     case week
     case month
     case year
-
-    var id: String {
-        rawValue
-    }
 
     var unit: PaykitSubscriptionRecurrence.Unit {
         switch self {

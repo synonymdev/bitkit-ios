@@ -30,6 +30,7 @@ struct MoneyText: View {
     var color: Color = .textPrimary
     var symbolColor: Color?
     var testIdentifier: String?
+    var fillsWidth: Bool = true
 
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -103,7 +104,8 @@ extension MoneyText {
         case .display:
             DisplayText(
                 // Cap symbol font weight to ExtraBold
-                text, textColor: color, accentColor: symbolColor ?? .textSecondary, accentFont: size == .display ? Fonts.extraBold : nil
+                text, textColor: color, accentColor: symbolColor ?? .textSecondary,
+                accentFont: Fonts.extraBold, fillsWidth: fillsWidth
             )
         case .title:
             TitleText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
