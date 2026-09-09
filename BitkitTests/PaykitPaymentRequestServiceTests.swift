@@ -319,6 +319,116 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(request.billingPeriod?.endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-01T08:00:00Z")))
     }
 
+    func testRefreshKeepsCreatorSubscriptionWithoutGeneratingPayerPayment() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let record = try paymentRequestRecord(
+            id: "creator-recurring",
+            state: .activeRecurring,
+            role: .payee,
+            recurrence: recurrence,
+            metadata: #"{"note":"Creator plan","subscription":{"version":1,"description":"Monthly support","benefits":[],"icon_uri":"pubky://creator/icon"}}"#
+        )
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [record]),
+            clock: PaymentRequestTestClock(now)
+        )
+
+        await manager.refresh()
+
+        let subscription = try XCTUnwrap(manager.subscriptions.first)
+        XCTAssertTrue(subscription.isCreatedByUser)
+        XCTAssertEqual(subscription.note, "Creator plan")
+        XCTAssertEqual(subscription.metadata.description, "Monthly support")
+        XCTAssertEqual(subscription.metadata.iconURI, "pubky://creator/icon")
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertTrue(manager.historyRequests.isEmpty)
+    }
+
+    func testCreatorProposalBuildsRecurringTermsAndStaysQueuedUntilDelivery() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let expiresAt = now.addingTimeInterval(60)
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]]
+        )
+        try await sdk.setProposalResult(paymentRequestRecord(
+            id: "creator-proposal",
+            counterparty: publicKey,
+            counterpartyReceiverPath: PaykitReceiverPath.wallet,
+            role: .payee
+        ))
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+
+        let subscription = try await manager.proposeSubscription(
+            PaykitSubscriptionDraft(
+                amountSats: 100_000,
+                name: " Monthly support ",
+                description: " Thank you ",
+                frequency: .month,
+                expiresAt: expiresAt,
+                iconData: nil
+            ),
+            to: XCTUnwrap(manager.eligibleTargets.first)
+        )
+
+        let snapshot = await sdk.snapshot()
+        let proposed = try XCTUnwrap(snapshot.proposedRequests.first)
+        XCTAssertEqual(proposed.amount, "0.001")
+        XCTAssertEqual(proposed.expiresAt, timestamp(expiresAt))
+        XCTAssertEqual(proposed.recurrence?.every, 1)
+        XCTAssertEqual(proposed.recurrence?.unit, "month")
+        XCTAssertEqual(proposed.recurrence?.startsAt, timestamp(now))
+        XCTAssertEqual(proposed.recurrence?.anchor, timestamp(now))
+        XCTAssertNil(proposed.recurrence?.endsAt)
+        let metadataData = try XCTUnwrap(proposed.metadata.data(using: .utf8))
+        let metadata = try XCTUnwrap(JSONSerialization.jsonObject(with: metadataData) as? [String: Any])
+        XCTAssertEqual(metadata["note"] as? String, "Monthly support")
+        let subscriptionMetadata = try XCTUnwrap(metadata["subscription"] as? [String: Any])
+        XCTAssertEqual(subscriptionMetadata["description"] as? String, "Thank you")
+        XCTAssertTrue(subscription.isCreatedByUser)
+        XCTAssertEqual(subscription.deliveryStatus, .queued)
+        XCTAssertEqual(manager.subscriptions, [subscription])
+    }
+
+    func testCreatorPendingProposalCanBeDeletedButFixedEndProposalCannot() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let openEnded = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            role: .payee,
+            expiresAt: timestamp(now.addingTimeInterval(60)),
+            recurrence: PaymentRequestRecurrence(
+                every: 1,
+                unit: "month",
+                startsAt: timestamp(now),
+                anchor: timestamp(now),
+                endsAt: nil
+            )
+        )))
+        let fixedEnd = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            role: .payee,
+            expiresAt: timestamp(now.addingTimeInterval(60)),
+            recurrence: PaymentRequestRecurrence(
+                every: 1,
+                unit: "month",
+                startsAt: timestamp(now),
+                anchor: timestamp(now),
+                endsAt: timestamp(now.addingTimeInterval(3600))
+            )
+        )))
+
+        XCTAssertTrue(openEnded.canCancel(at: now))
+        XCTAssertFalse(fixedEnd.canCancel(at: now))
+    }
+
     func testEndedSubscriptionKeepsItsUnpaidPeriodAvailable() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let recurrence = PaymentRequestRecurrence(
@@ -2451,6 +2561,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
 
     func paymentRequestReceiverPaths(publicKey: String) -> [String] {
         receiverPathsByPublicKey[publicKey] ?? []
+    }
+
+    func uploadProfileAvatar(bytes _: Data, contentType _: String) -> String {
+        "pubky://\(activeIdentity)/pub/paykit/blobs/subscription-icon.jpg"
     }
 
     func proposePaymentRequest(
