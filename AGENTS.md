@@ -345,7 +345,7 @@ Ensure accessibility modifiers and labels are added to custom components.
 - Missing or uncertain Figma frames must be reported honestly.
 - Never invent a Figma link or require a new design.
 - Reviewers may make at most one advisory request when an existing-design UI PR omits its Figma link.
-- Explicit `N/A` cases need no review request.
+- `N/A — no UI changes.` needs no review request; `N/A — no design available.` may receive the single advisory clarification.
 - Missing Figma links never block approval or CI.
 
 ## Code Style & Conventions
