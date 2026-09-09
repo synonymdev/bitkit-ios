@@ -38,7 +38,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
 
         func ensureConnected(deviceId: String) async throws {
             ensureCalls.append(deviceId)
-            if let ensureConnectedError { throw ensureConnectedError }
+            if let ensureConnectedError {
+                throw ensureConnectedError
+            }
         }
 
         @discardableResult
@@ -48,7 +50,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
             passphrase: String
         ) async throws -> TrezorFeatures {
             openCalls.append((deviceId, mode, passphrase))
-            if let connectWithWalletModeError { throw connectWithWalletModeError }
+            if let connectWithWalletModeError {
+                throw connectWithWalletModeError
+            }
             connectedDeviceId = deviceId
             switch mode {
             case .standard:
@@ -91,7 +95,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
             forgottenWalletIds.append(walletId)
             forgottenPendingNames.append(pendingName)
             storedDevices.removeAll { $0.resolvedWalletId == walletId }
-            if connectedWalletId == walletId { connectedWalletId = nil }
+            if connectedWalletId == walletId {
+                connectedWalletId = nil
+            }
         }
     }
 
@@ -343,7 +349,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         var addressCalls = 0
         let manager = makeManager { _ in
             addressCalls += 1
-            if addressCalls == 1 { throw TrezorError.Timeout }
+            if addressCalls == 1 {
+                throw TrezorError.Timeout
+            }
             return TrezorAddressResponse(address: receiveAddress.address, path: receiveAddress.path)
         }
 
