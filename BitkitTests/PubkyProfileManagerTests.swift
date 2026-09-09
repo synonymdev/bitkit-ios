@@ -159,6 +159,74 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testSignupRejectsOverlapAndAllowsRetryAfterFailure() async throws {
+        let defaults = UserDefaults.standard
+        let previousPending = defaults.object(forKey: "pubky_profile_setup_pending")
+        let previousSharing = defaults.object(forKey: PrivatePaykitService.publishingEnabledKey)
+        defer {
+            defaults.set(previousPending, forKey: "pubky_profile_setup_pending")
+            defaults.set(previousSharing, forKey: PrivatePaykitService.publishingEnabledKey)
+        }
+
+        let manager = PubkyProfileManager()
+        let session = PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test")
+        var shouldFailActivation = true
+        var activationCount = 0
+
+        func rejectConcurrentSignup() async {
+            do {
+                try await manager.completeSignupAuthenticationForTesting(
+                    publicKey: "pubky_other",
+                    registerIdentity: {
+                        XCTFail("Concurrent signup must not register an identity")
+                        return session
+                    },
+                    approveAuth: { XCTFail("Concurrent signup must not authorize an app") },
+                    activateIdentity: { _ in XCTFail("Concurrent signup must not activate or clear credentials") }
+                )
+                XCTFail("Expected concurrent signup to be rejected")
+            } catch {
+                guard case PubkySignupError.inProgress = error else {
+                    XCTFail("Unexpected error: \(error)")
+                    return
+                }
+            }
+        }
+
+        func completeSignup() async throws {
+            try await manager.completeSignupAuthenticationForTesting(
+                publicKey: "pubky_test",
+                registerIdentity: {
+                    await rejectConcurrentSignup()
+                    return session
+                },
+                approveAuth: { await rejectConcurrentSignup() },
+                activateIdentity: { _ in
+                    await rejectConcurrentSignup()
+                    activationCount += 1
+                    if shouldFailActivation {
+                        throw CancellationError()
+                    }
+                }
+            )
+        }
+
+        do {
+            try await completeSignup()
+            XCTFail("Expected activation failure")
+        } catch is CancellationError {}
+        XCTAssertNil(manager.publicKey)
+        XCTAssertFalse(manager.isProfileSetupPending)
+
+        shouldFailActivation = false
+        try await completeSignup()
+        XCTAssertEqual(activationCount, 2)
+        XCTAssertEqual(manager.publicKey, "pubky_test")
+        XCTAssertEqual(manager.authState, .authenticated)
+        XCTAssertTrue(manager.isProfileSetupPending)
+    }
+
     // MARK: - Ring callbacks
 
     func testPubkyRingAuthURLBuilderAddsXCallbackParams() throws {

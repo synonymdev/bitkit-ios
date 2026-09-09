@@ -124,6 +124,7 @@ private enum PubkyProfileManagerError: LocalizedError {
 
 enum PubkySignupError: Error {
     case alreadySignedIn
+    case inProgress
 }
 
 @MainActor
@@ -146,6 +147,7 @@ class PubkyProfileManager: ObservableObject {
     @Published private(set) var isProfileSetupPending: Bool
 
     private var activeAuthAttemptID: UUID?
+    private var isSignupInFlight = false
 
     init() {
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
@@ -416,6 +418,10 @@ class PubkyProfileManager: ObservableObject {
         approveAuth: () async throws -> Void,
         activateIdentity: (PubkySessionBootstrapResult) async throws -> Void
     ) async throws {
+        guard !isSignupInFlight else { throw PubkySignupError.inProgress }
+        isSignupInFlight = true
+        defer { isSignupInFlight = false }
+
         setProfileSetupPending(false)
         let registeredSession = try await registerIdentity()
         try await approveAuth()
