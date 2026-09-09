@@ -60,6 +60,10 @@ struct PubkyAuthApprovalSheet: View {
         case authorizing
         case success
 
+        var canDismiss: Bool {
+            self != .authorizing
+        }
+
         @MainActor
         mutating func approveWatchOnlyConsent() -> Bool {
             guard self == .watchOnlyConsent else { return false }
@@ -96,7 +100,7 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var showsBackButton: Bool {
-        state == .authorize || state == .authorizing || state == .success
+        state == .authorize || state == .success
     }
 
     var body: some View {
@@ -107,6 +111,7 @@ struct PubkyAuthApprovalSheet: View {
                 authorizationFlowContent
             }
         }
+        .interactiveDismissDisabled(!state.canDismiss)
         .fullScreenCover(isPresented: $isShowingAuthCheck) {
             AuthCheck(
                 onCancel: {
@@ -455,6 +460,11 @@ struct PubkyAuthApprovalSheet: View {
 
             state = .success
         } catch {
+            if case PubkySignupError.inProgress = error {
+                app.toast(type: .info, title: t("pubky_auth__authorizing"))
+                state = .authorize
+                return
+            }
             if case PubkySignupError.alreadySignedIn = error {
                 app.toast(type: .info, title: t("pubky_auth__already_signed_in"))
                 sheets.hideSheet()
@@ -477,6 +487,7 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private func onBack() {
+        guard state.canDismiss else { return }
         if state == .authorize, config.request.bitkitClaim == .watchOnlyAccountV1 {
             state = .watchOnlyConsent
         } else {

@@ -15,16 +15,12 @@ final class PubkyProfileManagerTests: XCTestCase {
                 func complete() async throws {
                     try await PubkyProfileManager.completeIdentityCreation(
                         loadStoredSecretKey: {
-                            if shouldFail, failedStep == "load" {
-                                throw failure
-                            }
+                            if shouldFail, failedStep == "load" { throw failure }
                             return storedKey
                         },
                         signIn: {
                             XCTAssertEqual($0, "existing-key")
-                            if shouldFail, failedStep == "signIn" {
-                                throw failure
-                            }
+                            if shouldFail, failedStep == "signIn" { throw failure }
                             return "pubky_existing"
                         },
                         signUp: {
@@ -32,9 +28,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                             return "pubky_new"
                         },
                         createProfile: {
-                            if shouldFail, failedStep == "profile" {
-                                throw failure
-                            }
+                            if shouldFail, failedStep == "profile" { throw failure }
                             profilePublicKey = $0
                         },
                         discardSessionAccess: {
@@ -82,9 +76,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                             return "pubky_new"
                         },
                         createProfile: {
-                            if failsToSaveProfile {
-                                throw PubkyServiceError.authFailed("profile")
-                            }
+                            if failsToSaveProfile { throw PubkyServiceError.authFailed("profile") }
                             profilePublicKey = $0
                         },
                         discardSessionAccess: { didDiscard = true }
@@ -137,9 +129,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                 XCTAssertFalse(manager.isProfileSetupPending)
                 XCTAssertNil(manager.publicKey)
                 events.append(step)
-                if step == failingStep {
-                    throw PubkyServiceError.authFailed(step)
-                }
+                if step == failingStep { throw PubkyServiceError.authFailed(step) }
             }
 
             do {
@@ -166,6 +156,146 @@ final class PubkyProfileManagerTests: XCTestCase {
                 XCTAssertNil(manager.publicKey)
                 XCTAssertEqual(manager.authState, .idle)
             }
+        }
+    }
+
+    @MainActor
+    func testSignupRejectsOverlapAndAllowsRetryAfterFailure() async throws {
+        let defaults = UserDefaults.standard
+        let previousPending = defaults.object(forKey: "pubky_profile_setup_pending")
+        let previousSharing = defaults.object(forKey: PrivatePaykitService.publishingEnabledKey)
+        defer {
+            defaults.set(previousPending, forKey: "pubky_profile_setup_pending")
+            defaults.set(previousSharing, forKey: PrivatePaykitService.publishingEnabledKey)
+        }
+
+        let manager = PubkyProfileManager()
+        let session = PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test")
+        var shouldFailActivation = true
+        var activationCount = 0
+
+        func rejectConcurrentSignup() async {
+            do {
+                try await manager.completeSignupAuthenticationForTesting(
+                    publicKey: "pubky_other",
+                    registerIdentity: {
+                        XCTFail("Concurrent signup must not register an identity")
+                        return session
+                    },
+                    approveAuth: { XCTFail("Concurrent signup must not authorize an app") },
+                    activateIdentity: { _ in XCTFail("Concurrent signup must not activate or clear credentials") }
+                )
+                XCTFail("Expected concurrent signup to be rejected")
+            } catch {
+                guard case PubkySignupError.inProgress = error else {
+                    XCTFail("Unexpected error: \(error)")
+                    return
+                }
+            }
+        }
+
+        func completeSignup() async throws {
+            try await manager.completeSignupAuthenticationForTesting(
+                publicKey: "pubky_test",
+                registerIdentity: {
+                    await rejectConcurrentSignup()
+                    return session
+                },
+                approveAuth: { await rejectConcurrentSignup() },
+                activateIdentity: { _ in
+                    await rejectConcurrentSignup()
+                    activationCount += 1
+                    if shouldFailActivation {
+                        throw CancellationError()
+                    }
+                }
+            )
+        }
+
+        do {
+            try await completeSignup()
+            XCTFail("Expected activation failure")
+        } catch is CancellationError {}
+        XCTAssertNil(manager.publicKey)
+        XCTAssertFalse(manager.isProfileSetupPending)
+
+        shouldFailActivation = false
+        try await completeSignup()
+        XCTAssertEqual(activationCount, 2)
+        XCTAssertEqual(manager.publicKey, "pubky_test")
+        XCTAssertEqual(manager.authState, .authenticated)
+        XCTAssertTrue(manager.isProfileSetupPending)
+    }
+
+    @MainActor
+    func testSignupTimeoutAndCancellationIgnoreLateApprovalAndAllowRetry() async throws {
+        let defaults = UserDefaults.standard
+        let previousPending = defaults.object(forKey: "pubky_profile_setup_pending")
+        let previousSharing = defaults.object(forKey: PrivatePaykitService.publishingEnabledKey)
+        defer {
+            defaults.set(previousPending, forKey: "pubky_profile_setup_pending")
+            defaults.set(previousSharing, forKey: PrivatePaykitService.publishingEnabledKey)
+        }
+
+        for cancelSignup in [false, true] {
+            let manager = PubkyProfileManager()
+            let session = PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_first")
+            let approvalStarted = expectation(description: "Approval started")
+            let signupFinished = expectation(description: "Signup stops without waiting for approval")
+            let approvalFinished = expectation(description: "Late approval returns")
+            var approvalContinuation: CheckedContinuation<Void, Never>?
+            defer { approvalContinuation?.resume() }
+
+            let signup = Task { @MainActor in
+                defer { signupFinished.fulfill() }
+                do {
+                    try await manager.completeSignupAuthenticationForTesting(
+                        publicKey: "pubky_first",
+                        registerIdentity: { session },
+                        approveAuth: {
+                            await withCheckedContinuation {
+                                approvalContinuation = $0
+                                approvalStarted.fulfill()
+                            }
+                            approvalFinished.fulfill()
+                        },
+                        activateIdentity: { _ in XCTFail("Abandoned signup must never activate") },
+                        authorizationTimeout: cancelSignup ? .seconds(30) : .milliseconds(20)
+                    )
+                    XCTFail("Expected signup to stop")
+                } catch {
+                    if cancelSignup {
+                        XCTAssertTrue(error is CancellationError)
+                    } else {
+                        XCTAssertEqual((error as? URLError)?.code, .timedOut)
+                    }
+                }
+            }
+
+            await fulfillment(of: [approvalStarted], timeout: 2)
+            if cancelSignup {
+                signup.cancel()
+            }
+            await fulfillment(of: [signupFinished], timeout: 2)
+            XCTAssertNil(manager.publicKey)
+            XCTAssertFalse(manager.isProfileSetupPending)
+
+            var didActivateRetry = false
+            try await manager.completeSignupAuthenticationForTesting(
+                publicKey: "pubky_retry",
+                registerIdentity: { session },
+                approveAuth: {},
+                activateIdentity: { _ in didActivateRetry = true }
+            )
+            XCTAssertTrue(didActivateRetry)
+
+            approvalContinuation?.resume()
+            approvalContinuation = nil
+            await fulfillment(of: [approvalFinished], timeout: 2)
+            await signup.value
+            XCTAssertEqual(manager.publicKey, "pubky_retry")
+            XCTAssertEqual(manager.authState, .authenticated)
+            XCTAssertTrue(manager.isProfileSetupPending)
         }
     }
 

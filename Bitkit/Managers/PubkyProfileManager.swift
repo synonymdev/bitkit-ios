@@ -135,6 +135,7 @@ private enum PubkyProfileManagerError: LocalizedError {
 
 enum PubkySignupError: Error {
     case alreadySignedIn
+    case inProgress
 }
 
 @MainActor
@@ -157,6 +158,7 @@ class PubkyProfileManager: ObservableObject {
     @Published private(set) var isProfileSetupPending: Bool
 
     private var activeAuthAttemptID: UUID?
+    private var isSignupInFlight = false
 
     init() {
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
@@ -424,12 +426,17 @@ class PubkyProfileManager: ObservableObject {
     private func completeSignupAuthentication(
         publicKey: String,
         registerIdentity: () async throws -> PubkySessionBootstrapResult,
-        approveAuth: () async throws -> Void,
-        activateIdentity: (PubkySessionBootstrapResult) async throws -> Void
+        approveAuth: @escaping () async throws -> Void,
+        activateIdentity: (PubkySessionBootstrapResult) async throws -> Void,
+        authorizationTimeout: Duration = .seconds(30)
     ) async throws {
+        guard !isSignupInFlight else { throw PubkySignupError.inProgress }
+        isSignupInFlight = true
+        defer { isSignupInFlight = false }
+
         setProfileSetupPending(false)
         let registeredSession = try await registerIdentity()
-        try await approveAuth()
+        try await approveSignupWithTimeout(authorizationTimeout, operation: approveAuth)
         try await activateIdentity(registeredSession)
 
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
@@ -437,6 +444,43 @@ class PubkyProfileManager: ObservableObject {
         authState = .authenticated
         setProfileSetupPending(true)
         Self.notifyAppStateBackupChanged()
+    }
+
+    private func approveSignupWithTimeout(_ timeout: Duration, operation: @escaping () async throws -> Void) async throws {
+        // The FFI request may ignore cancellation. Only race approval, so a late response cannot activate an abandoned signup.
+        let (stream, continuation) = AsyncStream<Result<Void, Error>>.makeStream(bufferingPolicy: .bufferingOldest(1))
+        let operationTask = Task {
+            do {
+                try Task.checkCancellation()
+                try await operation()
+                continuation.yield(.success(()))
+            } catch {
+                continuation.yield(.failure(error))
+            }
+        }
+        let timeoutTask = Task {
+            do {
+                try await Task.sleep(for: timeout)
+                continuation.yield(.failure(URLError(.timedOut)))
+            } catch {}
+        }
+
+        try await withTaskCancellationHandler {
+            defer {
+                operationTask.cancel()
+                timeoutTask.cancel()
+                continuation.finish()
+            }
+            for await result in stream {
+                try Task.checkCancellation()
+                return try result.get()
+            }
+            throw CancellationError()
+        } onCancel: {
+            operationTask.cancel()
+            timeoutTask.cancel()
+            continuation.finish()
+        }
     }
 
     func saveProfile(
@@ -773,14 +817,16 @@ class PubkyProfileManager: ObservableObject {
         func completeSignupAuthenticationForTesting(
             publicKey: String,
             registerIdentity: () async throws -> PubkySessionBootstrapResult,
-            approveAuth: () async throws -> Void,
-            activateIdentity: (PubkySessionBootstrapResult) async throws -> Void
+            approveAuth: @escaping () async throws -> Void,
+            activateIdentity: (PubkySessionBootstrapResult) async throws -> Void,
+            authorizationTimeout: Duration = .seconds(30)
         ) async throws {
             try await completeSignupAuthentication(
                 publicKey: publicKey,
                 registerIdentity: registerIdentity,
                 approveAuth: approveAuth,
-                activateIdentity: activateIdentity
+                activateIdentity: activateIdentity,
+                authorizationTimeout: authorizationTimeout
             )
         }
 

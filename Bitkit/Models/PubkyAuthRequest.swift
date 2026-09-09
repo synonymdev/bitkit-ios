@@ -76,7 +76,6 @@ struct PubkyAuthRequest {
     var isSignup: Bool {
         Self.isSignupURL(rawUrl)
     }
-
     /// The network origin that receives the authorization. This is a delivery destination, not a service identity.
     var relayOrigin: String? {
         guard let components = URLComponents(string: relay),
