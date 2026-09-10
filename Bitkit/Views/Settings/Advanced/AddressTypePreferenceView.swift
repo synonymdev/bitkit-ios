@@ -39,6 +39,7 @@ struct MonitoredAddressTypeToggle: View {
     let addressType: AddressScriptType
     let isMonitored: Bool
     let isSelectedType: Bool
+    let isRequiredRefundType: Bool
     let onToggle: (Bool) -> Void
 
     private var toggleId: String {
@@ -48,7 +49,7 @@ struct MonitoredAddressTypeToggle: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: {
-                if !isSelectedType {
+                if !isSelectedType, !isRequiredRefundType {
                     onToggle(!isMonitored)
                 }
             }) {
@@ -70,9 +71,14 @@ struct MonitoredAddressTypeToggle: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
-            .disabled(isSelectedType)
-            .opacity(isSelectedType ? 0.5 : 1.0)
+            .disabled(isSelectedType || isRequiredRefundType)
+            .opacity((isSelectedType || isRequiredRefundType) ? 0.5 : 1.0)
             .accessibilityIdentifier(toggleId)
+
+            if isRequiredRefundType {
+                BodySText(t("settings__adv__addr_type_cannot_disable_native_desc"), textColor: .textSecondary)
+                    .padding(.bottom, 8)
+            }
 
             Divider()
         }
@@ -168,7 +174,8 @@ struct AddressTypePreferenceView: View {
                                     MonitoredAddressTypeToggle(
                                         addressType: addressType,
                                         isMonitored: settingsViewModel.isMonitoring(addressType),
-                                        isSelectedType: settingsViewModel.selectedAddressType == addressType
+                                        isSelectedType: settingsViewModel.selectedAddressType == addressType,
+                                        isRequiredRefundType: settingsViewModel.isRequiredRefundAddressType(addressType)
                                     ) { enabled in
                                         guard !settingsViewModel.isChangingAddressType else { return }
 
@@ -184,7 +191,7 @@ struct AddressTypePreferenceView: View {
                                                     description: t("settings__adv__addr_type_monitored_updated_desc")
                                                 )
                                             } else if !enabled {
-                                                if settingsViewModel.isLastRequiredNativeWitnessWallet(addressType) {
+                                                if settingsViewModel.isRequiredRefundAddressType(addressType) {
                                                     app.toast(
                                                         type: .error,
                                                         title: t("settings__adv__addr_type_cannot_disable_title"),

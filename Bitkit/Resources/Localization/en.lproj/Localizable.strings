@@ -912,7 +912,7 @@
 "settings__adv__addr_type_monitored_updated_title" = "Settings Updated";
 "settings__adv__addr_type_monitored_updated_desc" = "Address monitoring settings applied.";
 "settings__adv__addr_type_cannot_disable_title" = "Cannot Disable";
-"settings__adv__addr_type_cannot_disable_native_desc" = "At least one Native SegWit or Taproot wallet is required for Lightning channels.";
+"settings__adv__addr_type_cannot_disable_native_desc" = "Native SegWit monitoring is required to detect Blocktank refund payments.";
 "settings__adv__addr_type_cannot_disable_balance_desc" = "{type} addresses have balance.";
 "settings__adv__addr_type_monitored_failed_desc" = "Could not update monitoring settings. Please try again.";
 "settings__adv__addr_type_currently_selected" = "Currently selected";
