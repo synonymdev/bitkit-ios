@@ -106,6 +106,8 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         let pubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
                 "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
                 "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)&x-bitkit-claim=watch-only-account-v1"))
+        let lightningPubkyAuthURL = try XCTUnwrap(URL(string: "lightning:pubkyauth://signin"))
+        let lightningPubkyRingURL = try XCTUnwrap(URL(string: "lightning:pubkyring://signup"))
         let httpURL = try XCTUnwrap(URL(string: "https://example.com/article"))
         let ringURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/success"))
         let malformedPubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup"))
@@ -123,6 +125,18 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         app.retainDeepLink(pubkyURL)
         await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
             XCTAssertEqual(routedURL, pubkyURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(lightningPubkyAuthURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, lightningPubkyAuthURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        app.retainDeepLink(lightningPubkyRingURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, lightningPubkyRingURL)
         }
         XCTAssertNil(app.pendingDeepLinkURL)
 

@@ -455,6 +455,9 @@ class PubkyProfileManager: ObservableObject {
                 try await operation()
                 continuation.yield(.success(()))
             } catch {
+                if !(error is CancellationError) {
+                    Logger.warn("Pubky signup relay approval failed", context: "PubkyProfileManager")
+                }
                 continuation.yield(.failure(error))
             }
         }

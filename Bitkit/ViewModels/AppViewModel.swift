@@ -191,7 +191,7 @@ class AppViewModel: ObservableObject {
         {
             return false
         }
-        return !PubkyAuthRequest.isProtocolURL(url.absoluteString)
+        return !PubkyAuthRequest.isProtocolURL(url.absoluteString.removingLightningSchemes())
     }
 
     private static func isBolt11Invoice(_ url: URL) -> Bool {
