@@ -1569,19 +1569,7 @@ final class PaykitPaymentRequestManager {
             historyRequests = (oneTimeHistory + recurringHistory).sorted {
                 ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast)
             }
-            await subscriptionNotificationScheduler.synchronize(
-                subscriptions,
-                acceptedAt: subscriptionAcceptedAt,
-                pendingRequestIds: Set(pendingRequests.map(\.id)),
-                payerIdentity: activeIdentity,
-                notificationsEnabled: SettingsViewModel.shared.enableNotifications,
-                now: refreshDate
-            )
             let requestIds = Set(pendingRequests.map(\.id))
-            presentedRequestIds.formIntersection(requestIds)
-            presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
-            presentationRetryDates = presentationRetryDates.filter { requestIds.contains($0.key) }
-            automaticPresentationDiagnosticReasons = automaticPresentationDiagnosticReasons.filter { requestIds.contains($0.key) }
             if let requestedId = requestedPresentationId, !requestIds.contains(requestedId) {
                 presentationGeneration += 1
                 if requestedId != handledRequestedExpirationId,
@@ -1592,6 +1580,18 @@ final class PaykitPaymentRequestManager {
                 }
                 requestedPresentationId = nil
             }
+            await subscriptionNotificationScheduler.synchronize(
+                subscriptions,
+                acceptedAt: subscriptionAcceptedAt,
+                pendingRequestIds: Set(pendingRequests.map(\.id)),
+                payerIdentity: activeIdentity,
+                notificationsEnabled: SettingsViewModel.shared.enableNotifications,
+                now: refreshDate
+            )
+            presentedRequestIds.formIntersection(requestIds)
+            presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
+            presentationRetryDates = presentationRetryDates.filter { requestIds.contains($0.key) }
+            automaticPresentationDiagnosticReasons = automaticPresentationDiagnosticReasons.filter { requestIds.contains($0.key) }
             persistPresentedRequestIds()
             discardExpiredRequests(handledRequestedExpirationId: handledRequestedExpirationId)
             schedulePresentationRetry()

@@ -43,7 +43,7 @@ correctly prevents it from entering the presentation queue.
 ## Identifiers used
 
 - Screen: `PaymentRequestsScreen`.
-- Request row: `PaymentRequestRow-<payment-request-id>`.
+- Request row: `PaymentRequestRow-<payment-request-id>-<counterparty>-<receiver-path>-one-time`.
 - Pay action: `PaymentRequestPay-<payment-request-id>`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
 - Expiration feedback: `PaymentRequestExpiredToast`.
