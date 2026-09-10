@@ -61,10 +61,12 @@ shape: `--predicate textContains --text "..."`, not `--text-contains`.
 Refresh the snapshot after navigation, scrolling, sheet changes, or any obvious layout change —
 `elementRef`s from a stale snapshot are not reusable.
 
-**Some controls never appear as snapshot targets.** Anything built on `.onTapGesture` rather than a
-`Button` — the All Activity tag filter (`TagsPrompt`) is one — resolves by identifier but is absent
-from the target list. If a control the journey names is missing from `snapshot-ui`, check it with
-`--identifier X --predicate exists` before concluding it is gone.
+**Some controls and containers never appear as snapshot targets.** Anything built on `.onTapGesture`
+rather than a `Button` — the All Activity tag filter (`TagsPrompt`) is one — or exposed with
+`.accessibilityElement(children: .contain)` can resolve by identifier while remaining absent from the
+target list. If an element the journey names is missing from `snapshot-ui`, check it with
+`--identifier X --predicate exists` before concluding it is gone. `wait-for-ui` requires the complete
+identifier and does not support prefix matching.
 
 **Identifiers built from localized text are English-only.** `SegmentedControl` derives its identifier
 from the tab's display name, so `Tab-all` is `Tab-todas` when the app runs in Spanish. Journeys that
@@ -122,6 +124,7 @@ Known naming differences:
 | Send available balance | `AvailableAmount` and `available_balance` (Android emits both) | `AvailableAmount` |
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
+| Payment Request row | `PaymentRequestRow-<id>` | `PaymentRequestRow-<id>-<counterparty>-<receiverPath>-<period>` |
 
 Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `SpendingAdvanced*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.
@@ -136,6 +139,7 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
 | [hardware-wallet](hardware-wallet) | 16 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
 | [onchain-send](onchain-send) | 2 | Backend-accepted and backend-rejected send results |
+| [payment-requests](payment-requests) | 1 | Requires a linked fixture issuer; rejected shapes are unit fixtures |
 | [pubky-marketplace](pubky-marketplace) | 1 | Adapted — two-wallet Paykit marketplace payment on regtest; integration fixture required |
 
 ## Not ported
