@@ -156,9 +156,9 @@ xcodebuildmcp simulator test
 
 Separately from the test suites, `journeys/` holds XML walkthroughs of app behaviour that an agent
 evaluates by driving a running simulator — number pad caps, notification permission, widget flows,
-hardware wallet pairing and transfers. They are developer assistance rather than a test layer:
-nothing runs them in CI and they gate nothing. Read `journeys/README.md` before running or writing
-one, and see the Journeys section under Code Style & Conventions.
+hardware wallet pairing and transfers. They are the QA contract for PRs rather than a test suite:
+CI does not run them, and it checks that `journeys/index.json` matches them. Read `journeys/README.md`
+before running or writing one, and see the Journeys section under Code Style & Conventions.
 
 ## Architecture
 
@@ -377,9 +377,15 @@ Ensure accessibility modifiers and labels are added to custom components.
   `<description>` and the suite README — never assert Android behaviour iOS does not have.
 - SKIP a journey only when the iOS feature does not exist, and record it under "Not ported" in
   `journeys/README.md` with what is missing.
-- Journeys are developer-assistance specs, not a QA gate. Nothing runs them in CI and no runner is
-  wired up for them; `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests` and never reads
-  `journeys/`. An agent runs one on request.
+- ADD or UPDATE the journeys that prove a user-visible behaviour change in the same PR. Journeys are
+  the QA contract for PRs: list every journey a PR adds or updates under `#### Journeys` in its QA
+  Notes, and keep `#### Manual Tests` to what a journey cannot express.
+- UPDATE a journey in the same PR when the PR changes the route it walks. `journeys/index.json` lists
+  the source files that declare each identifier a journey names.
+- NAME an identifier in a journey action as `id "Name"`.
+- RUN `python3 scripts/journeys_index.py` after changing a journey or an identifier a journey names,
+  and commit `journeys/index.json`. CI runs it with `--check` and fails on a stale index or on an
+  identifier that no source file declares. CI does not run the journeys; an agent runs one on request.
 - A journey that disagrees with the app is most likely stale rather than evidence of a bug. Say what
   you found and update the journey; escalate only once you have separately confirmed the app is wrong.
 

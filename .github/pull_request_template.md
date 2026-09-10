@@ -21,3 +21,17 @@ Add any links to GitHub issues or Asana tasks that are relevant to this pull req
 ### Screenshot / Video
 
 Insert relevant screenshot / recording
+
+### QA Notes
+
+#### Journeys
+
+<!-- Each journey this PR adds or updates, one repo path per line, e.g. journeys/widgets/widgets-intro.xml. No user-visible behaviour change: N/A — no user-visible behaviour change. -->
+
+#### Manual Tests
+
+<!-- Only what a journey cannot express, such as hardware, push notifications, or a companion app. End each item with the reason. -->
+
+#### Automated Checks
+
+<!-- List the tests you ran, including regression tests if applicable. -->
