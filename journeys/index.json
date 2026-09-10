@@ -1,0 +1,1029 @@
+{
+  "generatedBy": "python3 scripts/journeys_index.py",
+  "journeys": [
+    {
+      "file": "journeys/amount-limits/external-amount-over-max.xml",
+      "name": "external node amount over max is blocked",
+      "identifiers": {
+        "FundManual": [
+          "Bitkit/Views/Transfer/FundAdvancedOptions.swift",
+          "Bitkit/Views/Transfer/FundingOptions.swift"
+        ],
+        "NodeIdInput": [
+          "Bitkit/Views/Transfer/FundManualSetupView.swift"
+        ],
+        "HostInput": [
+          "Bitkit/Views/Settings/Advanced/ElectrumSettingsScreen.swift",
+          "Bitkit/Views/Transfer/FundManualSetupView.swift"
+        ],
+        "PortInput": [
+          "Bitkit/Views/Settings/Advanced/ElectrumSettingsScreen.swift",
+          "Bitkit/Views/Transfer/FundManualSetupView.swift"
+        ],
+        "ExternalContinue": [
+          "Bitkit/Views/Transfer/FundManualSetupView.swift"
+        ],
+        "ExternalAmount": [
+          "Bitkit/Views/Transfer/FundManualAmountView.swift"
+        ],
+        "ExternalAmountAvailable": [
+          "Bitkit/Views/Transfer/FundManualAmountView.swift"
+        ],
+        "N9": [
+          "Bitkit/Components/NumberPad.swift"
+        ],
+        "ExternalAmountExceededToast": [
+          "Bitkit/Views/Transfer/FundManualAmountView.swift"
+        ],
+        "ExternalAmountNumberField": [
+          "Bitkit/Views/Transfer/FundManualAmountView.swift"
+        ],
+        "NRemove": [
+          "Bitkit/Components/NumberPad.swift"
+        ]
+      },
+      "screens": [
+        "funding options screen",
+        "external node amount screen"
+      ]
+    },
+    {
+      "file": "journeys/amount-limits/send-amount-over-balance.xml",
+      "name": "send amount over balance is blocked",
+      "identifiers": {
+        "Send": [
+          "Bitkit/Components/TabBar/TabBar.swift"
+        ],
+        "RecipientManual": [
+          "Bitkit/Views/Wallets/Send/SendOptionsView.swift"
+        ],
+        "RecipientInput": [
+          "Bitkit/Views/Wallets/Send/SendEnterManuallyView.swift"
+        ],
+        "AddressContinue": [
+          "Bitkit/Views/Wallets/Send/SendEnterManuallyView.swift"
+        ],
+        "SendAmount": [
+          "Bitkit/Views/Wallets/Send/SendAmountView.swift"
+        ],
+        "AvailableAmount": [
+          "Bitkit/Views/Wallets/Send/SendAmountView.swift"
+        ],
+        "N9": [
+          "Bitkit/Components/NumberPad.swift"
+        ],
+        "SendAmountExceededToast": [
+          "Bitkit/Views/Wallets/LnurlWithdraw/LnurlWithdrawAmount.swift",
+          "Bitkit/Views/Wallets/Send/LnurlPayAmount.swift",
+          "Bitkit/Views/Wallets/Send/SendAmountView.swift"
+        ],
+        "SendNumberField": [
+          "Bitkit/Views/Wallets/LnurlWithdraw/LnurlWithdrawAmount.swift",
+          "Bitkit/Views/Wallets/Send/LnurlPayAmount.swift",
+          "Bitkit/Views/Wallets/Send/SendAmountView.swift"
+        ],
+        "NRemove": [
+          "Bitkit/Components/NumberPad.swift"
+        ]
+      },
+      "screens": [
+        "Send amount screen"
+      ]
+    },
+    {
+      "file": "journeys/amount-limits/transfer-spending-advanced-over-max.xml",
+      "name": "receiving capacity amount over max is blocked",
+      "identifiers": {
+        "ActivitySavings": [
+          "Bitkit/Views/Home/HomeWalletView.swift"
+        ],
+        "TransferToSpending": [
+          "Bitkit/Views/Wallets/SavingsWalletScreen.swift"
+        ],
+        "SpendingAmount": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "SpendingAmountAvailable": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "SpendingAmountMax": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "SpendingAmountContinue": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "SpendingConfirmAdvanced": [
+          "Bitkit/Views/Transfer/SpendingConfirm.swift"
+        ],
+        "SpendingAdvanced": [
+          "Bitkit/Views/Transfer/SpendingAdvancedView.swift"
+        ],
+        "SpendingAdvancedMax": [
+          "Bitkit/Views/Transfer/SpendingAdvancedView.swift"
+        ],
+        "N9": [
+          "Bitkit/Components/NumberPad.swift"
+        ],
+        "SpendingAdvancedNumberField": [
+          "Bitkit/Views/Transfer/SpendingAdvancedView.swift"
+        ],
+        "SpendingAdvancedExceededToast": [
+          "Bitkit/Views/Transfer/SpendingAdvancedView.swift"
+        ],
+        "NRemove": [
+          "Bitkit/Components/NumberPad.swift"
+        ]
+      },
+      "screens": [
+        "home screen",
+        "transfer intro screen",
+        "spending amount screen",
+        "confirm screen",
+        "receiving capacity screen"
+      ]
+    },
+    {
+      "file": "journeys/amount-limits/transfer-spending-over-max.xml",
+      "name": "transfer to spending amount over max is blocked",
+      "identifiers": {
+        "ActivitySavings": [
+          "Bitkit/Views/Home/HomeWalletView.swift"
+        ],
+        "TransferToSpending": [
+          "Bitkit/Views/Wallets/SavingsWalletScreen.swift"
+        ],
+        "SpendingAmount": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "SpendingAmountAvailable": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "N9": [
+          "Bitkit/Components/NumberPad.swift"
+        ],
+        "SpendingAmountExceededToast": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "SpendingAmountNumberField": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "NRemove": [
+          "Bitkit/Components/NumberPad.swift"
+        ]
+      },
+      "screens": [
+        "home screen",
+        "transfer intro screen",
+        "spending amount screen"
+      ]
+    },
+    {
+      "file": "journeys/cjit-notifications/cjit-background-notification.xml",
+      "name": "cjit notification while backgrounded is single and correctly typed",
+      "identifiers": {},
+      "screens": [
+        "wallet home screen",
+        "received-transaction sheet"
+      ]
+    },
+    {
+      "file": "journeys/cjit-notifications/cjit-push-single-notification.xml",
+      "name": "cjit push notification is delivered exactly once",
+      "identifiers": {},
+      "screens": []
+    },
+    {
+      "file": "journeys/cjit-notifications/non-cjit-channel-no-payment-notification.xml",
+      "name": "non-cjit channel opening shows no payment notification",
+      "identifiers": {
+        "SpendingBalanceReadyToast": [
+          "Bitkit/ViewModels/AppViewModel.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/activity-blue-icons.xml",
+      "name": "Hardware Wallet Activity Blue Icons",
+      "identifiers": {
+        "ActivityShowAll": [
+          "Bitkit/Views/Wallets/Activity/ActivityLatest.swift"
+        ],
+        "Tab-sent": [
+          "Bitkit/Components/SegmentedControl.swift"
+        ],
+        "Tab-received": [
+          "Bitkit/Components/SegmentedControl.swift"
+        ],
+        "Tab-other": [
+          "Bitkit/Components/SegmentedControl.swift"
+        ],
+        "Tab-all": [
+          "Bitkit/Components/SegmentedControl.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen",
+        "detail screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/activity-detail-hw-tags.xml",
+      "name": "Hardware Wallet Activity Tags And Inputs Outputs",
+      "identifiers": {
+        "ActivityShowAll": [
+          "Bitkit/Views/Wallets/Activity/ActivityLatest.swift"
+        ],
+        "ActivityTag": [
+          "Bitkit/Views/Wallets/Activity/ActivityItemView.swift"
+        ],
+        "TagInput": [
+          "Bitkit/Views/Wallets/Sheets/AddTagSheet.swift"
+        ],
+        "ActivityTagsSubmit": [
+          "Bitkit/Views/Wallets/Sheets/AddTagSheet.swift"
+        ],
+        "ActivityTags": [
+          "Bitkit/Views/Wallets/Activity/ActivityItemView.swift"
+        ],
+        "ActivityTxDetails": [
+          "Bitkit/Views/Wallets/Activity/ActivityItemView.swift"
+        ],
+        "TagsPrompt": [
+          "Bitkit/Components/Activity/ActivityListFilter.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen",
+        "activity detail screen",
+        "detail screen",
+        "Activity Explorer screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/connect-flow.xml",
+      "name": "Hardware Wallet Connect Flow From Settings",
+      "identifiers": {
+        "TrezorForgetDevice-bridge": [
+          "Bitkit/Components/Trezor/TrezorDeviceRow.swift"
+        ],
+        "Tab-general": [
+          "Bitkit/Components/SegmentedControl.swift"
+        ],
+        "HardwareWalletsSettings": [
+          "Bitkit/Views/Settings/GeneralSettingsView.swift"
+        ],
+        "HardwareWalletsScreen": [
+          "Bitkit/Views/Settings/General/HardwareWalletsSettingsScreen.swift"
+        ],
+        "AddHardwareWallet": [
+          "Bitkit/Views/Settings/General/HardwareWalletsSettingsScreen.swift"
+        ],
+        "HardwareWalletIntroScreen": [
+          "Bitkit/Views/Sheets/HardwareConnectSheet.swift"
+        ],
+        "HardwareWalletIntroContinue": [
+          "Bitkit/Views/Sheets/HardwareConnectSheet.swift"
+        ],
+        "HardwareWalletSearchingScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwSearchingView.swift"
+        ],
+        "HardwareWalletFoundScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwFoundView.swift"
+        ],
+        "HardwareWalletFoundConnect": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwFoundView.swift"
+        ],
+        "HardwareWalletPairedScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ],
+        "HardwareWalletLabelInput": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ],
+        "HardwareWalletPairedFinish": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ]
+      },
+      "screens": [
+        "Hardware Wallets screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/connect-home-tile.xml",
+      "name": "Hardware Wallet Connect and Home Tile",
+      "identifiers": {
+        "DrawerSettings": [
+          "Bitkit/Components/DrawerView.swift"
+        ],
+        "TrezorScanButton": [
+          "Bitkit/Views/Trezor/TrezorDeviceListView.swift"
+        ],
+        "TrezorDevice-bridge": [
+          "Bitkit/Components/Trezor/TrezorDeviceRow.swift"
+        ],
+        "ActivityHardware": [
+          "Bitkit/Components/HardwareWalletsGrid.swift"
+        ],
+        "HardwareWalletScreen": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen",
+        "hardware wallet detail screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/detail-overview.xml",
+      "name": "Hardware Wallet Detail Overview",
+      "identifiers": {
+        "ActivityHardware": [
+          "Bitkit/Components/HardwareWalletsGrid.swift"
+        ],
+        "HardwareWalletScreen": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferToSpending": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferAmount": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "RemoveHardwareWallet": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "RemoveHwWalletDialog": [
+          "Bitkit/Components/RemoveHwWalletDialog.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen",
+        "hardware wallet detail screen",
+        "transfer amount screen",
+        "activity detail screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/passphrase-duplicate.xml",
+      "name": "Hardware Wallet Passphrase Duplicate",
+      "identifiers": {
+        "ActivityHardware": [
+          "Bitkit/Components/HardwareWalletsGrid.swift"
+        ],
+        "Tab-general": [
+          "Bitkit/Components/SegmentedControl.swift"
+        ],
+        "HardwareWalletsSettings": [
+          "Bitkit/Views/Settings/GeneralSettingsView.swift"
+        ],
+        "AddHardwareWallet": [
+          "Bitkit/Views/Settings/General/HardwareWalletsSettingsScreen.swift"
+        ],
+        "HardwareWalletIntroContinue": [
+          "Bitkit/Views/Sheets/HardwareConnectSheet.swift"
+        ],
+        "HardwareWalletFoundConnect": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwFoundView.swift"
+        ],
+        "HardwareWalletPairedPassphrase": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ],
+        "HardwareWalletPassphraseInput": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPassphraseView.swift"
+        ],
+        "HardwareWalletPassphraseContinue": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPassphraseView.swift"
+        ],
+        "HwPassphraseError": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPassphraseView.swift"
+        ],
+        "HardwareWalletPassphraseScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPassphraseView.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/passphrase-pairing.xml",
+      "name": "Hardware Wallet Passphrase Pairing",
+      "identifiers": {
+        "Tab-general": [
+          "Bitkit/Components/SegmentedControl.swift"
+        ],
+        "HardwareWalletsSettings": [
+          "Bitkit/Views/Settings/GeneralSettingsView.swift"
+        ],
+        "AddHardwareWallet": [
+          "Bitkit/Views/Settings/General/HardwareWalletsSettingsScreen.swift"
+        ],
+        "HardwareWalletIntroContinue": [
+          "Bitkit/Views/Sheets/HardwareConnectSheet.swift"
+        ],
+        "HardwareWalletFoundScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwFoundView.swift"
+        ],
+        "HardwareWalletFoundConnect": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwFoundView.swift"
+        ],
+        "HardwareWalletPairedScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ],
+        "HardwareWalletPairedPassphrase": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ],
+        "HardwareWalletPairedFinish": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ],
+        "HardwareWalletPassphraseScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPassphraseView.swift"
+        ],
+        "HardwareWalletPassphraseContinue": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPassphraseView.swift"
+        ],
+        "HardwareWalletPassphraseInput": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPassphraseView.swift"
+        ],
+        "HardwareWalletPassphrasePairedScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ],
+        "HardwareWalletLabelInput": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ],
+        "HardwareWalletScreen": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen",
+        "hardware wallet detail screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/passphrase-settings-remove.xml",
+      "name": "Hardware Wallet Passphrase Settings And Remove",
+      "identifiers": {
+        "DrawerSettings": [
+          "Bitkit/Components/DrawerView.swift"
+        ],
+        "Tab-general": [
+          "Bitkit/Components/SegmentedControl.swift"
+        ],
+        "HardwareWalletsSettings": [
+          "Bitkit/Views/Settings/GeneralSettingsView.swift"
+        ],
+        "HardwareWalletsScreen": [
+          "Bitkit/Views/Settings/General/HardwareWalletsSettingsScreen.swift"
+        ],
+        "RenameHardwareWalletInput": [
+          "Bitkit/Views/Sheets/RenameHardwareWalletSheet.swift"
+        ],
+        "RenameHardwareWalletSave": [
+          "Bitkit/Views/Sheets/RenameHardwareWalletSheet.swift"
+        ],
+        "RemoveHwWalletDialog": [
+          "Bitkit/Components/RemoveHwWalletDialog.swift"
+        ]
+      },
+      "screens": [
+        "rename sheet",
+        "Hardware Wallets screen",
+        "wallet home screen",
+        "detail screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/passphrase-transfer-to-spending.xml",
+      "name": "Hardware Wallet Passphrase Transfer To Spending",
+      "identifiers": {
+        "HardwareWalletScreen": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferToSpending": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferAmountQuarter": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferAmountContinue": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferSign": [
+          "Bitkit/Views/Transfer/Hardware/SpendingHwSign.swift"
+        ],
+        "HardwareTransferOpenTrezorConnect": [
+          "Bitkit/Views/Transfer/Hardware/SpendingHwSign.swift"
+        ],
+        "HardwareTransferSigned": [
+          "Bitkit/Views/Transfer/Hardware/SpendingHwSigned.swift"
+        ],
+        "HwTransferPassphraseSheet": [
+          "Bitkit/Views/Transfer/Hardware/HwPassphrasePromptSheet.swift"
+        ],
+        "HwTransferPassphraseInput": [
+          "Bitkit/Views/Transfer/Hardware/HwPassphrasePromptSheet.swift"
+        ],
+        "HwTransferPassphraseContinue": [
+          "Bitkit/Views/Transfer/Hardware/HwPassphrasePromptSheet.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen",
+        "detail screen",
+        "sign screen",
+        "transaction signed screen",
+        "Processing Payment screen",
+        "home screen",
+        "passphrase sheet"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/reconnect.xml",
+      "name": "Hardware Wallet Reconnect",
+      "identifiers": {
+        "TrezorDisconnectButton": [
+          "Bitkit/Views/Trezor/TrezorConnectedView.swift"
+        ],
+        "ActivityHardware": [
+          "Bitkit/Components/HardwareWalletsGrid.swift"
+        ],
+        "TrezorKnownDeviceConnect-bridge": [
+          "Bitkit/Components/Trezor/TrezorDeviceRow.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/settings-hardware-wallets.xml",
+      "name": "Hardware Wallet Settings",
+      "identifiers": {
+        "DrawerSettings": [
+          "Bitkit/Components/DrawerView.swift"
+        ],
+        "Tab-general": [
+          "Bitkit/Components/SegmentedControl.swift"
+        ],
+        "HardwareWalletsSettings": [
+          "Bitkit/Views/Settings/GeneralSettingsView.swift"
+        ],
+        "HardwareWalletsScreen": [
+          "Bitkit/Views/Settings/General/HardwareWalletsSettingsScreen.swift"
+        ],
+        "RenameHardwareWalletInput": [
+          "Bitkit/Views/Sheets/RenameHardwareWalletSheet.swift"
+        ],
+        "RenameHardwareWalletSave": [
+          "Bitkit/Views/Sheets/RenameHardwareWalletSheet.swift"
+        ],
+        "AddHardwareWallet": [
+          "Bitkit/Views/Settings/General/HardwareWalletsSettingsScreen.swift"
+        ],
+        "HardwareWalletIntroScreen": [
+          "Bitkit/Views/Sheets/HardwareConnectSheet.swift"
+        ],
+        "HardwareWalletIntroCancel": [
+          "Bitkit/Views/Sheets/HardwareConnectSheet.swift"
+        ],
+        "RemoveHwWalletDialog": [
+          "Bitkit/Components/RemoveHwWalletDialog.swift"
+        ],
+        "TrezorScanButton": [
+          "Bitkit/Views/Trezor/TrezorDeviceListView.swift"
+        ]
+      },
+      "screens": [
+        "Hardware Wallets screen",
+        "Rename Hardware Wallet sheet"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/suggestion-intro-sheet.xml",
+      "name": "Hardware Wallet Suggestion Card and Intro Sheet",
+      "identifiers": {
+        "TrezorForgetDevice-bridge": [
+          "Bitkit/Components/Trezor/TrezorDeviceRow.swift"
+        ],
+        "ActivityHardware": [
+          "Bitkit/Components/HardwareWalletsGrid.swift"
+        ],
+        "HardwareWalletIntroScreen": [
+          "Bitkit/Views/Sheets/HardwareConnectSheet.swift"
+        ],
+        "HardwareWalletIntroContinue": [
+          "Bitkit/Views/Sheets/HardwareConnectSheet.swift"
+        ],
+        "HardwareWalletSearchingScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwSearchingView.swift"
+        ],
+        "HardwareWalletSearchingCancel": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwSearchingView.swift"
+        ],
+        "HardwareWalletFoundScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwFoundView.swift"
+        ],
+        "HardwareWalletFoundConnect": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwFoundView.swift"
+        ],
+        "HardwareWalletPairedScreen": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ],
+        "HardwareWalletLabelInput": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ],
+        "HardwareWalletPairedFinish": [
+          "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen",
+        "home screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/transfer-to-spending-max-lsp-cap.xml",
+      "name": "Hardware Wallet Transfer To Spending MAX LSP Cap",
+      "identifiers": {
+        "ActivityHardware": [
+          "Bitkit/Components/HardwareWalletsGrid.swift"
+        ],
+        "HardwareWalletScreen": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferToSpending": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferAmount": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferAmountAvailable": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferAmountMax": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferAmountContinue": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferSign": [
+          "Bitkit/Views/Transfer/Hardware/SpendingHwSign.swift"
+        ],
+        "HardwareTransferOpenTrezorConnect": [
+          "Bitkit/Views/Transfer/Hardware/SpendingHwSign.swift"
+        ],
+        "HardwareTransferSigned": [
+          "Bitkit/Views/Transfer/Hardware/SpendingHwSigned.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen",
+        "hardware wallet detail screen",
+        "transfer amount screen",
+        "sign screen",
+        "transaction signed screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/transfer-to-spending-node-warmup.xml",
+      "name": "Hardware Wallet Transfer To Spending Node Warmup",
+      "identifiers": {
+        "ActivityHardware": [
+          "Bitkit/Components/HardwareWalletsGrid.swift"
+        ],
+        "HardwareTransferToSpending": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferAmountQuarter": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferAmountContinue": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferSign": [
+          "Bitkit/Views/Transfer/Hardware/SpendingHwSign.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen",
+        "transfer amount screen",
+        "amount screen",
+        "sign screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/transfer-to-spending-over-max.xml",
+      "name": "hardware transfer to spending amount over max is blocked",
+      "identifiers": {
+        "ActivityHardware": [
+          "Bitkit/Components/HardwareWalletsGrid.swift"
+        ],
+        "HardwareWalletScreen": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferToSpending": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferAmount": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "N9": [
+          "Bitkit/Components/NumberPad.swift"
+        ],
+        "HardwareTransferAmountAvailable": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferAmountExceededToast": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "NRemove": [
+          "Bitkit/Components/NumberPad.swift"
+        ],
+        "NavigationBack": [
+          "Bitkit/Components/NavigationBar.swift",
+          "Bitkit/Views/Security/AuthCheck.swift",
+          "Bitkit/Views/Sheets/Sheet.swift"
+        ]
+      },
+      "screens": [
+        "hardware wallet detail screen",
+        "transfer amount screen",
+        "hardware wallet screen"
+      ]
+    },
+    {
+      "file": "journeys/hardware-wallet/transfer-to-spending.xml",
+      "name": "Hardware Wallet Transfer To Spending",
+      "identifiers": {
+        "ActivityHardware": [
+          "Bitkit/Components/HardwareWalletsGrid.swift"
+        ],
+        "HardwareWalletScreen": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferToSpending": [
+          "Bitkit/Views/Wallets/HardwareWalletScreen.swift"
+        ],
+        "HardwareTransferAmount": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferAmountAvailable": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferAmountQuarter": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferAmountContinue": [
+          "Bitkit/Views/Transfer/Hardware/SpendingAmountHw.swift"
+        ],
+        "HardwareTransferSign": [
+          "Bitkit/Views/Transfer/Hardware/SpendingHwSign.swift"
+        ],
+        "HardwareTransferOpenTrezorConnect": [
+          "Bitkit/Views/Transfer/Hardware/SpendingHwSign.swift"
+        ],
+        "HardwareTransferSigned": [
+          "Bitkit/Views/Transfer/Hardware/SpendingHwSigned.swift"
+        ]
+      },
+      "screens": [
+        "wallet home screen",
+        "hardware wallet detail screen",
+        "transfer amount screen",
+        "sign screen",
+        "transaction signed screen",
+        "detail screen"
+      ]
+    },
+    {
+      "file": "journeys/notification-permission/receive-cjit-confirm-notification-toggle.xml",
+      "name": "receive cjit confirm toggle requests notification permission",
+      "identifiers": {
+        "Receive": [
+          "Bitkit/Components/TabBar/TabBar.swift"
+        ],
+        "ReceiveCjitAmount": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitAmount.swift"
+        ],
+        "ReceiveCjitAmountContinue": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitAmount.swift"
+        ],
+        "ReceiveCjitConfirm": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitConfirmation.swift"
+        ],
+        "ReceiveConfirmNotificationSwitch": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitConfirmation.swift"
+        ]
+      },
+      "screens": [
+        "home screen",
+        "Receive sheet",
+        "amount screen",
+        "confirm screen"
+      ]
+    },
+    {
+      "file": "journeys/notification-permission/receive-cjit-liquidity-notification-toggle.xml",
+      "name": "receive cjit liquidity toggle requests notification permission",
+      "identifiers": {
+        "Receive": [
+          "Bitkit/Components/TabBar/TabBar.swift"
+        ],
+        "ReceiveCjitAmount": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitAmount.swift"
+        ],
+        "ReceiveCjitAmountContinue": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitAmount.swift"
+        ],
+        "ReceiveCjitLiquidity": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitLearnMore.swift"
+        ],
+        "ReceiveLiquidityNotificationSwitch": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitLearnMore.swift"
+        ]
+      },
+      "screens": [
+        "home screen",
+        "Receive sheet",
+        "amount screen",
+        "confirm screen",
+        "liquidity screen"
+      ]
+    },
+    {
+      "file": "journeys/notification-permission/toggle-off-and-system-settings-route.xml",
+      "name": "notification toggle off unregisters and settings routes to system",
+      "identifiers": {
+        "Receive": [
+          "Bitkit/Components/TabBar/TabBar.swift"
+        ],
+        "ReceiveCjitAmount": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitAmount.swift"
+        ],
+        "ReceiveCjitAmountContinue": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitAmount.swift"
+        ],
+        "ReceiveCjitConfirm": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitConfirmation.swift"
+        ],
+        "ReceiveConfirmNotificationSwitch": [
+          "Bitkit/Views/Wallets/Receive/ReceiveCjitConfirmation.swift"
+        ],
+        "DrawerSettings": [
+          "Bitkit/Components/DrawerView.swift"
+        ],
+        "NotificationsOpenSystemSettings": [
+          "Bitkit/Views/Settings/Notifications/NotificationsSettings.swift"
+        ]
+      },
+      "screens": [
+        "home screen",
+        "Receive sheet",
+        "amount screen",
+        "confirm screen",
+        "wallet home screen",
+        "Notifications settings screen"
+      ]
+    },
+    {
+      "file": "journeys/notification-permission/transfer-spending-confirm-notification-toggle.xml",
+      "name": "transfer spending confirm toggle requests notification permission",
+      "identifiers": {
+        "ActivitySavings": [
+          "Bitkit/Views/Home/HomeWalletView.swift"
+        ],
+        "TransferToSpending": [
+          "Bitkit/Views/Wallets/SavingsWalletScreen.swift"
+        ],
+        "SpendingAmount": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "SpendingAmountAvailable": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "SpendingAmountContinue": [
+          "Bitkit/Views/Transfer/SpendingAmount.swift"
+        ],
+        "SpendingConfirmNotificationSwitch": [
+          "Bitkit/Views/Transfer/SpendingConfirm.swift"
+        ]
+      },
+      "screens": [
+        "home screen",
+        "transfer intro screen",
+        "spending amount screen",
+        "spending confirm screen"
+      ]
+    },
+    {
+      "file": "journeys/pubky-marketplace/wallet-leg.xml",
+      "name": "pubky marketplace wallet leg",
+      "identifiers": {
+        "PubkyAuthWatchOnlyConsent": [
+          "Bitkit/Views/Sheets/PubkyAuthApproval/PubkyAuthApprovalSheet.swift"
+        ],
+        "PubkyAuthWatchOnlyApprove": [
+          "Bitkit/Views/Sheets/PubkyAuthApproval/PubkyAuthApprovalSheet.swift"
+        ],
+        "PubkyAuthAuthorize": [
+          "Bitkit/Views/Sheets/PubkyAuthApproval/PubkyAuthApprovalSheet.swift"
+        ],
+        "PubkyAuthOK": [
+          "Bitkit/Views/Sheets/PubkyAuthApproval/PubkyAuthApprovalSheet.swift"
+        ],
+        "ContactPaymentsToggle": [
+          "Bitkit/Views/Settings/GeneralSettingsView.swift"
+        ],
+        "Contact_<seller-public-key>": [
+          "Bitkit/Views/Contacts/ContactsListView.swift"
+        ],
+        "Contact_<buyer-public-key>": [
+          "Bitkit/Views/Contacts/ContactsListView.swift"
+        ],
+        "ReviewAmount": [
+          "Bitkit/Views/Wallets/Send/LnurlPayConfirm.swift",
+          "Bitkit/Views/Wallets/Send/SendConfirmationView.swift"
+        ],
+        "PaymentRequestsBell": [
+          "Bitkit/Components/Header.swift"
+        ],
+        "PaymentRequestsSheet": [
+          "Bitkit/Views/PaymentRequests/PaymentRequestsView.swift"
+        ],
+        "PaymentRequestRow-<payment-request-id>-<seller-public-key>-<negotiated-receiver-path>-one-time": [
+          "Bitkit/Views/PaymentRequests/PaymentRequestsView.swift"
+        ],
+        "PaymentRequestPay-<payment-request-id>": [],
+        "ReviewContactRecipient": [
+          "Bitkit/Views/Wallets/Send/SendConfirmationView.swift"
+        ],
+        "GRAB": [
+          "Bitkit/Components/SwipeButton.swift"
+        ],
+        "SendSuccess": [
+          "Bitkit/Views/Wallets/Send/SendSuccess.swift"
+        ],
+        "ActivityAmount": [
+          "Bitkit/Views/Wallets/Activity/ActivityItemView.swift"
+        ],
+        "ActivityTxDetails": [
+          "Bitkit/Views/Wallets/Activity/ActivityItemView.swift"
+        ]
+      },
+      "screens": [
+        "watch-only consent screen",
+        "authorization screen",
+        "incoming requests sheet"
+      ]
+    },
+    {
+      "file": "journeys/widgets/add-widgets-flow.xml",
+      "name": "add widgets flow",
+      "identifiers": {
+        "DrawerWidgets": [
+          "Bitkit/Components/DrawerView.swift"
+        ],
+        "WidgetsAdd": [
+          "Bitkit/Views/Home/HomeWidgetsView.swift"
+        ],
+        "WidgetListItem-calculator": [
+          "Bitkit/Views/Widgets/WidgetsListSheetView.swift"
+        ],
+        "WidgetSave": [
+          "Bitkit/Views/Widgets/WidgetPreviewSheetView.swift"
+        ]
+      },
+      "screens": [
+        "Add Widget sheet"
+      ]
+    },
+    {
+      "file": "journeys/widgets/widgets-intro.xml",
+      "name": "widgets intro",
+      "identifiers": {
+        "DrawerWidgets": [
+          "Bitkit/Components/DrawerView.swift"
+        ],
+        "WidgetsOnboarding": [
+          "Bitkit/Views/Widgets/WidgetsIntroView.swift"
+        ],
+        "WidgetsOnboardingAddWidget": [
+          "Bitkit/Views/Widgets/WidgetsIntroView.swift"
+        ],
+        "WidgetListItem-weather": [
+          "Bitkit/Views/Widgets/WidgetsListSheetView.swift"
+        ],
+        "WidgetSave": [
+          "Bitkit/Views/Widgets/WidgetPreviewSheetView.swift"
+        ]
+      },
+      "screens": [
+        "widgets intro screen",
+        "Add Widget sheet"
+      ]
+    }
+  ]
+}
