@@ -112,15 +112,15 @@ When the user provides custom instructions after `--`:
 - If custom instructions include automated checks or coverage notes, place them under `#### Automated Checks`
 
 **Design:**
-- Always include a `### Design` section.
-- For user-visible UI changes with an existing design, link the relevant Figma frames, starting with the latest `Bitkit - Handoff vNN` page.
+- Include a `### Design` section when the PR template contains a `### Design` heading.
+- For user-visible UI changes with an existing design, link the relevant Figma frames, starting with the latest `Bitkit - Handoff vNN` page in https://www.figma.com/design/ltqvnKiejWj0JQiqtDf2JJ/.
 - For user-visible UI changes with no available design, including new features, write `N/A — no design available.`
 - For changes without user-visible UI changes, write `N/A — no UI changes.`
 - If the relevant Figma frame is missing or uncertain, state the uncertainty.
 - Never invent a Figma link or require a new design.
-- Reviewers may make at most one advisory request when an existing-design UI PR omits its Figma link.
+- Reviewers may make at most one advisory request per PR when an existing-design UI PR omits its Figma link.
 - `N/A — no UI changes.` needs no review request; `N/A — no design available.` may receive the single advisory clarification.
-- Missing Figma links never block approval or CI.
+- Missing Figma links never block approval, CI, PR creation, or review readiness.
 
 **QA Notes / Validation:**
 - QA Notes separate actionable human QA instructions from automated verification coverage.
