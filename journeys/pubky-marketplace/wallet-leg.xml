@@ -33,7 +33,7 @@
     <action>Verify the fresh request opens payment review automatically (id "ReviewAmount")</action>
     <action>Tap back to dismiss the automatic review, verify the requests bell (id "PaymentRequestsBell") is visible, then tap it</action>
     <action>Verify the incoming requests sheet (id "PaymentRequestsSheet") is visible</action>
-    <action>Verify the request row (id "PaymentRequestRow-&lt;payment-request-id&gt;") shows the seller and expected amount, plus the fixture note when present</action>
+    <action>Using the seller public key and negotiated receiver path, verify the request row (id "PaymentRequestRow-&lt;payment-request-id&gt;-&lt;seller-public-key&gt;-&lt;negotiated-receiver-path&gt;-one-time") shows the seller and expected amount, plus the fixture note when present</action>
     <action>Capture the incoming-request evidence, then tap Pay (id "PaymentRequestPay-&lt;payment-request-id&gt;")</action>
     <action>Verify the review amount (id "ReviewAmount") matches the fixture amount</action>
     <action>Show details and verify the recipient (id "ReviewContactRecipient") is the seller contact</action>
