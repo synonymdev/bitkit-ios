@@ -1,4 +1,5 @@
 import Foundation
+import LDKNode
 import Paykit
 
 struct PaykitPaymentRequest: Identifiable, Hashable {
@@ -78,12 +79,12 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         )
     }
 
-    init?(record: Paykit.PaymentRequestRecord, now: Date) {
-        guard case let .success(request) = Self.parseIncoming(record: record, now: now) else { return nil }
+    init?(record: Paykit.PaymentRequestRecord, now: Date, network: LDKNode.Network = Env.network) {
+        guard case let .success(request) = Self.parseIncoming(record: record, now: now, network: network) else { return nil }
         self = request
     }
 
-    init?(historyRecord: Paykit.PaymentRequestRecord, now: Date) {
+    init?(historyRecord: Paykit.PaymentRequestRecord, now: Date, network: LDKNode.Network = Env.network) {
         guard let localRole = historyRecord.localRole else { return nil }
         switch localRole {
         case .payer, .payee:
@@ -91,6 +92,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
                 record: historyRecord,
                 expectedRole: localRole,
                 now: now,
+                network: network,
                 requiresActionableRequest: false
             ) else { return nil }
             self = request
@@ -99,14 +101,19 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         }
     }
 
-    static func parseIncoming(record: Paykit.PaymentRequestRecord, now: Date) -> Result<PaykitPaymentRequest, ParseFailure> {
-        parse(record: record, expectedRole: .payer, now: now, requiresActionableRequest: true)
+    static func parseIncoming(
+        record: Paykit.PaymentRequestRecord,
+        now: Date,
+        network: LDKNode.Network = Env.network
+    ) -> Result<PaykitPaymentRequest, ParseFailure> {
+        parse(record: record, expectedRole: .payer, now: now, network: network, requiresActionableRequest: true)
     }
 
     private static func parse(
         record: Paykit.PaymentRequestRecord,
         expectedRole: Paykit.PaymentRequestLocalRole,
         now: Date,
+        network: LDKNode.Network,
         requiresActionableRequest: Bool
     ) -> Result<PaykitPaymentRequest, ParseFailure> {
         guard let localRole = record.localRole else { return .failure(.missingLocalRole) }
@@ -124,12 +131,13 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         guard record.state != .activeRecurring else { return .failure(.recurringRequest) }
         guard let terms = record.terms else { return .failure(.missingTerms) }
         guard terms.recurrence == nil else { return .failure(.recurringRequest) }
-        guard terms.amount.asset == "btc" else { return .failure(.unsupportedAsset) }
+        guard terms.amount.asset == PaykitIssuerInterop.bitcoinAsset else { return .failure(.unsupportedAsset) }
         guard let amountSats = Self.sats(fromBitcoinAmount: terms.amount.value) else { return .failure(.invalidAmount) }
         guard amountSats <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
 
-        let acceptedPaymentEndpointIdentifiers = Self.supportedEndpointIdentifiers(
-            terms.acceptedPaymentEndpointIdentifiers
+        let acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
+            terms.acceptedPaymentEndpointIdentifiers,
+            network: network
         )
         if requiresActionableRequest, acceptedPaymentEndpointIdentifiers.isEmpty {
             return .failure(.noSupportedEndpoint)
@@ -290,21 +298,6 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             paymentRequestId == subscription.paymentRequestId &&
             counterparty == subscription.counterparty &&
             counterpartyReceiverPath == subscription.counterpartyReceiverPath
-    }
-
-    static func supportedEndpointIdentifiers(_ identifiers: [String]) -> [String] {
-        var seen = Set<String>()
-        return identifiers.filter { identifier in
-            guard seen.insert(identifier).inserted,
-                  let methodId = PublicPaykitService.MethodId(rawValue: identifier)
-            else { return false }
-
-            if let network = methodId.onchainNetwork {
-                return network == Env.network
-            }
-
-            return methodId == .bitcoinLightningBolt11 || methodId == .bitcoinLightningLnurl
-        }
     }
 
     static func sats(fromBitcoinAmount amount: String) -> UInt64? {
@@ -606,7 +599,10 @@ struct PaykitPaymentRequestService {
         let metadataData = try JSONSerialization.data(withJSONObject: ["note": draft.note])
         let metadataText = String(decoding: metadataData, as: UTF8.self)
         let terms = try Paykit.PaymentRequestTerms(
-            amount: Paykit.PaymentRequestAmount(value: WalletViewModel.formatBitcoinAmount(sats: draft.amountSats), asset: "btc"),
+            amount: Paykit.PaymentRequestAmount(
+                value: WalletViewModel.formatBitcoinAmount(sats: draft.amountSats),
+                asset: PaykitIssuerInterop.bitcoinAsset
+            ),
             paymentReference: Paykit.PaymentReference(text: "bitkit-\(UUID().uuidString)"),
             proposalExpiresAt: Self.timestamp(draft.expiresAt),
             recurrence: nil,
