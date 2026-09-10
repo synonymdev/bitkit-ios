@@ -124,7 +124,7 @@ Known naming differences:
 | Send available balance | `AvailableAmount` and `available_balance` (Android emits both) | `AvailableAmount` |
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
-| Payment Request row | `PaymentRequestRow<id>` | `PaymentRequestRow-<id>-<counterparty>-<receiverPath>-<period>` |
+| Payment Request row | `PaymentRequestRow-<id>` | `PaymentRequestRow-<id>-<counterparty>-<receiverPath>-<period>` |
 
 Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `SpendingAdvanced*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.
