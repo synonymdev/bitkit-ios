@@ -38,7 +38,9 @@ struct MoneyText: View {
     // MARK: - Computed Properties
 
     private var unit: PrimaryDisplay {
-        if let forceUnit { return forceUnit }
+        if let forceUnit {
+            return forceUnit
+        }
         return unitType == .secondary ? (currency.primaryDisplay == .bitcoin ? .fiat : .bitcoin) : currency.primaryDisplay
     }
 

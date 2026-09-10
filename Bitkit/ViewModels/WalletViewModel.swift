@@ -220,10 +220,14 @@ class WalletViewModel: ObservableObject {
                     case .channelReady:
                         self.bolt11 = ""
                         Task {
+                            await self.refreshAndSyncState()
+                            try? await self.refreshBip21()
                             await self.reconnectTrustedPeers()
                             await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
                             try? await Task.sleep(nanoseconds: Self.paykitChannelUsabilityRefreshDelay)
                             guard !Task.isCancelled else { return }
+                            await self.refreshAndSyncState()
+                            try? await self.refreshBip21()
                             await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
                                 reason: "channel-ready delayed refresh",
                                 forceRefreshLightning: true
@@ -1199,14 +1203,43 @@ class WalletViewModel: ObservableObject {
         return capacity
     }
 
+    var totalReadyInboundLightningSats: UInt64? {
+        guard let channels else {
+            return nil
+        }
+
+        var capacity: UInt64 = 0
+        for channel in channels where channel.isChannelReady {
+            capacity += channel.inboundCapacityMsat / 1000
+        }
+        return capacity
+    }
+
     /// Returns true if there's at least one channel that is ready
     var hasReadyChannels: Bool {
         return channels?.contains(where: \.isChannelReady) ?? false
     }
 
+    var hasExistingChannels: Bool {
+        channelCount > 0 || channels?.isEmpty == false
+    }
+
     /// Returns true if there's at least one usable channel (ready AND peer connected)
     var hasUsableChannels: Bool {
         return channels?.contains(where: \.isUsable) ?? false
+    }
+
+    var canCreateReceiveLightningInvoice: Bool {
+        let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
+        return canCreateReceiveLightningInvoice(amountSats: amountSats)
+    }
+
+    func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool {
+        ReceiveLiquidityDecision.canCreateLightningInvoice(
+            hasReadyChannels: hasReadyChannels,
+            inboundCapacitySats: totalReadyInboundLightningSats,
+            invoiceAmountSats: amountSats
+        )
     }
 
     @discardableResult
@@ -1365,8 +1398,7 @@ class WalletViewModel: ObservableObject {
 
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
 
-        // Create Lightning invoice if at least one channel is ready
-        if hasReadyChannels {
+        if canCreateReceiveLightningInvoice(amountSats: amountSats) {
             if forceRefreshBolt11 || bolt11.isEmpty {
                 bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
             } else {

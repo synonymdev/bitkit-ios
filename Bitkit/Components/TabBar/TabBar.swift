@@ -7,8 +7,12 @@ struct TabBar: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     var shouldShow: Bool {
-        if calculatorInput.isPresented { return false }
-        if navigation.path.isEmpty { return true }
+        if calculatorInput.isPresented {
+            return false
+        }
+        if navigation.path.isEmpty {
+            return true
+        }
         guard let route = navigation.currentRoute else { return false }
 
         switch route {
@@ -68,10 +72,13 @@ struct TabBar: View {
             return
         }
 
-        let hasInboundCapacity = (wallet.totalInboundLightningSats ?? 0) > 0
         let hasPendingTransfersToSpending = wallet.balanceInTransferToSpending > 0
 
-        if navigation.currentRoute == .spendingWallet && !hasInboundCapacity && !hasPendingTransfersToSpending {
+        if Self.shouldOpenSpendingCjitEntry(
+            isSpendingWallet: navigation.currentRoute == .spendingWallet,
+            wallet: wallet,
+            hasPendingTransfersToSpending: hasPendingTransfersToSpending
+        ) {
             // On spending wallet screen, show CJIT flow when user can't receive normally
             sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
         } else {
@@ -81,6 +88,14 @@ struct TabBar: View {
 
     private func onScanPress() {
         sheets.showSheet(.scanner)
+    }
+
+    static func shouldOpenSpendingCjitEntry(
+        isSpendingWallet: Bool,
+        wallet: WalletViewModel,
+        hasPendingTransfersToSpending: Bool
+    ) -> Bool {
+        isSpendingWallet && !wallet.canCreateReceiveLightningInvoice(amountSats: nil) && !hasPendingTransfersToSpending
     }
 }
 

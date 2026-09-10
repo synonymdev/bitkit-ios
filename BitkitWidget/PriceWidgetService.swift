@@ -32,7 +32,9 @@ enum PriceWidgetService {
 
             var collected: [(Int, PriceData)] = []
             for await (index, result) in group {
-                if let result { collected.append((index, result)) }
+                if let result {
+                    collected.append((index, result))
+                }
             }
             return collected.sorted { $0.0 < $1.0 }.map(\.1)
         }

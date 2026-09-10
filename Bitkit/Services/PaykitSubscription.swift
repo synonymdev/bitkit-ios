@@ -520,7 +520,9 @@ struct PaykitSubscription: Identifiable, Hashable {
         else { return nil }
 
         let proposalExpiresAt = terms.proposalExpiresAt.flatMap(PaykitPaymentRequest.parseDate)
-        if terms.proposalExpiresAt != nil, proposalExpiresAt == nil { return nil }
+        if terms.proposalExpiresAt != nil, proposalExpiresAt == nil {
+            return nil
+        }
 
         paymentRequestId = record.paymentRequestId
         counterparty = record.counterparty

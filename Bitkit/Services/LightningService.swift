@@ -986,8 +986,12 @@ class LightningService {
         for (index, channel) in channels.enumerated() {
             totalOutboundMsat += channel.outboundCapacityMsat
             totalInboundMsat += channel.inboundCapacityMsat
-            if channel.isUsable { usableChannels += 1 }
-            if channel.isAnnounced { announcedChannels += 1 }
+            if channel.isUsable {
+                usableChannels += 1
+            }
+            if channel.isAnnounced {
+                announcedChannels += 1
+            }
 
             sb += "  Channel \(index + 1):\n"
             sb += "    - Channel ID: \(channel.channelId)\n"
@@ -1295,13 +1299,18 @@ extension LightningService {
         return totalFundable
     }
 
-    /// Reads selected and monitored address types from UserDefaults. Use when calling from UI/balance flow.
+    /// Reads selected and monitored address types from UserDefaults and keeps native SegWit enabled
+    /// so delayed Blocktank refund payments remain detectable.
     static func addressTypeStateFromUserDefaults(_ defaults: UserDefaults = .standard)
         -> (selectedType: LDKNode.AddressType, monitoredTypes: [LDKNode.AddressType])
     {
         let selectedType = LDKNode.AddressType.fromStorage(defaults.string(forKey: "selectedAddressType"))
         let monitoredString = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
-        let monitoredTypes = LDKNode.AddressType.parseCommaSeparated(monitoredString)
+        var monitoredTypes = LDKNode.AddressType.parseCommaSeparated(monitoredString)
+        if !monitoredTypes.contains(.nativeSegwit) {
+            monitoredTypes.append(.nativeSegwit)
+            defaults.set(monitoredTypes.map(\.stringValue).joined(separator: ","), forKey: "addressTypesToMonitor")
+        }
         return (selectedType, monitoredTypes)
     }
 

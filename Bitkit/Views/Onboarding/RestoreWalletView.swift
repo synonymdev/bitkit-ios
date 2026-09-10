@@ -177,31 +177,29 @@ struct RestoreWalletView: View {
         .padding(.top, 44)
     }
 
+    @ViewBuilder
     private var passphraseSection: some View {
-        Group {
-            if showingPassphrase {
-                VStack(spacing: 16) {
-                    TextField(t("onboarding__restore_passphrase_placeholder"), text: $bip39Passphrase)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
-                        .focused($isPassphraseFocused)
-                        .padding(.top, 4)
-                        .accessibilityIdentifier("PassphraseInput")
+        if showingPassphrase {
+            VStack(spacing: 16) {
+                TextField(t("onboarding__restore_passphrase_placeholder"), text: $bip39Passphrase)
+                    .autocapitalization(.none)
+                    .autocorrectionDisabled()
+                    .focused($isPassphraseFocused)
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("PassphraseInput")
 
-                    BodySText(t("onboarding__restore_passphrase_meaning"))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                BodySText(t("onboarding__restore_passphrase_meaning"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 
+    @ViewBuilder
     private var validationSection: some View {
-        Group {
-            if let info = validationInfo {
-                BodyMText(info.message, textColor: info.color, accentColor: .redAccent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 16)
-            }
+        if let info = validationInfo {
+            BodyMText(info.message, textColor: info.color, accentColor: .redAccent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 16)
         }
     }
 
@@ -229,23 +227,22 @@ struct RestoreWalletView: View {
         }
     }
 
+    @ViewBuilder
     private var keyboardAccessory: some View {
-        Group {
-            if focusedField != nil {
-                SeedInputAccessory(currentWord: currentFocusedWord) { selectedWord in
-                    if let focusedField {
-                        if focusedField == 0 {
-                            firstFieldText = selectedWord
-                        } else {
-                            words[focusedField] = selectedWord
-                        }
+        if focusedField != nil {
+            SeedInputAccessory(currentWord: currentFocusedWord) { selectedWord in
+                if let focusedField {
+                    if focusedField == 0 {
+                        firstFieldText = selectedWord
+                    } else {
+                        words[focusedField] = selectedWord
+                    }
 
-                        // Move to next field
-                        if focusedField < words.count - 1 {
-                            self.focusedField = focusedField + 1
-                        } else {
-                            self.focusedField = nil
-                        }
+                    // Move to next field
+                    if focusedField < words.count - 1 {
+                        self.focusedField = focusedField + 1
+                    } else {
+                        self.focusedField = nil
                     }
                 }
             }
