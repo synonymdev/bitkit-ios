@@ -606,7 +606,7 @@ struct SubscriptionSheet: View {
         return VStack(spacing: 0) {
             SheetHeader(title: t("subscriptions__review_and_subscribe"))
             SubscriptionAmountHeader(subscription: subscription)
-            SubscriptionProviderCard(subscription: subscription) {
+            SubscriptionProviderCard(subscription: subscription, showsCounterparty: true) {
                 guard !isAccepting else { return }
                 previousRoute = route
                 route = .details(subscription)
@@ -913,9 +913,16 @@ private struct SubscriptionAmountHeader: View {
 }
 
 private struct SubscriptionProviderCard: View {
+    @EnvironmentObject private var contactsManager: ContactsManager
+
     let subscription: PaykitSubscription
+    var showsCounterparty = false
     var subtitle: String?
     var action: (() -> Void)?
+
+    private var contact: PubkyContact? {
+        contactsManager.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, subscription.counterparty) }
+    }
 
     var body: some View {
         if let action {
@@ -936,6 +943,15 @@ private struct SubscriptionProviderCard: View {
                     .lineLimit(1)
                 CaptionText(subtitle ?? subscription.recurrence.subscriptionFrequencyLabel, textColor: .white64)
                     .lineLimit(1)
+                if showsCounterparty {
+                    if let contact {
+                        CaptionText(contact.displayName, textColor: .white64)
+                            .lineLimit(1)
+                    }
+                    CaptionText(PubkyPublicKeyFormat.displayTruncated(subscription.counterparty), textColor: .white64)
+                        .lineLimit(1)
+                        .accessibilityIdentifier("SubscriptionCounterparty")
+                }
             }
             Spacer()
             if showsChevron {
