@@ -514,7 +514,7 @@ struct PaykitSubscription: Identifiable, Hashable {
 
         guard let terms = record.terms,
               let recurrence = terms.recurrence.flatMap(PaykitSubscriptionRecurrence.init),
-              terms.amount.asset == "btc",
+              terms.amount.asset == PaykitIssuerInterop.bitcoinAsset,
               let amountSats = PaykitPaymentRequest.sats(fromBitcoinAmount: terms.amount.value),
               amountSats <= UInt64.max / 1000
         else { return nil }
@@ -534,8 +534,9 @@ struct PaykitSubscription: Identifiable, Hashable {
         self.proposalExpiresAt = proposalExpiresAt
         self.recurrence = recurrence
         metadata = PaykitSubscriptionMetadata(terms.metadata)
-        acceptedPaymentEndpointIdentifiers = PaykitPaymentRequest.supportedEndpointIdentifiers(
-            terms.acceptedPaymentEndpointIdentifiers
+        acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
+            terms.acceptedPaymentEndpointIdentifiers,
+            network: Env.network
         )
         wasAccepted = record.acceptedEventId != nil || record.state == .activeRecurring || !record.paymentProofs.isEmpty
         self.localRole = localRole
