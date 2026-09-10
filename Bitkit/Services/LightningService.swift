@@ -775,7 +775,8 @@ class LightningService {
         sats: UInt64,
         satsPerVbyte: UInt32,
         utxosToSpend: [SpendableUtxo]? = nil,
-        isMaxAmount: Bool = false
+        isMaxAmount: Bool = false,
+        beforeBroadcastAttempt: @escaping () async throws -> Void = {}
     ) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -784,28 +785,115 @@ class LightningService {
         Logger.info("Sending \(sats) sats to \(address) with fee rate \(satsPerVbyte) sats/vbyte (isMaxAmount: \(isMaxAmount))")
 
         do {
-            return try await ServiceQueue.background(.ldk) {
-                if isMaxAmount {
-                    // For max amount sends, use sendAllToAddress to send all available funds
-                    try node.onchainPayment().sendAllToAddress(
-                        address: address,
-                        retainReserve: true,
-                        feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte)
-                    )
-                } else {
-                    // For normal sends, use sendToAddress with specific amount
-                    try node.onchainPayment().sendToAddress(
-                        address: address,
-                        amountSats: sats,
-                        feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
-                        utxosToSpend: utxosToSpend
-                    )
-                }
-            }
+            return try await Self.performOnchainSend(
+                onchainPayment: node.onchainPayment(),
+                address: address,
+                sats: sats,
+                feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
+                utxosToSpend: utxosToSpend,
+                isMaxAmount: isMaxAmount,
+                beforeBroadcastAttempt: beforeBroadcastAttempt
+            )
         } catch {
             dumpLdkLogs()
             throw error
         }
+    }
+
+    static func performOnchainSend(
+        onchainPayment: OnchainPayment,
+        address: String,
+        sats: UInt64,
+        feeRate: FeeRate,
+        utxosToSpend: [SpendableUtxo]?,
+        isMaxAmount: Bool,
+        beforeBroadcastAttempt: @escaping () async throws -> Void = {}
+    ) async throws -> Txid {
+        try await ServiceQueue.background(.ldk) {
+            try ensureNoPendingOnchainBroadcast(onchainPayment: onchainPayment)
+        }
+        try await beforeBroadcastAttempt()
+
+        try await ServiceQueue.background(.ldk) {
+            try executeOnchainSend(
+                onchainPayment: onchainPayment,
+                address: address,
+                sats: sats,
+                feeRate: feeRate,
+                utxosToSpend: utxosToSpend,
+                isMaxAmount: isMaxAmount
+            )
+        }
+    }
+
+    static func executeOnchainSend(
+        onchainPayment: OnchainPayment,
+        address: String,
+        sats: UInt64,
+        feeRate: FeeRate,
+        utxosToSpend: [SpendableUtxo]?,
+        isMaxAmount: Bool
+    ) throws -> Txid {
+        try ensureNoPendingOnchainBroadcast(onchainPayment: onchainPayment)
+
+        if isMaxAmount {
+            return try onchainPayment.sendAllToAddress(address: address, retainReserve: true, feeRate: feeRate)
+        }
+
+        return try onchainPayment.sendToAddress(
+            address: address,
+            amountSats: sats,
+            feeRate: feeRate,
+            utxosToSpend: utxosToSpend
+        )
+    }
+
+    private static func ensureNoPendingOnchainBroadcast(onchainPayment: OnchainPayment) throws {
+        if let pendingBroadcast = try onchainPayment.listPendingBroadcasts().first {
+            throw ExistingPendingOnchainBroadcastError(txid: pendingBroadcast.txid)
+        }
+    }
+
+    func onchainBroadcastOutcome(txid: Txid) async throws -> BroadcastOutcome? {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try Self.onchainBroadcastOutcome(onchainPayment: node.onchainPayment(), txid: txid)
+        }
+    }
+
+    func acknowledgeOnchainBroadcastOutcome(txid: Txid) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        try await ServiceQueue.background(.ldk) {
+            try Self.acknowledgeOnchainBroadcastOutcome(onchainPayment: node.onchainPayment(), txid: txid)
+        }
+    }
+
+    func rebroadcastOnchainTransaction(txid: Txid) async throws -> Txid {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try Self.rebroadcastOnchainTransaction(onchainPayment: node.onchainPayment(), txid: txid)
+        }
+    }
+
+    static func onchainBroadcastOutcome(onchainPayment: OnchainPayment, txid: Txid) throws -> BroadcastOutcome? {
+        try onchainPayment.broadcastOutcome(txid: txid)
+    }
+
+    static func acknowledgeOnchainBroadcastOutcome(onchainPayment: OnchainPayment, txid: Txid) throws {
+        try onchainPayment.acknowledgeBroadcastOutcome(txid: txid)
+    }
+
+    static func rebroadcastOnchainTransaction(onchainPayment: OnchainPayment, txid: Txid) throws -> Txid {
+        try onchainPayment.rebroadcastTransaction(txid: txid)
     }
 
     func send(bolt11: String, sats: UInt64? = nil, params: RouteParametersConfig? = nil) async throws -> PaymentHash {

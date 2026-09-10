@@ -75,6 +75,47 @@ enum PaymentTimeoutError: Error {
     case timedOut
 }
 
+struct ExistingPendingOnchainBroadcastError: LocalizedError {
+    let txid: Txid
+
+    var errorDescription: String? {
+        "An on-chain transaction still requires broadcast reconciliation."
+    }
+}
+
+struct AbandonedOnchainBroadcastError: LocalizedError {
+    var errorDescription: String? {
+        "The on-chain transaction was abandoned before broadcast."
+    }
+}
+
+enum PendingOnchainBroadcastSource: Equatable {
+    case currentPayment
+    case existingPayment
+}
+
+struct PendingOnchainBroadcastErrorContext: Equatable {
+    let txid: Txid
+    let source: PendingOnchainBroadcastSource
+}
+
+func pendingOnchainBroadcastContext(for error: Error) -> PendingOnchainBroadcastErrorContext? {
+    let underlyingError = (error as? AppError)?.underlyingError ?? error
+
+    if let existingPendingError = underlyingError as? ExistingPendingOnchainBroadcastError {
+        return PendingOnchainBroadcastErrorContext(txid: existingPendingError.txid, source: .existingPayment)
+    }
+
+    guard let nodeError = underlyingError as? NodeError else { return nil }
+
+    switch nodeError {
+    case let .OnchainTxBroadcastFailed(txid), let .OnchainTxBroadcastTimeout(txid):
+        return PendingOnchainBroadcastErrorContext(txid: txid, source: .currentPayment)
+    default:
+        return nil
+    }
+}
+
 extension Error {
     var isChannelSizeExceedsMaximum: Bool {
         if let serviceError = self as? CustomServiceError {

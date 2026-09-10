@@ -138,6 +138,7 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [notification-permission](notification-permission) | 4 | Background-setup toggles |
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
 | [hardware-wallet](hardware-wallet) | 16 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
+| [onchain-send](onchain-send) | 2 | Backend-accepted and backend-rejected send results |
 | [payment-requests](payment-requests) | 1 | Requires a linked fixture issuer; rejected shapes are unit fixtures |
 | [pubky-marketplace](pubky-marketplace) | 1 | Adapted — two-wallet Paykit marketplace payment on regtest; integration fixture required |
 
