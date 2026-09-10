@@ -682,6 +682,28 @@
     ]
   },
   {
+    "file": "journeys/payment-requests/issuer-interoperability.xml",
+    "name": "Paykit Issuer Interoperability",
+    "identifiers": [
+      "PaymentRequestConfirm",
+      "PaymentRequestsBell",
+      "PaymentRequestsSheet",
+      "PaymentRequestRow-71300000-0000-4000-8000-000000000001-<fixture-issuer-public-key>-<negotiated-receiver-path>-one-time",
+      "PaymentRequestPay-71300000-0000-4000-8000-000000000001",
+      "SendConfirmToggleDetails",
+      "ReviewContactRecipient"
+    ],
+    "sources": [
+      "Bitkit/Components/Header.swift",
+      "Bitkit/Views/PaymentRequests/PaymentRequestsView.swift",
+      "Bitkit/Views/Wallets/Send/SendConfirmationView.swift"
+    ],
+    "screens": [
+      "Payment Request confirmation screen",
+      "incoming Payment Requests sheet"
+    ]
+  },
+  {
     "file": "journeys/pubky-marketplace/wallet-leg.xml",
     "name": "pubky marketplace wallet leg",
     "identifiers": [
