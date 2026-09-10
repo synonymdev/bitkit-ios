@@ -87,7 +87,11 @@ struct HwSendSignView: View {
     private var passphrasePromptBinding: Binding<Bool> {
         Binding(
             get: { hwSend.isPassphraseRequired },
-            set: { if !$0 { dismissPassphrase() } }
+            set: {
+                if !$0 {
+                    dismissPassphrase()
+                }
+            }
         )
     }
 

@@ -229,6 +229,11 @@ struct PubkyAuthApprovalSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     descriptionText
+                        .padding(.bottom, 8)
+
+                    BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                         .padding(.bottom, 32)
 
                     permissionsSection

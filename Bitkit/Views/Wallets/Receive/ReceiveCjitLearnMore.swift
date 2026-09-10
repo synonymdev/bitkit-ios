@@ -8,22 +8,33 @@ struct ReceiveCjitLearnMore: View {
 
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+
+    private var isAdditionalFlow: Bool {
+        isAdditional || wallet.hasExistingChannels
+    }
+
+    var navTitle: String {
+        isAdditionalFlow
+            ? t("wallet__receive_liquidity__nav_title_additional")
+            : t("wallet__receive_liquidity__nav_title")
+    }
 
     var text: String {
-        isAdditional
+        isAdditionalFlow
             ? t("wallet__receive_liquidity__text_additional")
             : t("wallet__receive_liquidity__text")
     }
 
     var label: String {
-        isAdditional
+        isAdditionalFlow
             ? t("wallet__receive_liquidity__label_additional")
             : t("wallet__receive_liquidity__label")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: t("wallet__receive_liquidity__nav_title"), showBackButton: true)
+            SheetHeader(title: navTitle, showBackButton: true)
 
             BodyMText(text)
 

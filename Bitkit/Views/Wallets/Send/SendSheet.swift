@@ -623,7 +623,9 @@ struct SendSheet: View {
             Logger.error(error, context: "SendSheet failed to estimate Savings availability")
         }
         guard isCurrentIncomingRequest(requestId) else { return false }
-        if let savingsAvailable, savingsAvailable >= amountSats { return true }
+        if let savingsAvailable, savingsAvailable >= amountSats {
+            return true
+        }
 
         var hardwareSources: [(wallet: HwWallet, available: UInt64)] = []
         var hasUnavailableSource = savingsAvailable == nil

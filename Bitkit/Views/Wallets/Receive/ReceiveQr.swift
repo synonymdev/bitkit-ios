@@ -16,6 +16,7 @@ struct ReceiveQr: View {
     @State private var selectedTab: ReceiveTab
     @State private var showDetails = false
     @State private var hasAppliedDefaultTab = false
+    @State private var hasUserSelectedTab = false
     @State private var hardwareAddress: HwReceiveAddress?
     @State private var hardwareAddressLoadFailed = false
     @State private var isLoadingHardwareAddress = false
@@ -44,6 +45,7 @@ struct ReceiveQr: View {
             .savings
         }
         _selectedTab = State(initialValue: defaultTab)
+        _hasAppliedDefaultTab = State(initialValue: tab != nil)
     }
 
     enum ReceiveTab: CaseIterable, CustomStringConvertible {
@@ -64,21 +66,15 @@ struct ReceiveQr: View {
     }
 
     private var availableTabItems: [TabItem<ReceiveTab>] {
-        var items: [TabItem<ReceiveTab>]
-            // Show unified tab when we have a Lightning invoice (even if channels not yet usable)
-            = if !wallet.bolt11.isEmpty
-        {
-            [
-                TabItem(.savings),
-                TabItem(.unified),
-                TabItem(.spending),
-            ]
-        } else {
-            [
-                TabItem(.savings),
-                TabItem(.spending),
-            ]
+        var items: [TabItem<ReceiveTab>] = [
+            TabItem(.savings),
+            TabItem(.spending),
+        ]
+
+        if canShowUnifiedReceive {
+            items.insert(TabItem(.unified), at: 1)
         }
+
         if selectedHardwareWalletId != nil {
             items.insert(TabItem(.trezor), at: 0)
         }
@@ -86,7 +82,9 @@ struct ReceiveQr: View {
     }
 
     private var selectedHardwareWalletId: String? {
-        if let hardwareWalletId { return hardwareWalletId }
+        if let hardwareWalletId {
+            return hardwareWalletId
+        }
         guard hwWalletManager.wallets.count == 1 else { return nil }
         return hwWalletManager.wallets.first?.id
     }
@@ -96,8 +94,23 @@ struct ReceiveQr: View {
         return hwWalletManager.watcherReceiveAddress(walletId: walletId) ?? hardwareAddress
     }
 
+    private var canShowUnifiedReceive: Bool {
+        !wallet.bolt11.isEmpty && cjitInvoice == nil
+    }
+
+    private var selectedTabBinding: Binding<ReceiveTab> {
+        Binding(
+            get: { selectedTab },
+            set: { newTab in
+                selectedTab = newTab
+                hasUserSelectedTab = true
+                hasAppliedDefaultTab = true
+            }
+        )
+    }
+
     var showingCjitOnboarding: Bool {
-        return !wallet.hasReadyChannels && cjitInvoice == nil && selectedTab == .spending
+        return !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil && selectedTab == .spending
     }
 
     var body: some View {
@@ -106,19 +119,19 @@ struct ReceiveQr: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, UIScreen.main.isSmall ? -16 : 0)
 
-            SegmentedControl(selectedTab: $selectedTab, tabItems: availableTabItems)
+            SegmentedControl(selectedTab: selectedTabBinding, tabItems: availableTabItems)
                 .padding(.bottom, 16)
                 .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
-                TabView(selection: $selectedTab) {
+                TabView(selection: selectedTabBinding) {
                     if selectedHardwareWalletId != nil {
                         tabContent(for: .trezor)
                     }
 
                     tabContent(for: .savings)
 
-                    if !wallet.bolt11.isEmpty {
+                    if canShowUnifiedReceive {
                         tabContent(for: .unified)
                     }
 
@@ -139,10 +152,10 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            if !wallet.hasReadyChannels && !GeoService.shared.isGeoBlocked {
-                                navigationPath.append(.cjitAmount)
-                            } else if GeoService.shared.isGeoBlocked {
+                            if GeoService.shared.isGeoBlocked {
                                 navigationPath.append(.cjitGeoBlocked)
+                            } else if !wallet.canCreateReceiveLightningInvoice {
+                                navigationPath.append(.cjitAmount)
                             }
                         }
                     } else if showDetails {
@@ -194,16 +207,7 @@ struct ReceiveQr: View {
                 }
             }
             .onAppear {
-                // Apply the default-tab choice at most once, on the first appearance. The flag is set
-                // unconditionally here (even before bolt11 is ready) so a later reappearance — e.g.
-                // returning from Edit once the invoice has loaded — can never override the tab the user picked.
-                if !hasAppliedDefaultTab {
-                    hasAppliedDefaultTab = true
-                    // Default to the unified ("Auto") tab when a Lightning invoice is already available.
-                    if tab == nil && !wallet.bolt11.isEmpty {
-                        selectedTab = .unified
-                    }
-                }
+                applyDefaultTabIfNeeded()
             }
         }
         .navigationBarHidden(true)
@@ -242,12 +246,28 @@ struct ReceiveQr: View {
                 }
             }
         }
+        .onChange(of: wallet.bolt11) { _, bolt11 in
+            if bolt11.isEmpty && selectedTab == .unified {
+                selectedTab = .savings
+            }
+
+            applyDefaultTabIfNeeded()
+        }
         .onDisappear {
             verifyTask?.cancel()
             verifyTask = nil
             passphraseTask?.cancel()
             passphraseTask = nil
         }
+    }
+
+    private func applyDefaultTabIfNeeded() {
+        guard tab == nil, !hasAppliedDefaultTab, !hasUserSelectedTab, canShowUnifiedReceive else {
+            return
+        }
+
+        selectedTab = .unified
+        hasAppliedDefaultTab = true
     }
 
     private var paymentRequestAction: AnyView? {
@@ -273,7 +293,7 @@ struct ReceiveQr: View {
 
     func tabContent(for tab: ReceiveTab) -> some View {
         VStack(spacing: 0) {
-            if tab == .spending && wallet.channelCount == 0 && cjitInvoice == nil {
+            if tab == .spending && !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil {
                 cjitOnboarding
             } else if showDetails {
                 detailsContent(for: tab)
@@ -302,7 +322,7 @@ struct ReceiveQr: View {
                     accentColor: .blueAccent,
                     navigationPath: $navigationPath,
                     copyValue: uri.contains("?") ? uri : hardwareAddress.address,
-                    editRoute: .edit(onchainOnly: true)
+                    editRoute: .edit(tab: .trezor, onchainOnly: true)
                 )
             } else if hardwareAddressLoadFailed {
                 VStack(spacing: 16) {
@@ -325,7 +345,8 @@ struct ReceiveQr: View {
                     uri: config.uri,
                     imageAsset: config.imageAsset,
                     accentColor: config.accentColor,
-                    navigationPath: $navigationPath
+                    navigationPath: $navigationPath,
+                    editRoute: editRoute(for: tab)
                 )
             } else {
                 ProgressView()
@@ -470,13 +491,17 @@ struct ReceiveQr: View {
                 CopyAddressCard(
                     addresses: addressPairs,
                     navigationPath: $navigationPath,
-                    editRoute: .edit(onchainOnly: tab == .trezor),
+                    editRoute: editRoute(for: tab),
                     accentColor: tab == .trezor ? .blueAccent : nil
                 )
             }
 
             Spacer()
         }
+    }
+
+    private func editRoute(for tab: ReceiveTab) -> ReceiveRoute? {
+        .edit(tab: tab, onchainOnly: tab == .trezor, replacesCurrentQr: tab == .spending && cjitInvoice != nil)
     }
 
     private struct ImageConfig {
@@ -496,7 +521,11 @@ struct ReceiveQr: View {
     private var passphrasePromptBinding: Binding<Bool> {
         Binding(
             get: { isPassphraseRequired },
-            set: { if !$0 { dismissPassphrase() } }
+            set: {
+                if !$0 {
+                    dismissPassphrase()
+                }
+            }
         )
     }
 

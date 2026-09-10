@@ -1036,12 +1036,15 @@
 "wallet__receive_connect_additional" = "Om meer direct Bitcoin te ontvangen, moet Bitkit uw liquiditeit verhogen. Een <accent>{networkFee}</accent> netwerkvergoeding en <accent>{serviceFee}</accent> serviceprovidervergoeding worden afgetrokken van het bedrag dat u heeft opgegeven.";
 "wallet__receive_liquidity__nav_title" = "Bestedingssaldo Instellen";
 "wallet__receive_liquidity__nav_title_additional" = "Erhöhung der Empfangskapazität";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit heeft een ongeldig liquiditeitsvoorstel ontvangen. Probeer het opnieuw.";
 "wallet__receive_liquidity__text" = "Uw Bestedingssaldo gebruikt het Lightning Network om uw betalingen goedkoper, sneller en meer privé te maken.\n\nDit werkt als internettoegang, maar u betaalt voor liquiditeit en routering in plaats van bandbreedte.\n\nDeze configuratie bevat eenmalige kosten.";
 "wallet__receive_liquidity__text_additional" = "Uw Bestedingssaldo gebruikt het Lightning Network om uw betalingen goedkoper, sneller en meer privé te maken.\n\nDit werkt als internettoegang, maar u betaalt voor liquiditeit en routering in plaats van bandbreedte.\n\nBitkit moet de ontvangstcapaciteit van uw bestedingssaldo verhogen om deze betaling te verwerken.";
 "wallet__receive_liquidity__label" = "Bestedingssaldo Liquiditeit";
 "wallet__receive_liquidity__label_additional" = "Extra Bestedingssaldo Liquiditeit";
 "wallet__receive_cjit_error" = "Transactie Mislukt";
 "wallet__receive_cjit_error_msg" = "Fehler beim Senden der Gelder auf dein Ausgabenkonto.";
+"wallet__receive_cjit_error_node_capacity__title" = "Extra capaciteit niet beschikbaar";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit kan op dit moment geen extra bestedingscapaciteit aan deze wallet toevoegen.";
 "wallet__receive_will" = "U ontvangt";
 "wallet__receive_ldk_init" = "Ausgabensaldo Initialisierung...";
 "wallet__minimum" = "MINIMUM";

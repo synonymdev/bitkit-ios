@@ -9,6 +9,11 @@ struct ReceiveCjitConfirmation: View {
 
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+
+    private var isAdditionalFlow: Bool {
+        isAdditional || wallet.hasExistingChannels
+    }
 
     private func formattedNetworkFee() -> String {
         guard let converted = currency.convert(sats: entry.networkFeeSat) else {
@@ -38,7 +43,7 @@ struct ReceiveCjitConfirmation: View {
 
                 BodyMText(
                     t(
-                        isAdditional ? "wallet__receive_connect_additional" : "wallet__receive_connect_initial",
+                        isAdditionalFlow ? "wallet__receive_connect_additional" : "wallet__receive_connect_initial",
                         variables: [
                             "networkFee": formattedNetworkFee(),
                             "serviceFee": formattedServiceFee(),
@@ -75,7 +80,7 @@ struct ReceiveCjitConfirmation: View {
 
             HStack(spacing: 16) {
                 CustomButton(title: t("common__learn_more"), variant: .secondary) {
-                    navigationPath.append(.cjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditional))
+                    navigationPath.append(.cjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditionalFlow))
                 }
 
                 CustomButton(title: t("common__continue")) {

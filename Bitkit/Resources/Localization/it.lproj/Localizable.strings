@@ -1001,12 +1001,15 @@
 "wallet__receive_connect_initial" = "Per configurare il tuo conto di spesa, verranno dedotte una commissione di rete di <accent>{networkFee}</accent> e una commissione del fornitore di servizi di <accent>{serviceFee}</accent>.";
 "wallet__receive_connect_additional" = "Per ricevere altri Bitcoin istantanei, Bitkit deve aumentare la tua liquidità. Una commissione di rete di <accent>{networkFee}</accent> e una commissione del fornitore di servizi di <accent>{serviceFee}</accent> verranno dedotte dall'importo specificato.";
 "wallet__receive_liquidity__nav_title" = "Configurazione Saldo di Spesa";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit ha ricevuto un preventivo di liquidità non valido. Riprova.";
 "wallet__receive_liquidity__text" = "Il tuo Saldo di Spesa utilizza la rete Lightning Network per rendere i tuoi pagamenti più economici, veloci e privati.\n\nFunziona come l'accesso a internet, ma paghi per la liquidità e il routing invece che per la banda.\n\nQuesta configurazione include alcuni costi una tantum.";
 "wallet__receive_liquidity__text_additional" = "Il tuo Saldo di Spesa utilizza la rete Lightning Network per rendere i tuoi pagamenti più economici, veloci e privati.\n\nFunziona come l'accesso a internet, ma paghi per la liquidità e il routing invece che per la banda.\n\nBitkit deve aumentare la capacità di ricezione del tuo saldo di spesa per elaborare questo pagamento.";
 "wallet__receive_liquidity__label" = "Liquidità Saldo di Spesa";
 "wallet__receive_liquidity__label_additional" = "Liquidità Aggiuntiva Saldo di Spesa";
 "wallet__receive_cjit_error" = "Transazione Fallita";
 "wallet__receive_cjit_error_msg" = "Impossibile inviare fondi al tuo conto di spesa.";
+"wallet__receive_cjit_error_node_capacity__title" = "Capacità aggiuntiva non disponibile";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit non può aggiungere altra capacità di spesa a questo portafoglio in questo momento.";
 "wallet__receive_will" = "Riceverai";
 "wallet__minimum" = "MINIMO";
 "wallet__activity" = "Attività";

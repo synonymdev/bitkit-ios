@@ -68,11 +68,17 @@ extension FeeCondition {
     ) -> FeeCondition {
         if let usdPerBtc, usdPerBtc > 0 {
             let usdValue = Double(totalSats) / 100_000_000 * usdPerBtc
-            if usdValue <= usdGoodThreshold { return .good }
+            if usdValue <= usdGoodThreshold {
+                return .good
+            }
         }
         guard let percentile else { return .average }
-        if midSatsPerVbyte <= percentile.lowThreshold { return .good }
-        if midSatsPerVbyte >= percentile.highThreshold { return .poor }
+        if midSatsPerVbyte <= percentile.lowThreshold {
+            return .good
+        }
+        if midSatsPerVbyte >= percentile.highThreshold {
+            return .poor
+        }
         return .average
     }
 }

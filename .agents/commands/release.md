@@ -126,6 +126,10 @@ Bump version to {newVersionName} (build {newBuildNumber}) for release.
 - `CURRENT_PROJECT_VERSION`: {oldBuildNumber} → {newBuildNumber}
 - `MARKETING_VERSION`: {oldVersionName} → {newVersionName}
 
+### Design
+
+N/A — no UI changes.
+
 ### Screenshot / Video
 
 N/A

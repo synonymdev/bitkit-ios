@@ -3,7 +3,7 @@ import SwiftUI
 
 enum ReceiveRoute: Hashable {
     case qr(cjitInvoice: String?, tab: ReceiveQr.ReceiveTab?)
-    case edit(onchainOnly: Bool)
+    case edit(tab: ReceiveQr.ReceiveTab, onchainOnly: Bool, replacesCurrentQr: Bool = false)
     case tag
     case cjitAmount
     case cjitConfirm(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
@@ -27,12 +27,13 @@ struct ReceiveConfig {
 }
 
 struct ReceiveSheetItem: SheetItem {
-    let id: SheetID = .receive
+    let id: UUID
     let size: SheetSize = .large
     let initialRoute: ReceiveRoute
     let hardwareWalletId: String?
 
-    init(initialRoute: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil), hardwareWalletId: String? = nil) {
+    init(id: UUID = UUID(), initialRoute: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil), hardwareWalletId: String? = nil) {
+        self.id = id
         self.initialRoute = initialRoute
         self.hardwareWalletId = hardwareWalletId
     }
@@ -55,12 +56,14 @@ struct ReceiveSheet: View {
                         viewForRoute(route)
                     }
             }
+            .id(config.id)
         }
         .offlineSheetOverlay(title: t("wallet__receive_bitcoin"))
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
         .onAppear {
+            navigationPath = []
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""
             tagManager.clearSelectedTags()
@@ -95,8 +98,8 @@ struct ReceiveSheet: View {
                 tab: tab,
                 hardwareWalletId: config.hardwareWalletId
             )
-        case let .edit(onchainOnly):
-            ReceiveEdit(navigationPath: $navigationPath, onchainOnly: onchainOnly) { draft in
+        case let .edit(tab, onchainOnly, replacesCurrentQr):
+            ReceiveEdit(navigationPath: $navigationPath, sourceTab: tab, onchainOnly: onchainOnly, replacesCurrentQr: replacesCurrentQr) { draft in
                 navigationPath.append(.paymentRequestRecipient(draft))
             }
         case .tag:

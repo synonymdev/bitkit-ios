@@ -10,6 +10,8 @@ struct ReceiveCjitAmount: View {
     @Binding var navigationPath: [ReceiveRoute]
 
     @State private var amountViewModel = AmountInputViewModel()
+    @State private var maxCjitAmount: UInt64?
+    @State private var isCreatingCjit = false
 
     var minimumAmount: UInt64 {
         blocktank.minCjitSats ?? 0
@@ -17,6 +19,14 @@ struct ReceiveCjitAmount: View {
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
+    }
+
+    private var canContinue: Bool {
+        guard blocktank.minCjitSats != nil else {
+            return false
+        }
+
+        return amountSats >= minimumAmount
     }
 
     var body: some View {
@@ -64,7 +74,7 @@ struct ReceiveCjitAmount: View {
                 }
             }
 
-            CustomButton(title: t("common__continue"), isDisabled: amountSats < minimumAmount) {
+            CustomButton(title: t("common__continue"), isDisabled: !canContinue, isLoading: isCreatingCjit) {
                 Task {
                     await onContinue()
                 }
@@ -77,11 +87,49 @@ struct ReceiveCjitAmount: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .task {
-            try? await blocktank.refreshMinCjitSats()
+            do {
+                try await blocktank.refreshMinCjitSats()
+            } catch {
+                app.toast(error)
+            }
+            await refreshMaxCjitAmount()
+            updateInputCap()
+        }
+        .onChange(of: blocktank.info?.options.maxChannelSizeSat) {
+            Task {
+                await refreshMaxCjitAmount()
+            }
+        }
+        .onChange(of: maxCjitAmount) {
+            updateInputCap()
+        }
+        .onChange(of: amountViewModel.maxExceededCount) {
+            showMaxExceededToast()
         }
     }
 
     private func onContinue() async {
+        guard !isCreatingCjit else {
+            return
+        }
+
+        guard canContinue else {
+            return
+        }
+
+        isCreatingCjit = true
+        defer { isCreatingCjit = false }
+
+        if maxCjitAmount == nil {
+            await refreshMaxCjitAmount()
+            updateInputCap()
+        }
+
+        guard isWithinMaxCjitAmount else {
+            showMaxExceededToast()
+            return
+        }
+
         // Wait until node is running if it's in starting state
         if await wallet.waitForNodeToRun() {
             // Only proceed if node is running
@@ -89,6 +137,22 @@ struct ReceiveCjitAmount: View {
                 let entry = try await blocktank.createCjit(amountSats: amountSats, description: "Bitkit")
                 navigationPath.append(.cjitConfirm(entry: entry, receiveAmountSats: amountSats, isAdditional: false))
             } catch {
+                if error.isCjitNodeCapacityExceeded {
+                    showNodeCapacityExceededToast()
+                    Logger.error(error)
+                    return
+                }
+
+                if isMaxCjitAmountError(error) {
+                    if maxCjitAmount == nil {
+                        await refreshMaxCjitAmount()
+                        updateInputCap()
+                    }
+                    showMaxExceededToast()
+                    Logger.error(error)
+                    return
+                }
+
                 app.toast(error)
                 Logger.error(error)
             }
@@ -96,5 +160,51 @@ struct ReceiveCjitAmount: View {
             // Show error if node is not running or timed out
             app.toast(type: .warning, title: "Lightning not ready", description: "Lightning node must be running to create an invoice")
         }
+    }
+
+    private var isWithinMaxCjitAmount: Bool {
+        guard let maxCjitAmount, maxCjitAmount > 0 else {
+            return true
+        }
+
+        return amountSats <= maxCjitAmount
+    }
+
+    private func updateInputCap() {
+        amountViewModel.maxAmountOverride = (maxCjitAmount ?? 0) > 0 ? maxCjitAmount : nil
+    }
+
+    private func refreshMaxCjitAmount() async {
+        do {
+            maxCjitAmount = try await blocktank.maxCjitAmountSats()
+        } catch {
+            Logger.error("Failed to calculate max CJIT amount: \(error)")
+            maxCjitAmount = nil
+        }
+    }
+
+    private func showMaxExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("wallet__receive_cjit_error_max__title"),
+            description: t(
+                "wallet__receive_cjit_error_max__description",
+                variables: ["amount": CurrencyFormatter.formatSats(maxCjitAmount ?? 0)]
+            ),
+            accessibilityIdentifier: "ReceiveCjitAmountExceededToast"
+        )
+    }
+
+    private func showNodeCapacityExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("wallet__receive_cjit_error_node_capacity__title"),
+            description: t("wallet__receive_cjit_error_node_capacity__description"),
+            accessibilityIdentifier: "ReceiveCjitNodeCapacityExceededToast"
+        )
+    }
+
+    private func isMaxCjitAmountError(_ error: Error) -> Bool {
+        error.isChannelSizeExceedsMaximum
     }
 }

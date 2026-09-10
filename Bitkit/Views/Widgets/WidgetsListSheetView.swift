@@ -41,7 +41,9 @@ struct WidgetsListSheetView: View {
                 pending = type
             }
         }
-        if let p = pending { result.append(.pair(p, nil)) }
+        if let p = pending {
+            result.append(.pair(p, nil))
+        }
         return result
     }
 
@@ -303,7 +305,9 @@ private struct CalculatorTile: View {
     private func fiatValue(for bitcoinValue: String) -> String {
         guard !bitcoinValue.isEmpty else { return "" }
         let sats = CalculatorWidgetFormatter.bitcoinValueToSats(bitcoinValue, displayUnit: currency.displayUnit)
-        if sats == 0 { return "0.00" }
+        if sats == 0 {
+            return "0.00"
+        }
         guard let converted = currency.convert(sats: sats) else { return "" }
         return CalculatorWidgetFormatter.fiatRawValue(from: converted.value)
     }

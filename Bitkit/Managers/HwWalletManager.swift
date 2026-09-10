@@ -298,7 +298,9 @@ final class HwWalletManager {
     /// Transport id to reach `walletId` with: the connected entry, else the most recently used one.
     private func transportDeviceId(for walletId: String) -> String? {
         let entries = entries(for: walletId)
-        if let connected = entries.first(where: { $0.id == session?.connectedDeviceId }) { return connected.id }
+        if let connected = entries.first(where: { $0.id == session?.connectedDeviceId }) {
+            return connected.id
+        }
         return entries.max(by: { $0.lastConnectedAt < $1.lastConnectedAt })?.id
     }
 
@@ -382,7 +384,9 @@ final class HwWalletManager {
         let deviceId = try requireTransportDeviceId(for: walletId)
         await waitForStaleSessionCleanup(deviceId: deviceId)
         try await session.ensureConnected(deviceId: deviceId)
-        if session.connectedWalletId == walletId { return }
+        if session.connectedWalletId == walletId {
+            return
+        }
 
         Logger.info("Reopening '\(walletId)': the session is not provably this wallet's", context: "HwWalletManager")
         guard !entries(for: walletId).contains(where: \.passphraseProtected) else {
@@ -464,7 +468,9 @@ final class HwWalletManager {
         try await session.connectWithWalletMode(deviceId: deviceId, mode: .passphraseHost, passphrase: passphrase)
 
         let opened = session.connectedWalletId
-        if opened == walletId { return }
+        if opened == walletId {
+            return
+        }
 
         guard let opened else {
             // Not a mismatch: the session opened but its accounts could not be read, so nothing is
@@ -513,10 +519,16 @@ final class HwWalletManager {
         for spec in specs {
             // A start is already in flight for this watcher; skip so we don't launch a duplicate.
             // The next sync after it completes reconciles any electrum-url change.
-            if pendingWatcherStarts.contains(spec.watcherId) { continue }
+            if pendingWatcherStarts.contains(spec.watcherId) {
+                continue
+            }
             let isActive = activeWatchers.contains(spec.watcherId)
-            if isActive, activeWatcherElectrumUrls[spec.watcherId] == spec.electrumUrl { continue }
-            if isActive, !stopActiveWatcher(spec.watcherId) { continue }
+            if isActive, activeWatcherElectrumUrls[spec.watcherId] == spec.electrumUrl {
+                continue
+            }
+            if isActive, !stopActiveWatcher(spec.watcherId) {
+                continue
+            }
             startWatcher(spec)
         }
 
@@ -561,7 +573,9 @@ final class HwWalletManager {
     /// its xpubs for entries written before the id was persisted. Returns nil when neither is
     /// available (no captured xpubs), so callers skip the entry.
     private func resolvedWalletId(for device: TrezorKnownDevice) -> String? {
-        if let walletId = device.walletId, !walletId.isEmpty { return walletId }
+        if let walletId = device.walletId, !walletId.isEmpty {
+            return walletId
+        }
         return walletId(for: device.xpubs)
     }
 
@@ -569,7 +583,9 @@ final class HwWalletManager {
     /// (e.g. no captured xpubs — `HwWalletId.derive` throws on empty), so callers skip the device.
     private func walletId(for xpubs: [String: String]) -> String? {
         let signature = xpubsSignature(xpubs)
-        if let cached = walletIdCache[signature] { return cached }
+        if let cached = walletIdCache[signature] {
+            return cached
+        }
         guard let derived = try? HwWalletId.derive(xpubs: xpubs) else { return nil }
         walletIdCache[signature] = derived
         return derived
@@ -893,7 +909,9 @@ final class HwWalletManager {
         var grouped: [String: [TrezorKnownDevice]] = [:]
         for device in knownDevices where !device.xpubs.isEmpty {
             guard let walletId = resolvedWalletId(for: device) else { continue }
-            if grouped[walletId] == nil { order.append(walletId) }
+            if grouped[walletId] == nil {
+                order.append(walletId)
+            }
             grouped[walletId, default: []].append(device)
         }
         return order.compactMap { walletId in
@@ -1045,7 +1063,11 @@ final class HwWalletManager {
             }
         }
         let composeError: String? = results.compactMap {
-            if case let .error(error) = $0 { return error } else { return nil }
+            if case let .error(error) = $0 {
+                return error
+            } else {
+                return nil
+            }
         }.first
         throw AppError(
             message: "Failed to estimate hardware funding amount",
@@ -1128,7 +1150,11 @@ final class HwWalletManager {
             }
         }
         let composeError: String? = results.compactMap {
-            if case let .error(error) = $0 { return error } else { return nil }
+            if case let .error(error) = $0 {
+                return error
+            } else {
+                return nil
+            }
         }.first
         throw AppError(
             message: "Failed to compose hardware transfer",

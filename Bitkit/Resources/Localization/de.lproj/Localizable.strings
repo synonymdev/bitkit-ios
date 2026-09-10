@@ -1014,12 +1014,15 @@
 "wallet__receive_connect_additional" = "Um mehr sofortiges Bitcoin zu empfangen, muss Bitkit deine Liquidität erhöhen. Eine <accent>{networkFee}</accent> Netzwerkgebühr und <accent>{serviceFee}</accent> Dienstanbietergebühr werden vom angegebenen Betrag abgezogen.";
 "wallet__receive_liquidity__nav_title" = "Einrichtung des Ausgabensaldos";
 "wallet__receive_liquidity__nav_title_additional" = "Erhöhung der Empfangskapazität";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit hat ein ungültiges Liquiditätsangebot erhalten. Bitte versuche es erneut.";
 "wallet__receive_liquidity__text" = "Your Spending Balance nutzt das Lightning Network, um Ihre Zahlungen günstiger, schneller und privater zu machen.\n\nDies funktioniert wie ein Internetzugang, aber Sie zahlen für Liquidität und Routing statt für Bandbreite.\n\nDiese Einrichtung umfasst einige einmalige Kosten.";
 "wallet__receive_liquidity__text_additional" = "Your Spending Balance nutzt das Lightning Network, um Ihre Zahlungen günstiger, schneller und privater zu machen.\n\nDies funktioniert wie ein Internetzugang, aber Sie zahlen für Liquidität und Routing statt für Bandbreite.\n\nBitkit muss die Aufnahmekapazität Ihres Guthabens erhöhen, um diese Zahlung zu verarbeiten.";
 "wallet__receive_liquidity__label" = "Ausgabensaldo Liquidität";
 "wallet__receive_liquidity__label_additional" = "Zusätzliche Ausgaben Saldo Liquidität";
 "wallet__receive_cjit_error" = "Transaktion fehlgeschlagen";
 "wallet__receive_cjit_error_msg" = "Fehler beim Senden der Gelder auf dein Ausgabenkonto.";
+"wallet__receive_cjit_error_node_capacity__title" = "Zusätzliche Kapazität nicht verfügbar";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit kann dieser Wallet derzeit keine weitere Ausgabenkapazität hinzufügen.";
 "wallet__receive_will" = "Du wirst empfangen";
 "wallet__receive_ldk_init" = "Ausgabensaldo Initialisierung...";
 "wallet__minimum" = "MINIMUM";

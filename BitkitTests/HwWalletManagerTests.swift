@@ -37,7 +37,9 @@ final class HwWalletManagerTests: XCTestCase {
             let shouldHold = holdStart
             lock.unlock()
 
-            if shouldFail { throw StartError() }
+            if shouldFail {
+                throw StartError()
+            }
             guard shouldHold else { return }
             try await withCheckedThrowingContinuation { continuation in
                 lock.lock()
@@ -66,7 +68,9 @@ final class HwWalletManagerTests: XCTestCase {
             lock.lock()
             defer { lock.unlock() }
             stoppedWatcherIds.append(watcherId)
-            if stopShouldFail { throw StopError() }
+            if stopShouldFail {
+                throw StopError()
+            }
         }
 
         func stopAllWatchers() {}
@@ -131,12 +135,16 @@ final class HwWalletManagerTests: XCTestCase {
             },
             readTagMetadata: { [weak self] walletId in
                 guard let self else { return [] }
-                if let tagMetadataReadError { throw tagMetadataReadError }
+                if let tagMetadataReadError {
+                    throw tagMetadataReadError
+                }
                 return tagMetadataByWallet[walletId] ?? []
             },
             writeTagMetadata: { [weak self] records in
                 self?.coreOps.append(.upsert(records.map(\.paymentId)))
-                if let error = self?.tagMetadataWriteError { throw error }
+                if let error = self?.tagMetadataWriteError {
+                    throw error
+                }
             }
         )
         vm.receivedTxPublisher
@@ -715,7 +723,9 @@ final class HwWalletManagerTests: XCTestCase {
             }
             await vm.drainPendingPersists()
             let shared = (persisted.last ?? []).first {
-                if case let .onchain(onchain) = $0 { return onchain.txId == "shared" }
+                if case let .onchain(onchain) = $0 {
+                    return onchain.txId == "shared"
+                }
                 return false
             }
             guard case let .onchain(onchain) = shared else { return nil }

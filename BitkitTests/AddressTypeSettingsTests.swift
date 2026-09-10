@@ -122,32 +122,46 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertTrue(settings.addressTypesToMonitor.contains(.taproot))
     }
 
-    // MARK: - isLastRequiredNativeWitnessWallet
+    // MARK: - Required refund address type
 
-    func testIsLastRequiredNativeWitnessWalletWhenOnlyNativeSegwit() {
+    func testNativeSegwitIsAlwaysRequiredForRefundMonitoring() {
         settings.addressTypesToMonitor = [.nativeSegwit]
-        XCTAssertTrue(settings.isLastRequiredNativeWitnessWallet(.nativeSegwit))
+        XCTAssertTrue(settings.isRequiredRefundAddressType(.nativeSegwit))
     }
 
-    func testIsLastRequiredNativeWitnessWalletWhenOnlyTaproot() {
+    func testTaprootDoesNotReplaceNativeSegwitRefundMonitoring() {
         settings.addressTypesToMonitor = [.taproot]
-        XCTAssertTrue(settings.isLastRequiredNativeWitnessWallet(.taproot))
+        XCTAssertFalse(settings.isRequiredRefundAddressType(.taproot))
     }
 
-    func testIsLastRequiredNativeWitnessWalletFalseForLegacy() {
+    func testLegacyIsNotRequiredForRefundMonitoring() {
         settings.addressTypesToMonitor = [.legacy]
-        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.legacy))
+        XCTAssertFalse(settings.isRequiredRefundAddressType(.legacy))
     }
 
-    func testIsLastRequiredNativeWitnessWalletFalseForNestedSegwit() {
+    func testNestedSegwitIsNotRequiredForRefundMonitoring() {
         settings.addressTypesToMonitor = [.nestedSegwit]
-        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.nestedSegwit))
+        XCTAssertFalse(settings.isRequiredRefundAddressType(.nestedSegwit))
     }
 
-    func testIsLastRequiredNativeWitnessWalletFalseWhenOtherNativeWitnessExists() {
+    func testNativeSegwitRemainsRequiredWhenTaprootIsMonitored() {
         settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
-        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.nativeSegwit))
-        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.taproot))
+        XCTAssertTrue(settings.isRequiredRefundAddressType(.nativeSegwit))
+        XCTAssertFalse(settings.isRequiredRefundAddressType(.taproot))
+    }
+
+    func testStartupStateNormalizesTaprootOnlyMonitoring() throws {
+        let suiteName = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set("taproot", forKey: "selectedAddressType")
+        defaults.set("taproot", forKey: "addressTypesToMonitor")
+
+        let state = LightningService.addressTypeStateFromUserDefaults(defaults)
+
+        XCTAssertEqual(state.selectedType, .taproot)
+        XCTAssertEqual(state.monitoredTypes, [.taproot, .nativeSegwit])
+        XCTAssertEqual(defaults.string(forKey: "addressTypesToMonitor"), "taproot,nativeSegwit")
     }
 
     // MARK: - resetToDefaults
@@ -185,6 +199,16 @@ final class AddressTypeSettingsTests: XCTestCase {
 
         XCTAssertEqual(UserDefaults.standard.string(forKey: "selectedAddressType"), "taproot")
         XCTAssertEqual(UserDefaults.standard.string(forKey: "addressTypesToMonitor"), "nativeSegwit,taproot")
+    }
+
+    func testRestoreSettingsDictionaryNormalizesTaprootOnlyMonitoring() {
+        settings.restoreSettingsDictionary([
+            "selectedAddressType": "taproot",
+            "addressTypesToMonitor": "taproot",
+        ])
+
+        XCTAssertEqual(settings.selectedAddressType, .taproot)
+        XCTAssertEqual(settings.addressTypesToMonitor, [.taproot, .nativeSegwit])
     }
 
     func testRestoreSettingsDictionaryFiltersInvalidAddressTypes() {

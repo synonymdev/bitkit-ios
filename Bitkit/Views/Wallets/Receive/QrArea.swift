@@ -15,7 +15,7 @@ struct QrArea: View {
         accentColor: Color,
         navigationPath: Binding<[ReceiveRoute]>,
         copyValue: String? = nil,
-        editRoute: ReceiveRoute? = .edit(onchainOnly: false)
+        editRoute: ReceiveRoute? = nil
     ) {
         self.uri = uri
         self.imageAsset = imageAsset

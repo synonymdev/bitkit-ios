@@ -147,7 +147,6 @@ struct SavingsConfirmView: View {
         }
     }
 
-    @ViewBuilder
     private func quoteSection(_ quote: SavingsSwapQuote) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 16) {

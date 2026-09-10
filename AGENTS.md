@@ -337,6 +337,17 @@ New feature (`TransferTrackingManager`) tracks pending transfers to handle edge 
 
 Ensure accessibility modifiers and labels are added to custom components.
 
+### Figma Designs
+
+- UI PRs with an existing design must link the relevant Figma frames under `### Design`, starting with the latest `Bitkit - Handoff vNN` page in https://www.figma.com/design/ltqvnKiejWj0JQiqtDf2JJ/.
+- UI PRs with no available design, including new features, must use `N/A — no design available.` under `### Design`.
+- PRs without user-visible UI changes must use `N/A — no UI changes.` under `### Design`.
+- Missing or uncertain Figma frames must be reported honestly.
+- Never invent a Figma link or require a new design.
+- Reviewers may make at most one advisory request per PR when an existing-design UI PR omits its Figma link.
+- `N/A — no UI changes.` needs no review request; `N/A — no design available.` may receive the single advisory clarification.
+- Missing Figma links never block approval, CI, PR creation, or review readiness.
+
 ## Code Style & Conventions
 
 - **SwiftFormat** configuration in `.swiftformat`

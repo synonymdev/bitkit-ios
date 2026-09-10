@@ -908,7 +908,9 @@ class TransferViewModel: ObservableObject {
             Logger.warn("Advertising unsettled max capacity '\(maxLspBalance)', fee quote unavailable", context: "TransferViewModel")
             return maxLspBalance
         }
-        if maxFee <= headroom { return maxLspBalance }
+        if maxFee <= headroom {
+            return maxLspBalance
+        }
 
         guard let minFee = await lspFeeQuote(clientBalance: clientBalance, lspBalance: minLspBalance, estimateOrderFee: estimateOrderFee),
               minFee <= headroom
@@ -1084,7 +1086,9 @@ class TransferViewModel: ObservableObject {
         var fee = quotedFee
 
         for _ in 0 ..< Self.maxAffordabilityRounds {
-            if candidate.saturatingAdd(fee) <= availableAmount { return candidate }
+            if candidate.saturatingAdd(fee) <= availableAmount {
+                return candidate
+            }
             candidate = availableAmount.saturatingSub(fee)
             // Re-price against the split order creation will pick for this balance, not the earlier one.
             let values = transferValues(candidate)
@@ -1096,7 +1100,9 @@ class TransferViewModel: ObservableObject {
             fee = requoted
         }
 
-        if candidate.saturatingAdd(fee) <= availableAmount { return candidate }
+        if candidate.saturatingAdd(fee) <= availableAmount {
+            return candidate
+        }
         let fallback = availableAmount.saturatingSub(fee)
         Logger.warn(
             "Max '\(candidate)' still over budget '\(availableAmount)' after \(Self.maxAffordabilityRounds) rounds, "
@@ -1755,7 +1761,9 @@ actor SwapPaymentFailureCapture {
     }
 
     func waitForFailure() async -> Wait {
-        if let outcome { return outcome }
+        if let outcome {
+            return outcome
+        }
         return await withCheckedContinuation { waiters.append($0) }
     }
 

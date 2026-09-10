@@ -17,7 +17,13 @@ final class HwFundingSignerTests: XCTestCase {
             funding: funding,
             connecting: connecting,
             feeRateProvider: { feeRate },
-            addressProvider: { if let address { return address } else { throw MockHwFunding.TestError() } },
+            addressProvider: {
+                if let address {
+                    return address
+                } else {
+                    throw MockHwFunding.TestError()
+                }
+            },
             timeouts: timeouts
         )
     }
@@ -379,7 +385,9 @@ final class HwFundingSignerTests: XCTestCase {
         await assertThrowsAsync {
             _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")
         } _: { error in
-            if case .funding = error as? HwTransferError {} else { XCTFail("expected .funding, got \(error)") }
+            if case .funding = error as? HwTransferError {} else {
+                XCTFail("expected .funding, got \(error)")
+            }
         }
         XCTAssertEqual(funding.signCalls, 0)
     }

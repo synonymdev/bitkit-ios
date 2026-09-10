@@ -62,18 +62,16 @@ private struct TxDetailResultsSection: View {
     @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
-        Group {
-            if let detail = trezor.txDetailResult {
-                TxDetailOverviewSection(detail: detail)
+        if let detail = trezor.txDetailResult {
+            TxDetailOverviewSection(detail: detail)
 
-                TxDetailInputsSection(inputs: detail.inputs)
+            TxDetailInputsSection(inputs: detail.inputs)
 
-                TxDetailOutputsSection(outputs: detail.outputs)
-            }
+            TxDetailOutputsSection(outputs: detail.outputs)
+        }
 
-            if let error = trezor.txDetailError {
-                TrezorErrorBanner(message: error)
-            }
+        if let error = trezor.txDetailError {
+            TrezorErrorBanner(message: error)
         }
     }
 }
