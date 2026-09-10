@@ -735,6 +735,12 @@ extension AppViewModel {
 
             handleNodeUri(url)
         case let .pubkyAuth(data: authUrl):
+            guard PubkyAuthRequest.isProtocolURL(rawUri) else {
+                if let claimedContactPaymentContext {
+                    releaseContactPaymentContext(claimedContactPaymentContext)
+                }
+                throw ScanHandlingError.pubkyAuthRequest
+            }
             guard PaykitFeatureFlags.isUIEnabled else {
                 toast(
                     type: .error,

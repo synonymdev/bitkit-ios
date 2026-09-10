@@ -24,6 +24,8 @@ final class ShopPaymentRequestTests: XCTestCase {
             "https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123",
             pubkySignupUrl,
             directPubkySignupUrl,
+            "lnurl:lightning:\(directPubkySignupUrl)",
+            "bitkit://\(directPubkySignupUrl)",
         ]
 
         for request in requests {
@@ -81,6 +83,60 @@ final class ShopPaymentRequestTests: XCTestCase {
                 XCTAssertNil(sheets.activeSheetConfiguration)
             }
         }
+    }
+
+    func testDecodedWrappedPubkyRequestsAreRejected() async throws {
+        let defaults = UserDefaults.standard
+        let previousEnabled = defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey)
+        defer { defaults.set(previousEnabled, forKey: PaykitFeatureFlags.uiEnabledKey) }
+        let requests = [
+            directPubkySignupUrl,
+            directPubkySignupUrl.replacingOccurrences(of: "direct_signup", with: "signup"),
+            "pubkyauth://signin_grant?caps=/pub/example/:rw&relay=https://relay.example/inbox/" +
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s",
+        ]
+
+        for isEnabled in [false, true] {
+            defaults.set(isEnabled, forKey: PaykitFeatureFlags.uiEnabledKey)
+            for prefix in ["lnurl:lightning:", "lnurlp:lightning:", "lnurlw:lightning:", "lnurlc:lightning:",
+                           "lightning:lightning:", "bitkit://", "bitkit://bitkit://lightning:"]
+            {
+                for request in requests {
+                    let wrappedRequest = " \(prefix)\(request)\n"
+                    let decoded = try await decode(invoice: wrappedRequest.removingLightningSchemes())
+                    guard case .pubkyAuth = decoded else {
+                        XCTFail("Expected the core decoder to unwrap Pubky auth")
+                        continue
+                    }
+                    let sheets = SheetViewModel()
+                    let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+                    do {
+                        try await app.handleScannedData(wrappedRequest)
+                        XCTFail("Expected decoded wrapped Pubky request to be rejected")
+                    } catch ScanHandlingError.pubkyAuthRequest {
+                    } catch {
+                        XCTFail("Unexpected error: \(error)")
+                    }
+                    XCTAssertNil(sheets.activeSheetConfiguration)
+                }
+            }
+        }
+    }
+
+    func testDecodedWrappedPubkyRejectionReleasesContactPaymentClaim() async {
+        let app = AppViewModel()
+        let context = ContactPaymentContext(publicKey: "pubkycontact")
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+
+        do {
+            try await app.handleScannedData("bitkit://\(directPubkySignupUrl)", claimedContactPaymentContext: context)
+            XCTFail("Expected decoded wrapped Pubky request to be rejected")
+        } catch ScanHandlingError.pubkyAuthRequest {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertFalse(app.ownsContactPaymentContext(context))
     }
 
     func testSignupScannerRoutesRequireApproval() async throws {
