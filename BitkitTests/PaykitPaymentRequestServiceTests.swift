@@ -2,6 +2,7 @@
 import BitkitCore
 import Foundation
 import Paykit
+import UIKit
 import UserNotifications
 import XCTest
 
@@ -511,6 +512,112 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(subscription.isCreatedByUser)
         XCTAssertEqual(subscription.deliveryStatus, .queued)
         XCTAssertEqual(manager.subscriptions, [subscription])
+    }
+
+    func testCreatedSubscriptionSurvivesContactChangesButNotSessionChanges() async throws {
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let otherKey = "pubky\(String(repeating: "a", count: 52))"
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        for change in ["reordered", "removed", "added", "cleared", "identity"] {
+            let sdk = PaymentRequestSdkMock(records: [])
+            await sdk.configureRecipients(
+                peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+                receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]]
+            )
+            try await sdk.setProposalResult(paymentRequestRecord(role: .payee))
+            let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+            await manager.refreshEligibleTargets(savedPublicKeys: [publicKey, otherKey])
+            let target = try XCTUnwrap(manager.eligibleTargets.first)
+            await sdk.pauseNextProcess()
+            let proposal = Task {
+                try await manager.proposeSubscription(
+                    PaykitSubscriptionDraft(
+                        amountSats: 1000, name: "Support", description: "", frequency: .month,
+                        expiresAt: now.addingTimeInterval(60), iconData: nil
+                    ),
+                    to: target
+                )
+            }
+            try await waitUntil { await sdk.processIsPaused() }
+            switch change {
+            case "reordered": await manager.refreshEligibleTargets(savedPublicKeys: [otherKey, publicKey])
+            case "removed": await manager.refreshEligibleTargets(savedPublicKeys: [])
+            case "added": await manager.refreshEligibleTargets(savedPublicKeys: [publicKey, otherKey, String(repeating: "o", count: 52)])
+            case "cleared": manager.clear()
+            default: manager.activate(identity: otherKey)
+            }
+            await sdk.resumeProcess()
+            let subscription = try await proposal.value
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.proposedRequests.count, 1, change)
+            XCTAssertEqual(manager.subscriptions, ["cleared", "identity"].contains(change) ? [] : [subscription], change)
+            XCTAssertFalse(manager.isCreatingRequest, change)
+        }
+    }
+
+    func testSubscriptionRevalidatesAfterIconUploadBeforeEnqueue() async throws {
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.purple.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        let iconData = try XCTUnwrap(image.pngData())
+        let optionKey = PublicPaykitService.lightningPaymentOptionEnabledKey
+        let previousOption = UserDefaults.standard.object(forKey: optionKey)
+        defer { UserDefaults.standard.set(previousOption, forKey: optionKey) }
+
+        for change in ["unchanged", "expired", "removed", "unlinked", "unsupported", "endpoint", "cleared"] {
+            UserDefaults.standard.set(true, forKey: optionKey)
+            let clock = PaymentRequestTestClock(now)
+            let sdk = PaymentRequestSdkMock(records: [])
+            await sdk.configureRecipients(
+                peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+                receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]]
+            )
+            try await sdk.setProposalResult(paymentRequestRecord(role: .payee))
+            let manager = paymentRequestManager(sdk: sdk, clock: clock)
+            await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+            let target = try XCTUnwrap(manager.eligibleTargets.first)
+            await sdk.pauseNextUpload()
+            let proposal = Task {
+                try await manager.proposeSubscription(
+                    PaykitSubscriptionDraft(
+                        amountSats: 1000, name: "Support", description: "", frequency: .month,
+                        expiresAt: now.addingTimeInterval(60), iconData: iconData
+                    ),
+                    to: target
+                )
+            }
+            try await waitUntil { await sdk.uploadIsPaused() }
+            switch change {
+            case "expired": clock.advance(by: 60)
+            case "removed": await manager.refreshEligibleTargets(savedPublicKeys: [])
+            case "unlinked": await sdk.configureRecipients(peers: [], receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]])
+            case "unsupported":
+                await sdk.configureRecipients(
+                    peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+                    receiverPathsByPublicKey: [:]
+                )
+            case "endpoint": UserDefaults.standard.set(false, forKey: optionKey)
+            case "cleared": manager.clear()
+            default: break
+            }
+            await sdk.resumeUpload()
+            do {
+                _ = try await proposal.value
+                XCTAssertEqual(change, "unchanged")
+            } catch {
+                XCTAssertNotEqual(change, "unchanged")
+                XCTAssertEqual(error as? PaykitPaymentRequestError, change == "expired" ? .requestExpired : .requestUnavailable, change)
+            }
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.uploadCount, 1, change)
+            XCTAssertEqual(snapshot.proposedRequests.count, change == "unchanged" ? 1 : 0, change)
+            XCTAssertEqual(manager.subscriptions.count, change == "unchanged" ? 1 : 0, change)
+            XCTAssertFalse(manager.isCreatingRequest, change)
+        }
     }
 
     func testOversizedCreatorProposalIsRejectedBeforeIconUploadOrEnqueue() async throws {
@@ -2630,6 +2737,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
     private var liveSessionAvailable = true
     private var proposalResult: PaymentRequestRecord?
     private var uploadCount = 0
+    private var shouldPauseNextUpload = false
+    private var isUploadPaused = false
+    private var uploadContinuation: CheckedContinuation<Void, Never>?
     private var processCallCount = 0
     private var receiveCallCount = 0
     private var processFailuresRemaining = 0
@@ -2715,7 +2825,26 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         receiverPathsByPublicKey[publicKey] ?? []
     }
 
-    func uploadProfileAvatar(bytes _: Data, contentType _: String, expectedIdentity: String?) throws -> String {
+    func pauseNextUpload() {
+        shouldPauseNextUpload = true
+    }
+
+    func uploadIsPaused() -> Bool {
+        isUploadPaused
+    }
+
+    func resumeUpload() {
+        uploadContinuation?.resume()
+        uploadContinuation = nil
+    }
+
+    func uploadProfileAvatar(bytes _: Data, contentType _: String, expectedIdentity: String?) async throws -> String {
+        if shouldPauseNextUpload {
+            shouldPauseNextUpload = false
+            isUploadPaused = true
+            await withCheckedContinuation { uploadContinuation = $0 }
+            isUploadPaused = false
+        }
         guard expectedIdentity == nil || PubkyPublicKeyFormat.matches(activeIdentity, expectedIdentity ?? "") else {
             throw PaykitPaymentRequestError.requestUnavailable
         }

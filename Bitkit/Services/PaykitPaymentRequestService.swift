@@ -565,7 +565,8 @@ struct PaykitPaymentRequestService {
         _ draft: PaykitSubscriptionDraft,
         to target: PaykitPaymentRequestTarget,
         savedPublicKeys: [String],
-        expectedIdentity: String
+        expectedIdentity: String,
+        validateBeforeProposing: @MainActor () throws -> Void
     ) async throws -> PaykitSubscription {
         let acceptedPaymentEndpointIdentifiers = Self.acceptedPaymentEndpointIdentifiers()
         let validationDate = now()
@@ -598,6 +599,13 @@ struct PaykitPaymentRequestService {
             )
         } else {
             nil
+        }
+        guard try await eligibleTargets(savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity).contains(target) else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        try await validateBeforeProposing()
+        guard Self.acceptedPaymentEndpointIdentifiers() == acceptedPaymentEndpointIdentifiers else {
+            throw PaykitPaymentRequestError.requestUnavailable
         }
         let proposalDate = now()
         guard draft.expiresAt > proposalDate else {
@@ -1104,12 +1112,20 @@ final class PaykitPaymentRequestManager {
             draft,
             to: target,
             savedPublicKeys: savedPublicKeysSnapshot,
-            expectedIdentity: activeIdentity
+            expectedIdentity: activeIdentity,
+            validateBeforeProposing: {
+                guard actionGeneration == self.stateGeneration,
+                      self.isAvailable(),
+                      PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity),
+                      self.savedPublicKeys.contains(where: { PubkyPublicKeyFormat.matches($0, target.publicKey) })
+                else {
+                    throw PaykitPaymentRequestError.requestUnavailable
+                }
+            }
         )
         if actionGeneration == stateGeneration,
            isAvailable(),
-           PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity),
-           savedPublicKeysSnapshot == savedPublicKeys
+           PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
         {
             invalidateRefresh()
             subscriptions.removeAll { $0.id == subscription.id }
