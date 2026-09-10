@@ -446,7 +446,11 @@ struct PubkyAuthApprovalSheet: View {
                 sheets.hideSheet()
                 return
             }
-            Logger.error("Failed to approve pubky auth: \(error)", context: "PubkyAuthApprovalSheet")
+            if config.request.isSignup {
+                Logger.error("Failed to approve pubky signup", context: "PubkyAuthApprovalSheet")
+            } else {
+                Logger.error("Failed to approve pubky auth: \(error)", context: "PubkyAuthApprovalSheet")
+            }
             app.toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
             state = .authorize
         }

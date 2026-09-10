@@ -477,9 +477,13 @@ extension AppViewModel {
             }
         }
 
+        let rawUri = uri
         let uri = uri.removingLightningSchemes()
         if let claimedContactPaymentContext, PubkyAuthRequest.isProtocolURL(uri) {
             releaseContactPaymentContext(claimedContactPaymentContext)
+            throw ScanHandlingError.pubkyAuthRequest
+        }
+        if PubkyAuthRequest.isProtocolURL(uri), !PubkyAuthRequest.isProtocolURL(rawUri) {
             throw ScanHandlingError.pubkyAuthRequest
         }
         let prevalidatedPaymentRequest: BitkitCore.Scanner?

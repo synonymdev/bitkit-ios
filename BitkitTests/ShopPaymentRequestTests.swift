@@ -55,6 +55,34 @@ final class ShopPaymentRequestTests: XCTestCase {
         XCTAssertNotNil(app.scannedLightningInvoice)
     }
 
+    func testWrappedPubkyRequestsAreRejectedBeforeClearingSendState() async {
+        let sheets = SheetViewModel()
+        let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+        let requests = [
+            pubkySignupUrl,
+            directPubkySignupUrl,
+            directPubkySignupUrl.replacingOccurrences(of: "direct_signup", with: "signup"),
+            "pubkyauth://signin_grant?caps=/pub/example/:rw&relay=https://relay.example/inbox/" +
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s",
+        ]
+
+        for prefix in ["lightning:", "LIGHTNING:", "lnurl:", "lnurlw:", "lnurlp:", "lnurlc:", "lightning:lnurl:"] {
+            for request in requests {
+                app.scannedLightningInvoice = lightningInvoice
+                do {
+                    try await app.handleScannedData(" \(prefix)\(request)\n")
+                    XCTFail("Expected wrapped Pubky request to be rejected")
+                } catch ScanHandlingError.pubkyAuthRequest {
+                    // Expected before decoding or presenting an approval sheet.
+                } catch {
+                    XCTFail("Unexpected error: \(error)")
+                }
+                XCTAssertNotNil(app.scannedLightningInvoice)
+                XCTAssertNil(sheets.activeSheetConfiguration)
+            }
+        }
+    }
+
     func testSignupScannerRoutesRequireApproval() async throws {
         let defaults = UserDefaults.standard
         let previousEnabled = defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey)
