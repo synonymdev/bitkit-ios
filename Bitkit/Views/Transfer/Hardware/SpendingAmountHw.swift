@@ -171,10 +171,10 @@ struct SpendingAmountHw: View {
     }
 
     private func onContinue() async {
+        guard !transfer.isSpendingBusy else { return }
         isLoading = true
         defer { isLoading = false }
 
-        // Wait for the node to be running if it's not already (needed to open the channel later).
         if wallet.nodeLifecycleState != .running {
             let isReady = await wallet.waitForNodeToRun(timeoutSeconds: 30.0)
             guard isReady else {
@@ -188,7 +188,6 @@ struct SpendingAmountHw: View {
         }
 
         do {
-            // The device account, never on-chain savings, which would reject every hardware transfer.
             let canFund = await transfer.canFundOrder(
                 clientBalance: amountSats,
                 budget: transfer.hwFundingBudget(walletId: walletId),
@@ -210,9 +209,9 @@ struct SpendingAmountHw: View {
 
             let values = transfer.calculateTransferValues(clientBalanceSat: amountSats, blocktankInfo: blocktank.info)
             let lspBalance = max(values.defaultLspBalance, values.minLspBalance)
-            let order = try await blocktank.createOrder(clientBalance: amountSats, lspBalance: lspBalance)
+            let feeSat = try await blocktank.estimateFundingAmount(clientBalance: amountSats, lspBalance: lspBalance)
 
-            transfer.onOrderCreated(order: order)
+            transfer.onEstimateReady(clientBalance: amountSats, lspBalance: lspBalance, feeSat: feeSat)
             navigation.navigate(.spendingHwSign(walletId: walletId))
         } catch {
             let appError = AppError(error: error)

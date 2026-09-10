@@ -2,8 +2,6 @@ import BitkitCore
 import SwiftUI
 
 struct SpendingAdvancedView: View {
-    let order: IBtOrder
-    /// Set for a hardware transfer, so the capacity is priced against the device account.
     var walletId: String?
 
     @EnvironmentObject var app: AppViewModel
@@ -93,7 +91,7 @@ struct SpendingAdvancedView: View {
 
                     do {
                         let canFund = await transfer.canFundAdvancedOrder(
-                            clientBalance: order.clientBalanceSat,
+                            clientBalance: transfer.uiState.clientBalanceSat,
                             receivingAmount: lspBalance,
                             budget: fundingBudget(),
                             estimateOrderFee: estimateOrderFee
@@ -108,11 +106,16 @@ struct SpendingAdvancedView: View {
                             return
                         }
 
-                        let newOrder = try await blocktank.createOrder(
-                            clientBalance: order.clientBalanceSat,
+                        let feeSat = try await blocktank.estimateFundingAmount(
+                            clientBalance: transfer.uiState.clientBalanceSat,
                             lspBalance: lspBalance
                         )
-                        transfer.onAdvancedOrderCreated(order: newOrder)
+                        transfer.onEstimateReady(
+                            clientBalance: transfer.uiState.clientBalanceSat,
+                            lspBalance: lspBalance,
+                            feeSat: feeSat,
+                            isAdvanced: true
+                        )
                         dismiss()
                     } catch {
                         app.toast(error)
@@ -128,7 +131,7 @@ struct SpendingAdvancedView: View {
         .bottomSafeAreaPadding()
         .task {
             await transfer.updateAdvancedTransferValues(
-                clientBalanceSat: order.clientBalanceSat,
+                clientBalanceSat: transfer.uiState.clientBalanceSat,
                 budget: { await fundingBudget() },
                 transferValues: { transfer.calculateTransferValues(clientBalanceSat: $0, blocktankInfo: blocktank.info) },
                 estimateOrderFee: estimateOrderFee
@@ -243,7 +246,7 @@ struct SpendingAdvancedView: View {
         feeEstimateTask = Task {
             do {
                 let estimate = try await blocktank.estimateOrderFee(
-                    clientBalance: order.clientBalanceSat,
+                    clientBalance: transfer.uiState.clientBalanceSat,
                     lspBalance: lspBalance
                 )
                 guard !Task.isCancelled else { return }
@@ -260,15 +263,13 @@ struct SpendingAdvancedView: View {
 
 #Preview {
     NavigationStack {
-        SpendingAdvancedView(
-            order: IBtOrder.mock(lspBalanceSat: 100_000, clientBalanceSat: 50000)
-        )
-        .environmentObject(AppViewModel())
-        .environmentObject(CurrencyViewModel())
-        .environmentObject(BlocktankViewModel())
-        .environmentObject(FeeEstimatesManager())
-        .environmentObject(TransferViewModel())
-        .environmentObject(WalletViewModel())
+        SpendingAdvancedView()
+            .environmentObject(AppViewModel())
+            .environmentObject(CurrencyViewModel())
+            .environmentObject(BlocktankViewModel())
+            .environmentObject(FeeEstimatesManager())
+            .environmentObject(TransferViewModel())
+            .environmentObject(WalletViewModel())
     }
     .preferredColorScheme(.dark)
 }
