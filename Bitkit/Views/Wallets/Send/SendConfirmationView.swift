@@ -248,6 +248,8 @@ struct SendConfirmationView: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(app.contactPaymentContext?.incomingPaymentRequest == nil ? "SendConfirm" : "PaymentRequestConfirm")
         .task {
             ensureSendAmountFromScannedInvoicesIfNeeded()
             if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {

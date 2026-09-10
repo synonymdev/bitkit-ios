@@ -1,5 +1,6 @@
 import Foundation
 import ImageIO
+import LDKNode
 import Paykit
 import UIKit
 
@@ -61,15 +62,15 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         )
     }
 
-    init?(record: Paykit.PaymentRequestRecord, now: Date) {
-        self.init(record: record, expectedRole: .payer, now: now, requiresActionableRequest: true)
+    init?(record: Paykit.PaymentRequestRecord, now: Date, network: LDKNode.Network = Env.network) {
+        self.init(record: record, expectedRole: .payer, now: now, network: network, requiresActionableRequest: true)
     }
 
-    init?(historyRecord: Paykit.PaymentRequestRecord, now: Date) {
+    init?(historyRecord: Paykit.PaymentRequestRecord, now: Date, network: LDKNode.Network = Env.network) {
         guard let localRole = historyRecord.localRole else { return nil }
         switch localRole {
         case .payer, .payee:
-            self.init(record: historyRecord, expectedRole: localRole, now: now, requiresActionableRequest: false)
+            self.init(record: historyRecord, expectedRole: localRole, now: now, network: network, requiresActionableRequest: false)
         case .unknown:
             return nil
         }
@@ -79,13 +80,14 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         record: Paykit.PaymentRequestRecord,
         expectedRole: Paykit.PaymentRequestLocalRole,
         now: Date,
+        network: LDKNode.Network,
         requiresActionableRequest: Bool
     ) {
         guard record.localRole == expectedRole,
               record.state != .activeRecurring,
               let terms = record.terms,
               terms.recurrence == nil,
-              terms.amount.asset == "btc",
+              terms.amount.asset == PaykitIssuerInterop.bitcoinAsset,
               let amountSats = Self.sats(fromBitcoinAmount: terms.amount.value),
               amountSats <= UInt64.max / 1000
         else { return nil }
@@ -94,8 +96,9 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             return nil
         }
 
-        let acceptedPaymentEndpointIdentifiers = Self.supportedEndpointIdentifiers(
-            terms.acceptedPaymentEndpointIdentifiers
+        let acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
+            terms.acceptedPaymentEndpointIdentifiers,
+            network: network
         )
         if requiresActionableRequest, acceptedPaymentEndpointIdentifiers.isEmpty {
             return nil
@@ -256,21 +259,6 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             paymentRequestId == subscription.paymentRequestId &&
             counterparty == subscription.counterparty &&
             counterpartyReceiverPath == subscription.counterpartyReceiverPath
-    }
-
-    static func supportedEndpointIdentifiers(_ identifiers: [String]) -> [String] {
-        var seen = Set<String>()
-        return identifiers.filter { identifier in
-            guard seen.insert(identifier).inserted,
-                  let methodId = PublicPaykitService.MethodId(rawValue: identifier)
-            else { return false }
-
-            if let network = methodId.onchainNetwork {
-                return network == Env.network
-            }
-
-            return methodId == .bitcoinLightningBolt11 || methodId == .bitcoinLightningLnurl
-        }
     }
 
     static func sats(fromBitcoinAmount amount: String) -> UInt64? {
@@ -536,7 +524,10 @@ struct PaykitPaymentRequestService {
         let metadataData = try JSONSerialization.data(withJSONObject: ["note": draft.note])
         let metadataText = String(decoding: metadataData, as: UTF8.self)
         let terms = try Paykit.PaymentRequestTerms(
-            amount: Paykit.PaymentRequestAmount(value: WalletViewModel.formatBitcoinAmount(sats: draft.amountSats), asset: "btc"),
+            amount: Paykit.PaymentRequestAmount(
+                value: WalletViewModel.formatBitcoinAmount(sats: draft.amountSats),
+                asset: PaykitIssuerInterop.bitcoinAsset
+            ),
             paymentReference: Paykit.PaymentReference(text: "bitkit-\(UUID().uuidString)"),
             proposalExpiresAt: Self.timestamp(draft.expiresAt),
             recurrence: nil,
