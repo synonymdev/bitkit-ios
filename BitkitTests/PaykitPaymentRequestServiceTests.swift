@@ -1807,6 +1807,33 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertNil(manager.consumeUnavailableRequestedPresentation())
     }
 
+    func testRetryDuringSuspendedNotificationSynchronizationStaysPresented() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(state: .accepted)])
+        let notificationCenter = PaykitSubscriptionNotificationCenterMock()
+        let notificationScheduler = PaykitSubscriptionNotificationScheduler(center: notificationCenter)
+        let manager = paymentRequestManager(
+            sdk: sdk,
+            subscriptionNotificationScheduler: notificationScheduler
+        )
+        await manager.refresh()
+        let acceptedRequest = try XCTUnwrap(manager.historyRequests.first)
+
+        await notificationCenter.pauseNextPendingRequests()
+        let refreshTask = Task { await manager.refresh() }
+        try await waitUntil { await notificationCenter.isPendingRequestsPaused }
+
+        let retriedRequest = try XCTUnwrap(manager.paymentRequestForRetry(acceptedRequest.id))
+        XCTAssertTrue(manager.markPresentedIfPending(retriedRequest))
+        XCTAssertEqual(manager.pendingRequests, [retriedRequest])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+
+        await notificationCenter.resumePendingRequests()
+        await refreshTask.value
+
+        XCTAssertEqual(manager.pendingRequests, [retriedRequest])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+    }
+
     func testPreparationConsumesBeforeAccepting() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
