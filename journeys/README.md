@@ -9,10 +9,8 @@ and deliberately keep the same file names, journey names and `<action>` prose so
 stay diffable. Only the platform mechanics differ — `adb` becomes `xcodebuildmcp`, and Android
 `testTag`s become iOS `accessibilityIdentifier`s (the vocabulary is shared; see [Identifiers](#identifiers)).
 
-**Journeys are the QA contract for PRs.** A PR that changes user-visible behaviour adds or updates the
-journeys that prove it and lists them in its QA Notes; see the Journeys section in `AGENTS.md`. They are
-agent-evaluated and non-deterministic, so CI does not run them. CI checks that `journeys/index.json` is
-current and that every identifier a journey names is declared in source.
+**Journeys are the QA contract for PRs** (see the Journeys section in `AGENTS.md`). They are
+agent-evaluated and non-deterministic, so CI does not run them; it only checks `journeys/index.json`.
 
 A journey that no longer matches the app is most likely **stale**, not evidence of a bug. The corpus
 is new on iOS and has not been run end to end, so when the two disagree the first assumption should be
