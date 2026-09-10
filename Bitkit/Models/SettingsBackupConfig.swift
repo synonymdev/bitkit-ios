@@ -33,6 +33,7 @@ enum SettingsBackupConfig {
         "dismissedSuggestions",
         "lastUsedTags",
         "quickPayLedger",
+        BlocktankRefundAddressStore.key,
     ]
 
     static let settingsKeyTypes: [String: SettingKeyType] = [

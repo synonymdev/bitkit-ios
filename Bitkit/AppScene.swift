@@ -1260,11 +1260,12 @@ struct AppScene: View {
     private func retryPendingPaykitEndpointRemoval() async {
         if PublicPaykitService.isCleanupPending {
             do {
-                if UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey) {
+                switch PublicPaykitService.pendingReconciliationMode() {
+                case .publishEndpoints:
                     try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet)
-                } else {
+                case .removePublishedState:
                     try await PublicPaykitService.removePublishedEndpoints()
-                    try await PublicPaykitService.syncLocalReceiverMarker(publicSharingEnabled: false)
+                    try await PublicPaykitService.syncLocalReceiverMarker()
                 }
                 PublicPaykitService.setCleanupPending(false)
             } catch {
@@ -1272,7 +1273,7 @@ struct AppScene: View {
             }
         }
 
-        await PrivatePaykitService.shared.retryPendingEndpointRemoval(
+        await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
             wallet: wallet,
             savedPublicKeys: contactsManager.contacts.map(\.publicKey)
         )

@@ -91,6 +91,37 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    func testEnablingContactPaymentsDefersUnavailablePrivatePublication() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let service = PrivatePaykitService()
+            let wallet = WalletViewModel()
+            let contactPublicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+            let operations = OperationsSpy()
+            operations.preparePrivateEndpoints = { contactPublicKeys, requireImmediatePublication in
+                await service.prepareSavedContacts(
+                    contactPublicKeys,
+                    wallet: wallet,
+                    requireImmediatePublication: requireImmediatePublication
+                )
+            }
+
+            try await ContactPaymentsService.setEnabled(
+                true,
+                contactPublicKeys: [contactPublicKey],
+                canUsePrivatePayments: true,
+                operations: operations.makeOperations(),
+                defaults: defaults
+            )
+
+            XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+            XCTAssertEqual(operations.publicPublicationValues, [true])
+            XCTAssertEqual(operations.privateRemovalCount, 0)
+            let knownContacts = await service.knownSavedContactKeys
+            XCTAssertEqual(knownContacts, [contactPublicKey])
+        }
+    }
+
     func testDisablingContactPaymentsRemovesBothEndpointTypes() async throws {
         try await withIsolatedDefaultsAsync { defaults in
             defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
@@ -238,6 +269,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
         var privatePublicationFailures: Set<Int> = []
         var privateRemovalFailures: Set<Int> = []
         var onPreparePrivateEndpoints: (() -> Void)?
+        var preparePrivateEndpoints: (([String], Bool) async -> Error?)?
 
         func makeOperations() -> ContactPaymentsService.Operations {
             ContactPaymentsService.Operations(
@@ -257,6 +289,9 @@ final class ContactPaymentsServiceTests: XCTestCase {
                             requiresImmediatePublication: requiresImmediatePublication
                         )
                     )
+                    if let preparePrivateEndpoints = self.preparePrivateEndpoints {
+                        return await preparePrivateEndpoints(contactPublicKeys, requiresImmediatePublication)
+                    }
                     return self.privatePublicationFailures.contains(self.privatePublications.count) ? TestError.operationFailed : nil
                 },
                 removePrivateEndpoints: {
