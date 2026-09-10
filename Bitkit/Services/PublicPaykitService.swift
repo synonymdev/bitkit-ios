@@ -95,6 +95,18 @@ enum PublicPaykitService {
         UserDefaults.standard.bool(forKey: cleanupPendingKey)
     }
 
+    enum PendingReconciliationMode: Equatable {
+        case publishEndpoints
+        case removePublishedState
+    }
+
+    static func pendingReconciliationMode(defaults: UserDefaults = .standard) -> PendingReconciliationMode {
+        if defaults.bool(forKey: publishingEnabledKey) {
+            return .publishEndpoints
+        }
+        return .removePublishedState
+    }
+
     enum MethodId: String, Hashable, CaseIterable {
         case bitcoinLightningBolt11 = "btc-lightning-bolt11"
         case bitcoinLightningLnurl = "btc-lightning-lnurl"
