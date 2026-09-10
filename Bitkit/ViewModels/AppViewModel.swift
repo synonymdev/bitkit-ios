@@ -530,10 +530,14 @@ extension AppViewModel {
             }
         }
 
-        let sourceURI = uri.removingLightningSchemes()
+        let rawUri = uri
+        let sourceURI = rawUri.removingLightningSchemes()
         let uri = PubkyAuthRequest.normalizedProtocolURL(sourceURI)
         if let claimedContactPaymentContext, PubkyAuthRequest.isProtocolURL(sourceURI) {
             releaseContactPaymentContext(claimedContactPaymentContext)
+            throw ScanHandlingError.pubkyAuthRequest
+        }
+        if PubkyAuthRequest.isProtocolURL(uri), !PubkyAuthRequest.isProtocolURL(rawUri) {
             throw ScanHandlingError.pubkyAuthRequest
         }
         let prevalidatedPaymentRequest: BitkitCore.Scanner?
@@ -782,6 +786,12 @@ extension AppViewModel {
 
             handleNodeUri(url)
         case .pubkyAuth:
+            guard PubkyAuthRequest.isProtocolURL(rawUri) else {
+                if let claimedContactPaymentContext {
+                    releaseContactPaymentContext(claimedContactPaymentContext)
+                }
+                throw ScanHandlingError.pubkyAuthRequest
+            }
             guard PaykitFeatureFlags.isUIEnabled else {
                 toast(
                     type: .error,

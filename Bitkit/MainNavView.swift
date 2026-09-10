@@ -604,9 +604,17 @@ struct MainNavView: View {
                         paykitDisabledRedirectView
                     }
                 case let .paymentRequestDetail(id):
-                    if isPaykitUIActive { PaymentRequestDetailView(id: id) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        PaymentRequestDetailView(id: id)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .subscriptionDetail(id):
-                    if isPaykitUIActive { SubscriptionDetailView(id: id) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        SubscriptionDetailView(id: id)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
 
                 // Shop
                 case .shopIntro: ShopIntro()

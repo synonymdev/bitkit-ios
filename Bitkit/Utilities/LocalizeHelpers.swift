@@ -8,10 +8,14 @@ enum LocalizationHelper {
 
     private static var currentLanguageCode: String {
         let appGroupCode = UserDefaults(suiteName: appGroupSuiteName)?.string(forKey: selectedLanguageCodeKey) ?? ""
-        if !appGroupCode.isEmpty { return appGroupCode }
+        if !appGroupCode.isEmpty {
+            return appGroupCode
+        }
 
         let standardCode = UserDefaults.standard.string(forKey: selectedLanguageCodeKey) ?? ""
-        if !standardCode.isEmpty { return standardCode }
+        if !standardCode.isEmpty {
+            return standardCode
+        }
 
         return Locale.current.language.languageCode?.identifier ?? "en"
     }
