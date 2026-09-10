@@ -12,13 +12,11 @@ struct SpendingHwSign: View {
     @EnvironmentObject var transfer: TransferViewModel
 
     var body: some View {
-        Group {
-            if let order = transfer.uiState.order {
-                content(order: transfer.displayOrder(for: order))
-            } else {
-                // No active order (e.g. after process death) — bail back to the wallet.
-                Color.clear.onAppear { navigation.reset() }
-            }
+        if let order = transfer.uiState.order {
+            content(order: transfer.displayOrder(for: order))
+        } else {
+            // No active order (e.g. after process death) — bail back to the wallet.
+            Color.clear.onAppear { navigation.reset() }
         }
     }
 
@@ -71,16 +69,26 @@ struct SpendingHwSign: View {
             // Cancel an in-flight sign only when the user truly leaves the flow (back/reset), not when
             // pushing deeper (Learn More / Advanced / Signed) which keeps this route in the path.
             let stillInFlow = navigation.path.contains {
-                if case .spendingHwSign = $0 { return true } else { return false }
+                if case .spendingHwSign = $0 {
+                    return true
+                } else {
+                    return false
+                }
             }
-            if !stillInFlow { transfer.cancelHwSigning() }
+            if !stillInFlow {
+                transfer.cancelHwSigning()
+            }
         }
     }
 
     private var passphrasePromptBinding: Binding<Bool> {
         Binding(
             get: { transfer.hwSpending.isPassphraseRequired },
-            set: { if !$0 { transfer.onHwPassphraseDismiss() } }
+            set: {
+                if !$0 {
+                    transfer.onHwPassphraseDismiss()
+                }
+            }
         )
     }
 
@@ -123,7 +131,7 @@ struct SpendingHwSign: View {
                         size: .small,
                         isDisabled: transfer.hwSpending.isSigning || transfer.hwSpending.hasPendingBroadcast
                     ) {
-                        navigation.navigate(.spendingAdvanced(order: order))
+                        navigation.navigate(.spendingAdvanced(order: order, walletId: walletId))
                     }
                     .accessibilityIdentifier("HardwareTransferSignAdvanced")
                 }

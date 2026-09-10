@@ -68,9 +68,13 @@ struct SendFailure: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     let context: SendFailureContext
-    let onRetryReady: (Bool) -> Void
+    let onRetryReady: (Bool) async -> Void
+    let onSecondaryAction: (() -> Void)?
 
     private var title: String {
+        if context.isInitialSubscriptionPayment {
+            return t("subscriptions__first_payment_failed")
+        }
         switch context.retryRoute {
         case .confirm:
             return app.selectedWalletToPayFrom == .lightning ? t("wallet__send_instant_failed") : t("wallet__send_error_tx_failed")
@@ -103,16 +107,20 @@ struct SendFailure: View {
 
                     VStack(spacing: 16) {
                         CustomButton(
-                            title: t("wallet__send_error_support"),
+                            title: context.isInitialSubscriptionPayment ? t("wallet__payment_requests_not_now") : t("wallet__send_error_support"),
                             variant: .secondary,
                             isDisabled: wallet.isRetryingLightningPayment
                         ) {
-                            contactSupport()
+                            if let onSecondaryAction {
+                                onSecondaryAction()
+                            } else {
+                                contactSupport()
+                            }
                         }
-                        .accessibilityIdentifier("Support")
+                        .accessibilityIdentifier(context.isInitialSubscriptionPayment ? "NotNow" : "Support")
 
                         CustomButton(
-                            title: t("common__try_again"),
+                            title: context.isInitialSubscriptionPayment ? t("subscriptions__retry_payment") : t("common__try_again"),
                             isLoading: wallet.isRetryingLightningPayment
                         ) {
                             retryPayment()
@@ -129,11 +137,6 @@ struct SendFailure: View {
     }
 
     private func retryPayment() {
-        guard context.resetRoutingCachesOnRetry else {
-            onRetryReady(false)
-            return
-        }
-
         guard !wallet.isRetryingLightningPayment else { return }
         wallet.isRetryingLightningPayment = true
 
@@ -143,22 +146,25 @@ struct SendFailure: View {
             }
 
             do {
-                var cacheResetError: Error?
-                do {
-                    try await wallet.resetPaymentRoutingCaches()
-                } catch {
-                    cacheResetError = error
+                if context.resetRoutingCachesOnRetry {
+                    var cacheResetError: Error?
+                    do {
+                        try await wallet.resetPaymentRoutingCaches()
+                    } catch {
+                        cacheResetError = error
+                    }
+
+                    try await wallet.start()
+                    let refreshStartedAt = Date()
+
+                    if let cacheResetError {
+                        throw cacheResetError
+                    }
+
+                    try await wallet.waitForPaymentRoutingDataRefresh(startedAt: refreshStartedAt)
                 }
 
-                try await wallet.start()
-                let refreshStartedAt = Date()
-
-                if let cacheResetError {
-                    throw cacheResetError
-                }
-
-                try await wallet.waitForPaymentRoutingDataRefresh(startedAt: refreshStartedAt)
-                onRetryReady(true)
+                await onRetryReady(context.resetRoutingCachesOnRetry)
             } catch {
                 Logger.error("Failed to reset routing caches before payment retry: \(error)", context: "SendFailure")
                 app.toast(error)

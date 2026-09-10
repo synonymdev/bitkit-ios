@@ -43,8 +43,12 @@ struct PubkyAuthPermission {
 
     var displayAccess: String {
         var levels: [String] = []
-        if accessLevel.contains("r") { levels.append("READ") }
-        if accessLevel.contains("w") { levels.append("WRITE") }
+        if accessLevel.contains("r") {
+            levels.append("READ")
+        }
+        if accessLevel.contains("w") {
+            levels.append("WRITE")
+        }
         return levels.joined(separator: ", ")
     }
 }

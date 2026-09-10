@@ -1031,12 +1031,15 @@
 "wallet__receive_connect_additional" = "Чтобы получить больше мгновенных Bitcoin, Bitkit должен увеличить вашу ликвидность. Из указанной суммы будет удержана сетевая комиссия <accent>{networkFee}</accent> и комиссия провайдера услуг <accent>{serviceFee}</accent>.";
 "wallet__receive_liquidity__nav_title" = "Настройка Баланса Расходов";
 "wallet__receive_liquidity__nav_title_additional" = "Увеличить Приёмную Мощность";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit получил недействительное предложение ликвидности. Повторите попытку.";
 "wallet__receive_liquidity__text" = "Ваш Баланс Расходов использует Lightning Network для того, чтобы сделать ваши платежи дешевле, быстрее и конфиденциальнее.\n\nЭто работает как интернет-доступ, но вы платите за ликвидность и маршрутизацию вместо пропускной способности.\n\nЭта настройка включает некоторые единоразовые расходы.";
 "wallet__receive_liquidity__text_additional" = "Ваш Баланс Расходов использует Lightning Network для того, чтобы сделать ваши платежи дешевле, быстрее и конфиденциальнее.\n\nЭто работает как интернет-доступ, но вы платите за ликвидность и маршрутизацию вместо пропускной способности.\n\nBitkit нужно увеличить входящую ёмкость вашего баланса расходов для обработки этого платежа.";
 "wallet__receive_liquidity__label" = "Ликвидность Баланса Расходов";
 "wallet__receive_liquidity__label_additional" = "Дополнительная Ликвидность Баланса Расходов";
 "wallet__receive_cjit_error" = "Транзакция не удалась";
 "wallet__receive_cjit_error_msg" = "Не удалось отправить средства на ваш Баланс Расходов.";
+"wallet__receive_cjit_error_node_capacity__title" = "Дополнительная емкость недоступна";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit сейчас не может добавить больше емкости для расходов в этот кошелек.";
 "wallet__receive_will" = "Вы получите";
 "wallet__receive_ldk_init" = "Инициализация Баланса Расходов...";
 "wallet__minimum" = "МИНИМУМ";

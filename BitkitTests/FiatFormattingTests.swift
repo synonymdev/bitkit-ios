@@ -72,8 +72,16 @@ final class FiatFormattingTests: XCTestCase {
 
     override func tearDown() {
         let defaults = UserDefaults(suiteName: Self.suiteName)
-        if let savedCode { defaults?.set(savedCode, forKey: Self.codeKey) } else { defaults?.removeObject(forKey: Self.codeKey) }
-        if let savedSymbol { defaults?.set(savedSymbol, forKey: Self.symbolKey) } else { defaults?.removeObject(forKey: Self.symbolKey) }
+        if let savedCode {
+            defaults?.set(savedCode, forKey: Self.codeKey)
+        } else {
+            defaults?.removeObject(forKey: Self.codeKey)
+        }
+        if let savedSymbol {
+            defaults?.set(savedSymbol, forKey: Self.symbolKey)
+        } else {
+            defaults?.removeObject(forKey: Self.symbolKey)
+        }
         super.tearDown()
     }
 

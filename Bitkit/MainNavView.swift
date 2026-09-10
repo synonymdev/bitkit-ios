@@ -46,6 +46,7 @@ struct MainNavView: View {
     @EnvironmentObject private var transfer: TransferViewModel
     @Environment(TrezorManager.self) private var trezorManager
     @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
     @Environment(\.scenePhase) var scenePhase
 
     @State private var showClipboardAlert = false
@@ -177,6 +178,14 @@ struct MainNavView: View {
             config in PaymentRequestsSheet(config: config)
         }
         .sheet(
+            item: $sheets.subscriptionSheetItem,
+            onDismiss: {
+                sheets.hideSheetIfActive(.subscription, reason: "Subscription sheet dismissed")
+            }
+        ) {
+            config in SubscriptionSheet(config: config)
+        }
+        .sheet(
             item: $sheets.receiveSheetItem,
             onDismiss: {
                 sheets.hideSheet()
@@ -228,8 +237,6 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.sendSheetItem,
             onDismiss: {
-                app.resetSendState()
-                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                 sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")
             }
         ) {
@@ -339,6 +346,9 @@ struct MainNavView: View {
             }
         }
         .onChange(of: settings.enableNotifications) { _, newValue in
+            Task {
+                await paykitPaymentRequestManager.synchronizeSubscriptionNotifications(enabled: newValue)
+            }
             // Handle notification enable/disable
             if newValue {
                 // Request permission in case user was not prompted yet
@@ -497,7 +507,7 @@ struct MainNavView: View {
                 case let .spendingHwSign(walletId): SpendingHwSign(walletId: walletId)
                 case .spendingHwSigned: SpendingHwSigned()
                 case let .spendingConfirm(order): SpendingConfirm(order: order)
-                case let .spendingAdvanced(order): SpendingAdvancedView(order: order)
+                case let .spendingAdvanced(order, walletId): SpendingAdvancedView(order: order, walletId: walletId)
                 case let .transferLearnMore(order): TransferLearnMoreView(order: order)
                 case .settingUp: SettingUpView()
                 case .fundingAdvanced: FundAdvancedOptions()
@@ -532,13 +542,29 @@ struct MainNavView: View {
                         ContactsIntroView()
                     }
                 case .contactsIntro:
-                    if isPaykitUIActive { ContactsIntroView() } else { ComingSoonScreen() }
+                    if isPaykitUIActive {
+                        ContactsIntroView()
+                    } else {
+                        ComingSoonScreen()
+                    }
                 case let .contactDetail(publicKey):
-                    if isPaykitUIActive { ContactDetailView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        ContactDetailView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .contactSaved(publicKey):
-                    if isPaykitUIActive { ContactDetailView(publicKey: publicKey, showsDeleteAction: true) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        ContactDetailView(publicKey: publicKey, showsDeleteAction: true)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .contactActivity(publicKey):
-                    if isPaykitUIActive { ContactActivityView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        ContactActivityView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .assignActivityContact(activityId, walletId):
                     if isPaykitUIActive {
                         AssignActivityContactView(activityId: activityId, walletId: walletId)
@@ -567,9 +593,17 @@ struct MainNavView: View {
                         ContactImportSelectView(contacts: contactsManager.pendingImportContacts)
                     }
                 case let .addContact(publicKey):
-                    if isPaykitUIActive { AddContactView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        AddContactView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .editContact(publicKey):
-                    if isPaykitUIActive { EditContactView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        EditContactView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .profile:
                     if !isPaykitUIActive {
                         ComingSoonScreen()
@@ -585,17 +619,53 @@ struct MainNavView: View {
                         ProfileIntroView()
                     }
                 case .profileIntro:
-                    if isPaykitUIActive { ProfileIntroView() } else { ComingSoonScreen() }
+                    if isPaykitUIActive {
+                        ProfileIntroView()
+                    } else {
+                        ComingSoonScreen()
+                    }
                 case .pubkyChoice:
-                    if isPaykitUIActive { PubkyChoiceView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        PubkyChoiceView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .createProfile:
-                    if isPaykitUIActive { CreateProfileView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        CreateProfileView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .editProfile:
-                    if isPaykitUIActive { EditProfileView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        EditProfileView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .payContacts:
-                    if isPaykitUIActive { PayContactsView() } else { paykitDisabledRedirectView }
-                case .paymentRequests:
-                    if isPaykitUIActive { PaymentRequestsView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        PayContactsView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
+                case let .subscriptions(showPayments):
+                    if isPaykitUIActive {
+                        SubscriptionsView(showPayments: showPayments)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
+                case let .paymentRequestDetail(id):
+                    if isPaykitUIActive {
+                        PaymentRequestDetailView(id: id)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
+                case let .subscriptionDetail(id):
+                    if isPaykitUIActive {
+                        SubscriptionDetailView(id: id)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
 
                 // Shop
                 case .shopIntro: ShopIntro()
