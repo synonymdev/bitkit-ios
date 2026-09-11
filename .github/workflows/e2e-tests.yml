@@ -7,6 +7,11 @@ on:
         description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
         required: false
         default: "default-feature-branch"
+      skip_local:
+        description: "Skip local E2E jobs (build-local + e2e-tests-local) — useful for staging-only validation"
+        type: boolean
+        required: false
+        default: false
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -43,7 +48,7 @@ jobs:
 
   build-local:
     needs: detect-changes
-    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true' && github.event.inputs.skip_local != 'true'
     runs-on: macos-latest
 
     steps:
@@ -229,7 +234,7 @@ jobs:
       e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
   e2e-tests-local:
-    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true' && github.event.inputs.skip_local != 'true'
     runs-on: [self-hosted, macOS]
     needs: [detect-changes, build-local, e2e-branch]
 
@@ -518,9 +523,27 @@ jobs:
 
       - name: Verify all E2E shards succeeded
         if: needs.detect-changes.outputs.code == 'true'
+        env:
+          LOCAL_RESULT: ${{ needs.e2e-tests-local.result }}
+          STAGING_RESULT: ${{ needs.e2e-tests-staging.result }}
+          SKIP_LOCAL: ${{ github.event.inputs.skip_local }}
         run: |
-          if [ "${{ needs.e2e-tests-local.result }}" != "success" ] || [ "${{ needs.e2e-tests-staging.result }}" != "success" ]; then
-            echo "❌ Some E2E shards failed."
+          echo "Local result: $LOCAL_RESULT"
+          echo "Staging result: $STAGING_RESULT"
+          echo "Skip local: $SKIP_LOCAL"
+
+          # Staging must always succeed
+          if [ "$STAGING_RESULT" != "success" ]; then
+            echo "❌ Staging E2E shards failed."
             exit 1
           fi
-          echo "✅ All E2E shards passed!"
+
+          # Local must succeed unless skip_local was requested
+          if [ "$SKIP_LOCAL" = "true" ]; then
+            echo "✅ Local E2E skipped (skip_local=true), staging passed!"
+          elif [ "$LOCAL_RESULT" != "success" ]; then
+            echo "❌ Local E2E shards failed."
+            exit 1
+          else
+            echo "✅ All E2E shards passed!"
+          fi
