@@ -3,6 +3,154 @@ import LDKNode
 import SwiftUI
 import UserNotifications
 
+struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
+    struct Toast: Equatable {
+        let titleKey: String
+        let descriptionKey: String
+        let accessibilityIdentifier: String
+    }
+
+    let diagnosticReason: IncomingPaykitPaymentRequestFailureReason
+    let isTerminal: Bool
+    let shouldLogDiagnostic: Bool
+    let toast: Toast?
+
+    init(
+        deferral: PaykitPaymentRequestPresentationDeferral,
+        fallbackReason: IncomingPaykitPaymentRequestFailureReason,
+        shouldLogNonTerminalDiagnostic: Bool = false
+    ) {
+        switch deferral {
+        case .requestedPresentationEnded:
+            diagnosticReason = fallbackReason
+            isTerminal = true
+            shouldLogDiagnostic = true
+            toast = Toast(
+                titleKey: "wallet__payment_request",
+                descriptionKey: "wallet__payment_request_unavailable",
+                accessibilityIdentifier: "PaymentRequestUnavailableToast"
+            )
+        case let .requestExpired(wasRequested):
+            diagnosticReason = .requestExpired
+            isTerminal = true
+            shouldLogDiagnostic = true
+            toast = wasRequested ? Toast(
+                titleKey: "wallet__payment_request",
+                descriptionKey: "wallet__payment_request_expired",
+                accessibilityIdentifier: "PaymentRequestExpiredToast"
+            ) : nil
+        case .retryScheduled:
+            diagnosticReason = fallbackReason
+            isTerminal = false
+            shouldLogDiagnostic = shouldLogNonTerminalDiagnostic
+            toast = nil
+        case .ignored:
+            diagnosticReason = fallbackReason
+            isTerminal = false
+            shouldLogDiagnostic = false
+            toast = nil
+        }
+    }
+
+    func diagnosticMessage(for request: PaykitPaymentRequest) -> String? {
+        guard shouldLogDiagnostic else { return nil }
+        return "Rejected incoming Paykit payment request presentation: category=\(diagnosticReason.category) " +
+            "reason=\(diagnosticReason.rawValue) " +
+            "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))"
+    }
+}
+
+struct IncomingPaykitPaymentRequestPresentationState: Equatable {
+    let requestedPresentationId: PaykitPaymentRequest.ID?
+    let retryTrigger: Int
+    let expirationTrigger: Int
+    let unavailableTrigger: Int
+
+    init(
+        requestedPresentationId: PaykitPaymentRequest.ID?,
+        retryTrigger: Int,
+        expirationTrigger: Int,
+        unavailableTrigger: Int
+    ) {
+        self.requestedPresentationId = requestedPresentationId
+        self.retryTrigger = retryTrigger
+        self.expirationTrigger = expirationTrigger
+        self.unavailableTrigger = unavailableTrigger
+    }
+
+    @MainActor
+    init(_ manager: PaykitPaymentRequestManager) {
+        self.init(
+            requestedPresentationId: manager.requestedPresentationId,
+            retryTrigger: manager.presentationRetryTrigger,
+            expirationTrigger: manager.requestedPresentationExpirationTrigger,
+            unavailableTrigger: manager.requestedPresentationUnavailableTrigger
+        )
+    }
+}
+
+enum IncomingPaykitPaymentRequestPresentationDispatch: Equatable {
+    case presentFeedback(IncomingPaykitPaymentRequestPresentationFeedback, PaykitPaymentRequest)
+    case presentNext
+}
+
+@MainActor
+enum IncomingPaykitPaymentRequestPresentationDispatcher {
+    static func feedback(
+        deferring request: PaykitPaymentRequest,
+        reason: IncomingPaykitPaymentRequestFailureReason,
+        with manager: PaykitPaymentRequestManager
+    ) -> IncomingPaykitPaymentRequestPresentationFeedback {
+        let result = manager.deferPresentation(request, diagnosticReason: reason)
+        return IncomingPaykitPaymentRequestPresentationFeedback(
+            deferral: result.deferral,
+            fallbackReason: reason,
+            shouldLogNonTerminalDiagnostic: result.shouldLogDiagnostic
+        )
+    }
+
+    static func handleStateChange(
+        from previous: IncomingPaykitPaymentRequestPresentationState,
+        to current: IncomingPaykitPaymentRequestPresentationState,
+        manager: PaykitPaymentRequestManager
+    ) -> [IncomingPaykitPaymentRequestPresentationDispatch] {
+        var dispatches: [IncomingPaykitPaymentRequestPresentationDispatch] = []
+        if current.expirationTrigger != previous.expirationTrigger {
+            while let request = manager.consumeExpiredRequestedPresentation() {
+                dispatches.append(
+                    .presentFeedback(
+                        IncomingPaykitPaymentRequestPresentationFeedback(
+                            deferral: .requestExpired(wasRequested: true),
+                            fallbackReason: .resolutionFailed
+                        ),
+                        request
+                    )
+                )
+            }
+        }
+        if current.unavailableTrigger != previous.unavailableTrigger {
+            while let request = manager.consumeUnavailableRequestedPresentation() {
+                dispatches.append(
+                    .presentFeedback(
+                        IncomingPaykitPaymentRequestPresentationFeedback(
+                            deferral: .requestedPresentationEnded,
+                            fallbackReason: .resolutionFailed
+                        ),
+                        request
+                    )
+                )
+            }
+        }
+        if current.retryTrigger != previous.retryTrigger ||
+            previous.requestedPresentationId != current.requestedPresentationId && current.requestedPresentationId != nil ||
+            current.expirationTrigger != previous.expirationTrigger
+        {
+            dispatches.append(.presentNext)
+        }
+        return dispatches
+    }
+}
+
 struct AppScene: View {
     private static let paykitPaymentRequestRefreshIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
@@ -271,12 +419,8 @@ struct AppScene: View {
                     await presentNextIncomingPaykitItem()
                 }
             }
-            .onChange(of: paykitPaymentRequestManager.requestedPresentationId) { _, requestId in
-                guard requestId != nil else { return }
-                Task { await presentNextIncomingPaykitPaymentRequest() }
-            }
-            .onChange(of: paykitPaymentRequestManager.presentationRetryTrigger) {
-                Task { await presentNextIncomingPaykitPaymentRequest() }
+            .onChange(of: incomingPaykitPaymentRequestPresentationState) { previous, current in
+                handleIncomingPaykitPaymentRequestPresentationStateChange(from: previous, to: current)
             }
             .onChange(of: paykitPaymentRequestManager.pendingRequests) { _, requests in
                 guard let request = app.contactPaymentContext?.incomingPaymentRequest,
@@ -894,8 +1038,10 @@ struct AppScene: View {
                           app.contactPaymentContext == nil
                     else { return }
                     guard case let .opened(paymentTarget, privatePaymentContext) = result else {
-                        Logger.debug("Incoming Paykit payment request is waiting for private payment details: \(result)", context: "AppScene")
-                        paykitPaymentRequestManager.deferPresentation(request)
+                        deferIncomingPaykitPaymentRequestPresentation(
+                            request,
+                            reason: result.incomingPaymentRequestFailureReason ?? .resolutionFailed
+                        )
                         continue
                     }
 
@@ -924,14 +1070,20 @@ struct AppScene: View {
                             return
                         }
                         guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
-                            PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(
-                                request,
-                                app: app,
-                                manager: paykitPaymentRequestManager,
-                                resetWalletSendState: {
-                                    wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-                                }
-                            )
+                            if app.didRejectScannedPaymentForInsufficientBalance {
+                                PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(
+                                    request,
+                                    app: app,
+                                    manager: paykitPaymentRequestManager,
+                                    resetWalletSendState: {
+                                        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                                    }
+                                )
+                            } else {
+                                app.resetSendState()
+                                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                                deferIncomingPaykitPaymentRequestPresentation(request, reason: .paymentTargetNotRoutable)
+                            }
                             shouldPresentNextRequest = false
                             return
                         }
@@ -954,7 +1106,6 @@ struct AppScene: View {
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                             return
                         }
-                        Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                         if PaykitPaymentRequestPresentationCoordinator.handleAmountMismatch(
@@ -966,7 +1117,7 @@ struct AppScene: View {
                             shouldPresentNextRequest = false
                             return
                         }
-                        paykitPaymentRequestManager.deferPresentation(request)
+                        deferIncomingPaykitPaymentRequestPresentation(request, reason: .invalidPaymentTarget)
                         continue
                     }
 
@@ -978,6 +1129,7 @@ struct AppScene: View {
                     else {
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        deferIncomingPaykitPaymentRequestPresentation(request, reason: .paymentTargetNotRoutable)
                         return
                     }
                     sheets.showSheet(.send, data: SendConfig(view: route))
@@ -986,8 +1138,7 @@ struct AppScene: View {
                     return
                 } catch {
                     guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
-                    Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
-                    paykitPaymentRequestManager.deferPresentation(request)
+                    deferIncomingPaykitPaymentRequestPresentation(request, reason: .resolutionFailed)
                 }
             }
         }
@@ -1001,6 +1152,59 @@ struct AppScene: View {
               app.contactPaymentContext == nil
         else { return }
         await presentNextIncomingPaykitPaymentRequest()
+    }
+
+    private func deferIncomingPaykitPaymentRequestPresentation(
+        _ request: PaykitPaymentRequest,
+        reason: IncomingPaykitPaymentRequestFailureReason
+    ) {
+        presentIncomingPaykitPaymentRequestFeedback(
+            IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+                deferring: request,
+                reason: reason,
+                with: paykitPaymentRequestManager
+            ),
+            for: request
+        )
+    }
+
+    private var incomingPaykitPaymentRequestPresentationState: IncomingPaykitPaymentRequestPresentationState {
+        IncomingPaykitPaymentRequestPresentationState(paykitPaymentRequestManager)
+    }
+
+    private func handleIncomingPaykitPaymentRequestPresentationStateChange(
+        from previous: IncomingPaykitPaymentRequestPresentationState,
+        to current: IncomingPaykitPaymentRequestPresentationState
+    ) {
+        for dispatch in IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: previous,
+            to: current,
+            manager: paykitPaymentRequestManager
+        ) {
+            switch dispatch {
+            case let .presentFeedback(feedback, request):
+                presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+            case .presentNext:
+                Task { await presentNextIncomingPaykitItem() }
+            }
+        }
+    }
+
+    private func presentIncomingPaykitPaymentRequestFeedback(
+        _ feedback: IncomingPaykitPaymentRequestPresentationFeedback,
+        for request: PaykitPaymentRequest
+    ) {
+        if let diagnosticMessage = feedback.diagnosticMessage(for: request) {
+            Logger.warn(diagnosticMessage, context: "AppScene")
+        }
+
+        guard let toast = feedback.toast else { return }
+        app.toast(
+            type: .error,
+            title: t(toast.titleKey),
+            description: t(toast.descriptionKey),
+            accessibilityIdentifier: toast.accessibilityIdentifier
+        )
     }
 
     private func handlePendingPaykitSubscriptionNotification() async {

@@ -120,6 +120,29 @@ final class PrivatePaykitServiceTests: XCTestCase {
         )
     }
 
+    func testResolutionFailureDiagnosticsKeepRedactedPaykitReason() {
+        XCTAssertEqual(
+            PaykitResolutionFailureDiagnostics.reason(
+                for: PaykitError.Transport(code: "transport_error", context: "do-not-log")
+            ),
+            "transport/transport_error"
+        )
+        XCTAssertEqual(
+            PaykitResolutionFailureDiagnostics.reason(
+                for: PaykitError.Storage(code: "do not log", context: "do-not-log")
+            ),
+            "storage/unknown_code"
+        )
+        XCTAssertEqual(
+            PaykitResolutionFailureDiagnostics.reason(for: PrivatePaykitError.routeHintsUnavailable),
+            "private/route_hints_unavailable"
+        )
+        XCTAssertEqual(
+            PaykitResolutionFailureDiagnostics.reason(for: PublicPaykitError.noSupportedEndpoint),
+            "public/no_supported_endpoint"
+        )
+    }
+
     func testReceivedPrivateInvoiceHashKeepsContactAttribution() async {
         let service = PrivatePaykitService()
         let publicKey = "pubkycontact"

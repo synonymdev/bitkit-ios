@@ -4,10 +4,11 @@ A journey is an XML-specified walkthrough of app behaviour, evaluated by an agen
 simulator. They are developer-assistance specs: they give an agent a reliable route through a flow so
 it can reproduce a bug, check a change by hand, or show you what a screen does today.
 
-These are ported from [`bitkit-android/journeys`](https://github.com/synonymdev/bitkit-android/tree/main/journeys)
+Most suites are ported from [`bitkit-android/journeys`](https://github.com/synonymdev/bitkit-android/tree/main/journeys)
 and deliberately keep the same file names, journey names and `<action>` prose so the two platforms
 stay diffable. Only the platform mechanics differ — `adb` becomes `xcodebuildmcp`, and Android
 `testTag`s become iOS `accessibilityIdentifier`s (the vocabulary is shared; see [Identifiers](#identifiers)).
+iOS-only suites are marked in the [Suites](#suites) table.
 
 **Journeys are not a QA gate.** They are agent-evaluated and non-deterministic, nothing runs them in
 CI, and there is no runner wired up for them yet — `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests`
@@ -138,7 +139,7 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [notification-permission](notification-permission) | 4 | Background-setup toggles |
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
 | [hardware-wallet](hardware-wallet) | 16 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
-| [payment-requests](payment-requests) | 1 | Requires a linked fixture issuer; rejected shapes are unit fixtures |
+| [payment-requests](payment-requests) | 2 | Linked issuer interoperability plus the ported Android resolution-failure journey |
 | [pubky-marketplace](pubky-marketplace) | 1 | Adapted — two-wallet Paykit marketplace payment on regtest; integration fixture required |
 
 ## Not ported
