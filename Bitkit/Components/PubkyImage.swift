@@ -7,6 +7,7 @@ import SwiftUI
 struct PubkyImage: View {
     let uri: String
     let size: CGFloat
+    var cornerRadius: CGFloat?
 
     @State private var uiImage: UIImage?
     @State private var hasFailed = false
@@ -24,7 +25,7 @@ struct PubkyImage: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(Circle())
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius ?? size / 2))
         .accessibilityLabel(Text("Profile photo"))
         .task(id: uri) {
             await loadImage()
@@ -32,7 +33,7 @@ struct PubkyImage: View {
     }
 
     private var placeholder: some View {
-        Circle()
+        Rectangle()
             .fill(Color.gray5)
             .overlay {
                 Image("user-square")

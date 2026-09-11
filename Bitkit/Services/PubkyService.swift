@@ -576,9 +576,15 @@ actor PaykitSdkService {
         }
     }
 
-    func uploadProfileAvatar(bytes: Data, contentType: String) async throws -> String {
+    func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String? = nil) async throws -> String {
         let record = try await withStateRevisionTracking { sdk in
-            try await sdk.uploadProfileAvatar(bytes: bytes, contentType: contentType)
+            if let expectedIdentity {
+                guard let identity = try await sdk.identityStatus(),
+                      identity.liveSessionAvailable,
+                      PubkyPublicKeyFormat.matches(identity.publicKey, expectedIdentity)
+                else { throw PaykitPaymentRequestError.requestUnavailable }
+            }
+            return try await sdk.uploadProfileAvatar(bytes: bytes, contentType: contentType)
         }
         return record.uri
     }
