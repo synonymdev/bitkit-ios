@@ -1,0 +1,285 @@
+name: E2E Staging (iOS)
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      e2e_branch:
+        description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
+        required: false
+        default: "default-feature-branch"
+      notify_slack:
+        description: "Post failure result to Slack (#bitkit-staging-nightly)"
+        type: boolean
+        default: false
+        required: false
+
+env:
+  TERM: xterm-256color
+  FORCE_COLOR: 1
+  GIT_LFS_SKIP_SMUDGE: "1"
+  SIMULATOR_NAME: "iPhone 17"
+  IOS_VERSION: "26.2"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-staging:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.2"
+
+      - name: System Information
+        run: |
+          echo "=== System Information ==="
+          echo "macOS Version:"
+          sw_vers
+          echo ""
+          echo "Xcode Version:"
+          xcodebuild -version
+
+      - name: Install xcbeautify
+        run: |
+          brew install xcbeautify
+
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+            Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+
+      - name: Install dependencies
+        run: |
+          echo "⏱️  Starting dependency resolution at $(date)"
+          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
+          echo "✅ Dependencies resolved at $(date)"
+
+      - name: Pre-start simulator
+        run: |
+          echo "⏱️  Starting simulator at $(date)"
+          xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
+          echo "✅ Simulator started at $(date)"
+
+      - name: Build iOS app (regtest)
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEO: false
+          E2E_BACKEND: network
+          E2E_NETWORK: regtest
+        run: |
+          echo "=== Building iOS app (regtest) ==="
+          echo "Using simulator: ${{ env.SIMULATOR_NAME }} (iOS ${{ env.IOS_VERSION }})"
+
+          if xcodebuild -showsdks | grep -q "iOS Simulator"; then
+            echo "✅ iOS Simulator platform already installed"
+          else
+            echo "⚙️  iOS Simulator platform not found — downloading..."
+            xcodebuild -downloadPlatform iOS
+          fi
+
+          xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
+            -scheme Bitkit \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=${{ env.SIMULATOR_NAME }},OS=${{ env.IOS_VERSION }}" \
+            -derivedDataPath DerivedData \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD' \
+            -allowProvisioningUpdates \
+            build
+
+      - name: Prepare app for E2E tests (regtest)
+        run: |
+          mkdir -p e2e-app
+          cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
+
+      - name: Upload iOS app (regtest)
+        uses: actions/upload-artifact@v7
+        with:
+          name: bitkit-e2e-ios-staging_${{ github.run_number }}
+          path: e2e-app/
+
+  e2e-branch:
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
+    with:
+      app_branch: ${{ github.head_ref || github.ref_name }}
+      e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
+
+  e2e-tests-staging:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    needs: [build-staging, e2e-branch]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - { name: multi_address_2, grep: "@multi_address_2" }
+          - { name: pubky, grep: "@pubky" }
+          - { name: transfer_max, grep: "@transfer_max" }
+
+    name: e2e-tests-staging - ${{ matrix.shard.name }}
+
+    env:
+      BACKEND: regtest
+
+    steps:
+      - name: Show selected E2E branch
+        env:
+          E2E_BRANCH: ${{ needs.e2e-branch.outputs.branch }}
+        run: echo $E2E_BRANCH
+
+      - name: Clone E2E tests
+        uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          path: bitkit-e2e-tests
+          ref: ${{ needs.e2e-branch.outputs.branch }}
+
+      - name: Download iOS app (regtest)
+        uses: actions/download-artifact@v8
+        with:
+          name: bitkit-e2e-ios-staging_${{ github.run_number }}
+          path: bitkit-e2e-tests/aut
+
+      - name: List iOS app directory contents
+        run: ls -l bitkit-e2e-tests/aut
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Cache npm cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        working-directory: bitkit-e2e-tests
+        run: npm ci
+
+      - name: Install ffmpeg
+        run: |
+          echo "Installing ffmpeg with Homebrew..."
+          brew install ffmpeg
+          echo "ffmpeg version: $(ffmpeg -version | head -1)"
+
+      - name: Boot Simulator
+        run: |
+          echo "Erasing simulator..."
+          xcrun simctl erase "${{ env.SIMULATOR_NAME }}" || true
+
+          echo "Booting simulator..."
+          xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
+
+          echo "Waiting for boot status..."
+          xcrun simctl bootstatus "${{ env.SIMULATOR_NAME }}" -b
+
+          echo "Opening Simulator app to ensure UI is ready..."
+          open -a Simulator
+
+          echo "Waiting for simulator to fully initialize..."
+          sleep 30
+
+          echo "Verifying simulator state..."
+          xcrun simctl list devices booted
+
+      - name: Run E2E Tests 1 (${{ matrix.shard.name }})
+        continue-on-error: true
+        id: test1
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
+        env:
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
+          RECORD_VIDEO: true
+          ATTEMPT: 1
+
+      - name: Run E2E Tests 2 (${{ matrix.shard.name }})
+        continue-on-error: true
+        if: steps.test1.outcome != 'success'
+        id: test2
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
+        env:
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
+          RECORD_VIDEO: true
+          ATTEMPT: 2
+
+      - name: Reset iOS Simulator before attempt 3
+        if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
+        run: |
+          echo "🔁 Resetting iOS simulator before attempt 3..."
+          xcrun simctl shutdown all || true
+          xcrun simctl erase "${{ env.SIMULATOR_NAME }}" || true
+          xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
+          xcrun simctl bootstatus "${{ env.SIMULATOR_NAME }}" -b
+          open -a Simulator
+          sleep 15
+          xcrun simctl list devices booted
+
+      - name: Run E2E Tests 3 (${{ matrix.shard.name }})
+        if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
+        id: test3
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
+        env:
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
+          RECORD_VIDEO: true
+          ATTEMPT: 3
+
+      - name: Upload E2E Artifacts (${{ matrix.shard.name }})
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-artifacts-staging_${{ matrix.shard.name }}_${{ github.run_number }}
+          path: bitkit-e2e-tests/artifacts/
+
+  notify-failure:
+    if: >-
+      always() &&
+      (needs.build-staging.result == 'failure' ||
+       needs.e2e-branch.result == 'failure' ||
+       needs.e2e-tests-staging.result == 'failure') &&
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_dispatch' && inputs.notify_slack == true))
+    runs-on: ubuntu-latest
+    needs: [build-staging, e2e-branch, e2e-tests-staging]
+
+    steps:
+      - name: Notify Slack on failure
+        uses: slackapi/slack-github-action@b0fa283ad8fea605de13dc3f449259339835fc52
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL_STAGING }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "🚨 E2E Staging (iOS) failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "🚨 *E2E Staging (iOS) failed*\n\n*Workflow:* ${{ github.workflow }}\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>\n*Branch:* `${{ github.ref_name }}`\n*Triggered by:* ${{ github.event_name }}"
+                  }
+                }
+              ]
+            }
