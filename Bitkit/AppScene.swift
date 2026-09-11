@@ -244,8 +244,7 @@ struct AppScene: View {
                 return UInt64(TransactionSpeed.fast.getFeeRate(from: rates))
             },
             hwAddressProvider: {
-                let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
-                return try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
+                try await LightningService.shared.addressInfoForType(.nativeSegwit, atIndex: 0).address
             },
             onBalanceRefresh: { await walletVm.updateBalanceState() }
         ))

@@ -4,22 +4,72 @@ import XCTest
 
 final class TransferViewModelTests: XCTestCase {
     @MainActor
-    func testDisplayOrderPrefersUiStateOrder() {
-        let viewModel = TransferViewModel()
-        let baseOrder = makeOrder(id: "base", clientBalanceSat: 100_000, lspBalanceSat: 50000)
-        let updatedOrder = makeOrder(id: "updated", clientBalanceSat: 150_000, lspBalanceSat: 75000)
+    func testEstimatesChangeBalancesWithoutCreatingAnOrder() async throws {
+        let vm = TransferViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        XCTAssertNil(vm.uiState.order)
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 150_000, feeSat: 102_000, isAdvanced: true)
+        XCTAssertTrue(vm.uiState.isAdvanced)
+        XCTAssertNil(vm.uiState.order)
 
-        let fallback = viewModel.displayOrder(for: baseOrder)
-        XCTAssertEqual(fallback.id, baseOrder.id)
-        XCTAssertEqual(fallback.clientBalanceSat, baseOrder.clientBalanceSat)
-
-        viewModel.uiState.order = updatedOrder
-        let result = viewModel.displayOrder(for: baseOrder)
-        XCTAssertEqual(result.id, updatedOrder.id)
-        XCTAssertEqual(result.clientBalanceSat, updatedOrder.clientBalanceSat)
+        try await vm.onDefaultClick(lspBalance: 50000) { client, lsp in
+            XCTAssertEqual(client, 100_000)
+            XCTAssertEqual(lsp, 50000)
+            return 101_500
+        }
+        XCTAssertEqual(vm.uiState.lspBalanceSat, 50000)
+        XCTAssertEqual(vm.uiState.feeSat, 101_500)
+        XCTAssertFalse(vm.uiState.isAdvanced)
+        XCTAssertNil(vm.uiState.order)
     }
 
-    // MARK: - calculateSpendingLimits (Transfer → Spending max)
+    @MainActor
+    func testConfirmationReusesTheOrderUntilTransferInputsChange() async throws {
+        let vm = TransferViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        var calls = 0
+        let create: (UInt64, UInt64) async throws -> IBtOrder = { client, lsp in
+            calls += 1
+            return self.makeOrder(id: "order-\(calls)", clientBalanceSat: client, lspBalanceSat: lsp, feeSat: client + 1000)
+        }
+        let first = try await vm.orderForConfirmation(createOrder: create)
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let retry = try await vm.orderForConfirmation(createOrder: create)
+        XCTAssertEqual(first.id, retry.id)
+        XCTAssertEqual(calls, 1)
+
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 150_000, feeSat: 102_000, isAdvanced: true)
+        XCTAssertNil(vm.uiState.order)
+        let changed = try await vm.orderForConfirmation(createOrder: create)
+        XCTAssertEqual(changed.lspBalanceSat, 150_000)
+        XCTAssertEqual(calls, 2)
+    }
+
+    @MainActor
+    func testConfirmationBlocksReplacingTheTransfer() {
+        let vm = TransferViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        vm.uiState.isConfirming = true
+        vm.onEstimateReady(clientBalance: 200_000, lspBalance: 150_000, feeSat: 202_000)
+        XCTAssertEqual(vm.uiState.clientBalanceSat, 100_000)
+        XCTAssertEqual(vm.uiState.lspBalanceSat, 50000)
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
+    }
+
+    @MainActor
+    func testFailedCreationPreservesTheEstimate() async {
+        let vm = TransferViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        struct CreateFailed: Error {}
+        do {
+            _ = try await vm.orderForConfirmation { _, _ in throw CreateFailed() }
+            XCTFail("Expected creation to fail")
+        } catch {
+            XCTAssertTrue(error is CreateFailed)
+        }
+        XCTAssertNil(vm.uiState.order)
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
+    }
 
     @MainActor
     func testSpendingLimitsCapsAtLspMaxClientBalanceWhenOnchainExceedsIt() async throws {
@@ -585,14 +635,14 @@ final class TransferViewModelTests: XCTestCase {
     private static let lspBalance: UInt64 = 252_368
     private static let networkFee: UInt64 = 2112
     private static let serviceFee: UInt64 = 286
-    private static let lspFee: UInt64 = 2398 // networkFee + serviceFee
+    private static let lspFee: UInt64 = 2398
 
-    private func makeOrder(id: String, clientBalanceSat: UInt64, lspBalanceSat: UInt64) -> IBtOrder {
+    private func makeOrder(id: String, clientBalanceSat: UInt64, lspBalanceSat: UInt64, feeSat: UInt64 = 1000) -> IBtOrder {
         IBtOrder(
             id: id,
             state: .created,
             state2: .created,
-            feeSat: 1000,
+            feeSat: feeSat,
             networkFeeSat: 2483,
             serviceFeeSat: 1520,
             lspBalanceSat: lspBalanceSat,

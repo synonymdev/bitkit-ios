@@ -2,7 +2,7 @@ import BitkitCore
 import SwiftUI
 
 struct TransferLearnMoreView: View {
-    let order: IBtOrder
+    @EnvironmentObject var transfer: TransferViewModel
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
@@ -24,9 +24,9 @@ struct TransferLearnMoreView: View {
             VStack(alignment: .leading, spacing: 16) {
                 SubtitleText(t("lightning__liquidity__label"))
                 LightningChannel(
-                    capacity: order.lspBalanceSat + order.clientBalanceSat,
-                    localBalance: order.clientBalanceSat,
-                    remoteBalance: order.lspBalanceSat,
+                    capacity: transfer.uiState.lspBalanceSat + transfer.uiState.clientBalanceSat,
+                    localBalance: transfer.uiState.clientBalanceSat,
+                    remoteBalance: transfer.uiState.lspBalanceSat,
                     status: .open,
                     showLabels: true
                 )
@@ -46,7 +46,8 @@ struct TransferLearnMoreView: View {
 
 #Preview {
     NavigationStack {
-        TransferLearnMoreView(order: IBtOrder.mock())
+        TransferLearnMoreView()
+            .environmentObject(TransferViewModel())
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(CurrencyViewModel())

@@ -11,21 +11,22 @@ struct SpendingHwSigned: View {
     private let autoForwardDelay: UInt64 = 1_000_000_000
 
     var body: some View {
-        if let order = transfer.uiState.order {
-            content(order: transfer.displayOrder(for: order))
+        if transfer.uiState.feeSat > 0 {
+            content()
         } else {
             Color.clear.onAppear { navigation.reset() }
         }
     }
 
-    private func content(order: IBtOrder) -> some View {
+    private func content() -> some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("lightning__transfer__nav_title"))
+                .disabled(transfer.isSpendingBusy)
                 .padding(.bottom, 16)
 
             DisplayText(t("lightning__transfer_hw__signed_title"), accentColor: .purpleAccent)
 
-            SpendingHwFeeGrid(order: order, miningFeeSats: transfer.hwSpending.miningFeeSats)
+            SpendingHwFeeGrid(state: transfer.uiState, miningFeeSats: transfer.hwSpending.miningFeeSats)
                 .padding(.top, 16)
 
             Image("check")
