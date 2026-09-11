@@ -188,6 +188,7 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .navigationBarHidden(true)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(accessibilityIdentifier)
     }
 
@@ -246,7 +247,7 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
             PubkyContactRow(contact: contact, verticalPadding: 24, isSelected: selectedTarget == target) {
                 onSelect(target)
             }
-            .accessibilityIdentifier("\(testIdentifierPrefix)Contact-\(contact.publicKey)")
+            .accessibilityIdentifier("\(testIdentifierPrefix)Contact\(contact.publicKey)")
         } else {
             Button {
                 onSelect(target)

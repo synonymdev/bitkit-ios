@@ -74,6 +74,7 @@ struct CreateSubscriptionView: View {
         .task(id: selectedPhotoItem) {
             await loadIcon(selectedPhotoItem)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CreateSubscription")
     }
 
@@ -112,7 +113,9 @@ struct CreateSubscriptionView: View {
                     get: { SubscriptionFrequencyOption.allCases.first { $0.unit == draft.frequency } ?? .month },
                     set: { draft.frequency = $0.unit }
                 ),
-                tabs: SubscriptionFrequencyOption.allCases,
+                tabItems: SubscriptionFrequencyOption.allCases.map {
+                    TabItem($0, accessibilityIdentifier: "Tab-\($0.rawValue)")
+                },
                 inactiveColor: .white.opacity(0.5)
             )
         }
@@ -204,8 +207,9 @@ struct SubscriptionAmountView: View {
             target: nil,
             onContinue: { onContinue($0.amountSats) },
             onBack: onBack,
-            testIdentifierPrefix: "Subscription"
+            testIdentifierPrefix: "PaymentRequest"
         )
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SubscriptionAmount")
     }
 }

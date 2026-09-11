@@ -4,11 +4,13 @@ struct TabItem<T: Hashable & CustomStringConvertible> {
     let tab: T
     let activeColor: Color?
     let badge: Int?
+    let accessibilityIdentifier: String?
 
-    init(_ tab: T, activeColor: Color? = nil, badge: Int? = nil) {
+    init(_ tab: T, activeColor: Color? = nil, badge: Int? = nil, accessibilityIdentifier: String? = nil) {
         self.tab = tab
         self.activeColor = activeColor
         self.badge = badge
+        self.accessibilityIdentifier = accessibilityIdentifier
     }
 }
 
@@ -71,7 +73,7 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .accessibilityIdentifier("Tab-\(tabItem.tab.description.lowercased())")
+                .accessibilityIdentifier(tabItem.accessibilityIdentifier ?? "Tab-\(tabItem.tab.description.lowercased())")
             }
         }
         .frame(maxWidth: .infinity)
