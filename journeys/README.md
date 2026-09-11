@@ -136,13 +136,14 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
 | [hardware-wallet](hardware-wallet) | 16 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
 | [pubky-marketplace](pubky-marketplace) | 1 | Adapted — two-wallet Paykit marketplace payment on regtest; integration fixture required |
+| [pubky-auth](pubky-auth) | 1 | Bitkit-specific OS handoff into watch-only consent; local Pubky identity required |
 
 ## Not ported
 
 **`deeplinks` (2 journeys).** The Android journeys exercise `bitkit://screen/...` routing with a
 dev-mode gate and a cold-start replay. iOS registers the `bitkit` URL scheme (`Bitkit/Info.plist`)
-but `onOpenURL` in `Bitkit/MainNavView.swift` only handles web URLs, Pubky auth callbacks and
-payment URIs — there is no screen or sheet deeplink router, and no dev-mode gate to test. These
+and retains external URLs in `AppScene`, but `MainNavView` only routes web URLs, Pubky auth requests and callbacks,
+and payment URIs — there is no screen or sheet deeplink router, and no dev-mode gate to test. These
 journeys are blocked on the feature existing, not on the harness.
 
 ## Porting from Android

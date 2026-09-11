@@ -31,6 +31,8 @@ func resolvePendingProfileSetupResumeState(
 }
 
 struct MainNavView: View {
+    private let canHandleDeepLinks: Bool
+
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @EnvironmentObject private var app: AppViewModel
@@ -52,6 +54,9 @@ struct MainNavView: View {
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
     @State private var didResumePendingPubkyProfileSetup = false
+    init(canHandleDeepLinks: Bool = true) {
+        self.canHandleDeepLinks = canHandleDeepLinks
+    }
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
@@ -373,69 +378,13 @@ struct MainNavView: View {
                 notificationManager.unregister()
             }
         }
-        .onOpenURL { url in
-            Task {
-                Logger.info("Received deeplink: \(sanitizedDeeplinkDescription(url))")
-
-                // Web URLs from widgets (e.g. news article tap) bypass payment handling
-                if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
-                    await UIApplication.shared.open(url)
-                    return
-                }
-
-                if let callback = PubkyRingAuthCallback.parse(url: url) {
-                    guard isPaykitUIActive else {
-                        app.toast(
-                            type: .error,
-                            title: t("profile__auth_error_title"),
-                            description: t("other__qr_error_text")
-                        )
-                        return
-                    }
-
-                    let handlingResult = await pubkyProfile.handleAuthCallback(callback)
-
-                    switch handlingResult {
-                    case let .trustedError(message):
-                        app.toast(
-                            type: .error,
-                            title: t("profile__auth_error_title"),
-                            description: message ?? t("other__qr_error_text")
-                        )
-                    case .untrustedError:
-                        app.toast(
-                            type: .error,
-                            title: t("profile__auth_error_title")
-                        )
-                    case .handled, .ignored:
-                        break
-                    }
-
-                    return
-                }
-
-                do {
-                    try await app.handleScannedData(
-                        url.absoluteString,
-                        alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
-                    )
-                    if shouldOpenPaymentSheet(for: url.absoluteString) {
-                        PaymentNavigationHelper.openPaymentSheet(
-                            app: app,
-                            currency: currency,
-                            settings: settings,
-                            sheetViewModel: sheets
-                        )
-                    }
-                } catch {
-                    Logger.error(error, context: "Failed to handle deeplink")
-                    app.toast(
-                        type: .error,
-                        title: t("other__qr_error_header"),
-                        description: t("other__qr_error_text")
-                    )
-                }
-            }
+        .task(id: [canHandleDeepLinks, wallet.nodeLifecycleState == .running]) {
+            guard canHandleDeepLinks else { return }
+            await handlePendingDeepLink()
+        }
+        .onChange(of: app.pendingDeepLinkURL) { _, url in
+            guard canHandleDeepLinks, url != nil else { return }
+            Task { await handlePendingDeepLink() }
         }
         .alert(
             t("other__clipboard_redirect_title"),
@@ -812,6 +761,78 @@ struct MainNavView: View {
 
     private func shouldOpenPaymentSheet(for uri: String) -> Bool {
         !SamRockSetupRequest.isProtocolURL(uri) && !PubkyAuthRequest.isProtocolURL(uri)
+    }
+
+    private func handlePendingDeepLink() async {
+        await app.routePendingDeepLinkIfReady(
+            canHandleDeepLinks,
+            nodeIsRunning: wallet.nodeLifecycleState == .running
+        ) { url in
+            await handleDeepLink(url)
+        }
+    }
+
+    private func handleDeepLink(_ url: URL) async {
+        Logger.info("Received deeplink: \(sanitizedDeeplinkDescription(url))")
+
+        // Web URLs from widgets (e.g. news article tap) bypass payment handling
+        if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            await UIApplication.shared.open(url)
+            return
+        }
+
+        if let callback = PubkyRingAuthCallback.parse(url: url) {
+            guard isPaykitUIActive else {
+                app.toast(
+                    type: .error,
+                    title: t("profile__auth_error_title"),
+                    description: t("other__qr_error_text")
+                )
+                return
+            }
+
+            let handlingResult = await pubkyProfile.handleAuthCallback(callback)
+
+            switch handlingResult {
+            case let .trustedError(message):
+                app.toast(
+                    type: .error,
+                    title: t("profile__auth_error_title"),
+                    description: message ?? t("other__qr_error_text")
+                )
+            case .untrustedError:
+                app.toast(
+                    type: .error,
+                    title: t("profile__auth_error_title")
+                )
+            case .handled, .ignored:
+                break
+            }
+
+            return
+        }
+
+        do {
+            try await app.handleScannedData(
+                url.absoluteString,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+            )
+            if shouldOpenPaymentSheet(for: url.absoluteString) {
+                PaymentNavigationHelper.openPaymentSheet(
+                    app: app,
+                    currency: currency,
+                    settings: settings,
+                    sheetViewModel: sheets
+                )
+            }
+        } catch {
+            Logger.error(error, context: "Failed to handle deeplink")
+            app.toast(
+                type: .error,
+                title: t("other__qr_error_header"),
+                description: t("other__qr_error_text")
+            )
+        }
     }
 
     private func sanitizedDeeplinkDescription(_ url: URL) -> String {

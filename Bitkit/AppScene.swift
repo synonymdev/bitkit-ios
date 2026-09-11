@@ -154,6 +154,7 @@ struct AppScene: View {
             .onChange(of: wallet.nodeLifecycleState) { _, newValue in handleNodeLifecycleChange(newValue) }
             .onChange(of: scenePhase, initial: true) { _, newValue in handleScenePhaseChange(newValue) }
             .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
+            .onOpenURL { url in app.retainDeepLink(url) }
             // Bridge Trezor device state into the watch-only manager without coupling the two:
             // TrezorManager bumps devicesRevision on any device/connection change.
             .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
@@ -312,6 +313,10 @@ struct AppScene: View {
                     isPinVerified = true
                 }
 
+                if let url = DeepLinkRouter.shared.consume() {
+                    app.retainDeepLink(url)
+                }
+
                 // Listen for quick action notifications
                 NotificationCenter.default.addObserver(
                     forName: .quickActionSelected,
@@ -319,6 +324,13 @@ struct AppScene: View {
                     queue: .main
                 ) { notification in
                     handleQuickAction(notification)
+                }
+                NotificationCenter.default.addObserver(
+                    forName: .deepLinkReceived,
+                    object: nil,
+                    queue: .main
+                ) { notification in
+                    handleDeepLinkNotification(notification)
                 }
             }
             .onReceive(BackupService.shared.backupFailurePublisher) { intervalMinutes in
@@ -328,6 +340,16 @@ struct AppScene: View {
                 guard update != nil else { return }
                 TimedSheetManager.shared.reevaluate()
             }
+    }
+
+    private func handleDeepLinkNotification(_ notification: Notification) {
+        if let retainedURL = DeepLinkRouter.shared.consume() {
+            app.retainDeepLink(retainedURL)
+            return
+        }
+        if let receivedURL = notification.object as? URL {
+            app.retainDeepLink(receivedURL)
+        }
     }
 
     private var mainContent: some View {
