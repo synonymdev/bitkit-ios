@@ -5,7 +5,6 @@ import XCTest
 final class SamRockSetupRequestTests: XCTestCase {
     override func tearDown() {
         SamRockURLProtocol.handler = nil
-        URLProtocol.unregisterClass(SamRockURLProtocol.self)
         super.tearDown()
     }
 
@@ -294,7 +293,6 @@ private extension SamRockSetupRequestTests {
     }
 
     func samRockURLSession() -> URLSession {
-        URLProtocol.registerClass(SamRockURLProtocol.self)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [SamRockURLProtocol.self] + (configuration.protocolClasses ?? [])
         return URLSession(configuration: configuration)

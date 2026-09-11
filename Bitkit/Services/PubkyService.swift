@@ -98,6 +98,12 @@ enum PubkyService {
         )
     }
 
+    static func approveRingAuth(authUrl: String, secretKeyHex: String) async throws {
+        try await ServiceQueue.background(.core) {
+            try await BitkitCore.approvePubkyAuth(authUrl: authUrl, secretKeyHex: secretKeyHex)
+        }
+    }
+
     static func approveAuthWithCompanionClaim(
         authUrl: String,
         approvedClientID: String,
@@ -222,6 +228,22 @@ enum PubkyService {
             signupCode: signupCode
         )
         return result.sessionAccess.exportSessionSecret()
+    }
+
+    static func registerIdentity(
+        secretKeyHex: String,
+        homeserverZ32: String,
+        signupCode: String? = nil
+    ) async throws -> PubkySessionBootstrapResult {
+        try await PaykitSdkService.shared.registerIdentity(
+            secretKeyHex: secretKeyHex,
+            homeserverPublicKey: homeserverZ32,
+            signupCode: signupCode
+        )
+    }
+
+    static func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
+        try await PaykitSdkService.shared.activateRegisteredIdentity(result)
     }
 
     /// Sign in with an existing secret key. Returns new session secret.
@@ -391,6 +413,38 @@ actor PaykitSdkService {
             try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
             markWalletBackupDataChanged()
             return result
+        }
+    }
+
+    func registerIdentity(
+        secretKeyHex: String,
+        homeserverPublicKey: String,
+        signupCode: String?
+    ) async throws -> PubkySessionBootstrapResult {
+        try await operationLock.withLock {
+            try await bootstrap().signUp(
+                localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
+                receiverNoiseSecretKey: sessionProvider.loadOrDeriveReceiverNoiseSecretKey(),
+                homeserverPublicKey: homeserverPublicKey,
+                signupCode: signupCode,
+                requiredCapabilities: Self.requiredCapabilities()
+            )
+        }
+    }
+
+    func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
+        try await operationLock.withLock {
+            let previousPublicKey = await currentSdkStatePublicKey()
+            do {
+                try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
+            } catch {
+                try? sessionProvider.clearSessionAccess()
+                try? Keychain.delete(key: .paykitSdkState)
+                resetRuntime()
+                markWalletBackupDataChanged()
+                throw error
+            }
+            markWalletBackupDataChanged()
         }
     }
 
