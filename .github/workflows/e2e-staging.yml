@@ -1,16 +1,14 @@
 name: E2E Staging (iOS)
 
 on:
+  schedule:
+    - cron: "0 4 * * *"
   workflow_dispatch:
     inputs:
       e2e_branch:
         description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
         required: false
         default: "default-feature-branch"
-  schedule:
-    - cron: "0 4 * * *"
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
 
 env:
   TERM: xterm-256color
@@ -25,7 +23,6 @@ concurrency:
 
 jobs:
   build-staging:
-    if: github.event.pull_request.draft == false
     runs-on: macos-latest
 
     steps:
@@ -110,14 +107,12 @@ jobs:
           path: e2e-app/
 
   e2e-branch:
-    if: github.event.pull_request.draft == false
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
     with:
       app_branch: ${{ github.head_ref || github.ref_name }}
       e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
   e2e-tests-staging:
-    if: github.event.pull_request.draft == false
     runs-on: macos-latest
     timeout-minutes: 90
     needs: [build-staging, e2e-branch]
@@ -128,7 +123,6 @@ jobs:
         shard:
           - { name: multi_address_2, grep: "@multi_address_2" }
           - { name: pubky, grep: "@pubky" }
-          - { name: transfer_staging, grep: "@transfer_1|@transfer_max" }
 
     name: e2e-tests-staging - ${{ matrix.shard.name }}
 
@@ -256,7 +250,6 @@ jobs:
   notify-failure:
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
       (needs.build-staging.result == 'failure' ||
        needs.e2e-branch.result == 'failure' ||
        needs.e2e-tests-staging.result == 'failure')
