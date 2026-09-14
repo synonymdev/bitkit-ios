@@ -32,14 +32,12 @@ func pubkyAuthDisplayPublicKey(_ publicKey: String?) -> String {
 }
 
 struct PubkyAuthApprovalConfig {
-    let authUrl: String
     let request: PubkyAuthRequest
 }
 
 struct PubkyAuthApprovalSheetItem: SheetItem {
     let id: SheetID = .pubkyAuthApproval
     let size: SheetSize = .large
-    let authUrl: String
     let request: PubkyAuthRequest
 }
 
@@ -61,6 +59,10 @@ struct PubkyAuthApprovalSheet: View {
         case authorize
         case authorizing
         case success
+
+        var canDismiss: Bool {
+            self != .authorizing
+        }
 
         @MainActor
         mutating func approveWatchOnlyConsent() -> Bool {
@@ -98,7 +100,7 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var showsBackButton: Bool {
-        state == .authorize || state == .authorizing || state == .success
+        state == .authorize || state == .success
     }
 
     var body: some View {
@@ -109,6 +111,7 @@ struct PubkyAuthApprovalSheet: View {
                 authorizationFlowContent
             }
         }
+        .interactiveDismissDisabled(!state.canDismiss)
         .fullScreenCover(isPresented: $isShowingAuthCheck) {
             AuthCheck(
                 onCancel: {
@@ -131,7 +134,7 @@ struct PubkyAuthApprovalSheet: View {
         SheetIntro(
             navTitle: t("pubky_auth__watch_only_intro_nav_title"),
             title: t("pubky_auth__watch_only_intro_title"),
-            description: t("pubky_auth__watch_only_intro_description"),
+            description: watchOnlyConsentDescription,
             image: "coin-stack",
             continueText: t("pubky_auth__watch_only_intro_approve"),
             cancelText: t("common__cancel"),
@@ -228,23 +231,56 @@ struct PubkyAuthApprovalSheet: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    descriptionText
-                        .padding(.bottom, 8)
+                    if config.request.isSignup {
+                        BodyMText(t("pubky_auth__signup_description"))
+                            .padding(.bottom, 16)
+                    }
 
-                    BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .padding(.bottom, 32)
+                    if !config.request.permissions.isEmpty {
+                        descriptionText
+                            .padding(.bottom, 8)
+                    }
 
-                    permissionsSection
+                    if !config.request.clientID.isEmpty {
+                        BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.bottom, 32)
+                    } else {
+                        Spacer().frame(height: 24)
+                    }
+
+                    if let relayOrigin = config.request.relayOrigin {
+                        relayOriginSection(relayOrigin)
+                            .padding(.bottom, 24)
+                    }
+
+                    if !config.request.permissions.isEmpty {
+                        permissionsSection
+                    }
 
                     Spacer(minLength: 32)
 
                     trustWarning
                         .padding(.bottom, 16)
 
-                    profileCard
+                    if let homeserver = config.request.homeserverPublicKey {
+                        VStack(alignment: .leading, spacing: 8) {
+                            CaptionMText(t("pubky_auth__homeserver"), textColor: .white64)
+                            BodyMSBText(homeserver)
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(24)
+                        .background(Color.gray6)
+                        .cornerRadius(16)
                         .padding(.bottom, 16)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("PubkySignupHomeserver")
+                    } else {
+                        profileCard
+                            .padding(.bottom, 16)
+                    }
                 }
                 .frame(minHeight: geometry.size.height, alignment: .top)
             }
@@ -263,6 +299,25 @@ struct PubkyAuthApprovalSheet: View {
             accentFont: Fonts.bold
         )
         .lineSpacing(4)
+    }
+
+    private var watchOnlyConsentDescription: String {
+        let description = t("pubky_auth__watch_only_intro_description")
+        guard let relayOrigin = config.request.relayOrigin else { return description }
+
+        return description + "\n\n" + t(
+            "pubky_auth__watch_only_intro_relay",
+            variables: ["relay": relayOrigin]
+        )
+    }
+
+    private func relayOriginSection(_ relayOrigin: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("pubky_auth__authorization_relay"), textColor: .white64)
+            BodySSBText(relayOrigin)
+                .accessibilityIdentifier("PubkyAuthRelayOrigin")
+            CustomDivider(color: .white10)
+        }
     }
 
     private var successDescriptionText: some View {
@@ -379,6 +434,15 @@ struct PubkyAuthApprovalSheet: View {
     private func performAuthorization() async {
         guard state == .authorizing else { return }
         do {
+            if config.request.isSignup {
+                try await pubkyProfile.approveSignupAuth(request: config.request)
+                guard sheets.pubkyAuthApprovalSheetItem?.request.rawUrl == config.request.rawUrl else {
+                    return
+                }
+                sheets.hideSheet()
+                return
+            }
+
             guard let secretKey = try Keychain.loadString(key: .pubkySecretKey),
                   !secretKey.isEmpty
             else {
@@ -389,14 +453,28 @@ struct PubkyAuthApprovalSheet: View {
 
             try await PubkyService.approveAuthRequest(
                 request: config.request,
-                authUrl: config.authUrl,
+                authUrl: config.request.rawUrl,
                 accountName: watchOnlyAccountName,
                 secretKeyHex: secretKey
             )
 
             state = .success
         } catch {
-            Logger.error("Failed to approve pubky auth: \(error)", context: "PubkyAuthApprovalSheet")
+            if case PubkySignupError.inProgress = error {
+                app.toast(type: .info, title: t("pubky_auth__authorizing"))
+                state = .authorize
+                return
+            }
+            if case PubkySignupError.alreadySignedIn = error {
+                app.toast(type: .info, title: t("pubky_auth__already_signed_in"))
+                sheets.hideSheet()
+                return
+            }
+            if config.request.isSignup {
+                Logger.error("Failed to approve pubky signup", context: "PubkyAuthApprovalSheet")
+            } else {
+                Logger.error("Failed to approve pubky auth: \(error)", context: "PubkyAuthApprovalSheet")
+            }
             app.toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
             state = .authorize
         }
@@ -413,6 +491,7 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private func onBack() {
+        guard state.canDismiss else { return }
         if state == .authorize, config.request.bitkitClaim == .watchOnlyAccountV1 {
             state = .watchOnlyConsent
         } else {
