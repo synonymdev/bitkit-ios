@@ -273,9 +273,9 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_STAGING }}
           PLATFORM: ios
           STAGING_RESULT: ${{ needs.build-staging.result == 'success' && needs.e2e-branch.result == 'success' && needs.e2e-tests-staging.result == 'success' && 'success' || 'failure' }}
-          BUILD_STAGING_RESULT: ${{ needs.build-staging.result }}
+          BUILD_RESULT: ${{ needs.build-staging.result }}
           E2E_BRANCH_RESULT: ${{ needs.e2e-branch.result }}
-          E2E_TESTS_STAGING_RESULT: ${{ needs.e2e-tests-staging.result }}
+          E2E_TESTS_RESULT: ${{ needs.e2e-tests-staging.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           E2E_TESTS_REF: ${{ needs.e2e-branch.outputs.branch }}
