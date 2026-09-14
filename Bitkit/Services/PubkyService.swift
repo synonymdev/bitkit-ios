@@ -985,20 +985,20 @@ actor PaykitSdkService {
     private func withStateRevisionTracking<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {
         try await operationLock.withLock {
             let sdk = try handle()
-            let previousRevision = try? sdk.stateRevision()
+            let previousRevision = try? await sdk.backupStateRevision()
             do {
                 let result = try await operation(sdk)
-                markWalletBackupDataChangedIfNeeded(from: previousRevision, sdk: sdk)
+                await markWalletBackupDataChangedIfNeeded(from: previousRevision, sdk: sdk)
                 return result
             } catch {
-                markWalletBackupDataChangedIfNeeded(from: previousRevision, sdk: sdk)
+                await markWalletBackupDataChangedIfNeeded(from: previousRevision, sdk: sdk)
                 throw error
             }
         }
     }
 
-    private func markWalletBackupDataChangedIfNeeded(from previousRevision: String?, sdk: PaykitSdk) {
-        guard let nextRevision = try? sdk.stateRevision(), previousRevision != nextRevision else {
+    private func markWalletBackupDataChangedIfNeeded(from previousRevision: String?, sdk: PaykitSdk) async {
+        if let previousRevision, let nextRevision = try? await sdk.backupStateRevision(), previousRevision == nextRevision {
             return
         }
         markWalletBackupDataChanged()
