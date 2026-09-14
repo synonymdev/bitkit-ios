@@ -48,7 +48,9 @@ final class PubkyImageCacheTests: XCTestCase {
     func testDecoderRejectsDataOverDownloadLimit() {
         let data = Data(count: Int(PubkyImagePolicy.maxDownloadBytes) + 1)
 
-        XCTAssertThrowsError(try PubkyImageDecoder.image(from: data))
+        XCTAssertThrowsError(try PubkyImageDecoder.image(from: data)) { error in
+            XCTAssertEqual((error as? LocalizedError)?.errorDescription, "Image blob exceeds the byte limit (\(data.count) bytes)")
+        }
     }
 
     func testDiskCacheRemovesLeastRecentlyUsedFilesOverLimit() async throws {
