@@ -968,12 +968,14 @@ struct AppScene: View {
 
         if refreshMaintenance {
             await PaykitPaymentProofService.shared.reconcile()
-            await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
         let previousRequests = paykitPaymentRequestManager.pendingRequests
         await paykitPaymentRequestManager.refresh()
         if presentItems {
             await presentNextIncomingPaykitItem()
+        }
+        if refreshMaintenance {
+            await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
         return paykitPaymentRequestManager.pendingRequests != previousRequests
     }
