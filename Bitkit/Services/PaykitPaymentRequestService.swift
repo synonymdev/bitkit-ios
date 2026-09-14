@@ -653,7 +653,10 @@ struct PaykitPaymentRequestService {
             endsAt: nil
         )
         return try Paykit.PaymentRequestTerms(
-            amount: Paykit.PaymentRequestAmount(value: WalletViewModel.formatBitcoinAmount(sats: draft.amountSats), asset: "btc"),
+            amount: Paykit.PaymentRequestAmount(
+                value: WalletViewModel.formatBitcoinAmount(sats: draft.amountSats),
+                asset: PaykitIssuerInterop.bitcoinAsset
+            ),
             paymentReference: Paykit.PaymentReference(text: "bitkit-\(UUID().uuidString)"),
             proposalExpiresAt: Self.timestamp(draft.expiresAt),
             recurrence: recurrence,

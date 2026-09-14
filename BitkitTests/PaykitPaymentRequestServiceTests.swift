@@ -498,6 +498,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let snapshot = await sdk.snapshot()
         let proposed = try XCTUnwrap(snapshot.proposedRequests.first)
         XCTAssertEqual(proposed.amount, "0.001")
+        XCTAssertEqual(proposed.asset, PaykitIssuerInterop.bitcoinAsset)
         XCTAssertEqual(proposed.expiresAt, timestamp(expiresAt))
         XCTAssertEqual(proposed.recurrence?.every, 1)
         XCTAssertEqual(proposed.recurrence?.unit, "month")
