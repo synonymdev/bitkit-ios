@@ -130,7 +130,7 @@ Bump version to {newVersionName} (build {newBuildNumber}) for release.
 
 N/A — no UI changes.
 
-### Screenshot / Video
+### Preview
 
 N/A
 ```
