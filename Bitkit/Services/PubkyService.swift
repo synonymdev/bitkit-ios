@@ -233,8 +233,8 @@ enum PubkyService {
     // MARK: - File Fetching
 
     /// Fetch raw bytes from a `pubky://` URI via PKDNS resolution.
-    static func fetchFile(uri: String) async throws -> Data {
-        try await PaykitSdkService.shared.fetchFile(uri: uri)
+    static func fetchFile(uri: String, maxBytes: UInt64) async throws -> Data {
+        try await PaykitSdkService.shared.fetchFile(uri: uri, maxBytes: maxBytes)
     }
 
     // MARK: - Profile
@@ -561,9 +561,9 @@ actor PaykitSdkService {
         }
     }
 
-    func fetchFile(uri: String) async throws -> Data {
+    func fetchFile(uri: String, maxBytes: UInt64) async throws -> Data {
         try await operationLock.withLock {
-            guard let data = try await handle().fetchPubkyFile(uri: uri) else {
+            guard let data = try await handle().fetchPubkyFileBounded(uri: uri, maxBytes: maxBytes) else {
                 throw PubkyServiceError.profileNotFound
             }
             return data
