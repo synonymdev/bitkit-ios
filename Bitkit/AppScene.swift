@@ -151,9 +151,31 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
     }
 }
 
+struct PaykitPaymentRequestPollingSchedule {
+    private static let refreshIntervals: [Duration] = [.seconds(5), .seconds(10), .seconds(15), .seconds(30)]
+    private static let maintenanceIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
+    private var refreshIntervalIndex = 0
+    private var maintenanceIntervalIndex = 0
+    private var maintenanceDelay = Self.maintenanceIntervals[0]
+
+    var nextDelay: Duration {
+        Self.refreshIntervals[refreshIntervalIndex]
+    }
+
+    mutating func takeMaintenanceIfDue() -> Bool {
+        maintenanceDelay -= nextDelay
+        guard maintenanceDelay <= .zero else { return false }
+        maintenanceIntervalIndex = min(maintenanceIntervalIndex + 1, Self.maintenanceIntervals.count - 1)
+        maintenanceDelay = Self.maintenanceIntervals[maintenanceIntervalIndex]
+        return true
+    }
+
+    mutating func recordRefresh(requestsChanged: Bool) {
+        refreshIntervalIndex = requestsChanged ? 0 : min(refreshIntervalIndex + 1, Self.refreshIntervals.count - 1)
+    }
+}
+
 struct AppScene: View {
-    private static let paykitPaymentRequestRefreshIntervals: [Duration] = [.seconds(5), .seconds(10), .seconds(15), .seconds(30)]
-    private static let paykitMaintenanceIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
 
     @Environment(\.scenePhase) var scenePhase
@@ -987,32 +1009,22 @@ struct AppScene: View {
     private func pollIncomingPaykitPaymentRequests() async {
         guard scenePhase == .active else { return }
 
-        var refreshIntervalIndex = 0
-        var maintenanceIntervalIndex = 0
-        var maintenanceDelay = Self.paykitMaintenanceIntervals[0]
+        var schedule = PaykitPaymentRequestPollingSchedule()
         while !Task.isCancelled {
-            let refreshInterval = Self.paykitPaymentRequestRefreshIntervals[refreshIntervalIndex]
             do {
-                try await Task.sleep(for: refreshInterval)
+                try await Task.sleep(for: schedule.nextDelay)
             } catch {
                 return
             }
-            maintenanceDelay -= refreshInterval
-            let refreshMaintenance = maintenanceDelay <= .zero
+            let refreshMaintenance = schedule.takeMaintenanceIfDue()
             if refreshMaintenance {
                 await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
                     wallet: wallet,
                     reason: "payment request polling"
                 )
-                maintenanceIntervalIndex = min(maintenanceIntervalIndex + 1, Self.paykitMaintenanceIntervals.count - 1)
-                maintenanceDelay = Self.paykitMaintenanceIntervals[maintenanceIntervalIndex]
             }
             let requestsChanged = await refreshIncomingPaykitPaymentRequests(refreshMaintenance: refreshMaintenance)
-            if requestsChanged {
-                refreshIntervalIndex = 0
-            } else {
-                refreshIntervalIndex = min(refreshIntervalIndex + 1, Self.paykitPaymentRequestRefreshIntervals.count - 1)
-            }
+            schedule.recordRefresh(requestsChanged: requestsChanged)
         }
     }
 
