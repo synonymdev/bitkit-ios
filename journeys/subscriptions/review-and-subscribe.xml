@@ -12,10 +12,9 @@
     handoff's "Automatically pay this subscription" toggle is unbuilt on both platforms.
 
     The swipe knob follows the balance the payment is expected to leave, the way Android does: purple
-    when the subscription offers Lightning, brand orange when it is on-chain only. That reads the
-    subscription's advertised methods, not the wallet, so on a wallet with no spending balance the
-    knob can be purple here and orange on the send confirmation that follows. Both platforms share
-    the limitation.
+    when the payee accepts Lightning and the spending balance can cover the amount, brand orange
+    otherwise. The spending limit excludes routing fees, so an amount sitting right on it can still
+    settle on chain and show orange on the send confirmation that follows.
   </description>
   <actions>
     <action>Launch the E2E Bitkit app with Paykit UI enabled on the payer instance, with the creator saved as a linked contact and a spendable balance above 5,000 sats</action>
@@ -25,7 +24,7 @@
     <action>Tap the "Journey Sub" row (id "SubscriptionRow-&lt;paymentRequestId&gt;")</action>
     <action>Verify the Review and Subscribe sheet appears with 5,000 sats and the creator contact card</action>
     <action>Verify the swipe control reads "Swipe To Subscribe &amp; Pay" when the first period is due on acceptance, otherwise "Swipe To Subscribe"</action>
-    <action>Verify the swipe knob is purple when the subscription offers Lightning and brand orange when it is on-chain only</action>
+    <action>Verify the swipe knob is purple when the spending balance can cover the amount over Lightning, and brand orange otherwise</action>
     <action>Swipe the confirm control to the end</action>
     <action>If the first period was due on acceptance: complete the send flow that opens, then verify the Subscribed confirmation appears</action>
     <action>If no payment was due: verify the Subscribed confirmation appears directly, with no send flow</action>

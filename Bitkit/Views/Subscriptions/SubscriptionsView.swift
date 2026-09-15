@@ -542,8 +542,13 @@ struct SubscriptionDetailView: View {
 struct SubscriptionSheet: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Environment(HwWalletManager.self) private var hwWalletManager
+
+    private var maxSendLightningSats: UInt64 {
+        UInt64(max(0, wallet.maxSendLightningSats))
+    }
 
     let config: SubscriptionSheetItem
 
@@ -677,7 +682,9 @@ struct SubscriptionSheet: View {
                         ? t("subscriptions__swipe_to_subscribe_and_pay")
                         : t("subscriptions__swipe_to_subscribe"),
                     // Follow the balance this will be paid from, as the send and transfer screens do.
-                    accentColor: subscription.prefersLightningPayment ? .purpleAccent : .brandAccent,
+                    accentColor: subscription.isPaidFromSpending(maxSendLightningSats: maxSendLightningSats)
+                        ? .purpleAccent
+                        : .brandAccent,
                     isLoading: isAccepting || paymentRequests.isProcessingSubscription
                 ) {
                     do {
