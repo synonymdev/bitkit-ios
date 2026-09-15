@@ -311,9 +311,9 @@ struct SubscriptionAvatar: View {
         } else if subscription.isCreatedByUser {
             SubscriptionDefaultIcon(size: size)
         } else if let contact {
-            PubkyContactAvatar(contact: contact, size: size)
+            PubkyContactAvatar(contact: contact, size: size, cornerRadius: size / 5)
         } else {
-            ContactAvatarLetter(source: subscription.counterparty, size: size)
+            ContactAvatarLetter(source: subscription.counterparty, size: size, cornerRadius: size / 5)
         }
     }
 }
@@ -408,7 +408,7 @@ struct SubscriptionDetailView: View {
                 value: subscription.statusLabel(at: now),
                 icon: "check-mark"
             )
-            if subscription.isActive(at: now) || subscription.recurrence.endsAt != nil {
+            if subscription.isActive(at: now) || subscription.isExpired(at: now) || subscription.recurrence.endsAt != nil {
                 LabeledDetailCell(
                     title: timingTitle(subscription),
                     value: renewalText(subscription),
@@ -478,7 +478,10 @@ struct SubscriptionDetailView: View {
 
     private func renewalText(_ subscription: PaykitSubscription) -> String {
         guard subscription.isActive(at: now) else {
-            return subscription.recurrence.endsAt.map(Self.dateFormatter.string) ?? t("subscriptions__expired")
+            // An open-ended subscription has no end date of its own, so the last period it was paid
+            // for is when it lapsed.
+            let endedAt = subscription.recurrence.endsAt ?? subscription.paidPeriods.map(\.endsAt).max()
+            return endedAt.map(Self.dateFormatter.string) ?? t("subscriptions__expired")
         }
         let date = subscription.recurrence.endsAt ?? subscription.recurrence.nextPeriod(after: now)?.startsAt
         return date.map(Self.dateFormatter.string) ?? t("subscriptions__ongoing")

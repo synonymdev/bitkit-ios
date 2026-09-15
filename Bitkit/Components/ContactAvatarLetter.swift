@@ -7,13 +7,19 @@ struct ContactAvatarLetter: View {
     var strokeColor: Color?
     var strokeWidth: CGFloat = 0
     var textFont: Font?
+    /// Rounded square when set, circular otherwise.
+    var cornerRadius: CGFloat?
 
     private var letter: String {
         String(source.prefix(1)).uppercased()
     }
 
+    private var shape: AnyShape {
+        cornerRadius.map { AnyShape(RoundedRectangle(cornerRadius: $0)) } ?? AnyShape(Circle())
+    }
+
     var body: some View {
-        Circle()
+        shape
             .fill(backgroundColor)
             .frame(width: size, height: size)
             .overlay {
@@ -21,8 +27,7 @@ struct ContactAvatarLetter: View {
             }
             .overlay {
                 if let strokeColor, strokeWidth > 0 {
-                    Circle()
-                        .stroke(strokeColor, lineWidth: strokeWidth)
+                    shape.stroke(strokeColor, lineWidth: strokeWidth)
                 }
             }
             .accessibilityHidden(true)

@@ -44,18 +44,22 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                     }
                 }) {
                     VStack(spacing: 8) {
-                        HStack(spacing: 8) {
-                            CaptionBText(tabItem.tab.description, textColor: selectedTab == tabItem.tab ? .white : inactiveColor ?? .secondary)
-
-                            if let badge = tabItem.badge, badge > 0 {
-                                CaptionBText("\(badge)", textColor: .black)
-                                    .frame(minWidth: 20, minHeight: 20)
-                                    .background(Color.brandAccent)
-                                    .clipShape(Circle())
-                                    .accessibilityLabel(t("wallet__payment_requests_count", variables: ["count": "\(badge)"]))
+                        // The badge hangs off the label's trailing edge so the label stays centred in
+                        // its tab, and every tab reserves the badge height so the underlines line up.
+                        CaptionBText(tabItem.tab.description, textColor: selectedTab == tabItem.tab ? .white : inactiveColor ?? .secondary)
+                            .overlay(alignment: .trailing) {
+                                if let badge = tabItem.badge, badge > 0 {
+                                    CaptionBText("\(badge)", textColor: .black)
+                                        .frame(minWidth: 20, minHeight: 20)
+                                        .background(Color.brandAccent)
+                                        .clipShape(Circle())
+                                        .accessibilityLabel(t("wallet__payment_requests_count", variables: ["count": "\(badge)"]))
+                                        .padding(.leading, 8)
+                                        .alignmentGuide(.trailing) { $0[.leading] }
+                                }
                             }
-                        }
-                        .frame(maxWidth: .infinity)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 20)
                         ZStack {
                             Rectangle()
                                 .frame(height: 2)
