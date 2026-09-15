@@ -66,47 +66,26 @@ struct SubscriptionsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            NavigationBar(title: t("subscriptions__title"))
-            SegmentedControl(
-                selectedTab: $selectedTab,
-                tabItems: [
-                    TabItem(.overview),
-                    TabItem(.payments, badge: paymentRequests.pendingRequests.count),
-                ],
-                inactiveColor: .white.opacity(0.5)
+        ZStack(alignment: .bottom) {
+            InsetHeaderScrollView(
+                header: { header },
+                content: {
+                    Group {
+                        if selectedTab == .payments {
+                            PaymentRequestsView()
+                        } else if !hasVisibleSubscriptions {
+                            emptyState
+                        } else {
+                            overview
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, 16)
+                }
             )
 
-            if selectedTab == .payments {
-                PaymentRequestsView()
-            } else if !hasVisibleSubscriptions {
-                emptyState
-            } else {
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 32) {
-                        metrics
-                        section(t("subscriptions__proposals"), subscriptions: proposals)
-                        section(t("subscriptions__active"), subscriptions: active)
-                        section(t("subscriptions__expired"), subscriptions: expired)
-                        section(t("subscriptions__created"), subscriptions: created)
-                    }
-                    .padding(.top, 32)
-                    .padding(.bottom, 32)
-                }
-            }
-
-            if selectedTab == .overview {
-                CustomButton(
-                    title: t("subscriptions__create"),
-                    variant: .secondary
-                ) {
-                    sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .create))
-                }
-                .padding(.bottom, 16)
-                .accessibilityIdentifier("SubscriptionCreate")
-            }
+            footer
         }
-        .padding(.horizontal, 16)
         .background(Color.black)
         .navigationBarHidden(true)
         .accessibilityElement(children: .contain)
@@ -132,6 +111,51 @@ struct SubscriptionsView: View {
         subscriptionNextTransitionDate(subscriptions: paymentRequests.subscriptions, now: now)
     }
 
+    private var header: some View {
+        VStack(spacing: 0) {
+            NavigationBar(title: t("subscriptions__title"))
+            SegmentedControl(
+                selectedTab: $selectedTab,
+                tabItems: [
+                    TabItem(.overview),
+                    TabItem(.payments, badge: paymentRequests.pendingRequests.count),
+                ],
+                inactiveColor: .white.opacity(0.5)
+            )
+        }
+        .padding(.horizontal, 16)
+        .background(BlurView().ignoresSafeArea(edges: .top))
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.5), radius: 8, x: 0, y: 20)
+    }
+
+    private var overview: some View {
+        LazyVStack(alignment: .leading, spacing: 32) {
+            metrics
+            section(t("subscriptions__proposals"), subscriptions: proposals)
+            section(t("subscriptions__active"), subscriptions: active)
+            section(t("subscriptions__expired"), subscriptions: expired)
+            section(t("subscriptions__created"), subscriptions: created)
+        }
+        .padding(.top, 32)
+        .padding(.bottom, ScreenLayout.floatingFooterClearance)
+    }
+
+    private var footer: some View {
+        Group {
+            if selectedTab == .overview {
+                CustomButton(title: t("subscriptions__create"), variant: .secondary) {
+                    sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .create))
+                }
+                .accessibilityIdentifier("SubscriptionCreate")
+            } else {
+                PaymentRequestsFooterButton()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+    }
+
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer()
@@ -150,7 +174,7 @@ struct SubscriptionsView: View {
             BodyMText(t("subscriptions__empty_description"), textColor: .white64)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, 32)
+        .padding(.bottom, ScreenLayout.floatingFooterClearance)
     }
 
     private var metrics: some View {
