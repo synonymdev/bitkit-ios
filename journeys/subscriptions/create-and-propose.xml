@@ -16,7 +16,7 @@
     <action>Verify the Subscriptions screen (id "SubscriptionsScreen") appears with the Overview tab (id "Tab-overview") selected</action>
     <action>Tap Create (id "SubscriptionCreate")</action>
     <action>Verify the create sheet (id "CreateSubscription") appears with Choose Recipient disabled</action>
-    <action>Tap the amount pencil (id "SubscriptionEditAmount"), enter "5000" on the keypad, and tap Continue (id "SubscriptionAmountContinue")</action>
+    <action>Tap the amount pencil (id "SubscriptionEditAmount"), enter "5000" on the keypad, and tap Continue (id "PaymentRequestAmountContinue")</action>
     <action>Verify the amount reads 5,000 sats</action>
     <action>Type "Journey Sub" into the subscription name field (id "SubscriptionName")</action>
     <action>Type a short description into the description field (id "SubscriptionDescription"), so the payer's detail screen offers More Info later</action>

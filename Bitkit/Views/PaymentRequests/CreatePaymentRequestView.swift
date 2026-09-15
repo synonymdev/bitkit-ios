@@ -304,6 +304,21 @@ struct PaymentRequestAmountView: View {
 
             Spacer()
 
+            HStack {
+                Spacer()
+                NumberPadActionButton(
+                    text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
+                    imageName: "arrow-up-down",
+                    color: .brandAccent
+                ) {
+                    withAnimation {
+                        amountViewModel.togglePrimaryDisplay(currency: currency)
+                    }
+                }
+                .accessibilityIdentifier("\(testIdentifierPrefix)AmountUnit")
+            }
+            .padding(.bottom, 12)
+
             NumberPad(
                 type: amountViewModel.getNumberPadType(currency: currency),
                 errorKey: amountViewModel.errorKey

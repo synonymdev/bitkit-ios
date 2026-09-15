@@ -207,7 +207,9 @@ struct SubscriptionAmountView: View {
             target: nil,
             onContinue: { onContinue($0.amountSats) },
             onBack: onBack,
-            testIdentifierPrefix: "Subscription"
+            // Android tags this step PaymentRequest* on the subscription flow too; the journeys
+            // share the vocabulary, so keep the odd-reading prefix rather than diverging.
+            testIdentifierPrefix: "PaymentRequest"
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SubscriptionAmount")
