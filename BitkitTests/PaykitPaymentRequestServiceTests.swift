@@ -1168,6 +1168,65 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(remainingRecords.count, 1)
     }
 
+    func testExpiredSubscriptionEndDateFallsBackToLastPaidPeriod() throws {
+        let firstPeriod = BillingPeriod(startsAt: "2027-01-01T08:00:00Z", endsAt: "2027-02-01T08:00:00Z")
+        let secondPeriod = BillingPeriod(startsAt: "2027-02-01T08:00:00Z", endsAt: "2027-03-01T08:00:00Z")
+        var second = try paymentProofRecord(
+            endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            billingPeriod: secondPeriod
+        )
+        second.eventId = "850e8400-e29b-41d4-a716-446655440000"
+        let first = try paymentProofRecord(
+            endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            billingPeriod: firstPeriod
+        )
+        let openEnded = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .activeRecurring,
+            role: .payee,
+            recurrence: PaymentRequestRecurrence(
+                every: 1,
+                unit: "month",
+                startsAt: firstPeriod.startsAt,
+                anchor: firstPeriod.startsAt,
+                endsAt: nil
+            ),
+            paymentProofs: [first, second]
+        )))
+
+        XCTAssertEqual(
+            subscriptionEndDate(subscription: openEnded),
+            ISO8601DateFormatter().date(from: "2027-03-01T08:00:00Z")
+        )
+    }
+
+    func testSubscriptionEndDatePrefersItsOwnEndDateOverPaidPeriods() throws {
+        let period = BillingPeriod(startsAt: "2027-01-01T08:00:00Z", endsAt: "2027-02-01T08:00:00Z")
+        let proof = try paymentProofRecord(
+            endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            billingPeriod: period
+        )
+        let fixedEnd = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .activeRecurring,
+            role: .payee,
+            recurrence: PaymentRequestRecurrence(
+                every: 1,
+                unit: "month",
+                startsAt: period.startsAt,
+                anchor: period.startsAt,
+                endsAt: "2027-06-01T08:00:00Z"
+            ),
+            paymentProofs: [proof]
+        )))
+
+        XCTAssertEqual(
+            subscriptionEndDate(subscription: fixedEnd),
+            ISO8601DateFormatter().date(from: "2027-06-01T08:00:00Z")
+        )
+    }
+
     func testActiveSubscriptionTransitionUsesNextPeriodBoundary() throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let weekly = PaymentRequestRecurrence(

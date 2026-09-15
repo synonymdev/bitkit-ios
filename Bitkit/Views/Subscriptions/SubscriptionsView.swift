@@ -258,6 +258,12 @@ func subscriptionMonthlyCostSats(subscriptions: [PaykitSubscription], now: Date)
     }
 }
 
+/// When a subscription stopped running. An open-ended one has no end date of its own, so the last
+/// period it was paid for is when it lapsed.
+func subscriptionEndDate(subscription: PaykitSubscription) -> Date? {
+    subscription.recurrence.endsAt ?? subscription.paidPeriods.map(\.endsAt).max()
+}
+
 func subscriptionNextTransitionDate(
     subscriptions: [PaykitSubscription],
     now: Date
@@ -502,10 +508,7 @@ struct SubscriptionDetailView: View {
 
     private func renewalText(_ subscription: PaykitSubscription) -> String {
         guard subscription.isActive(at: now) else {
-            // An open-ended subscription has no end date of its own, so the last period it was paid
-            // for is when it lapsed.
-            let endedAt = subscription.recurrence.endsAt ?? subscription.paidPeriods.map(\.endsAt).max()
-            return endedAt.map(Self.dateFormatter.string) ?? t("subscriptions__expired")
+            return subscriptionEndDate(subscription: subscription).map(Self.dateFormatter.string) ?? t("subscriptions__expired")
         }
         let date = subscription.recurrence.endsAt ?? subscription.recurrence.nextPeriod(after: now)?.startsAt
         return date.map(Self.dateFormatter.string) ?? t("subscriptions__ongoing")
