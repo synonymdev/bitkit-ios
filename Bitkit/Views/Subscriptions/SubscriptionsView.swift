@@ -425,7 +425,7 @@ struct SubscriptionDetailView: View {
                 LabeledDetailCell(
                     title: t("subscriptions__payments"),
                     value: "\(subscription.payments.count)",
-                    icon: "arrow-down"
+                    icon: "coins"
                 )
             }
         }
@@ -445,7 +445,7 @@ struct SubscriptionDetailView: View {
                 if canCancel {
                     CustomButton(
                         title: subscription.isCreatedByUser ? t("common__delete") : t("subscriptions__cancel"),
-                        icon: Image("x-mark").resizable().frame(width: 16, height: 16)
+                        icon: Image(subscription.isCreatedByUser ? "trash" : "x-mark").resizable().frame(width: 16, height: 16)
                     ) {
                         sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .cancel(subscription)))
                     }
@@ -503,7 +503,7 @@ struct SubscriptionDetailView: View {
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = .autoupdatingCurrent
-        formatter.setLocalizedDateFormatFromTemplate("MMMMdyyyy")
+        formatter.setLocalizedDateFormatFromTemplate("MMMMd")
         return formatter
     }()
 }
@@ -645,7 +645,7 @@ struct SubscriptionSheet: View {
                     title: payOnAcceptance
                         ? t("subscriptions__swipe_to_subscribe_and_pay")
                         : t("subscriptions__swipe_to_subscribe"),
-                    accentColor: .purpleAccent,
+                    accentColor: subscription.paymentAccentColor,
                     isLoading: isAccepting || paymentRequests.isProcessingSubscription
                 ) {
                     do {
@@ -835,7 +835,7 @@ struct SubscriptionSheet: View {
             }
 
             Spacer()
-            Image("cross")
+            Image(subscription.isCreatedByUser ? "subscription-trash" : "cross")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 256, height: 256)
@@ -846,7 +846,7 @@ struct SubscriptionSheet: View {
                 title: subscription.isCreatedByUser
                     ? t("subscriptions__swipe_to_delete")
                     : t("subscriptions__swipe_to_cancel"),
-                accentColor: .redAccent,
+                accentColor: .brandAccent,
                 isLoading: paymentRequests.isProcessingSubscription
             ) {
                 do {
@@ -1018,6 +1018,17 @@ extension PaykitSubscriptionRecurrence {
 }
 
 private extension PaykitSubscription {
+    /// Bitkit orders payable endpoints Lightning-first (`MethodId.payablePreferenceOrder`), so the
+    /// highest-preference method the subscription accepts is the balance the payment will come from.
+    var paymentAccentColor: Color {
+        let accepted = Set(acceptedPaymentEndpointIdentifiers)
+        guard let preferred = PublicPaykitService.MethodId.payablePreferenceOrder.first(where: { accepted.contains($0.rawValue) })
+        else {
+            return .brandAccent
+        }
+        return preferred.onchainNetwork == nil ? .purpleAccent : .brandAccent
+    }
+
     func statusLabel(at now: Date) -> String {
         if isProposalVisible(at: now) {
             return t("subscriptions__pending")
