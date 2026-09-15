@@ -4,10 +4,11 @@ A journey is an XML-specified walkthrough of app behaviour, evaluated by an agen
 simulator. They are developer-assistance specs: they give an agent a reliable route through a flow so
 it can reproduce a bug, check a change by hand, or show you what a screen does today.
 
-These are ported from [`bitkit-android/journeys`](https://github.com/synonymdev/bitkit-android/tree/main/journeys)
+Most suites are ported from [`bitkit-android/journeys`](https://github.com/synonymdev/bitkit-android/tree/main/journeys)
 and deliberately keep the same file names, journey names and `<action>` prose so the two platforms
 stay diffable. Only the platform mechanics differ — `adb` becomes `xcodebuildmcp`, and Android
 `testTag`s become iOS `accessibilityIdentifier`s (the vocabulary is shared; see [Identifiers](#identifiers)).
+iOS-only suites are marked in the [Suites](#suites) table.
 
 **Journeys are not a QA gate.** They are agent-evaluated and non-deterministic, nothing runs them in
 CI, and there is no runner wired up for them yet — `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests`
@@ -138,15 +139,16 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [notification-permission](notification-permission) | 4 | Background-setup toggles |
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
 | [hardware-wallet](hardware-wallet) | 16 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
-| [payment-requests](payment-requests) | 1 | Requires a linked fixture issuer; rejected shapes are unit fixtures |
+| [payment-requests](payment-requests) | 2 | Linked issuer interoperability plus the ported Android resolution-failure journey |
 | [pubky-marketplace](pubky-marketplace) | 1 | Adapted — two-wallet Paykit marketplace payment on regtest; integration fixture required |
+| [pubky-auth](pubky-auth) | 1 | Bitkit-specific OS handoff into watch-only consent; local Pubky identity required |
 
 ## Not ported
 
 **`deeplinks` (2 journeys).** The Android journeys exercise `bitkit://screen/...` routing with a
 dev-mode gate and a cold-start replay. iOS registers the `bitkit` URL scheme (`Bitkit/Info.plist`)
-but `onOpenURL` in `Bitkit/MainNavView.swift` only handles web URLs, Pubky auth callbacks and
-payment URIs — there is no screen or sheet deeplink router, and no dev-mode gate to test. These
+and retains external URLs in `AppScene`, but `MainNavView` only routes web URLs, Pubky auth requests and callbacks,
+and payment URIs — there is no screen or sheet deeplink router, and no dev-mode gate to test. These
 journeys are blocked on the feature existing, not on the harness.
 
 ## Porting from Android

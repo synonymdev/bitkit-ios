@@ -176,9 +176,18 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
     func testApprovalStateBeginsAuthorizationOnlyOnce() {
         var state = PubkyAuthApprovalSheet.ApprovalState.authorize
 
+        XCTAssertTrue(state.canDismiss)
         XCTAssertTrue(state.beginAuthorization())
         XCTAssertEqual(state, .authorizing)
+        XCTAssertFalse(state.canDismiss)
         XCTAssertFalse(state.beginAuthorization())
+
+        state = .authorize
+        XCTAssertTrue(state.canDismiss)
+        XCTAssertTrue(state.beginAuthorization())
+        state = .success
+        XCTAssertTrue(state.canDismiss)
+        XCTAssertTrue(PubkyAuthApprovalSheet.ApprovalState.watchOnlyConsent.canDismiss)
     }
 
     @MainActor
