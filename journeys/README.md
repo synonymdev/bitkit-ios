@@ -10,10 +10,8 @@ stay diffable. Only the platform mechanics differ — `adb` becomes `xcodebuildm
 `testTag`s become iOS `accessibilityIdentifier`s (the vocabulary is shared; see [Identifiers](#identifiers)).
 iOS-only suites are marked in the [Suites](#suites) table.
 
-**Journeys are not a QA gate.** They are agent-evaluated and non-deterministic, nothing runs them in
-CI, and there is no runner wired up for them yet — `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests`
-and does not read `journeys/`. Treat a journey as a well-written description of a flow, not as an
-authority on what the app owes you.
+**Journeys are the QA contract for PRs** (see the Journeys section in `AGENTS.md`). They are
+agent-evaluated and non-deterministic, so CI does not run them; it only checks `journeys/index.json`.
 
 A journey that no longer matches the app is most likely **stale**, not evidence of a bug. The corpus
 is new on iOS and has not been run end to end, so when the two disagree the first assumption should be

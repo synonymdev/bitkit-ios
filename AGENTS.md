@@ -156,9 +156,9 @@ xcodebuildmcp simulator test
 
 Separately from the test suites, `journeys/` holds XML walkthroughs of app behaviour that an agent
 evaluates by driving a running simulator — number pad caps, notification permission, widget flows,
-hardware wallet pairing and transfers. They are developer assistance rather than a test layer:
-nothing runs them in CI and they gate nothing. Read `journeys/README.md` before running or writing
-one, and see the Journeys section under Code Style & Conventions.
+hardware wallet pairing and transfers. They are the QA contract for PRs rather than a test suite:
+CI does not run them, and it checks that `journeys/index.json` matches them. Read `journeys/README.md`
+before running or writing one, and see the Journeys section under Code Style & Conventions.
 
 ## Architecture
 
@@ -377,9 +377,13 @@ Ensure accessibility modifiers and labels are added to custom components.
   `<description>` and the suite README — never assert Android behaviour iOS does not have.
 - SKIP a journey only when the iOS feature does not exist, and record it under "Not ported" in
   `journeys/README.md` with what is missing.
-- Journeys are developer-assistance specs, not a QA gate. Nothing runs them in CI and no runner is
-  wired up for them; `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests` and never reads
-  `journeys/`. An agent runs one on request.
+- ADD or UPDATE, in the same PR, the journeys that prove a user-visible behaviour change and every
+  journey whose route the PR changes; `journeys/index.json` lists the source files each journey's
+  identifiers are declared in. List those journeys under `#### Journeys` in the PR's QA Notes.
+- NAME an identifier in a journey action as `id "Name"`.
+- RUN `python3 scripts/journeys_index.py` after changing a journey or an identifier it names, and
+  commit `journeys/index.json`. CI fails on a stale index or an undeclared identifier; it does not run
+  the journeys themselves.
 - A journey that disagrees with the app is most likely stale rather than evidence of a bug. Say what
   you found and update the journey; escalate only once you have separately confirmed the app is wrong.
 
