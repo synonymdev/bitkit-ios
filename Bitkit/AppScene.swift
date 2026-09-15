@@ -151,8 +151,31 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
     }
 }
 
+struct PaykitPaymentRequestPollingSchedule {
+    private static let refreshIntervals: [Duration] = [.seconds(5), .seconds(10), .seconds(15), .seconds(30)]
+    private static let maintenanceIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
+    private var refreshIntervalIndex = 0
+    private var maintenanceIntervalIndex = 0
+    private var maintenanceDelay = Self.maintenanceIntervals[0]
+
+    var nextDelay: Duration {
+        Self.refreshIntervals[refreshIntervalIndex]
+    }
+
+    mutating func takeMaintenanceIfDue() -> Bool {
+        maintenanceDelay -= nextDelay
+        guard maintenanceDelay <= .zero else { return false }
+        maintenanceIntervalIndex = min(maintenanceIntervalIndex + 1, Self.maintenanceIntervals.count - 1)
+        maintenanceDelay = Self.maintenanceIntervals[maintenanceIntervalIndex]
+        return true
+    }
+
+    mutating func recordRefresh(requestsChanged: Bool) {
+        refreshIntervalIndex = requestsChanged ? 0 : min(refreshIntervalIndex + 1, Self.refreshIntervals.count - 1)
+    }
+}
+
 struct AppScene: View {
-    private static let paykitPaymentRequestRefreshIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
 
     @Environment(\.scenePhase) var scenePhase
@@ -959,7 +982,7 @@ struct AppScene: View {
     }
 
     @discardableResult
-    private func refreshIncomingPaykitPaymentRequests(presentItems: Bool = true) async -> Bool {
+    private func refreshIncomingPaykitPaymentRequests(presentItems: Bool = true, refreshMaintenance: Bool = true) async -> Bool {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
               pubkyProfile.authState == .authenticated
@@ -968,12 +991,16 @@ struct AppScene: View {
             return false
         }
 
-        await PaykitPaymentProofService.shared.reconcile()
+        if refreshMaintenance {
+            await PaykitPaymentProofService.shared.reconcile()
+        }
         let previousRequests = paykitPaymentRequestManager.pendingRequests
-        await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         await paykitPaymentRequestManager.refresh()
         if presentItems {
             await presentNextIncomingPaykitItem()
+        }
+        if refreshMaintenance {
+            await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
         return paykitPaymentRequestManager.pendingRequests != previousRequests
     }
@@ -1009,23 +1036,22 @@ struct AppScene: View {
     private func pollIncomingPaykitPaymentRequests() async {
         guard scenePhase == .active else { return }
 
-        var refreshIntervalIndex = 0
+        var schedule = PaykitPaymentRequestPollingSchedule()
         while !Task.isCancelled {
             do {
-                try await Task.sleep(for: Self.paykitPaymentRequestRefreshIntervals[refreshIntervalIndex])
+                try await Task.sleep(for: schedule.nextDelay)
             } catch {
                 return
             }
-            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
-                wallet: wallet,
-                reason: "payment request polling"
-            )
-            let requestsChanged = await refreshIncomingPaykitPaymentRequests()
-            if requestsChanged {
-                refreshIntervalIndex = 0
-            } else {
-                refreshIntervalIndex = min(refreshIntervalIndex + 1, Self.paykitPaymentRequestRefreshIntervals.count - 1)
+            let refreshMaintenance = schedule.takeMaintenanceIfDue()
+            if refreshMaintenance {
+                await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
+                    wallet: wallet,
+                    reason: "payment request polling"
+                )
             }
+            let requestsChanged = await refreshIncomingPaykitPaymentRequests(refreshMaintenance: refreshMaintenance)
+            schedule.recordRefresh(requestsChanged: requestsChanged)
         }
     }
 
