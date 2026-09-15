@@ -79,7 +79,7 @@ struct SubscriptionsView: View {
                             overview
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.horizontal, 16)
                 }
             )

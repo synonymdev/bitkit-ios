@@ -338,7 +338,7 @@ struct PaymentRequestsView: View {
                 .padding(.bottom, ScreenLayout.floatingFooterClearance)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("PaymentRequestsScreen")
     }
