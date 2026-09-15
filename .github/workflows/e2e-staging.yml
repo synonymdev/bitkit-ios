@@ -128,7 +128,7 @@ jobs:
         shard:
           - { name: multi_address_2, grep: "@multi_address_2" }
           - { name: pubky, grep: "@pubky" }
-          - { name: transfer, grep: "@transfer_1|@transfer_max" }
+          - { name: transfer_max, grep: "@transfer_max" }
 
     name: e2e-tests-staging - ${{ matrix.shard.name }}
 
@@ -266,7 +266,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
-          ref: main
+          ref: ${{ needs.e2e-branch.outputs.branch }}
 
       - name: Post Slack summary
         env:

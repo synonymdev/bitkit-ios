@@ -340,7 +340,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
-          ref: main
+          ref: ${{ needs.e2e-branch.outputs.branch }}
 
       - name: Post Slack summary
         env:
