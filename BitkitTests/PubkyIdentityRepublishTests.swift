@@ -68,6 +68,37 @@ final class PubkyIdentityRepublishTests: XCTestCase {
         gate.continuation.finish()
         await first.value
     }
+
+    func testSlowPublicationDoesNotHoldCallerOrOverlapRetry() async {
+        let started = expectation(description: "Publication started")
+        let returned = expectation(description: "Caller returned")
+        let finished = expectation(description: "Publication finished")
+        let gate = AsyncStream<Void>.makeStream()
+        let work = Task {
+            for await _ in gate.stream {}
+            return true
+        }
+        let bootstrap = RepublishBootstrap(noPointer: .init())
+        bootstrap.operation = { _ in
+            started.fulfill()
+            let result = await work.value
+            finished.fulfill()
+            return result
+        }
+        let service = PaykitSdkService { _, _ in bootstrap }
+        let caller = Task {
+            await service.republishIdentityIfNeeded(publicKey: publicKey, now: now, timeout: .milliseconds(20))
+            returned.fulfill()
+        }
+        await fulfillment(of: [started, returned], timeout: 1)
+
+        await service.republishIdentityIfNeeded(publicKey: publicKey, now: now.addingTimeInterval(3600))
+        XCTAssertEqual(bootstrap.publicKeys.count, 1)
+
+        gate.continuation.finish()
+        await fulfillment(of: [finished], timeout: 1)
+        await caller.value
+    }
 }
 
 private final class RepublishBootstrap: PubkySessionBootstrap, @unchecked Sendable {

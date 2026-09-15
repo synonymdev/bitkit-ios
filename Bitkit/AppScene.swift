@@ -1369,8 +1369,8 @@ struct AppScene: View {
             // Refresh currency rates when network is restored - critical for UI
             // to display balances (MoneyText returns "0" if rates are nil)
             Task {
-                if scenePhase == .active { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
                 await currency.refresh()
+                if scenePhase == .active { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
                 if PaykitFeatureFlags.isUIEnabled {
                     let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
                     await PrivatePaykitService.shared.startInitialLinkBurst(

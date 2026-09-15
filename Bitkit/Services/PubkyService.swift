@@ -377,7 +377,27 @@ actor PaykitSdkService {
         }
     }
 
-    func republishIdentityIfNeeded(publicKey: String? = nil, now: Date = Date()) async {
+    func republishIdentityIfNeeded(publicKey: String? = nil, now: Date = Date(), timeout: Duration = .seconds(5)) async {
+        guard !Task.isCancelled else { return }
+        // Swift FFI may ignore cancellation; keep the in-flight guard until publication actually finishes.
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let publication = Task {
+            await republishIdentity(publicKey: publicKey, now: now)
+            continuation.finish()
+        }
+        let deadline = Task {
+            try? await Task.sleep(for: timeout)
+            continuation.finish()
+        }
+        defer {
+            publication.cancel()
+            deadline.cancel()
+            continuation.finish()
+        }
+        for await _ in stream {}
+    }
+
+    private func republishIdentity(publicKey: String?, now: Date) async {
         guard !Task.isCancelled, !isRepublishingIdentity else { return }
         isRepublishingIdentity = true
         defer { isRepublishingIdentity = false }
