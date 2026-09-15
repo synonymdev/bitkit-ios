@@ -9,10 +9,12 @@ struct PaymentRequestCard: View {
     @EnvironmentObject private var contactsManager: ContactsManager
 
     let request: PaykitPaymentRequest
+    var titleOverride: String?
     var subtitleOverride: String?
     var status: String?
     var isHighlighted = true
     var isActionDisabled = false
+    var showsAmountSymbol = true
     var paymentDirection: PaykitPaymentRequest.Direction?
     var amountStatus: String?
     var onOpen: (() -> Void)?
@@ -42,7 +44,7 @@ struct PaymentRequestCard: View {
     }
 
     private var title: String {
-        senderName
+        titleOverride ?? senderName
     }
 
     var body: some View {
@@ -52,8 +54,11 @@ struct PaymentRequestCard: View {
                     header
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(rowAccessibilityIdentifier)
             } else {
                 header
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier(rowAccessibilityIdentifier)
             }
 
             if let status {
@@ -107,7 +112,6 @@ struct PaymentRequestCard: View {
         }
         .shadow(color: isHighlighted ? .brandAccent.opacity(0.16) : .clear, radius: 64)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(rowAccessibilityIdentifier)
     }
 
     private var header: some View {
@@ -129,6 +133,7 @@ struct PaymentRequestCard: View {
                         sats: Int(clamping: request.amountSats),
                         unitType: .primary,
                         size: .bodyMSB,
+                        symbol: showsAmountSymbol,
                         prefix: amountPrefix,
                         color: .textPrimary,
                         symbolColor: .textSecondary
@@ -136,7 +141,7 @@ struct PaymentRequestCard: View {
                     CaptionText(amountStatus, textColor: .white64)
                 }
             } else {
-                MoneyCell(sats: Int(clamping: request.amountSats), prefix: amountPrefix)
+                MoneyCell(sats: Int(clamping: request.amountSats), prefix: amountPrefix, symbol: showsAmountSymbol)
             }
         }
         .padding(16)
@@ -168,10 +173,7 @@ struct PaymentRequestCard: View {
     }
 
     private var rowAccessibilityIdentifier: String {
-        let period = request.billingPeriod.map {
-            PaykitSubscriptionTimestamp.string(from: $0.startsAt)
-        } ?? "one-time"
-        return "PaymentRequestRow-\(request.paymentRequestId)-\(request.counterparty)-\(request.counterpartyReceiverPath)-\(period)"
+        "PaymentRequestRow-\(request.paymentRequestId)"
     }
 
     private static let dateFormatter: DateFormatter = {

@@ -114,7 +114,7 @@ struct SubscriptionsView: View {
         .task {
             await paymentRequests.refresh()
         }
-        .onChange(of: showPayments, initial: true) { _, showPayments in
+        .onChange(of: showPayments) { _, showPayments in
             selectedTab = showPayments ? .payments : .overview
         }
         .task(id: nextTransitionDate) {
@@ -290,9 +290,8 @@ struct SubscriptionRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .opacity(subscription.isExpired(at: now) ? 0.5 : 1)
         .contentShape(Rectangle())
-        .accessibilityIdentifier(
-            "SubscriptionRow-\(subscription.paymentRequestId)-\(subscription.counterparty)-\(subscription.counterpartyReceiverPath)"
-        )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("SubscriptionRow-\(subscription.paymentRequestId)")
     }
 }
 
@@ -466,8 +465,10 @@ struct SubscriptionDetailView: View {
                 ForEach(payments) { payment in
                     PaymentRequestCard(
                         request: payment,
+                        titleOverride: subscription.note ?? t("subscriptions__subscription"),
                         subtitleOverride: payment.createdAt.map(Self.dateFormatter.string),
                         isHighlighted: false,
+                        showsAmountSymbol: false,
                         paymentDirection: payment.direction
                     )
                 }

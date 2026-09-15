@@ -207,7 +207,7 @@ struct SubscriptionAmountView: View {
             target: nil,
             onContinue: { onContinue($0.amountSats) },
             onBack: onBack,
-            testIdentifierPrefix: "PaymentRequest"
+            testIdentifierPrefix: "Subscription"
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SubscriptionAmount")
