@@ -9,10 +9,12 @@ struct PaymentRequestCard: View {
     @EnvironmentObject private var contactsManager: ContactsManager
 
     let request: PaykitPaymentRequest
+    var titleOverride: String?
     var subtitleOverride: String?
     var status: String?
     var isHighlighted = true
     var isActionDisabled = false
+    var showsAmountSymbol = true
     var paymentDirection: PaykitPaymentRequest.Direction?
     var amountStatus: String?
     var onOpen: (() -> Void)?
@@ -42,7 +44,7 @@ struct PaymentRequestCard: View {
     }
 
     private var title: String {
-        senderName
+        titleOverride ?? senderName
     }
 
     var body: some View {
@@ -52,8 +54,11 @@ struct PaymentRequestCard: View {
                     header
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(rowAccessibilityIdentifier)
             } else {
                 header
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier(rowAccessibilityIdentifier)
             }
 
             if let status {
@@ -107,7 +112,6 @@ struct PaymentRequestCard: View {
         }
         .shadow(color: isHighlighted ? .brandAccent.opacity(0.16) : .clear, radius: 64)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(rowAccessibilityIdentifier)
     }
 
     private var header: some View {
@@ -129,6 +133,7 @@ struct PaymentRequestCard: View {
                         sats: Int(clamping: request.amountSats),
                         unitType: .primary,
                         size: .bodyMSB,
+                        symbol: showsAmountSymbol,
                         prefix: amountPrefix,
                         color: .textPrimary,
                         symbolColor: .textSecondary
@@ -136,7 +141,7 @@ struct PaymentRequestCard: View {
                     CaptionText(amountStatus, textColor: .white64)
                 }
             } else {
-                MoneyCell(sats: Int(clamping: request.amountSats), prefix: amountPrefix)
+                MoneyCell(sats: Int(clamping: request.amountSats), prefix: amountPrefix, symbol: showsAmountSymbol)
             }
         }
         .padding(16)
@@ -168,10 +173,7 @@ struct PaymentRequestCard: View {
     }
 
     private var rowAccessibilityIdentifier: String {
-        let period = request.billingPeriod.map {
-            PaykitSubscriptionTimestamp.string(from: $0.startsAt)
-        } ?? "one-time"
-        return "PaymentRequestRow-\(request.paymentRequestId)-\(request.counterparty)-\(request.counterpartyReceiverPath)-\(period)"
+        "PaymentRequestRow-\(request.paymentRequestId)"
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -269,6 +271,27 @@ struct PaymentRequestsSheet: View {
     }
 }
 
+struct PaymentRequestsFooterButton: View {
+    @EnvironmentObject private var sheets: SheetViewModel
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+
+    var body: some View {
+        if !paymentRequests.eligibleTargets.isEmpty {
+            CustomButton(
+                title: paymentRequests.pendingRequests.isEmpty && paymentRequests.historyRequests.isEmpty
+                    ? t("wallet__payment_request_request")
+                    : t("wallet__payment_request_request_payment")
+            ) {
+                sheets.showSheet(
+                    .receive,
+                    data: ReceiveConfig(view: .paymentRequestRecipient(ReceiveSheet.defaultPaymentRequestDraft))
+                )
+            }
+            .accessibilityIdentifier("PaymentRequestRequestPayment")
+        }
+    }
+}
+
 struct PaymentRequestsView: View {
     private struct HistorySection: Identifiable {
         let title: String
@@ -285,55 +308,37 @@ struct PaymentRequestsView: View {
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if activeRequests.isEmpty, paymentRequests.historyRequests.isEmpty {
                 emptyState
             } else {
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 16) {
-                        if !activeRequests.isEmpty {
-                            CaptionMText(t("wallet__payment_requests").localizedUppercase, textColor: .white64)
-                            ForEach(activeRequests) { request in
-                                activeRequestCard(request)
-                            }
-                        }
-
-                        ForEach(historySections) { section in
-                            CaptionMText(section.title.localizedUppercase, textColor: .white64)
-                                .padding(.top, 8)
-                            ForEach(section.requests) { request in
-                                PaymentRequestCard(
-                                    request: request,
-                                    subtitleOverride: historyDate(for: request),
-                                    isHighlighted: false,
-                                    paymentDirection: request.lifecycleState == .proofSubmitted ? request.direction : nil,
-                                    onOpen: { navigation.navigate(.paymentRequestDetail(request.id)) }
-                                )
-                            }
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    if !activeRequests.isEmpty {
+                        CaptionMText(t("wallet__payment_requests").localizedUppercase, textColor: .white64)
+                        ForEach(activeRequests) { request in
+                            activeRequestCard(request)
                         }
                     }
-                    .padding(.top, 24)
-                    .padding(.bottom, 120)
-                }
-            }
 
-            if !paymentRequests.eligibleTargets.isEmpty {
-                CustomButton(
-                    title: activeRequests.isEmpty && paymentRequests.historyRequests.isEmpty
-                        ? t("wallet__payment_request_request")
-                        : t("wallet__payment_request_request_payment")
-                ) {
-                    sheets.showSheet(
-                        .receive,
-                        data: ReceiveConfig(view: .paymentRequestRecipient(ReceiveSheet.defaultPaymentRequestDraft))
-                    )
+                    ForEach(historySections) { section in
+                        CaptionMText(section.title.localizedUppercase, textColor: .white64)
+                            .padding(.top, 8)
+                        ForEach(section.requests) { request in
+                            PaymentRequestCard(
+                                request: request,
+                                subtitleOverride: historyDate(for: request),
+                                isHighlighted: false,
+                                paymentDirection: request.lifecycleState == .proofSubmitted ? request.direction : nil,
+                                onOpen: { navigation.navigate(.paymentRequestDetail(request.id)) }
+                            )
+                        }
+                    }
                 }
-                .padding(.bottom, 16)
-                .accessibilityIdentifier("PaymentRequestRequestPayment")
+                .padding(.top, 24)
+                .padding(.bottom, ScreenLayout.floatingFooterClearance)
             }
         }
-        .background(Color.black)
-        .navigationBarHidden(true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("PaymentRequestsScreen")
     }

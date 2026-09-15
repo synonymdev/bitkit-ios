@@ -450,6 +450,25 @@ struct PaykitSubscription: Identifiable, Hashable {
         localRole == .payee
     }
 
+    /// Whether the payee accepts lightning at all, matching `MethodId.payablePreferenceOrder`, which
+    /// prefers it whenever it is on offer.
+    var acceptsLightningPayment: Bool {
+        acceptedPaymentEndpointIdentifiers
+            .compactMap(PublicPaykitService.MethodId.init(rawValue:))
+            .contains { $0.onchainNetwork == nil }
+    }
+
+    /// Whether paying this subscription is expected to draw on the spending balance, which needs the
+    /// payee to accept lightning *and* this wallet to be able to cover the amount over it. Without
+    /// that second half a wallet with no spending balance would be told it is paying from spending,
+    /// when the send flow would fall back to savings.
+    ///
+    /// `maxSendLightningSats` excludes routing fees, so an amount sitting right on the limit can
+    /// still end up on chain.
+    func isPaidFromSpending(maxSendLightningSats: UInt64) -> Bool {
+        acceptsLightningPayment && amountSats <= maxSendLightningSats
+    }
+
     func isProposalActionable(at date: Date) -> Bool {
         isProposalVisible(at: date) &&
             recurrence.unit.isSupported &&
