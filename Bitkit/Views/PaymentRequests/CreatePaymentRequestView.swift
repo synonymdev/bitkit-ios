@@ -123,10 +123,32 @@ struct RequestOrPayView: View {
 }
 
 struct PaymentRequestRecipientView: View {
+    let onSelect: (PaykitPaymentRequestTarget) -> Void
+
+    var body: some View {
+        PaykitRecipientPicker(
+            selectedTarget: nil,
+            onSelect: onSelect,
+            accessibilityIdentifier: "PaymentRequestRecipient",
+            testIdentifierPrefix: "PaymentRequest"
+        ) {
+            SheetHeader(title: t("wallet__payment_request_choose_recipient"), showBackButton: true)
+        } footer: {
+            EmptyView()
+        }
+    }
+}
+
+struct PaykitRecipientPicker<Header: View, Footer: View>: View {
     @EnvironmentObject private var contactsManager: ContactsManager
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
+    let selectedTarget: PaykitPaymentRequestTarget?
     let onSelect: (PaykitPaymentRequestTarget) -> Void
+    let accessibilityIdentifier: String
+    let testIdentifierPrefix: String
+    @ViewBuilder let header: () -> Header
+    @ViewBuilder let footer: () -> Footer
 
     @State private var recipientQuery = ""
 
@@ -145,26 +167,29 @@ struct PaymentRequestRecipientView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("wallet__payment_request_choose_recipient"), showBackButton: true)
+            header()
 
             recipientInput
-                .padding(.bottom, 16)
+                .padding(.bottom, 32)
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64)
-                        .padding(.vertical, 16)
+                        .padding(.bottom, 16)
                     CustomDivider()
                     ForEach(recipientTargets) { target in
                         recipientRow(target)
                     }
                 }
             }
+
+            footer()
         }
         .padding(.horizontal, 16)
         .sheetBackground()
         .navigationBarHidden(true)
-        .accessibilityIdentifier("PaymentRequestRecipient")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     private var recipientInput: some View {
@@ -176,9 +201,10 @@ struct PaymentRequestRecipientView: View {
                     t("wallet__payment_request_enter_pubky"),
                     text: $recipientQuery,
                     backgroundColor: .clear,
-                    font: .custom(Fonts.regular, size: 17),
-                    testIdentifier: "PaymentRequestRecipientFilter"
+                    testIdentifier: "\(testIdentifierPrefix)RecipientFilter",
+                    contentPadding: 0
                 )
+                .frame(minHeight: 20)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.asciiCapable)
@@ -194,14 +220,15 @@ struct PaymentRequestRecipientView: View {
                             .scaledToFit()
                             .frame(width: 16, height: 16)
                             .accessibilityHidden(true)
-                        BodyMSBText(t("common__paste"))
+                        CaptionBText(t("common__paste"), textColor: .textPrimary)
                     }
+                    .padding(.horizontal, 8)
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("PaymentRequestRecipientPaste")
+                .accessibilityIdentifier("\(testIdentifierPrefix)RecipientPaste")
             }
             .padding(16)
-            .background(Color.white08)
+            .background(Color.white10)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
@@ -217,10 +244,10 @@ struct PaymentRequestRecipientView: View {
     @ViewBuilder
     private func recipientRow(_ target: PaykitPaymentRequestTarget) -> some View {
         if let contact = contact(for: target) {
-            PubkyContactRow(contact: contact, verticalPadding: 20) {
+            PubkyContactRow(contact: contact, verticalPadding: 24, isSelected: selectedTarget == target) {
                 onSelect(target)
             }
-            .accessibilityIdentifier("PaymentRequestContact-\(contact.publicKey)")
+            .accessibilityIdentifier("\(testIdentifierPrefix)Contact\(contact.publicKey)")
         } else {
             Button {
                 onSelect(target)
@@ -229,12 +256,19 @@ struct PaymentRequestRecipientView: View {
                     ContactAvatarLetter(source: target.publicKey, size: 48)
                     BodyMSBText(PubkyPublicKeyFormat.displayTruncated(target.publicKey))
                     Spacer()
+                    if selectedTarget == target {
+                        Image("check-mark")
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.brandAccent)
+                            .accessibilityHidden(true)
+                    }
                 }
-                .padding(.vertical, 20)
+                .padding(.vertical, 24)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("PaymentRequestTarget-\(target.id)")
+            .accessibilityIdentifier("\(testIdentifierPrefix)Target-\(target.id)")
             CustomDivider()
         }
     }
@@ -245,8 +279,10 @@ struct PaymentRequestAmountView: View {
     @EnvironmentObject private var currency: CurrencyViewModel
 
     let initialDraft: PaykitPaymentRequestDraft
-    let target: PaykitPaymentRequestTarget
+    let target: PaykitPaymentRequestTarget?
     let onContinue: (PaykitPaymentRequestDraft) -> Void
+    var onBack: (() -> Void)?
+    var testIdentifierPrefix = "PaymentRequest"
 
     @State private var amountViewModel = AmountInputViewModel()
 
@@ -255,14 +291,15 @@ struct PaymentRequestAmountView: View {
             SheetHeader(
                 title: t("wallet__payment_request_amount"),
                 showBackButton: true,
-                action: AnyView(targetAvatar)
+                action: target == nil ? nil : AnyView(targetAvatar),
+                onBack: onBack
             )
 
             NumberPadTextField(
                 viewModel: amountViewModel,
                 showEditButton: false,
                 isFocused: true,
-                testIdentifier: "PaymentRequestAmountField"
+                testIdentifier: "\(testIdentifierPrefix)AmountField"
             )
 
             Spacer()
@@ -283,7 +320,7 @@ struct PaymentRequestAmountView: View {
                     )
                 )
             }
-            .accessibilityIdentifier("PaymentRequestAmountContinue")
+            .accessibilityIdentifier("\(testIdentifierPrefix)AmountContinue")
         }
         .padding(.horizontal, 16)
         .sheetBackground()
@@ -295,10 +332,12 @@ struct PaymentRequestAmountView: View {
 
     @ViewBuilder
     private var targetAvatar: some View {
-        if let contact = contactsManager.contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, target.publicKey) }) {
-            PubkyContactAvatar(contact: contact, size: 24)
-        } else {
-            ContactAvatarLetter(source: target.publicKey, size: 24)
+        if let target {
+            if let contact = contactsManager.contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, target.publicKey) }) {
+                PubkyContactAvatar(contact: contact, size: 24)
+            } else {
+                ContactAvatarLetter(source: target.publicKey, size: 24)
+            }
         }
     }
 }

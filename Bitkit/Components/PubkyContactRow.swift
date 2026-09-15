@@ -15,8 +15,8 @@ struct PubkyContactRow: View {
                 HStack(spacing: 16) {
                     PubkyContactAvatar(contact: contact, size: 48)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        CaptionText(contact.profile.truncatedPublicKey.localizedUppercase)
+                    VStack(alignment: .leading, spacing: 0) {
+                        CaptionMText(contact.profile.truncatedPublicKey.localizedUppercase, textColor: .white64)
                             .lineLimit(1)
 
                         BodyMSBText(contact.displayName)
