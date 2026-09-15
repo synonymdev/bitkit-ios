@@ -450,6 +450,16 @@ struct PaykitSubscription: Identifiable, Hashable {
         localRole == .payee
     }
 
+    /// Whether a payment for this subscription is expected to leave the spending balance.
+    ///
+    /// Lightning wins whenever it is on offer, matching `MethodId.payablePreferenceOrder`, so this
+    /// agrees with the method the send flow opens with.
+    var prefersLightningPayment: Bool {
+        acceptedPaymentEndpointIdentifiers
+            .compactMap(PublicPaykitService.MethodId.init(rawValue:))
+            .contains { $0.onchainNetwork == nil }
+    }
+
     func isProposalActionable(at date: Date) -> Bool {
         isProposalVisible(at: date) &&
             recurrence.unit.isSupported &&

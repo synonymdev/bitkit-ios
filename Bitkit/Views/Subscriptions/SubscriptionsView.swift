@@ -676,7 +676,8 @@ struct SubscriptionSheet: View {
                     title: payOnAcceptance
                         ? t("subscriptions__swipe_to_subscribe_and_pay")
                         : t("subscriptions__swipe_to_subscribe"),
-                    accentColor: subscription.paymentAccentColor,
+                    // Follow the balance this will be paid from, as the send and transfer screens do.
+                    accentColor: subscription.prefersLightningPayment ? .purpleAccent : .brandAccent,
                     isLoading: isAccepting || paymentRequests.isProcessingSubscription
                 ) {
                     do {
@@ -1049,17 +1050,6 @@ extension PaykitSubscriptionRecurrence {
 }
 
 private extension PaykitSubscription {
-    /// Bitkit orders payable endpoints Lightning-first (`MethodId.payablePreferenceOrder`), so the
-    /// highest-preference method the subscription accepts is the balance the payment will come from.
-    var paymentAccentColor: Color {
-        let accepted = Set(acceptedPaymentEndpointIdentifiers)
-        guard let preferred = PublicPaykitService.MethodId.payablePreferenceOrder.first(where: { accepted.contains($0.rawValue) })
-        else {
-            return .brandAccent
-        }
-        return preferred.onchainNetwork == nil ? .purpleAccent : .brandAccent
-    }
-
     func statusLabel(at now: Date) -> String {
         if isProposalVisible(at: now) {
             return t("subscriptions__pending")
