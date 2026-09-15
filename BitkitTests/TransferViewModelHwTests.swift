@@ -11,12 +11,14 @@ final class TransferViewModelHwTests: XCTestCase {
         funding: MockHwFunding,
         connecting: MockHwConnecting,
         feeRate: UInt64? = 2,
+        sizingAddress: String? = nil,
         timeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 5, compose: 5, sign: 5, broadcast: 5)
     ) -> TransferViewModel {
         TransferViewModel(
             hwFunding: funding,
             hwConnecting: connecting,
             hwFeeRateProvider: { feeRate },
+            hwAddressProvider: sizingAddress.map { address in { address } },
             hwTimeouts: timeouts
         )
     }
@@ -370,8 +372,8 @@ final class TransferViewModelHwTests: XCTestCase {
 
         vm.cancelHwSigning()
         XCTAssertTrue(vm.hwSpending.hasPendingBroadcast, "leaving must retain an uncertain signed transaction")
-        vm.onOrderCreated(order: .mock())
-        XCTAssertFalse(vm.hwSpending.hasPendingBroadcast, "starting a new order discards the previous retry state")
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 200_000, feeSat: 101_000)
+        XCTAssertFalse(vm.hwSpending.hasPendingBroadcast, "starting a new transfer discards the previous retry state")
     }
 
     func testBroadcastRetryDoesNotReuseSignedTransactionAfterOrderAddressChanges() async {
@@ -559,19 +561,95 @@ final class TransferViewModelHwTests: XCTestCase {
 
     func testUpdateHwFundingFeeEstimateSetsMiningFeeBeforeSigning() async {
         let funding = MockHwFunding()
-        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
-        let order = IBtOrder.mock()
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting(), sizingAddress: "bcrt1qsizing")
+        let estimate = IBtOrder.mock(feeSat: 101_000, lspBalanceSat: 200_000, clientBalanceSat: 100_000)
 
-        await vm.updateHwFundingFeeEstimate(order: order, walletId: "trezor:wallet")
+        vm.onEstimateReady(clientBalance: estimate.clientBalanceSat, lspBalance: estimate.lspBalanceSat, feeSat: estimate.feeSat)
+        await vm.updateHwFundingFeeEstimate(walletId: "trezor:wallet")
 
         XCTAssertEqual(vm.hwSpending.miningFeeSats, funding.funding.miningFeeSats)
         XCTAssertEqual(funding.estimateCalls.count, 1)
+        XCTAssertEqual(funding.estimateCalls.first?.address, "bcrt1qsizing", "sized against an app address; the order does not exist yet")
+        XCTAssertEqual(funding.estimateCalls.first?.sats, estimate.feeSat)
         XCTAssertTrue(funding.composeCalls.isEmpty)
+    }
+
+    func testUpdateHwFundingFeeEstimateSkipsWithoutASizingAddress() async {
+        let funding = MockHwFunding()
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+
+        await vm.updateHwFundingFeeEstimate(walletId: "trezor:wallet")
+
+        XCTAssertEqual(vm.hwSpending.miningFeeSats, 0)
+        XCTAssertTrue(funding.estimateCalls.isEmpty)
+    }
+
+    func testConfirmCreatesTheOrderOnceThenSigns() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let estimate = IBtOrder.mock(feeSat: 101_000, lspBalanceSat: 200_000, clientBalanceSat: 100_000)
+        vm.onEstimateReady(clientBalance: estimate.clientBalanceSat, lspBalance: estimate.lspBalanceSat, feeSat: estimate.feeSat)
+        var createCalls = 0
+
+        await vm.onTransferToSpendingHwConfirm(walletId: "trezor:wallet") { clientBalance, lspBalance in
+            createCalls += 1
+            return IBtOrder.mock(feeSat: estimate.feeSat, lspBalanceSat: lspBalance, clientBalanceSat: clientBalance)
+        }
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(createCalls, 1)
+        XCTAssertEqual(vm.uiState.order?.id, "order123")
+        XCTAssertEqual(funding.composeCalls.first?.sats, estimate.feeSat)
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertEqual(vm.hwSignedEvent, 1)
+
+        vm.onEstimateReady(clientBalance: estimate.clientBalanceSat, lspBalance: estimate.lspBalanceSat, feeSat: estimate.feeSat)
+        XCTAssertNil(vm.uiState.order)
+    }
+
+    func testConfirmSurfacesAFailedOrderCreationWithoutSigning() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let estimate = IBtOrder.mock(feeSat: 101_000, lspBalanceSat: 200_000, clientBalanceSat: 100_000)
+        vm.onEstimateReady(clientBalance: estimate.clientBalanceSat, lspBalance: estimate.lspBalanceSat, feeSat: estimate.feeSat)
+
+        await vm.onTransferToSpendingHwConfirm(walletId: "trezor:wallet") { _, _ in
+            throw MockHwFunding.TestError()
+        }
+        await awaitSigningComplete(vm)
+
+        if case .generic = vm.hwTransferError {} else {
+            XCTFail("expected .generic error, got \(String(describing: vm.hwTransferError))")
+        }
+        XCTAssertNil(vm.uiState.order)
+        XCTAssertEqual(connecting.ensureCalls, 0)
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertFalse(vm.hwSpending.isCreatingOrder)
+    }
+
+    func testConfirmRaisesThePassphrasePromptAfterTheOrderExists() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.walletsNeedingPassphrase = ["trezor:wallet"]
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        let estimate = IBtOrder.mock(feeSat: 101_000, lspBalanceSat: 200_000, clientBalanceSat: 100_000)
+        vm.onEstimateReady(clientBalance: estimate.clientBalanceSat, lspBalance: estimate.lspBalanceSat, feeSat: estimate.feeSat)
+
+        await vm.onTransferToSpendingHwConfirm(walletId: "trezor:wallet") { clientBalance, lspBalance in
+            IBtOrder.mock(feeSat: estimate.feeSat, lspBalanceSat: lspBalance, clientBalanceSat: clientBalance)
+        }
+
+        XCTAssertTrue(vm.hwSpending.isPassphraseRequired)
+        XCTAssertNotNil(vm.uiState.order, "the prompt's submit signs the created order")
+        XCTAssertEqual(funding.signCalls, 0)
     }
 
     func testReentrancyGuardIgnoresConcurrentConfirm() async {
         let funding = MockHwFunding()
-        funding.composeError = MockHwFunding.TestError() // fail before the network-bound funding tail
+        funding.composeError = MockHwFunding.TestError()
         let connecting = MockHwConnecting()
         let vm = makeViewModel(funding: funding, connecting: connecting)
 
