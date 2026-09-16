@@ -1,3 +1,4 @@
+@testable import Bitkit
 import Foundation
 import XCTest
 
@@ -78,6 +79,17 @@ extension XCTestCase {
         }
     }
 
+    /// Waits for work already queued on the core service queue to finish.
+    ///
+    /// `CoreService.init` calls `initDb` against the app's real storage twice — once synchronously and
+    /// once queued — and `initDb` is last-one-wins. Touching `CoreService.shared` and then calling
+    /// `initDb` against a temp directory is therefore not enough on its own: the queued call can land
+    /// afterwards and point the globals back at the app's database. The queue is serial, so enqueueing
+    /// a no-op and awaiting it drains whatever was queued ahead of it.
+    func drainCoreServiceQueue() async {
+        _ = try? await ServiceQueue.background(.core) { true }
+    }
+
     /// Skips the test unless `BITKIT_DESTRUCTIVE_TESTS=1` is set. For the handful of suites that
     /// deliberately operate on real, un-namespaceable state — the React-Native migration source under
     /// `~/Documents`, for instance — and so can only run on a simulator that may be erased afterwards.
@@ -116,5 +128,19 @@ extension XCTestCase {
                 )
             }
         }
+    }
+}
+
+/// A `CurrencyService` that never reaches the network.
+///
+/// `CurrencyViewModel` starts polling from its initializer, and `refresh()` writes `cached_fx_rates`
+/// and mirrors the display currency into the shared app group — but only on success. Failing the
+/// fetch keeps both writes from ever happening, which a snapshot cannot do on its own: the refresh
+/// is unstructured and can complete after the restore has already run.
+final class OfflineCurrencyService: CurrencyService {
+    struct Offline: Error {}
+
+    override func fetchLatestRates() async throws -> [FxRate] {
+        throw Offline()
     }
 }
