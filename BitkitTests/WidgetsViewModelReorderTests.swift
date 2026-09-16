@@ -7,12 +7,10 @@ import XCTest
 final class WidgetsViewModelReorderTests: XCTestCase {
     override func setUp() {
         super.setUp()
+        // `savedWidgets` is the user's home-screen layout; these tests delete it and persist
+        // a synthetic set over the top.
+        snapshotAppDefaults("savedWidgets")
         UserDefaults.standard.removeObject(forKey: "savedWidgets")
-    }
-
-    override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: "savedWidgets")
-        super.tearDown()
     }
 
     /// Builds a deterministic three-widget set regardless of the default install set.

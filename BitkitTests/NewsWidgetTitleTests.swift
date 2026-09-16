@@ -10,12 +10,14 @@ import XCTest
 final class NewsWidgetTitleTests: XCTestCase {
     override func setUp() {
         super.setUp()
+        // `savedWidgets` is the user's home-screen layout; these tests delete it and persist
+        // a synthetic set over the top.
+        snapshotAppDefaults("savedWidgets")
         UserDefaults.standard.removeObject(forKey: "savedWidgets")
         NewsViewModel.shared.widgetData = nil
     }
 
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: "savedWidgets")
         NewsViewModel.shared.widgetData = nil
         super.tearDown()
     }
