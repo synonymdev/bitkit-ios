@@ -93,10 +93,16 @@ enum PubkyService {
     }
 
     /// Approve a pubkyauth:// request using the local secret key.
-    static func approveAuth(authUrl: String, expectedCapabilities: String, approvedClientID: String, secretKeyHex: String) async throws {
-        try await PaykitSdkService.shared.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+    static func approveAuth(
+        authUrl: String,
+        expectedCapabilities: String,
+        approvedClientID: String,
+        secretKeyHex: String,
+        sdkService: PaykitSdkService = .shared
+    ) async throws {
+        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
-        try await PaykitSdkService.shared.approveAuth(
+        try await sdkService.approveAuth(
             authUrl: authUrl,
             expectedCapabilities: expectedCapabilities,
             approvedClientID: approvedClientID,
@@ -104,8 +110,8 @@ enum PubkyService {
         )
     }
 
-    static func approveRingAuth(authUrl: String, secretKeyHex: String) async throws {
-        try await PaykitSdkService.shared.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+    static func approveRingAuth(authUrl: String, secretKeyHex: String, sdkService: PaykitSdkService = .shared) async throws {
+        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
         try await ServiceQueue.background(.core) {
             try await BitkitCore.approvePubkyAuth(authUrl: authUrl, secretKeyHex: secretKeyHex)
@@ -116,11 +122,12 @@ enum PubkyService {
         authUrl: String,
         approvedClientID: String,
         unsignedPayload: Data,
-        secretKeyHex: String
+        secretKeyHex: String,
+        sdkService: PaykitSdkService = .shared
     ) async throws {
-        try await PaykitSdkService.shared.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
-        try await PaykitSdkService.shared.approveAuthWithCompanionClaim(
+        try await sdkService.approveAuthWithCompanionClaim(
             authUrl: authUrl,
             expectedCapabilities: PubkyAuthClaim.watchOnlyAccountCapabilities,
             approvedClientID: approvedClientID,
