@@ -21,7 +21,7 @@ final class KeychainTests: XCTestCase {
         // Query the item with attributes returned
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: KeychainEntryType.bip39Mnemonic(index: 0).storageKey,
+            kSecAttrAccount as String: Keychain.account(for: .bip39Mnemonic(index: 0)),
             kSecAttrAccessGroup as String: Env.keychainGroup,
             kSecReturnAttributes as String: true,
             kSecReturnData as String: false,
@@ -67,7 +67,7 @@ final class KeychainTests: XCTestCase {
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: KeychainEntryType.securityPin.storageKey,
+            kSecAttrAccount as String: Keychain.account(for: .securityPin),
             kSecAttrAccessGroup as String: Env.keychainGroup,
             kSecReturnAttributes as String: true,
         ]
