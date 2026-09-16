@@ -3,7 +3,6 @@ import BitkitCore
 import XCTest
 
 final class PaymentFlowTests: XCTestCase {
-    let testDbPath = NSTemporaryDirectory()
     let walletIndex = 0
     let blocktank = CoreService.shared.blocktank
     let lightning = LightningService.shared
