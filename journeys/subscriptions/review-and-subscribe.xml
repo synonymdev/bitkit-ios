@@ -11,10 +11,9 @@
     naming when the first billing period ends sits below the card. Neither appears on Android. The
     handoff's "Automatically pay this subscription" toggle is unbuilt on both platforms.
 
-    The swipe knob follows the balance the payment is expected to leave, the way Android does: purple
-    when the payee accepts Lightning and the spending balance can cover the amount, brand orange
-    otherwise. The spending limit excludes routing fees, so an amount sitting right on it can still
-    settle on chain and show orange on the send confirmation that follows.
+    The swipe knob is brand orange, as the handoff draws it on all four subscription sheets. Android
+    instead colours it by the balance the payment is expected to leave; iOS holds off on that until a
+    designer confirms the intent.
   </description>
   <actions>
     <action>Launch the E2E Bitkit app with Paykit UI enabled on the payer instance, with the creator saved as a linked contact and a spendable balance above 5,000 sats</action>
@@ -24,7 +23,7 @@
     <action>Tap the "Journey Sub" row (id "SubscriptionRow-&lt;paymentRequestId&gt;")</action>
     <action>Verify the Review and Subscribe sheet appears with 5,000 sats and the creator contact card</action>
     <action>Verify the swipe control reads "Swipe To Subscribe &amp; Pay" when the first period is due on acceptance, otherwise "Swipe To Subscribe"</action>
-    <action>Verify the swipe knob is purple when the spending balance can cover the amount over Lightning, and brand orange otherwise</action>
+    <action>Verify the swipe knob is brand orange, as on the cancel and delete sheets</action>
     <action>Swipe the confirm control to the end</action>
     <action>If the first period was due on acceptance: complete the send flow that opens, then verify the Subscribed confirmation appears</action>
     <action>If no payment was due: verify the Subscribed confirmation appears directly, with no send flow</action>
