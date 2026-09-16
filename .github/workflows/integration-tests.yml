@@ -62,7 +62,10 @@ jobs:
           echo "⏱️  Starting integration tests at $(date)"
 
           run_tests() {
-            set -o pipefail && xcodebuild test \
+            # RNMigrationCleanupTests deletes the real ~/Documents/mmkv and ~/Documents/ldk, so it
+            # skips itself unless this is set. This lane runs on a simulator it erases between
+            # attempts; the unit lane does not, and must not run it.
+            set -o pipefail && BITKIT_DESTRUCTIVE_TESTS=1 xcodebuild test \
               -scheme Bitkit \
               -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
               -enableCodeCoverage NO \
@@ -72,6 +75,7 @@ jobs:
               -only-testing:BitkitTests/PaymentFlowTests \
               -only-testing:BitkitTests/BlocktankRefundAddressLiveIntegrationTests \
               -only-testing:BitkitTests/AddressTypeIntegrationTests \
+              -only-testing:BitkitTests/RNMigrationCleanupTests \
               | xcbeautify --report junit
           }
 
