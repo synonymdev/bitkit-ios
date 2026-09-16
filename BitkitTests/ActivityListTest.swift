@@ -12,6 +12,7 @@ final class ActivityTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        await drainCoreServiceQueue()
         try FileManager.default.createDirectory(atPath: testDbPath, withIntermediateDirectories: true)
         // Initialize the database before each test
         _ = try initDb(basePath: testDbPath)

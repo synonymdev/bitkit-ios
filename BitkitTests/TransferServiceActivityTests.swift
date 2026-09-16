@@ -23,6 +23,7 @@ final class TransferServiceActivityTests: XCTestCase {
         try await super.setUp()
         transferDefaults = try makeIsolatedDefaults()
         guardAppDefaults("transfers")
+        await drainCoreServiceQueue()
         try FileManager.default.createDirectory(atPath: testDbPath, withIntermediateDirectories: true)
         _ = try initDb(basePath: testDbPath)
         try await Task.sleep(nanoseconds: 1_000_000_000)
