@@ -3,6 +3,10 @@ import SwiftUI
 
 struct SubscriptionSheetItem: SheetItem {
     enum Route: Hashable {
+        case create
+        case createAmount
+        case createRecipient
+        case proposalSent(PaykitSubscription)
         case review(PaykitSubscription)
         case success
         case details(PaykitSubscription)
@@ -42,21 +46,23 @@ struct SubscriptionsView: View {
     }
 
     private var proposals: [PaykitSubscription] {
-        paymentRequests.subscriptions.filter { $0.isProposalVisible(at: now) }
+        paymentRequests.subscriptions.filter { $0.isPayer && $0.isProposalVisible(at: now) }
     }
 
     private var active: [PaykitSubscription] {
-        paymentRequests.subscriptions.filter { $0.isActive(at: now) }
+        paymentRequests.subscriptions.filter { $0.isPayer && $0.isActive(at: now) }
     }
 
     private var expired: [PaykitSubscription] {
-        paymentRequests.subscriptions.filter {
-            $0.isExpired(at: now) && $0.wasAccepted
-        }
+        paymentRequests.subscriptions.filter { $0.isExpiredVisible(at: now) }
+    }
+
+    private var created: [PaykitSubscription] {
+        paymentRequests.subscriptions.filter { $0.isCreatedVisible(at: now) }
     }
 
     private var hasVisibleSubscriptions: Bool {
-        !proposals.isEmpty || !active.isEmpty || !expired.isEmpty
+        !proposals.isEmpty || !active.isEmpty || !expired.isEmpty || !created.isEmpty
     }
 
     var body: some View {
@@ -67,7 +73,8 @@ struct SubscriptionsView: View {
                 tabItems: [
                     TabItem(.overview),
                     TabItem(.payments, badge: paymentRequests.pendingRequests.count),
-                ]
+                ],
+                inactiveColor: .white.opacity(0.5)
             )
 
             if selectedTab == .payments {
@@ -81,10 +88,22 @@ struct SubscriptionsView: View {
                         section(t("subscriptions__proposals"), subscriptions: proposals)
                         section(t("subscriptions__active"), subscriptions: active)
                         section(t("subscriptions__expired"), subscriptions: expired)
+                        section(t("subscriptions__created"), subscriptions: created)
                     }
                     .padding(.top, 32)
-                    .padding(.bottom, 120)
+                    .padding(.bottom, 32)
                 }
+            }
+
+            if selectedTab == .overview {
+                CustomButton(
+                    title: t("subscriptions__create"),
+                    variant: .secondary
+                ) {
+                    sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .create))
+                }
+                .padding(.bottom, 16)
+                .accessibilityIdentifier("SubscriptionCreate")
             }
         }
         .padding(.horizontal, 16)
@@ -117,21 +136,21 @@ struct SubscriptionsView: View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer()
 
-            Image("subscription-clock")
+            Image("subscription-intro-clock")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 256, height: 256)
                 .frame(maxWidth: .infinity)
                 .accessibilityHidden(true)
 
-            Spacer()
+            Spacer().frame(height: 32)
 
             DisplayText(t("subscriptions__empty_headline"), accentColor: .purpleAccent)
-            Spacer().frame(height: 12)
+            Spacer().frame(height: 8)
             BodyMText(t("subscriptions__empty_description"), textColor: .white64)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, 24)
+        .padding(.bottom, 32)
     }
 
     private var metrics: some View {
@@ -141,17 +160,28 @@ struct SubscriptionsView: View {
                     sats: monthlyCostSats,
                     unitType: .primary,
                     size: .bodyMSB,
-                    prefix: "",
+                    symbol: true,
                     color: .textPrimary,
                     symbolColor: .textSecondary
                 )
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Rectangle()
                 .fill(Color.white16)
                 .frame(width: 1, height: 50)
             SubscriptionMetric(title: t("subscriptions__active"), icon: "arrows-clockwise") {
                 BodyMSBText("\(active.count)")
             }
+            .fixedSize(horizontal: true, vertical: false)
+            Rectangle()
+                .fill(Color.white16)
+                .frame(width: 1, height: 50)
+            SubscriptionMetric(title: t("subscriptions__created"), icon: "asterisk") {
+                BodyMSBText("\(created.count)")
+            }
+            .fixedSize(horizontal: true, vertical: false)
         }
     }
 
@@ -162,7 +192,7 @@ struct SubscriptionsView: View {
                 CaptionMText(title.localizedUppercase, textColor: .white64)
                 ForEach(subscriptions) { subscription in
                     Button {
-                        if subscription.isProposalVisible(at: now) {
+                        if subscription.isPayer && subscription.isProposalVisible(at: now) {
                             paymentRequests.requestSubscriptionPresentation(subscription)
                             sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .review(subscription)))
                         } else {
@@ -194,7 +224,7 @@ func subscriptionMonthlyCostSats(subscriptions: [PaykitSubscription], now: Date)
         }
     }
     let maximum = NSDecimalNumber(value: Int.max)
-    return subscriptions.filter { $0.isActive(at: now) }.reduce(into: 0) { total, subscription in
+    return subscriptions.filter { $0.isPayer && $0.isActive(at: now) }.reduce(into: 0) { total, subscription in
         var monthlyCost = Decimal(subscription.amountSats) * annualPeriods(subscription.recurrence.unit)
             / Decimal(subscription.recurrence.every) / 12
         var roundedMonthlyCost = Decimal()
@@ -222,7 +252,7 @@ private struct SubscriptionMetric<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             CaptionMText(title.localizedUppercase, textColor: .white64)
             HStack(spacing: 8) {
                 Image(icon)
@@ -232,28 +262,28 @@ private struct SubscriptionMetric<Content: View>: View {
                 content()
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 struct SubscriptionRow: View {
     let subscription: PaykitSubscription
     let now: Date
+    var subtitle: String?
 
     var body: some View {
         HStack(spacing: 16) {
             SubscriptionAvatar(subscription: subscription, size: 40)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 0) {
                 BodyMSBText(subscription.note ?? t("subscriptions__subscription"))
                     .lineLimit(1)
-                CaptionText(subscription.rowSubtitle(at: now), textColor: .white64)
+                CaptionBText(subtitle ?? subscription.rowSubtitle(at: now), textColor: .white64)
                     .lineLimit(1)
             }
 
             Spacer(minLength: 8)
 
-            MoneyCell(sats: Int(clamping: subscription.amountSats), prefix: "")
+            MoneyCell(sats: Int(clamping: subscription.amountSats), prefix: "", symbol: true)
         }
         .padding(16)
         .background(Color.gray6)
@@ -277,11 +307,29 @@ struct SubscriptionAvatar: View {
     }
 
     var body: some View {
-        if let contact {
+        if let iconURI = subscription.metadata.iconURI {
+            PubkyImage(uri: iconURI, size: size, cornerRadius: size / 5)
+        } else if subscription.isCreatedByUser {
+            SubscriptionDefaultIcon(size: size)
+        } else if let contact {
             PubkyContactAvatar(contact: contact, size: size)
         } else {
             ContactAvatarLetter(source: subscription.counterparty, size: size)
         }
+    }
+}
+
+struct SubscriptionDefaultIcon: View {
+    let size: CGFloat
+
+    var body: some View {
+        Image("subscription-default-icon")
+            .resizable()
+            .scaledToFit()
+            .padding(size / 8)
+            .frame(width: size, height: size)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: size / 5))
     }
 }
 
@@ -358,7 +406,7 @@ struct SubscriptionDetailView: View {
             LabeledDetailCell(title: t("subscriptions__frequency"), value: subscription.recurrence.frequencyValue, icon: "arrows-clockwise")
             LabeledDetailCell(
                 title: t("subscriptions__status"),
-                value: subscription.isActive(at: now) ? t("subscriptions__active") : t("subscriptions__expired"),
+                value: subscription.statusLabel(at: now),
                 icon: "check-mark"
             )
             if subscription.isActive(at: now) || subscription.recurrence.endsAt != nil {
@@ -368,23 +416,35 @@ struct SubscriptionDetailView: View {
                     icon: "calendar"
                 )
             }
+            if subscription.isCreatedByUser {
+                LabeledDetailCell(
+                    title: t("subscriptions__subscribers"),
+                    value: subscription.wasAccepted ? "1" : "0",
+                    icon: "users"
+                )
+                LabeledDetailCell(
+                    title: t("subscriptions__payments"),
+                    value: "\(subscription.payments.count)",
+                    icon: "arrow-down"
+                )
+            }
         }
     }
 
     @ViewBuilder
     private func footer(_ subscription: PaykitSubscription) -> some View {
         let hasMoreInfo = subscription.metadata.description != nil || !subscription.metadata.benefits.isEmpty
-        let canCancel = subscription.isActive(at: now) && subscription.recurrence.endsAt == nil
+        let canCancel = subscription.canCancel(at: now) && subscription.recurrence.endsAt == nil
         if hasMoreInfo || canCancel {
             HStack(spacing: 16) {
-                if hasMoreInfo {
+                if hasMoreInfo && !subscription.isCreatedByUser {
                     CustomButton(title: t("subscriptions__more_info"), variant: .secondary) {
                         sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .details(subscription)))
                     }
                 }
                 if canCancel {
                     CustomButton(
-                        title: t("subscriptions__cancel"),
+                        title: subscription.isCreatedByUser ? t("common__delete") : t("subscriptions__cancel"),
                         icon: Image("x-mark").resizable().frame(width: 16, height: 16)
                     ) {
                         sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .cancel(subscription)))
@@ -397,9 +457,9 @@ struct SubscriptionDetailView: View {
 
     @ViewBuilder
     private func payments(_ subscription: PaykitSubscription) -> some View {
-        let payments = paymentRequests.historyRequests.filter {
-            $0.belongs(to: subscription)
-        }
+        let payments = subscription.isCreatedByUser
+            ? subscription.receivedPaymentRequests()
+            : paymentRequests.historyRequests.filter { $0.belongs(to: subscription) }
         if !payments.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 CaptionMText(t("subscriptions__payments").localizedUppercase, textColor: .white64)
@@ -408,7 +468,7 @@ struct SubscriptionDetailView: View {
                         request: payment,
                         subtitleOverride: payment.createdAt.map(Self.dateFormatter.string),
                         isHighlighted: false,
-                        paymentDirection: .incoming
+                        paymentDirection: payment.direction
                     )
                 }
             }
@@ -460,6 +520,8 @@ struct SubscriptionSheet: View {
     @State private var previousRoute: SubscriptionSheetItem.Route?
     @State private var now = Date()
     @State private var isAccepting = false
+    @State private var creationDraft = PaykitSubscriptionDraft.empty
+    @State private var selectedCreationTarget: PaykitPaymentRequestTarget?
 
     init(config: SubscriptionSheetItem) {
         self.config = config
@@ -470,6 +532,30 @@ struct SubscriptionSheet: View {
     var body: some View {
         Sheet(id: .subscription, data: config) {
             switch route {
+            case .create:
+                CreateSubscriptionView(
+                    draft: $creationDraft,
+                    onEditAmount: { route = .createAmount },
+                    onChooseRecipient: { route = .createRecipient }
+                )
+            case .createAmount:
+                SubscriptionAmountView(
+                    initialAmountSats: creationDraft.amountSats,
+                    onBack: { route = .create },
+                    onContinue: {
+                        creationDraft.amountSats = $0
+                        route = .create
+                    }
+                )
+            case .createRecipient:
+                SubscriptionRecipientView(
+                    draft: $creationDraft,
+                    selectedTarget: $selectedCreationTarget,
+                    onBack: { route = .create },
+                    onSent: { route = .proposalSent($0) }
+                )
+            case let .proposalSent(subscription):
+                SubscriptionProposalSentView(subscription: subscription)
             case let .review(subscription):
                 review(subscription)
             case .success:
@@ -512,7 +598,7 @@ struct SubscriptionSheet: View {
             }
             now = Date()
         }
-        .interactiveDismissDisabled(isAccepting)
+        .interactiveDismissDisabled(isAccepting || paymentRequests.isCreatingRequest)
     }
 
     private func review(_ subscription: PaykitSubscription) -> some View {
@@ -520,7 +606,7 @@ struct SubscriptionSheet: View {
         return VStack(spacing: 0) {
             SheetHeader(title: t("subscriptions__review_and_subscribe"))
             SubscriptionAmountHeader(subscription: subscription)
-            SubscriptionProviderCard(subscription: subscription) {
+            SubscriptionProviderCard(subscription: subscription, showsCounterparty: true) {
                 guard !isAccepting else { return }
                 previousRoute = route
                 route = .details(subscription)
@@ -737,7 +823,11 @@ struct SubscriptionSheet: View {
 
     private func cancel(_ subscription: PaykitSubscription) -> some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("subscriptions__cancel_subscription"))
+            SheetHeader(
+                title: subscription.isCreatedByUser
+                    ? t("subscriptions__delete_subscription")
+                    : t("subscriptions__cancel_subscription")
+            )
             SubscriptionAmountHeader(subscription: subscription)
             SubscriptionProviderCard(subscription: subscription, subtitle: subscription.rowSubtitle(at: now)) {
                 previousRoute = route
@@ -753,7 +843,9 @@ struct SubscriptionSheet: View {
             Spacer()
 
             SwipeButton(
-                title: t("subscriptions__swipe_to_cancel"),
+                title: subscription.isCreatedByUser
+                    ? t("subscriptions__swipe_to_delete")
+                    : t("subscriptions__swipe_to_cancel"),
                 accentColor: .redAccent,
                 isLoading: paymentRequests.isProcessingSubscription
             ) {
@@ -821,9 +913,16 @@ private struct SubscriptionAmountHeader: View {
 }
 
 private struct SubscriptionProviderCard: View {
+    @EnvironmentObject private var contactsManager: ContactsManager
+
     let subscription: PaykitSubscription
+    var showsCounterparty = false
     var subtitle: String?
     var action: (() -> Void)?
+
+    private var contact: PubkyContact? {
+        contactsManager.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, subscription.counterparty) }
+    }
 
     var body: some View {
         if let action {
@@ -844,6 +943,15 @@ private struct SubscriptionProviderCard: View {
                     .lineLimit(1)
                 CaptionText(subtitle ?? subscription.recurrence.subscriptionFrequencyLabel, textColor: .white64)
                     .lineLimit(1)
+                if showsCounterparty {
+                    if let contact {
+                        CaptionText(contact.displayName, textColor: .white64)
+                            .lineLimit(1)
+                    }
+                    CaptionText(PubkyPublicKeyFormat.displayTruncated(subscription.counterparty), textColor: .white64)
+                        .lineLimit(1)
+                        .accessibilityIdentifier("SubscriptionCounterparty")
+                }
             }
             Spacer()
             if showsChevron {
@@ -910,7 +1018,27 @@ extension PaykitSubscriptionRecurrence {
 }
 
 private extension PaykitSubscription {
+    func statusLabel(at now: Date) -> String {
+        if isProposalVisible(at: now) {
+            return t("subscriptions__pending")
+        }
+        return isActive(at: now) ? t("subscriptions__active") : t("subscriptions__expired")
+    }
+
     func rowSubtitle(at now: Date) -> String {
+        if isCreatedByUser {
+            if isProposalVisible(at: now) {
+                return deliveryStatus == .sent
+                    ? t("subscriptions__proposal_sent_status")
+                    : t("subscriptions__proposal_queued_status")
+            }
+            if isActive(at: now) {
+                let key = payments.count == 1
+                    ? "subscriptions__created_summary_single_payment"
+                    : "subscriptions__created_summary"
+                return t(key, variables: ["count": "\(payments.count)"])
+            }
+        }
         if isProposalVisible(at: now) || !recurrence.unit.isSupported {
             return recurrence.subscriptionFrequencyLabel
         }

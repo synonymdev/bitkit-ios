@@ -255,8 +255,8 @@ enum PubkyService {
     // MARK: - File Fetching
 
     /// Fetch raw bytes from a `pubky://` URI via PKDNS resolution.
-    static func fetchFile(uri: String) async throws -> Data {
-        try await PaykitSdkService.shared.fetchFile(uri: uri)
+    static func fetchFile(uri: String, maxBytes: UInt64) async throws -> Data {
+        try await PaykitSdkService.shared.fetchFile(uri: uri, maxBytes: maxBytes)
     }
 
     // MARK: - Profile
@@ -615,9 +615,9 @@ actor PaykitSdkService {
         }
     }
 
-    func fetchFile(uri: String) async throws -> Data {
+    func fetchFile(uri: String, maxBytes: UInt64) async throws -> Data {
         try await operationLock.withLock {
-            guard let data = try await handle().fetchPubkyFile(uri: uri) else {
+            guard let data = try await handle().fetchPubkyFileBounded(uri: uri, maxBytes: maxBytes) else {
                 throw PubkyServiceError.profileNotFound
             }
             return data
@@ -630,9 +630,15 @@ actor PaykitSdkService {
         }
     }
 
-    func uploadProfileAvatar(bytes: Data, contentType: String) async throws -> String {
+    func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String? = nil) async throws -> String {
         let record = try await withStateRevisionTracking { sdk in
-            try await sdk.uploadProfileAvatar(bytes: bytes, contentType: contentType)
+            if let expectedIdentity {
+                guard let identity = try await sdk.identityStatus(),
+                      identity.liveSessionAvailable,
+                      PubkyPublicKeyFormat.matches(identity.publicKey, expectedIdentity)
+                else { throw PaykitPaymentRequestError.requestUnavailable }
+            }
+            return try await sdk.uploadProfileAvatar(bytes: bytes, contentType: contentType)
         }
         return record.uri
     }
@@ -1039,23 +1045,31 @@ actor PaykitSdkService {
     private func withStateRevisionTracking<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {
         try await operationLock.withLock {
             let sdk = try handle()
-            let previousRevision = try? sdk.stateRevision()
-            do {
-                let result = try await operation(sdk)
-                markWalletBackupDataChangedIfNeeded(from: previousRevision, sdk: sdk)
-                return result
-            } catch {
-                markWalletBackupDataChangedIfNeeded(from: previousRevision, sdk: sdk)
-                throw error
-            }
+            return try await Self.withBackupStateRevisionTracking(
+                readRevision: { try await sdk.backupStateRevision() },
+                onChange: { self.markWalletBackupDataChanged() },
+                operation: { try await operation(sdk) }
+            )
         }
     }
 
-    private func markWalletBackupDataChangedIfNeeded(from previousRevision: String?, sdk: PaykitSdk) {
-        guard let nextRevision = try? sdk.stateRevision(), previousRevision != nextRevision else {
-            return
+    static func withBackupStateRevisionTracking<T>(
+        readRevision: () async throws -> String,
+        onChange: () async -> Void,
+        operation: () async throws -> T
+    ) async throws -> T {
+        let previousRevision = try? await readRevision()
+        let result: Result<T, Error>
+        do {
+            result = try await .success(operation())
+        } catch {
+            result = .failure(error)
         }
-        markWalletBackupDataChanged()
+        let nextRevision = try? await readRevision()
+        if previousRevision == nil || nextRevision == nil || previousRevision != nextRevision {
+            await onChange()
+        }
+        return try result.get()
     }
 
     private func markWalletBackupDataChanged() {
