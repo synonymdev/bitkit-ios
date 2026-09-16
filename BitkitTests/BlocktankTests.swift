@@ -21,6 +21,10 @@ final class BlocktankTests: XCTestCase {
 
     override func tearDown() async throws {
         try await super.tearDown()
+        // Re-point bitkit-core's global connections before unlinking: they stay open on the old
+        // path, and a later write through core then fails with `attempt to write a readonly
+        // database`. The app's own storage is namespaced under test, so this is a safe target.
+        _ = try? initDb(basePath: Env.bitkitCoreStorage(walletIndex: 0).path)
         try? FileManager.default.removeItem(atPath: testDbPath)
     }
 
