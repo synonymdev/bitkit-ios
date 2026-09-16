@@ -13,6 +13,10 @@ import XCTest
 ///    the app's domain at all.
 /// 2. `snapshotAppDefaults(_:)` when it does not, so the keys are put back afterwards.
 /// 3. `guardAppDefaults(_:)` on suites that should write nothing, to keep it that way.
+///
+/// All three register their work with `addTeardownBlock`, which XCTest runs **before** `tearDown()`.
+/// So a `tearDown` that also clears the same key wins, and silently defeats the restore — if a suite
+/// has one, delete it and let the restore be the cleanup.
 extension XCTestCase {
     /// A `UserDefaults` suite unique to this test, emptied before it runs and removed afterwards.
     func makeIsolatedDefaults(_ label: String = #function, file: StaticString = #filePath, line: UInt = #line) throws -> UserDefaults {
@@ -23,9 +27,27 @@ extension XCTestCase {
         return defaults
     }
 
+    /// Restores the app's entire persistent domain when the test ends. For suites that call
+    /// `SettingsViewModel.resetToDefaults()`, which writes ~30 real keys in one go — including
+    /// `pinEnabled`, `useBiometrics` and `requirePinForPayments` — or that otherwise touch more keys
+    /// than are worth enumerating. Restoring the whole domain also removes keys the test added.
+    func snapshotAppDefaultsDomain(file: StaticString = #filePath, line: UInt = #line) {
+        guard let domain = Bundle.main.bundleIdentifier else {
+            XCTFail("No bundle identifier to snapshot", file: file, line: line)
+            return
+        }
+        let defaults = UserDefaults.standard
+        let snapshot = defaults.persistentDomain(forName: domain) ?? [:]
+        addTeardownBlock { defaults.setPersistentDomain(snapshot, forName: domain) }
+    }
+
     /// Restores `keys` in `UserDefaults.standard` when the test ends, removing any that are absent
     /// now. Use when the code under test has no seam for injected defaults.
     func snapshotAppDefaults(_ keys: String...) {
+        snapshotAppDefaults(keys)
+    }
+
+    func snapshotAppDefaults(_ keys: [String]) {
         let defaults = UserDefaults.standard
         let snapshot = keys.map { (key: $0, value: defaults.object(forKey: $0)) }
         addTeardownBlock {
