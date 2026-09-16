@@ -125,6 +125,22 @@ struct RestoreWalletView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    SeedQRCodeScannerView { mnemonic in
+                        handleScannedMnemonic(mnemonic)
+                    }
+                } label: {
+                    Image("scan")
+                        .resizable()
+                        .foregroundColor(.textPrimary)
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel(t("onboarding__restore_scan_seedqr"))
+                .accessibilityIdentifier("RestoreSeedQR")
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             keyboardAccessory
         }
@@ -287,6 +303,15 @@ struct RestoreWalletView: View {
         firstFieldText = words[0]
 
         // Close the keyboard
+        focusedField = nil
+    }
+
+    private func handleScannedMnemonic(_ mnemonic: String) {
+        let scannedWords = mnemonic.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        guard scannedWords.count == wordCount else { return }
+
+        words = scannedWords
+        firstFieldText = scannedWords[0]
         focusedField = nil
     }
 }
