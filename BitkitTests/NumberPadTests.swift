@@ -8,7 +8,9 @@ final class NumberPadTests: XCTestCase {
         // Building a `CurrencyViewModel` syncs the display currency into the shared group.bitkit
         // suite from its initializer, which the widget extension reads.
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
-        snapshotAppDefaults("primaryDisplay", "cached_fx_rates")
+        // `mockCurrency` sets selectedCurrency and displayUnit, both of which write through to the
+        // app's own preferences — a developer on EUR/classic otherwise ends a run on USD/modern.
+        snapshotAppDefaults("primaryDisplay", "cached_fx_rates", "selectedCurrency", "bitcoinDisplayUnit")
     }
 
     func testFiatDecimalInput() {
