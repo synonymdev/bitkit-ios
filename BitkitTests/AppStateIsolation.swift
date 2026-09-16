@@ -87,7 +87,11 @@ extension XCTestCase {
     /// afterwards and point the globals back at the app's database. The queue is serial, so enqueueing
     /// a no-op and awaiting it drains whatever was queued ahead of it.
     func drainCoreServiceQueue() async {
+        // Both copies: `ServiceQueue` is compiled into the test target as well as the app, so each has
+        // its own `coreQueue`. `CoreService.shared` reached through `Bitkit.` queues onto the app
+        // module's, which the test target's drain would not wait on.
         _ = try? await ServiceQueue.background(.core) { true }
+        _ = try? await Bitkit.ServiceQueue.background(.core) { true }
     }
 
     /// Skips the test unless `BITKIT_DESTRUCTIVE_TESTS=1` is set. For the handful of suites that
