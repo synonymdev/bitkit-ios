@@ -6,12 +6,6 @@ import XCTest
 @MainActor
 final class PaymentNavigationHelperTests: XCTestCase {
     private let settings = SettingsViewModel.shared
-    private var originalEnableQuickpay = false
-    private var originalQuickpayAmount: Double = 0
-    private var originalQuickpayDailyLimitMultiplier: Double = 0
-    private var originalPinEnabled = false
-    private var originalRequirePinForPayments = false
-    private var originalCachedRates: Data?
     private var spendDefaults: UserDefaults!
     private var spendSuiteName: String!
     private var spendStore: QuickPaySpendStore!
@@ -21,13 +15,19 @@ final class PaymentNavigationHelperTests: XCTestCase {
         // Building a `CurrencyViewModel` syncs the display currency into the shared group.bitkit
         // suite from its initializer, which the widget extension reads.
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
-        snapshotAppDefaults("primaryDisplay")
-        originalEnableQuickpay = settings.enableQuickpay
-        originalQuickpayAmount = settings.quickpayAmount
-        originalQuickpayDailyLimitMultiplier = settings.quickpayDailyLimitMultiplier
-        originalPinEnabled = settings.pinEnabled
-        originalRequirePinForPayments = settings.requirePinForPayments
-        originalCachedRates = UserDefaults.standard.data(forKey: "cached_fx_rates")
+        // Snapshot from disk, not from `SettingsViewModel.shared`. Its `@AppStorage` properties do not
+        // observe `setPersistentDomain`, so after an earlier suite's `resetToDefaults()` the singleton
+        // still reports the defaults — capturing those as "originals" and writing them back in
+        // tearDown overwrote the user's values that the domain restore had just put back.
+        snapshotAppDefaults(
+            "primaryDisplay",
+            "cached_fx_rates",
+            "enableQuickpay",
+            "quickpayAmount",
+            "quickpayDailyLimitMultiplier",
+            "pinEnabled",
+            "requirePinForPayments"
+        )
 
         spendSuiteName = "PaymentNavigationHelperTests.\(UUID().uuidString)"
         spendDefaults = UserDefaults(suiteName: spendSuiteName)
@@ -44,18 +44,8 @@ final class PaymentNavigationHelperTests: XCTestCase {
     }
 
     override func tearDown() {
-        settings.enableQuickpay = originalEnableQuickpay
-        settings.quickpayAmount = originalQuickpayAmount
-        settings.quickpayDailyLimitMultiplier = originalQuickpayDailyLimitMultiplier
-        settings.pinEnabled = originalPinEnabled
-        settings.requirePinForPayments = originalRequirePinForPayments
-
-        if let originalCachedRates {
-            UserDefaults.standard.set(originalCachedRates, forKey: "cached_fx_rates")
-        } else {
-            UserDefaults.standard.removeObject(forKey: "cached_fx_rates")
-        }
-
+        // No settings restored here: teardown blocks run before this, so writing the singleton's
+        // values back would land on top of the snapshot's restore.
         spendDefaults.removePersistentDomain(forName: spendSuiteName)
         spendDefaults = nil
         spendStore = nil

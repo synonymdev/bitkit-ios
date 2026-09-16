@@ -6,10 +6,6 @@ import XCTest
 @MainActor
 final class QuickPayPaymentCoordinatorTests: XCTestCase {
     private let settings = SettingsViewModel.shared
-    private var originalEnableQuickpay = false
-    private var originalQuickpayAmount: Double = 0
-    private var originalQuickpayDailyLimitMultiplier: Double = 0
-    private var originalCachedRates: Data?
     private var defaults: UserDefaults!
     private var suiteName: String!
     private var store: QuickPaySpendStore!
@@ -23,11 +19,17 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         // Building a `CurrencyViewModel` syncs the display currency into the shared group.bitkit
         // suite from its initializer, which the widget extension reads.
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
-        snapshotAppDefaults("primaryDisplay")
-        originalEnableQuickpay = settings.enableQuickpay
-        originalQuickpayAmount = settings.quickpayAmount
-        originalQuickpayDailyLimitMultiplier = settings.quickpayDailyLimitMultiplier
-        originalCachedRates = UserDefaults.standard.data(forKey: "cached_fx_rates")
+        // Snapshot from disk rather than from `SettingsViewModel.shared`: its `@AppStorage` properties
+        // do not observe `setPersistentDomain`, so after an earlier suite's `resetToDefaults()` the
+        // singleton still reports the defaults, and writing those back in tearDown landed on top of
+        // the snapshot's restore.
+        snapshotAppDefaults(
+            "primaryDisplay",
+            "cached_fx_rates",
+            "enableQuickpay",
+            "quickpayAmount",
+            "quickpayDailyLimitMultiplier"
+        )
         suiteName = "QuickPayPaymentCoordinatorTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
         store = QuickPaySpendStore(defaults: defaults, dayKey: { "2026-08-15" })
@@ -42,14 +44,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
     }
 
     override func tearDown() {
-        settings.enableQuickpay = originalEnableQuickpay
-        settings.quickpayAmount = originalQuickpayAmount
-        settings.quickpayDailyLimitMultiplier = originalQuickpayDailyLimitMultiplier
-        if let originalCachedRates {
-            UserDefaults.standard.set(originalCachedRates, forKey: "cached_fx_rates")
-        } else {
-            UserDefaults.standard.removeObject(forKey: "cached_fx_rates")
-        }
+        // No settings restored here: teardown blocks run first, so this would overwrite the restore.
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         store = nil
