@@ -127,9 +127,10 @@ Known naming differences:
 | External amount available | — | `ExternalAmountAvailable` |
 | Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
 
-`PaymentRequestRow-<paymentRequestId>` and `SubscriptionRow-<paymentRequestId>` match Android exactly,
-including the consequence: every recurring payment of one subscription carries the same
-`paymentRequestId`, so a subscription paid more than once puts that identifier on more than one row.
+`SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix
+but appends the billing period (`-one-time` for a one-off), because every recurring payment of one
+subscription carries the same `paymentRequestId` and they can list together — Android stops at the id
+and lets those rows collide. Match on the prefix when a journey needs to work on both platforms.
 
 Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `SpendingAdvanced*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.

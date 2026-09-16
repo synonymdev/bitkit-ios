@@ -172,8 +172,14 @@ struct PaymentRequestCard: View {
         }
     }
 
+    /// Android tags this `PaymentRequestRow-<paymentRequestId>`, but every period of one recurring
+    /// subscription shares that id and they can list together, so the period keeps rows distinct
+    /// while leaving the shared prefix intact.
     private var rowAccessibilityIdentifier: String {
-        "PaymentRequestRow-\(request.paymentRequestId)"
+        let period = request.billingPeriod.map {
+            PaykitSubscriptionTimestamp.string(from: $0.startsAt)
+        } ?? "one-time"
+        return "PaymentRequestRow-\(request.paymentRequestId)-\(period)"
     }
 
     private static let dateFormatter: DateFormatter = {
