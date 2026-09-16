@@ -7,6 +7,17 @@ import XCTest
 /// and guards against re-entry. The device orchestration itself is covered by `HwFundingSignerTests`.
 @MainActor
 final class TransferViewModelHwTests: XCTestCase {
+    /// A successful mock broadcast reaches `fundPaidOrder`, which persists a transfer record. Without
+    /// an isolated suite that record lands in the app's own preferences and never settles, because
+    /// the mock order id is not a real Blocktank order (#733).
+    private var transferDefaults: UserDefaults!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        transferDefaults = try makeIsolatedDefaults()
+        guardAppDefaults("transfers")
+    }
+
     private func makeViewModel(
         funding: MockHwFunding,
         connecting: MockHwConnecting,
@@ -17,7 +28,8 @@ final class TransferViewModelHwTests: XCTestCase {
             hwFunding: funding,
             hwConnecting: connecting,
             hwFeeRateProvider: { feeRate },
-            hwTimeouts: timeouts
+            hwTimeouts: timeouts,
+            transferDefaults: transferDefaults
         )
     }
 
