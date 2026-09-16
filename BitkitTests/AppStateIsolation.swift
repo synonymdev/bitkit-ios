@@ -61,6 +61,23 @@ extension XCTestCase {
         }
     }
 
+    /// Restores `keys` in the shared `group.bitkit` suite when the test ends. Constructing a
+    /// `CurrencyViewModel` syncs the display currency into that suite from its initializer, so any
+    /// suite that builds one writes state the widget extension reads.
+    func snapshotAppGroupDefaults(_ keys: String...) {
+        guard let defaults = UserDefaults(suiteName: "group.bitkit") else { return }
+        let snapshot = keys.map { (key: $0, value: defaults.object(forKey: $0)) }
+        addTeardownBlock {
+            for entry in snapshot {
+                if let value = entry.value {
+                    defaults.set(value, forKey: entry.key)
+                } else {
+                    defaults.removeObject(forKey: entry.key)
+                }
+            }
+        }
+    }
+
     /// Skips the test unless `BITKIT_DESTRUCTIVE_TESTS=1` is set. For the handful of suites that
     /// deliberately operate on real, un-namespaceable state — the React-Native migration source under
     /// `~/Documents`, for instance — and so can only run on a simulator that may be erased afterwards.

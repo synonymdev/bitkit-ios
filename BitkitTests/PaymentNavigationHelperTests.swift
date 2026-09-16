@@ -18,6 +18,10 @@ final class PaymentNavigationHelperTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // Building a `CurrencyViewModel` syncs the display currency into the shared group.bitkit
+        // suite from its initializer, which the widget extension reads.
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        snapshotAppDefaults("primaryDisplay")
         originalEnableQuickpay = settings.enableQuickpay
         originalQuickpayAmount = settings.quickpayAmount
         originalQuickpayDailyLimitMultiplier = settings.quickpayDailyLimitMultiplier
