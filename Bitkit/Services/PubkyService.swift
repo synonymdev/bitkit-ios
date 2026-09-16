@@ -360,7 +360,7 @@ actor PaykitSdkService {
     }
 
     func initialize() async throws {
-        await republishIdentityIfNeeded()
+        Task { await republishIdentityIfNeeded() }
         try await operationLock.withLock {
             var sdk = try handle()
             do {
@@ -393,7 +393,12 @@ actor PaykitSdkService {
             continuation.finish()
         }
         let deadline = Task {
-            try? await Task.sleep(for: timeout)
+            do {
+                try await Task.sleep(for: timeout)
+            } catch {
+                return
+            }
+            Logger.warn("Stopped waiting for Pubky identity republishing", context: "PaykitSdkService")
             continuation.finish()
         }
         defer {
