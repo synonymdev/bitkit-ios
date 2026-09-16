@@ -528,7 +528,7 @@ final class NumberPadTests: XCTestCase {
     // MARK: - Helper Methods
 
     private func mockCurrency(primaryDisplay: PrimaryDisplay, displayUnit: BitcoinDisplayUnit = .modern) -> CurrencyViewModel {
-        let currency = CurrencyViewModel()
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
         currency.primaryDisplay = primaryDisplay
         currency.selectedCurrency = "USD"
         currency.displayUnit = displayUnit

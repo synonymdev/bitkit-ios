@@ -74,7 +74,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
     }
 
     func testSkipsQuickpayWhenDailySpendCapIsExceeded() throws {
-        let rates = QuickPaySpendRates.live(CurrencyViewModel())
+        let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
         for i in 0 ..< 5 {
             XCTAssertNotNil(
                 try spendStore.reserveBound(
@@ -91,7 +91,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
     }
 
     func testAllowsQuickpayWhenSpendPlusAmountEqualsDailyCap() throws {
-        let rates = QuickPaySpendRates.live(CurrencyViewModel())
+        let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
         for i in 0 ..< 4 {
             XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "under\(i)", amountSats: 5000, thresholdUsd: 5, multiplier: 5, rates: rates))
         }
@@ -109,7 +109,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
                 amountSats: 1000,
                 thresholdUsd: 5,
                 multiplier: 5,
-                rates: QuickPaySpendRates.live(CurrencyViewModel())
+                rates: QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
             )
         )
         let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in hash }, listRows: { [] })
@@ -119,7 +119,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
 
     func testUsesQuickpayWhenHashIsOpenEvenIfDailyCapIsExceeded() throws {
         settings.quickpayDailyLimitMultiplier = 1
-        let rates = QuickPaySpendRates.live(CurrencyViewModel())
+        let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
         let hash = "aabbccdd"
         XCTAssertNotNil(try spendStore.reserveBound(paymentHash: hash, amountSats: 1000, thresholdUsd: 5, multiplier: 1, rates: rates))
         XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "cap0", amountSats: 4000, thresholdUsd: 5, multiplier: 1, rates: rates))
@@ -136,7 +136,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
                 amountSats: 1000,
                 thresholdUsd: 5,
                 multiplier: 5,
-                rates: QuickPaySpendRates.live(CurrencyViewModel())
+                rates: QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
             )
         )
         let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in hash }, listRows: { [] })
@@ -145,7 +145,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(
             PaymentNavigationHelper.contactPaymentRoute(
                 app: app,
-                currency: CurrencyViewModel(),
+                currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
                 settings: settings,
                 spendStore: spendStore,
                 coordinator: coordinator
@@ -213,7 +213,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
     private func sendRoute(for app: AppViewModel, coordinator: QuickPayPaymentCoordinator? = nil) -> SendRoute? {
         PaymentNavigationHelper.appropriateSendRoute(
             app: app,
-            currency: CurrencyViewModel(),
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
             settings: settings,
             spendStore: spendStore,
             coordinator: coordinator
@@ -223,7 +223,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
     private func contactPaymentRoute(for app: AppViewModel) -> SendRoute? {
         PaymentNavigationHelper.contactPaymentRoute(
             app: app,
-            currency: CurrencyViewModel(),
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
             settings: settings,
             spendStore: spendStore
         )
