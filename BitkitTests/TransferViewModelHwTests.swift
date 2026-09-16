@@ -235,7 +235,7 @@ final class TransferViewModelHwTests: XCTestCase {
     }
 
     func testConfirmWithoutHwCapabilitiesSurfacesGenericError() {
-        let vm = TransferViewModel() // no signer injected
+        let vm = TransferViewModel(transferDefaults: transferDefaults) // no signer injected
         vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         if case .generic = vm.hwTransferError {} else {
             XCTFail("expected .generic error")
@@ -267,7 +267,8 @@ final class TransferViewModelHwTests: XCTestCase {
             hwFunding: funding,
             hwConnecting: MockHwConnecting(),
             hwFeeRateProvider: { 2 },
-            hwAddressProvider: { "bcrt1qtest" }
+            hwAddressProvider: { "bcrt1qtest" },
+            transferDefaults: transferDefaults
         )
 
         let budget = await vm.hwFundingBudget(walletId: "trezor:wallet")
