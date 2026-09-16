@@ -39,6 +39,19 @@ extension XCTestCase {
         }
     }
 
+    /// Skips the test unless `BITKIT_DESTRUCTIVE_TESTS=1` is set. For the handful of suites that
+    /// deliberately operate on real, un-namespaceable state — the React-Native migration source under
+    /// `~/Documents`, for instance — and so can only run on a simulator that may be erased afterwards.
+    /// `integration-tests.yml` sets it; a plain `xcodebuild test` does not.
+    func skipUnlessDestructiveTestsEnabled(file: StaticString = #filePath, line: UInt = #line) throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["BITKIT_DESTRUCTIVE_TESTS"] == "1",
+            "Destroys real on-disk state; set BITKIT_DESTRUCTIVE_TESTS=1 to run.",
+            file: file,
+            line: line
+        )
+    }
+
     /// Fails the test if it leaves any of `keys` in `UserDefaults.standard` changed. The regression
     /// guard for #733: a suite that should be writing to an isolated suite goes red here instead of
     /// silently corrupting the wallet on the simulator.
