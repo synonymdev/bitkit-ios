@@ -9,9 +9,14 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        // tearDown calls `resetToDefaults()`, which writes ~30 real keys. The keychain wipe and LDK
-        // storage are namespaced under test; the app's preferences are not.
+        // `resetToDefaults()` writes ~30 real keys. The keychain wipe and LDK storage are namespaced
+        // under test; the app's preferences are not, so snapshot the domain and restore it afterwards.
         snapshotAppDefaultsDomain()
+        // Reset here rather than in tearDown. The domain restore only fixes disk, and
+        // `SettingsViewModel.shared`'s `@AppStorage` does not observe it — so without this the cached
+        // `selectedAddressType` carries between tests and `setMonitoring` returns early at its
+        // "same as selected" guard, before the balance check the test means to exercise.
+        await MainActor.run { settings.resetToDefaults() }
         Logger.test("Starting address type integration test setup", context: "AddressTypeIntegrationTests")
         try Keychain.wipeEntireKeychain()
     }
