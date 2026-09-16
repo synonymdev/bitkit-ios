@@ -43,6 +43,10 @@ extension XCTestCase {
     /// deliberately operate on real, un-namespaceable state — the React-Native migration source under
     /// `~/Documents`, for instance — and so can only run on a simulator that may be erased afterwards.
     /// `integration-tests.yml` sets it; a plain `xcodebuild test` does not.
+    ///
+    /// To run one of these locally, set it as `TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS=1`. xcodebuild
+    /// forwards only variables named `TEST_RUNNER_<VAR>` into the simulator-hosted runner, stripping
+    /// the prefix; the unprefixed name never arrives, and the tests skip while the run reports green.
     func skipUnlessDestructiveTestsEnabled(file: StaticString = #filePath, line: UInt = #line) throws {
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["BITKIT_DESTRUCTIVE_TESTS"] == "1",
