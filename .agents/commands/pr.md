@@ -138,7 +138,8 @@ When the user provides custom instructions after `--`:
   #### Automated Checks
   ```
 - Keep local verification commands, `xcodebuild`, Swift tests, SwiftFormat, translation validation, unit tests, build passes, cargo test, cargo clippy, npm test, typecheck, CI coverage, or similar automated checks out of `#### Manual Tests`; summarize them under `#### Automated Checks` when they add useful context.
-- Use `#### Automated Checks` to summarize automated verification evidence, prioritizing coverage added, modified, or removed with file paths and a short explanation.
+- Use `#### Automated Checks` to summarize automated verification evidence, prioritizing coverage added, modified, or removed, each with the test file name and a short explanation.
+- Reference test files by bare file name only (e.g. `TransferViewModelTests.swift`), never the full path. Only when two referenced test files share the same name, prefix the shortest leading path segment(s) that disambiguate them (e.g. `BitkitTests/SendTests.swift` vs `BitkitUITests/SendTests.swift`).
 - For removed automated coverage, state why it was removed.
 - Do not list standard CI or PR bot commands as checkbox items just because they run for every PR. If standard CI coverage is worth mentioning, summarize it in one sentence.
 - List raw commands only when they were run locally, are non-standard, use special flags or environment values, validate workflow behavior, or explain a meaningful verification gap.
@@ -186,9 +187,9 @@ Concrete style target:
   - [ ] **5b.** back: returns to Connections List.
 - [ ] **6.** `regression:` Channel Detail → tap Close Connection: works.
 #### Automated Checks
-- Unit tests added: cover invoice timeout handling in `BitkitTests/TransferViewModelTests.swift`.
-- Unit tests modified: update channel navigation assertions in `BitkitTests/ChannelDetailsViewModelTests.swift`.
-- Test coverage removed: delete stale mock-only assertions from `BitkitTests/OldFlowTests.swift` because the flow no longer exists.
+- Unit tests added: cover invoice timeout handling in `TransferViewModelTests.swift`.
+- Unit tests modified: update channel navigation assertions in `ChannelDetailsViewModelTests.swift`.
+- Test coverage removed: delete stale mock-only assertions from `OldFlowTests.swift` because the flow no longer exists.
 - CI: standard build and test checks run by the PR bot.
 ```
 

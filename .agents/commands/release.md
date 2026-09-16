@@ -133,6 +133,10 @@ N/A — no UI changes.
 ### Preview
 
 N/A
+
+### QA Notes
+
+N/A
 ```
 
 Store the PR URL for the summary.
