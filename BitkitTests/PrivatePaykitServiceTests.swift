@@ -3,6 +3,14 @@ import Paykit
 import XCTest
 
 final class PrivatePaykitServiceTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Constructing `PrivatePaykitService` and mutating it writes the real cache state, injecting
+        // fake contacts and invoices into the user's own and flagging the wallet backup dirty. Several
+        // tests already guard this per-test; this covers the ones that don't.
+        snapshotAppDefaults(PrivatePaykitService.cacheStateKey)
+    }
+
     func testSupportedReceiverPathsPreserveSupportedOrderWhenMergingDiscoveredServerPath() async {
         let service = PrivatePaykitService()
 
