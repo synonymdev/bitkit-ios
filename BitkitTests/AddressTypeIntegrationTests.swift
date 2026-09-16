@@ -9,6 +9,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        // tearDown calls `resetToDefaults()`, which writes ~30 real keys. The keychain wipe and LDK
+        // storage are namespaced under test; the app's preferences are not.
+        snapshotAppDefaultsDomain()
         Logger.test("Starting address type integration test setup", context: "AddressTypeIntegrationTests")
         try Keychain.wipeEntireKeychain()
     }
@@ -22,7 +25,6 @@ final class AddressTypeIntegrationTests: XCTestCase {
             try? await lightning.stop()
         }
         try? await lightning.wipeStorage(walletIndex: walletIndex)
-        await MainActor.run { settings.resetToDefaults() }
         try await super.tearDown()
     }
 
