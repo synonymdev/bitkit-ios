@@ -46,6 +46,17 @@ final class SharedPubkyIdentityTests: XCTestCase {
         )
     }
 
+    func testBorrowedIdentityNeverPublishesAReceiverMarker() throws {
+        let (prefixed, _, _) = try identityFixture()
+        let reference = try SharedPubkyIdentityRefV1(sourceApp: .ring, pubky: prefixed)
+
+        XCTAssertTrue(PaykitSdkService.shouldPublishReceiverMarker(loadSharedIdentityReference: { nil }))
+        XCTAssertFalse(PaykitSdkService.shouldPublishReceiverMarker(loadSharedIdentityReference: { reference }))
+        XCTAssertFalse(PaykitSdkService.shouldPublishReceiverMarker(loadSharedIdentityReference: {
+            throw SharedPubkyIdentityError.invalidRecord
+        }))
+    }
+
     func testSharedWireFormatRejectsOverlongPubky() throws {
         let (_, bare, _) = try identityFixture()
 
