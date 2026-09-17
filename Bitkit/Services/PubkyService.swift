@@ -1181,12 +1181,33 @@ actor PaykitSdkService {
     }
 
     private func publishReceiverMarkerIfLiveSessionAvailable(using sdk: PaykitSdk) async {
+        // A borrowed identity is owned by another app. Publishing a receiver marker would write
+        // persistent public state under the owner's namespace, bound to Bitkit's own noise key,
+        // and it would outlive the borrowed session once the source app goes away.
+        guard Self.shouldPublishReceiverMarker(loadSharedIdentityReference: {
+            try SharedPubkyIdentityReferenceStore.load()
+        }) else {
+            return
+        }
+
         do {
             let capabilities = try await receiverCapabilities(using: sdk)
             guard capabilities.privatePayments else { return }
             _ = try await sdk.publishPaykitReceiverMarker(capabilities: capabilities)
         } catch {
             Logger.warn("Failed to publish Paykit receiver marker: \(error)", context: "PaykitSdkService")
+        }
+    }
+
+    static func shouldPublishReceiverMarker(
+        loadSharedIdentityReference: () throws -> SharedPubkyIdentityRefV1?
+    ) -> Bool {
+        do {
+            return try loadSharedIdentityReference() == nil
+        } catch {
+            // An unreadable reference may still describe a borrowed identity, so fail closed.
+            Logger.warn("Skipping Paykit receiver marker: shared identity state is unreadable", context: "PaykitSdkService")
+            return false
         }
     }
 
