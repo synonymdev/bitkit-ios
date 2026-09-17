@@ -10,10 +10,9 @@ stay diffable. Only the platform mechanics differ — `adb` becomes `xcodebuildm
 `testTag`s become iOS `accessibilityIdentifier`s (the vocabulary is shared; see [Identifiers](#identifiers)).
 iOS-only suites are marked in the [Suites](#suites) table.
 
-**Journeys are not a QA gate.** They are agent-evaluated and non-deterministic, nothing runs them in
-CI, and there is no runner wired up for them yet — `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests`
-and does not read `journeys/`. Treat a journey as a well-written description of a flow, not as an
-authority on what the app owes you.
+**Journeys are the QA contract for a PR.** A PR with a user-visible change adds or updates the
+journeys that prove it and lists them in its body, and reviewers drive the listed journeys on a
+device instead of reading a prose walkthrough.
 
 A journey that no longer matches the app is most likely **stale**, not evidence of a bug. The corpus
 is new on iOS and has not been run end to end, so when the two disagree the first assumption should be
@@ -129,6 +128,22 @@ Known naming differences:
 
 Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `SpendingAdvanced*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.
+
+## Capabilities
+
+This table is the authority for what the journey environment provides: a step it covers belongs in a
+journey, and a step it does not is a manual test in the PR body naming the missing capability.
+
+| Capability | Provided by |
+| --- | --- |
+| On-chain funds and blocks on regtest | `../bitkit-android/lsp` deposit and mine, borrowed from the sibling Android checkout until #694 lands an iOS copy — [Backend preconditions](#backend-preconditions) |
+| Lightning channels, CJIT orders and quoted maxima | the LSP the `E2E_BUILD` app targets, plus its node as an external LN peer — [Backend preconditions](#backend-preconditions), [amount-limits](amount-limits/README.md) |
+| A hardware wallet to pair, watch and sign with | the deterministic Trezor emulator from `bitkit-docker`, reached through Trezor Bridge on the host; the simulator has no Bluetooth LE and iOS cannot do WebUSB, so BLE pairing and USB are not covered — [hardware-wallet](hardware-wallet/README.md) |
+| Push notifications to a backgrounded or killed app | a real APNs round trip on an attached physical device, never the simulator, read back from Notification Center — [cjit-notifications](cjit-notifications/README.md) |
+| The OS notification-permission dialog | the one-shot `UNUserNotificationCenter` alert, reset with `xcrun simctl uninstall <device> to.bitkit` and a rebuild — [notification-permission](notification-permission/README.md) |
+| An incoming Payment Request from a linked issuer | the fixture issuer, saved as a contact and linked on receiver path `bitkit/server` — [payment-requests](payment-requests/README.md) |
+| A Pubky identity and a two-wallet marketplace purchase | a Bitkit-generated Pubky profile, plus the integration fixture runtime: Pubky testnet, Paykit Server, regtest bitcoind and Fulcrum — [pubky-auth](pubky-auth/README.md), [pubky-marketplace](pubky-marketplace/README.md) |
+| Deep links handed to the app | `xcrun simctl openurl <device> "<uri>"`; only `bitkit://pubky-auth/setup`, web URLs, Pubky callbacks and payment URIs route — there is no screen or sheet router — [pubky-auth](pubky-auth/README.md), [Not ported](#not-ported) |
 
 ## Suites
 
