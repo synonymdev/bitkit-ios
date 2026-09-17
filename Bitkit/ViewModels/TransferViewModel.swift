@@ -213,17 +213,18 @@ class TransferViewModel: ObservableObject {
         }
     }
 
-    /// Convenience initializer for testing and previews. `transferDefaults` scopes transfer
-    /// persistence: tests pass an isolated suite so mock transfers never reach the app's own store.
+    /// Convenience initializer for testing and previews. Leave `transferDefaults` nil to persist through
+    /// `TransferStorage.shared`, whose change notifications drive backups; tests pass an isolated suite
+    /// so mock transfers never reach the app's own store.
     convenience init(
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         currencyService: CurrencyService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel(),
-        transferDefaults: UserDefaults = .standard
+        transferDefaults: UserDefaults? = nil
     ) {
         let transferService = TransferService(
-            storage: TransferStorage(defaults: transferDefaults),
+            storage: transferDefaults.map { TransferStorage(defaults: $0) } ?? .shared,
             lightningService: lightningService,
             blocktankService: coreService.blocktank
         )
@@ -239,7 +240,8 @@ class TransferViewModel: ObservableObject {
     /// Convenience initializer for hardware-wallet transfer tests. Builds the `TransferService`
     /// inside the app module so callers don't construct cross-module service types — `transferDefaults`
     /// is a `UserDefaults` for the same reason, since `TransferStorage` is compiled into both modules.
-    /// Tests pass an isolated suite so mock transfers never reach the app's own store.
+    /// Leave it nil to persist through `TransferStorage.shared`; tests pass an isolated suite so mock
+    /// transfers never reach the app's own store.
     convenience init(
         hwFunding: HwTransferFunding?,
         hwConnecting: HwTransferConnecting?,
@@ -249,10 +251,10 @@ class TransferViewModel: ObservableObject {
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel(),
-        transferDefaults: UserDefaults = .standard
+        transferDefaults: UserDefaults? = nil
     ) {
         let transferService = TransferService(
-            storage: TransferStorage(defaults: transferDefaults),
+            storage: transferDefaults.map { TransferStorage(defaults: $0) } ?? .shared,
             lightningService: lightningService,
             blocktankService: coreService.blocktank
         )
