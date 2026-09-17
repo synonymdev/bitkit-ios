@@ -111,6 +111,42 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testCreateIdentityRefusesToSignUpOverAnUnrecoverableSession() async throws {
+        let defaults = UserDefaults.standard
+        let previousPending = defaults.object(forKey: "pubky_profile_setup_pending")
+        let previousSession = try? Keychain.loadString(key: .paykitSession)
+        let previousSecretKey = try? Keychain.loadString(key: .pubkySecretKey)
+        addTeardownBlock {
+            try? Keychain.delete(key: .paykitSession)
+            try? Keychain.delete(key: .pubkySecretKey)
+            if let previousSession {
+                try? Keychain.saveString(key: .paykitSession, str: previousSession)
+            }
+            if let previousSecretKey {
+                try? Keychain.saveString(key: .pubkySecretKey, str: previousSecretKey)
+            }
+            defaults.set(previousPending, forKey: "pubky_profile_setup_pending")
+        }
+
+        // An external or borrowed session with no local secret to re-sign-in with.
+        try Keychain.delete(key: .pubkySecretKey)
+        try Keychain.delete(key: .paykitSession)
+        try Keychain.saveString(key: .paykitSession, str: "external-session-secret")
+        defaults.set(false, forKey: "pubky_profile_setup_pending")
+        let manager = KeyDerivationProbeProfileManager()
+
+        do {
+            try await manager.createIdentity(name: "Test", bio: "", links: [], loadStoredSecretKey: { nil })
+            XCTFail("Expected an unrecoverable session to block identity creation")
+        } catch {
+            XCTAssertFalse(manager.didDeriveKeys, "A new identity must not be derived over an existing session")
+        }
+
+        XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "external-session-secret")
+        XCTAssertNil(try Keychain.loadString(key: .pubkySecretKey))
+    }
+
+    @MainActor
     func testSignupFinishesProfileSetupOnlyAfterActivation() async throws {
         let defaults = UserDefaults.standard
         let previousPending = defaults.object(forKey: "pubky_profile_setup_pending")

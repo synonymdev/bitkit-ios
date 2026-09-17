@@ -372,6 +372,16 @@ class PubkyProfileManager: ObservableObject {
             return
         }
 
+        // Resuming an interrupted setup already returned above, so reaching here creates or
+        // restores an identity. A stored session that no local secret can re-sign-in belongs to
+        // an external or borrowed identity: signing up would overwrite its still-recoverable
+        // session secret, so refuse instead of silently replacing it.
+        let hasStoredLocalSecret = try Keychain.loadString(key: .pubkySecretKey)?.isEmpty == false
+        let hasStoredSession = try Keychain.loadString(key: .paykitSession)?.isEmpty == false
+        guard hasStoredLocalSecret || !hasStoredSession else {
+            throw PubkyServiceError.authFailed("A Pubky identity is already recoverable")
+        }
+
         setProfileSetupPending(false)
         try await Self.completeIdentityCreation(
             loadStoredSecretKey: loadStoredSecretKey,
