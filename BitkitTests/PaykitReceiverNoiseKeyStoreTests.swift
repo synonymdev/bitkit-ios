@@ -54,6 +54,49 @@ final class PaykitReceiverNoiseKeyStoreTests: XCTestCase {
         XCTAssertEqual(persistedBytes, Data(repeating: 1, count: 32))
     }
 
+    func testReceiverNoiseKeyFollowsWalletReplacementAfterKeychainWipe() throws {
+        var persistedBytes: Data?
+        var derivedBytes = Data(repeating: 1, count: 32)
+        let store = PaykitReceiverNoiseKeyStore(
+            loadBytes: { persistedBytes },
+            upsertBytes: { persistedBytes = $0 },
+            deriveBytes: { derivedBytes }
+        )
+        let previousKey = try store.loadOrDerive()
+
+        persistedBytes = nil
+        derivedBytes = Data(repeating: 2, count: 32)
+
+        let replacementKey = try store.loadOrDerive().exportBytes()
+        XCTAssertEqual(replacementKey, derivedBytes)
+        XCTAssertEqual(persistedBytes, derivedBytes)
+        XCTAssertThrowsError(try store.persist(previousKey))
+
+        let restoredStore = PaykitReceiverNoiseKeyStore(
+            loadBytes: { persistedBytes },
+            upsertBytes: { persistedBytes = $0 },
+            deriveBytes: { derivedBytes }
+        )
+        XCTAssertEqual(try restoredStore.loadOrDerive().exportBytes(), replacementKey)
+    }
+
+    func testRejectsChangedPersistedKeyAfterCaching() throws {
+        let derivedBytes = Data(repeating: 1, count: 32)
+        var persistedBytes: Data? = derivedBytes
+        let store = PaykitReceiverNoiseKeyStore(
+            loadBytes: { persistedBytes },
+            upsertBytes: { _ in XCTFail("Invalid bytes must not be overwritten") },
+            deriveBytes: { derivedBytes }
+        )
+        _ = try store.loadOrDerive()
+
+        for invalidBytes in [Data(repeating: 1, count: 31), Data(repeating: 2, count: 32)] {
+            persistedBytes = invalidBytes
+            XCTAssertThrowsError(try store.loadOrDerive())
+            XCTAssertEqual(persistedBytes, invalidBytes)
+        }
+    }
+
     func testRejectsInvalidPersistedReceiverNoiseKey() {
         let store = PaykitReceiverNoiseKeyStore(
             loadBytes: { Data(repeating: 0, count: 31) },
