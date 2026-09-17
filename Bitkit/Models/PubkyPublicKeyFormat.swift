@@ -56,7 +56,10 @@ enum PubkyPublicKeyFormat {
 
     static func displayTruncated(_ input: String) -> String {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rawKey = trimmed.count == maximumInputLength && trimmed.lowercased().hasPrefix(prefix)
+        // A bare key is never a prefixed one, so its leading characters stay even when they
+        // spell "pubky". Anything else keeps the historic behaviour of stripping the prefix.
+        let isBareKey = trimmed.count == rawKeyLength
+        let rawKey = !isBareKey && trimmed.lowercased().hasPrefix(prefix)
             ? String(trimmed.dropFirst(prefix.count))
             : trimmed
         guard rawKey.count > 10 else { return rawKey }
