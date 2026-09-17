@@ -1531,7 +1531,9 @@ class PubkyProfileManager: ObservableObject {
     }
 
     nonisolated static func hasStoredIdentity() throws -> Bool {
-        for key in [KeychainEntryType.paykitSession, .pubkySecretKey] {
+        // A source-owned reference is a recoverable identity too: signup must never create a
+        // local identity while a borrowed one is connected or still pending cleanup.
+        for key in [KeychainEntryType.paykitSession, .pubkySecretKey, .sharedPubkyIdentityReference] {
             if let value = try Keychain.loadString(key: key), !value.isEmpty {
                 return true
             }
