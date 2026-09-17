@@ -402,6 +402,39 @@ final class SharedPubkyIdentityTests: XCTestCase {
         XCTAssertEqual(recordedEvents, ["first-start", "first-end", "second"])
     }
 
+    func testSharedSourceRevalidationFailsClosedForRevokedAndUnavailableSources() throws {
+        let (_, bare, secret) = try identityFixture()
+        let reference = try SharedPubkyIdentityRefV1(sourceApp: .ring, pubky: bare)
+
+        XCTAssertThrowsError(try PubkyProfileManager.validateSharedIdentitySource(
+            reference: reference,
+            isSourceAvailable: true,
+            loadSharedCredential: { _ in throw SharedPubkyIdentityError.sourceIdentityMissing }
+        )) { error in
+            XCTAssertEqual(error as? SharedPubkyIdentityError, .sourceIdentityMissing)
+        }
+
+        XCTAssertThrowsError(try PubkyProfileManager.validateSharedIdentitySource(
+            reference: reference,
+            isSourceAvailable: false,
+            loadSharedCredential: { _ in
+                XCTFail("An unavailable source must fail before reading shared credentials")
+                return secret
+            }
+        )) { error in
+            XCTAssertEqual(error as? SharedPubkyIdentityError, .sourceUnavailable)
+        }
+
+        XCTAssertNoThrow(try PubkyProfileManager.validateSharedIdentitySource(
+            reference: nil,
+            isSourceAvailable: false,
+            loadSharedCredential: { _ in
+                XCTFail("An owned identity must never read the shared vault")
+                return secret
+            }
+        ))
+    }
+
     func testActiveIdentityRejectsLocalAndSharedProvenanceCoexistence() throws {
         let (prefixed, bare, secret) = try identityFixture()
         let reference = try SharedPubkyIdentityRefV1(sourceApp: .ring, pubky: bare)
