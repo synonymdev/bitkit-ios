@@ -367,7 +367,7 @@ struct PaymentRequestsView: View {
             BodyMText(t("wallet__payment_requests_empty_description"), textColor: .white64)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, 24)
+        .padding(.bottom, ScreenLayout.floatingFooterClearance)
     }
 
     private var activeRequests: [PaykitPaymentRequest] {
