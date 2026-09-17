@@ -122,6 +122,48 @@ final class SharedPubkyIdentityTests: XCTestCase {
         XCTAssertEqual(accounts.sorted(), [currentAccount, ringAccount].sorted())
     }
 
+    func testDestructiveDeletionErasesStaleBitkitMirrorAndPreservesRingMirror() throws {
+        let (_, bare, _) = try identityFixture()
+        let staleBare = String(repeating: "y", count: 52)
+        let currentAccount = SharedPubkyIdentityVault.account(source: .bitkit, pubky: bare)
+        let staleAccount = SharedPubkyIdentityVault.account(source: .bitkit, pubky: staleBare)
+        let ringAccount = SharedPubkyIdentityVault.account(source: .ring, pubky: staleBare)
+        var accounts = [currentAccount, staleAccount, ringAccount]
+        var deletedAccounts: [String] = []
+
+        try SharedPubkyIdentityVault.deleteOwnedBitkitIdentities(
+            including: currentAccount,
+            listAccounts: { accounts },
+            deleteAccount: { account in
+                deletedAccounts.append(account)
+                accounts.removeAll { $0 == account }
+            }
+        )
+
+        XCTAssertEqual(deletedAccounts, [currentAccount, staleAccount])
+        XCTAssertEqual(accounts, [ringAccount])
+    }
+
+    func testDestructiveDeletionFailsClosedWhileAnOwnedMirrorSurvives() throws {
+        let (_, bare, _) = try identityFixture()
+        let staleBare = String(repeating: "y", count: 52)
+        let currentAccount = SharedPubkyIdentityVault.account(source: .bitkit, pubky: bare)
+        let staleAccount = SharedPubkyIdentityVault.account(source: .bitkit, pubky: staleBare)
+        var accounts = [currentAccount, staleAccount]
+
+        XCTAssertThrowsError(try SharedPubkyIdentityVault.deleteOwnedBitkitIdentities(
+            including: currentAccount,
+            listAccounts: { accounts },
+            deleteAccount: { account in
+                guard account == currentAccount else { return }
+                accounts.removeAll { $0 == account }
+            }
+        )) { error in
+            XCTAssertEqual(error as? SharedPubkyIdentityError, .invalidRecord)
+        }
+        XCTAssertEqual(accounts, [staleAccount])
+    }
+
     func testOrphanCleanupDeletesSharedMirrorBeforePrivateAndRNKeychains() throws {
         var events: [String] = []
 

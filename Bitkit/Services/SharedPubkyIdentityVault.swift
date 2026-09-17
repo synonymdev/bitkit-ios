@@ -140,22 +140,40 @@ enum SharedPubkyIdentityVault {
             throw SharedPubkyIdentityError.invalidPublicKey
         }
 
-        let itemAccount = account(source: .bitkit, pubky: normalizedPubky)
-        try deleteOwnedAccount(itemAccount)
-
-        let remainingAccounts = try allAccounts()
-        guard !remainingAccounts.contains(itemAccount) else {
-            throw SharedPubkyIdentityError.invalidRecord
-        }
+        try deleteOwnedBitkitIdentities(
+            including: account(source: .bitkit, pubky: normalizedPubky),
+            listAccounts: { try allAccounts() },
+            deleteAccount: { try deleteOwnedAccount($0) }
+        )
     }
 
     static func deleteAllBitkitIdentities() throws {
-        let accounts = try ownedAccounts(accounts: allAccounts(), source: .bitkit)
-        for itemAccount in accounts {
-            try deleteOwnedAccount(itemAccount)
+        try deleteOwnedBitkitIdentities(
+            including: nil,
+            listAccounts: { try allAccounts() },
+            deleteAccount: { try deleteOwnedAccount($0) }
+        )
+    }
+
+    /// Erases every Bitkit-owned mirror, not just the current one: a reconciliation that failed
+    /// while pruning can leave an older owned account behind, and destructive flows delete the
+    /// canonical private key as soon as this returns.
+    static func deleteOwnedBitkitIdentities(
+        including currentAccount: String?,
+        listAccounts: () throws -> [String],
+        deleteAccount: (String) throws -> Void
+    ) throws {
+        if let currentAccount {
+            try deleteAccount(currentAccount)
         }
 
-        guard try ownedAccounts(accounts: allAccounts(), source: .bitkit).isEmpty else {
+        for staleAccount in try ownedAccounts(accounts: listAccounts(), source: .bitkit)
+            where staleAccount != currentAccount
+        {
+            try deleteAccount(staleAccount)
+        }
+
+        guard try ownedAccounts(accounts: listAccounts(), source: .bitkit).isEmpty else {
             throw SharedPubkyIdentityError.invalidRecord
         }
     }
