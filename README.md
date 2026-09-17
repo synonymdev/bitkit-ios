@@ -118,6 +118,29 @@ This installs a pre-commit hook that lints Swift files with SwiftFormat.
 
 Due to the Rust dependencies in the project, Xcode previews are only compatible with iOS 17 and below.
 
+### XcodeBuildMCP
+
+Builds, simulator control and UI automation go through the [XcodeBuildMCP](https://github.com/getsentry/XcodeBuildMCP) CLI rather than raw `xcodebuild`, `xcrun` and `simctl`. It is also what agents use to run the specs in `journeys/`.
+
+**Install:**
+```bash
+brew tap getsentry/xcodebuildmcp && brew install xcodebuildmcp
+```
+
+**Configure project defaults:**
+```bash
+xcodebuildmcp setup
+```
+
+The wizard writes `.xcodebuildmcp/config.yaml`, which is gitignored because the CLI materializes a machine-local simulator UDID into it. The values this repo wants are project `Bitkit.xcodeproj`, scheme `Bitkit`, configuration `Debug`, simulator `iPhone 17`. There is no standalone `.xcworkspace` here, so this is `--project-path`, never `--workspace-path`.
+
+**Build and run:**
+```bash
+xcodebuildmcp simulator build-and-run
+```
+
+See the Agent CLI section in `AGENTS.md` for E2E compilation flags, UI automation and the cross-platform commands.
+
 ### Common Tasks
 
 Day-to-day commands live in the `Justfile`:

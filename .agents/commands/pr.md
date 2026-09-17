@@ -94,6 +94,7 @@ This PR adds support for...
 - Each list item should start with a verb (Adds, Fixes, Updates, Removes, Refactors, etc.)
 
 **Description Rules:**
+- One bullet per change under `### Description`: what changed and why, in one sentence each (`Adds X so that Y`, `Fixes X because Y`)
 - Base content around all commit messages in the branch
 - Use branch name as the conceptual anchor
 - Match writing style of recent PRs
@@ -101,6 +102,12 @@ This PR adds support for...
 - Avoid excessive bold formatting like `**this:** that`
 - Minimize code and file references like `TheClassName` or `someFunctionName`, `thisFileName.ext`
 - Exception: for refactoring PRs (1:10 ratio of functionality to code changes), more technical detail is ok
+
+**Out of Scope (`#### Out of Scope`, a subsection at the end of `### Description`):**
+- Required for `feat`, `fix`, and `refactor` PRs: one bullet per item the PR deliberately leaves out, with the file or area it covers when there is one (`path/or/area: item`); `None.` when nothing is left out
+- Not needed for version bumps, changelog-only changes, dependency bumps, and release PRs; other `chore`, `docs`, and `test` PRs include it at the author's discretion
+- Derive candidates from commit messages, linked issues, and review discussion (deferred follow-ups, adjacent behaviour left unchanged); ask the user when unsure
+- Reviewers, human and automated, read the bullets as the author's non-goals
 
 **Custom Instructions:**
 When the user provides custom instructions after `--`:
@@ -111,6 +118,17 @@ When the user provides custom instructions after `--`:
 - Preserve exact manual testing steps provided by the user (don't summarize or omit details)
 - If custom instructions include automated checks or coverage notes, place them under `#### Automated Checks`
 
+**Design:**
+- Include a `### Design` section when the PR template contains a `### Design` heading.
+- For user-visible UI changes with an existing design, link the relevant Figma frames, starting with the latest `Bitkit - Handoff vNN` page in https://www.figma.com/design/ltqvnKiejWj0JQiqtDf2JJ/.
+- For user-visible UI changes with no available design, including new features, write `N/A — no design available.`
+- For changes without user-visible UI changes, write `N/A — no UI changes.`
+- If the relevant Figma frame is missing or uncertain, state the uncertainty.
+- Never invent a Figma link or require a new design.
+- Reviewers may make at most one advisory request per PR when an existing-design UI PR omits its Figma link.
+- `N/A — no UI changes.` needs no review request; `N/A — no design available.` may receive the single advisory clarification.
+- Missing Figma links never block approval, CI, PR creation, or review readiness.
+
 **QA Notes / Validation:**
 - QA Notes separate actionable human QA instructions from automated verification coverage.
 - Always use this structure:
@@ -120,7 +138,8 @@ When the user provides custom instructions after `--`:
   #### Automated Checks
   ```
 - Keep local verification commands, `xcodebuild`, Swift tests, SwiftFormat, translation validation, unit tests, build passes, cargo test, cargo clippy, npm test, typecheck, CI coverage, or similar automated checks out of `#### Manual Tests`; summarize them under `#### Automated Checks` when they add useful context.
-- Use `#### Automated Checks` to summarize automated verification evidence, prioritizing coverage added, modified, or removed with file paths and a short explanation.
+- Use `#### Automated Checks` to summarize automated verification evidence, prioritizing coverage added, modified, or removed, each with the test file name and a short explanation.
+- Reference test files by bare file name only (e.g. `TransferViewModelTests.swift`), never the full path. Only when two referenced test files share the same name, prefix the shortest leading path segment(s) that disambiguate them (e.g. `BitkitTests/SendTests.swift` vs `BitkitUITests/SendTests.swift`).
 - For removed automated coverage, state why it was removed.
 - Do not list standard CI or PR bot commands as checkbox items just because they run for every PR. If standard CI coverage is worth mentioning, summarize it in one sentence.
 - List raw commands only when they were run locally, are non-standard, use special flags or environment values, validate workflow behavior, or explain a meaningful verification gap.
@@ -168,9 +187,9 @@ Concrete style target:
   - [ ] **5b.** back: returns to Connections List.
 - [ ] **6.** `regression:` Channel Detail → tap Close Connection: works.
 #### Automated Checks
-- Unit tests added: cover invoice timeout handling in `BitkitTests/TransferViewModelTests.swift`.
-- Unit tests modified: update channel navigation assertions in `BitkitTests/ChannelDetailsViewModelTests.swift`.
-- Test coverage removed: delete stale mock-only assertions from `BitkitTests/OldFlowTests.swift` because the flow no longer exists.
+- Unit tests added: cover invoice timeout handling in `TransferViewModelTests.swift`.
+- Unit tests modified: update channel navigation assertions in `ChannelDetailsViewModelTests.swift`.
+- Test coverage removed: delete stale mock-only assertions from `OldFlowTests.swift` because the flow no longer exists.
 - CI: standard build and test checks run by the PR bot.
 ```
 

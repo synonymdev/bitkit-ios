@@ -1,6 +1,9 @@
 @testable import Bitkit
+import BitkitCore
 import Foundation
 import Paykit
+import UIKit
+import UserNotifications
 import XCTest
 
 @MainActor
@@ -16,6 +19,159 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         for error in errors {
             XCTAssertNotNil(error.errorDescription)
         }
+    }
+
+    func testSubscriptionNotificationTargetRoundTripsExactBillingPeriod() throws {
+        defer { PaykitSubscriptionNotificationTargetStore.clear() }
+        PaykitSubscriptionNotificationTargetStore.clear()
+        let counterparty = "pubky\(String(repeating: "y", count: 52))"
+        let payerIdentity = "pubky\(String(repeating: "z", count: 52))"
+        let userInfo: [AnyHashable: Any] = [
+            "payer_identity": payerIdentity,
+            "payment_request_id": "subscription-id",
+            "counterparty": counterparty,
+            "counterparty_receiver_path": "bitkit/server",
+            "billing_period_starts_at": "2026-08-25T12:00:00Z",
+        ]
+
+        let target = try XCTUnwrap(PaykitSubscriptionNotificationTarget(userInfo: userInfo))
+        PaykitSubscriptionNotificationTargetStore.save(target)
+
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "week",
+            startsAt: "2026-08-25T12:00:00Z",
+            anchor: "2026-08-25T12:00:00Z",
+            endsAt: nil
+        )
+        let record = try paymentRequestRecord(
+            id: "subscription-id",
+            counterparty: counterparty,
+            state: .activeRecurring,
+            recurrence: recurrence
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let acceptedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-24T12:00:00Z"))
+        let through = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-26T12:00:00Z"))
+        let request = try XCTUnwrap(subscription.requests(through: through, acceptedAt: acceptedAt).first)
+
+        XCTAssertEqual(PaykitSubscriptionNotificationTargetStore.load(), target)
+        XCTAssertTrue(target.matches(identity: payerIdentity))
+        XCTAssertTrue(target.matches(request))
+        PaykitSubscriptionNotificationTargetStore.clear()
+        XCTAssertNil(PaykitSubscriptionNotificationTargetStore.load())
+    }
+
+    func testSubscriptionNotificationIdentifiersAreScopedToPayerIdentity() throws {
+        let startsAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-01T08:00:00Z"))
+        let requestId = PaykitPaymentRequest.ID(
+            paymentRequestId: "subscription",
+            counterparty: "pubkypayee",
+            counterpartyReceiverPath: PaykitReceiverPath.server,
+            billingPeriodStartsAt: startsAt
+        )
+
+        XCTAssertNotEqual(
+            PaykitSubscriptionNotificationIdentifier.identifier(identity: "pubkypayer-a", requestId: requestId),
+            PaykitSubscriptionNotificationIdentifier.identifier(identity: "pubkypayer-b", requestId: requestId)
+        )
+    }
+
+    func testSubscriptionAcceptanceHistoryDistinguishesRejectedProposalFromCanceledSubscription() throws {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let rejectedProposal = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .rejected,
+            recurrence: recurrence
+        )))
+        let canceledSubscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .canceled,
+            recurrence: recurrence,
+            acceptedEventId: "accepted-event"
+        )))
+
+        XCTAssertFalse(rejectedProposal.wasAccepted)
+        XCTAssertTrue(canceledSubscription.wasAccepted)
+    }
+
+    func testCanceledSubscriptionDoesNotRetainNotificationFromStaleSynchronization() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "week",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .activeRecurring,
+            recurrence: recurrence
+        )))
+        let center = PaykitSubscriptionNotificationCenterMock()
+        let scheduler = PaykitSubscriptionNotificationScheduler(center: center)
+        await center.pauseNextAdd()
+
+        let synchronization = Task {
+            await scheduler.synchronize(
+                [subscription],
+                acceptedAt: [subscription.id: now],
+                pendingRequestIds: [],
+                payerIdentity: "pubky\(String(repeating: "z", count: 52))",
+                notificationsEnabled: true,
+                now: now
+            )
+        }
+        try await waitUntil { await center.isAddPaused }
+        await scheduler.cancel()
+        await center.resumeAdd()
+        await synchronization.value
+
+        let pendingIdentifiers = await center.pendingIdentifiers
+        XCTAssertTrue(pendingIdentifiers.isEmpty)
+    }
+
+    func testDisablingNotificationsRemovesPendingSubscriptionPeriodNotification() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "week",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .activeRecurring,
+            recurrence: recurrence
+        )))
+        let request = try XCTUnwrap(subscription.paymentDueOnAcceptance(at: now))
+        let payerIdentity = "pubky\(String(repeating: "z", count: 52))"
+        let identifier = try XCTUnwrap(
+            PaykitSubscriptionNotificationIdentifier.identifier(identity: payerIdentity, requestId: request.id)
+        )
+        let center = PaykitSubscriptionNotificationCenterMock()
+        try await center.add(UNNotificationRequest(
+            identifier: identifier,
+            content: UNMutableNotificationContent(),
+            trigger: nil
+        ))
+        let scheduler = PaykitSubscriptionNotificationScheduler(center: center)
+
+        await scheduler.synchronize(
+            [subscription],
+            acceptedAt: [subscription.id: now],
+            pendingRequestIds: [request.id],
+            payerIdentity: payerIdentity,
+            notificationsEnabled: false,
+            now: now
+        )
+
+        let pendingIdentifiers = await center.pendingIdentifiers
+        XCTAssertTrue(pendingIdentifiers.isEmpty)
     }
 
     func testContactPaymentContextClaimIsExclusiveAndIdentityBased() {
@@ -68,6 +224,100 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
+    func testIncomingParseFailuresAreReasonSpecific() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let cases: [(PaymentRequestRecord, PaykitPaymentRequest.ParseFailure)] = try [
+            (paymentRequestRecord(id: "missing-role", role: nil), .missingLocalRole),
+            (paymentRequestRecord(id: "outgoing", role: .payee), .outgoingRequest),
+            (paymentRequestRecord(id: "unknown-role", role: .unknown), .unsupportedLocalRole),
+            (paymentRequestRecord(id: "missing-terms"), .missingTerms),
+            (paymentRequestRecord(id: "wrong-asset", asset: "BTC"), .unsupportedAsset),
+            (paymentRequestRecord(id: "invalid-amount", amount: "not-bitcoin"), .invalidAmount),
+            (paymentRequestRecord(id: "amount-out-of-range", amount: "184467440737.09551615"), .amountOutOfRange),
+            (paymentRequestRecord(id: "unsupported-endpoint", endpoints: ["btc-unsupported-method"]), .noSupportedEndpoint),
+            (paymentRequestRecord(id: "invalid-expiration", expiresAt: "not-a-timestamp"), .invalidExpiration),
+            (paymentRequestRecord(id: "expired", expiresAt: timestamp(now)), .expired),
+        ].map { record, failure in
+            if record.paymentRequestId == "missing-terms" {
+                var record = record
+                record.terms = nil
+                return (record, failure)
+            }
+            return (record, failure)
+        }
+
+        for (record, expectedFailure) in cases {
+            guard case let .failure(failure) = PaykitPaymentRequest.parseIncoming(record: record, now: now) else {
+                XCTFail("Expected \(record.paymentRequestId) to fail parsing")
+                continue
+            }
+            XCTAssertEqual(failure, expectedFailure)
+        }
+    }
+
+    func testSynchronizeLogsRedactedParseFailuresWithoutRequestData() async throws {
+        let counterparty = "pubky\(String(repeating: "y", count: 52))"
+        let outgoingCounterparty = "pubky\(String(repeating: "p", count: 52))"
+        let unknownRoleCounterparty = "pubky\(String(repeating: "u", count: 52))"
+        let secretNote = "do-not-log-this-note"
+        let records = try [
+            paymentRequestRecord(
+                id: "do-not-log-outgoing-id",
+                counterparty: outgoingCounterparty,
+                role: .payee
+            ),
+            paymentRequestRecord(
+                id: "do-not-log-unknown-role-id",
+                counterparty: unknownRoleCounterparty,
+                role: .unknown
+            ),
+            paymentRequestRecord(
+                id: "do-not-log-this-id",
+                counterparty: counterparty,
+                asset: "BTC",
+                metadata: "{\"note\":\"\(secretNote)\"}"
+            ),
+            paymentRequestRecord(
+                id: "do-not-log-this-endpoint-id",
+                counterparty: counterparty,
+                endpoints: ["btc-private-unsupported-endpoint"]
+            ),
+            paymentRequestRecord(
+                id: "do-not-log-invalid-counterparty-id",
+                counterparty: "do-not-log-invalid-counterparty",
+                asset: "BTC"
+            ),
+        ]
+        let recorder = PaymentRequestLogRecorder()
+        let service = PaykitPaymentRequestService(
+            sdk: PaymentRequestSdkMock(records: records),
+            logWarning: { recorder.append($0) }
+        )
+
+        let snapshot = try await service.synchronize()
+        let firstMessages = recorder.messages
+        _ = try await service.synchronize()
+
+        XCTAssertTrue(snapshot.incoming.isEmpty)
+        let output = recorder.messages.joined(separator: "\n")
+        XCTAssertEqual(recorder.messages, firstMessages)
+        XCTAssertTrue(output.contains("category=parse reason=unsupported_asset"))
+        XCTAssertTrue(output.contains("category=parse reason=no_supported_endpoint"))
+        XCTAssertTrue(output.contains("category=parse reason=unsupported_local_role"))
+        XCTAssertTrue(output.contains("counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(counterparty))"))
+        XCTAssertTrue(output.contains("counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(unknownRoleCounterparty))"))
+        XCTAssertFalse(output.contains(PaykitPaymentRequestDiagnostics.redactedCounterparty(outgoingCounterparty)))
+        XCTAssertTrue(output.contains("counterparty=<invalid>"))
+        XCTAssertFalse(output.contains(counterparty))
+        XCTAssertFalse(output.contains("do-not-log-this-id"))
+        XCTAssertFalse(output.contains("do-not-log-this-endpoint-id"))
+        XCTAssertFalse(output.contains("do-not-log-outgoing-id"))
+        XCTAssertFalse(output.contains("do-not-log-unknown-role-id"))
+        XCTAssertFalse(output.contains(secretNote))
+        XCTAssertFalse(output.contains("btc-private-unsupported-endpoint"))
+        XCTAssertFalse(output.contains("do-not-log-invalid-counterparty"))
+    }
+
     func testRefreshDropsExpiredAndUnsupportedRequests() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let recurrence = PaymentRequestRecurrence(
@@ -116,7 +366,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         await manager.refresh()
 
-        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["incoming"])
+        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["incoming", "accepted"])
         XCTAssertEqual(
             Set(manager.historyRequests.map(\.paymentRequestId)),
             Set(["incoming", "accepted", "rejected", "expired", "outgoing", "unsupported"])
@@ -129,6 +379,1137 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             manager.historyRequests.first { $0.paymentRequestId == "outgoing" }?.direction,
             .outgoing
         )
+    }
+
+    func testRefreshMapsActiveRecurringRequestAndCurrentUnpaidPeriod() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let record = try paymentRequestRecord(
+            id: "recurring",
+            state: .activeRecurring,
+            recurrence: recurrence,
+            metadata: #"{"note":"Mobile plan","subscription":{"version":1,"description":"10 GB every month","benefits":["Roaming"]}}"#
+        )
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [record]),
+            clock: PaymentRequestTestClock(now)
+        )
+
+        await manager.refresh()
+
+        let subscription = try XCTUnwrap(manager.subscriptions.first)
+        XCTAssertEqual(subscription.note, "Mobile plan")
+        XCTAssertEqual(subscription.metadata.description, "10 GB every month")
+        XCTAssertEqual(subscription.metadata.benefits, ["Roaming"])
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertEqual(request.paymentRequestId, "recurring")
+        XCTAssertFalse(request.requiresAcceptance)
+        XCTAssertEqual(request.billingPeriod?.startsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-01T08:00:00Z")))
+        XCTAssertEqual(request.billingPeriod?.endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-01T08:00:00Z")))
+    }
+
+    func testRefreshKeepsCreatorSubscriptionWithoutGeneratingPayerPayment() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let record = try paymentRequestRecord(
+            id: "creator-recurring",
+            state: .activeRecurring,
+            role: .payee,
+            recurrence: recurrence,
+            metadata: #"{"note":"Creator plan","subscription":{"version":1,"description":"Monthly support","benefits":[],"icon_uri":"pubky://creator/icon"}}"#
+        )
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [record]),
+            clock: PaymentRequestTestClock(now)
+        )
+
+        await manager.refresh()
+
+        let subscription = try XCTUnwrap(manager.subscriptions.first)
+        XCTAssertTrue(subscription.isCreatedByUser)
+        XCTAssertEqual(subscription.note, "Creator plan")
+        XCTAssertEqual(subscription.metadata.description, "Monthly support")
+        XCTAssertEqual(subscription.metadata.iconURI, "pubky://creator/icon")
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertTrue(manager.historyRequests.isEmpty)
+    }
+
+    func testCreatorPaymentsAggregateDuplicateProofEventsForOneBillingPeriod() throws {
+        let period = BillingPeriod(startsAt: "2027-01-01T08:00:00Z", endsAt: "2027-02-01T08:00:00Z")
+        let first = try paymentProofRecord(
+            endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            billingPeriod: period
+        )
+        var second = first
+        second.eventId = "850e8400-e29b-41d4-a716-446655440000"
+        var offSchedule = first
+        offSchedule.eventId = "950e8400-e29b-41d4-a716-446655440000"
+        offSchedule.billingPeriod = BillingPeriod(startsAt: period.startsAt, endsAt: "2027-02-02T08:00:00Z")
+        let record = try paymentRequestRecord(
+            state: .activeRecurring,
+            role: .payee,
+            recurrence: PaymentRequestRecurrence(
+                every: 1,
+                unit: "month",
+                startsAt: period.startsAt,
+                anchor: period.startsAt,
+                endsAt: nil
+            ),
+            paymentProofs: [first, second, offSchedule]
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        XCTAssertEqual(subscription.payments.count, 1)
+        let received = subscription.receivedPaymentRequests()
+        XCTAssertEqual(received.count, 1)
+        XCTAssertEqual(received.first?.direction, .outgoing)
+        XCTAssertEqual(received.first?.lifecycleState, .proofSubmitted)
+        XCTAssertEqual(received.first?.paymentProofKind, .lightning)
+    }
+
+    func testExpiredCreatorSubscriptionsKeepPaidHistoryAccessible() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-15T08:00:00Z"))
+        let period = BillingPeriod(startsAt: "2027-01-01T08:00:00Z", endsAt: "2027-02-01T08:00:00Z")
+        let proof = try paymentProofRecord(
+            endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            billingPeriod: period
+        )
+        for state in [PaymentRequestLifecycleState.canceled, .activeRecurring] {
+            for hasPayments in [false, true] {
+                let record = try paymentRequestRecord(
+                    state: state,
+                    role: .payee,
+                    recurrence: PaymentRequestRecurrence(
+                        every: 1,
+                        unit: "month",
+                        startsAt: period.startsAt,
+                        anchor: period.startsAt,
+                        endsAt: state == .activeRecurring ? period.endsAt : nil
+                    ),
+                    paymentProofs: hasPayments ? [proof] : []
+                )
+                let manager = paymentRequestManager(sdk: PaymentRequestSdkMock(records: [record]), clock: PaymentRequestTestClock(now))
+                await manager.refresh()
+                let subscription = try XCTUnwrap(manager.subscriptions.first)
+                XCTAssertFalse(subscription.isCreatedVisible(at: now))
+                XCTAssertEqual(subscription.isExpiredVisible(at: now), hasPayments)
+                XCTAssertEqual(subscription.receivedPaymentRequests().count, hasPayments ? 1 : 0)
+                XCTAssertFalse(subscription.canCancel(at: now))
+                XCTAssertTrue(manager.pendingRequests.isEmpty)
+            }
+        }
+    }
+
+    func testFractionalBillingProofsRemainPaidForCreatorAndPayer() throws {
+        for fraction in ["123", "123456789", "999999999"] {
+            let first = BillingPeriod(
+                startsAt: "2027-01-15T08:00:00.\(fraction)Z",
+                endsAt: "2027-02-15T08:00:00.\(fraction)Z"
+            )
+            let second = BillingPeriod(
+                startsAt: first.endsAt,
+                endsAt: "2027-03-15T08:00:00.\(fraction)Z"
+            )
+            let proofs = try [first, second].map {
+                try paymentProofRecord(
+                    endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                    kind: .lightning,
+                    billingPeriod: $0
+                )
+            }
+            for role in [PaymentRequestLocalRole.payee, .payer] {
+                let record = try paymentRequestRecord(
+                    state: .activeRecurring,
+                    role: role,
+                    recurrence: PaymentRequestRecurrence(
+                        every: 1,
+                        unit: "month",
+                        startsAt: first.startsAt,
+                        anchor: first.startsAt,
+                        endsAt: nil
+                    ),
+                    paymentProofs: proofs
+                )
+                let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+                XCTAssertEqual(subscription.payments.count, 2)
+                let requests = if role == .payee {
+                    subscription.receivedPaymentRequests()
+                } else {
+                    try subscription.requests(
+                        through: XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-16T08:00:00Z")),
+                        acceptedAt: XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:01Z"))
+                    )
+                }
+                XCTAssertEqual(requests.count, 2)
+                XCTAssertTrue(requests.allSatisfy { $0.lifecycleState == .proofSubmitted })
+            }
+        }
+    }
+
+    func testCreatorProposalBuildsRecurringTermsAndStaysQueuedUntilDelivery() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let expiresAt = now.addingTimeInterval(60)
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]]
+        )
+        try await sdk.setProposalResult(paymentRequestRecord(
+            id: "creator-proposal",
+            counterparty: publicKey,
+            counterpartyReceiverPath: PaykitReceiverPath.wallet,
+            role: .payee
+        ))
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+
+        let subscription = try await manager.proposeSubscription(
+            PaykitSubscriptionDraft(
+                amountSats: 100_000,
+                name: " Monthly support ",
+                description: " Thank you ",
+                frequency: .month,
+                expiresAt: expiresAt,
+                iconData: nil
+            ),
+            to: XCTUnwrap(manager.eligibleTargets.first)
+        )
+
+        let snapshot = await sdk.snapshot()
+        let proposed = try XCTUnwrap(snapshot.proposedRequests.first)
+        XCTAssertEqual(proposed.amount, "0.001")
+        XCTAssertEqual(proposed.asset, PaykitIssuerInterop.bitcoinAsset)
+        XCTAssertEqual(proposed.expiresAt, timestamp(expiresAt))
+        XCTAssertEqual(proposed.recurrence?.every, 1)
+        XCTAssertEqual(proposed.recurrence?.unit, "month")
+        XCTAssertEqual(proposed.recurrence?.startsAt, timestamp(now))
+        XCTAssertEqual(proposed.recurrence?.anchor, timestamp(now))
+        XCTAssertNil(proposed.recurrence?.endsAt)
+        let metadataData = try XCTUnwrap(proposed.metadata.data(using: .utf8))
+        let metadata = try XCTUnwrap(JSONSerialization.jsonObject(with: metadataData) as? [String: Any])
+        XCTAssertEqual(metadata["note"] as? String, "Monthly support")
+        let subscriptionMetadata = try XCTUnwrap(metadata["subscription"] as? [String: Any])
+        XCTAssertEqual(subscriptionMetadata["description"] as? String, "Thank you")
+        XCTAssertTrue(subscription.isCreatedByUser)
+        XCTAssertEqual(subscription.deliveryStatus, .queued)
+        XCTAssertEqual(manager.subscriptions, [subscription])
+    }
+
+    func testCreatedSubscriptionSurvivesContactChangesButNotSessionChanges() async throws {
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let otherKey = "pubky\(String(repeating: "a", count: 52))"
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        for change in ["reordered", "removed", "added", "cleared", "identity"] {
+            let sdk = PaymentRequestSdkMock(records: [])
+            await sdk.configureRecipients(
+                peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+                receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]]
+            )
+            try await sdk.setProposalResult(paymentRequestRecord(role: .payee))
+            let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+            await manager.refreshEligibleTargets(savedPublicKeys: [publicKey, otherKey])
+            let target = try XCTUnwrap(manager.eligibleTargets.first)
+            await sdk.pauseNextProcess()
+            let proposal = Task {
+                try await manager.proposeSubscription(
+                    PaykitSubscriptionDraft(
+                        amountSats: 1000, name: "Support", description: "", frequency: .month,
+                        expiresAt: now.addingTimeInterval(60), iconData: nil
+                    ),
+                    to: target
+                )
+            }
+            try await waitUntil { await sdk.processIsPaused() }
+            switch change {
+            case "reordered": await manager.refreshEligibleTargets(savedPublicKeys: [otherKey, publicKey])
+            case "removed": await manager.refreshEligibleTargets(savedPublicKeys: [])
+            case "added": await manager.refreshEligibleTargets(savedPublicKeys: [publicKey, otherKey, String(repeating: "o", count: 52)])
+            case "cleared": manager.clear()
+            default: manager.activate(identity: otherKey)
+            }
+            await sdk.resumeProcess()
+            let subscription = try await proposal.value
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.proposedRequests.count, 1, change)
+            XCTAssertEqual(manager.subscriptions, ["cleared", "identity"].contains(change) ? [] : [subscription], change)
+            XCTAssertFalse(manager.isCreatingRequest, change)
+        }
+    }
+
+    func testSubscriptionRevalidatesAfterIconUploadBeforeEnqueue() async throws {
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.purple.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        let iconData = try XCTUnwrap(image.pngData())
+        let optionKey = PublicPaykitService.lightningPaymentOptionEnabledKey
+        let previousOption = UserDefaults.standard.object(forKey: optionKey)
+        defer { UserDefaults.standard.set(previousOption, forKey: optionKey) }
+
+        for change in ["unchanged", "expired", "removed", "unlinked", "unsupported", "endpoint", "cleared"] {
+            UserDefaults.standard.set(true, forKey: optionKey)
+            let clock = PaymentRequestTestClock(now)
+            let sdk = PaymentRequestSdkMock(records: [])
+            await sdk.configureRecipients(
+                peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+                receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]]
+            )
+            try await sdk.setProposalResult(paymentRequestRecord(role: .payee))
+            let manager = paymentRequestManager(sdk: sdk, clock: clock)
+            await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+            let target = try XCTUnwrap(manager.eligibleTargets.first)
+            await sdk.pauseNextUpload()
+            let proposal = Task {
+                try await manager.proposeSubscription(
+                    PaykitSubscriptionDraft(
+                        amountSats: 1000, name: "Support", description: "", frequency: .month,
+                        expiresAt: now.addingTimeInterval(60), iconData: iconData
+                    ),
+                    to: target
+                )
+            }
+            try await waitUntil { await sdk.uploadIsPaused() }
+            switch change {
+            case "expired": clock.advance(by: 60)
+            case "removed": await manager.refreshEligibleTargets(savedPublicKeys: [])
+            case "unlinked": await sdk.configureRecipients(peers: [], receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]])
+            case "unsupported":
+                await sdk.configureRecipients(
+                    peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+                    receiverPathsByPublicKey: [:]
+                )
+            case "endpoint": UserDefaults.standard.set(false, forKey: optionKey)
+            case "cleared": manager.clear()
+            default: break
+            }
+            await sdk.resumeUpload()
+            do {
+                _ = try await proposal.value
+                XCTAssertEqual(change, "unchanged")
+            } catch {
+                XCTAssertNotEqual(change, "unchanged")
+                XCTAssertEqual(error as? PaykitPaymentRequestError, change == "expired" ? .requestExpired : .requestUnavailable, change)
+            }
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.uploadCount, 1, change)
+            XCTAssertEqual(snapshot.proposedRequests.count, change == "unchanged" ? 1 : 0, change)
+            XCTAssertEqual(manager.subscriptions.count, change == "unchanged" ? 1 : 0, change)
+            XCTAssertFalse(manager.isCreatingRequest, change)
+        }
+    }
+
+    func testOversizedCreatorProposalIsRejectedBeforeIconUploadOrEnqueue() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]]
+        )
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+        let target = try XCTUnwrap(manager.eligibleTargets.first)
+
+        for iconData in [nil, Data([0, 1, 2])] as [Data?] {
+            do {
+                _ = try await manager.proposeSubscription(
+                    PaykitSubscriptionDraft(
+                        amountSats: 1000,
+                        name: "Support",
+                        description: String(repeating: "💜", count: 256),
+                        frequency: .month,
+                        expiresAt: now.addingTimeInterval(60),
+                        iconData: iconData
+                    ),
+                    to: target
+                )
+                XCTFail("Oversized proposals must be rejected before external writes")
+            } catch {
+                XCTAssertEqual(error as? PaykitPaymentRequestError, .subscriptionTooLong)
+            }
+        }
+
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.uploadCount, 0)
+        XCTAssertTrue(snapshot.proposedRequests.isEmpty)
+        XCTAssertTrue(manager.subscriptions.isEmpty)
+        XCTAssertFalse(manager.isCreatingRequest)
+    }
+
+    func testCreatorPendingProposalCanBeDeletedButFixedEndProposalCannot() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let openEnded = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            role: .payee,
+            expiresAt: timestamp(now.addingTimeInterval(60)),
+            recurrence: PaymentRequestRecurrence(
+                every: 1,
+                unit: "month",
+                startsAt: timestamp(now),
+                anchor: timestamp(now),
+                endsAt: nil
+            )
+        )))
+        let fixedEnd = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            role: .payee,
+            expiresAt: timestamp(now.addingTimeInterval(60)),
+            recurrence: PaymentRequestRecurrence(
+                every: 1,
+                unit: "month",
+                startsAt: timestamp(now),
+                anchor: timestamp(now),
+                endsAt: timestamp(now.addingTimeInterval(3600))
+            )
+        )))
+
+        XCTAssertTrue(openEnded.canCancel(at: now))
+        XCTAssertFalse(fixedEnd.canCancel(at: now))
+    }
+
+    func testEndedSubscriptionKeepsItsUnpaidPeriodAvailable() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: "2027-01-10T08:00:00Z"
+        )
+        let record = try paymentRequestRecord(
+            state: .activeRecurring,
+            recurrence: recurrence,
+            lastEventAt: "2027-01-01T08:00:00Z"
+        )
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [record]),
+            clock: PaymentRequestTestClock(now)
+        )
+
+        await manager.refresh()
+
+        XCTAssertTrue(try XCTUnwrap(manager.subscriptions.first).isExpired(at: now))
+        XCTAssertEqual(manager.pendingRequests.first?.billingPeriod?.endsAt, recurrence.endsAt.flatMap(PaykitPaymentRequest.parseDate))
+    }
+
+    func testAcceptingSubscriptionSurfacesCurrentPeriodAndCancelRemovesIt() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(id: "recurring", recurrence: recurrence)])
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refresh()
+
+        let subscription = try XCTUnwrap(manager.subscriptions.first)
+        let dueRequest = try await manager.accept(subscription)
+
+        XCTAssertEqual(dueRequest?.paymentRequestId, "recurring")
+        let request = try XCTUnwrap(dueRequest)
+        XCTAssertFalse(request.requiresAcceptance)
+        try await manager.prepareForPayment(request)
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertTrue(manager.isApprovedForPayment(request))
+        await manager.finishPayment(request)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        try await manager.cancel(XCTUnwrap(manager.subscriptions.first))
+        XCTAssertTrue(manager.subscriptions.isEmpty)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testSubscriptionPaymentCanBeReopenedForManualRetry() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let manager = try paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)]),
+            clock: PaymentRequestTestClock(now)
+        )
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+
+        XCTAssertEqual(manager.paymentRequestForRetry(request.id), request)
+        XCTAssertTrue(manager.requestPresentation(request))
+        XCTAssertEqual(manager.requestedPresentationId, request.id)
+    }
+
+    func testAcceptedRequestPastProposalExpirationDoesNotRescheduleExpiration() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let record = try paymentRequestRecord(
+            state: .accepted,
+            expiresAt: timestamp(now.addingTimeInterval(-60))
+        )
+        let manager = paymentRequestManager(sdk: PaymentRequestSdkMock(records: [record]), clock: clock)
+
+        await manager.refresh()
+
+        XCTAssertEqual(manager.pendingRequests.count, 1)
+        let baseline = clock.invocationCount()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertLessThan(clock.invocationCount() - baseline, 10)
+        manager.clear()
+    }
+
+    func testAcceptingSubscriptionSelectsPeriodFromMatchingCounterpartyAndPath() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let first = try paymentRequestRecord(id: "shared", counterparty: "first", recurrence: recurrence)
+        let second = try paymentRequestRecord(
+            id: "shared",
+            counterparty: "second",
+            counterpartyReceiverPath: PaykitReceiverPath.wallet,
+            recurrence: recurrence
+        )
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [first, second]),
+            clock: PaymentRequestTestClock(now)
+        )
+        await manager.refresh()
+
+        let subscription = try XCTUnwrap(manager.subscriptions.first { $0.counterparty == "second" })
+        let acceptedRequest = try await manager.accept(subscription)
+        let dueRequest = try XCTUnwrap(acceptedRequest)
+
+        XCTAssertEqual(dueRequest.counterparty, "second")
+        XCTAssertEqual(dueRequest.counterpartyReceiverPath, PaykitReceiverPath.wallet)
+    }
+
+    func testAcceptingSubscriptionRejectsTermsChangedAfterReview() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(recurrence: recurrence)])
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refresh()
+        let reviewedSubscription = try XCTUnwrap(manager.subscriptions.first)
+
+        try await sdk.setRecords([paymentRequestRecord(amount: "0.002", recurrence: recurrence)])
+        await manager.refresh()
+
+        do {
+            _ = try await manager.accept(reviewedSubscription)
+            XCTFail("Expected changed subscription terms to require another review")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        let snapshot = await sdk.snapshot()
+        XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+    }
+
+    func testDismissedSubscriptionPeriodStaysOutOfQueueAfterRefresh() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let manager = try paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)]),
+            clock: PaymentRequestTestClock(now)
+        )
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+
+        XCTAssertTrue(manager.dismissSubscriptionPayment(request))
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+
+        await manager.refresh()
+
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testFailedSubscriptionDismissalKeepsPeriodQueued() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: timestamp(now), anchor: timestamp(now), endsAt: nil
+        )
+        let store = PaymentRequestSubscriptionStateMemoryStore()
+        let manager = try paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)]),
+            clock: PaymentRequestTestClock(now),
+            subscriptionStateStore: store
+        )
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        manager.requestPresentation(request)
+        store.shouldFailSave = true
+
+        XCTAssertFalse(manager.dismissSubscriptionPayment(request))
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertEqual(manager.requestedPresentationId, request.id)
+        await manager.refresh()
+        XCTAssertEqual(manager.pendingRequests, [request])
+
+        store.shouldFailSave = false
+        XCTAssertTrue(manager.dismissSubscriptionPayment(request))
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testSubscriptionDeadlinesExpireWithoutAnotherRefresh() async throws {
+        let deadline = Date().addingTimeInterval(2)
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: timestamp(Date()), anchor: timestamp(Date()), endsAt: timestamp(deadline)
+        )
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(id: "proposal-deadline", expiresAt: timestamp(deadline), recurrence: PaymentRequestRecurrence(
+                every: 1, unit: "month", startsAt: timestamp(Date()), anchor: timestamp(Date()), endsAt: nil
+            )),
+            paymentRequestRecord(id: "schedule-end", recurrence: recurrence),
+        ])
+        let manager = PaykitPaymentRequestManager(
+            service: PaykitPaymentRequestService(sdk: sdk, logWarning: { _ in }),
+            presentationStore: PaymentRequestPresentationMemoryStore(),
+            subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore(),
+            isAvailable: { true },
+            logWarning: { _ in }
+        )
+        manager.activate(identity: "pubky\(String(repeating: "z", count: 52))")
+        await manager.refresh()
+        XCTAssertEqual(manager.subscriptions.count, 2)
+        XCTAssertNotNil(manager.subscriptionProposalForPresentation())
+
+        try await waitUntil(timeout: .seconds(5)) {
+            manager.subscriptions.allSatisfy { $0.lifecycleState == .proposalExpired }
+        }
+        XCTAssertNil(manager.subscriptionProposalForPresentation())
+    }
+
+    func testCompletedSubscriptionPaymentAwaitingProofSubmissionIsNotOfferedAgain() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let record = try paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = try XCTUnwrap(subscription.requests(through: now, acceptedAt: now).first)
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [record]),
+            clock: PaymentRequestTestClock(now),
+            completedPaymentProofKinds: [request.id: .lightning]
+        )
+
+        await manager.refresh()
+
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertEqual(manager.historyRequests.first?.id, request.id)
+        XCTAssertEqual(manager.historyRequests.first?.lifecycleState, .proofSubmitted)
+        XCTAssertEqual(manager.historyRequests.first?.paymentProofKind, .lightning)
+    }
+
+    func testCompletedOneTimePaymentAwaitingProofSubmissionKeepsPaymentProofKind() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let record = try paymentRequestRecord(state: .accepted)
+        let request = try XCTUnwrap(PaykitPaymentRequest(historyRecord: record, now: now))
+
+        for proofKind in [PaykitPaymentProofKind.lightning, .onchain] {
+            let manager = paymentRequestManager(
+                sdk: PaymentRequestSdkMock(records: [record]),
+                clock: PaymentRequestTestClock(now),
+                completedPaymentProofKinds: [request.id: proofKind]
+            )
+
+            await manager.refresh()
+
+            XCTAssertTrue(manager.pendingRequests.isEmpty)
+            XCTAssertEqual(manager.historyRequests.first?.id, request.id)
+            XCTAssertEqual(manager.historyRequests.first?.lifecycleState, .proofSubmitted)
+            XCTAssertEqual(manager.historyRequests.first?.paymentProofKind, proofKind)
+        }
+    }
+
+    func testOneTimeHistoryKeepsPaymentProofKind() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let cases: [(PublicPaykitService.MethodId, PaykitPaymentProofKind)] = [
+            (.bitcoinLightningBolt11, .lightning),
+            (.regtestOnchainP2wpkh, .onchain),
+        ]
+
+        for (method, proofKind) in cases {
+            let proof = try paymentProofRecord(endpoint: method.rawValue, kind: proofKind)
+            let record = try paymentRequestRecord(
+                state: .proofSubmitted,
+                endpoints: [method.rawValue],
+                paymentProofs: [proof]
+            )
+            let request = try XCTUnwrap(PaykitPaymentRequest(historyRecord: record, now: now))
+
+            XCTAssertEqual(request.paymentProofKind, proofKind)
+        }
+    }
+
+    func testInFlightSubscriptionPaymentIsNotOfferedOrMarkedPaid() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let record = try paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = try XCTUnwrap(subscription.paymentDueOnAcceptance(at: now))
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [record]),
+            clock: PaymentRequestTestClock(now),
+            inFlightPaymentRequestIds: [request.id]
+        )
+
+        await manager.refresh()
+
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertTrue(manager.historyRequests.isEmpty)
+    }
+
+    func testSubscriptionCannotBeCanceledWhilePaymentProofIsPending() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let record = try paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = try XCTUnwrap(subscription.paymentDueOnAcceptance(at: now))
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [record]),
+            clock: PaymentRequestTestClock(now),
+            protectedRequestIdsForSubscriptionCancellation: [request.id]
+        )
+
+        await manager.refresh()
+        do {
+            try await manager.cancel(XCTUnwrap(manager.subscriptions.first))
+            XCTFail("Expected cancellation to wait for the pending proof")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .operationInProgress)
+        }
+
+        XCTAssertEqual(manager.subscriptions.count, 1)
+    }
+
+    func testSubscriptionCancellationDoesNotUseStaleIdentityAfterClear() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let record = try paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let gate = PaymentProofProtectionGate()
+        let manager = PaykitPaymentRequestManager(
+            service: PaykitPaymentRequestService(sdk: sdk, now: { now }, logWarning: { _ in }),
+            presentationStore: PaymentRequestPresentationMemoryStore(),
+            subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore(),
+            protectedRequestIdsForSubscriptionCancellation: { _, _ in await gate.wait() },
+            now: { now },
+            isAvailable: { true },
+            logWarning: { _ in }
+        )
+        manager.activate(identity: "pubky\(String(repeating: "z", count: 52))")
+        await manager.refresh()
+        let subscription = try XCTUnwrap(manager.subscriptions.first)
+
+        let cancellation = Task { try await manager.cancel(subscription) }
+        try await waitUntil { await gate.isWaiting }
+        manager.clear()
+        manager.activate(identity: "pubky\(String(repeating: "a", count: 52))")
+        await gate.resume()
+        try await cancellation.value
+
+        let remainingRecords = await sdk.paymentRequests()
+        XCTAssertEqual(remainingRecords.count, 1)
+    }
+
+    func testActiveSubscriptionTransitionUsesNextPeriodBoundary() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let weekly = PaymentRequestRecurrence(
+            every: 1,
+            unit: "week",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let yearly = PaymentRequestRecurrence(
+            every: 1,
+            unit: "year",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let weeklySubscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(state: .activeRecurring, recurrence: weekly)))
+        let yearlySubscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(state: .activeRecurring, recurrence: yearly)))
+
+        XCTAssertEqual(
+            subscriptionNextTransitionDate(subscriptions: [weeklySubscription], now: now),
+            ISO8601DateFormatter().date(from: "2027-01-22T08:00:00Z")
+        )
+        XCTAssertEqual(
+            subscriptionNextTransitionDate(subscriptions: [yearlySubscription], now: now),
+            ISO8601DateFormatter().date(from: "2028-01-01T08:00:00Z")
+        )
+    }
+
+    func testMonthlySubscriptionCostNormalizesRecurrenceFrequencies() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let cases: [(unit: String, every: UInt32, amount: String, expectedSats: Int)] = [
+            ("day", 1, "0.000012", 36500),
+            ("week", 1, "0.000012", 5200),
+            ("month", 1, "0.000012", 1200),
+            ("month", 2, "0.000012", 600),
+            ("year", 1, "0.000012", 100),
+        ]
+
+        for testCase in cases {
+            let recurrence = PaymentRequestRecurrence(
+                every: testCase.every,
+                unit: testCase.unit,
+                startsAt: "2027-01-01T08:00:00Z",
+                anchor: "2027-01-01T08:00:00Z",
+                endsAt: nil
+            )
+            let subscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+                state: .activeRecurring,
+                amount: testCase.amount,
+                recurrence: recurrence
+            )))
+
+            XCTAssertEqual(
+                subscriptionMonthlyCostSats(subscriptions: [subscription], now: now),
+                testCase.expectedSats,
+                "Unexpected monthly cost for every \(testCase.every) \(testCase.unit)"
+            )
+        }
+
+        let lowCostYearlySubscriptions = try (0 ..< 3).map { index in
+            try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+                id: "low-cost-\(index)",
+                state: .activeRecurring,
+                amount: "0.0000001",
+                recurrence: PaymentRequestRecurrence(
+                    every: 1,
+                    unit: "year",
+                    startsAt: "2027-01-01T08:00:00Z",
+                    anchor: "2027-01-01T08:00:00Z",
+                    endsAt: nil
+                )
+            )))
+        }
+        XCTAssertEqual(subscriptionMonthlyCostSats(subscriptions: lowCostYearlySubscriptions, now: now), 3)
+    }
+
+    func testMonthlySubscriptionCostIncludesPaidActiveSubscriptionsOnly() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let paidPeriod = BillingPeriod(
+            startsAt: "2027-01-01T08:00:00Z",
+            endsAt: "2027-02-01T08:00:00Z"
+        )
+        let paidActive = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .activeRecurring,
+            amount: "0.000012",
+            recurrence: recurrence,
+            paymentProofs: [paymentProofRecord(
+                endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                kind: .lightning,
+                billingPeriod: paidPeriod
+            )]
+        )))
+        let canceled = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .canceled,
+            amount: "0.000012",
+            recurrence: recurrence
+        )))
+        let proposed = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .proposed,
+            amount: "0.000012",
+            recurrence: recurrence
+        )))
+
+        XCTAssertEqual(
+            subscriptionMonthlyCostSats(subscriptions: [paidActive, canceled, proposed], now: now),
+            1200
+        )
+    }
+
+    func testCommittedSubscriptionAcceptanceSurvivesImmediateRefreshFailure() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(id: "recurring", recurrence: recurrence)])
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refresh()
+        await sdk.setReceiveError(.receive)
+
+        let request = try await manager.accept(XCTUnwrap(manager.subscriptions.first))
+
+        XCTAssertEqual(manager.subscriptions.first?.lifecycleState, .activeRecurring)
+        XCTAssertEqual(request, manager.pendingRequests.first)
+    }
+
+    func testSubscriptionAcceptanceCompletionAfterClearDoesNotRepopulateManager() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(id: "recurring", recurrence: recurrence)])
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refresh()
+        await sdk.pauseNextAccept()
+
+        let acceptance = Task {
+            try await manager.accept(XCTUnwrap(manager.subscriptions.first))
+        }
+        try await waitUntil { await sdk.acceptIsPaused() }
+        manager.clear()
+        await sdk.resumeAccept()
+
+        let dueRequest = try await acceptance.value
+        XCTAssertNil(dueRequest)
+        XCTAssertTrue(manager.subscriptions.isEmpty)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testMonthlyRecurrenceKeepsAnchorDayAfterShortMonth() throws {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-31T08:00:00Z",
+            anchor: "2027-01-31T08:00:00Z",
+            endsAt: nil
+        )
+        let schedule = try XCTUnwrap(PaykitSubscriptionRecurrence(recurrence))
+        let acceptedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-31T08:00:00Z"))
+        let through = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-03-15T08:00:00Z"))
+
+        let periods = schedule.periods(through: through, acceptedAt: acceptedAt)
+
+        XCTAssertEqual(periods.count, 2)
+        XCTAssertEqual(periods[0].endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-28T08:00:00Z")))
+        XCTAssertEqual(periods[1].endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-03-31T08:00:00Z")))
+    }
+
+    func testRecurrenceUsesFirstAnchorBoundaryAfterStart() throws {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-15T08:00:00Z",
+            endsAt: nil
+        )
+        let schedule = try XCTUnwrap(PaykitSubscriptionRecurrence(recurrence))
+        let acceptedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-01T08:00:00Z"))
+        let through = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-10T08:00:00Z"))
+
+        let period = try XCTUnwrap(schedule.periods(through: through, acceptedAt: acceptedAt).first)
+
+        XCTAssertEqual(period.startsAt, acceptedAt)
+        XCTAssertEqual(period.endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z")))
+    }
+
+    func testRecurrenceReturnsConsecutiveUpcomingPeriods() throws {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "week",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let schedule = try XCTUnwrap(PaykitSubscriptionRecurrence(recurrence))
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-02T08:00:00Z"))
+
+        let periods = schedule.upcomingPeriods(after: now, limit: 3)
+
+        XCTAssertEqual(periods.map(\.startsAt), try [
+            XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-08T08:00:00Z")),
+            XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z")),
+            XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-22T08:00:00Z")),
+        ])
+    }
+
+    func testOldDailyRecurrenceFindsNextPeriodDirectly() throws {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "day",
+            startsAt: "2020-01-01T08:00:00Z",
+            anchor: "2020-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let schedule = try XCTUnwrap(PaykitSubscriptionRecurrence(recurrence))
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-14T12:00:00Z"))
+
+        let period = try XCTUnwrap(schedule.nextPeriod(after: date))
+
+        XCTAssertEqual(period.startsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z")))
+        XCTAssertEqual(period.endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-16T08:00:00Z")))
+    }
+
+    func testRecurrencePreservesNanosecondBillingBoundaries() throws {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "day",
+            startsAt: "2027-01-01T08:00:00.123100Z",
+            anchor: "2027-01-01T08:00:00.123900Z",
+            endsAt: nil
+        )
+        let schedule = try XCTUnwrap(PaykitSubscriptionRecurrence(recurrence))
+        let through = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-01T08:00:01Z"))
+        let acceptedAt = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-01T08:00:00Z"))
+
+        let period = try XCTUnwrap(schedule.periods(through: through, acceptedAt: acceptedAt).first)
+
+        XCTAssertEqual(period.sdkValue.startsAt, "2027-01-01T08:00:00.123100Z")
+        XCTAssertEqual(period.sdkValue.endsAt, "2027-01-01T08:00:00.123900Z")
+    }
+
+    func testSubscriptionTimestampsPreserveFractionalOffset() throws {
+        let startsAt = "2027-01-01T08:00:00.500+01:00"
+        let endsAt = "2027-02-01T08:00:00.500+01:00"
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: startsAt,
+            anchor: startsAt,
+            endsAt: nil
+        )
+        let schedule = try XCTUnwrap(PaykitSubscriptionRecurrence(recurrence))
+        let expectedStart = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-01T07:00:00.500Z"))
+        let period = try XCTUnwrap(PaykitBillingPeriod(sdkPeriod: BillingPeriod(startsAt: startsAt, endsAt: endsAt)))
+
+        XCTAssertEqual(schedule.startsAt.timeIntervalSince1970, expectedStart.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(period.startsAt.timeIntervalSince1970, expectedStart.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(period.sdkValue.startsAt, startsAt)
+    }
+
+    func testSubscriptionTimestampUsesCanonicalInstantPrecision() {
+        XCTAssertEqual(PaykitSubscriptionTimestamp.canonical("2027-01-01T08:00:00.1Z"), "2027-01-01T08:00:00.100Z")
+        XCTAssertEqual(PaykitSubscriptionTimestamp.canonical("2027-01-01T08:00:00.1000Z"), "2027-01-01T08:00:00.100Z")
+        XCTAssertEqual(
+            PaykitSubscriptionTimestamp.canonical("2027-01-01T08:00:00.123456789Z"),
+            "2027-01-01T08:00:00.123456789Z"
+        )
+    }
+
+    func testRecurrenceDoesNotInventPeriodWhenAnchorSearchExceedsLimit() throws {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "day",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2077-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let schedule = try XCTUnwrap(PaykitSubscriptionRecurrence(recurrence))
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-01T08:00:00Z"))
+
+        XCTAssertTrue(schedule.periods(through: start, acceptedAt: start).isEmpty)
+        XCTAssertFalse(schedule.canMaterializePeriods)
+    }
+
+    func testRecurringProposalRejectsMalformedExpiryAndDisablesUnsupportedPaymentDetails() async throws {
+        let expiration = Date(timeIntervalSince1970: 1_800_000_000)
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let endedRecurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: timestamp(expiration)
+        )
+        let manager = try paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [
+                paymentRequestRecord(id: "malformed", expiresAt: "not-a-timestamp", recurrence: recurrence),
+                paymentRequestRecord(id: "unsupported", recurrence: recurrence, endpoints: ["btc-unsupported-method"]),
+                paymentRequestRecord(id: "ended", recurrence: endedRecurrence),
+            ]),
+            clock: PaymentRequestTestClock(expiration)
+        )
+
+        await manager.refresh()
+
+        let subscription = try XCTUnwrap(manager.subscriptions.first)
+        XCTAssertEqual(subscription.paymentRequestId, "unsupported")
+        XCTAssertFalse(subscription.isProposalActionable(at: Date(timeIntervalSince1970: 1_800_000_000)))
+        XCTAssertEqual(manager.subscriptionProposalForPresentation()?.id, subscription.id)
+        XCTAssertEqual(
+            manager.subscriptions.first { $0.paymentRequestId == "ended" }?.lifecycleState,
+            .proposalExpired
+        )
+        XCTAssertFalse(manager.subscriptions.first { $0.paymentRequestId == "ended" }?.isProposalActionable(at: expiration) ?? true)
+
+        let expiring = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            id: "expiring",
+            expiresAt: timestamp(expiration),
+            recurrence: recurrence
+        )))
+        XCTAssertEqual(expiring.withExpiredLifecycle(at: expiration).lifecycleState, .proposalExpired)
     }
 
     func testRefreshRejectsAmountsOutsideTheAppPaymentRange() async throws {
@@ -162,6 +1543,61 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_500_000))
         XCTAssertFalse(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_499_999))
         XCTAssertFalse(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_500_001))
+        XCTAssertTrue(request.acceptsLightningInvoiceAmount(satoshis: 0))
+        XCTAssertTrue(request.acceptsLightningInvoiceAmount(satoshis: 2500))
+        XCTAssertFalse(request.acceptsLightningInvoiceAmount(satoshis: 2501))
+    }
+
+    func testLnurlRequestValidatesBoundsAndCapacityBeforeOpeningPayment() throws {
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(amount: "0.000025"), now: Date()))
+        var hasCapacity = false
+        var checkedAmount: UInt64?
+        let app = AppViewModel(
+            sheetViewModel: SheetViewModel(),
+            navigationViewModel: NavigationViewModel(),
+            scanPaymentOperations: ScanPaymentOperations(
+                state: {
+                    ScanPaymentState(
+                        isNodeRunning: true,
+                        spendableOnchainBalanceSats: 0,
+                        totalLightningBalanceSats: 10000,
+                        hasChannels: true,
+                        hasUsableChannels: true
+                    )
+                },
+                canSendLightning: {
+                    checkedAmount = $0
+                    return hasCapacity
+                }
+            )
+        )
+        XCTAssertTrue(app.claimContactPaymentContext(ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)))
+        var data = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback",
+            minSendable: 1_000_000, maxSendable: 5_000_000,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+
+        try app.handleLnurlPayInvoice(data)
+        XCTAssertEqual(checkedAmount, request.amountSats)
+        XCTAssertTrue(app.didRejectScannedPaymentForInsufficientBalance)
+        XCTAssertNil(app.lnurlPayData)
+
+        hasCapacity = true
+        for bounds in [(UInt64(1_000_000), UInt64(2_000_000)), (3_000_000, 5_000_000)] {
+            data.minSendable = bounds.0
+            data.maxSendable = bounds.1
+            XCTAssertThrowsError(try app.handleLnurlPayInvoice(data)) {
+                XCTAssertEqual($0 as? PaykitPaymentRequestError, .amountMismatch)
+            }
+            XCTAssertNil(app.lnurlPayData)
+        }
+
+        data.minSendable = 1_000_000
+        data.maxSendable = 5_000_000
+        try app.handleLnurlPayInvoice(data)
+        XCTAssertNotNil(app.lnurlPayData)
+        XCTAssertEqual(app.selectedWalletToPayFrom, .lightning)
     }
 
     func testRefreshContinuesWhenPendingResponseDeliveryFails() async throws {
@@ -195,9 +1631,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let now: @Sendable () -> Date = { Date() }
         let manager = PaykitPaymentRequestManager(
             service: PaykitPaymentRequestService(sdk: sdk, now: now, logWarning: { _ in }),
+            subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore(),
+            completedPaymentProofKinds: { _ in [:] },
             now: now,
             logWarning: { _ in }
         )
+        manager.activate(identity: "pubky\(String(repeating: "z", count: 52))")
         await manager.refresh()
 
         XCTAssertEqual(manager.pendingRequests.count, 1)
@@ -216,6 +1655,109 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertEqual(manager.pendingRequests, [request])
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+    }
+
+    func testUnaffordableRequestUsesRequestedAmountAndStopsAutomaticPresentation() async throws {
+        let clock = PaymentRequestTestClock(Date())
+        let onchainMethod = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(amount: "0.00001", endpoints: [onchainMethod.rawValue]),
+        ])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+        let app = AppViewModel(
+            sheetViewModel: SheetViewModel(),
+            navigationViewModel: NavigationViewModel(),
+            scanPaymentOperations: ScanPaymentOperations(
+                state: {
+                    ScanPaymentState(
+                        isNodeRunning: true,
+                        spendableOnchainBalanceSats: 100,
+                        totalLightningBalanceSats: 0,
+                        hasChannels: false,
+                        hasUsableChannels: false
+                    )
+                },
+                canSendLightning: { _ in false }
+            )
+        )
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+
+        try await app.handleScannedData(
+            "bitcoin:bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x",
+            claimedContactPaymentContext: context
+        )
+
+        XCTAssertNil(app.scannedOnchainInvoice)
+        XCTAssertNil(app.scannedLightningInvoice)
+        XCTAssertTrue(app.didRejectScannedPaymentForInsufficientBalance)
+
+        var didResetWalletSendState = false
+        PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(
+            request,
+            app: app,
+            manager: manager,
+            resetWalletSendState: { didResetWalletSendState = true }
+        )
+        clock.advance(by: 2)
+
+        XCTAssertTrue(didResetWalletSendState)
+        XCTAssertNil(app.contactPaymentContext)
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+    }
+
+    func testAmountMismatchIsVisibleAndStopsAutomaticPresentationUntilExplicitRetry() async throws {
+        for userRequested in [false, true] {
+            let clock = PaymentRequestTestClock(Date())
+            let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+            let manager = paymentRequestManager(sdk: sdk, clock: clock)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            if userRequested {
+                XCTAssertTrue(manager.requestPresentation(request))
+            }
+            var shownErrors: [PaykitPaymentRequestError] = []
+
+            XCTAssertTrue(PaykitPaymentRequestPresentationCoordinator.handleAmountMismatch(
+                PaykitPaymentRequestError.amountMismatch,
+                request: request,
+                manager: manager,
+                showError: {
+                    if let error = $0 as? PaykitPaymentRequestError {
+                        shownErrors.append(error)
+                    }
+                }
+            ))
+
+            XCTAssertEqual(shownErrors, [.amountMismatch])
+            clock.advance(by: 300)
+            await manager.refresh()
+            XCTAssertEqual(manager.pendingRequests, [request])
+            XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+            XCTAssertTrue(manager.requestPresentation(request))
+            XCTAssertEqual(manager.requestsForPresentation(), [request])
+        }
+    }
+
+    func testTransientPresentationErrorRemainsRetryableWithoutMismatchToast() async throws {
+        let clock = PaymentRequestTestClock(Date())
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+
+        XCTAssertFalse(PaykitPaymentRequestPresentationCoordinator.handleAmountMismatch(
+            PaykitPaymentRequestError.requestUnavailable,
+            request: request,
+            manager: manager,
+            showError: { _ in XCTFail("Transient errors must not show a mismatch toast") }
+        ))
+        manager.deferPresentation(request)
+        clock.advance(by: 2)
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
     }
 
     func testDeferredRequestUsesIncreasingPresentationBackoff() async throws {
@@ -249,13 +1791,13 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let request = try XCTUnwrap(manager.requestsForPresentation().first)
 
         for _ in 0 ..< 14 {
-            manager.deferPresentation(request)
+            XCTAssertEqual(manager.deferPresentation(request), .retryScheduled)
             XCTAssertTrue(manager.requestsForPresentation().isEmpty)
             clock.advance(by: 2)
             XCTAssertEqual(manager.requestsForPresentation(), [request])
         }
 
-        manager.deferPresentation(request)
+        XCTAssertEqual(manager.deferPresentation(request), .retryScheduled)
         clock.advance(by: 119)
 
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
@@ -276,17 +1818,389 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestPresentation(request))
 
         for _ in 0 ..< 14 {
-            manager.deferPresentation(request)
+            XCTAssertEqual(manager.deferPresentation(request), .retryScheduled)
             XCTAssertTrue(manager.requestsForPresentation().isEmpty)
             clock.advance(by: 2)
             XCTAssertEqual(manager.requestsForPresentation(), [request])
         }
 
-        manager.deferPresentation(request)
+        XCTAssertEqual(manager.deferPresentation(request), .requestedPresentationEnded)
 
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
         XCTAssertNil(manager.requestedPresentationId)
         XCTAssertEqual(manager.pendingRequests, [request])
+    }
+
+    func testRequestedDeferredRequestReportsExpirationInsteadOfRetryExhaustion() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(expiresAt: timestamp(now.addingTimeInterval(1))),
+        ])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+
+        clock.advance(by: 1)
+
+        XCTAssertEqual(manager.deferPresentation(request), .requestExpired(wasRequested: true))
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        XCTAssertNil(manager.requestedPresentationId)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertEqual(manager.requestedPresentationExpirationTrigger, 0)
+        XCTAssertNil(manager.consumeExpiredRequestedPresentation())
+    }
+
+    func testRequestedExpirationSurvivesSuspendedResolution() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(expiresAt: timestamp(now.addingTimeInterval(60))),
+        ])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+        var continuation: CheckedContinuation<Void, Never>?
+
+        let presentationTask = Task {
+            await manager.presentRequests { requests in
+                XCTAssertEqual(requests, [request])
+                await withCheckedContinuation { continuation = $0 }
+            }
+        }
+        try await waitUntil { continuation != nil }
+        XCTAssertTrue(manager.isCurrentPresentation(request))
+
+        clock.advance(by: 60)
+        manager.reconcileExpiredRequests()
+
+        XCTAssertFalse(manager.isCurrentPresentation(request))
+        XCTAssertNil(manager.requestedPresentationId)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertEqual(manager.requestedPresentationExpirationTrigger, 1)
+        XCTAssertEqual(manager.consumeExpiredRequestedPresentation(), request)
+        XCTAssertNil(manager.consumeExpiredRequestedPresentation())
+
+        continuation?.resume()
+        _ = await presentationTask.value
+    }
+
+    func testRequestedExpirationSurvivesPresentationRetryBackoff() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(expiresAt: timestamp(now.addingTimeInterval(1))),
+        ])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+        XCTAssertEqual(manager.deferPresentation(request), .retryScheduled)
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+
+        clock.advance(by: 1)
+        manager.reconcileExpiredRequests()
+
+        XCTAssertNil(manager.requestedPresentationId)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertEqual(manager.requestedPresentationExpirationTrigger, 1)
+        XCTAssertEqual(manager.consumeExpiredRequestedPresentation(), request)
+        XCTAssertNil(manager.consumeExpiredRequestedPresentation())
+    }
+
+    func testPresentationDispatcherSurfacesExpirationAndRetryExhaustionToasts() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let expiredSdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(id: "expired-request", expiresAt: timestamp(now.addingTimeInterval(60))),
+        ])
+        let expiredManager = paymentRequestManager(sdk: expiredSdk, clock: clock)
+        await expiredManager.refresh()
+        let expiredRequest = try XCTUnwrap(expiredManager.pendingRequests.first)
+        XCTAssertTrue(expiredManager.requestPresentation(expiredRequest))
+
+        let previousExpirationState = IncomingPaykitPaymentRequestPresentationState(expiredManager)
+        clock.advance(by: 60)
+        expiredManager.reconcileExpiredRequests()
+        let expiredDispatches = IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: previousExpirationState,
+            to: IncomingPaykitPaymentRequestPresentationState(expiredManager),
+            manager: expiredManager
+        )
+
+        XCTAssertEqual(
+            expiredDispatches,
+            [
+                .presentFeedback(
+                    IncomingPaykitPaymentRequestPresentationFeedback(
+                        deferral: .requestExpired(wasRequested: true),
+                        fallbackReason: .resolutionFailed
+                    ),
+                    expiredRequest
+                ),
+                .presentNext,
+            ]
+        )
+        XCTAssertNil(expiredManager.consumeExpiredRequestedPresentation())
+
+        let retrySdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let retryManager = paymentRequestManager(sdk: retrySdk, clock: clock)
+        await retryManager.refresh()
+        let retryRequest = try XCTUnwrap(retryManager.pendingRequests.first)
+        XCTAssertTrue(retryManager.requestPresentation(retryRequest))
+
+        for _ in 0 ..< 14 {
+            XCTAssertEqual(retryManager.deferPresentation(retryRequest), .retryScheduled)
+            clock.advance(by: 2)
+        }
+
+        let exhaustedFeedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+            deferring: retryRequest,
+            reason: .resolutionFailed,
+            with: retryManager
+        )
+        XCTAssertEqual(exhaustedFeedback.diagnosticReason, .resolutionFailed)
+        XCTAssertTrue(exhaustedFeedback.isTerminal)
+        XCTAssertEqual(exhaustedFeedback.toast?.titleKey, "wallet__payment_request")
+        XCTAssertEqual(exhaustedFeedback.toast?.descriptionKey, "wallet__payment_request_unavailable")
+        XCTAssertEqual(exhaustedFeedback.toast?.accessibilityIdentifier, "PaymentRequestUnavailableToast")
+        XCTAssertNotNil(exhaustedFeedback.diagnosticMessage(for: retryRequest))
+    }
+
+    func testPresentationDispatcherLogsFirstAutomaticFailurePerReasonAndLifecycle() async throws {
+        let counterparty = "pubky\(String(repeating: "y", count: 52))"
+        let record = try paymentRequestRecord(counterparty: counterparty)
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let clock = PaymentRequestTestClock(Date())
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+
+        let firstFeedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+            deferring: request,
+            reason: .noSupportedEndpoint,
+            with: manager
+        )
+        clock.advance(by: 2)
+        let repeatedFeedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+            deferring: request,
+            reason: .noSupportedEndpoint,
+            with: manager
+        )
+        clock.advance(by: 2)
+        let changedReasonFeedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+            deferring: request,
+            reason: .invalidPaymentTarget,
+            with: manager
+        )
+
+        let firstMessage = try XCTUnwrap(firstFeedback.diagnosticMessage(for: request))
+        XCTAssertFalse(firstFeedback.isTerminal)
+        XCTAssertNil(firstFeedback.toast)
+        XCTAssertEqual(
+            firstMessage,
+            "Rejected incoming Paykit payment request presentation: category=resolution reason=no_supported_endpoint " +
+                "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(counterparty))"
+        )
+        XCTAssertFalse(firstMessage.contains(counterparty))
+        XCTAssertNil(repeatedFeedback.diagnosticMessage(for: request))
+        XCTAssertEqual(
+            changedReasonFeedback.diagnosticMessage(for: request),
+            "Rejected incoming Paykit payment request presentation: category=presentation reason=invalid_payment_target " +
+                "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(counterparty))"
+        )
+
+        await sdk.setRecords([])
+        await manager.refresh()
+        await sdk.setRecords([record])
+        await manager.refresh()
+        let reappearedRequest = try XCTUnwrap(manager.pendingRequests.first)
+        let reappearedFeedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+            deferring: reappearedRequest,
+            reason: .noSupportedEndpoint,
+            with: manager
+        )
+
+        XCTAssertNotNil(reappearedFeedback.diagnosticMessage(for: reappearedRequest))
+    }
+
+    func testPresentationDispatcherAdvancesQueueAfterRequestedExpiration() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(id: "request-a", expiresAt: timestamp(now.addingTimeInterval(1))),
+            paymentRequestRecord(
+                id: "request-b",
+                counterparty: "pubkypayee-b",
+                expiresAt: timestamp(now.addingTimeInterval(60))
+            ),
+        ])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let requestA = try XCTUnwrap(manager.pendingRequests.first { $0.paymentRequestId == "request-a" })
+        let requestB = try XCTUnwrap(manager.pendingRequests.first { $0.paymentRequestId == "request-b" })
+        XCTAssertTrue(manager.requestPresentation(requestA))
+        XCTAssertEqual(manager.deferPresentation(requestA), .retryScheduled)
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+
+        let previous = IncomingPaykitPaymentRequestPresentationState(manager)
+        clock.advance(by: 1)
+        manager.reconcileExpiredRequests()
+
+        XCTAssertNil(manager.requestedPresentationId)
+        XCTAssertEqual(manager.requestsForPresentation(), [requestB])
+
+        let dispatches = IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: previous,
+            to: IncomingPaykitPaymentRequestPresentationState(manager),
+            manager: manager
+        )
+        XCTAssertEqual(
+            dispatches,
+            [
+                .presentFeedback(
+                    IncomingPaykitPaymentRequestPresentationFeedback(
+                        deferral: .requestExpired(wasRequested: true),
+                        fallbackReason: .resolutionFailed
+                    ),
+                    requestA
+                ),
+                .presentNext,
+            ]
+        )
+        XCTAssertNil(manager.consumeExpiredRequestedPresentation())
+    }
+
+    func testRefreshPreservesUnavailableOutcomeForRequestedPresentation() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+
+        var continuation: CheckedContinuation<Void, Never>?
+        let presentationTask = Task {
+            await manager.presentRequests { requests in
+                XCTAssertEqual(requests, [request])
+                await withCheckedContinuation { continuation = $0 }
+            }
+        }
+        try await waitUntil { continuation != nil }
+        XCTAssertTrue(manager.isCurrentPresentation(request))
+
+        let previous = IncomingPaykitPaymentRequestPresentationState(manager)
+        await sdk.setRecords([])
+        await manager.refresh()
+
+        XCTAssertFalse(manager.isCurrentPresentation(request))
+        XCTAssertNil(manager.requestedPresentationId)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertEqual(manager.requestedPresentationUnavailableTrigger, 1)
+
+        let dispatches = IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: previous,
+            to: IncomingPaykitPaymentRequestPresentationState(manager),
+            manager: manager
+        )
+        XCTAssertEqual(
+            dispatches,
+            [
+                .presentFeedback(
+                    IncomingPaykitPaymentRequestPresentationFeedback(
+                        deferral: .requestedPresentationEnded,
+                        fallbackReason: .resolutionFailed
+                    ),
+                    request
+                ),
+            ]
+        )
+        XCTAssertNil(manager.consumeUnavailableRequestedPresentation())
+
+        continuation?.resume()
+        _ = await presentationTask.value
+    }
+
+    func testRefreshRecordsUnavailableBeforeSuspendedNotificationSynchronization() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(expiresAt: timestamp(now.addingTimeInterval(60))),
+        ])
+        let notificationCenter = PaykitSubscriptionNotificationCenterMock()
+        let notificationScheduler = PaykitSubscriptionNotificationScheduler(center: notificationCenter)
+        let manager = paymentRequestManager(
+            sdk: sdk,
+            clock: clock,
+            subscriptionNotificationScheduler: notificationScheduler
+        )
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+
+        let previous = IncomingPaykitPaymentRequestPresentationState(manager)
+        await sdk.setRecords([])
+        await notificationCenter.pauseNextPendingRequests()
+        let refreshTask = Task { await manager.refresh() }
+        try await waitUntil { await notificationCenter.isPendingRequestsPaused }
+
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertNil(manager.requestedPresentationId)
+        XCTAssertEqual(manager.requestedPresentationUnavailableTrigger, 1)
+
+        clock.advance(by: 60)
+        manager.reconcileExpiredRequests()
+
+        XCTAssertEqual(manager.requestedPresentationExpirationTrigger, 0)
+        await notificationCenter.resumePendingRequests()
+        await refreshTask.value
+
+        let dispatches = IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: previous,
+            to: IncomingPaykitPaymentRequestPresentationState(manager),
+            manager: manager
+        )
+        XCTAssertEqual(
+            dispatches,
+            [
+                .presentFeedback(
+                    IncomingPaykitPaymentRequestPresentationFeedback(
+                        deferral: .requestedPresentationEnded,
+                        fallbackReason: .resolutionFailed
+                    ),
+                    request
+                ),
+            ]
+        )
+        XCTAssertNil(manager.consumeUnavailableRequestedPresentation())
+    }
+
+    func testRetryDuringSuspendedNotificationSynchronizationStaysPresented() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(state: .accepted)])
+        let notificationCenter = PaykitSubscriptionNotificationCenterMock()
+        let notificationScheduler = PaykitSubscriptionNotificationScheduler(center: notificationCenter)
+        let manager = paymentRequestManager(
+            sdk: sdk,
+            subscriptionNotificationScheduler: notificationScheduler
+        )
+        await manager.refresh()
+        let acceptedRequest = try XCTUnwrap(manager.historyRequests.first)
+
+        await notificationCenter.pauseNextPendingRequests()
+        let refreshTask = Task { await manager.refresh() }
+        try await waitUntil { await notificationCenter.isPendingRequestsPaused }
+
+        let retriedRequest = try XCTUnwrap(manager.paymentRequestForRetry(acceptedRequest.id))
+        XCTAssertTrue(manager.markPresentedIfPending(retriedRequest))
+        XCTAssertEqual(manager.pendingRequests, [retriedRequest])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+
+        await notificationCenter.resumePendingRequests()
+        await refreshTask.value
+
+        XCTAssertEqual(manager.pendingRequests, [retriedRequest])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
 
     func testPreparationConsumesBeforeAccepting() async throws {
@@ -463,7 +2377,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await task.value
     }
 
-    func testAcceptedRequestStaysApprovedUntilSendFlowFinishes() async throws {
+    func testAcceptedRequestRemainsRetryableAfterSendFlowFinishes() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
         await manager.refresh()
@@ -472,8 +2386,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await manager.prepareForPayment(request)
 
         XCTAssertTrue(manager.isApprovedForPayment(request))
-        manager.finishPayment(request)
+        await manager.finishPayment(request)
         XCTAssertFalse(manager.isApprovedForPayment(request))
+        XCTAssertEqual(manager.pendingRequests, [request.updatingLifecycleState(.accepted)])
     }
 
     func testRefreshKeepsRequestVisibleWhileAcceptanceIsFinishing() async throws {
@@ -659,9 +2574,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let identity = "pubky\(String(repeating: "y", count: 52))"
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let store = PaymentRequestPresentationMemoryStore()
+        let subscriptionStore = PaymentRequestSubscriptionStateMemoryStore()
         let firstManager = PaykitPaymentRequestManager(
             service: PaykitPaymentRequestService(sdk: sdk, logWarning: { _ in }),
             presentationStore: store,
+            subscriptionStateStore: subscriptionStore,
             logWarning: { _ in }
         )
         firstManager.activate(identity: identity)
@@ -672,6 +2589,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let restoredManager = PaykitPaymentRequestManager(
             service: PaykitPaymentRequestService(sdk: sdk, logWarning: { _ in }),
             presentationStore: store,
+            subscriptionStateStore: subscriptionStore,
             logWarning: { _ in }
         )
         restoredManager.activate(identity: identity)
@@ -681,6 +2599,44 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(restoredManager.requestsForPresentation().isEmpty)
         XCTAssertTrue(restoredManager.requestPresentation(request))
         XCTAssertEqual(restoredManager.requestsForPresentation(), [request])
+    }
+
+    func testPresentedSubscriptionStaysAvailableWithoutAutoPresentingAfterManagerRecreation() async throws {
+        let identity = "pubky\(String(repeating: "y", count: 52))"
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(id: "subscription", recurrence: recurrence)])
+        let presentationStore = PaymentRequestPresentationMemoryStore()
+        let subscriptionStore = PaymentRequestSubscriptionStateMemoryStore()
+        let firstManager = PaykitPaymentRequestManager(
+            service: PaykitPaymentRequestService(sdk: sdk, logWarning: { _ in }),
+            presentationStore: presentationStore,
+            subscriptionStateStore: subscriptionStore,
+            logWarning: { _ in }
+        )
+        firstManager.activate(identity: identity)
+        await firstManager.refresh()
+        let subscription = try XCTUnwrap(firstManager.subscriptionProposalForPresentation())
+        firstManager.markSubscriptionProposalPresented(subscription)
+
+        let restoredManager = PaykitPaymentRequestManager(
+            service: PaykitPaymentRequestService(sdk: sdk, logWarning: { _ in }),
+            presentationStore: presentationStore,
+            subscriptionStateStore: subscriptionStore,
+            logWarning: { _ in }
+        )
+        restoredManager.activate(identity: identity)
+        await restoredManager.refresh()
+
+        let restoredSubscription = try XCTUnwrap(restoredManager.subscriptions.first)
+        XCTAssertNil(restoredManager.subscriptionProposalForPresentation())
+        restoredManager.requestSubscriptionPresentation(restoredSubscription)
+        XCTAssertEqual(restoredManager.subscriptionProposalForPresentation(), restoredSubscription)
     }
 
     func testRejectRemovesOnlyMatchingRequestAndQueuesResponse() async throws {
@@ -1071,6 +3027,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let manager = PaykitPaymentRequestManager(
             service: PaykitPaymentRequestService(sdk: sdk, logWarning: { _ in }),
             presentationStore: store,
+            subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore(),
             isAvailable: { true },
             logWarning: { _ in }
         )
@@ -1094,7 +3051,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     private func paymentRequestManager(
         sdk: PaymentRequestSdkMock,
         clock: PaymentRequestTestClock = PaymentRequestTestClock(Date()),
-        isPrivatePaymentPublishingEnabled: Bool = true
+        subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore = PaymentRequestSubscriptionStateMemoryStore(),
+        subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler = PaykitSubscriptionNotificationScheduler(),
+        isPrivatePaymentPublishingEnabled: Bool = true,
+        completedPaymentProofKinds: [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = [:],
+        inFlightPaymentRequestIds: Set<PaykitPaymentRequest.ID> = [],
+        protectedRequestIdsForSubscriptionCancellation: Set<PaykitPaymentRequest.ID> = []
     ) -> PaykitPaymentRequestManager {
         let now: @Sendable () -> Date = { clock.now() }
         let manager = PaykitPaymentRequestManager(
@@ -1105,6 +3067,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 logWarning: { _ in }
             ),
             presentationStore: PaymentRequestPresentationMemoryStore(),
+            subscriptionStateStore: subscriptionStateStore,
+            subscriptionNotificationScheduler: subscriptionNotificationScheduler,
+            completedPaymentProofKinds: { _ in completedPaymentProofKinds },
+            inFlightPaymentRequestIds: { _ in inFlightPaymentRequestIds },
+            protectedRequestIdsForSubscriptionCancellation: { _, _ in protectedRequestIdsForSubscriptionCancellation },
             now: now,
             isAvailable: { true },
             logWarning: { _ in }
@@ -1125,8 +3092,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         recurrence: PaymentRequestRecurrence? = nil,
         endpoints: [String] = [PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue],
         metadata: String = "{}",
+        lastEventAt: String = "2027-01-15T08:00:00Z",
         proposalOutboundMessageId: UInt64? = nil,
-        proposalOutboundStatus: OutboundPrivateMessageStatus? = nil
+        proposalOutboundStatus: OutboundPrivateMessageStatus? = nil,
+        acceptedEventId: String? = nil,
+        paymentProofs: [PaymentProofRecord] = []
     ) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: counterparty,
@@ -1146,18 +3116,36 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 acceptedPaymentEndpointIdentifiers: endpoints,
                 metadata: PrivateJsonObject(text: metadata)
             ),
-            acceptedEventId: nil,
+            acceptedEventId: acceptedEventId,
             acceptedOutboundStatus: nil,
             rejectedEventId: nil,
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
             canceledOutboundStatus: nil,
-            paymentProofs: [],
+            paymentProofs: paymentProofs,
             lastStreamItemId: 1,
             lastOutboundMessageId: nil,
             lastOutboundStatus: nil,
-            lastEventAt: "2027-01-15T08:00:00Z",
+            lastEventAt: lastEventAt,
             invalidReason: nil
+        )
+    }
+
+    private func paymentProofRecord(
+        endpoint: String,
+        kind: PaykitPaymentProofKind,
+        billingPeriod: BillingPeriod? = nil
+    ) throws -> PaymentProofRecord {
+        try PaymentProofRecord(
+            eventId: "750e8400-e29b-41d4-a716-446655440000",
+            outboundMessageId: nil,
+            outboundStatus: nil,
+            streamItemId: 2,
+            paymentReference: PaymentReference(text: "invoice-123"),
+            billingPeriod: billingPeriod,
+            paymentEndpointIdentifier: endpoint,
+            proof: PrivateJsonObject(text: "{\"data\":\"proof\",\"type\":\"\(kind.rawValue)\"}"),
+            recordedAt: "2027-01-15T08:01:00Z"
         )
     }
 
@@ -1196,6 +3184,35 @@ private final class PaymentRequestPresentationMemoryStore: PaykitPaymentRequestP
     }
 }
 
+private final class PaymentRequestLogRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    var messages: [String] {
+        lock.withLock { storage }
+    }
+
+    func append(_ message: String) {
+        lock.withLock { storage.append(message) }
+    }
+}
+
+private final class PaymentRequestSubscriptionStateMemoryStore: PaykitSubscriptionStateStoring {
+    private var states: [String: PaykitSubscriptionState] = [:]
+    var shouldFailSave = false
+
+    func load(identity: String) -> PaykitSubscriptionState {
+        states[identity] ?? PaykitSubscriptionState()
+    }
+
+    func save(_ subscriptionState: PaykitSubscriptionState, identity: String) throws {
+        if shouldFailSave {
+            throw PaymentRequestSdkMockError.preparation
+        }
+        states[identity] = subscriptionState
+    }
+}
+
 private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
     private var activeIdentity = "pubky\(String(repeating: "z", count: 52))"
     private var records: [PaymentRequestRecord]
@@ -1203,6 +3220,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
     private var receiverPathsByPublicKey: [String: [String]] = [:]
     private var liveSessionAvailable = true
     private var proposalResult: PaymentRequestRecord?
+    private var uploadCount = 0
+    private var shouldPauseNextUpload = false
+    private var isUploadPaused = false
+    private var uploadContinuation: CheckedContinuation<Void, Never>?
     private var processCallCount = 0
     private var receiveCallCount = 0
     private var processFailuresRemaining = 0
@@ -1288,6 +3309,33 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         receiverPathsByPublicKey[publicKey] ?? []
     }
 
+    func pauseNextUpload() {
+        shouldPauseNextUpload = true
+    }
+
+    func uploadIsPaused() -> Bool {
+        isUploadPaused
+    }
+
+    func resumeUpload() {
+        uploadContinuation?.resume()
+        uploadContinuation = nil
+    }
+
+    func uploadProfileAvatar(bytes _: Data, contentType _: String, expectedIdentity: String?) async throws -> String {
+        if shouldPauseNextUpload {
+            shouldPauseNextUpload = false
+            isUploadPaused = true
+            await withCheckedContinuation { uploadContinuation = $0 }
+            isUploadPaused = false
+        }
+        guard expectedIdentity == nil || PubkyPublicKeyFormat.matches(activeIdentity, expectedIdentity ?? "") else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        uploadCount += 1
+        return "pubky://\(activeIdentity)/pub/paykit/blobs/subscription-icon.jpg"
+    }
+
     func proposePaymentRequest(
         counterparty: String,
         counterpartyReceiverPath: String,
@@ -1335,11 +3383,22 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
             isAcceptPaused = false
         }
 
-        let record = try removeRecord(
-            counterparty: counterparty,
-            counterpartyReceiverPath: counterpartyReceiverPath,
-            id: paymentRequestId
-        )
+        let record: PaymentRequestRecord
+        if let index = records.firstIndex(where: {
+            $0.counterparty == counterparty &&
+                $0.counterpartyReceiverPath == counterpartyReceiverPath &&
+                $0.paymentRequestId == paymentRequestId &&
+                $0.terms?.recurrence != nil
+        }) {
+            records[index].state = .activeRecurring
+            record = records[index]
+        } else {
+            record = try removeRecord(
+                counterparty: counterparty,
+                counterpartyReceiverPath: counterpartyReceiverPath,
+                id: paymentRequestId
+            )
+        }
         if acceptFailuresAfterRemoval > 0 {
             acceptFailuresAfterRemoval -= 1
             throw PaymentRequestSdkMockError.process
@@ -1373,6 +3432,19 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
             paymentRequestId: paymentRequestId
         ))
         return record
+    }
+
+    func cancelPaymentRequest(
+        counterparty: String,
+        counterpartyReceiverPath: String,
+        paymentRequestId: String,
+        reason _: String?
+    ) throws -> PaymentRequestRecord {
+        try removeRecord(
+            counterparty: counterparty,
+            counterpartyReceiverPath: counterpartyReceiverPath,
+            id: paymentRequestId
+        )
     }
 
     func failNextProcess() {
@@ -1490,6 +3562,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
 
     func snapshot() -> PaymentRequestSdkSnapshot {
         PaymentRequestSdkSnapshot(
+            uploadCount: uploadCount,
             processCallCount: processCallCount,
             receiveCallCount: receiveCallCount,
             acceptedRequests: acceptedRequests,
@@ -1515,6 +3588,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
 }
 
 private struct PaymentRequestSdkSnapshot {
+    let uploadCount: Int
     let processCallCount: Int
     let receiveCallCount: Int
     let acceptedRequests: [PaymentRequestInvocation]
@@ -1549,6 +3623,7 @@ private enum PaymentRequestSdkMockError: Error, Equatable {
 private final class PaymentRequestTestClock: @unchecked Sendable {
     private let lock = NSLock()
     private var date: Date
+    private var invocations = 0
 
     init(_ date: Date) {
         self.date = date
@@ -1557,7 +3632,14 @@ private final class PaymentRequestTestClock: @unchecked Sendable {
     func now() -> Date {
         lock.lock()
         defer { lock.unlock() }
+        invocations += 1
         return date
+    }
+
+    func invocationCount() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return invocations
     }
 
     func advance(by interval: TimeInterval) {
@@ -1569,6 +3651,84 @@ private final class PaymentRequestTestClock: @unchecked Sendable {
 
 private enum PaymentRequestTestError: Error {
     case timedOut
+}
+
+private actor PaymentProofProtectionGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    var isWaiting: Bool {
+        continuation != nil
+    }
+
+    func wait() async -> Set<PaykitPaymentRequest.ID> {
+        await withCheckedContinuation { continuation = $0 }
+        return []
+    }
+
+    func resume() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+private actor PaykitSubscriptionNotificationCenterMock: PaykitSubscriptionNotificationCenter {
+    private var requests: [String: UNNotificationRequest] = [:]
+    private var shouldPauseNextAdd = false
+    private var addContinuation: CheckedContinuation<Void, Never>?
+    private var shouldPauseNextPendingRequests = false
+    private var pendingRequestsContinuation: CheckedContinuation<Void, Never>?
+
+    var isAddPaused: Bool {
+        addContinuation != nil
+    }
+
+    var pendingIdentifiers: Set<String> {
+        Set(requests.keys)
+    }
+
+    var isPendingRequestsPaused: Bool {
+        pendingRequestsContinuation != nil
+    }
+
+    func pauseNextAdd() {
+        shouldPauseNextAdd = true
+    }
+
+    func pauseNextPendingRequests() {
+        shouldPauseNextPendingRequests = true
+    }
+
+    func pendingNotificationRequests() async -> [UNNotificationRequest] {
+        if shouldPauseNextPendingRequests {
+            shouldPauseNextPendingRequests = false
+            await withCheckedContinuation { pendingRequestsContinuation = $0 }
+        }
+        return Array(requests.values)
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        if shouldPauseNextAdd {
+            shouldPauseNextAdd = false
+            await withCheckedContinuation { addContinuation = $0 }
+        }
+        requests[request.identifier] = request
+    }
+
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
+        for identifier in identifiers {
+            requests.removeValue(forKey: identifier)
+        }
+    }
+
+    func resumeAdd() {
+        addContinuation?.resume()
+        addContinuation = nil
+    }
+
+    func resumePendingRequests() {
+        pendingRequestsContinuation?.resume()
+        pendingRequestsContinuation = nil
+    }
 }
 
 @MainActor

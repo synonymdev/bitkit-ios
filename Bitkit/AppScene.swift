@@ -3,8 +3,179 @@ import LDKNode
 import SwiftUI
 import UserNotifications
 
+struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
+    struct Toast: Equatable {
+        let titleKey: String
+        let descriptionKey: String
+        let accessibilityIdentifier: String
+    }
+
+    let diagnosticReason: IncomingPaykitPaymentRequestFailureReason
+    let isTerminal: Bool
+    let shouldLogDiagnostic: Bool
+    let toast: Toast?
+
+    init(
+        deferral: PaykitPaymentRequestPresentationDeferral,
+        fallbackReason: IncomingPaykitPaymentRequestFailureReason,
+        shouldLogNonTerminalDiagnostic: Bool = false
+    ) {
+        switch deferral {
+        case .requestedPresentationEnded:
+            diagnosticReason = fallbackReason
+            isTerminal = true
+            shouldLogDiagnostic = true
+            toast = Toast(
+                titleKey: "wallet__payment_request",
+                descriptionKey: "wallet__payment_request_unavailable",
+                accessibilityIdentifier: "PaymentRequestUnavailableToast"
+            )
+        case let .requestExpired(wasRequested):
+            diagnosticReason = .requestExpired
+            isTerminal = true
+            shouldLogDiagnostic = true
+            toast = wasRequested ? Toast(
+                titleKey: "wallet__payment_request",
+                descriptionKey: "wallet__payment_request_expired",
+                accessibilityIdentifier: "PaymentRequestExpiredToast"
+            ) : nil
+        case .retryScheduled:
+            diagnosticReason = fallbackReason
+            isTerminal = false
+            shouldLogDiagnostic = shouldLogNonTerminalDiagnostic
+            toast = nil
+        case .ignored:
+            diagnosticReason = fallbackReason
+            isTerminal = false
+            shouldLogDiagnostic = false
+            toast = nil
+        }
+    }
+
+    func diagnosticMessage(for request: PaykitPaymentRequest) -> String? {
+        guard shouldLogDiagnostic else { return nil }
+        return "Rejected incoming Paykit payment request presentation: category=\(diagnosticReason.category) " +
+            "reason=\(diagnosticReason.rawValue) " +
+            "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))"
+    }
+}
+
+struct IncomingPaykitPaymentRequestPresentationState: Equatable {
+    let requestedPresentationId: PaykitPaymentRequest.ID?
+    let retryTrigger: Int
+    let expirationTrigger: Int
+    let unavailableTrigger: Int
+
+    init(
+        requestedPresentationId: PaykitPaymentRequest.ID?,
+        retryTrigger: Int,
+        expirationTrigger: Int,
+        unavailableTrigger: Int
+    ) {
+        self.requestedPresentationId = requestedPresentationId
+        self.retryTrigger = retryTrigger
+        self.expirationTrigger = expirationTrigger
+        self.unavailableTrigger = unavailableTrigger
+    }
+
+    @MainActor
+    init(_ manager: PaykitPaymentRequestManager) {
+        self.init(
+            requestedPresentationId: manager.requestedPresentationId,
+            retryTrigger: manager.presentationRetryTrigger,
+            expirationTrigger: manager.requestedPresentationExpirationTrigger,
+            unavailableTrigger: manager.requestedPresentationUnavailableTrigger
+        )
+    }
+}
+
+enum IncomingPaykitPaymentRequestPresentationDispatch: Equatable {
+    case presentFeedback(IncomingPaykitPaymentRequestPresentationFeedback, PaykitPaymentRequest)
+    case presentNext
+}
+
+@MainActor
+enum IncomingPaykitPaymentRequestPresentationDispatcher {
+    static func feedback(
+        deferring request: PaykitPaymentRequest,
+        reason: IncomingPaykitPaymentRequestFailureReason,
+        with manager: PaykitPaymentRequestManager
+    ) -> IncomingPaykitPaymentRequestPresentationFeedback {
+        let result = manager.deferPresentation(request, diagnosticReason: reason)
+        return IncomingPaykitPaymentRequestPresentationFeedback(
+            deferral: result.deferral,
+            fallbackReason: reason,
+            shouldLogNonTerminalDiagnostic: result.shouldLogDiagnostic
+        )
+    }
+
+    static func handleStateChange(
+        from previous: IncomingPaykitPaymentRequestPresentationState,
+        to current: IncomingPaykitPaymentRequestPresentationState,
+        manager: PaykitPaymentRequestManager
+    ) -> [IncomingPaykitPaymentRequestPresentationDispatch] {
+        var dispatches: [IncomingPaykitPaymentRequestPresentationDispatch] = []
+        if current.expirationTrigger != previous.expirationTrigger {
+            while let request = manager.consumeExpiredRequestedPresentation() {
+                dispatches.append(
+                    .presentFeedback(
+                        IncomingPaykitPaymentRequestPresentationFeedback(
+                            deferral: .requestExpired(wasRequested: true),
+                            fallbackReason: .resolutionFailed
+                        ),
+                        request
+                    )
+                )
+            }
+        }
+        if current.unavailableTrigger != previous.unavailableTrigger {
+            while let request = manager.consumeUnavailableRequestedPresentation() {
+                dispatches.append(
+                    .presentFeedback(
+                        IncomingPaykitPaymentRequestPresentationFeedback(
+                            deferral: .requestedPresentationEnded,
+                            fallbackReason: .resolutionFailed
+                        ),
+                        request
+                    )
+                )
+            }
+        }
+        if current.retryTrigger != previous.retryTrigger ||
+            previous.requestedPresentationId != current.requestedPresentationId && current.requestedPresentationId != nil ||
+            current.expirationTrigger != previous.expirationTrigger
+        {
+            dispatches.append(.presentNext)
+        }
+        return dispatches
+    }
+}
+
+struct PaykitPaymentRequestPollingSchedule {
+    private static let refreshIntervals: [Duration] = [.seconds(5), .seconds(10), .seconds(15), .seconds(30)]
+    private static let maintenanceIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
+    private var refreshIntervalIndex = 0
+    private var maintenanceIntervalIndex = 0
+    private var maintenanceDelay = Self.maintenanceIntervals[0]
+
+    var nextDelay: Duration {
+        Self.refreshIntervals[refreshIntervalIndex]
+    }
+
+    mutating func takeMaintenanceIfDue() -> Bool {
+        maintenanceDelay -= nextDelay
+        guard maintenanceDelay <= .zero else { return false }
+        maintenanceIntervalIndex = min(maintenanceIntervalIndex + 1, Self.maintenanceIntervals.count - 1)
+        maintenanceDelay = Self.maintenanceIntervals[maintenanceIntervalIndex]
+        return true
+    }
+
+    mutating func recordRefresh(requestsChanged: Bool) {
+        refreshIntervalIndex = requestsChanged ? 0 : min(refreshIntervalIndex + 1, Self.refreshIntervals.count - 1)
+    }
+}
+
 struct AppScene: View {
-    private static let paykitPaymentRequestRefreshIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
 
     @Environment(\.scenePhase) var scenePhase
@@ -66,7 +237,10 @@ struct AppScene: View {
         PaykitFeatureFlags.enforceBuildAvailability()
         ContactPaymentsService.enableAllPaymentOptions()
 
-        _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
+        _app = StateObject(wrappedValue: AppViewModel(
+            sheetViewModel: sheetViewModel,
+            navigationViewModel: navigationViewModel
+        ))
         _sheets = StateObject(wrappedValue: sheetViewModel)
         _navigation = StateObject(wrappedValue: navigationViewModel)
         let feeEstimatesManager = FeeEstimatesManager()
@@ -122,6 +296,10 @@ struct AppScene: View {
     }
 
     var body: some View {
+        appEventContent
+    }
+
+    private var configuredContent: some View {
         mainContent
             .sheet(
                 item: $sheets.forgotPinSheetItem,
@@ -141,11 +319,13 @@ struct AppScene: View {
             .task(priority: .userInitiated, setupTask)
             .task(id: scenePhase) { await pollIncomingPaykitPaymentRequests() }
             .task(id: initialPaykitSyncGeneration) { await pollIncomingPaykitPaymentRequestsDuringInitialSync() }
+            .task { await handlePendingPaykitSubscriptionNotification() }
             .onChange(of: currency.hasStaleData) { _, newValue in handleCurrencyStaleData(newValue) }
             .onChange(of: wallet.walletExists) { _, newValue in handleWalletExistsChange(newValue) }
             .onChange(of: wallet.nodeLifecycleState) { _, newValue in handleNodeLifecycleChange(newValue) }
             .onChange(of: scenePhase, initial: true) { _, newValue in handleScenePhaseChange(newValue) }
             .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
+            .onOpenURL { url in app.retainDeepLink(url) }
             // Bridge Trezor device state into the watch-only manager without coupling the two:
             // TrezorManager bumps devicesRevision on any device/connection change.
             .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
@@ -202,13 +382,21 @@ struct AppScene: View {
             .environment(hwWalletManager)
             .environment(calculatorInputManager)
             .environment(paykitPaymentRequestManager)
+    }
+
+    private var appEventContent: some View {
+        configuredContent
             .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
                     Task {
                         try? await contactsManager.loadContacts(for: pk)
                         await refreshPrivateOnlyPaykitReceiverMarker()
-                        await refreshIncomingPaykitPaymentRequests()
+                        await refreshIncomingPaykitPaymentRequests(presentItems: false)
+                        await handlePendingPaykitSubscriptionNotification()
+                        if PaykitSubscriptionNotificationTargetStore.load() == nil {
+                            await presentNextIncomingPaykitItem()
+                        }
                         if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
                             await retryPendingPaykitEndpointRemoval()
                         }
@@ -238,6 +426,15 @@ struct AppScene: View {
             .onReceive(PrivatePaykitService.initialLinkBurstStartedPublisher) {
                 initialPaykitSyncGeneration += 1
             }
+            .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
+                Task { await refreshIncomingPaykitPaymentRequests() }
+            }
+            .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
+                Task { await associateResolvedPaykitOnchainPayment(resolution) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .paykitSubscriptionPaymentDue)) { _ in
+                Task { await handlePendingPaykitSubscriptionNotification() }
+            }
             .onChange(of: sheets.activeSheetConfiguration?.id) { _, activeSheetId in
                 guard activeSheetId == nil, !sheets.isReplacingSheet else { return }
                 Task {
@@ -246,24 +443,24 @@ struct AppScene: View {
                           sheets.activeSheetConfiguration == nil,
                           !sheets.isReplacingSheet
                     else { return }
-                    await presentNextIncomingPaykitPaymentRequest()
+                    await presentNextIncomingPaykitItem()
                 }
             }
-            .onChange(of: paykitPaymentRequestManager.requestedPresentationId) { _, requestId in
-                guard requestId != nil else { return }
-                Task { await presentNextIncomingPaykitPaymentRequest() }
-            }
-            .onChange(of: paykitPaymentRequestManager.presentationRetryTrigger) {
-                Task { await presentNextIncomingPaykitPaymentRequest() }
+            .onChange(of: incomingPaykitPaymentRequestPresentationState) { previous, current in
+                handleIncomingPaykitPaymentRequestPresentationStateChange(from: previous, to: current)
             }
             .onChange(of: paykitPaymentRequestManager.pendingRequests) { _, requests in
                 guard let request = app.contactPaymentContext?.incomingPaymentRequest,
                       !requests.contains(where: { $0.id == request.id }),
-                      !paykitPaymentRequestManager.isApprovedForPayment(request),
-                      sheets.activeSheetConfiguration?.id == .send
+                      !paykitPaymentRequestManager.isApprovedForPayment(request)
                 else { return }
 
-                sheets.hideSheetIfActive(.send, reason: "Incoming payment request is no longer available")
+                let activeSheetId = sheets.activeSheetConfiguration?.id
+                guard activeSheetId == .send ||
+                    (activeSheetId == .subscription && app.contactPaymentContext?.isInitialSubscriptionPayment == true)
+                else { return }
+
+                sheets.hideSheet(reason: "Incoming payment request is no longer available")
             }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
                 guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
@@ -283,6 +480,10 @@ struct AppScene: View {
                     isPinVerified = true
                 }
 
+                if let url = DeepLinkRouter.shared.consume() {
+                    app.retainDeepLink(url)
+                }
+
                 // Listen for quick action notifications
                 NotificationCenter.default.addObserver(
                     forName: .quickActionSelected,
@@ -290,6 +491,13 @@ struct AppScene: View {
                     queue: .main
                 ) { notification in
                     handleQuickAction(notification)
+                }
+                NotificationCenter.default.addObserver(
+                    forName: .deepLinkReceived,
+                    object: nil,
+                    queue: .main
+                ) { notification in
+                    handleDeepLinkNotification(notification)
                 }
             }
             .onReceive(BackupService.shared.backupFailurePublisher) { intervalMinutes in
@@ -299,6 +507,16 @@ struct AppScene: View {
                 guard update != nil else { return }
                 TimedSheetManager.shared.reevaluate()
             }
+    }
+
+    private func handleDeepLinkNotification(_ notification: Notification) {
+        if let retainedURL = DeepLinkRouter.shared.consume() {
+            app.retainDeepLink(retainedURL)
+            return
+        }
+        if let receivedURL = notification.object as? URL {
+            app.retainDeepLink(receivedURL)
+        }
     }
 
     private var mainContent: some View {
@@ -764,7 +982,7 @@ struct AppScene: View {
     }
 
     @discardableResult
-    private func refreshIncomingPaykitPaymentRequests() async -> Bool {
+    private func refreshIncomingPaykitPaymentRequests(presentItems: Bool = true, refreshMaintenance: Bool = true) async -> Bool {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
               pubkyProfile.authState == .authenticated
@@ -773,33 +991,69 @@ struct AppScene: View {
             return false
         }
 
+        if refreshMaintenance {
+            await PaykitPaymentProofService.shared.reconcile()
+        }
         let previousRequests = paykitPaymentRequestManager.pendingRequests
-        await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         await paykitPaymentRequestManager.refresh()
-        await presentNextIncomingPaykitPaymentRequest()
+        if presentItems {
+            await presentNextIncomingPaykitItem()
+        }
+        if refreshMaintenance {
+            await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
+        }
         return paykitPaymentRequestManager.pendingRequests != previousRequests
+    }
+
+    private func associateResolvedPaykitOnchainPayment(_ resolution: PaykitOnchainPaymentResolution) async {
+        if let identity = pubkyProfile.publicKey,
+           PubkyPublicKeyFormat.matches(resolution.identity, identity)
+        {
+            do {
+                _ = try await tryNTimes(
+                    toTry: {
+                        try? await activity.syncLdkNodePayments()
+                        return try await activity.findActivity(byPaymentId: resolution.transactionId)
+                    },
+                    times: 12,
+                    interval: 2
+                )
+                try await activity.setContact(
+                    resolution.requestId.counterparty,
+                    forPaymentId: resolution.transactionId,
+                    syncLdkPayments: false
+                )
+            } catch {
+                Logger.warn(
+                    "Failed to associate resolved Paykit payment \(resolution.transactionId) with its contact: \(error)",
+                    context: "AppScene"
+                )
+            }
+        }
+        await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution)
     }
 
     private func pollIncomingPaykitPaymentRequests() async {
         guard scenePhase == .active else { return }
 
-        var refreshIntervalIndex = 0
+        if network.isConnected { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
+        var schedule = PaykitPaymentRequestPollingSchedule()
         while !Task.isCancelled {
             do {
-                try await Task.sleep(for: Self.paykitPaymentRequestRefreshIntervals[refreshIntervalIndex])
+                try await Task.sleep(for: schedule.nextDelay)
             } catch {
                 return
             }
-            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
-                wallet: wallet,
-                reason: "payment request polling"
-            )
-            let requestsChanged = await refreshIncomingPaykitPaymentRequests()
-            if requestsChanged {
-                refreshIntervalIndex = 0
-            } else {
-                refreshIntervalIndex = min(refreshIntervalIndex + 1, Self.paykitPaymentRequestRefreshIntervals.count - 1)
+            let refreshMaintenance = schedule.takeMaintenanceIfDue()
+            if refreshMaintenance {
+                if network.isConnected { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
+                await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
+                    wallet: wallet,
+                    reason: "payment request polling"
+                )
             }
+            let requestsChanged = await refreshIncomingPaykitPaymentRequests(refreshMaintenance: refreshMaintenance)
+            schedule.recordRefresh(requestsChanged: requestsChanged)
         }
     }
 
@@ -824,6 +1078,7 @@ struct AppScene: View {
               app.contactPaymentContext == nil
         else { return }
 
+        var shouldPresentNextRequest = true
         let attemptedPresentation = await paykitPaymentRequestManager.presentRequests { requests in
             guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet, app.contactPaymentContext == nil else { return }
             for request in requests {
@@ -836,8 +1091,10 @@ struct AppScene: View {
                           app.contactPaymentContext == nil
                     else { return }
                     guard case let .opened(paymentTarget, privatePaymentContext) = result else {
-                        Logger.debug("Incoming Paykit payment request is waiting for private payment details: \(result)", context: "AppScene")
-                        paykitPaymentRequestManager.deferPresentation(request)
+                        deferIncomingPaykitPaymentRequestPresentation(
+                            request,
+                            reason: result.incomingPaymentRequestFailureReason ?? .resolutionFailed
+                        )
                         continue
                     }
 
@@ -851,7 +1108,8 @@ struct AppScene: View {
                     do {
                         try await app.handleScannedData(
                             paymentTarget,
-                            claimedContactPaymentContext: contactPaymentContext
+                            claimedContactPaymentContext: contactPaymentContext,
+                            alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
                         )
                         guard paykitPaymentRequestManager.isCurrentPresentation(request),
                               app.ownsContactPaymentContext(contactPaymentContext),
@@ -865,10 +1123,22 @@ struct AppScene: View {
                             return
                         }
                         guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
-                            app.resetSendState()
-                            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-                            paykitPaymentRequestManager.deferPresentation(request)
-                            continue
+                            if app.didRejectScannedPaymentForInsufficientBalance {
+                                PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(
+                                    request,
+                                    app: app,
+                                    manager: paykitPaymentRequestManager,
+                                    resetWalletSendState: {
+                                        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                                    }
+                                )
+                            } else {
+                                app.resetSendState()
+                                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                                deferIncomingPaykitPaymentRequestPresentation(request, reason: .paymentTargetNotRoutable)
+                            }
+                            shouldPresentNextRequest = false
+                            return
                         }
 
                         guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
@@ -876,6 +1146,10 @@ struct AppScene: View {
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                             return
                         }
+                    } catch ScanHandlingError.pubkyAuthRequest {
+                        guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                        _ = paykitPaymentRequestManager.markPresentedIfPending(request)
+                        continue
                     } catch is CancellationError {
                         if app.ownsContactPaymentContext(contactPaymentContext) {
                             app.resetSendState()
@@ -889,17 +1163,30 @@ struct AppScene: View {
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                             return
                         }
-                        Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-                        paykitPaymentRequestManager.deferPresentation(request)
+                        if PaykitPaymentRequestPresentationCoordinator.handleAmountMismatch(
+                            error,
+                            request: request,
+                            manager: paykitPaymentRequestManager,
+                            showError: { app.toast($0) }
+                        ) {
+                            shouldPresentNextRequest = false
+                            return
+                        }
+                        deferIncomingPaykitPaymentRequestPresentation(request, reason: .invalidPaymentTarget)
                         continue
                     }
 
-                    let route: SendRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
-                    guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
+                    guard let route = PaymentNavigationHelper.contactPaymentRoute(
+                        app: app,
+                        currency: currency,
+                        settings: settings
+                    ), paykitPaymentRequestManager.isCurrentPresentation(request)
+                    else {
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        deferIncomingPaykitPaymentRequestPresentation(request, reason: .paymentTargetNotRoutable)
                         return
                     }
                     sheets.showSheet(.send, data: SendConfig(view: route))
@@ -908,13 +1195,13 @@ struct AppScene: View {
                     return
                 } catch {
                     guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
-                    Logger.warn("Failed to present incoming Paykit payment request: \(error)", context: "AppScene")
-                    paykitPaymentRequestManager.deferPresentation(request)
+                    deferIncomingPaykitPaymentRequestPresentation(request, reason: .resolutionFailed)
                 }
             }
         }
 
         guard attemptedPresentation,
+              shouldPresentNextRequest,
               paykitPaymentRequestManager.requestedPresentationId != nil ||
               !paykitPaymentRequestManager.requestsForPresentation().isEmpty,
               sheets.activeSheetConfiguration == nil,
@@ -924,14 +1211,118 @@ struct AppScene: View {
         await presentNextIncomingPaykitPaymentRequest()
     }
 
+    private func deferIncomingPaykitPaymentRequestPresentation(
+        _ request: PaykitPaymentRequest,
+        reason: IncomingPaykitPaymentRequestFailureReason
+    ) {
+        presentIncomingPaykitPaymentRequestFeedback(
+            IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+                deferring: request,
+                reason: reason,
+                with: paykitPaymentRequestManager
+            ),
+            for: request
+        )
+    }
+
+    private var incomingPaykitPaymentRequestPresentationState: IncomingPaykitPaymentRequestPresentationState {
+        IncomingPaykitPaymentRequestPresentationState(paykitPaymentRequestManager)
+    }
+
+    private func handleIncomingPaykitPaymentRequestPresentationStateChange(
+        from previous: IncomingPaykitPaymentRequestPresentationState,
+        to current: IncomingPaykitPaymentRequestPresentationState
+    ) {
+        for dispatch in IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: previous,
+            to: current,
+            manager: paykitPaymentRequestManager
+        ) {
+            switch dispatch {
+            case let .presentFeedback(feedback, request):
+                presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+            case .presentNext:
+                Task { await presentNextIncomingPaykitItem() }
+            }
+        }
+    }
+
+    private func presentIncomingPaykitPaymentRequestFeedback(
+        _ feedback: IncomingPaykitPaymentRequestPresentationFeedback,
+        for request: PaykitPaymentRequest
+    ) {
+        if let diagnosticMessage = feedback.diagnosticMessage(for: request) {
+            Logger.warn(diagnosticMessage, context: "AppScene")
+        }
+
+        guard let toast = feedback.toast else { return }
+        app.toast(
+            type: .error,
+            title: t(toast.titleKey),
+            description: t(toast.descriptionKey),
+            accessibilityIdentifier: toast.accessibilityIdentifier
+        )
+    }
+
+    private func handlePendingPaykitSubscriptionNotification() async {
+        guard let target = PaykitSubscriptionNotificationTargetStore.load() else { return }
+        guard let identity = pubkyProfile.publicKey else { return }
+        guard target.matches(identity: identity) else {
+            PaykitSubscriptionNotificationTargetStore.clear()
+            return
+        }
+        guard sheets.activeSheetConfiguration == nil,
+              !sheets.isReplacingSheet,
+              app.contactPaymentContext == nil
+        else { return }
+        await refreshIncomingPaykitPaymentRequests(presentItems: false)
+        guard let request = paykitPaymentRequestManager.pendingRequests.first(where: target.matches) else {
+            if paykitPaymentRequestManager.historyRequests.contains(where: target.matches) {
+                PaykitSubscriptionNotificationTargetStore.clear()
+            } else if paykitPaymentRequestManager.hasDismissedSubscriptionPayment(matching: target) {
+                PaykitSubscriptionNotificationTargetStore.clear()
+            } else if !paykitPaymentRequestManager.subscriptions.contains(where: {
+                $0.paymentRequestId == target.paymentRequestId &&
+                    PubkyPublicKeyFormat.matches($0.counterparty, target.counterparty) &&
+                    $0.counterpartyReceiverPath == target.counterpartyReceiverPath &&
+                    $0.isActive(at: Date())
+            }) {
+                PaykitSubscriptionNotificationTargetStore.clear()
+            }
+            return
+        }
+
+        if paykitPaymentRequestManager.requestedPresentationId != request.id {
+            guard paykitPaymentRequestManager.requestPresentation(request) else { return }
+        }
+        await presentNextIncomingPaykitPaymentRequest()
+    }
+
+    private func presentNextIncomingPaykitItem() async {
+        guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet else { return }
+        if PaykitSubscriptionNotificationTargetStore.load() != nil {
+            await handlePendingPaykitSubscriptionNotification()
+            guard PaykitSubscriptionNotificationTargetStore.load() == nil,
+                  sheets.activeSheetConfiguration == nil,
+                  !sheets.isReplacingSheet
+            else { return }
+        }
+        if let subscription = paykitPaymentRequestManager.subscriptionProposalForPresentation() {
+            sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .review(subscription)))
+            return
+        }
+        await presentNextIncomingPaykitPaymentRequest()
+    }
+
     private func retryPendingPaykitEndpointRemoval() async {
         if PublicPaykitService.isCleanupPending {
             do {
-                if UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey) {
+                switch PublicPaykitService.pendingReconciliationMode() {
+                case .publishEndpoints:
                     try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet)
-                } else {
+                case .removePublishedState:
                     try await PublicPaykitService.removePublishedEndpoints()
-                    try await PublicPaykitService.syncLocalReceiverMarker(publicSharingEnabled: false)
+                    try await PublicPaykitService.syncLocalReceiverMarker()
                 }
                 PublicPaykitService.setCleanupPending(false)
             } catch {
@@ -939,7 +1330,7 @@ struct AppScene: View {
             }
         }
 
-        await PrivatePaykitService.shared.retryPendingEndpointRemoval(
+        await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
             wallet: wallet,
             savedPublicKeys: contactsManager.contacts.map(\.publicKey)
         )
@@ -979,6 +1370,7 @@ struct AppScene: View {
             // to display balances (MoneyText returns "0" if rates are nil)
             Task {
                 await currency.refresh()
+                if scenePhase == .active { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
                 if PaykitFeatureFlags.isUIEnabled {
                     let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
                     await PrivatePaykitService.shared.startInitialLinkBurst(

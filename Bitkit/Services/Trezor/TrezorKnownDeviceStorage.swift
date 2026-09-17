@@ -90,7 +90,9 @@ extension TrezorKnownDevice {
     /// Wallet id of this identity: the stored one, or derived from the xpubs for entries written
     /// before it was persisted. The derivation is unchanged, so those keep the id they always had.
     var resolvedWalletId: String? {
-        if let walletId, !walletId.isEmpty { return walletId }
+        if let walletId, !walletId.isEmpty {
+            return walletId
+        }
         return try? HwWalletId.derive(xpubs: xpubs)
     }
 

@@ -885,11 +885,14 @@
 "wallet__receive_connect_initial" = "Per configurar el teu saldo de despesa, es descomptarà una comissió de xarxa de <accent>{networkFee}</accent> i una comissió de proveïdor de servei de <accent>{serviceFee}</accent>.";
 "wallet__receive_connect_additional" = "Per rebre més Bitcoin instantani, Bitkit ha d\'augmentar la teva liquiditat. Una comissió de xarxa de <accent>{networkFee}</accent> i una comissió de proveïdor de servei de <accent>{serviceFee}</accent> es descomptaran de l\'import que has especificat.";
 "wallet__receive_liquidity__nav_title" = "Configuració del saldo de despesa";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit ha rebut una cotització de liquiditat no vàlida. Torna-ho a provar.";
 "wallet__receive_liquidity__text" = "El teu saldo de despesa utilitza Lightning Network per fer els teus pagaments més barats, ràpids i privats.\n\nAixò funciona com l\'accés a Internet, però pagues per liquiditat i encaminament en lloc d\'amplada de banda.\n\nAquesta configuració inclou alguns costos únics.";
 "wallet__receive_liquidity__text_additional" = "El teu saldo de despesa utilitza Lightning Network per fer els teus pagaments més barats, ràpids i privats.\n\nAixò funciona com l\'accés a Internet, però pagues per liquiditat i encaminament en lloc d\'amplada de banda.\n\nBitkit necessita augmentar la capacitat de recepció del teu saldo de despesa per processar aquest pagament.";
 "wallet__receive_liquidity__label" = "Liquiditat del saldo de despesa";
 "wallet__receive_liquidity__label_additional" = "Liquiditat addicional del saldo de despesa";
 "wallet__receive_cjit_error" = "Transacció fallida";
+"wallet__receive_cjit_error_node_capacity__title" = "Capacitat addicional no disponible";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit no pot afegir més capacitat de despesa a aquesta cartera ara mateix.";
 "wallet__receive_will" = "Rebràs";
 "wallet__minimum" = "MÍNIM";
 "wallet__activity" = "Activitat";

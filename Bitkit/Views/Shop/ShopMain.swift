@@ -7,6 +7,7 @@ struct ShopMain: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var settings: SettingsViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     let page: String
 
@@ -54,7 +55,11 @@ struct ShopMain: View {
 
         Task { @MainActor in
             do {
-                try await app.handleScannedData(paymentUri, scope: .paymentRequests)
+                try await app.handleScannedData(
+                    paymentUri,
+                    scope: .paymentRequests,
+                    alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                )
 
                 PaymentNavigationHelper.openPaymentSheet(
                     app: app,

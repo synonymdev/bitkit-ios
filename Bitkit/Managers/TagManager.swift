@@ -8,6 +8,7 @@ final class TagManager: ObservableObject {
 
     private let userDefaultsKey = "lastUsedTags"
     private let maxLastUsedTags = 10
+    private var preservedPaymentRequestId: PaykitPaymentRequest.ID?
 
     init() {
         reloadLastUsedTags()
@@ -32,6 +33,16 @@ final class TagManager: ObservableObject {
     /// Clear all selected tags
     func clearSelectedTags() {
         selectedTags.removeAll()
+        preservedPaymentRequestId = nil
+    }
+
+    func preserveSelectedTags(for requestId: PaykitPaymentRequest.ID) {
+        preservedPaymentRequestId = requestId
+    }
+
+    func consumePreservedTags(for requestId: PaykitPaymentRequest.ID) -> Bool {
+        defer { preservedPaymentRequestId = nil }
+        return preservedPaymentRequestId == requestId
     }
 
     /// Get current selected tags as array

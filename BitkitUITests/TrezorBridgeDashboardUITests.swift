@@ -502,7 +502,9 @@ private final class TrezorUserEnvController {
             semaphore.signal()
         }
         semaphore.wait()
-        if let thrown { throw thrown }
+        if let thrown {
+            throw thrown
+        }
     }
 
     private func receiveString(from task: URLSessionWebSocketTask) throws -> String {

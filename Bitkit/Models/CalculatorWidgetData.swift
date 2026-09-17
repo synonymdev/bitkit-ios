@@ -26,8 +26,12 @@ struct CalculatorWidgetValues: Codable, Equatable {
     }
 
     func refreshSource(activeInput: CalculatorMoneyType?) -> CalculatorMoneyType? {
-        if activeInput == .fiat, fiatValue.isEmpty { return nil }
-        if let activeInput { return activeInput }
+        if activeInput == .fiat, fiatValue.isEmpty {
+            return nil
+        }
+        if let activeInput {
+            return activeInput
+        }
         return shouldRefreshBitcoinFromFiat ? .fiat : .bitcoin
     }
 }
@@ -64,7 +68,9 @@ enum CalculatorWidgetFormatter {
     }
 
     static func formatBitcoinValue(_ rawValue: String, displayUnit: BitcoinDisplayUnit, locale: Locale = .current) -> String {
-        if rawValue.isEmpty { return "" }
+        if rawValue.isEmpty {
+            return ""
+        }
 
         switch displayUnit {
         case .modern:
@@ -97,7 +103,9 @@ enum CalculatorWidgetFormatter {
     }
 
     static func formatFiatValue(_ rawValue: String, locale: Locale = .current) -> String {
-        if rawValue.isEmpty { return "" }
+        if rawValue.isEmpty {
+            return ""
+        }
 
         let normalized = sanitizeDecimalInput(
             raw: normalizeDecimalInput(rawValue, locale: locale, maxDecimalPlaces: fiatDecimalPlaces),
@@ -113,7 +121,9 @@ enum CalculatorWidgetFormatter {
     }
 
     static func formatFiatPlaceholder(_ rawValue: String, locale: Locale = .current) -> String {
-        if rawValue.isEmpty { return "" }
+        if rawValue.isEmpty {
+            return ""
+        }
 
         let normalized = sanitizeDecimalInput(
             raw: normalizeDecimalInput(rawValue, locale: locale, maxDecimalPlaces: fiatDecimalPlaces),
@@ -290,10 +300,14 @@ enum CalculatorWidgetFormatter {
     }
 
     private static func shouldTreatCommaAsGrouping(_ value: String, locale: Locale, maxDecimalPlaces: Int?) -> Bool {
-        if value.filter({ $0 == commaSeparator }).count > 1 { return true }
+        if value.filter({ $0 == commaSeparator }).count > 1 {
+            return true
+        }
 
         let separator = DecimalFormatSymbols.decimalSeparator(locale: locale)
-        if separator != "," { return true }
+        if separator != "," {
+            return true
+        }
 
         let fractionLength = value.split(separator: commaSeparator, maxSplits: 1, omittingEmptySubsequences: false).dropFirst().first?.count ?? 0
         return maxDecimalPlaces != nil && fractionLength > maxDecimalPlaces!
@@ -313,7 +327,9 @@ enum CalculatorWidgetFormatter {
 
     private static func formatGroupedDecimal(value: String, groupingSeparator: Character, decimalSeparator: Character) -> String {
         guard !value.isEmpty else { return "" }
-        if value == "." { return String(decimalSeparator) }
+        if value == "." {
+            return String(decimalSeparator)
+        }
 
         guard let decimalIndex = value.firstIndex(of: ".") else {
             return formatGroupedIntegerPreservingZeros(value: value, groupingSeparator: groupingSeparator)

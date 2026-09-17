@@ -54,6 +54,11 @@ struct PubkySessionBackupV1: Codable, Equatable {
     let sessionSecret: String?
 }
 
+struct BlocktankRefundAddress: Codable, Equatable, Sendable {
+    let address: String
+    let index: UInt32
+}
+
 struct AppCacheData: Codable {
     let hasSeenContactsIntro: Bool
     let hasSeenProfileIntro: Bool
@@ -72,6 +77,7 @@ struct AppCacheData: Codable {
     let dismissedSuggestions: [String]
     let lastUsedTags: [String]
     let quickPayLedger: QuickPayLedger?
+    let blocktankRefundAddress: BlocktankRefundAddress?
 
     init(
         hasSeenContactsIntro: Bool,
@@ -90,7 +96,8 @@ struct AppCacheData: Codable {
         highBalanceIgnoreTimestamp: TimeInterval,
         dismissedSuggestions: [String],
         lastUsedTags: [String],
-        quickPayLedger: QuickPayLedger? = nil
+        quickPayLedger: QuickPayLedger? = nil,
+        blocktankRefundAddress: BlocktankRefundAddress? = nil
     ) {
         self.hasSeenContactsIntro = hasSeenContactsIntro
         self.hasSeenProfileIntro = hasSeenProfileIntro
@@ -109,6 +116,7 @@ struct AppCacheData: Codable {
         self.dismissedSuggestions = dismissedSuggestions
         self.lastUsedTags = lastUsedTags
         self.quickPayLedger = quickPayLedger
+        self.blocktankRefundAddress = blocktankRefundAddress
     }
 
     init(from decoder: Decoder) throws {
@@ -130,6 +138,7 @@ struct AppCacheData: Codable {
         dismissedSuggestions = try c.decodeIfPresent([String].self, forKey: .dismissedSuggestions) ?? []
         lastUsedTags = try c.decodeIfPresent([String].self, forKey: .lastUsedTags) ?? []
         quickPayLedger = try c.decodeIfPresent(QuickPayLedger.self, forKey: .quickPayLedger)
+        blocktankRefundAddress = try c.decodeIfPresent(BlocktankRefundAddress.self, forKey: .blocktankRefundAddress)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -139,6 +148,7 @@ struct AppCacheData: Codable {
         case appUpdateIgnoreTimestamp, backupIgnoreTimestamp, highBalanceIgnoreCount, highBalanceIgnoreTimestamp
         case dismissedSuggestions, lastUsedTags
         case quickPayLedger
+        case blocktankRefundAddress
     }
 }
 

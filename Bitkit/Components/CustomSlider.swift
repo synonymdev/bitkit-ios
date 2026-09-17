@@ -4,7 +4,7 @@ struct CustomSlider: View {
     @Binding var value: Double
     let steps: [Double]
     var formatLabel: (Double) -> String = { "$\(Int($0))" }
-    var testIdentifier: String? = nil
+    var testIdentifier: String?
 
     @State private var sliderIndex: Double = 0
     @State private var sliderWidth: CGFloat = 0

@@ -411,11 +411,12 @@ class ActivityService {
         // `markOnchainActivityAsTransfer` could interleave with it. Anything needing `await` runs
         // after this returns.
         let removedActivities = try await ServiceQueue.background(.core) {
-            try Self.applyHwSnapshot(
+            return try Self.applyHwSnapshot(
                 walletId: walletId,
                 activities: activities,
                 transactionDetails: transactionDetails,
                 pruneMissing: pruneMissing,
+                currentTimestamp: UInt64(Date().timeIntervalSince1970),
                 transferChannelIdsByFundingTxId: transferChannelIdsByFundingTxId
             )
         }
@@ -445,12 +446,14 @@ class ActivityService {
         activities: [Activity],
         transactionDetails: [BitkitCore.TransactionDetails],
         pruneMissing: Bool,
+        currentTimestamp: UInt64,
         transferChannelIdsByFundingTxId: [String: String]
     ) throws -> Bool {
         let plan = try HwSnapshotMerge.plan(
             existing: storedOnchainActivities(walletId: walletId),
             incoming: activities,
             pruneMissing: pruneMissing,
+            currentTimestamp: currentTimestamp,
             transferChannelIdsByFundingTxId: transferChannelIdsByFundingTxId
         )
 
@@ -534,7 +537,11 @@ class ActivityService {
         }
 
         // Determine if confirmation status is changing
-        let ldkConfirmed = if case .confirmed = txStatus { true } else { false }
+        let ldkConfirmed = if case .confirmed = txStatus {
+            true
+        } else {
+            false
+        }
 
         // Skip if existing activity has newer timestamp, unless confirmation status is changing
         if let existingActivity, case let .onchain(existing) = existingActivity {
@@ -850,7 +857,11 @@ class ActivityService {
 
         let paymentTimestamp = UInt64(payment.latestUpdateTimestamp)
         let existingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id)
-        let existingLightning: LightningActivity? = if let existingActivity, case let .lightning(ln) = existingActivity { ln } else { nil }
+        let existingLightning: LightningActivity? = if let existingActivity, case let .lightning(ln) = existingActivity {
+            ln
+        } else {
+            nil
+        }
 
         let state: BitkitCore.PaymentState = switch payment.status {
         case .failed: .failed
@@ -1001,7 +1012,11 @@ class ActivityService {
             let closedChannels = try getAllClosedChannels(sortDirection: .desc)
             guard !closedChannels.isEmpty else { return nil }
 
-            let details = if let provided = transactionDetails { provided } else { await fetchTransactionDetails(txid: txid) }
+            let details = if let provided = transactionDetails {
+                provided
+            } else {
+                await fetchTransactionDetails(txid: txid)
+            }
             guard let details else {
                 Logger.warn("Transaction details not available for \(txid)", context: "CoreService.findClosedChannelForTransaction")
                 return nil
@@ -1091,7 +1106,11 @@ class ActivityService {
         value: UInt64,
         transactionDetails: BitkitCore.TransactionDetails? = nil
     ) async throws -> String? {
-        let details = if let provided = transactionDetails { provided } else { await fetchTransactionDetails(txid: txid) }
+        let details = if let provided = transactionDetails {
+            provided
+        } else {
+            await fetchTransactionDetails(txid: txid)
+        }
         guard let details else {
             Logger.warn("Transaction details not available for \(txid)", context: "CoreService.findReceivingAddress")
             return nil
@@ -1239,14 +1258,18 @@ class ActivityService {
         contact: String? = nil,
         walletId: String = WalletScope.default
     ) async {
+        let normalizedContact = contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
         do {
             try await ServiceQueue.background(.core) {
                 if let existing = try? BitkitCore.getActivityByTxId(walletId: walletId, txId: txid) {
-                    // The watcher can persist a hardware transaction before this call lands, so the
-                    // transfer flag still has to be applied to the row it already created.
-                    if isTransfer, !existing.isTransfer {
-                        var updated = existing
+                    var updated = existing
+                    if isTransfer {
                         updated.isTransfer = true
+                    }
+                    if let normalizedContact {
+                        updated.contact = normalizedContact
+                    }
+                    if updated != existing {
                         try updateActivity(activityId: existing.id, activity: .onchain(updated))
                         self.activitiesChangedSubject.send()
                     }
@@ -1272,7 +1295,7 @@ class ActivityService {
                     confirmTimestamp: nil,
                     channelId: nil,
                     transferTxId: nil,
-                    contact: contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 },
+                    contact: normalizedContact,
                     createdAt: now,
                     updatedAt: now,
                     seenAt: now
@@ -1297,7 +1320,9 @@ class ActivityService {
         do {
             try await ServiceQueue.background(.core) {
                 guard let existing = try Self.findOnchainActivityAcrossWallets(txId: txId) else { return }
-                if existing.isTransfer, existing.channelId == channelId { return }
+                if existing.isTransfer, existing.channelId == channelId {
+                    return
+                }
                 var updated = existing
                 updated.isTransfer = true
                 updated.channelId = channelId
@@ -1320,10 +1345,14 @@ class ActivityService {
         // activity in every wallet — core exposes no wallet-id enumeration. This is the common
         // path: the normal transfer flow writes the row through
         // `createSentOnchainActivityFromSendResult(isTransfer: true)` before this runs.
-        if let defaultMatch, defaultMatch.isTransfer { return defaultMatch }
+        if let defaultMatch, defaultMatch.isTransfer {
+            return defaultMatch
+        }
 
         var matches: [OnchainActivity] = []
-        if let defaultMatch { matches.append(defaultMatch) }
+        if let defaultMatch {
+            matches.append(defaultMatch)
+        }
         matches += try storedWalletIds().subtracting([WalletScope.default]).sorted()
             .compactMap { try? BitkitCore.getActivityByTxId(walletId: $0, txId: txId) }
 
@@ -1768,7 +1797,9 @@ private actor AddressSearchCoordinator {
         func findMatch(in addresses: [String]) -> String? {
             if let exact = details.outputs.first(where: { $0.value == value }),
                let addr = exact.scriptpubkeyAddress, addresses.contains(addr)
-            { return addr }
+            {
+                return addr
+            }
             return addresses.first { matchesTransaction($0) }
         }
 
@@ -1817,7 +1848,9 @@ private actor AddressSearchCoordinator {
                     }
                     if let found = currentAddressBatch {
                         let stopIndex = found > UInt32.max - batchSize ? UInt32.max : found + batchSize
-                        if index >= stopIndex { break }
+                        if index >= stopIndex {
+                            break
+                        }
                     }
                     index += batchSize
                 }

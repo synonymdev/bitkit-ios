@@ -15,6 +15,7 @@ struct ScannerSheet: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
     @State private var isManualEntryPresented = false
     @State private var manualEntry = ""
 
@@ -72,7 +73,8 @@ struct ScannerSheet: View {
                     navigation: navigation,
                     pubkyProfile: pubkyProfile,
                     sheets: sheets,
-                    wallet: wallet
+                    wallet: wallet,
+                    hwWalletManager: hwWalletManager
                 )
             }
             .sheet(isPresented: $isManualEntryPresented) {

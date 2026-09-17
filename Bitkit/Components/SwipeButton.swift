@@ -3,7 +3,9 @@ import SwiftUI
 struct SwipeButton: View {
     let title: String
     let accentColor: Color
-    /// Blocks the swipe and shows the knob spinner while a prerequisite is still loading.
+    /// Blocks interaction without presenting the post-swipe loading state.
+    var isDisabled = false
+    /// Blocks interaction and shows the knob spinner while an operation is running.
     var isLoading = false
     /// Optional binding for swipe progress (0...1), e.g. to drive animations in the parent.
     var swipeProgress: Binding<CGFloat>?
@@ -13,6 +15,10 @@ struct SwipeButton: View {
     @State private var isSubmitting = false
 
     private var isBusy: Bool {
+        isDisabled || isLoading || isSubmitting
+    }
+
+    private var showsSpinner: Bool {
         isLoading || isSubmitting
     }
 
@@ -43,11 +49,12 @@ struct SwipeButton: View {
                             .frame(height: buttonHeight - innerPadding)
                             .padding(.horizontal, innerPadding / 2)
                     }
+                    .opacity(isDisabled ? 0.5 : 1)
 
                 // Track text
                 BodySSBText(title)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .opacity(Double(1.0 - textProgress))
+                    .opacity(Double(1.0 - textProgress) * (isDisabled ? 0.5 : 1))
 
                 // Knob
                 Circle()
@@ -55,7 +62,7 @@ struct SwipeButton: View {
                     .frame(width: buttonHeight - innerPadding, height: buttonHeight - innerPadding)
                     .overlay(
                         ZStack {
-                            if isBusy {
+                            if showsSpinner {
                                 ActivityIndicator(theme: .dark)
                             } else {
                                 Image("arrow-right")
@@ -75,6 +82,7 @@ struct SwipeButton: View {
                     .accessibilityIdentifier("GRAB")
                     .offset(x: clampedOffset)
                     .padding(.horizontal, innerPadding / 2)
+                    .opacity(isDisabled ? 0.5 : 1)
                     .gesture(
                         DragGesture()
                             .onChanged { value in

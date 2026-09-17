@@ -58,14 +58,16 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertEqual(
             PublicPaykitService.parseEndpoint(
                 methodId: "btc-testnet-p2wpkh",
-                endpointData: #"{"value":"tb1qexample"}"#
+                endpointData: #"{"value":"tb1qexample"}"#,
+                network: .testnet
             )?.methodId,
             .testnetOnchainP2wpkh
         )
         XCTAssertEqual(
             PublicPaykitService.parseEndpoint(
                 methodId: "btc-regtest-p2tr",
-                endpointData: #"{"value":"bcrt1pexample"}"#
+                endpointData: #"{"value":"bcrt1pexample"}"#,
+                network: .regtest
             )?.methodId,
             .regtestOnchainP2tr
         )
@@ -166,6 +168,45 @@ final class PublicPaykitServiceTests: XCTestCase {
         )
     }
 
+    func testPaymentLaunchResultHasReasonSpecificIncomingRequestFailures() {
+        XCTAssertNil(
+            PublicPaykitPaymentLaunchResult.opened(
+                paymentRequest: "bitcoin:bcrt1ptest",
+                privatePaymentContext: nil
+            ).incomingPaymentRequestFailureReason
+        )
+        XCTAssertEqual(PublicPaykitPaymentLaunchResult.noEndpoint.incomingPaymentRequestFailureReason, .noSupportedEndpoint)
+        XCTAssertEqual(PublicPaykitPaymentLaunchResult.notOpened.incomingPaymentRequestFailureReason, .endpointNotPayable)
+        XCTAssertEqual(
+            PublicPaykitPaymentLaunchResult.waitingForUpdatedPaymentList.incomingPaymentRequestFailureReason,
+            .paymentDetailsPending
+        )
+    }
+
+    func testIncomingRequestFailureReasonsHaveStableCategories() {
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.noSupportedEndpoint.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.endpointNotPayable.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.paymentDetailsPending.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.resolutionFailed.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.invalidPaymentTarget.category, "presentation")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.paymentTargetNotRoutable.category, "presentation")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.requestExpired.category, "presentation")
+    }
+
+    func testAppSceneFeedbackMapsRequestedExpirationToExpiredDiagnosticsAndToast() {
+        let feedback = IncomingPaykitPaymentRequestPresentationFeedback(
+            deferral: .requestExpired(wasRequested: true),
+            fallbackReason: .resolutionFailed
+        )
+
+        XCTAssertEqual(feedback.diagnosticReason, .requestExpired)
+        XCTAssertEqual(feedback.diagnosticReason.rawValue, "request_expired")
+        XCTAssertTrue(feedback.isTerminal)
+        XCTAssertEqual(feedback.toast?.titleKey, "wallet__payment_request")
+        XCTAssertEqual(feedback.toast?.descriptionKey, "wallet__payment_request_expired")
+        XCTAssertEqual(feedback.toast?.accessibilityIdentifier, "PaymentRequestExpiredToast")
+    }
+
     func testPayableEndpointsFiltersInvalidDecodedEndpoints() async {
         let payable = await PublicPaykitService.payableEndpoints(from: [
             endpoint(.bitcoinLightningBolt11, value: "not-a-bolt11"),
@@ -184,6 +225,24 @@ final class PublicPaykitServiceTests: XCTestCase {
             XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
             XCTAssertFalse(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey))
             XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+    }
+
+    func testPendingReconciliationHandlesWriterProducedSharingStates() throws {
+        let expectedModes: [(publicEnabled: Bool, privateEnabled: Bool, mode: PublicPaykitService.PendingReconciliationMode)] = [
+            (true, true, .publishEndpoints),
+            (true, false, .publishEndpoints),
+            (false, true, .removePublishedState),
+            (false, false, .removePublishedState),
+        ]
+
+        for expected in expectedModes {
+            try withIsolatedDefaults { defaults in
+                defaults.set(expected.publicEnabled, forKey: PublicPaykitService.publishingEnabledKey)
+                defaults.set(expected.privateEnabled, forKey: PrivatePaykitService.publishingEnabledKey)
+
+                XCTAssertEqual(PublicPaykitService.pendingReconciliationMode(defaults: defaults), expected.mode)
+            }
         }
     }
 

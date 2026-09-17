@@ -116,6 +116,13 @@ enum ContactPaymentsService {
         operations: Operations,
         defaults: UserDefaults
     ) async throws {
+        if !canUsePrivatePayments, defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey) {
+            operations.setPrivateCleanupPending(true)
+        }
+        defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        defaults.set(canUsePrivatePayments, forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set(true, forKey: confirmedPreferenceKey)
+
         if canUsePrivatePayments,
            let error = await operations.preparePrivateEndpoints(
                contactPublicKeys,
@@ -127,12 +134,10 @@ enum ContactPaymentsService {
 
         try await operations.syncPublicEndpoints(true)
 
-        defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
-        defaults.set(canUsePrivatePayments, forKey: PrivatePaykitService.publishingEnabledKey)
-        defaults.set(true, forKey: confirmedPreferenceKey)
-
         operations.setPublicCleanupPending(false)
-        operations.setPrivateCleanupPending(false)
+        if canUsePrivatePayments {
+            operations.setPrivateCleanupPending(false)
+        }
     }
 
     @MainActor
@@ -142,7 +147,10 @@ enum ContactPaymentsService {
             operations.setPrivateCleanupPending(false)
         } catch {
             operations.setPrivateCleanupPending(true)
-            throw error
+            Logger.warn(
+                "Deferred private Paykit endpoint cleanup after disable failed: \(error)",
+                context: "ContactPaymentsService"
+            )
         }
 
         do {

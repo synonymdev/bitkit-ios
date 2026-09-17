@@ -1139,7 +1139,7 @@ class TrezorViewModel {
         guard watcherId == activeWatcherId || watcherId == startingWatcherId else { return }
 
         switch event {
-        case let .transactionsChanged(activities, _, balance, txCount, blockHeight, accountType):
+        case let .transactionsChanged(activities, _, balance, txCount, blockHeight, accountType, _):
             watcherConnectionStatus = .connected
             watcherError = nil
             watcherActivities = activities

@@ -26,3 +26,6 @@ buildServer.json
 .codex/
 .claude/*.local*
 .claude/scheduled_tasks.lock
+
+# XcodeBuildMCP
+.xcodebuildmcp/config.yaml

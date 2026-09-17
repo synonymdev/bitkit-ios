@@ -21,16 +21,28 @@ struct SendFailureContext: Hashable {
     let failureType: String
     let paymentRequest: String?
     let routingCacheResetAttempted: Bool
+    let incomingPaymentRequestId: PaykitPaymentRequest.ID?
+    let isInitialSubscriptionPayment: Bool
 
-    init(error: Error, retryRoute: SendRetryRoute, routingCacheResetAttempted: Bool = false, paymentRequest: String? = nil) {
+    init(
+        error: Error,
+        retryRoute: SendRetryRoute,
+        routingCacheResetAttempted: Bool = false,
+        paymentRequest: String? = nil,
+        contactPaymentContext: ContactPaymentContext? = nil
+    ) {
         let shouldResetRoutingCaches = shouldResetRoutingCachesOnRetry(for: error)
 
-        message = sendFailureMessage(for: error)
+        isInitialSubscriptionPayment = contactPaymentContext?.isInitialSubscriptionPayment == true
+        message = isInitialSubscriptionPayment
+            ? t("subscriptions__first_payment_failed_description")
+            : sendFailureMessage(for: error)
         self.retryRoute = retryRoute
         resetRoutingCachesOnRetry = shouldResetRoutingCaches && !routingCacheResetAttempted
         failureType = sendFailureType(for: error)
         self.paymentRequest = paymentRequest
         self.routingCacheResetAttempted = routingCacheResetAttempted
+        incomingPaymentRequestId = contactPaymentContext?.incomingPaymentRequest?.id
     }
 }
 
@@ -42,13 +54,19 @@ enum SendRoute: Hashable {
     case amount
     case utxoSelection
     case confirm
+    case hardwareSign
     case feeRate
     case feeCustom
     case tag
     case quickpay
     case pin
-    case pending(paymentHash: String, retryRoute: SendRetryRoute, paymentRequest: String?)
-    case success(paymentId: String)
+    case pending(
+        paymentHash: String?,
+        retryRoute: SendRetryRoute,
+        paymentRequest: String?,
+        paykitPaymentRequestId: PaykitPaymentRequest.ID? = nil
+    )
+    case success(paymentId: String, walletId: String = WalletScope.default)
     case failure(SendFailureContext)
     case lnurlPayAmount
     case lnurlPayConfirm
@@ -59,9 +77,11 @@ enum SendRoute: Hashable {
 
 struct SendConfig {
     let initialRoute: SendRoute
+    let hardwareWalletId: String?
 
-    init(view: SendRoute = .options) {
+    init(view: SendRoute = .options, hardwareWalletId: String? = nil) {
         initialRoute = view
+        self.hardwareWalletId = hardwareWalletId
     }
 }
 
@@ -69,9 +89,11 @@ struct SendSheetItem: SheetItem {
     let id: SheetID = .send
     let size: SheetSize = .large
     let initialRoute: SendRoute
+    let hardwareWalletId: String?
 
-    init(initialRoute: SendRoute = .options) {
+    init(initialRoute: SendRoute = .options, hardwareWalletId: String? = nil) {
         self.initialRoute = initialRoute
+        self.hardwareWalletId = hardwareWalletId
     }
 }
 
@@ -83,20 +105,35 @@ struct SendSheet: View {
     @EnvironmentObject private var tagManager: TagManager
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
+    @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(TrezorManager.self) private var trezorManager
 
     let config: SendSheetItem
+    let isEmbedded: Bool
 
+    @State private var rootRoute: SendRoute
+    @State private var rootRouteGeneration = 0
     @State private var navigationPath: [SendRoute] = []
     @State private var rootOverride: SendRoute?
     @State private var quickPaySession = 0
     @State private var hasValidatedAfterSync = false
     @State private var incomingPaymentRequest: PaykitPaymentRequest?
+    @State private var pendingEmbeddedRetryRoute: SendRoute?
     @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
+    @State private var hwSend: HwSendCoordinator
+    @State private var setupTask: Task<Void, Never>?
+
+    init(config: SendSheetItem, isEmbedded: Bool = false) {
+        self.config = config
+        self.isEmbedded = isEmbedded
+        _rootRoute = State(initialValue: config.initialRoute)
+        _hwSend = State(initialValue: HwSendCoordinator(walletId: config.hardwareWalletId))
+    }
 
     private var currentRoot: SendRoute {
-        rootOverride ?? config.initialRoute
+        rootOverride ?? rootRoute
     }
 
     /// How long the sync overlay may wait for channels to become usable before falling back
@@ -107,6 +144,10 @@ struct SendSheet: View {
     /// If there are no channels at all, we should NOT wait behind the sync UI – that's a capacity issue, not a sync issue.
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
+        if hwSend.isActive {
+            return false
+        }
+
         // Node must be running
         guard wallet.nodeLifecycleState == .running else { return true }
 
@@ -146,65 +187,88 @@ struct SendSheet: View {
     }
 
     var body: some View {
-        Sheet(id: .send, data: config) {
-            if shouldShowSyncOverlay {
-                SendSyncScreen()
-                    .transition(.opacity)
+        Group {
+            if isEmbedded {
+                content
             } else {
-                NavigationStack(path: $navigationPath) {
-                    viewForRoute(currentRoot)
-                        .navigationDestination(for: SendRoute.self) { route in
-                            viewForRoute(route)
-                        }
+                Sheet(id: .send, data: config) {
+                    content
                 }
-                .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
+        .interactiveDismissDisabled(hwSend.isSigning || hwSend.isBroadcastUnresolved)
+        .sheet(isPresented: reconnectPairingBinding) {
+            HardwarePairingSheet(config: HardwarePairingSheetItem())
+        }
         .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut)
         .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
         }
         .onAppear {
-            tagManager.clearSelectedTags()
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+            if let walletId = config.hardwareWalletId {
+                let balance = hwWalletManager.fundingBalance(walletId: walletId)
+                let reserve = HwFundingSigner.feeReserve(
+                    balanceSats: balance,
+                    satsPerVByte: wallet.selectedFeeRateSatsPerVByte.map(UInt64.init)
+                )
+                hwSend.seedAvailable(
+                    walletId: walletId,
+                    availableSats: balance > reserve ? balance - reserve : 0
+                )
+            }
             if let request = app.contactPaymentContext?.incomingPaymentRequest {
                 incomingPaymentRequest = request
+                if !tagManager.consumePreservedTags(for: request.id) {
+                    tagManager.clearSelectedTags()
+                }
                 guard paykitPaymentRequestManager.markPresentedIfPending(request) else {
                     app.resetSendState()
-                    sheets.hideSheetIfActive(.send, reason: "Incoming payment request is no longer available")
+                    sheets.hideSheetIfActive(
+                        isEmbedded ? .subscription : .send,
+                        reason: "Incoming payment request is no longer available"
+                    )
                     return
                 }
+                if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
+                    PaykitSubscriptionNotificationTargetStore.clear()
+                }
                 wallet.sendAmountSats = request.amountSats
+            } else {
+                tagManager.clearSelectedTags()
             }
             hasValidatedAfterSync = false
             syncTimedOut = false
 
-            if app.contactPaymentContext?.incomingPaymentRequest != nil, !shouldShowSyncOverlay {
-                validatePaymentAfterSync()
-            }
-
             // A plain Send open (TabBar) must not inherit invoice state from an earlier scan,
             // e.g. one abandoned behind the sync overlay. Invoice-carrying opens use other routes.
-            if config.initialRoute == .options {
+            if currentRoot == .options {
                 app.resetSendState()
             }
 
-            Task {
+            setupTask?.cancel()
+            setupTask = Task {
                 do {
                     try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+                } catch is CancellationError {
+                    return
                 } catch {
                     Logger.error("Failed to set default fee rate: \(error)")
                 }
+
+                if let request = incomingPaymentRequest {
+                    guard isCurrentIncomingRequest(request.id) else { return }
+                    guard await selectHardwareFundingSourceIfNeeded(
+                        amountSats: request.amountSats,
+                        requestId: request.id
+                    ) else { return }
+                    guard isCurrentIncomingRequest(request.id) else { return }
+                    if !shouldShowSyncOverlay {
+                        validatePaymentAfterSync()
+                    }
+                }
             }
-        }
-        .onDisappear {
-            if let incomingPaymentRequest {
-                paykitPaymentRequestManager.finishPayment(incomingPaymentRequest)
-            }
-            app.contactPaymentContext = nil
-            app.resetQuickPay()
-            QuickPayPaymentCoordinator.shared.detach()
         }
         .onChange(of: wallet.nodeLifecycleState) { _, state in
             // When the node becomes running and we have a scanned invoice, run deferred validation.
@@ -224,8 +288,7 @@ struct SendSheet: View {
         .onChange(of: wallet.hasUsableChannels) { _, hasUsable in
             // Only validate if channels just became usable and we have a scanned invoice
             // (Validation already happened in AppViewModel if channels were already usable)
-            let hasScannedInvoice = app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil || app.lnurlPayData != nil
-            guard hasScannedInvoice else { return }
+            guard app.hasSendPaymentTarget else { return }
 
             let isLightningPayment = app.scannedLightningInvoice != nil
                 || app.lnurlPayData != nil
@@ -252,6 +315,38 @@ struct SendSheet: View {
 
             handleSyncTimeout()
         }
+        .onDisappear(perform: cleanup)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if shouldShowSyncOverlay {
+            SendSyncScreen()
+                .transition(.opacity)
+        } else {
+            NavigationStack(path: $navigationPath) {
+                viewForRoute(currentRoot)
+                    .navigationDestination(for: SendRoute.self) { route in
+                        viewForRoute(route)
+                    }
+            }
+            .id(rootRouteGeneration)
+            .transition(.opacity)
+        }
+    }
+
+    private func cleanup() {
+        setupTask?.cancel()
+        setupTask = nil
+        hwSend.cancel()
+        if let request = incomingPaymentRequest ?? app.contactPaymentContext?.incomingPaymentRequest {
+            Task { await paykitPaymentRequestManager.finishPayment(request) }
+        }
+        incomingPaymentRequest = nil
+        app.resetSendState()
+        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+        app.resetQuickPay()
+        QuickPayPaymentCoordinator.shared.detach()
     }
 
     /// Called when the sync overlay has been visible for `syncTimeoutSeconds` without channels becoming usable.
@@ -275,8 +370,7 @@ struct SendSheet: View {
         if invoiceAmount > 0 {
             guard onchainBalance >= invoiceAmount else {
                 let amountNeeded = invoiceAmount - onchainBalance
-                app.toast(
-                    type: .error,
+                showPaymentSetupFailure(
                     title: t("other__pay_insufficient_savings"),
                     description: t(
                         "other__pay_insufficient_savings_amount_description",
@@ -284,19 +378,16 @@ struct SendSheet: View {
                     ),
                     accessibilityIdentifier: "InsufficientSavingsToast"
                 )
-                sheets.hideSheet()
                 return false
             }
         } else {
             // Zero-amount invoice: user must have some balance to proceed
             guard onchainBalance > 0 else {
-                app.toast(
-                    type: .error,
+                showPaymentSetupFailure(
                     title: t("other__pay_insufficient_savings"),
                     description: t("other__pay_insufficient_savings_description"),
                     accessibilityIdentifier: "InsufficientSavingsToast"
                 )
-                sheets.hideSheet()
                 return false
             }
         }
@@ -309,12 +400,43 @@ struct SendSheet: View {
         let description = amountNeeded > 0
             ? t("other__pay_insufficient_spending_amount_description", variables: ["amount": CurrencyFormatter.formatSats(amountNeeded)])
             : t("other__pay_insufficient_spending_description")
-        app.toast(
-            type: .error,
+        showPaymentSetupFailure(
             title: t("other__pay_insufficient_spending"),
             description: description,
             accessibilityIdentifier: "InsufficientSpendingToast"
         )
+    }
+
+    private func showPaymentSetupFailure(title: String, description: String, accessibilityIdentifier: String) {
+        if let context = app.contactPaymentContext, context.isInitialSubscriptionPayment {
+            let error = AppError(message: title, debugMessage: description)
+            let failureRoute = SendRoute.failure(SendFailureContext(
+                error: error,
+                retryRoute: app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm,
+                paymentRequest: app.scannedLightningInvoice?.bolt11,
+                contactPaymentContext: context
+            ))
+            if isEmbedded {
+                replaceRootRoute(with: failureRoute)
+            } else {
+                navigationPath.append(failureRoute)
+            }
+            return
+        }
+
+        app.toast(
+            type: .error,
+            title: title,
+            description: description,
+            accessibilityIdentifier: accessibilityIdentifier
+        )
+        sheets.hideSheet()
+    }
+
+    private enum PaymentValidationResult {
+        case ready
+        case waiting
+        case failed
     }
 
     /// Validates payment affordability after sync completes
@@ -322,13 +444,27 @@ struct SendSheet: View {
     /// For onchain: validates balance and shows error if insufficient
     /// Pass `ignoreChannelWait: true` to validate even while channels are unusable (sync timeout).
     private func validatePaymentAfterSync(ignoreChannelWait: Bool = false) {
+        let result = performPaymentValidationAfterSync(ignoreChannelWait: ignoreChannelWait)
+        guard let route = pendingEmbeddedRetryRoute else { return }
+
+        switch result {
+        case .ready:
+            pendingEmbeddedRetryRoute = nil
+            replaceRootRoute(with: route)
+        case .failed:
+            pendingEmbeddedRetryRoute = nil
+        case .waiting:
+            break
+        }
+    }
+
+    private func performPaymentValidationAfterSync(ignoreChannelWait: Bool) -> PaymentValidationResult {
         let requestedAmount = app.contactPaymentContext?.incomingPaymentRequest?.amountSats
 
         if let lnurlPayData = app.lnurlPayData, let requestedAmount {
             let minimumAmount = max(1, lnurlPayData.minSendableSat)
             guard requestedAmount >= minimumAmount else {
-                app.toast(
-                    type: .error,
+                showPaymentSetupFailure(
                     title: t("wallet__lnurl_pay__error_min__title"),
                     description: t(
                         "wallet__lnurl_pay__error_min__description",
@@ -336,31 +472,27 @@ struct SendSheet: View {
                     ),
                     accessibilityIdentifier: "LnurlPayAmountTooLowToast"
                 )
-                sheets.hideSheet()
                 hasValidatedAfterSync = true
-                return
+                return .failed
             }
             guard requestedAmount <= lnurlPayData.maxSendableSat else {
-                app.toast(
-                    type: .error,
+                showPaymentSetupFailure(
                     title: t("wallet__lnurl_pay__error_max__title"),
                     description: t("wallet__lnurl_pay__error_max__description"),
                     accessibilityIdentifier: "LnurlPayAmountTooHighToast"
                 )
-                sheets.hideSheet()
                 hasValidatedAfterSync = true
-                return
+                return .failed
             }
             guard LightningService.shared.canSend(amountSats: requestedAmount) else {
                 let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
                 showInsufficientSpendingToast(invoiceAmount: requestedAmount, spendingBalance: spendingBalance)
-                sheets.hideSheet()
                 hasValidatedAfterSync = true
-                return
+                return .failed
             }
 
             hasValidatedAfterSync = true
-            return
+            return .ready
         }
 
         // Validate lightning payment if present
@@ -372,7 +504,7 @@ struct SendSheet: View {
             let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
             if hasAnyChannels, !wallet.hasUsableChannels, !ignoreChannelWait {
                 // We have channels but none usable yet → wait
-                return
+                return .waiting
             }
 
             // Check if we can afford the lightning payment
@@ -388,13 +520,16 @@ struct SendSheet: View {
                     app.scannedLightningInvoice = nil
 
                     // Validate onchain balance BEFORE navigating
-                    let onchainBalance = LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0
+                    let onchainBalance = max(
+                        LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0,
+                        hwWalletManager.maximumFundingBalanceSats
+                    )
                     guard validateOnchainBalanceAndDismissIfInsufficient(
                         invoiceAmount: requestedAmount ?? onchainInvoice.amountSatoshis,
                         onchainBalance: onchainBalance
                     ) else {
                         hasValidatedAfterSync = true
-                        return
+                        return .failed
                     }
 
                     // Onchain balance is sufficient → navigate to amount screen
@@ -403,35 +538,38 @@ struct SendSheet: View {
                         navigationPath = [.amount]
                     }
                     hasValidatedAfterSync = true
-                    return
+                    return .ready
                 } else {
                     // For pure lightning invoices, show error toast and dismiss sheet
                     let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
                     showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: spendingBalance)
-                    sheets.hideSheet()
                     hasValidatedAfterSync = true
-                    return
+                    return .failed
                 }
             } else {
                 // Lightning payment is valid, we're done
                 hasValidatedAfterSync = true
-                return
+                return .ready
             }
         }
 
         // Validate onchain payment balance (for pure onchain invoices)
         if let onchainInvoice = app.scannedOnchainInvoice {
-            let onchainBalance = LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0
+            let onchainBalance = max(
+                LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0,
+                hwWalletManager.maximumFundingBalanceSats
+            )
             guard validateOnchainBalanceAndDismissIfInsufficient(
                 invoiceAmount: requestedAmount ?? onchainInvoice.amountSatoshis,
                 onchainBalance: onchainBalance
             ) else {
                 hasValidatedAfterSync = true
-                return
+                return .failed
             }
         }
 
         hasValidatedAfterSync = true
+        return .ready
     }
 
     private func requestPinCheck() async -> Bool {
@@ -455,32 +593,115 @@ struct SendSheet: View {
         }
     }
 
+    private func isCurrentIncomingRequest(_ requestId: PaykitPaymentRequest.ID) -> Bool {
+        !Task.isCancelled
+            && sheets.activeSheetConfiguration?.id == (isEmbedded ? .subscription : .send)
+            && incomingPaymentRequest?.id == requestId
+            && app.contactPaymentContext?.incomingPaymentRequest?.id == requestId
+    }
+
+    private func selectHardwareFundingSourceIfNeeded(
+        amountSats: UInt64,
+        requestId: PaykitPaymentRequest.ID
+    ) async -> Bool {
+        guard isCurrentIncomingRequest(requestId) else { return false }
+        guard app.selectedWalletToPayFrom == .onchain,
+              let invoice = app.scannedOnchainInvoice,
+              let satsPerVByte = wallet.selectedFeeRateSatsPerVByte
+        else { return true }
+
+        let savingsAvailable: UInt64?
+        do {
+            savingsAvailable = try await wallet.calculateMaxSendableAmount(
+                address: invoice.address,
+                satsPerVByte: satsPerVByte
+            )
+        } catch is CancellationError {
+            return false
+        } catch {
+            savingsAvailable = nil
+            Logger.error(error, context: "SendSheet failed to estimate Savings availability")
+        }
+        guard isCurrentIncomingRequest(requestId) else { return false }
+        if let savingsAvailable, savingsAvailable >= amountSats {
+            return true
+        }
+
+        var hardwareSources: [(wallet: HwWallet, available: UInt64)] = []
+        var hasUnavailableSource = savingsAvailable == nil
+        for hardwareWallet in hwWalletManager.wallets {
+            do {
+                let available = try await hwWalletManager.maxSpendableFunding(
+                    walletId: hardwareWallet.walletId,
+                    destinationAddress: invoice.address,
+                    satsPerVByte: UInt64(satsPerVByte)
+                )
+                hardwareSources.append((wallet: hardwareWallet, available: available))
+            } catch is CancellationError {
+                return false
+            } catch {
+                hasUnavailableSource = true
+                Logger.error(error, context: "SendSheet failed to estimate hardware availability")
+            }
+            guard isCurrentIncomingRequest(requestId) else { return false }
+        }
+        if let source = hardwareSources
+            .filter({ $0.available >= amountSats })
+            .max(by: { $0.available < $1.available })
+        {
+            hwSend.selectWallet(
+                source.wallet.walletId,
+                initialAvailableSats: source.available
+            )
+            return true
+        }
+
+        // A failed estimate is not proof of insufficient funds. Keep the sheet open so the normal
+        // confirmation path can retry instead of rejecting a payable request.
+        guard !hasUnavailableSource else { return true }
+        let maximumAvailable = max(savingsAvailable ?? 0, hardwareSources.map(\.available).max() ?? 0)
+        _ = validateOnchainBalanceAndDismissIfInsufficient(
+            invoiceAmount: amountSats,
+            onchainBalance: maximumAvailable
+        )
+        return false
+    }
+
     @ViewBuilder
     private func viewForRoute(_ route: SendRoute) -> some View {
         switch route {
         case .options:
-            SendOptionsView(navigationPath: $navigationPath)
+            SendOptionsView(navigationPath: $navigationPath, hwSend: hwSend)
         case .contact:
-            SendContactSelectView(navigationPath: $navigationPath)
+            SendContactSelectView(navigationPath: $navigationPath, hwSend: hwSend)
         case .comingSoon:
             SendComingSoonView()
         case .manual:
-            SendEnterManuallyView(navigationPath: $navigationPath)
+            SendEnterManuallyView(navigationPath: $navigationPath, hwSend: hwSend)
         case .amount:
-            SendAmountView(navigationPath: $navigationPath)
+            SendAmountView(navigationPath: $navigationPath, hwSend: hwSend)
         case .utxoSelection:
             SendUtxoSelectionView(navigationPath: $navigationPath)
         case .confirm:
             SendConfirmationView(
                 navigationPath: $navigationPath,
+                hwSend: hwSend,
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
                 routingCacheResetAttempted: routingCacheResetAttempted
             )
+        case .hardwareSign:
+            HwSendSignView(
+                navigationPath: $navigationPath,
+                hwSend: hwSend,
+                prepareContactPayment: prepareHardwareContactPayment,
+                completeContactPayment: completeHardwareContactPayment,
+                cancelContactPayment: cancelHardwareContactPayment
+            )
         case .feeRate:
-            SendFeeRate(navigationPath: $navigationPath)
+            SendFeeRate(navigationPath: $navigationPath, hwSend: hwSend)
         case .feeCustom:
-            SendFeeCustom(navigationPath: $navigationPath)
+            SendFeeCustom(navigationPath: $navigationPath, hwSend: hwSend)
         case .tag:
             SendTagScreen(navigationPath: $navigationPath)
         case .quickpay:
@@ -492,16 +713,21 @@ struct SendSheet: View {
             .id(quickPaySession)
         case .pin:
             SendPinScreen(onCancel: { resolvePinCheck(false) }, onPinVerified: { resolvePinCheck(true) })
-        case let .pending(paymentHash, retryRoute, paymentRequest):
+        case let .pending(paymentHash, retryRoute, paymentRequest, paykitPaymentRequestId):
             SendPendingScreen(
                 paymentHash: paymentHash,
                 retryRoute: retryRoute,
                 paymentRequest: paymentRequest,
+                paykitPaymentRequestId: paykitPaymentRequestId,
                 routingCacheResetAttempted: routingCacheResetAttempted,
                 navigationPath: $navigationPath
             )
-        case let .success(paymentId):
-            SendSuccess(paymentId: paymentId)
+        case let .success(paymentId, walletId):
+            SendSuccess(
+                paymentId: paymentId,
+                walletId: walletId,
+                isInitialSubscriptionPayment: app.contactPaymentContext?.isInitialSubscriptionPayment == true
+            )
         case let .failure(context):
             SendFailure(
                 context: context,
@@ -509,8 +735,18 @@ struct SendSheet: View {
                     if didResetRoutingCaches {
                         routingCacheResetAttempted = true
                     }
-                    resetNavigationForRetry(context.retryRoute)
-                }
+                    if let requestId = context.incomingPaymentRequestId {
+                        await retryIncomingPaymentRequest(
+                            requestId,
+                            isInitialSubscriptionPayment: context.isInitialSubscriptionPayment
+                        )
+                    } else {
+                        resetNavigationForRetry(context.retryRoute)
+                    }
+                },
+                onSecondaryAction: context.isInitialSubscriptionPayment
+                    ? { sheets.hideSheet(reason: "Initial subscription payment deferred") }
+                    : nil
             )
         case .lnurlPayAmount:
             LnurlPayAmount(navigationPath: $navigationPath)
@@ -538,6 +774,7 @@ struct SendSheet: View {
         guard let context = app.contactPaymentContext,
               let request = context.incomingPaymentRequest
         else { return }
+        guard !paykitPaymentRequestManager.isApprovedForPayment(request) else { return }
 
         try await paykitPaymentRequestManager.prepareForPayment(request) {
             guard let privatePaymentContext = context.privatePaymentContext else { return }
@@ -548,11 +785,63 @@ struct SendSheet: View {
         }
     }
 
+    private func prepareHardwareContactPayment() async throws {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest,
+              let address = app.scannedOnchainInvoice?.address
+        else {
+            try await prepareIncomingPaymentRequest()
+            return
+        }
+
+        let endpointIdentifier = PublicPaykitService.onchainMethodId(for: address).rawValue
+        try await PaykitPaymentProofService.shared.prepare(
+            request: request,
+            paymentEndpointIdentifier: endpointIdentifier,
+            kind: .onchain
+        )
+        do {
+            try await prepareIncomingPaymentRequest()
+            try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address)
+        } catch {
+            await PaykitPaymentProofService.shared.cancelPreparation(request)
+            throw error
+        }
+    }
+
+    private func completeHardwareContactPayment(txid: String) async {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest,
+              let address = app.scannedOnchainInvoice?.address
+        else { return }
+
+        await PaykitPaymentProofService.shared.completeOnchainPayment(
+            request,
+            txid: txid,
+            paymentEndpointIdentifier: PublicPaykitService.onchainMethodId(for: address).rawValue
+        )
+    }
+
+    private func cancelHardwareContactPayment() async {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+        await PaykitPaymentProofService.shared.failOnchainPayment(request)
+        await PaykitPaymentProofService.shared.cancelPreparation(request)
+    }
+
     private func replaceQuickPay(with route: SendRoute) {
         app.resetQuickPay()
         let next = PaymentNavigationHelper.replacingQuickPay(in: navigationPath, root: currentRoot, with: route)
         rootOverride = next.root == config.initialRoute ? nil : next.root
         navigationPath = next.path
+    }
+
+    private var reconnectPairingBinding: Binding<Bool> {
+        Binding(
+            get: { trezorManager.showPairingCode },
+            set: { isPresented in
+                if !isPresented, trezorManager.showPairingCode {
+                    trezorManager.cancelPairingCode()
+                }
+            }
+        )
     }
 
     private func resetNavigationForRetry(_ retryRoute: SendRetryRoute) {
@@ -570,6 +859,141 @@ struct SendSheet: View {
         }
 
         navigationPath = [route]
+    }
+
+    private func replaceRootRoute(with route: SendRoute) {
+        rootOverride = nil
+        rootRoute = route
+        navigationPath = []
+        rootRouteGeneration &+= 1
+    }
+
+    @MainActor
+    private func retryIncomingPaymentRequest(
+        _ requestId: PaykitPaymentRequest.ID,
+        isInitialSubscriptionPayment: Bool
+    ) async {
+        guard let request = paykitPaymentRequestManager.paymentRequestForRetry(requestId) else {
+            app.toast(PaykitPaymentRequestError.requestUnavailable)
+            return
+        }
+
+        if isEmbedded, isInitialSubscriptionPayment {
+            await retryEmbeddedInitialSubscriptionPayment(request)
+            return
+        }
+
+        app.resetSendState()
+        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+        _ = paykitPaymentRequestManager.requestPresentation(request)
+        sheets.hideSheet(reason: "Retrying incoming payment request with fresh private payment details")
+    }
+
+    @MainActor
+    private func retryEmbeddedInitialSubscriptionPayment(_ request: PaykitPaymentRequest) async {
+        guard sheets.activeSheetConfiguration?.id == .subscription else { return }
+
+        app.resetSendState()
+        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+        wallet.sendAmountSats = request.amountSats
+
+        let resolution: PublicPaykitPaymentLaunchResult
+        do {
+            resolution = try await PrivatePaykitService.shared.beginPaymentRequestWaitingForUpdatedList(request)
+        } catch {
+            showEmbeddedInitialPaymentFailure(request, error: error)
+            return
+        }
+
+        guard case let .opened(paymentTarget, privatePaymentContext) = resolution else {
+            showEmbeddedInitialPaymentFailure(request, error: PaykitPaymentRequestError.requestUnavailable)
+            return
+        }
+        guard sheets.activeSheetConfiguration?.id == .subscription else { return }
+
+        let context = ContactPaymentContext(
+            publicKey: request.counterparty,
+            privatePaymentContext: privatePaymentContext,
+            incomingPaymentRequest: request,
+            isInitialSubscriptionPayment: true
+        )
+        guard app.claimContactPaymentContext(context) else {
+            app.toast(PaykitPaymentRequestError.operationInProgress)
+            return
+        }
+
+        do {
+            try await app.handleScannedData(
+                paymentTarget,
+                claimedContactPaymentContext: context,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+            )
+        } catch {
+            guard sheets.activeSheetConfiguration?.id == .subscription,
+                  app.ownsContactPaymentContext(context)
+            else {
+                if app.ownsContactPaymentContext(context) {
+                    app.resetSendState()
+                }
+                return
+            }
+            showEmbeddedInitialPaymentFailure(request, error: error, context: context)
+            return
+        }
+
+        guard sheets.activeSheetConfiguration?.id == .subscription,
+              app.ownsContactPaymentContext(context)
+        else {
+            if app.ownsContactPaymentContext(context) {
+                app.resetSendState()
+            }
+            return
+        }
+        guard app.hasSendPaymentTarget else {
+            showEmbeddedInitialPaymentFailure(
+                request,
+                error: PaykitPaymentRequestError.requestUnavailable,
+                context: context
+            )
+            return
+        }
+
+        pendingEmbeddedRetryRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        hasValidatedAfterSync = false
+        guard !shouldShowSyncOverlay else { return }
+        validatePaymentAfterSync()
+    }
+
+    @MainActor
+    private func showEmbeddedInitialPaymentFailure(
+        _ request: PaykitPaymentRequest,
+        error: Error,
+        context existingContext: ContactPaymentContext? = nil
+    ) {
+        guard sheets.activeSheetConfiguration?.id == .subscription else {
+            if let existingContext, app.ownsContactPaymentContext(existingContext) {
+                app.resetSendState()
+            }
+            return
+        }
+
+        let context = existingContext ?? ContactPaymentContext(
+            publicKey: request.counterparty,
+            incomingPaymentRequest: request,
+            isInitialSubscriptionPayment: true
+        )
+        if !app.ownsContactPaymentContext(context), !app.claimContactPaymentContext(context) {
+            app.toast(PaykitPaymentRequestError.operationInProgress)
+            return
+        }
+
+        let failure = SendFailureContext(
+            error: error,
+            retryRoute: .confirm,
+            routingCacheResetAttempted: routingCacheResetAttempted,
+            contactPaymentContext: context
+        )
+        replaceRootRoute(with: .failure(failure))
     }
 }
 

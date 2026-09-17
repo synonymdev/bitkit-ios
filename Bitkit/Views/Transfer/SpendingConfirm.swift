@@ -91,6 +91,7 @@ struct SpendingConfirm: View {
                 Toggle("", isOn: $settings.enableNotifications)
                     .toggleStyle(SwitchToggleStyle(tint: .purpleAccent))
                     .labelsHidden()
+                    .accessibilityIdentifier("SpendingConfirmNotificationSwitch")
             }
             .frame(height: 50)
 

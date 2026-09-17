@@ -31,6 +31,25 @@ struct PrivatePaykitPaymentContext: Equatable {
     let paymentListVersion: UInt64
 }
 
+enum IncomingPaykitPaymentRequestFailureReason: String, Hashable {
+    case noSupportedEndpoint = "no_supported_endpoint"
+    case endpointNotPayable = "endpoint_not_payable"
+    case paymentDetailsPending = "payment_details_pending"
+    case invalidPaymentTarget = "invalid_payment_target"
+    case paymentTargetNotRoutable = "payment_target_not_routable"
+    case requestExpired = "request_expired"
+    case resolutionFailed = "resolution_failed"
+
+    var category: String {
+        switch self {
+        case .noSupportedEndpoint, .endpointNotPayable, .paymentDetailsPending, .resolutionFailed:
+            "resolution"
+        case .invalidPaymentTarget, .paymentTargetNotRoutable, .requestExpired:
+            "presentation"
+        }
+    }
+}
+
 enum PublicPaykitPaymentLaunchResult {
     case opened(paymentRequest: String, privatePaymentContext: PrivatePaykitPaymentContext?)
     case noEndpoint
@@ -45,6 +64,19 @@ enum PublicPaykitPaymentLaunchResult {
             "slashtags__error_pay_empty_msg"
         case .notOpened:
             "slashtags__error_pay_not_opened_msg"
+        }
+    }
+
+    var incomingPaymentRequestFailureReason: IncomingPaykitPaymentRequestFailureReason? {
+        switch self {
+        case .opened:
+            nil
+        case .noEndpoint:
+            .noSupportedEndpoint
+        case .notOpened:
+            .endpointNotPayable
+        case .waitingForUpdatedPaymentList:
+            .paymentDetailsPending
         }
     }
 }
@@ -93,6 +125,18 @@ enum PublicPaykitService {
 
     static var isCleanupPending: Bool {
         UserDefaults.standard.bool(forKey: cleanupPendingKey)
+    }
+
+    enum PendingReconciliationMode: Equatable {
+        case publishEndpoints
+        case removePublishedState
+    }
+
+    static func pendingReconciliationMode(defaults: UserDefaults = .standard) -> PendingReconciliationMode {
+        if defaults.bool(forKey: publishingEnabledKey) {
+            return .publishEndpoints
+        }
+        return .removePublishedState
     }
 
     enum MethodId: String, Hashable, CaseIterable {
@@ -218,12 +262,19 @@ enum PublicPaykitService {
         return MethodId.payablePreferenceOrder.compactMap { endpointsByMethodId[$0] }
     }
 
-    static func parseEndpoint(methodId rawMethodId: String, endpointData: String) -> Endpoint? {
+    static func parseEndpoint(
+        methodId rawMethodId: String,
+        endpointData: String,
+        network: LDKNode.Network = Env.network
+    ) -> Endpoint? {
         guard let methodId = MethodId(rawValue: rawMethodId) else {
             return nil
         }
+        if let onchainNetwork = methodId.onchainNetwork, onchainNetwork != network {
+            return nil
+        }
 
-        guard let payload = parsePayload(endpointData) else {
+        guard let payload = PaykitIssuerInterop.parseEndpointPayload(endpointData) else {
             return nil
         }
 
@@ -392,33 +443,6 @@ enum PublicPaykitService {
         }
 
         return invoice.routeHints().contains { !$0.isEmpty }
-    }
-
-    private struct ParsedPayload {
-        let value: String
-        let min: String?
-        let max: String?
-    }
-
-    private static func parsePayload(_ endpointData: String) -> ParsedPayload? {
-        let trimmedPayload = endpointData.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPayload.isEmpty else {
-            return nil
-        }
-
-        if let data = trimmedPayload.data(using: .utf8),
-           let payloadObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let value = (payloadObject["value"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !value.isEmpty
-        {
-            return ParsedPayload(
-                value: value,
-                min: payloadObject["min"] as? String,
-                max: payloadObject["max"] as? String
-            )
-        }
-
-        return nil
     }
 
     private static func applyPublishedEndpoints(_ desiredEndpoints: [Endpoint]) async throws {

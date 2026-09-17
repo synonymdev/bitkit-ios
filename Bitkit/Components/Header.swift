@@ -37,14 +37,18 @@ struct Header: View {
                 AppStatus(
                     testID: "HeaderAppStatus",
                     onPress: {
-                        if dismissCalculatorIfNeeded() { return }
+                        if dismissCalculatorIfNeeded() {
+                            return
+                        }
                         navigation.navigate(.appStatus)
                     }
                 )
 
                 if isPaykitUIActive, !paymentRequests.pendingRequests.isEmpty {
                     Button {
-                        if dismissCalculatorIfNeeded() { return }
+                        if dismissCalculatorIfNeeded() {
+                            return
+                        }
                         sheets.showSheet(.paymentRequests)
                     } label: {
                         Image("bell")
@@ -68,7 +72,9 @@ struct Header: View {
 
                 if showWidgetEditButton {
                     Button(action: {
-                        if dismissCalculatorIfNeeded() { return }
+                        if dismissCalculatorIfNeeded() {
+                            return
+                        }
                         isEditingWidgets.toggle()
                     }) {
                         Image(isEditingWidgets ? "check-mark" : "pencil")
@@ -83,7 +89,9 @@ struct Header: View {
                 }
 
                 Button {
-                    if dismissCalculatorIfNeeded() { return }
+                    if dismissCalculatorIfNeeded() {
+                        return
+                    }
 
                     withAnimation {
                         app.showDrawer = true
@@ -107,7 +115,9 @@ struct Header: View {
 
     private var profileButton: some View {
         Button {
-            if dismissCalculatorIfNeeded() { return }
+            if dismissCalculatorIfNeeded() {
+                return
+            }
 
             if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
                 navigation.navigate(.profile)

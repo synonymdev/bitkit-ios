@@ -10,8 +10,24 @@ struct SendSuccess: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     let paymentId: String // The payment hash or txid from the successful payment
+    let walletId: String
+    let isInitialSubscriptionPayment: Bool
+
+    init(
+        paymentId: String,
+        walletId: String = WalletScope.default,
+        isInitialSubscriptionPayment: Bool = false
+    ) {
+        self.paymentId = paymentId
+        self.walletId = walletId
+        self.isInitialSubscriptionPayment = isInitialSubscriptionPayment
+    }
 
     @State private var foundActivity: Activity?
+
+    private var paymentProofKind: PaykitPaymentProofKind {
+        app.selectedWalletToPayFrom == .onchain ? .onchain : .lightning
+    }
 
     private var successDisplaySats: Int? {
         if let sendAmountSats = wallet.sendAmountSats {
@@ -31,8 +47,7 @@ struct SendSuccess: View {
 
     /// Load the confetti animation
     private var confettiAnimation: LottieAnimation? {
-        let isOnchain = app.selectedWalletToPayFrom == .onchain
-        let animationName = isOnchain ? "confetti-orange" : "confetti-purple"
+        let animationName = paymentProofKind == .onchain ? "confetti-orange" : "confetti-purple"
 
         guard let filepathURL = Bundle.main.url(forResource: animationName, withExtension: "json") else {
             print("Could not find \(animationName).json in bundle")
@@ -43,6 +58,22 @@ struct SendSuccess: View {
     }
 
     var body: some View {
+        Group {
+            if isInitialSubscriptionPayment {
+                SubscriptionSuccessView(paymentProofKind: paymentProofKind) {
+                    sheets.hideSheet(reason: "Initial subscription payment completed")
+                }
+            } else {
+                standardSuccess
+            }
+        }
+        .navigationBarHidden(true)
+        .allowSwipeBack(false)
+        .sheetBackground()
+        .task { await searchForActivity() }
+    }
+
+    private var standardSuccess: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
                 // Background confetti animation
@@ -94,12 +125,6 @@ struct SendSuccess: View {
                 }
                 .padding(.horizontal, 16)
             }
-            .navigationBarHidden(true)
-            .allowSwipeBack(false)
-            .sheetBackground()
-        }
-        .task {
-            await searchForActivity()
         }
     }
 
@@ -107,14 +132,17 @@ struct SendSuccess: View {
         do {
             let activity = try await tryNTimes(
                 toTry: {
-                    try await activityListViewModel.findActivity(byPaymentId: paymentId)
+                    try await activityListViewModel.findActivity(byPaymentId: paymentId, walletId: walletId)
                 },
                 times: 12,
                 interval: 5
             )
 
             await applyPendingContactContextIfNeeded()
-            let updatedActivity = try? await activityListViewModel.findActivity(byPaymentId: paymentId)
+            let updatedActivity = try? await activityListViewModel.findActivity(
+                byPaymentId: paymentId,
+                walletId: walletId
+            )
             foundActivity = updatedActivity ?? activity
         } catch {
             Logger.warn("Could not find activity for payment ID: \(paymentId) after 12 attempts")
@@ -127,7 +155,12 @@ struct SendSuccess: View {
         }
 
         do {
-            try await activityListViewModel.setContact(contactPublicKey, forPaymentId: paymentId, syncLdkPayments: false)
+            try await activityListViewModel.setContact(
+                contactPublicKey,
+                forPaymentId: paymentId,
+                walletId: walletId,
+                syncLdkPayments: false
+            )
             app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
         } catch {
             Logger.warn("Failed to set pending contact for payment \(paymentId): \(error)", context: "SendSuccess")

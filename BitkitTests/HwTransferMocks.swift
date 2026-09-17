@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import Foundation
 
 /// Shared mocks for the hardware-wallet transfer tests (`HwFundingSignerTests`,
 /// `TransferViewModelHwTests`).
@@ -13,8 +14,11 @@ final class MockHwFunding: HwTransferFunding {
     var maxSpendableError: Error?
     var composeError: Error?
     var composeDelay: Double = 0
+    var estimateDelay: Double = 0
     var signError: Error?
+    var signErrors: [Error] = []
     var signDelay: Double = 0
+    var cancellationIgnoringSignDelay: Double = 0
     var broadcastError: Error?
     var broadcastDelay: Double = 0
     var funding = HwFundingTransaction(psbt: "psbt", miningFeeSats: 141, feeRate: 1, totalSpent: 43186, satsPerVByte: 1)
@@ -26,9 +30,12 @@ final class MockHwFunding: HwTransferFunding {
     private(set) var maxSpendableCalls: [(address: String, satsPerVByte: UInt64)] = []
     private(set) var signCalls = 0
     private(set) var broadcastCalls = 0
+    private(set) var broadcastTransactions: [String] = []
 
     func getFundingAccount(walletId _: String, addressType _: AddressScriptType) throws -> HwFundingAccount {
-        if let accountError { throw accountError }
+        if let accountError {
+            throw accountError
+        }
         return account
     }
 
@@ -39,7 +46,9 @@ final class MockHwFunding: HwTransferFunding {
         addressType _: AddressScriptType
     ) async throws -> UInt64 {
         maxSpendableCalls.append((destinationAddress, satsPerVByte))
-        if let maxSpendableError { throw maxSpendableError }
+        if let maxSpendableError {
+            throw maxSpendableError
+        }
         return maxSpendable
     }
 
@@ -51,8 +60,12 @@ final class MockHwFunding: HwTransferFunding {
         addressType _: AddressScriptType
     ) async throws -> HwFundingTransaction {
         composeCalls.append((address, sats, satsPerVByte))
-        if composeDelay > 0 { try await Task.sleep(nanoseconds: UInt64(composeDelay * 1_000_000_000)) }
-        if let composeError { throw composeError }
+        if composeDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(composeDelay * 1_000_000_000))
+        }
+        if let composeError {
+            throw composeError
+        }
         return funding
     }
 
@@ -64,21 +77,45 @@ final class MockHwFunding: HwTransferFunding {
         addressType _: AddressScriptType
     ) async throws -> UInt64 {
         estimateCalls.append((address, sats, satsPerVByte))
-        if let composeError { throw composeError }
+        if estimateDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(estimateDelay * 1_000_000_000))
+        }
+        if let composeError {
+            throw composeError
+        }
         return funding.miningFeeSats
     }
 
     func signFunding(walletId _: String, funding _: HwFundingTransaction) async throws -> HwFundingSignedTx {
         signCalls += 1
-        if signDelay > 0 { try await Task.sleep(nanoseconds: UInt64(signDelay * 1_000_000_000)) }
-        if let signError { throw signError }
+        if signDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(signDelay * 1_000_000_000))
+        }
+        if cancellationIgnoringSignDelay > 0 {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global().asyncAfter(deadline: .now() + cancellationIgnoringSignDelay) {
+                    continuation.resume()
+                }
+            }
+        }
+        if !signErrors.isEmpty {
+            throw signErrors.removeFirst()
+        }
+        if let signError {
+            throw signError
+        }
         return signedTx
     }
 
-    func broadcastFunding(serializedTx _: String) async throws -> String {
+    func broadcastFunding(serializedTx: String) async throws -> String {
         broadcastCalls += 1
-        if broadcastDelay > 0 { try await Task.sleep(nanoseconds: UInt64(broadcastDelay * 1_000_000_000)) }
-        if let broadcastError { throw broadcastError }
+        broadcastTransactions.append(serializedTx)
+        if broadcastDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(broadcastDelay * 1_000_000_000))
+        }
+        if let broadcastError {
+            throw broadcastError
+        }
         return broadcastTxId
     }
 }
@@ -97,7 +134,9 @@ final class MockHwConnecting: HwTransferConnecting {
 
     func ensureConnected(walletId _: String) async throws {
         ensureCalls += 1
-        if let connectError { throw connectError }
+        if let connectError {
+            throw connectError
+        }
     }
 
     func needsPassphrase(walletId: String) -> Bool {
@@ -106,7 +145,9 @@ final class MockHwConnecting: HwTransferConnecting {
 
     func reconnectWithPassphrase(walletId: String, passphrase: String) async throws {
         reconnectCalls.append((walletId, passphrase))
-        if let reconnectError { throw reconnectError }
+        if let reconnectError {
+            throw reconnectError
+        }
         walletsNeedingPassphrase.remove(walletId)
     }
 
@@ -119,6 +160,10 @@ final class MockHwConnecting: HwTransferConnecting {
     }
 
     func disconnectStaleSession(walletId: String) async {
+        staleDisconnects.append(walletId)
+    }
+
+    func scheduleStaleSessionCleanup(walletId: String) {
         staleDisconnects.append(walletId)
     }
 }

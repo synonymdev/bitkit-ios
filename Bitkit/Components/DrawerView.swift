@@ -3,7 +3,7 @@ import SwiftUI
 enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
     case wallet
     case activity
-    case paymentRequests
+    case subscriptions
     case contacts
     case profile
     case widgets
@@ -20,7 +20,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         switch self {
         case .wallet: return "coins"
         case .activity: return "activity"
-        case .paymentRequests: return "file-text"
+        case .subscriptions: return "arrows-clockwise"
         case .contacts: return "users"
         case .profile: return "user-square"
         case .widgets: return "stack"
@@ -35,7 +35,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         switch self {
         case .wallet: return t("wallet__drawer__wallet")
         case .activity: return t("wallet__drawer__activity")
-        case .paymentRequests: return t("wallet__drawer__payment_requests")
+        case .subscriptions: return t("subscriptions__title")
         case .contacts: return t("wallet__drawer__contacts")
         case .profile: return t("wallet__drawer__profile")
         case .widgets: return t("wallet__drawer__widgets")
@@ -59,7 +59,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         switch self {
         case .wallet: return "DrawerWallet"
         case .activity: return "DrawerActivity"
-        case .paymentRequests: return "DrawerPaymentRequests"
+        case .subscriptions: return "DrawerSubscriptions"
         case .contacts: return "DrawerContacts"
         case .profile: return "DrawerProfile"
         case .widgets: return "DrawerWidgets"
@@ -86,7 +86,7 @@ struct DrawerView: View {
 
     private var mainMenuItems: [DrawerMenuItem] {
         DrawerMenuItem.allCases.filter { item in
-            item.isMainMenuItem && (item != .paymentRequests || PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled)
+            item.isMainMenuItem && (item != .subscriptions || PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled)
         }
     }
 
@@ -116,7 +116,7 @@ struct DrawerView: View {
         switch item {
         case .wallet: return nil
         case .activity: return .activityList
-        case .paymentRequests: return .paymentRequests
+        case .subscriptions: return .subscriptions(showPayments: false)
         case .contacts: return .contacts
         case .profile: return .profile
         case .widgets: return nil
@@ -175,6 +175,8 @@ struct DrawerView: View {
 
             if showMenu {
                 GeometryReader { geometry in
+                    let drawerWidth = max(geometry.size.width * 0.5, min(260, geometry.size.width))
+
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(mainMenuItems) { item in
                             Button(action: {
@@ -199,7 +201,7 @@ struct DrawerView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.bottom, 16)
                     }
-                    .frame(width: geometry.size.width * 0.5, height: geometry.size.height)
+                    .frame(width: drawerWidth, height: geometry.size.height)
                     .background(Color.brandAccent)
                     .offset(x: currentDragOffset)
                     .gesture(
@@ -208,7 +210,6 @@ struct DrawerView: View {
                                 currentDragOffset = max(0, value.translation.width)
                             }
                             .onEnded { _ in
-                                let drawerWidth = geometry.size.width * 0.5
                                 let closeCompletionThreshold = drawerWidth - 100
 
                                 if currentDragOffset > closeCompletionThreshold {
@@ -254,9 +255,12 @@ struct DrawerView: View {
                     .font(.custom(Fonts.black, size: 24))
                     .foregroundColor(.white)
                     .kerning(-1)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 18)
                     .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 56)
 
             CustomDivider()

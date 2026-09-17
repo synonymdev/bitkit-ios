@@ -84,17 +84,20 @@ extension PrivatePaykitService {
 
     @MainActor
     func canPublishPrivateEndpoints(wallet: WalletViewModel) async -> Bool {
-        guard PaykitFeatureFlags.isUIEnabled,
-              UserDefaults.standard.bool(forKey: Self.publishingEnabledKey),
-              UIApplication.shared.applicationState == .active,
-              wallet.walletExists == true,
-              wallet.nodeLifecycleState == .running,
-              let ownPublicKey = await PubkyService.currentPublicKey()
-        else {
-            return false
-        }
+        await privateEndpointPublicationUnavailabilityReason(wallet: wallet) == nil
+    }
 
-        return PubkyProfileManager.hasLocalSecretKey(for: ownPublicKey)
+    @MainActor
+    func privateEndpointPublicationUnavailabilityReason(wallet: WalletViewModel) async -> String? {
+        guard PaykitFeatureFlags.isUIEnabled else { return "Paykit UI is disabled" }
+        guard UserDefaults.standard.bool(forKey: Self.publishingEnabledKey) else { return "private publication is disabled" }
+        guard UIApplication.shared.applicationState == .active else { return "the app is not active" }
+        guard wallet.walletExists == true else { return "the wallet is unavailable" }
+        guard wallet.nodeLifecycleState == .running else { return "the Lightning node is not running" }
+        guard let ownPublicKey = await PubkyService.currentPublicKey() else { return "the Pubky session is not active" }
+        guard PubkyProfileManager.hasLocalSecretKey(for: ownPublicKey) else { return "the local Pubky secret key is unavailable" }
+
+        return nil
     }
 
     @MainActor

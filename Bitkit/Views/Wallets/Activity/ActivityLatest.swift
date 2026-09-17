@@ -45,8 +45,12 @@ struct ActivityLatest: View {
     private var maxActivityItemsOnHome: Int {
         let slotCapacity = UIScreen.main.isSmall ? ActivityDisplayConstants.maxHomeActivityItems - 1 : ActivityDisplayConstants.maxHomeActivityItems
         var nonItemSlots = 0
-        if shouldShowBanner { nonItemSlots += 1 }
-        if settings.showWidgets, !app.hasDismissedWidgetsOnboardingHint { nonItemSlots += 1 }
+        if shouldShowBanner {
+            nonItemSlots += 1
+        }
+        if settings.showWidgets, !app.hasDismissedWidgetsOnboardingHint {
+            nonItemSlots += 1
+        }
         return max(0, slotCapacity - nonItemSlots)
     }
 

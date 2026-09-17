@@ -138,7 +138,9 @@ struct TrezorDeviceListView: View {
             if trezorManager.bluetoothState == .unknown {
                 for _ in 0 ..< 10 {
                     try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                    if trezorManager.bluetoothState != .unknown { break }
+                    if trezorManager.bluetoothState != .unknown {
+                        break
+                    }
                 }
             }
 

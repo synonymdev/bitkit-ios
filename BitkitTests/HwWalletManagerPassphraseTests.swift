@@ -26,6 +26,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
 
         var ensureConnectedError: Error?
         var connectWithWalletModeError: Error?
+        var blocksStaleDisconnect = false
+        var onStaleDisconnect: (() -> Void)?
+        private var staleDisconnectContinuation: CheckedContinuation<Void, Never>?
 
         private(set) var ensureCalls: [String] = []
         private(set) var openCalls: [(deviceId: String, mode: TrezorWalletMode, passphrase: String)] = []
@@ -35,7 +38,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
 
         func ensureConnected(deviceId: String) async throws {
             ensureCalls.append(deviceId)
-            if let ensureConnectedError { throw ensureConnectedError }
+            if let ensureConnectedError {
+                throw ensureConnectedError
+            }
         }
 
         @discardableResult
@@ -45,7 +50,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
             passphrase: String
         ) async throws -> TrezorFeatures {
             openCalls.append((deviceId, mode, passphrase))
-            if let connectWithWalletModeError { throw connectWithWalletModeError }
+            if let connectWithWalletModeError {
+                throw connectWithWalletModeError
+            }
             connectedDeviceId = deviceId
             switch mode {
             case .standard:
@@ -64,6 +71,16 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
 
         func disconnectStaleSession(deviceId: String) async {
             staleDisconnects.append(deviceId)
+            onStaleDisconnect?()
+            if blocksStaleDisconnect {
+                await withCheckedContinuation { staleDisconnectContinuation = $0 }
+            }
+        }
+
+        func finishStaleDisconnect() {
+            blocksStaleDisconnect = false
+            staleDisconnectContinuation?.resume()
+            staleDisconnectContinuation = nil
         }
 
         func isKnownBluetoothDevice(deviceId _: String) -> Bool {
@@ -78,7 +95,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
             forgottenWalletIds.append(walletId)
             forgottenPendingNames.append(pendingName)
             storedDevices.removeAll { $0.resolvedWalletId == walletId }
-            if connectedWalletId == walletId { connectedWalletId = nil }
+            if connectedWalletId == walletId {
+                connectedWalletId = nil
+            }
         }
     }
 
@@ -176,6 +195,32 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         XCTAssertTrue(session.openCalls.isEmpty, "no reopen is needed")
     }
 
+    func testRetryWaitsForScheduledStaleSessionCleanup() async throws {
+        session.storedDevices = [makeDevice(walletId: standardWalletId)]
+        session.connectedDeviceId = "dev1"
+        session.connectedWalletId = standardWalletId
+        session.blocksStaleDisconnect = true
+        let manager = makeManager()
+        let cleanupStarted = expectation(description: "stale cleanup started")
+        session.onStaleDisconnect = { cleanupStarted.fulfill() }
+
+        manager.scheduleStaleSessionCleanup(walletId: standardWalletId)
+        await fulfillment(of: [cleanupStarted], timeout: 1)
+
+        let retry = Task { @MainActor in
+            try await manager.ensureConnected(walletId: standardWalletId)
+        }
+        await Task.yield()
+
+        XCTAssertEqual(session.staleDisconnects, ["dev1"])
+        XCTAssertTrue(session.ensureCalls.isEmpty)
+
+        session.finishStaleDisconnect()
+        try await retry.value
+
+        XCTAssertEqual(session.ensureCalls, ["dev1"])
+    }
+
     /// A session reporting no identity may be holding any seed the device has open, so it is not
     /// accepted on trust. A wallet that needs no secret can simply be reopened, which re-reads the
     /// accounts that failed to resolve.
@@ -256,6 +301,87 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         } catch {
             XCTAssertEqual(session.openCalls.map(\.mode), [.standard], "the standard reopen was attempted first")
         }
+    }
+
+    // MARK: - verifyReceiveAddress
+
+    func testVerifiesTheDisplayedReceiveAddressWithItsExactPathAndScriptType() async throws {
+        session.storedDevices = [makeDevice(walletId: standardWalletId)]
+        session.connectedDeviceId = "dev1"
+        session.connectedWalletId = standardWalletId
+        let receiveAddress = makeReceiveAddress()
+        var capturedParams: TrezorGetAddressParams?
+        let manager = makeManager { params in
+            capturedParams = params
+            return TrezorAddressResponse(address: receiveAddress.address, path: receiveAddress.path)
+        }
+
+        try await manager.verifyReceiveAddress(walletId: standardWalletId, receiveAddress: receiveAddress)
+
+        XCTAssertEqual(session.ensureCalls, ["dev1"])
+        XCTAssertEqual(capturedParams?.path, receiveAddress.path)
+        XCTAssertEqual(capturedParams?.coin, .regtest)
+        XCTAssertEqual(capturedParams?.showOnTrezor, true)
+        XCTAssertEqual(capturedParams?.scriptType, .spendWitness)
+    }
+
+    func testRejectsAReceiveAddressThatDoesNotMatchTheDevice() async {
+        session.storedDevices = [makeDevice(walletId: standardWalletId)]
+        session.connectedDeviceId = "dev1"
+        session.connectedWalletId = standardWalletId
+        let manager = makeManager { _ in
+            TrezorAddressResponse(address: "bcrt1qdifferent", path: "m/84'/1'/0'/0/0")
+        }
+
+        do {
+            try await manager.verifyReceiveAddress(walletId: standardWalletId, receiveAddress: makeReceiveAddress())
+            XCTFail("expected the mismatched address to be rejected")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, t("hardware__verify_address_error"))
+        }
+    }
+
+    func testRetriesReceiveAddressVerificationAfterAStaleSession() async throws {
+        session.storedDevices = [makeDevice(walletId: standardWalletId)]
+        session.connectedDeviceId = "dev1"
+        session.connectedWalletId = standardWalletId
+        let receiveAddress = makeReceiveAddress()
+        var addressCalls = 0
+        let manager = makeManager { _ in
+            addressCalls += 1
+            if addressCalls == 1 {
+                throw TrezorError.Timeout
+            }
+            return TrezorAddressResponse(address: receiveAddress.address, path: receiveAddress.path)
+        }
+
+        try await manager.verifyReceiveAddress(walletId: standardWalletId, receiveAddress: receiveAddress)
+
+        XCTAssertEqual(addressCalls, 2)
+        XCTAssertEqual(session.ensureCalls, ["dev1", "dev1"])
+        XCTAssertEqual(session.staleDisconnects, ["dev1"])
+    }
+
+    func testDisconnectsAfterReceiveAddressVerificationRetryFails() async {
+        session.storedDevices = [makeDevice(walletId: standardWalletId)]
+        session.connectedDeviceId = "dev1"
+        session.connectedWalletId = standardWalletId
+        var addressCalls = 0
+        let manager = makeManager { _ in
+            addressCalls += 1
+            throw TrezorError.Timeout
+        }
+
+        do {
+            try await manager.verifyReceiveAddress(walletId: standardWalletId, receiveAddress: makeReceiveAddress())
+            XCTFail("expected verification to fail")
+        } catch {
+            XCTAssertTrue(error.isTrezorSessionFailure())
+        }
+
+        XCTAssertEqual(addressCalls, 2)
+        XCTAssertEqual(session.ensureCalls, ["dev1", "dev1"])
+        XCTAssertEqual(session.staleDisconnects, ["dev1", "dev1"])
     }
 
     // MARK: - needsPassphrase
@@ -457,15 +583,26 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
     private let hiddenWalletId = "trezor:hidden"
     private let strayWalletId = "trezor:stray"
 
-    private func makeManager() -> HwWalletManager {
+    private func makeManager(
+        addressProvider: @escaping HwWalletManager.AddressProvider = { _ in throw TrezorError.DeviceDisconnected }
+    ) -> HwWalletManager {
         HwWalletManager(
             session: session,
             watcherService: NoopWatcher(),
             monitoredTypes: { ["nativeSegwit"] },
             electrumUrl: { "ssl://test:1" },
             network: { .regtest },
+            addressProvider: addressProvider,
             persistSnapshot: { _ in },
             deleteActivities: { [weak self] in self?.deletedWalletIds.append($0) }
+        )
+    }
+
+    private func makeReceiveAddress() -> HwReceiveAddress {
+        HwReceiveAddress(
+            address: "bcrt1qreceive",
+            path: "m/84'/1'/0'/0/7",
+            addressType: .nativeSegwit
         )
     }
 

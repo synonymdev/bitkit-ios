@@ -205,16 +205,83 @@ struct PaymentNavigationHelper {
             return nil
         }
 
+        if app.contactPaymentContext?.incomingPaymentRequest != nil {
+            switch route {
+            case .quickpay, .amount:
+                return app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+            case .lnurlPayAmount:
+                return .lnurlPayConfirm
+            default:
+                return route
+            }
+        }
+
         switch route {
         case .quickpay:
             return confirmRouteAfterQuickPayCap(app: app)
-        case .confirm:
-            if let invoice = app.scannedLightningInvoice {
-                return invoice.amountSatoshis == 0 ? .amount : .confirm
-            }
-            return route
         default:
             return route
+        }
+    }
+
+    static func openPrivateContactPayment(
+        publicKey: String,
+        app: AppViewModel,
+        currency: CurrencyViewModel,
+        settings: SettingsViewModel,
+        wallet: WalletViewModel,
+        alternativeOnchainBalanceSats: UInt64,
+        present: (SendRoute) -> Void
+    ) async {
+        do {
+            let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: publicKey, wallet: wallet)
+            switch result {
+            case let .opened(paymentRequest, privatePaymentContext):
+                let context = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext)
+                guard app.claimContactPaymentContext(context) else { return }
+
+                do {
+                    try await app.handleScannedData(
+                        paymentRequest,
+                        claimedContactPaymentContext: context,
+                        alternativeOnchainBalanceSats: alternativeOnchainBalanceSats
+                    )
+                } catch is CancellationError {
+                    if app.ownsContactPaymentContext(context) {
+                        app.resetSendState()
+                    }
+                    return
+                } catch {
+                    guard app.ownsContactPaymentContext(context) else { return }
+                    app.resetSendState()
+                    Logger.warn("Failed to decode private contact payment request", context: "PaymentNavigationHelper")
+                    app.toast(
+                        type: .warning,
+                        title: t("slashtags__error_pay_title"),
+                        description: t("slashtags__error_pay_not_opened_msg")
+                    )
+                    return
+                }
+
+                guard app.ownsContactPaymentContext(context),
+                      let route = contactPaymentRoute(app: app, currency: currency, settings: settings)
+                else {
+                    app.resetSendState()
+                    return
+                }
+                present(route)
+
+            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
+                if let messageKey = result.contactPaymentFailureMessageKey {
+                    app.toast(type: .warning, title: t("slashtags__error_pay_title"), description: t(messageKey))
+                }
+            }
+        } catch {
+            Logger.error(
+                "Failed to pay contact \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
+                context: "PaymentNavigationHelper"
+            )
+            app.toast(type: .error, title: t("slashtags__error_pay_title"), description: error.localizedDescription)
         }
     }
 }

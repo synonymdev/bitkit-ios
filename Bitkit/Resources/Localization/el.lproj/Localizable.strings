@@ -757,11 +757,14 @@
 "wallet__receive_connect_initial" = "Για τη ρύθμιση του υπολοίπου δαπανών σας, θα αφαιρεθεί τέλος δικτύου <accent>{networkFee}</accent> και τέλος παρόχου υπηρεσιών <accent>{serviceFee}</accent>.";
 "wallet__receive_connect_additional" = "Για να λάβετε περισσότερα άμεσα Bitcoin, το Bitkit πρέπει να αυξήσει τη ρευστότητά σας. Τέλος δικτύου <accent>{networkFee}</accent> και τέλος παρόχου υπηρεσιών <accent>{serviceFee}</accent> θα αφαιρεθούν από το ποσό που καθορίσατε.";
 "wallet__receive_liquidity__nav_title" = "Ρύθμιση Υπολοίπου Δαπανών";
+"wallet__receive_liquidity__invalid_quote" = "Το Bitkit έλαβε μη έγκυρη προσφορά ρευστότητας. Δοκιμάστε ξανά.";
 "wallet__receive_liquidity__text" = "Το Υπόλοιπο Δαπανών σας χρησιμοποιεί το Lightning Network για να κάνει τις πληρωμές σας φθηνότερες, ταχύτερες και πιο ιδιωτικές.\n\nΑυτό λειτουργεί όπως η πρόσβαση στο διαδίκτυο, αλλά πληρώνετε για ρευστότητα & δρομολόγηση αντί για εύρος ζώνης.\n\nΑυτή η ρύθμιση περιλαμβάνει ορισμένα εφάπαξ κόστη.";
 "wallet__receive_liquidity__text_additional" = "Το Υπόλοιπο Δαπανών σας χρησιμοποιεί το Lightning Network για να κάνει τις πληρωμές σας φθηνότερες, ταχύτερες και πιο ιδιωτικές.\n\nΑυτό λειτουργεί όπως η πρόσβαση στο διαδίκτυο, αλλά πληρώνετε για ρευστότητα & δρομολόγηση αντί για εύρος ζώνης.\n\nΤο Bitkit πρέπει να αυξήσει τη χωρητικότητα λήψης του υπολοίπου δαπανών σας για να επεξεργαστεί αυτή την πληρωμή.";
 "wallet__receive_liquidity__label" = "Ρευστότητα Υπολοίπου Δαπανών";
 "wallet__receive_liquidity__label_additional" = "Πρόσθετη Ρευστότητα Υπολοίπου Δαπανών";
 "wallet__receive_cjit_error" = "Η Συναλλαγή Απέτυχε";
+"wallet__receive_cjit_error_node_capacity__title" = "Η πρόσθετη χωρητικότητα δεν είναι διαθέσιμη";
+"wallet__receive_cjit_error_node_capacity__description" = "Το Bitkit δεν μπορεί να προσθέσει περισσότερη χωρητικότητα δαπανών σε αυτό το πορτοφόλι αυτήν τη στιγμή.";
 "wallet__receive_will" = "Θα λάβετε";
 "wallet__activity" = "Δραστηριότητα";
 "wallet__activity_no" = "Δεν υπάρχει δραστηριότητα ακόμα";

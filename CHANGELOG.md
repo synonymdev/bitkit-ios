@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-08-21
+
+### Security
+- Lightning no longer automatically starts from outdated channel monitor data after a storage mismatch. #664
+- Wallet backups no longer fall back to unauthenticated VSS when LNURL-auth is missing. #665
+- Shop checkout now accepts only payment requests from the trusted Bitrefill embed origin. #668
+- Wallet backups now use VSS 0.5.23, which rejects unauthenticated encryption. #673
+
 ## [2.4.0] - 2026-07-16
 
 ### Added
@@ -99,7 +107,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix keyboard and UI issues in the calculator widget #513
 - Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 
-[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.1...HEAD
+[2.4.1]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.2...v2.4.0
 [2.3.2]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.0...v2.3.1

@@ -1,0 +1,24 @@
+<journey name="receive cjit liquidity toggle requests notification permission">
+  <description>
+    Verifies that the "Enable background setup" toggle on the Receive → CJIT liquidity screen
+    (id "ReceiveCjitLiquidity", reached via "Learn More" from the confirm screen) launches the
+    iOS notification authorization alert, and that allowing it checks the toggle.
+
+    Precondition: onboarded dev wallet with the node connected to the LSP so a CJIT order can be
+    quoted, notification authorization still notDetermined (reinstall first — the alert is one-shot),
+    and "Enable background setup" starting off. Start on the wallet home screen.
+  </description>
+  <actions>
+    <action>Tap the "Receive" button (id "Receive") on the home screen</action>
+    <action>Tap the "Spending" tab in the Receive sheet</action>
+    <action>Tap "Receive Lightning funds"</action>
+    <action>On the amount screen (id "ReceiveCjitAmount"), enter an amount above the CJIT minimum (e.g. 100 000 sats) using the number pad</action>
+    <action>Tap "Continue" (id "ReceiveCjitAmountContinue") and wait for the confirm screen to appear</action>
+    <action>Tap "Learn More" to open the liquidity screen</action>
+    <action>Verify the liquidity screen (id "ReceiveCjitLiquidity") is visible with the lightning channel illustration and the "Enable background setup" toggle (id "ReceiveLiquidityNotificationSwitch") off</action>
+    <action>Tap the "Enable background setup" toggle (id "ReceiveLiquidityNotificationSwitch")</action>
+    <action>Verify the iOS notification authorization alert appears (text like "Bitkit" Would Like to Send You Notifications")</action>
+    <action>Tap "Allow"</action>
+    <action>Verify the "Enable background setup" toggle is now on</action>
+  </actions>
+</journey>

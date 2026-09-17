@@ -70,6 +70,7 @@ jobs:
               -only-testing:BitkitTests/UtxoSelectionTests \
               -only-testing:BitkitTests/BlocktankTests \
               -only-testing:BitkitTests/PaymentFlowTests \
+              -only-testing:BitkitTests/BlocktankRefundAddressLiveIntegrationTests \
               -only-testing:BitkitTests/AddressTypeIntegrationTests \
               | xcbeautify --report junit
           }
