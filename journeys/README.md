@@ -125,7 +125,12 @@ Known naming differences:
 | Send available balance | `AvailableAmount` and `available_balance` (Android emits both) | `AvailableAmount` |
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
-| Payment Request row | `PaymentRequestRow-<id>` | `PaymentRequestRow-<id>-<counterparty>-<receiverPath>-<period>` |
+| Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
+
+`SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix
+but appends the billing period (`-one-time` for a one-off), because every recurring payment of one
+subscription carries the same `paymentRequestId` and they can list together — Android stops at the id
+and lets those rows collide. Match on the prefix when a journey needs to work on both platforms.
 
 Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `SpendingAdvanced*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.
@@ -142,6 +147,7 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [payment-requests](payment-requests) | 2 | Linked issuer interoperability plus the ported Android resolution-failure journey |
 | [pubky-marketplace](pubky-marketplace) | 1 | Adapted — two-wallet Paykit marketplace payment on regtest; integration fixture required |
 | [pubky-auth](pubky-auth) | 1 | Bitkit-specific OS handoff into watch-only consent; local Pubky identity required |
+| [subscriptions](subscriptions) | 4 | Create, review, cancel/delete and the Payments tab; two linked Bitkit instances required. Discover is excluded — it is unimplemented on iOS |
 
 ## Not ported
 

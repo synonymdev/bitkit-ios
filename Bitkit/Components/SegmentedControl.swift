@@ -44,18 +44,20 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                     }
                 }) {
                     VStack(spacing: 8) {
+                        // A hidden copy of the badge balances the visible one, so the label stays
+                        // centred in its tab with the badge just after it. Every tab reserves the
+                        // badge height so the underlines stay level.
                         HStack(spacing: 8) {
-                            CaptionBText(tabItem.tab.description, textColor: selectedTab == tabItem.tab ? .white : inactiveColor ?? .secondary)
-
-                            if let badge = tabItem.badge, badge > 0 {
-                                CaptionBText("\(badge)", textColor: .black)
-                                    .frame(minWidth: 20, minHeight: 20)
-                                    .background(Color.brandAccent)
-                                    .clipShape(Circle())
-                                    .accessibilityLabel(t("wallet__payment_requests_count", variables: ["count": "\(badge)"]))
-                            }
+                            badge(for: tabItem)
+                                .hidden()
+                            CaptionBText(
+                                tabItem.tab.description,
+                                textColor: selectedTab == tabItem.tab ? .white : inactiveColor ?? .secondary
+                            )
+                            badge(for: tabItem)
                         }
                         .frame(maxWidth: .infinity)
+                        .frame(height: 20)
                         ZStack {
                             Rectangle()
                                 .frame(height: 2)
@@ -78,5 +80,16 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 36)
+    }
+
+    @ViewBuilder
+    private func badge(for tabItem: TabItem<T>) -> some View {
+        if let badge = tabItem.badge, badge > 0 {
+            CaptionBText("\(badge)", textColor: .white)
+                .frame(minWidth: 20, minHeight: 20)
+                .background(Color.brandAccent)
+                .clipShape(Circle())
+                .accessibilityLabel(t("wallet__payment_requests_count", variables: ["count": "\(badge)"]))
+        }
     }
 }
