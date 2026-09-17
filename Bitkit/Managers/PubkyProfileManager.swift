@@ -479,6 +479,12 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func approveSignupAuth(request: PubkyAuthRequest) async throws {
+        try await Self.withIdentityLifecycleLock {
+            try await self.approveSignupAuthLocked(request: request)
+        }
+    }
+
+    private func approveSignupAuthLocked(request: PubkyAuthRequest) async throws {
         guard request.isSignup, let homeserver = request.homeserverPublicKey else {
             throw PubkyServiceError.invalidAuthUrl
         }
