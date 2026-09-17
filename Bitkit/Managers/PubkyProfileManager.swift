@@ -628,6 +628,11 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func deleteProfileLocked() async throws {
+        // A source can revoke a borrowed identity between session establishment and the next
+        // foreground validation, so revalidate it here, under the lifecycle lock, before any
+        // remote deletion or cleanup runs on a credential Ring may no longer authorize.
+        try revalidateSharedIdentitySource()
+
         let deletedPublicKey = publicKey
         let ownsIdentity = hasLocalSecretKeyForCurrentProfile
 
@@ -1521,12 +1526,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func activeSessionSecret() throws -> String {
-        if let reference = try SharedPubkyIdentityReferenceStore.load() {
-            guard reference.sourceApp == .ring, Self.isRingAvailable() else {
-                throw SharedPubkyIdentityError.sourceUnavailable
-            }
-            _ = try SharedPubkyIdentityVault.loadCredential(reference: reference)
-        }
+        try revalidateSharedIdentitySource()
 
         guard let sessionSecret = try? Keychain.loadString(key: .paykitSession),
               !sessionSecret.isEmpty
@@ -1534,6 +1534,31 @@ class PubkyProfileManager: ObservableObject {
             throw PubkyServiceError.sessionNotActive
         }
         return sessionSecret
+    }
+
+    /// Re-reads a borrowed credential just in time. Owned identities never touch the shared vault.
+    private func revalidateSharedIdentitySource() throws {
+        try Self.validateSharedIdentitySource(
+            reference: SharedPubkyIdentityReferenceStore.load(),
+            isSourceAvailable: Self.isRingAvailable(),
+            loadSharedCredential: { try SharedPubkyIdentityVault.loadCredential(reference: $0) }
+        )
+    }
+
+    nonisolated static func validateSharedIdentitySource(
+        reference: SharedPubkyIdentityRefV1?,
+        isSourceAvailable: Bool,
+        loadSharedCredential: (SharedPubkyIdentityRefV1) throws -> String
+    ) throws {
+        guard let reference else {
+            return
+        }
+        guard reference.sourceApp == .ring, isSourceAvailable else {
+            throw SharedPubkyIdentityError.sourceUnavailable
+        }
+        // Loading re-derives the public key from the source record and fails closed when the
+        // source has removed, rotated or invalidated the identity Bitkit borrowed.
+        _ = try loadSharedCredential(reference)
     }
 
     // MARK: - Session & Backup Helpers
