@@ -136,4 +136,28 @@ final class KeychainTests: XCTestCase {
             XCTAssertFalse((try? Keychain.exists(key: .bip39Passphrase(index: i))) ?? false)
         }
     }
+
+    /// The wipe must leave accounts outside the unit-test namespace alone, or running this suite deletes
+    /// the wallet on the simulator it runs against. The probe uses a unique account name rather than a
+    /// real key like `bip39_mnemonic_0`: on a simulator with a wallet that name is already taken, and
+    /// cleaning it up would delete the real seed.
+    func testWipeLeavesAccountsOutsideTheTestNamespace() throws {
+        let probe: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "wipe-guard-probe-\(UUID().uuidString)",
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
+        var item = probe
+        item[kSecValueData as String] = Data("probe".utf8)
+        XCTAssertEqual(SecItemAdd(item as CFDictionary, nil), errSecSuccess, "Failed to plant the probe account")
+        addTeardownBlock { SecItemDelete(probe as CFDictionary) }
+
+        try Keychain.wipeEntireKeychain()
+
+        XCTAssertEqual(
+            SecItemCopyMatching(probe as CFDictionary, nil),
+            errSecSuccess,
+            "wipeEntireKeychain deleted an account outside the unit-test namespace"
+        )
+    }
 }
