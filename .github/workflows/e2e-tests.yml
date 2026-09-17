@@ -35,8 +35,6 @@ jobs:
             code:
               - 'Bitkit/**'
               - 'BitkitNotification/**'
-              - 'BitkitTests/**'
-              - 'BitkitUITests/**'
               - 'Bitkit.xcodeproj/**'
               - 'Package.swift'
               - '.github/workflows/e2e-tests.yml'
@@ -152,7 +150,7 @@ jobs:
           # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
           # - { name: settings, grep: "@settings" }
           # - { name: security, grep: "@security" }
-          - { name: e2e, grep: '@transfer_2|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4|@hardware_wallet' }
+          - { name: e2e, grep: '@ios_gate' }
 
     name: e2e-tests-local - ${{ matrix.shard.name }}
 

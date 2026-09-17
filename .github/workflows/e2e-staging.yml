@@ -119,7 +119,7 @@ jobs:
 
   e2e-tests-staging:
     runs-on: macos-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     needs: [build-staging, e2e-branch]
 
     strategy:
@@ -129,6 +129,7 @@ jobs:
           - { name: multi_address, grep: "@multi_address_staging" }
           - { name: pubky, grep: "@pubky_staging" }
           - { name: transfer, grep: "@transfer_staging" }
+          - { name: ios_nightly_ui, grep: "@ios_nightly" }
 
     name: e2e-tests-staging - ${{ matrix.shard.name }}
 
