@@ -1520,6 +1520,8 @@
 "wallet__payment_request_expiry_month" = "1 month";
 "wallet__payment_request_choose_recipient" = "Choose Recipient";
 "wallet__payment_request_recipient" = "Recipient";
+"wallet__payment_request_recipient_no_match" = "No matching saved contact with a private connection.";
+"wallet__payment_request_recipient_unavailable" = "Payment requests can only be sent to a saved contact with a private connection.";
 "wallet__payment_request_enter_pubky" = "Enter pubky";
 "wallet__payment_request_request_payment" = "Request Payment";
 "wallet__payment_request_or_pay" = "Request Or Pay";

@@ -177,6 +177,20 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
                     CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64)
                         .padding(.bottom, 16)
                     CustomDivider()
+                    if recipientTargets.isEmpty {
+                        BodyMText(
+                            t(
+                                recipientQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? "wallet__payment_request_recipient_unavailable"
+                                    : "wallet__payment_request_recipient_no_match"
+                            ),
+                            textColor: .white64
+                        )
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 24)
+                        .accessibilityIdentifier("\(testIdentifierPrefix)RecipientUnavailable")
+                    }
                     ForEach(recipientTargets) { target in
                         recipientRow(target)
                     }

@@ -11,9 +11,8 @@
     naming when the first billing period ends sits below the card. Neither appears on Android. The
     handoff's "Automatically pay this subscription" toggle is unbuilt on both platforms.
 
-    The swipe knob is brand orange, as the handoff draws it on all four subscription sheets. Android
-    instead colours it by the balance the payment is expected to leave; iOS holds off on that until a
-    designer confirms the intent.
+    The swipe knob is brand orange on both platforms, as the handoff draws it on all four subscription
+    sheets.
   </description>
   <actions>
     <action>Launch the E2E Bitkit app with Paykit UI enabled on the payer instance, with the creator saved as a linked contact and a spendable balance above 5,000 sats</action>
