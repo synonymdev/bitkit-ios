@@ -175,8 +175,11 @@ struct EditProfileView: View {
     }
 
     private func performDeleteProfile() async throws {
-        await contactsManager.deleteAllContactsBestEffort()
-        try await pubkyProfile.deleteProfile()
+        try await PubkyProfileManager.deleteProfileWithContactCleanup(
+            revalidateSource: { try await pubkyProfile.ensureSharedIdentitySourceIsValid() },
+            deleteContacts: { await contactsManager.deleteAllContactsBestEffort() },
+            deleteProfile: { try await pubkyProfile.deleteProfile() }
+        )
         navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
     }
 

@@ -435,6 +435,35 @@ final class SharedPubkyIdentityTests: XCTestCase {
         ))
     }
 
+    func testProfileDeletionRevalidatesBorrowedSourceBeforeErasingContacts() async throws {
+        var events: [String] = []
+
+        do {
+            try await PubkyProfileManager.deleteProfileWithContactCleanup(
+                revalidateSource: {
+                    events.append("revalidate")
+                    throw SharedPubkyIdentityError.sourceIdentityMissing
+                },
+                deleteContacts: { events.append("contacts") },
+                deleteProfile: { events.append("profile") }
+            )
+            XCTFail("Expected a revoked source to abort profile deletion")
+        } catch {
+            XCTAssertEqual(error as? SharedPubkyIdentityError, .sourceIdentityMissing)
+        }
+
+        XCTAssertEqual(events, ["revalidate"])
+
+        events = []
+        try await PubkyProfileManager.deleteProfileWithContactCleanup(
+            revalidateSource: { events.append("revalidate") },
+            deleteContacts: { events.append("contacts") },
+            deleteProfile: { events.append("profile") }
+        )
+
+        XCTAssertEqual(events, ["revalidate", "contacts", "profile"])
+    }
+
     func testActiveIdentityRejectsLocalAndSharedProvenanceCoexistence() throws {
         let (prefixed, bare, secret) = try identityFixture()
         let reference = try SharedPubkyIdentityRefV1(sourceApp: .ring, pubky: bare)

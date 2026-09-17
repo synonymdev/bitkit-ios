@@ -621,6 +621,28 @@ class PubkyProfileManager: ObservableObject {
         cacheProfileMetadata(updatedProfile)
     }
 
+    /// Orders profile deletion so it fails closed before anything is erased. Contact cleanup
+    /// deletes remote records over the session a borrowed identity established, so a revoked
+    /// source has to abort the flow here rather than at the deletion that follows the cleanup.
+    /// Validation takes the lifecycle lock on its own; no network work runs under that lock.
+    nonisolated static func deleteProfileWithContactCleanup(
+        revalidateSource: () async throws -> Void,
+        deleteContacts: () async -> Void,
+        deleteProfile: () async throws -> Void
+    ) async throws {
+        try await revalidateSource()
+        await deleteContacts()
+        try await deleteProfile()
+    }
+
+    /// Fails closed when a source revoked a borrowed identity, before a destructive flow starts.
+    /// Owned identities never read the shared vault.
+    func ensureSharedIdentitySourceIsValid() async throws {
+        try await Self.withIdentityLifecycleLock {
+            try self.revalidateSharedIdentitySource()
+        }
+    }
+
     func deleteProfile() async throws {
         try await Self.withIdentityLifecycleLock {
             try await self.deleteProfileLocked()
