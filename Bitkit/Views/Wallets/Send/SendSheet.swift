@@ -197,7 +197,7 @@ struct SendSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
-        .interactiveDismissDisabled(hwSend.isSigning || hwSend.isBroadcastUnresolved)
+        .interactiveDismissDisabled(!hwSend.canLeave)
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }

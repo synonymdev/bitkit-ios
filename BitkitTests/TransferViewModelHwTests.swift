@@ -11,7 +11,7 @@ final class TransferViewModelHwTests: XCTestCase {
         funding: MockHwFunding,
         connecting: MockHwConnecting,
         feeRate: UInt64? = 2,
-        timeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 5, compose: 5, sign: 5, broadcast: 5)
+        timeouts: (compose: Double, sign: Double, broadcast: Double) = (compose: 5, sign: 5, broadcast: 5)
     ) -> TransferViewModel {
         TransferViewModel(
             hwFunding: funding,
@@ -478,7 +478,47 @@ final class TransferViewModelHwTests: XCTestCase {
         vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "trezor:wallet")
         await awaitSigningComplete(vm)
 
-        XCTAssertEqual(vm.hwTransferError, .deviceBusy)
+        XCTAssertEqual(vm.hwTransferError, .deviceBusy(.trezor))
+    }
+
+    func testJadeBusyShowsTheJadeCopy() async {
+        let funding = MockHwFunding()
+        funding.signError = Bitkit.AppError(error: JadeError.DeviceLocked)
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "jade:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(vm.hwTransferError, .deviceBusy(.blockstream))
+        XCTAssertEqual(HwErrorPresenter.deviceBusyMessage(for: .blockstream), t("hardware__jade_device_busy"))
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a busy device keeps its session")
+    }
+
+    func testJadeCancellationOnDeviceIsSilent() async {
+        let funding = MockHwFunding()
+        funding.signError = Bitkit.AppError(error: JadeError.UserCancelled)
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "jade:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertNil(vm.hwTransferError, "a cancel on the Jade must not surface a toast")
+        XCTAssertFalse(vm.hwSpending.isSigning)
+        XCTAssertEqual(vm.hwSignedEvent, 0, "a cancelled transfer must not advance the flow")
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a device cancel must not tear down the session")
+    }
+
+    func testJadeSigningFailureShowsTheJadeCopy() async {
+        let funding = MockHwFunding()
+        funding.signError = Bitkit.AppError(error: JadeError.PsbtTooLarge(size: 20000, max: 16384))
+        let vm = makeViewModel(funding: funding, connecting: MockHwConnecting())
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "jade:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(vm.hwTransferError, .generic(t("hardware__jade_psbt_too_large")))
     }
 
     func testFirmwareErrorMapsToFirmwareReconnectError() async {

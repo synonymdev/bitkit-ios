@@ -159,9 +159,9 @@ final class HwWalletManagerTests: XCTestCase {
         label: String? = nil,
         model: String? = "Safe 5",
         lastConnectedAt: Date = Date(timeIntervalSince1970: 1000)
-    ) -> TrezorKnownDevice {
+    ) -> HwKnownDevice {
         xpubsByDeviceId[id] = xpubs
-        return TrezorKnownDevice(
+        return HwKnownDevice(
             id: id,
             name: id,
             path: "ble:\(id)",
@@ -284,7 +284,7 @@ final class HwWalletManagerTests: XCTestCase {
 
     /// Needed when one device id holds several identities, where the registry above can only
     /// remember the last one written for it.
-    private func watcherId(_ device: TrezorKnownDevice, _ addressType: String) -> String {
+    private func watcherId(_ device: HwKnownDevice, _ addressType: String) -> String {
         let derived = (try? HwWalletId.derive(xpubs: device.xpubs)) ?? device.id
         return "\(derived)|\(addressType)"
     }
@@ -439,6 +439,47 @@ final class HwWalletManagerTests: XCTestCase {
         // The entries share an identity, so the most recently connected one names it.
         XCTAssertEqual(vm.wallets[0].name, "Newer")
         XCTAssertEqual(vm.hwWalletIds.count, 1)
+    }
+
+    /// Unlike the same seed reached over two transports, the same seed on two vendors is two wallets:
+    /// each is reached and signed with through its own device.
+    func testSameSeedOnTrezorAndJadeStaysTwoWallets() async throws {
+        let xpubs = ["nativeSegwit": "zpubShared"]
+        let watcherService = MockWatcherService()
+        let trezor = makeDevice(id: "trezor1", xpubs: xpubs)
+        let jade = HwKnownDevice(
+            id: "jade:bluetooth:aabbcc",
+            name: "Jade AABBCC",
+            path: "ble:jade",
+            transportType: "bluetooth",
+            model: "Jade Plus",
+            lastConnectedAt: Date(timeIntervalSince1970: 2000),
+            xpubs: xpubs,
+            vendor: .blockstream,
+            jadeDeviceId: "aabbcc"
+        )
+        let vm = makeViewModel(watcherService: watcherService)
+
+        vm.updateDevices(knownDevices: [trezor, jade], connectedDeviceId: nil)
+
+        XCTAssertEqual(vm.wallets.count, 2)
+        let trezorWallet = try XCTUnwrap(vm.wallets.first { $0.vendor == .trezor })
+        let jadeWallet = try XCTUnwrap(vm.wallets.first { $0.vendor == .blockstream })
+        XCTAssertTrue(trezorWallet.walletId.hasPrefix("trezor:"))
+        XCTAssertTrue(jadeWallet.walletId.hasPrefix("jade:"))
+        XCTAssertEqual(jadeWallet.walletId, try HwWalletId.derive(xpubs: xpubs, vendor: .blockstream))
+        XCTAssertEqual(trezorWallet.name, "Trezor Safe 5")
+        XCTAssertEqual(jadeWallet.name, "Jade Plus")
+        XCTAssertEqual(jadeWallet.deviceIds, [jade.id])
+        XCTAssertEqual(vm.vendor(walletId: jadeWallet.walletId), .blockstream)
+        XCTAssertEqual(vm.vendor(walletId: trezorWallet.walletId), .trezor)
+        XCTAssertEqual(vm.hwWalletIds, [trezorWallet.walletId, jadeWallet.walletId])
+        await waitUntil { watcherService.startedParams.count == 2 }
+        XCTAssertEqual(
+            Set(watcherService.startedParams.map(\.walletId)),
+            [trezorWallet.walletId, jadeWallet.walletId],
+            "each wallet watches the shared account under its own id"
+        )
     }
 
     func testActivityPersistedWithDeviceWalletId() async throws {

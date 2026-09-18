@@ -207,6 +207,7 @@ struct AppScene: View {
     @State private var keyboardManager = KeyboardManager()
     @State private var trezorManager: TrezorManager
     @State private var trezorViewModel: TrezorViewModel
+    @State private var jadeManager: JadeManager
     @State private var hwWalletManager: HwWalletManager
     @State private var calculatorInputManager = CalculatorInputManager()
     @State private var paykitPaymentRequestManager = PaykitPaymentRequestManager()
@@ -258,7 +259,8 @@ struct AppScene: View {
         // Created ahead of `transfer` so the hardware-wallet transfer flow can reach the funding
         // (compose/sign/broadcast) and device-session (reconnect) capabilities.
         let trezorManager = TrezorManager()
-        let hwWalletManager = HwWalletManager(session: trezorManager)
+        let jadeManager = JadeManager()
+        let hwWalletManager = HwWalletManager(trezorSession: trezorManager, jadeSession: jadeManager)
 
         _transfer = StateObject(wrappedValue: TransferViewModel(
             transferService: transferService,
@@ -283,6 +285,8 @@ struct AppScene: View {
         let trezorViewModel = TrezorViewModel(connection: trezorManager)
         _trezorManager = State(initialValue: trezorManager)
         _trezorViewModel = State(initialValue: trezorViewModel)
+        // Held here because `HwWalletManager` keeps its vendor sessions weakly.
+        _jadeManager = State(initialValue: jadeManager)
         _hwWalletManager = State(initialValue: hwWalletManager)
 
         CoreService.shared.activity.setPrivatePaykitContactResolvers(
@@ -326,12 +330,13 @@ struct AppScene: View {
             .onChange(of: scenePhase, initial: true) { _, newValue in handleScenePhaseChange(newValue) }
             .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
             .onOpenURL { url in app.retainDeepLink(url) }
-            // Bridge Trezor device state into the watch-only manager without coupling the two:
-            // TrezorManager bumps devicesRevision on any device/connection change.
+            // Bridge the vendor managers' device state into the watch-only manager without coupling them:
+            // each bumps devicesRevision on any device or connection change.
             .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
+            .onChange(of: jadeManager.devicesRevision) { _, _ in pushHardwareDevices() }
             .onChange(of: isPinVerified) { _, verified in
                 if verified {
-                    Task { await trezorManager.autoReconnect() }
+                    Task { await hwWalletManager.reconnectOnForeground() }
                 }
             }
             .onReceive(settings.settingsPublisher) { _ in hwWalletManager.reconcileForSettingsChange() }
@@ -379,6 +384,7 @@ struct AppScene: View {
             .environment(keyboardManager)
             .environment(trezorManager)
             .environment(trezorViewModel)
+            .environment(jadeManager)
             .environment(hwWalletManager)
             .environment(calculatorInputManager)
             .environment(paykitPaymentRequestManager)
@@ -789,6 +795,7 @@ struct AppScene: View {
 
     @Sendable
     private func setupTask() async {
+        AppReset.hardwareWallets = hwWalletManager
         do {
             // Handle orphaned keychain before anything else
             handleOrphanedKeychain()
@@ -800,6 +807,7 @@ struct AppScene: View {
             // watchers start at launch (no-op until a device is paired). loadKnownDevices() also
             // bumps devicesRevision, but push explicitly so the initial state is delivered.
             trezorManager.loadKnownDevices()
+            jadeManager.loadKnownDevices()
             pushHardwareDevices()
 
             // Setup TimedSheetManager with all timed sheets
@@ -938,12 +946,16 @@ struct AppScene: View {
                 // If PIN is enabled, lock the app when the app goes to the background
                 isPinVerified = false
             }
+            hwWalletManager.onAppBackgrounded()
         }
 
+        // `.inactive` is left alone: the iOS Bluetooth pairing alert puts the app there mid-connect.
         if newPhase == .active {
+            // Called even behind the PIN screen, so a background release still pending is called off.
+            hwWalletManager.onAppBecameActive()
             // Reconnect a known hardware device so its connection indicator turns green again;
             if isPinVerified || !settings.pinEnabled {
-                Task { await trezorManager.autoReconnect() }
+                Task { await hwWalletManager.reconnectOnForeground() }
             }
             if wallet.walletExists == true {
                 Task {
@@ -1344,13 +1356,20 @@ struct AppScene: View {
         center.removeDeliveredNotifications(withIdentifiers: deliveredNotifications.map(\.request.identifier))
     }
 
-    /// Feed the current Trezor device snapshot into the watch-only manager. This is the only link
-    /// between the two managers, kept in the composition root so neither type references the other.
+    /// Feed both vendors' device snapshots into the watch-only manager. This is the only link between
+    /// the vendor managers and it, kept in the composition root so none of them references another.
     private func pushHardwareDevices() {
+        let connected: (deviceId: String, walletId: String?)? = if let trezorDevice = trezorManager.connectedDevice {
+            (trezorDevice.id, trezorManager.connectedWalletId)
+        } else if let jadeDevice = jadeManager.connected {
+            (jadeDevice.id, jadeDevice.walletId)
+        } else {
+            nil
+        }
         hwWalletManager.updateDevices(
-            knownDevices: trezorManager.knownDevices,
-            connectedDeviceId: trezorManager.connectedDevice?.id,
-            connectedWalletId: trezorManager.connectedWalletId
+            knownDevices: (trezorManager.knownDevices + jadeManager.knownDevices).sorted { $0.lastConnectedAt > $1.lastConnectedAt },
+            connectedDeviceId: connected?.deviceId,
+            connectedWalletId: connected?.walletId
         )
     }
 

@@ -2,15 +2,26 @@ import SwiftUI
 
 struct TabItem<T: Hashable & CustomStringConvertible> {
     let tab: T
+    /// Shown in place of the tab's own description, for a tab whose name depends on what it shows.
+    let label: String?
     let activeColor: Color?
     let badge: Int?
     let accessibilityIdentifier: String?
 
-    init(_ tab: T, activeColor: Color? = nil, badge: Int? = nil, accessibilityIdentifier: String? = nil) {
+    init(_ tab: T, label: String? = nil, activeColor: Color? = nil, badge: Int? = nil, accessibilityIdentifier: String? = nil) {
         self.tab = tab
+        self.label = label
         self.activeColor = activeColor
         self.badge = badge
         self.accessibilityIdentifier = accessibilityIdentifier
+    }
+
+    var title: String {
+        label ?? tab.description
+    }
+
+    var resolvedAccessibilityIdentifier: String {
+        accessibilityIdentifier ?? "Tab-\(title.lowercased())"
     }
 }
 
@@ -51,7 +62,7 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                             badge(for: tabItem)
                                 .hidden()
                             CaptionBText(
-                                tabItem.tab.description,
+                                tabItem.title,
                                 textColor: selectedTab == tabItem.tab ? .white : inactiveColor ?? .secondary
                             )
                             badge(for: tabItem)
@@ -75,7 +86,7 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .accessibilityIdentifier(tabItem.accessibilityIdentifier ?? "Tab-\(tabItem.tab.description.lowercased())")
+                .accessibilityIdentifier(tabItem.resolvedAccessibilityIdentifier)
             }
         }
         .frame(maxWidth: .infinity)

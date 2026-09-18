@@ -27,9 +27,9 @@ final class HwWalletManagerFundingTests: XCTestCase {
         )
     }
 
-    private func makeDevice(id: String, xpubs: [String: String]) -> TrezorKnownDevice {
+    private func makeDevice(id: String, xpubs: [String: String]) -> HwKnownDevice {
         xpubsByDeviceId[id] = xpubs
-        return TrezorKnownDevice(
+        return HwKnownDevice(
             id: id,
             name: id,
             path: "ble:\(id)",

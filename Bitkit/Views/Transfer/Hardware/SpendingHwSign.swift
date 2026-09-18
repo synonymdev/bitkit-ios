@@ -1,8 +1,8 @@
 import BitkitCore
 import SwiftUI
 
-/// "Sign with your device" — shows the Blocktank order fees and asks the user to sign the funding
-/// transaction on the Trezor. Reuses the existing Learn More / Advanced controls; on-device signing
+/// "Sign with your device": shows the Blocktank order fees and asks the user to sign the funding
+/// transaction on the hardware wallet. Reuses the existing Learn More / Advanced controls; on-device signing
 /// replaces the local swipe-to-pay. Advances to the Signed screen on success.
 struct SpendingHwSign: View {
     let walletId: String
@@ -10,6 +10,7 @@ struct SpendingHwSign: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     var body: some View {
         if let order = transfer.uiState.order {
@@ -31,10 +32,10 @@ struct SpendingHwSign: View {
             NavigationBar(title: t("lightning__transfer__nav_title"))
                 .padding(.bottom, 16)
 
-            // The Trezor is a background visual behind the content (including the bottom button), so
+            // The device is a background visual behind the content (including the bottom button), so
             // it renders at its natural aspect and doesn't get squeezed by the vertical layout.
             ZStack(alignment: .top) {
-                trezorIllustration
+                deviceIllustration
 
                 belowNav(order: order)
             }
@@ -142,11 +143,7 @@ struct SpendingHwSign: View {
             Spacer()
 
             CustomButton(
-                title: t(
-                    transfer.hwSpending.hasPendingBroadcast
-                        ? "common__retry"
-                        : "lightning__transfer_hw__open_connect"
-                ),
+                title: transfer.hwSpending.hasPendingBroadcast ? t("common__retry") : vendor.transferSignButtonTitle,
                 isDisabled: transfer.hwSpending.isSigning,
                 isLoading: transfer.hwSpending.isSigning
             ) {
@@ -157,10 +154,14 @@ struct SpendingHwSign: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var trezorIllustration: some View {
+    private var vendor: HwWalletVendor {
+        hwWalletManager.wallets.first { $0.id == walletId }?.vendor ?? .trezor
+    }
+
+    private var deviceIllustration: some View {
         GeometryReader { geo in
             let side = geo.size.width * illustrationWidthRatio
-            Image("trezor-card")
+            Image(vendor.signImageName)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: side, height: side)
