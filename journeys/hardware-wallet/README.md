@@ -132,3 +132,15 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
   Tag button `ActivityTag` (labelled "Tag"), tag field `TagInput`, submit `ActivityTagsSubmit`,
   detail chip list `ActivityTags` (only rendered once a tag exists), All Activity tag filter
   `TagsPrompt` (not `ActivityTags` — that one is detail-screen only), explorer `ActivityTxDetails`.
+
+## Blockstream Jade
+
+There is no Jade emulator in `bitkit-docker`, and iOS reaches a Jade over Bluetooth only, which the
+simulator does not have. The Jade flows (Connect Hardware, receive-address verification and on-device
+signing) are therefore covered by unit tests (`JadeManagerTests.swift`, `JadeTransportTests.swift`,
+`JadeBLELinkStateTests.swift`, `HwWalletManagerVendorTests.swift`, `HwConnectViewModelTests.swift`,
+`HwFundingSignerTests.swift`, `HwEngagedSessionTests.swift`) and by manual runs against a physical Jade
+paired with a physical iPhone. The journeys in this folder stay Trezor-only.
+
+While a Jade waits for its PIN, the Found step shows `HwFoundUnlockHint`. The receive tab of a hardware
+wallet is labelled with its vendor: a Trezor wallet keeps `Tab-trezor` and a Jade reads `Tab-jade`.
