@@ -791,23 +791,7 @@ struct MainNavView: View {
                 return
             }
 
-            let handlingResult = await pubkyProfile.handleAuthCallback(callback)
-
-            switch handlingResult {
-            case let .trustedError(message):
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title"),
-                    description: message ?? t("other__qr_error_text")
-                )
-            case .untrustedError:
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title")
-                )
-            case .handled, .ignored:
-                break
-            }
+            pubkyProfile.handleAuthCallback(callback)
 
             return
         }
