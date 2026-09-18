@@ -13,9 +13,12 @@ import XCTest
 final class TransferServiceActivityTests: XCTestCase {
     private let testDbPath = NSTemporaryDirectory()
     private let activity = Bitkit.CoreService.shared.activity
+    private var transferDefaults: UserDefaults!
 
     override func setUp() async throws {
         try await super.setUp()
+        transferDefaults = try makeIsolatedDefaults()
+        guardAppDefaults("transfers")
         _ = try initDb(basePath: testDbPath)
         try await Task.sleep(nanoseconds: 1_000_000_000)
     }
@@ -29,7 +32,11 @@ final class TransferServiceActivityTests: XCTestCase {
     }
 
     private func makeService() -> Bitkit.TransferService {
-        Bitkit.TransferService(lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank)
+        Bitkit.TransferService(
+            storage: Bitkit.TransferStorage(defaults: transferDefaults),
+            lightningService: .shared,
+            blocktankService: Bitkit.CoreService.shared.blocktank
+        )
     }
 
     func testPendingToSpendingActivityDoesNotStoreShortChannelId() async throws {
