@@ -1036,6 +1036,7 @@ struct AppScene: View {
     private func pollIncomingPaykitPaymentRequests() async {
         guard scenePhase == .active else { return }
 
+        if network.isConnected { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
         var schedule = PaykitPaymentRequestPollingSchedule()
         while !Task.isCancelled {
             do {
@@ -1045,6 +1046,7 @@ struct AppScene: View {
             }
             let refreshMaintenance = schedule.takeMaintenanceIfDue()
             if refreshMaintenance {
+                if network.isConnected { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
                 await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
                     wallet: wallet,
                     reason: "payment request polling"
@@ -1368,6 +1370,7 @@ struct AppScene: View {
             // to display balances (MoneyText returns "0" if rates are nil)
             Task {
                 await currency.refresh()
+                if scenePhase == .active { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
                 if PaykitFeatureFlags.isUIEnabled {
                     let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
                     await PrivatePaykitService.shared.startInitialLinkBurst(
