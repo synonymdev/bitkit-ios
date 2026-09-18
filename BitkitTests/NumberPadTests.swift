@@ -3,6 +3,16 @@ import XCTest
 
 @MainActor
 final class NumberPadTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Building a `CurrencyViewModel` syncs the display currency into the shared group.bitkit
+        // suite from its initializer, which the widget extension reads.
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        // `mockCurrency` sets selectedCurrency and displayUnit, both of which write through to the
+        // app's own preferences — a developer on EUR/classic otherwise ends a run on USD/modern.
+        snapshotAppDefaults("primaryDisplay", "cached_fx_rates", "selectedCurrency", "bitcoinDisplayUnit")
+    }
+
     func testFiatDecimalInput() {
         let viewModel = AmountInputViewModel()
         let currency = mockCurrency(primaryDisplay: .fiat)
@@ -520,7 +530,7 @@ final class NumberPadTests: XCTestCase {
     // MARK: - Helper Methods
 
     private func mockCurrency(primaryDisplay: PrimaryDisplay, displayUnit: BitcoinDisplayUnit = .modern) -> CurrencyViewModel {
-        let currency = CurrencyViewModel()
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
         currency.primaryDisplay = primaryDisplay
         currency.selectedCurrency = "USD"
         currency.displayUnit = displayUnit

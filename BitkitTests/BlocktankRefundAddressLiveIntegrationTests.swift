@@ -11,6 +11,9 @@ final class BlocktankRefundAddressLiveIntegrationTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        // `resetToDefaults()` in both hooks writes ~30 real keys, and `clear()` drops the user's own
+        // refund address. The keychain wipe and LDK storage are namespaced under test; these are not.
+        snapshotAppDefaultsDomain()
         try Bitkit.Keychain.wipeEntireKeychain()
         Bitkit.SettingsViewModel.shared.resetToDefaults()
         Bitkit.BlocktankRefundAddressStore().clear()
@@ -23,7 +26,6 @@ final class BlocktankRefundAddressLiveIntegrationTests: XCTestCase {
         }
         try? await lightning.wipeStorage(walletIndex: walletIndex)
         try Bitkit.Keychain.wipeEntireKeychain()
-        Bitkit.SettingsViewModel.shared.resetToDefaults()
         try await super.tearDown()
     }
 
