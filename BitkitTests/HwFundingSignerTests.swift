@@ -289,6 +289,251 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(completedTransactionIds, [funding.broadcastTxId])
     }
 
+    // MARK: - Leaving the sign screen
+
+    func testCoordinatorCanBeLeftWhileTheDeviceConnects() async throws {
+        for walletId in ["jade:wallet", "trezor:wallet"] {
+            let funding = MockHwFunding()
+            let connecting = MockHwConnecting()
+            let connect = AsyncGate()
+            connecting.connectGate = connect
+            let manager = HwWalletManager()
+            let coordinator = makeCoordinator(walletId: walletId, funding: funding, connecting: connecting)
+
+            let payment = Task { try await self.signAndBroadcast(coordinator, manager: manager) }
+            await waitUntil { coordinator.isConnectingDevice }
+
+            XCTAssertTrue(coordinator.isSigning, walletId)
+            XCTAssertTrue(coordinator.isConnectingDevice, walletId)
+            XCTAssertTrue(coordinator.canLeave, walletId)
+
+            connect.open()
+            _ = try await payment.value
+
+            XCTAssertFalse(coordinator.isConnectingDevice, walletId)
+            XCTAssertFalse(coordinator.isSigning, walletId)
+            XCTAssertEqual(funding.broadcastCalls, 1, walletId)
+        }
+    }
+
+    func testCoordinatorCannotBeLeftWhileTheDeviceSigns() async throws {
+        let funding = MockHwFunding()
+        let sign = AsyncGate()
+        funding.signGate = sign
+        let manager = HwWalletManager()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+
+        let payment = Task { try await self.signAndBroadcast(coordinator, manager: manager) }
+        await waitUntil { funding.signCalls == 1 }
+
+        XCTAssertTrue(coordinator.isSigning)
+        XCTAssertFalse(coordinator.isConnectingDevice)
+        XCTAssertFalse(coordinator.canLeave)
+
+        sign.open()
+        _ = try await payment.value
+    }
+
+    func testCoordinatorCannotBeLeftWhileABroadcastIsUnresolved() async throws {
+        let funding = MockHwFunding()
+        let broadcast = AsyncGate()
+        funding.broadcastGate = broadcast
+        let connecting = MockHwConnecting()
+        let manager = HwWalletManager()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: connecting)
+
+        let payment = Task { try await self.signAndBroadcast(coordinator, manager: manager) }
+        await waitUntil { funding.broadcastCalls == 1 }
+
+        XCTAssertTrue(coordinator.isBroadcastUnresolved)
+        XCTAssertFalse(coordinator.canLeave)
+
+        coordinator.cancel()
+
+        XCTAssertTrue(coordinator.isSigning, "a broadcast that may have gone out is not cancelled")
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty)
+
+        broadcast.open()
+        let result = try await payment.value
+
+        XCTAssertEqual(result.txId, funding.broadcastTxId)
+        XCTAssertFalse(coordinator.canLeave, "the outcome stays unresolved until the sheet records it")
+        coordinator.completeBroadcast()
+        XCTAssertTrue(coordinator.canLeave)
+    }
+
+    func testCancelWhileConnectingStopsBeforeSigningAndReleasesTheDevice() async throws {
+        for walletId in ["jade:wallet", "trezor:wallet"] {
+            let funding = MockHwFunding()
+            let connecting = MockHwConnecting()
+            let abandonedConnect = AsyncGate()
+            connecting.connectGate = abandonedConnect
+            let manager = HwWalletManager()
+            let coordinator = makeCoordinator(walletId: walletId, funding: funding, connecting: connecting)
+
+            let payment = Task { try await self.signAndBroadcast(coordinator, manager: manager) }
+            await waitUntil { coordinator.isConnectingDevice }
+            coordinator.cancel()
+
+            XCTAssertEqual(connecting.staleDisconnects, [walletId], "leaving releases the device")
+            XCTAssertFalse(coordinator.isSigning, walletId)
+            XCTAssertFalse(coordinator.isConnectingDevice, walletId)
+            XCTAssertTrue(coordinator.canLeave, walletId)
+            await assertThrowsAsync {
+                _ = try await payment.value
+            } _: { error in
+                XCTAssertTrue(error is CancellationError, "\(error)")
+            }
+
+            connecting.connectGate = nil
+            abandonedConnect.open()
+            await Task.yield()
+
+            XCTAssertTrue(funding.composeCalls.isEmpty, walletId)
+            XCTAssertEqual(funding.signCalls, 0, walletId)
+            XCTAssertEqual(funding.broadcastCalls, 0, walletId)
+
+            let result = try await signAndBroadcast(coordinator, manager: manager)
+
+            XCTAssertEqual(result.txId, funding.broadcastTxId, walletId)
+            XCTAssertEqual(funding.composeCalls.count, 1, walletId)
+            XCTAssertEqual(funding.broadcastCalls, 1, walletId)
+            XCTAssertEqual(connecting.staleDisconnects, [walletId], "the new attempt keeps its session")
+        }
+    }
+
+    func testACancelledAttemptDoesNotResetANewerAttempt() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let preparations = JadeCallLog()
+        let firstPreparation = AsyncGate()
+        let secondPreparation = AsyncGate()
+
+        let first = Task {
+            try await self.signAndBroadcast(coordinator, manager: manager) {
+                preparations.record("first")
+                await firstPreparation.wait()
+            }
+        }
+        await waitUntil { preparations.contains("first") }
+        coordinator.cancel()
+
+        let second = Task {
+            try await self.signAndBroadcast(coordinator, manager: manager) {
+                preparations.record("second")
+                await secondPreparation.wait()
+            }
+        }
+        await waitUntil { preparations.contains("second") }
+        firstPreparation.open()
+        await assertThrowsAsync {
+            _ = try await first.value
+        } _: { error in
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+
+        XCTAssertTrue(coordinator.isSigning, "the cancelled attempt must not end the newer one")
+        XCTAssertFalse(coordinator.canLeave)
+        XCTAssertEqual(funding.broadcastCalls, 0, "a cancelled attempt never broadcasts")
+
+        secondPreparation.open()
+        let result = try await second.value
+
+        XCTAssertEqual(result.txId, funding.broadcastTxId)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertFalse(coordinator.isSigning)
+    }
+
+    func testCancelWithNothingInFlightKeepsTheSession() async throws {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let manager = HwWalletManager()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: connecting)
+
+        coordinator.cancel()
+
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty)
+
+        _ = try await signAndBroadcast(coordinator, manager: manager)
+        coordinator.completeBroadcast()
+        coordinator.cancel()
+
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a finished payment keeps its session")
+    }
+
+    func testConnectingIsReportedAroundTheFirstReconnectOnly() async throws {
+        let funding = MockHwFunding()
+        funding.signErrors = [Bitkit.AppError(error: JadeError.DeviceDisconnected)]
+        let connecting = MockHwConnecting()
+        let signer = makeSigner(funding: funding, connecting: connecting)
+        var reports: [Bool] = []
+
+        _ = try await signer.prepareSignedPayment(
+            walletId: "jade:wallet",
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2,
+            onConnectingDevice: { reports.append($0) }
+        )
+
+        XCTAssertEqual(connecting.ensureCalls, 2)
+        XCTAssertEqual(reports, [true, false], "the reconnect before the sign retry is not reported")
+
+        reports = []
+        connecting.connectError = MockHwFunding.TestError()
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedPayment(
+                walletId: "jade:wallet",
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2,
+                onConnectingDevice: { reports.append($0) }
+            )
+        }
+
+        XCTAssertEqual(reports, [true, false], "a failed reconnect still ends the report")
+    }
+
+    private func makeCoordinator(
+        walletId: String,
+        funding: MockHwFunding,
+        connecting: MockHwConnecting
+    ) -> HwSendCoordinator {
+        HwSendCoordinator(
+            walletId: walletId,
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: connecting,
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+    }
+
+    private func signAndBroadcast(
+        _ coordinator: HwSendCoordinator,
+        manager: HwWalletManager,
+        beforeBroadcast: @escaping () async throws -> Void = {}
+    ) async throws -> HwFundingBroadcastResult {
+        try await coordinator.signAndBroadcast(
+            manager: manager,
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2,
+            beforeBroadcast: beforeBroadcast
+        )
+    }
+
+    private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
     // MARK: - Availability
 
     func testAvailabilityUsesRealMaxSpendable() async throws {

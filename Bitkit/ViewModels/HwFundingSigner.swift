@@ -83,14 +83,21 @@ struct HwFundingSigner {
     }
 
     /// Reconnects, composes and signs a normal on-chain payment without broadcasting it.
+    /// `onConnectingDevice` brackets the initial reconnect (true before it, false once it returns or
+    /// throws), the one phase a caller may abandon because nothing has reached the device to sign yet.
     func prepareSignedPayment(
         walletId: String,
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
-        onComposed: (HwFundingTransaction) -> Void = { _ in }
+        onComposed: (HwFundingTransaction) -> Void = { _ in },
+        onConnectingDevice: (Bool) -> Void = { _ in }
     ) async throws -> HwFundingSignedTx {
-        try await ensureConnected(walletId: walletId)
+        do {
+            onConnectingDevice(true)
+            defer { onConnectingDevice(false) }
+            try await ensureConnected(walletId: walletId)
+        }
         let tx = try await compose(walletId: walletId, address: address, sats: sats, satsPerVByte: satsPerVByte)
         onComposed(tx)
         return try await signStep(walletId: walletId, funding: tx)
@@ -332,6 +339,7 @@ final class HwSendCoordinator {
     private(set) var isFundingSourceLoading = false
     private(set) var isPreviewLoading = false
     private(set) var isSigning = false
+    private(set) var isConnectingDevice = false
     private(set) var isBroadcastUnresolved = false
     private(set) var isPassphraseRequired = false
     private(set) var isVerifyingPassphrase = false
@@ -339,6 +347,10 @@ final class HwSendCoordinator {
     private var pendingPayment: PendingPayment?
     private var operationTask: Task<HwFundingBroadcastResult, Error>?
     private var operationRequest: PaymentRequest?
+    private var operationSession: OperationSession?
+    /// Bumped by every sign attempt and every cancel. A cancelled task can keep running until its
+    /// device call returns, and must not write over the state of an attempt started after it.
+    private var signingAttempt = 0
     private var availabilityRequestId = 0
     private var previewRequestId = 0
     private let signerFactory: @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner
@@ -349,6 +361,13 @@ final class HwSendCoordinator {
 
     var hasPendingBroadcast: Bool {
         pendingPayment != nil
+    }
+
+    /// Whether the sign screen may be left. Reaching the device (a Jade may wait minutes for its PIN)
+    /// can be abandoned, and leaving cancels it; once the device is asked to sign, or a broadcast may
+    /// have gone out, it cannot.
+    var canLeave: Bool {
+        (!isSigning || isConnectingDevice) && !isBroadcastUnresolved
     }
 
     init(
@@ -387,6 +406,7 @@ final class HwSendCoordinator {
         isFundingSourceLoading = walletId != nil && showsLoading
         isPreviewLoading = false
         isSigning = false
+        isConnectingDevice = false
         isBroadcastUnresolved = false
         isPassphraseRequired = false
         isVerifyingPassphrase = false
@@ -482,11 +502,19 @@ final class HwSendCoordinator {
             return try await operationTask.value
         }
 
-        let task = Task { @MainActor in
-            isSigning = true
-            defer { isSigning = false }
+        signingAttempt += 1
+        let attempt = signingAttempt
+        let signer = signerFactory(manager, address, satsPerVByte)
+        isSigning = true
 
-            let signer = signerFactory(manager, address, satsPerVByte)
+        let task = Task { @MainActor in
+            defer {
+                if signingAttempt == attempt {
+                    isSigning = false
+                    isConnectingDevice = false
+                }
+            }
+
             let signed: HwFundingSignedTx
             if let pendingPayment, pendingPayment.request == request {
                 signed = pendingPayment.signedTx
@@ -496,13 +524,22 @@ final class HwSendCoordinator {
                     address: address,
                     sats: sats,
                     satsPerVByte: satsPerVByte,
-                    onComposed: { [weak self] in self?.previewFeeSats = $0.miningFeeSats }
+                    onComposed: { [weak self] composed in
+                        guard let self, signingAttempt == attempt else { return }
+                        previewFeeSats = composed.miningFeeSats
+                    },
+                    onConnectingDevice: { [weak self] isConnecting in
+                        guard let self, signingAttempt == attempt else { return }
+                        isConnectingDevice = isConnecting
+                    }
                 )
+                try Task.checkCancellation()
                 pendingPayment = PendingPayment(request: request, signedTx: signed)
             }
 
             if pendingPayment?.isPreparedForBroadcast != true {
                 try await beforeBroadcast()
+                try Task.checkCancellation()
                 pendingPayment?.isPreparedForBroadcast = true
             }
 
@@ -522,9 +559,13 @@ final class HwSendCoordinator {
         }
         operationRequest = request
         operationTask = task
+        operationSession = OperationSession(walletId: walletId, connecting: signer.connecting)
         defer {
-            operationRequest = nil
-            operationTask = nil
+            if signingAttempt == attempt {
+                operationRequest = nil
+                operationTask = nil
+                operationSession = nil
+            }
         }
         return try await task.value
     }
@@ -562,11 +603,20 @@ final class HwSendCoordinator {
         isVerifyingPassphrase = false
         isPassphraseRequired = false
         guard !isBroadcastUnresolved else { return }
+        let abandonedSession = operationSession
         operationTask?.cancel()
+        signingAttempt += 1
         operationTask = nil
         operationRequest = nil
+        operationSession = nil
         pendingPayment = nil
         isSigning = false
+        isConnectingDevice = false
+        // A Swift cancel never reaches the device, which would otherwise keep connecting (or wait for
+        // a PIN) for a payment nobody is waiting on. The next connect waits for this release.
+        if let abandonedSession {
+            abandonedSession.connecting.scheduleStaleSessionCleanup(walletId: abandonedSession.walletId)
+        }
     }
 
     private static func signer(
@@ -593,5 +643,10 @@ final class HwSendCoordinator {
         let request: PaymentRequest
         let signedTx: HwFundingSignedTx
         var isPreparedForBroadcast = false
+    }
+
+    private struct OperationSession {
+        let walletId: String
+        let connecting: HwTransferConnecting
     }
 }
