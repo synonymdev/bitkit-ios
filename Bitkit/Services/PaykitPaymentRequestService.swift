@@ -5,7 +5,7 @@ import Paykit
 import UIKit
 
 struct PaykitPaymentRequest: Identifiable, Hashable {
-    enum ParseFailure: String, Error, Equatable, Sendable {
+    enum ParseFailure: String, Error, Equatable {
         case missingLocalRole = "missing_local_role"
         case outgoingRequest = "outgoing_request"
         case unsupportedLocalRole = "unsupported_local_role"
@@ -405,8 +405,8 @@ struct PaykitPaymentRequestSnapshot: Equatable {
     }
 }
 
-private struct IncomingPaykitPaymentRequestRejection: Sendable {
-    struct ID: Hashable, Sendable {
+private struct IncomingPaykitPaymentRequestRejection {
+    struct ID: Hashable {
         let paymentRequestId: String
         let reason: PaykitPaymentRequest.ParseFailure
         let redactedCounterparty: String

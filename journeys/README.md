@@ -123,7 +123,12 @@ Known naming differences:
 | Send available balance | `AvailableAmount` and `available_balance` (Android emits both) | `AvailableAmount` |
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
-| Payment Request row | `PaymentRequestRow-<id>` | `PaymentRequestRow-<id>-<counterparty>-<receiverPath>-<period>` |
+| Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
+
+`SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix
+but appends the billing period (`-one-time` for a one-off), because every recurring payment of one
+subscription carries the same `paymentRequestId` and they can list together — Android stops at the id
+and lets those rows collide. Match on the prefix when a journey needs to work on both platforms.
 
 Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `SpendingAdvanced*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.
@@ -151,6 +156,10 @@ dev-mode gate and a cold-start replay. iOS registers the `bitkit` URL scheme (`B
 and retains external URLs in `AppScene`, but `MainNavView` only routes web URLs, Pubky auth requests and callbacks,
 and payment URIs — there is no screen or sheet deeplink router, and no dev-mode gate to test. These
 journeys are blocked on the feature existing, not on the harness.
+
+**`subscriptions` Discover.** The subscriptions suite covers create, review, cancel/delete and
+the Payments tab, but not Discover — it is unimplemented on iOS. Two linked Bitkit instances are
+required to run the suite.
 
 ## Porting from Android
 
