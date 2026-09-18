@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import Foundation
 import XCTest
 
@@ -92,6 +93,19 @@ extension XCTestCase {
         // module's, which the test target's drain would not wait on.
         _ = try? await ServiceQueue.background(.core) { true }
         _ = try? await Bitkit.ServiceQueue.background(.core) { true }
+    }
+
+    /// Points bitkit-core's global connections back at the app's own storage, for a suite that moved
+    /// them to a temp directory. Call it before unlinking that directory: the connections stay open on
+    /// the old path, and a later write through core then fails with `attempt to write a readonly
+    /// database`. The app's storage is namespaced under test, so this is a safe target.
+    ///
+    /// `init_db` also rebuilds the Blocktank client with bitkit-core's default URL, which is mainnet
+    /// (`api1.blocktank.to`). Without restoring `Env.blocktankClientServer`, every later suite's
+    /// regtest faucet call 404s.
+    func repointCoreToAppStorage() async {
+        _ = try? initDb(basePath: Env.bitkitCoreStorage(walletIndex: 0).path)
+        try? await updateBlocktankUrl(newUrl: Env.blocktankClientServer)
     }
 
     /// Skips the test unless `BITKIT_DESTRUCTIVE_TESTS=1` is set. For the handful of suites that
