@@ -47,20 +47,21 @@ enum HwKnownDeviceMatching {
     /// the entry this connect refreshed, since reading a previously rejected address type changes
     /// the wallet key and matching on the new key alone would leave the old entry behind as a
     /// duplicate. Wallets of a seed the device no longer carries go too: nothing would ever
-    /// supersede them by key material. An unknown device id proves nothing, so those are left alone.
+    /// supersede them by key material. An unknown device id proves nothing, so those are left alone,
+    /// and so is every entry of another vendor, even one holding the same seed.
     private static func isReplaced(
         _ entry: HwKnownDevice,
         by known: HwKnownDevice,
         refreshed: HwKnownDevice?
     ) -> Bool {
-        guard entry.id == known.id else { return false }
+        guard entry.vendor == known.vendor, entry.id == known.id else { return false }
         if entry.walletKey == known.walletKey {
             return true
         }
         if let refreshed, entry.walletKey == refreshed.walletKey {
             return true
         }
-        guard let knownTrezorId = known.trezorDeviceId, let entryTrezorId = entry.trezorDeviceId else { return false }
-        return entryTrezorId != knownTrezorId
+        guard let knownHardwareId = known.hardwareId, let entryHardwareId = entry.hardwareId else { return false }
+        return entryHardwareId != knownHardwareId
     }
 }

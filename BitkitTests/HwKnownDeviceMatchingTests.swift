@@ -204,25 +204,182 @@ final class HwKnownDeviceMatchingTests: XCTestCase {
         XCTAssertEqual(decoded.resolvedWalletId, try HwWalletId.derive(xpubs: ["nativeSegwit": "zStandard"]))
     }
 
+    // MARK: - Vendors
+
+    func testDecodesLegacyEntriesAsTrezor() throws {
+        let decoded = try decode(legacyJson(id: "dev1", walletId: "trezor:standard"))
+
+        XCTAssertEqual(decoded.vendor, .trezor)
+        XCTAssertTrue(decoded.belongs(to: .trezor))
+        XCTAssertNil(decoded.jadeDeviceId)
+        XCTAssertNil(decoded.hardwareId)
+    }
+
+    func testInfersJadeForALegacyEntryInTheJadeNamespace() throws {
+        XCTAssertEqual(try decode(legacyJson(id: "jade:bluetooth:aabbcc", walletId: nil)).vendor, .blockstream)
+        XCTAssertEqual(try decode(legacyJson(id: "dev1", walletId: "jade:wallet")).vendor, .blockstream)
+    }
+
+    func testAJadeEntrySurvivesARoundTrip() throws {
+        let jade = makeDevice(
+            id: "jade:bluetooth:aabbcc",
+            xpubs: ["nativeSegwit": "zJade"],
+            customLabel: "Travel",
+            walletId: "jade:wallet",
+            vendor: .blockstream,
+            jadeDeviceId: "aabbcc"
+        )
+
+        let decoded = try JSONDecoder().decode(HwKnownDevice.self, from: JSONEncoder().encode(jade))
+
+        XCTAssertEqual(decoded, jade)
+        XCTAssertEqual(decoded.vendor, .blockstream)
+        XCTAssertEqual(decoded.hardwareId, "aabbcc")
+    }
+
+    /// A newer build may store a vendor this one does not know. Decoding it must not fail the whole
+    /// device list, and writing it back must keep the vendor it was stored under.
+    func testAnUnknownVendorIsWrittenBackUnchanged() throws {
+        let decoded = try decode(legacyJson(id: "passport1", walletId: "foundation:wallet", vendor: "foundation"))
+
+        XCTAssertEqual(decoded.unknownVendor, "foundation")
+        XCTAssertFalse(HwWalletVendor.allCases.contains(where: decoded.belongs(to:)))
+
+        let reencoded = try JSONEncoder().encode(decoded.refreshed(path: "ble://moved", at: Date(timeIntervalSince1970: 5)))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
+        XCTAssertEqual(json["vendor"] as? String, "foundation")
+    }
+
+    func testADeviceOfAnotherVendorNeverReplacesAnEntry() {
+        let trezor = makeDevice(id: "shared", xpubs: ["nativeSegwit": "zShared"], walletId: "trezor:wallet")
+        let jade = makeDevice(
+            id: "shared",
+            xpubs: ["nativeSegwit": "zShared"],
+            walletId: "jade:wallet",
+            vendor: .blockstream,
+            jadeDeviceId: "aabbcc"
+        )
+
+        let merged = HwKnownDeviceMatching.merged([trezor], with: jade, refreshed: nil)
+
+        XCTAssertEqual(merged.map(\.walletId), ["trezor:wallet", "jade:wallet"])
+    }
+
+    func testAJadeEntryIsSupersededByADifferentJadeDeviceId() {
+        let wiped = makeDevice(
+            id: "jade:bluetooth:aabbcc",
+            xpubs: ["nativeSegwit": "zOldSeed"],
+            vendor: .blockstream,
+            jadeDeviceId: "aabbcc"
+        )
+        let known = makeDevice(
+            id: "jade:bluetooth:aabbcc",
+            xpubs: ["nativeSegwit": "zNewSeed"],
+            vendor: .blockstream,
+            jadeDeviceId: "ddeeff"
+        )
+
+        let merged = HwKnownDeviceMatching.merged([wiped], with: known, refreshed: nil)
+
+        XCTAssertEqual(merged.map(\.xpubs), [["nativeSegwit": "zNewSeed"]])
+    }
+
+    func testAJadeEntryIsReplacedByAReReadOfTheSameHardwareWithMoreKeys() {
+        let stored = makeDevice(
+            id: "jade:bluetooth:aabbcc",
+            path: "ble:old",
+            xpubs: ["nativeSegwit": "zJade"],
+            vendor: .blockstream,
+            jadeDeviceId: "aabbcc"
+        )
+        let reread = makeDevice(
+            id: "jade:bluetooth:aabbcc",
+            path: "ble:new",
+            xpubs: ["nativeSegwit": "zJade", "taproot": "zJadeTR"],
+            vendor: .blockstream,
+            jadeDeviceId: "aabbcc"
+        )
+
+        let merged = HwKnownDeviceMatching.merged([stored], with: reread, refreshed: stored)
+
+        XCTAssertEqual(merged.map(\.path), ["ble:new"])
+        XCTAssertEqual(merged.first?.xpubs.count, 2)
+    }
+
+    func testAJadeEntryWithoutAStoredIdDerivesAJadeWalletId() throws {
+        let jade = makeDevice(xpubs: ["nativeSegwit": "zJade"], vendor: .blockstream)
+
+        let walletId = try XCTUnwrap(jade.resolvedWalletId)
+
+        XCTAssertTrue(walletId.hasPrefix("jade:"))
+        XCTAssertEqual(walletId, try HwWalletId.derive(xpubs: ["nativeSegwit": "zJade"], vendor: .blockstream))
+    }
+
+    func testRefreshingAnEntryOnlyMovesItsPathAndTime() {
+        let stored = makeDevice(
+            id: "jade:bluetooth:aabbcc",
+            path: "ble:old",
+            xpubs: ["nativeSegwit": "zJade"],
+            customLabel: "Travel",
+            walletId: "jade:wallet",
+            vendor: .blockstream,
+            jadeDeviceId: "aabbcc"
+        )
+
+        let refreshed = stored.refreshed(path: "ble:new", at: Date(timeIntervalSince1970: 50))
+
+        XCTAssertEqual(refreshed.path, "ble:new")
+        XCTAssertEqual(refreshed.lastConnectedAt, Date(timeIntervalSince1970: 50))
+        XCTAssertEqual(refreshed.entryId, stored.entryId)
+        XCTAssertEqual(refreshed.customLabel, "Travel")
+        XCTAssertEqual(refreshed.resolvedWalletId, "jade:wallet")
+        XCTAssertEqual(refreshed.vendor, .blockstream)
+        XCTAssertEqual(refreshed.hardwareId, "aabbcc")
+    }
+
     private func makeDevice(
         id: String = "dev1",
+        path: String? = nil,
         xpubs: [String: String],
         customLabel: String? = nil,
         walletId: String? = nil,
         passphraseProtected: Bool = false,
-        trezorDeviceId: String? = nil
+        trezorDeviceId: String? = nil,
+        vendor: HwWalletVendor = .trezor,
+        jadeDeviceId: String? = nil
     ) -> HwKnownDevice {
         HwKnownDevice(
             id: id,
-            name: "Trezor",
-            path: "ble://\(id)",
+            name: vendor == .trezor ? "Trezor" : "Jade",
+            path: path ?? "ble://\(id)",
             transportType: "bluetooth",
             lastConnectedAt: Date(timeIntervalSince1970: 0),
             xpubs: xpubs,
             customLabel: customLabel,
             walletId: walletId,
             passphraseProtected: passphraseProtected,
-            trezorDeviceId: trezorDeviceId
+            trezorDeviceId: trezorDeviceId,
+            vendor: vendor,
+            jadeDeviceId: jadeDeviceId
         )
+    }
+
+    private func legacyJson(id: String, walletId: String?, vendor: String? = nil) -> String {
+        let walletIdField = walletId.map { ", \"walletId\": \"\($0)\"" } ?? ""
+        let vendorField = vendor.map { ", \"vendor\": \"\($0)\"" } ?? ""
+        return """
+        {
+            "id": "\(id)",
+            "name": "Device",
+            "path": "ble://\(id)",
+            "transportType": "bluetooth",
+            "lastConnectedAt": 0,
+            "xpubs": { "nativeSegwit": "zStandard" }\(walletIdField)\(vendorField)
+        }
+        """
+    }
+
+    private func decode(_ json: String) throws -> HwKnownDevice {
+        try JSONDecoder().decode(HwKnownDevice.self, from: Data(json.utf8))
     }
 }

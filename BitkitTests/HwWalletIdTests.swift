@@ -43,6 +43,21 @@ final class HwWalletIdTests: XCTestCase {
         XCTAssertThrowsError(try HwWalletId.derive(xpubs: [:]))
     }
 
+    func testJadeWalletIdsUseTheJadeNamespace() throws {
+        let xpubs = ["taproot": "zTR", "nativeSegwit": "zNS"]
+        let expected = "jade:" + expectedHash(ofSortedValues: xpubs)
+        XCTAssertEqual(try HwWalletId.derive(xpubs: xpubs, vendor: .blockstream), expected)
+    }
+
+    /// The same seed paired on a Trezor and on a Jade must stay two wallets.
+    func testEqualXpubsOnTwoVendorsDeriveTwoIds() throws {
+        let xpubs = ["nativeSegwit": "zNS"]
+        let trezor = try HwWalletId.derive(xpubs: xpubs, vendor: .trezor)
+        let jade = try HwWalletId.derive(xpubs: xpubs, vendor: .blockstream)
+        XCTAssertNotEqual(trezor, jade)
+        XCTAssertEqual(trezor, try HwWalletId.derive(xpubs: xpubs), "Trezor ids keep the namespace they always had")
+    }
+
     private func expectedHash(ofSortedValues xpubs: [String: String]) -> String {
         let joined = xpubs.values.sorted().joined(separator: "\n")
         return SHA256.hash(data: Data(joined.utf8))

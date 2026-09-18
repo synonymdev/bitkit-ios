@@ -98,7 +98,7 @@ final class HwWalletManager {
     private var lastSyncedMonitored: Set<String>?
     private var lastSyncedElectrumUrl: String?
 
-    /// Memoized `HwWalletId.derive` results keyed by an xpubs signature. The mapping is
+    /// Memoized `HwWalletId.derive` results keyed by vendor and xpubs signature. The mapping is
     /// deterministic and immutable, so caching avoids repeated FFI derivations on every watcher
     /// event and sync. Pruned to the live device set on `updateDevices`/`removeDevice`.
     private var walletIdCache: [String: String] = [:]
@@ -223,7 +223,7 @@ final class HwWalletManager {
         delete(walletId: walletId)
         lastPersisted[walletId] = nil
         for device in knownDevices where device.resolvedWalletId == walletId {
-            walletIdCache[xpubsSignature(device.xpubs)] = nil
+            walletIdCache[walletIdCacheKey(xpubs: device.xpubs, vendor: device.vendor)] = nil
         }
         // Dropped here rather than left to the next `updateDevices(...)` push. Until the wallet leaves
         // `hwWalletIds`, the push's own cleanup deletes its activities a second time — after any kept
@@ -293,6 +293,12 @@ final class HwWalletManager {
     /// there before the `updateDevices(...)` push does.
     private func entries(for walletId: String) -> [HwKnownDevice] {
         (session?.storedDevices ?? knownDevices).filter { $0.resolvedWalletId == walletId }
+    }
+
+    /// The vendor of the device holding `walletId`, which decides how it is reached and signed with,
+    /// or Trezor when no stored entry holds it.
+    func vendor(walletId: String) -> HwWalletVendor {
+        entries(for: walletId).first?.vendor ?? .trezor
     }
 
     /// Transport id to reach `walletId` with: the connected entry, else the most recently used one.
@@ -576,19 +582,24 @@ final class HwWalletManager {
         if let walletId = device.walletId, !walletId.isEmpty {
             return walletId
         }
-        return walletId(for: device.xpubs)
+        return walletId(for: device.xpubs, vendor: device.vendor)
     }
 
-    /// Derive (and memoize) the wallet id for a device's xpubs. Returns nil when derivation fails
-    /// (e.g. no captured xpubs — `HwWalletId.derive` throws on empty), so callers skip the device.
-    private func walletId(for xpubs: [String: String]) -> String? {
-        let signature = xpubsSignature(xpubs)
-        if let cached = walletIdCache[signature] {
+    /// Derive (and memoize) the wallet id for a device's xpubs in its vendor's namespace. Returns nil
+    /// when derivation fails (e.g. no captured xpubs, as `HwWalletId.derive` throws on empty), so
+    /// callers skip the device.
+    private func walletId(for xpubs: [String: String], vendor: HwWalletVendor) -> String? {
+        let cacheKey = walletIdCacheKey(xpubs: xpubs, vendor: vendor)
+        if let cached = walletIdCache[cacheKey] {
             return cached
         }
-        guard let derived = try? HwWalletId.derive(xpubs: xpubs) else { return nil }
-        walletIdCache[signature] = derived
+        guard let derived = try? HwWalletId.derive(xpubs: xpubs, vendor: vendor) else { return nil }
+        walletIdCache[cacheKey] = derived
         return derived
+    }
+
+    private func walletIdCacheKey(xpubs: [String: String], vendor: HwWalletVendor) -> String {
+        "\(vendor.deviceType)\u{1e}\(xpubsSignature(xpubs))"
     }
 
     private func xpubsSignature(_ xpubs: [String: String]) -> String {
@@ -600,8 +611,10 @@ final class HwWalletManager {
     /// Drop cache entries for devices no longer in the snapshot, so the caches stay bounded to
     /// live devices.
     private func pruneCaches() {
-        let liveSignatures = Set(knownDevices.filter { !$0.xpubs.isEmpty }.map { xpubsSignature($0.xpubs) })
-        walletIdCache = walletIdCache.filter { liveSignatures.contains($0.key) }
+        let liveCacheKeys = Set(
+            knownDevices.filter { !$0.xpubs.isEmpty }.map { walletIdCacheKey(xpubs: $0.xpubs, vendor: $0.vendor) }
+        )
+        walletIdCache = walletIdCache.filter { liveCacheKeys.contains($0.key) }
         lastPersisted = lastPersisted.filter { hwWalletIds.contains($0.key) }
     }
 
@@ -893,7 +906,8 @@ final class HwWalletManager {
                 balanceSats: walletWatchers.reduce(UInt64(0)) { $0.saturatingAdd($1.balanceSats) },
                 fundingBalanceSats: fundingBalance(group: group, addressType: hwFundingDefaultAddressType),
                 deviceIds: group.ids,
-                passphraseProtected: group.devices.contains { $0.passphraseProtected }
+                passphraseProtected: group.devices.contains { $0.passphraseProtected },
+                vendor: device.vendor
             )
         }
 

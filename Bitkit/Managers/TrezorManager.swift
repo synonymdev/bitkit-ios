@@ -585,7 +585,7 @@ final class TrezorManager {
     // MARK: - Known Devices
 
     func loadKnownDevices() {
-        knownDevices = HwKnownDeviceStorage.loadAll()
+        knownDevices = HwKnownDeviceStorage.loadAll(vendor: .trezor)
     }
 
     /// Display name for the currently connected device, applying any Bitkit-side custom rename (from
@@ -606,7 +606,7 @@ final class TrezorManager {
     /// entry sharing the target's xpub set so the same device renamed over either transport stays
     /// consistent, then reloads so the snapshot re-pushes and `HwWallet.name` updates.
     func renameDevice(id: String, newName: String) {
-        let devices = HwKnownDeviceStorage.loadAll()
+        let devices = HwKnownDeviceStorage.loadAll(vendor: .trezor)
         guard let target = devices.first(where: { $0.id == id }) else { return }
 
         applyCustomLabel(newName, to: devices) { device in
@@ -618,7 +618,7 @@ final class TrezorManager {
     /// Set the Bitkit-side custom name for one wallet identity. The label belongs to the wallet, not
     /// to the device: renaming a passphrase wallet must leave its device's other wallets alone.
     func renameWallet(walletId: String, newName: String) {
-        let devices = HwKnownDeviceStorage.loadAll()
+        let devices = HwKnownDeviceStorage.loadAll(vendor: .trezor)
         guard devices.contains(where: { $0.resolvedWalletId == walletId }) else { return }
 
         applyCustomLabel(newName, to: devices) { $0.resolvedWalletId == walletId }
@@ -645,7 +645,7 @@ final class TrezorManager {
         for walletId in Set(devices.filter(isTarget).compactMap(\.resolvedWalletId)) {
             HwKnownDeviceStorage.setPendingName(walletId: walletId, name: nil)
         }
-        HwKnownDeviceStorage.saveAll(updated)
+        HwKnownDeviceStorage.saveAll(updated, vendor: .trezor)
         loadKnownDevices()
     }
 
@@ -660,7 +660,7 @@ final class TrezorManager {
     @discardableResult
     func saveCurrentDeviceAsKnown() async -> Bool {
         guard let device = connectedDevice else { return false }
-        let stored = HwKnownDeviceStorage.loadAll()
+        let stored = HwKnownDeviceStorage.loadAll(vendor: .trezor)
         let (fetched, transientFailures) = await fetchAccountXpubs()
         // Not matched by transport id alone: a passphrase wallet is a separate identity on the same
         // device, so that would overwrite another identity or blend two identities' xpubs into one
@@ -706,9 +706,10 @@ final class TrezorManager {
             customLabel: named?.customLabel ?? pendingName,
             walletId: walletId,
             passphraseProtected: passphraseProtection(previous: previous),
-            trezorDeviceId: deviceFeatures?.deviceId ?? previous?.trezorDeviceId
+            trezorDeviceId: deviceFeatures?.deviceId ?? previous?.trezorDeviceId,
+            vendor: .trezor
         )
-        HwKnownDeviceStorage.saveAll(HwKnownDeviceMatching.merged(stored, with: known, refreshed: previous))
+        HwKnownDeviceStorage.saveAll(HwKnownDeviceMatching.merged(stored, with: known, refreshed: previous), vendor: .trezor)
         loadKnownDevices()
         connectedWalletId = known.resolvedWalletId
         trezorLog("Saved known device: \(known.name) with \(mergedXpubs.count) xpubs")
@@ -726,7 +727,7 @@ final class TrezorManager {
         {
             return carried
         }
-        return try? HwWalletId.derive(xpubs: xpubs)
+        return try? HwWalletId.derive(xpubs: xpubs, vendor: .trezor)
     }
 
     /// The selection that derived these keys is authoritative, so a wallet wrongly marked hidden is
@@ -809,7 +810,7 @@ final class TrezorManager {
         if let device = known {
             await clearCredentials(path: device.path)
         }
-        HwKnownDeviceStorage.remove(id: id)
+        HwKnownDeviceStorage.remove(id: id, vendor: .trezor)
         loadKnownDevices()
         trezorLog("Forgot device: \(id)")
 
@@ -823,7 +824,7 @@ final class TrezorManager {
     /// cleared once none remains — dropping them while a sibling is still paired would leave that
     /// wallet unable to reconnect.
     func forgetWallet(walletId: String, pendingName: PendingHwWalletName? = nil) async {
-        let stored = HwKnownDeviceStorage.loadAll()
+        let stored = HwKnownDeviceStorage.loadAll(vendor: .trezor)
         let forgotten = stored.filter { $0.resolvedWalletId == walletId }
         guard !forgotten.isEmpty else {
             trezorLog("Nothing to forget for hardware wallet '\(walletId)'", level: "warn")
@@ -835,7 +836,7 @@ final class TrezorManager {
             await clearCredentials(path: entry.path)
         }
 
-        HwKnownDeviceStorage.saveAll(remaining, pendingName: pendingName)
+        HwKnownDeviceStorage.saveAll(remaining, vendor: .trezor, pendingName: pendingName)
         loadKnownDevices()
         trezorLog("Forgot hardware wallet: \(walletId)")
 

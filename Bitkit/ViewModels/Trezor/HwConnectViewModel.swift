@@ -376,7 +376,7 @@ struct TrezorHwConnectService: HwConnectServicing {
         // A device that is already paired is only offered once no new one is found, so its
         // passphrase wallets can be added afterwards — otherwise Add Hardware Wallet would search
         // forever on the only device in range.
-        let (paired, unpaired) = trezorManager.devices.partitioned { HwKnownDeviceStorage.isKnown(id: $0.id) }
+        let (paired, unpaired) = trezorManager.devices.partitioned { HwKnownDeviceStorage.isKnown(id: $0.id, vendor: .trezor) }
         return unpaired + paired
     }
 
