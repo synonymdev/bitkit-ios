@@ -84,8 +84,8 @@ protocol JadeSessioning: AnyObject, Sendable {
     func masterFingerprint() async throws -> String
     /// Signs on the device, then finalizes the signed PSBT into a broadcastable transaction.
     func signPsbt(_ psbtBase64: String) async throws -> CompletedTransaction
-    /// Closes the link before the core session, so a device call waiting on the link lets go of core.
-    /// A no-op while another Jade is connected.
+    /// Closes the link together with the core session, so a device call waiting on the link lets go of
+    /// core. A no-op while another Jade is connected.
     func disconnectStaleSession(deviceId: String) async
     /// Disconnects, or cancels a pending connect and background reconnect, so another vendor can take
     /// over the radio.
