@@ -3,14 +3,14 @@ import XCTest
 
 /// Covers how a connect resolves which stored entry it refreshes and which entries it supersedes,
 /// now that one physical device can hold a standard wallet plus its passphrase (hidden) wallets.
-final class TrezorKnownDeviceMatchingTests: XCTestCase {
+final class HwKnownDeviceMatchingTests: XCTestCase {
     // MARK: - previous(in:deviceId:fetchedXpubs:)
 
     func testRefreshesTheEntrySharingKeyMaterial() {
         let standard = makeDevice(xpubs: ["nativeSegwit": "zStandard"])
         let hidden = makeDevice(xpubs: ["nativeSegwit": "zHidden"], walletId: "trezor:hidden")
 
-        let previous = TrezorKnownDeviceMatching.previous(
+        let previous = HwKnownDeviceMatching.previous(
             in: [standard, hidden],
             deviceId: "dev1",
             fetchedXpubs: ["nativeSegwit": "zHidden", "taproot": "zHiddenTR"]
@@ -20,11 +20,11 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
     }
 
     /// A passphrase wallet read for the first time overlaps nothing, so it must not adopt the
-    /// standard wallet's entry — that would blend two seeds' xpubs into one record.
+    /// standard wallet's entry, since that would blend two seeds' xpubs into one record.
     func testTreatsUnseenKeyMaterialAsANewIdentity() {
         let standard = makeDevice(xpubs: ["nativeSegwit": "zStandard"])
 
-        let previous = TrezorKnownDeviceMatching.previous(
+        let previous = HwKnownDeviceMatching.previous(
             in: [standard],
             deviceId: "dev1",
             fetchedXpubs: ["nativeSegwit": "zHidden"]
@@ -36,7 +36,7 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
     func testAdoptsALoneEntryStoredBeforeAnyXpubWasCaptured() {
         let bare = makeDevice(xpubs: [:], customLabel: "My Trezor")
 
-        let previous = TrezorKnownDeviceMatching.previous(
+        let previous = HwKnownDeviceMatching.previous(
             in: [bare],
             deviceId: "dev1",
             fetchedXpubs: ["nativeSegwit": "zStandard"]
@@ -48,7 +48,7 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
     func testIgnoresEntriesOfAnotherDevice() {
         let other = makeDevice(id: "dev2", xpubs: ["nativeSegwit": "zStandard"])
 
-        let previous = TrezorKnownDeviceMatching.previous(
+        let previous = HwKnownDeviceMatching.previous(
             in: [other],
             deviceId: "dev1",
             fetchedXpubs: ["nativeSegwit": "zStandard"]
@@ -59,15 +59,15 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
 
     // MARK: - named(in:previous:walletKey:)
 
-    /// The wallet reappears on a fresh transport path, so nothing matches by device id — but it is
+    /// The wallet reappears on a fresh transport path, so nothing matches by device id, but it is
     /// the same key material, and the user's label belongs to the wallet, not to the path.
     func testInheritsTheLabelOfTheSameWalletOnAnotherPath() {
         let previouslyPaired = makeDevice(id: "old-path", xpubs: ["nativeSegwit": "zStandard"], customLabel: "Savings")
 
-        let named = TrezorKnownDeviceMatching.named(
+        let named = HwKnownDeviceMatching.named(
             in: [previouslyPaired],
             previous: nil,
-            walletKey: TrezorKnownDevice.walletKey(for: ["nativeSegwit": "zStandard"], fallback: "dev1")
+            walletKey: HwKnownDevice.walletKey(for: ["nativeSegwit": "zStandard"], fallback: "dev1")
         )
 
         XCTAssertEqual(named?.customLabel, "Savings")
@@ -77,7 +77,7 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
         let refreshed = makeDevice(xpubs: ["nativeSegwit": "zStandard"], customLabel: "Refreshed")
         let sameKey = makeDevice(id: "old-path", xpubs: ["nativeSegwit": "zStandard"], customLabel: "Stale")
 
-        let named = TrezorKnownDeviceMatching.named(
+        let named = HwKnownDeviceMatching.named(
             in: [sameKey, refreshed],
             previous: refreshed,
             walletKey: refreshed.walletKey
@@ -92,7 +92,7 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
         let standard = makeDevice(xpubs: ["nativeSegwit": "zStandard"], walletId: "trezor:standard")
         let hidden = makeDevice(xpubs: ["nativeSegwit": "zHidden"], walletId: "trezor:hidden", passphraseProtected: true)
 
-        let merged = TrezorKnownDeviceMatching.merged([standard], with: hidden, refreshed: nil)
+        let merged = HwKnownDeviceMatching.merged([standard], with: hidden, refreshed: nil)
 
         XCTAssertEqual(merged.map(\.walletId), ["trezor:standard", "trezor:hidden"])
     }
@@ -101,7 +101,7 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
         let stored = makeDevice(xpubs: ["nativeSegwit": "zStandard"], customLabel: "Old")
         let known = makeDevice(xpubs: ["nativeSegwit": "zStandard"], customLabel: "New")
 
-        let merged = TrezorKnownDeviceMatching.merged([stored], with: known, refreshed: stored)
+        let merged = HwKnownDeviceMatching.merged([stored], with: known, refreshed: stored)
 
         XCTAssertEqual(merged.map(\.customLabel), ["New"])
     }
@@ -112,7 +112,7 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
         let partial = makeDevice(xpubs: ["nativeSegwit": "zStandard"])
         let complete = makeDevice(xpubs: ["nativeSegwit": "zStandard", "taproot": "zTaproot"])
 
-        let merged = TrezorKnownDeviceMatching.merged([partial], with: complete, refreshed: partial)
+        let merged = HwKnownDeviceMatching.merged([partial], with: complete, refreshed: partial)
 
         XCTAssertEqual(merged.count, 1)
         XCTAssertEqual(merged[0].xpubs.count, 2)
@@ -122,7 +122,7 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
         let wiped = makeDevice(xpubs: ["nativeSegwit": "zOldSeed"], trezorDeviceId: "trezor-before-wipe")
         let known = makeDevice(xpubs: ["nativeSegwit": "zNewSeed"], trezorDeviceId: "trezor-after-wipe")
 
-        let merged = TrezorKnownDeviceMatching.merged([wiped], with: known, refreshed: nil)
+        let merged = HwKnownDeviceMatching.merged([wiped], with: known, refreshed: nil)
 
         XCTAssertEqual(merged.map(\.xpubs), [["nativeSegwit": "zNewSeed"]])
     }
@@ -142,7 +142,7 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
             trezorDeviceId: "trezor-id"
         )
 
-        let merged = TrezorKnownDeviceMatching.merged([standard], with: hidden, refreshed: nil)
+        let merged = HwKnownDeviceMatching.merged([standard], with: hidden, refreshed: nil)
 
         XCTAssertEqual(merged.map(\.walletId), ["trezor:standard", "trezor:hidden"])
     }
@@ -151,7 +151,7 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
         let other = makeDevice(id: "dev2", xpubs: ["nativeSegwit": "zOther"], trezorDeviceId: "other-trezor")
         let known = makeDevice(xpubs: ["nativeSegwit": "zStandard"], trezorDeviceId: "trezor-id")
 
-        let merged = TrezorKnownDeviceMatching.merged([other], with: known, refreshed: nil)
+        let merged = HwKnownDeviceMatching.merged([other], with: known, refreshed: nil)
 
         XCTAssertEqual(merged.count, 2)
     }
@@ -196,7 +196,7 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
         }
         """
 
-        let decoded = try JSONDecoder().decode(TrezorKnownDevice.self, from: Data(legacy.utf8))
+        let decoded = try JSONDecoder().decode(HwKnownDevice.self, from: Data(legacy.utf8))
 
         XCTAssertNil(decoded.walletId)
         XCTAssertFalse(decoded.passphraseProtected)
@@ -211,8 +211,8 @@ final class TrezorKnownDeviceMatchingTests: XCTestCase {
         walletId: String? = nil,
         passphraseProtected: Bool = false,
         trezorDeviceId: String? = nil
-    ) -> TrezorKnownDevice {
-        TrezorKnownDevice(
+    ) -> HwKnownDevice {
+        HwKnownDevice(
             id: id,
             name: "Trezor",
             path: "ble://\(id)",

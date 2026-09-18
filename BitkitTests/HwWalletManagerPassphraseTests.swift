@@ -9,8 +9,8 @@ import XCTest
 final class HwWalletManagerPassphraseTests: XCTestCase {
     // MARK: - Fake session
 
-    private final class MockHwDeviceSession: HwDeviceSessioning {
-        var storedDevices: [TrezorKnownDevice] = []
+    private final class MockTrezorSession: TrezorSessioning {
+        var storedDevices: [HwKnownDevice] = []
         var connectedDeviceId: String?
         var connectedWalletId: String?
         var connectedFeatures: TrezorFeatures?
@@ -22,7 +22,7 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         var openedWalletIdOnStandard: String?
         /// An entry the device writes when a hidden open reads a wallet Bitkit has never seen,
         /// mirroring how reading accounts persists the wallet before anything can reject it.
-        var writesEntryOnHiddenOpen: TrezorKnownDevice?
+        var writesEntryOnHiddenOpen: HwKnownDevice?
 
         var ensureConnectedError: Error?
         var connectWithWalletModeError: Error?
@@ -107,12 +107,12 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         func stopAllWatchers() {}
     }
 
-    private var session = MockHwDeviceSession()
+    private var session = MockTrezorSession()
     private var deletedWalletIds: [String] = []
 
     override func setUp() {
         super.setUp()
-        session = MockHwDeviceSession()
+        session = MockTrezorSession()
         deletedWalletIds = []
     }
 
@@ -611,8 +611,8 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         xpubs: [String: String] = ["nativeSegwit": "zStandard"],
         walletId: String,
         passphraseProtected: Bool = false
-    ) -> TrezorKnownDevice {
-        TrezorKnownDevice(
+    ) -> HwKnownDevice {
+        HwKnownDevice(
             id: id,
             name: "Trezor",
             path: "ble://\(id)",

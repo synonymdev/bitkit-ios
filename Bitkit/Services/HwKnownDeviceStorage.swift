@@ -2,9 +2,9 @@ import Combine
 import Foundation
 
 /// One wallet identity a Trezor holds. A device with passphrase protection carries its standard
-/// wallet plus one entry per passphrase (hidden) wallet, so `id` — the transport-level device id —
+/// wallet plus one entry per passphrase (hidden) wallet, so `id` (the transport-level device id)
 /// is shared by several entries and no longer identifies one on its own.
-struct TrezorKnownDevice: Codable, Identifiable {
+struct HwKnownDevice: Codable, Identifiable {
     let id: String
     let name: String
     let path: String
@@ -22,7 +22,7 @@ struct TrezorKnownDevice: Codable, Identifiable {
     /// existed, where `resolvedWalletId` derives it from `xpubs` instead.
     var walletId: String?
     /// Whether this entry is a passphrase (hidden) wallet. Nothing else in the record can tell one
-    /// apart from the standard wallet — the xpubs are opaque and the selected mode only lives in
+    /// apart from the standard wallet: the xpubs are opaque and the selected mode only lives in
     /// memory, so reconnects would silently fall back to the standard wallet without this. The
     /// passphrase itself is never persisted.
     var passphraseProtected: Bool
@@ -75,12 +75,12 @@ struct TrezorKnownDevice: Codable, Identifiable {
     }
 }
 
-extension TrezorKnownDevice {
+extension HwKnownDevice {
     /// Identity of the key material this entry holds: entries sharing it are the same wallet, on
     /// this device or on another transport. An entry read before any xpub was captured has no key
     /// material to compare, so it falls back to its transport id.
     var walletKey: String {
-        TrezorKnownDevice.walletKey(for: xpubs, fallback: id)
+        HwKnownDevice.walletKey(for: xpubs, fallback: id)
     }
 
     static func walletKey(for xpubs: [String: String], fallback: String) -> String {
@@ -110,7 +110,7 @@ struct PendingHwWalletName: Equatable {
 
 /// Persists known Trezor device metadata in UserDefaults
 /// THP credentials remain in Keychain via TrezorCredentialStorage
-enum TrezorKnownDeviceStorage {
+enum HwKnownDeviceStorage {
     /// Fires when the set of hardware wallet names changes, so the metadata backup can be marked
     /// stale. Every connect rewrites the device list to refresh `lastConnectedAt`, and reconnect
     /// traffic must not re-upload the whole envelope, so this only fires on a real name change.
@@ -121,16 +121,16 @@ enum TrezorKnownDeviceStorage {
     private static let namesChangedSubject = PassthroughSubject<Void, Never>()
 
     /// Load all known devices, sorted by most recently connected
-    static func loadAll() -> [TrezorKnownDevice] {
+    static func loadAll() -> [HwKnownDevice] {
         guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
-        let devices = (try? JSONDecoder().decode([TrezorKnownDevice].self, from: data)) ?? []
+        let devices = (try? JSONDecoder().decode([HwKnownDevice].self, from: data)) ?? []
         return devices.sorted { $0.lastConnectedAt > $1.lastConnectedAt }
     }
 
     /// Save or update one wallet identity. Scoped to the identity rather than to the transport it
     /// was reached over, so a passphrase wallet is stored next to the device's standard wallet
     /// instead of replacing it.
-    static func save(_ device: TrezorKnownDevice) {
+    static func save(_ device: HwKnownDevice) {
         var devices = loadAll()
         devices.removeAll { $0.id == device.id && $0.walletKey == device.walletKey }
         devices.insert(device, at: 0)
@@ -144,7 +144,7 @@ enum TrezorKnownDeviceStorage {
     /// pending names alone. It is written *first*: crashing between the two writes then leaves a name
     /// recorded for a wallet that is still paired, which the next pairing masks away, rather than a
     /// forgotten wallet whose name was recorded nowhere.
-    static func saveAll(_ devices: [TrezorKnownDevice], pendingName: PendingHwWalletName? = nil) {
+    static func saveAll(_ devices: [HwKnownDevice], pendingName: PendingHwWalletName? = nil) {
         let previousNames = backupSnapshot()
         if let pendingName {
             writePendingName(pendingName)
@@ -154,7 +154,7 @@ enum TrezorKnownDeviceStorage {
     }
 
     /// Entries tracking one wallet identity.
-    static func loadAll(walletId: String) -> [TrezorKnownDevice] {
+    static func loadAll(walletId: String) -> [HwKnownDevice] {
         loadAll().filter { $0.resolvedWalletId == walletId }
     }
 
@@ -192,7 +192,7 @@ enum TrezorKnownDeviceStorage {
     /// paired again, or kept when the wallet was removed.
     ///
     /// A wallet the device list already names is masked out rather than pruned, so pairing consumes
-    /// a pending name by simply adopting it — no second write that could be lost on its own.
+    /// a pending name by simply adopting it, with no second write that could be lost on its own.
     static func loadPendingNames() -> [String: String] {
         let paired = pairedNames()
         return storedPendingNames().filter { paired[$0.key] == nil }
@@ -207,7 +207,7 @@ enum TrezorKnownDeviceStorage {
 
     /// Every hardware wallet name this wallet knows, keyed by wallet id: the pending ones overlaid
     /// with the name of each paired wallet. A paired name wins because it is what the user currently
-    /// sees. Entries without a wallet id are skipped — only a device stored before any account key
+    /// sees. Entries without a wallet id are skipped: only a device stored before any account key
     /// was captured has none, and such an entry is filtered out of the wallet list anyway, so it can
     /// never have been named.
     static func backupSnapshot() -> [String: String] {
@@ -216,7 +216,7 @@ enum TrezorKnownDeviceStorage {
 
     /// Merges backed up names into the pending ones, so each is adopted the next time its wallet is
     /// paired. Names already held locally win: they were set on this device after the backup was
-    /// written. Never clears — an envelope without names predates the field and must not drop what is
+    /// written. Never clears: an envelope without names predates the field and must not drop what is
     /// stored.
     static func restoreNames(_ names: [String: String]) {
         guard !names.isEmpty else { return }
@@ -229,7 +229,7 @@ enum TrezorKnownDeviceStorage {
 
     /// Drop `forgotten` from the device list and with it any name kept for the wallets it held: a
     /// removal that wanted to keep a name writes it back through `saveAll(_:pendingName:)` instead.
-    private static func forget(_ forgotten: [TrezorKnownDevice], keeping remaining: [TrezorKnownDevice]) {
+    private static func forget(_ forgotten: [HwKnownDevice], keeping remaining: [HwKnownDevice]) {
         let previousNames = backupSnapshot()
         let remainingWalletIds = Set(remaining.compactMap(\.resolvedWalletId))
         var pending = storedPendingNames()
@@ -241,7 +241,7 @@ enum TrezorKnownDeviceStorage {
         notifyIfNamesChanged(from: previousNames)
     }
 
-    private static func writeDevices(_ devices: [TrezorKnownDevice]) {
+    private static func writeDevices(_ devices: [HwKnownDevice]) {
         guard let data = try? JSONEncoder().encode(devices) else { return }
         UserDefaults.standard.set(data, forKey: key)
     }

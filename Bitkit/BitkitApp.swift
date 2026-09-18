@@ -178,7 +178,7 @@ struct BitkitApp: App {
     init() {
         UIWindow.appearance().overrideUserInterfaceStyle = .dark
         if Env.shouldResetTrezorEmulatorState {
-            TrezorKnownDeviceStorage.removeAll()
+            HwKnownDeviceStorage.removeAll()
             TrezorCredentialStorage.deleteAll()
         }
         _ = ToastWindowManager.shared

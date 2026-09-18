@@ -13,7 +13,7 @@ import Foundation
 /// Tile and watcher state come solely from `updateDevices(...)`, fed by the composition root
 /// (`AppScene`). The identity-aware session operations — opening a passphrase wallet, proving the
 /// live session belongs to the wallet being spent from — additionally read the device through the
-/// injected `HwDeviceSessioning` seam, and read the stored entries fresh from it: a connect that
+/// injected `TrezorSessioning` seam, and read the stored entries fresh from it: a connect that
 /// just wrote one lands there before the push does. Never references `TrezorManager` concretely.
 ///
 @Observable
@@ -73,7 +73,7 @@ final class HwWalletManager {
     /// The live device session. Only the identity-aware operations need it; tile and watcher state
     /// still come solely from `updateDevices(...)`. Nil in previews and in tests that don't reach
     /// the device.
-    private weak var session: HwDeviceSessioning?
+    private weak var session: TrezorSessioning?
 
     /// One chain per wallet id, shared by both writes: a snapshot landing after the delete it was
     /// racing would resurrect the wallet `removeDevice` just wiped.
@@ -81,7 +81,7 @@ final class HwWalletManager {
 
     // MARK: - Internal state
 
-    private var knownDevices: [TrezorKnownDevice] = []
+    private var knownDevices: [HwKnownDevice] = []
     private var connectedDeviceId: String?
     private var connectedWalletId: String?
     private var watcherData: [String: HwWatcherData] = [:]
@@ -123,7 +123,7 @@ final class HwWalletManager {
     private var staleSessionCleanupTasks: [String: Task<Void, Never>] = [:]
 
     init(
-        session: HwDeviceSessioning? = nil,
+        session: TrezorSessioning? = nil,
         watcherService: OnChainWatcherServicing = OnChainHwService.shared,
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
@@ -185,7 +185,7 @@ final class HwWalletManager {
     /// `connectedWalletId` is the identity the live session opened. A device holds one wallet open
     /// at a time, so it is what decides which tile shows as connected.
     func updateDevices(
-        knownDevices: [TrezorKnownDevice],
+        knownDevices: [HwKnownDevice],
         connectedDeviceId: String?,
         connectedWalletId: String? = nil
     ) {
@@ -291,7 +291,7 @@ final class HwWalletManager {
 
     /// Stored entries tracking one wallet identity, read fresh: a connect that just wrote one lands
     /// there before the `updateDevices(...)` push does.
-    private func entries(for walletId: String) -> [TrezorKnownDevice] {
+    private func entries(for walletId: String) -> [HwKnownDevice] {
         (session?.storedDevices ?? knownDevices).filter { $0.resolvedWalletId == walletId }
     }
 
@@ -572,7 +572,7 @@ final class HwWalletManager {
     /// The wallet identity a stored entry belongs to: the id it was saved with, or one derived from
     /// its xpubs for entries written before the id was persisted. Returns nil when neither is
     /// available (no captured xpubs), so callers skip the entry.
-    private func resolvedWalletId(for device: TrezorKnownDevice) -> String? {
+    private func resolvedWalletId(for device: HwKnownDevice) -> String? {
         if let walletId = device.walletId, !walletId.isEmpty {
             return walletId
         }
@@ -906,7 +906,7 @@ final class HwWalletManager {
     /// without captured xpubs are skipped.
     private func deviceGroups() -> [DeviceGroup] {
         var order: [String] = []
-        var grouped: [String: [TrezorKnownDevice]] = [:]
+        var grouped: [String: [HwKnownDevice]] = [:]
         for device in knownDevices where !device.xpubs.isEmpty {
             guard let walletId = resolvedWalletId(for: device) else { continue }
             if grouped[walletId] == nil {
@@ -1220,13 +1220,13 @@ final class HwWalletManager {
 
     private struct DeviceGroup {
         let walletId: String
-        let devices: [TrezorKnownDevice]
+        let devices: [HwKnownDevice]
 
         var ids: Set<String> {
             Set(devices.map(\.id))
         }
 
-        var representative: TrezorKnownDevice {
+        var representative: HwKnownDevice {
             devices.max(by: { $0.lastConnectedAt < $1.lastConnectedAt }) ?? devices[0]
         }
     }

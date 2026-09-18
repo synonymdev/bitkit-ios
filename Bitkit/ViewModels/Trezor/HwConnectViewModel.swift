@@ -376,7 +376,7 @@ struct TrezorHwConnectService: HwConnectServicing {
         // A device that is already paired is only offered once no new one is found, so its
         // passphrase wallets can be added afterwards — otherwise Add Hardware Wallet would search
         // forever on the only device in range.
-        let (paired, unpaired) = trezorManager.devices.partitioned { TrezorKnownDeviceStorage.isKnown(id: $0.id) }
+        let (paired, unpaired) = trezorManager.devices.partitioned { HwKnownDeviceStorage.isKnown(id: $0.id) }
         return unpaired + paired
     }
 
@@ -395,7 +395,7 @@ struct TrezorHwConnectService: HwConnectServicing {
             walletId: walletId,
             name: Self.pairedName(
                 walletId: walletId,
-                storedEntries: TrezorKnownDeviceStorage.loadAll(),
+                storedEntries: HwKnownDeviceStorage.loadAll(),
                 deviceDefaultName: deviceDefaultName
             ),
             deviceDefaultName: deviceDefaultName
@@ -411,14 +411,14 @@ struct TrezorHwConnectService: HwConnectServicing {
     /// to the device's own. Finishing the step then persists that fallback over it.
     static func pairedName(
         walletId: String?,
-        storedEntries: [TrezorKnownDevice],
+        storedEntries: [HwKnownDevice],
         deviceDefaultName: String
     ) -> String {
         storedName(walletId: walletId, storedEntries: storedEntries) ?? deviceDefaultName
     }
 
     /// The Bitkit-side name stored for `walletId`, or nil when it has none of its own.
-    static func storedName(walletId: String?, storedEntries: [TrezorKnownDevice]) -> String? {
+    static func storedName(walletId: String?, storedEntries: [HwKnownDevice]) -> String? {
         guard let walletId,
               let label = storedEntries.first(where: { $0.resolvedWalletId == walletId })?.customLabel,
               !label.isEmpty
@@ -433,7 +433,7 @@ struct TrezorHwConnectService: HwConnectServicing {
     }
 
     func storedName(forWallet walletId: String) -> String? {
-        Self.storedName(walletId: walletId, storedEntries: TrezorKnownDeviceStorage.loadAll())
+        Self.storedName(walletId: walletId, storedEntries: HwKnownDeviceStorage.loadAll())
     }
 
     func setWalletLabel(walletId: String, label: String) {

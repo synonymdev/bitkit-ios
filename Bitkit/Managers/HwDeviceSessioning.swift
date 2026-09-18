@@ -7,10 +7,10 @@ import BitkitCore
 /// Everything here is device-level on purpose: resolving a wallet identity to the transport it is
 /// reachable over is the watch-only layer's job, since it owns the wallet grouping.
 @MainActor
-protocol HwDeviceSessioning: AnyObject, Sendable {
+protocol TrezorSessioning: AnyObject, Sendable {
     /// Stored entries read fresh. A connect that just wrote one lands here before the
     /// `updateDevices(...)` push does, so session operations must not read the pushed snapshot.
-    var storedDevices: [TrezorKnownDevice] { get }
+    var storedDevices: [HwKnownDevice] { get }
     var connectedDeviceId: String? { get }
     /// Identity the live session opened; nil when no session is open or none could be resolved.
     var connectedWalletId: String? { get }
@@ -36,8 +36,8 @@ protocol HwDeviceSessioning: AnyObject, Sendable {
     func forgetWallet(walletId: String, pendingName: PendingHwWalletName?) async
 }
 
-extension TrezorManager: HwDeviceSessioning {
-    var storedDevices: [TrezorKnownDevice] {
+extension TrezorManager: TrezorSessioning {
+    var storedDevices: [HwKnownDevice] {
         knownDevices
     }
 

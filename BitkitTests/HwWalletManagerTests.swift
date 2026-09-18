@@ -159,9 +159,9 @@ final class HwWalletManagerTests: XCTestCase {
         label: String? = nil,
         model: String? = "Safe 5",
         lastConnectedAt: Date = Date(timeIntervalSince1970: 1000)
-    ) -> TrezorKnownDevice {
+    ) -> HwKnownDevice {
         xpubsByDeviceId[id] = xpubs
-        return TrezorKnownDevice(
+        return HwKnownDevice(
             id: id,
             name: id,
             path: "ble:\(id)",
@@ -284,7 +284,7 @@ final class HwWalletManagerTests: XCTestCase {
 
     /// Needed when one device id holds several identities, where the registry above can only
     /// remember the last one written for it.
-    private func watcherId(_ device: TrezorKnownDevice, _ addressType: String) -> String {
+    private func watcherId(_ device: HwKnownDevice, _ addressType: String) -> String {
         let derived = (try? HwWalletId.derive(xpubs: device.xpubs)) ?? device.id
         return "\(derived)|\(addressType)"
     }

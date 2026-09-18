@@ -14,7 +14,7 @@ func resolveHwWalletName(label: String?, model: String?, customLabel: String? = 
     return model.hasPrefix("Trezor") ? model : "Trezor \(model)"
 }
 
-extension TrezorKnownDevice {
+extension HwKnownDevice {
     var displayName: String {
         resolveHwWalletName(label: label, model: model, customLabel: customLabel)
     }

@@ -459,8 +459,8 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertEqual(name, "Trezor T")
     }
 
-    private func makeStoredEntry(walletId: String, customLabel: String?) -> TrezorKnownDevice {
-        TrezorKnownDevice(
+    private func makeStoredEntry(walletId: String, customLabel: String?) -> HwKnownDevice {
+        HwKnownDevice(
             id: "dev1",
             name: "Trezor",
             path: "ble://dev1",
