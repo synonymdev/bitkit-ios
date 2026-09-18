@@ -337,18 +337,16 @@ class BlocktankViewModel: ObservableObject {
         appendMirroredErrorDescription(from: wrappedValue, to: &candidates)
     }
 
+    func estimateFundingAmount(clientBalance: UInt64, lspBalance: UInt64? = nil) async throws -> UInt64 {
+        let receivingBalance = lspBalance ?? (clientBalance * 2)
+        try validateChannelSize(clientBalance: clientBalance, lspBalance: receivingBalance)
+        let estimate = try await estimateOrderFee(clientBalance: clientBalance, lspBalance: receivingBalance)
+        return clientBalance.saturatingAdd(estimate.networkFeeSat.saturatingAdd(estimate.serviceFeeSat))
+    }
+
     func createOrder(clientBalance: UInt64, lspBalance: UInt64? = nil) async throws -> IBtOrder {
         let finalReceivingBalanceSats = lspBalance ?? (clientBalance * 2)
-
-        if let btBOptions = info?.options {
-            // Validate they're within the limits
-            if (clientBalance + finalReceivingBalanceSats) > btBOptions.maxChannelSizeSat {
-                Logger.error("Channel size exceeds maximum: \(clientBalance + finalReceivingBalanceSats) > \(btBOptions.maxChannelSizeSat)")
-                throw CustomServiceError.channelSizeExceedsMaximum
-            }
-        } else {
-            Logger.warn("Has not refreshed Blocktank info yet, skipping validation of limits")
-        }
+        try validateChannelSize(clientBalance: clientBalance, lspBalance: finalReceivingBalanceSats)
 
         guard orderClient.nodeId() != nil else {
             throw CustomServiceError.nodeNotStarted
@@ -366,6 +364,17 @@ class BlocktankViewModel: ObservableObject {
 
         try Task.checkCancellation()
         return try await orderClient.submit(finalReceivingBalanceSats, defaultChannelExpiryWeeks, options)
+    }
+
+    private func validateChannelSize(clientBalance: UInt64, lspBalance: UInt64) throws {
+        guard let btBOptions = info?.options else {
+            Logger.warn("Has not refreshed Blocktank info yet, skipping validation of limits")
+            return
+        }
+        if (clientBalance + lspBalance) > btBOptions.maxChannelSizeSat {
+            Logger.error("Channel size exceeds maximum: \(clientBalance + lspBalance) > \(btBOptions.maxChannelSizeSat)")
+            throw CustomServiceError.channelSizeExceedsMaximum
+        }
     }
 
     func openChannel(orderId: String) async throws -> IBtOrder {

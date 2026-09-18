@@ -43,11 +43,9 @@ enum Route: Hashable {
     case spendingAmountHw(walletId: String)
     case spendingHwSign(walletId: String)
     case spendingHwSigned
-    case spendingConfirm(order: IBtOrder)
-    /// `walletId` names the hardware wallet funding the transfer, so the shared advanced screen
-    /// prices the capacity against the device account rather than this wallet's savings.
-    case spendingAdvanced(order: IBtOrder, walletId: String? = nil)
-    case transferLearnMore(order: IBtOrder)
+    case spendingConfirm
+    case spendingAdvanced(walletId: String? = nil)
+    case transferLearnMore
     case settingUp
     case fundingAdvanced
     case fundManual(nodeUri: String?)
