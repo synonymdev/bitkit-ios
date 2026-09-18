@@ -57,4 +57,23 @@ final class HwWalletVendorPresentationTests: XCTestCase {
             XCTAssertTrue(text.contains("Jade"), text)
         }
     }
+
+    /// The shared e2e helper taps `Tab-trezor`, so a Trezor wallet's receive tab keeps its name.
+    func testTheHardwareReceiveTabIsNamedAfterTheWalletVendor() {
+        let trezorTab = TabItem(ReceiveQr.ReceiveTab.hardware, label: HwWalletVendor.trezor.modelName)
+        let jadeTab = TabItem(ReceiveQr.ReceiveTab.hardware, label: HwWalletVendor.blockstream.modelName)
+
+        XCTAssertEqual(trezorTab.title, "Trezor")
+        XCTAssertEqual(trezorTab.resolvedAccessibilityIdentifier, "Tab-trezor")
+        XCTAssertEqual(jadeTab.title, "Jade")
+        XCTAssertEqual(jadeTab.resolvedAccessibilityIdentifier, "Tab-jade")
+    }
+
+    func testTheHardwareReceiveTabWithoutAWalletIsNamedHardware() {
+        let tab = TabItem(ReceiveQr.ReceiveTab.hardware)
+
+        XCTAssertEqual(tab.title, t("hardware__receive_tab_hardware"))
+        XCTAssertEqual(tab.title, "Hardware")
+        XCTAssertEqual(tab.resolvedAccessibilityIdentifier, "Tab-hardware")
+    }
 }

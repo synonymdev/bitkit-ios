@@ -86,6 +86,7 @@
 "hardware__pairing_title" = "Pair Device";
 "hardware__pairing_text" = "Enter the 6-digit code shown on your hardware device.";
 "hardware__receive_address_error" = "Could not load the hardware wallet address.";
+"hardware__receive_tab_hardware" = "Hardware";
 "hardware__remove_button" = "Remove {name}";
 "hardware__remove_dialog_title" = "Remove {name}";
 "hardware__remove_dialog_text" = "Don't worry, your funds are safe and your coins won't be deleted. Bitkit will simply stop displaying the amounts in the wallet.";

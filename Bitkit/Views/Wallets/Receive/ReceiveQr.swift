@@ -25,6 +25,7 @@ struct ReceiveQr: View {
     @State private var isVerifyingPassphrase = false
     @State private var verifyTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
+    @State private var engagedSession = HwEngagedSession()
 
     init(
         navigationPath: Binding<[ReceiveRoute]>,
@@ -49,7 +50,7 @@ struct ReceiveQr: View {
     }
 
     enum ReceiveTab: CaseIterable, CustomStringConvertible {
-        case savings, unified, spending, trezor
+        case savings, unified, spending, hardware
 
         var description: String {
             switch self {
@@ -59,8 +60,8 @@ struct ReceiveQr: View {
                 return "Auto"
             case .spending:
                 return t("lightning__spending")
-            case .trezor:
-                return t("hardware__device_model_trezor")
+            case .hardware:
+                return t("hardware__receive_tab_hardware")
             }
         }
     }
@@ -76,9 +77,14 @@ struct ReceiveQr: View {
         }
 
         if selectedHardwareWalletId != nil {
-            items.insert(TabItem(.trezor), at: 0)
+            items.insert(TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName), at: 0)
         }
         return items
+    }
+
+    private var selectedHardwareWallet: HwWallet? {
+        guard let walletId = selectedHardwareWalletId else { return nil }
+        return hwWalletManager.wallets.first { $0.id == walletId }
     }
 
     private var selectedHardwareWalletId: String? {
@@ -126,7 +132,7 @@ struct ReceiveQr: View {
             VStack(spacing: 0) {
                 TabView(selection: selectedTabBinding) {
                     if selectedHardwareWalletId != nil {
-                        tabContent(for: .trezor)
+                        tabContent(for: .hardware)
                     }
 
                     tabContent(for: .savings)
@@ -160,7 +166,7 @@ struct ReceiveQr: View {
                         }
                     } else if showDetails {
                         VStack(spacing: 16) {
-                            if selectedTab == .trezor {
+                            if selectedTab == .hardware {
                                 CustomButton(
                                     title: t("hardware__verify_address"),
                                     variant: .secondary,
@@ -188,7 +194,7 @@ struct ReceiveQr: View {
                         CustomButton(
                             title: t("common__show_details"),
                             variant: .tertiary,
-                            isDisabled: selectedTab == .trezor && displayedHardwareAddress == nil
+                            isDisabled: selectedTab == .hardware && displayedHardwareAddress == nil
                         ) {
                             showDetails.toggle()
                         }
@@ -199,11 +205,12 @@ struct ReceiveQr: View {
             }
             .onChange(of: selectedTab) { _, newTab in
                 showDetails = false
-                if newTab == .trezor {
+                if newTab == .hardware {
                     Task { await loadHardwareAddress() }
                 } else {
                     verifyTask?.cancel()
                     verifyTask = nil
+                    engagedSession.release(through: hwWalletManager)
                 }
             }
             .onAppear {
@@ -222,9 +229,16 @@ struct ReceiveQr: View {
             )
         }
         .task(id: selectedHardwareWalletId) {
-            if selectedTab == .trezor {
+            if selectedTab == .hardware {
                 await loadHardwareAddress()
             }
+        }
+        .onChange(of: selectedHardwareWalletId) {
+            abandonHardwareVerification()
+        }
+        .onChange(of: displayedHardwareAddress?.address) { previousAddress, _ in
+            guard previousAddress != nil else { return }
+            abandonHardwareVerification()
         }
         .task {
             do {
@@ -258,6 +272,7 @@ struct ReceiveQr: View {
             verifyTask = nil
             passphraseTask?.cancel()
             passphraseTask = nil
+            engagedSession.release(through: hwWalletManager)
         }
     }
 
@@ -309,7 +324,7 @@ struct ReceiveQr: View {
 
     @ViewBuilder
     func qrContent(for tab: ReceiveTab) -> some View {
-        if tab == .trezor {
+        if tab == .hardware {
             if let hardwareAddress = displayedHardwareAddress {
                 let uri = Bip21Utils.hardwareInvoice(
                     address: hardwareAddress.address,
@@ -322,7 +337,7 @@ struct ReceiveQr: View {
                     accentColor: .blueAccent,
                     navigationPath: $navigationPath,
                     copyValue: uri.contains("?") ? uri : hardwareAddress.address,
-                    editRoute: .edit(tab: .trezor, onchainOnly: true)
+                    editRoute: .edit(tab: .hardware, onchainOnly: true)
                 )
             } else if hardwareAddressLoadFailed {
                 VStack(spacing: 16) {
@@ -374,7 +389,7 @@ struct ReceiveQr: View {
                 imageAsset: "ln",
                 accentColor: .purpleAccent
             )
-        case .trezor:
+        case .hardware:
             return (uri: "", imageAsset: "btc-circle-blue", accentColor: .blueAccent)
         }
     }
@@ -472,7 +487,7 @@ struct ReceiveQr: View {
                             )
                         )
                     }
-                case .trezor:
+                case .hardware:
                     if let hardwareAddress = displayedHardwareAddress {
                         pairs.append(
                             CopyAddressPair(
@@ -492,7 +507,7 @@ struct ReceiveQr: View {
                     addresses: addressPairs,
                     navigationPath: $navigationPath,
                     editRoute: editRoute(for: tab),
-                    accentColor: tab == .trezor ? .blueAccent : nil
+                    accentColor: tab == .hardware ? .blueAccent : nil
                 )
             }
 
@@ -501,7 +516,7 @@ struct ReceiveQr: View {
     }
 
     private func editRoute(for tab: ReceiveTab) -> ReceiveRoute? {
-        .edit(tab: tab, onchainOnly: tab == .trezor, replacesCurrentQr: tab == .spending && cjitInvoice != nil)
+        .edit(tab: tab, onchainOnly: tab == .hardware, replacesCurrentQr: tab == .spending && cjitInvoice != nil)
     }
 
     private struct ImageConfig {
@@ -562,7 +577,9 @@ struct ReceiveQr: View {
         isVerifyingHardwareAddress = true
         defer { isVerifyingHardwareAddress = false }
         do {
-            try await hwWalletManager.verifyReceiveAddress(walletId: walletId, receiveAddress: hardwareAddress)
+            try await engagedSession.perform(walletId: walletId) {
+                try await hwWalletManager.verifyReceiveAddress(walletId: walletId, receiveAddress: hardwareAddress)
+            }
         } catch is CancellationError {
             return
         } catch HwPassphraseError.required {
@@ -589,10 +606,12 @@ struct ReceiveQr: View {
                 passphraseTask = nil
             }
             do {
-                try await hwWalletManager.reconnectWithPassphrase(walletId: walletId, passphrase: passphrase)
-                guard isPassphraseRequired else { throw CancellationError() }
-                isPassphraseRequired = false
-                await verifyHardwareAddress()
+                try await engagedSession.perform(walletId: walletId) {
+                    try await hwWalletManager.reconnectWithPassphrase(walletId: walletId, passphrase: passphrase)
+                    guard isPassphraseRequired else { throw CancellationError() }
+                    isPassphraseRequired = false
+                    await verifyHardwareAddress()
+                }
             } catch is CancellationError {
                 return
             } catch HwPassphraseError.mismatch {
@@ -607,6 +626,19 @@ struct ReceiveQr: View {
         passphraseTask?.cancel()
         isPassphraseRequired = false
         isVerifyingPassphrase = false
+        engagedSession.release(through: hwWalletManager)
+    }
+
+    /// The wallet or address on screen changed, so a verification still in progress is for one no
+    /// longer shown.
+    private func abandonHardwareVerification() {
+        engagedSession.invalidate(through: hwWalletManager)
+        verifyTask?.cancel()
+        verifyTask = nil
+        passphraseTask?.cancel()
+        if isPassphraseRequired {
+            dismissPassphrase()
+        }
     }
 
     private func showHardwareVerifyError(_ error: Error) {
