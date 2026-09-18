@@ -8,12 +8,10 @@ Most suites are ported from [`bitkit-android/journeys`](https://github.com/synon
 and deliberately keep the same file names, journey names and `<action>` prose so the two platforms
 stay diffable. Only the platform mechanics differ — `adb` becomes `xcodebuildmcp`, and Android
 `testTag`s become iOS `accessibilityIdentifier`s (the vocabulary is shared; see [Identifiers](#identifiers)).
-iOS-only suites are marked in the [Suites](#suites) table.
 
-**Journeys are not a QA gate.** They are agent-evaluated and non-deterministic, nothing runs them in
-CI, and there is no runner wired up for them yet — `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests`
-and does not read `journeys/`. Treat a journey as a well-written description of a flow, not as an
-authority on what the app owes you.
+**Journeys are the QA contract for a PR.** A PR with a user-visible change adds or updates the
+journeys that prove it and lists them in its body, and reviewers drive the listed journeys on a
+device instead of reading a prose walkthrough.
 
 A journey that no longer matches the app is most likely **stale**, not evidence of a bug. The corpus
 is new on iOS and has not been run end to end, so when the two disagree the first assumption should be
@@ -135,19 +133,21 @@ and lets those rows collide. Match on the prefix when a journey needs to work on
 Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `SpendingAdvanced*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.
 
-## Suites
+## Capabilities
 
-| Suite | Journeys | Notes |
-| --- | --- | --- |
-| [amount-limits](amount-limits) | 4 | Number pad caps on all four amount screens; the two transfer journeys are adapted — iOS snaps to the max where Android rejects the keypress |
-| [widgets](widgets) | 2 | Widgets intro and add-widget flow |
-| [notification-permission](notification-permission) | 4 | Background-setup toggles |
-| [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
-| [hardware-wallet](hardware-wallet) | 16 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
-| [payment-requests](payment-requests) | 2 | Linked issuer interoperability plus the ported Android resolution-failure journey |
-| [pubky-marketplace](pubky-marketplace) | 1 | Adapted — two-wallet Paykit marketplace payment on regtest; integration fixture required |
-| [pubky-auth](pubky-auth) | 1 | Bitkit-specific OS handoff into watch-only consent; local Pubky identity required |
-| [subscriptions](subscriptions) | 4 | Create, review, cancel/delete and the Payments tab; two linked Bitkit instances required. Discover is excluded — it is unimplemented on iOS |
+This table is the authority for what the journey environment provides: a step it covers belongs in a
+journey, and a step it does not is a manual test in the PR body naming the missing capability.
+
+| Capability | Provided by |
+| --- | --- |
+| On-chain funds and blocks on regtest | `../bitkit-android/lsp` deposit and mine, borrowed from the sibling Android checkout until #694 lands an iOS copy — [Backend preconditions](#backend-preconditions) |
+| Lightning channels, CJIT orders and quoted maxima | the LSP the `E2E_BUILD` app targets, plus its node as an external LN peer — [Backend preconditions](#backend-preconditions), [amount-limits](amount-limits/README.md) |
+| A hardware wallet to pair, watch and sign with | the deterministic Trezor emulator from `bitkit-docker`, reached through Trezor Bridge on the host; the simulator has no Bluetooth LE and iOS cannot do WebUSB, so BLE pairing and USB are not covered — [hardware-wallet](hardware-wallet/README.md) |
+| Push notifications to a backgrounded or killed app | a real APNs round trip on an attached physical device, never the simulator, read back from Notification Center — [cjit-notifications](cjit-notifications/README.md) |
+| The OS notification-permission dialog | the one-shot `UNUserNotificationCenter` alert, reset with `xcrun simctl uninstall <device> to.bitkit` and a rebuild — [notification-permission](notification-permission/README.md) |
+| An incoming Payment Request from a linked issuer | the fixture issuer, saved as a contact and linked on receiver path `bitkit/server` — [payment-requests](payment-requests/README.md) |
+| A Pubky identity and a two-wallet marketplace purchase | a Bitkit-generated Pubky profile, plus the integration fixture runtime: Pubky testnet, Paykit Server, regtest bitcoind and Fulcrum — [pubky-auth](pubky-auth/README.md), [pubky-marketplace](pubky-marketplace/README.md) |
+| Deep links handed to the app | `xcrun simctl openurl <device> "<uri>"`; only `bitkit://pubky-auth/setup`, web URLs, Pubky callbacks and payment URIs route — there is no screen or sheet router — [pubky-auth](pubky-auth/README.md), [Not ported](#not-ported) |
 
 ## Not ported
 
@@ -157,9 +157,18 @@ and retains external URLs in `AppScene`, but `MainNavView` only routes web URLs,
 and payment URIs — there is no screen or sheet deeplink router, and no dev-mode gate to test. These
 journeys are blocked on the feature existing, not on the harness.
 
+**`subscriptions` Discover.** The subscriptions suite covers create, review, cancel/delete and
+the Payments tab, but not Discover — it is unimplemented on iOS. Two linked Bitkit instances are
+required to run the suite.
+
 ## Porting from Android
 
 When you port an Android feature, port its journeys too — see the Journeys section in `AGENTS.md`.
+
+Some suites are adapted rather than ported verbatim: `amount-limits` because iOS snaps to the
+spending maximum differently, `cjit-notifications` because the notification copy differs, and
+`pubky-marketplace` because the two-wallet payment runs on regtest here. `pubky-auth` is
+iOS-only — a Bitkit-specific OS handoff into watch-only consent, with no Android counterpart.
 
 A journey is a shared spec, so a behaviour that is meant to match Android can be checked by running
 the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `bitkit-android`
