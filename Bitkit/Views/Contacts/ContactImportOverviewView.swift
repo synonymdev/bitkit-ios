@@ -19,7 +19,11 @@ struct ContactImportOverviewView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("contacts__import_nav_title"))
+            NavigationBar(title: "")
+                .overlay {
+                    TitleText(t("contacts__import_nav_title"))
+                        .allowsHitTesting(false)
+                }
                 .padding(.horizontal, 16)
 
             ScrollView {
@@ -28,19 +32,20 @@ struct ContactImportOverviewView: View {
                         t("contacts__import_found_title"),
                         accentColor: .pubkyGreen
                     )
-                    .padding(.top, 24)
-                    .padding(.bottom, 8)
+                    .padding(.top, 20)
+                    .padding(.bottom, 14)
 
                     BodyMText(
                         t("contacts__import_found_description", variables: ["key": profile.truncatedPublicKey]),
                         accentColor: .white,
-                        accentFont: Fonts.bold
+                        accentFont: Fonts.bold,
+                        kerning: 0
                     )
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 33.5)
 
                     profileRow
-                        .padding(.bottom, 24)
+                        .padding(.bottom, 32)
 
                     contactsSummary
                 }
@@ -49,7 +54,7 @@ struct ContactImportOverviewView: View {
 
             Spacer()
 
-            BottomActionBar {
+            BottomActionBar(bottomPadding: 0) {
                 buttonBar
             }
         }
@@ -62,7 +67,7 @@ struct ContactImportOverviewView: View {
     // MARK: - Profile Row
 
     private var profileRow: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .center, spacing: 16) {
             HeadlineText(profile.name)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -83,7 +88,10 @@ struct ContactImportOverviewView: View {
 
     private var contactsSummary: some View {
         HStack(spacing: 16) {
-            BodyMSBText(t("contacts__import_friends_count", variables: ["count": "\(contacts.count)"]))
+            BodyMSBText(
+                t("contacts__import_friends_count", variables: ["count": "\(contacts.count)"]),
+                kerning: 0
+            )
 
             Spacer()
 
@@ -151,14 +159,19 @@ struct ContactImportOverviewView: View {
 
     private var buttonBar: some View {
         HStack(spacing: 16) {
-            CustomButton(title: t("contacts__import_select"), variant: .secondary) {
+            CustomButton(
+                title: t("contacts__import_select"),
+                variant: .secondary,
+                labelKerning: 0
+            ) {
                 navigation.navigate(.contactImportSelect)
             }
             .accessibilityIdentifier("ContactImportOverviewSelect")
 
             CustomButton(
                 title: t("contacts__import_all"),
-                isLoading: isImporting
+                isLoading: isImporting,
+                labelKerning: 0
             ) {
                 await importAllContacts()
             }

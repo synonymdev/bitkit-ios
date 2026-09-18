@@ -101,6 +101,29 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
     }
 
     @MainActor
+    func testLegacyRingCallbacksWaitForStartupThenRouteOnceWithoutLightning() async throws {
+        for path in ["success", "cancel", "error"] {
+            for query in ["", "?nonce=stale-attempt", "?nonce", "?errorMessage=Denied&nonce=stale-attempt"] {
+                let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+                let url = try XCTUnwrap(URL(string: "bitkit://pubky-auth/\(path)\(query)"))
+                var routedURLs: [URL] = []
+
+                app.retainDeepLink(url)
+                await app.routePendingDeepLinkIfReady(false, nodeIsRunning: false) { routedURLs.append($0) }
+                XCTAssertEqual(app.pendingDeepLinkURL, url)
+                XCTAssertTrue(routedURLs.isEmpty)
+
+                await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURLs.append($0) }
+                XCTAssertEqual(routedURLs, [url])
+                XCTAssertNil(app.pendingDeepLinkURL)
+
+                await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURLs.append($0) }
+                XCTAssertEqual(routedURLs, [url])
+            }
+        }
+    }
+
+    @MainActor
     func testNonNodeDeepLinksReleaseAfterStartupGatesWithoutWaitingForLDK() async throws {
         let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
         let pubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +

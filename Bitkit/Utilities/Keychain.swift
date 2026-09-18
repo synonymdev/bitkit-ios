@@ -13,6 +13,7 @@ enum KeychainEntryType {
     case paykitReceiverNoiseSecretKey
     case paykitSdkState
     case pubkySecretKey
+    case sharedPubkyIdentityReference
 
     var storageKey: String {
         switch self {
@@ -27,6 +28,7 @@ enum KeychainEntryType {
         case .paykitReceiverNoiseSecretKey: "paykit_receiver_noise_secret_key"
         case .paykitSdkState: "paykit_sdk_state"
         case .pubkySecretKey: "pubky_secret_key"
+        case .sharedPubkyIdentityReference: "shared_pubky_identity_reference_v1"
         }
     }
 }
@@ -223,6 +225,7 @@ class Keychain {
     class func getAllKeyChainStorageKeys() -> [String] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
             kSecReturnData as String: kCFBooleanTrue!,
             kSecReturnAttributes as String: kCFBooleanTrue!,
             kSecReturnRef as String: kCFBooleanTrue!,

@@ -8,6 +8,7 @@ struct PrimaryButtonView: View {
     let isLoading: Bool
     let isPressed: Bool
     let shouldExpand: Bool
+    let labelKerning: CGFloat
     let background: AnyView?
 
     var body: some View {
@@ -24,7 +25,7 @@ struct PrimaryButtonView: View {
                 if size == .small {
                     CaptionBText(title, textColor: .textPrimary)
                 } else {
-                    BodySSBText(title, textColor: .textPrimary)
+                    BodySSBText(title, textColor: .textPrimary, kerning: labelKerning)
                 }
             }
         }

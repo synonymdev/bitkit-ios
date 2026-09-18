@@ -8,36 +8,12 @@ enum PubkyAuthState: Equatable {
     case completingAuthentication
     case authenticated
     case error(String)
-
-    func resetRingAuthViewStateIfNeeded(
-        isAuthenticating: Binding<Bool>,
-        isWaitingForRing: Binding<Bool>,
-        isLoadingAfterAuth: Binding<Bool>
-    ) {
-        switch self {
-        case .idle, .authenticated, .error:
-            isAuthenticating.wrappedValue = false
-            isWaitingForRing.wrappedValue = false
-            isLoadingAfterAuth.wrappedValue = false
-        case .authenticating, .completingAuthentication:
-            break
-        }
-    }
 }
 
 enum PubkyRingAuthCallback: Equatable {
     case success(nonce: String?)
     case cancel(nonce: String?)
     case error(message: String?, nonce: String?)
-
-    var nonce: String? {
-        switch self {
-        case let .success(nonce), let .cancel(nonce):
-            return nonce
-        case let .error(_, nonce):
-            return nonce
-        }
-    }
 
     static func parse(url: URL) -> PubkyRingAuthCallback? {
         guard url.scheme == "bitkit", url.host == "pubky-auth" else {
@@ -61,67 +37,6 @@ enum PubkyRingAuthCallback: Equatable {
     }
 }
 
-enum PubkyRingAuthCallbackHandlingResult: Equatable {
-    case ignored
-    case handled
-    case trustedError(message: String?)
-    case untrustedError
-}
-
-enum PubkyRingAuthURLBuilder {
-    static let successCallback = "bitkit://pubky-auth/success"
-    static let cancelCallback = "bitkit://pubky-auth/cancel"
-    static let errorCallback = "bitkit://pubky-auth/error"
-    static let source = "Bitkit"
-
-    static func addingCallbacks(to authUrl: String, nonce: UUID? = nil) -> String? {
-        guard var components = URLComponents(string: authUrl), components.url != nil else {
-            return nil
-        }
-
-        let callbackQuery = [
-            ("x-success", callbackUrl(successCallback, nonce: nonce)),
-            ("x-cancel", callbackUrl(cancelCallback, nonce: nonce)),
-            ("x-error", callbackUrl(errorCallback, nonce: nonce)),
-            ("x-source", source),
-        ]
-        .map { "\($0.0)=\(Self.percentEncodedQueryValue($0.1))" }
-        .joined(separator: "&")
-
-        components.percentEncodedQuery = [components.percentEncodedQuery, callbackQuery]
-            .compactMap { $0 }
-            .filter { !$0.isEmpty }
-            .joined(separator: "&")
-
-        return components.url?.absoluteString
-    }
-
-    static func ringHandoffURL(from authUrl: String) -> URL? {
-        guard var components = URLComponents(string: authUrl), components.scheme?.lowercased() == "pubkyauth" else {
-            return nil
-        }
-
-        components.scheme = "pubkyring"
-        components.host = "signin"
-        components.path = ""
-        return components.url
-    }
-
-    private static func callbackUrl(_ baseUrl: String, nonce: UUID?) -> String {
-        guard let nonce else {
-            return baseUrl
-        }
-
-        return "\(baseUrl)?nonce=\(percentEncodedQueryValue(nonce.uuidString))"
-    }
-
-    private static func percentEncodedQueryValue(_ value: String) -> String {
-        var allowedCharacters = CharacterSet.urlQueryAllowed
-        allowedCharacters.remove(charactersIn: ":#[]@!$&'()*+,;=/?")
-        return value.addingPercentEncoding(withAllowedCharacters: allowedCharacters) ?? value
-    }
-}
-
 private enum PubkyProfileManagerError: LocalizedError {
     case avatarEncodingFailed
 
@@ -136,6 +51,37 @@ private enum PubkyProfileManagerError: LocalizedError {
 enum PubkySignupError: Error {
     case alreadySignedIn
     case inProgress
+}
+
+private actor PubkyIdentityLifecycleLock {
+    private var isLocked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func withLock<T>(_ operation: () async throws -> T) async rethrows -> T {
+        await lock()
+        defer { unlock() }
+        return try await operation()
+    }
+
+    private func lock() async {
+        guard isLocked else {
+            isLocked = true
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    private func unlock() {
+        guard !waiters.isEmpty else {
+            isLocked = false
+            return
+        }
+
+        waiters.removeFirst().resume()
+    }
 }
 
 @MainActor
@@ -156,9 +102,18 @@ class PubkyProfileManager: ObservableObject {
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
     @Published private(set) var isProfileSetupPending: Bool
+    @Published private(set) var sharedRingIdentities: [SharedPubkyIdentityOption] = []
+    @Published private(set) var isLoadingSharedRingIdentities = false
+    @Published private(set) var isSharedIdentityDiscoveryAvailable = true
 
-    private var activeAuthAttemptID: UUID?
+    private nonisolated static let identityLifecycleLock = PubkyIdentityLifecycleLock()
     private var isSignupInFlight = false
+
+    nonisolated static func withIdentityLifecycleLock<T>(
+        _ operation: () async throws -> T
+    ) async rethrows -> T {
+        try await identityLifecycleLock.withLock(operation)
+    }
 
     init() {
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
@@ -170,20 +125,35 @@ class PubkyProfileManager: ObservableObject {
 
     /// Initializes Paykit and restores any persisted session.
     func initialize() async {
+        await Self.withIdentityLifecycleLock {
+            await self.initializeLocked()
+        }
+    }
+
+    private func initializeLocked() async {
         isInitialized = false
         initializationErrorMessage = nil
         sessionRestorationFailed = false
 
         let result: SessionInitializationResult
-        do {
-            result = try await Task.detached {
-                try await Self.initializePersistedSession()
-            }.value
-        } catch {
-            Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
-            authState = .idle
-            initializationErrorMessage = error.localizedDescription
-            return
+        if sharedIdentitySourceIsUnavailable() {
+            do {
+                try await Self.clearSharedIdentitySession()
+            } catch {
+                Logger.error("Failed to clear unavailable shared Pubky session: \(error)", context: "PubkyProfileManager")
+            }
+            result = .restorationFailed
+        } else {
+            do {
+                result = try await Task.detached {
+                    try await Self.initializePersistedSession()
+                }.value
+            } catch {
+                Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
+                authState = .idle
+                initializationErrorMessage = error.localizedDescription
+                return
+            }
         }
 
         switch result {
@@ -194,6 +164,7 @@ class PubkyProfileManager: ObservableObject {
             publicKey = pk
             authState = .authenticated
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
+            await reconcileBitkitOwnedIdentityIfNeededLocked(publicKey: pk)
             Task { await loadProfile() }
         case .restorationFailed:
             clearAuthenticatedState()
@@ -275,6 +246,33 @@ class PubkyProfileManager: ObservableObject {
             try await Task.detached { try Keychain.loadString(key: .pubkySecretKey) }.value
         }
     ) async throws {
+        try await Self.withIdentityLifecycleLock {
+            try await self.createIdentityLocked(
+                name: name,
+                bio: bio,
+                links: links,
+                tags: tags,
+                existingImageUrl: existingImageUrl,
+                avatarImage: avatarImage,
+                loadStoredSecretKey: loadStoredSecretKey
+            )
+        }
+    }
+
+    private func createIdentityLocked(
+        name: String,
+        bio: String,
+        links: [PubkyProfileLink],
+        tags: [String],
+        existingImageUrl: String?,
+        avatarImage: UIImage?,
+        loadStoredSecretKey: () async throws -> String?
+    ) async throws {
+        try Task.checkCancellation()
+        guard try SharedPubkyIdentityReferenceStore.load() == nil else {
+            throw PubkyServiceError.authFailed("A Pubky identity is already recoverable")
+        }
+
         if isProfileSetupPending, let publicKey {
             try await createProfile(
                 publicKey: publicKey,
@@ -286,6 +284,16 @@ class PubkyProfileManager: ObservableObject {
                 avatarImage: avatarImage
             )
             return
+        }
+
+        // Resuming an interrupted setup already returned above, so reaching here creates or
+        // restores an identity. A stored session that no local secret can re-sign-in belongs to
+        // an external or borrowed identity: signing up would overwrite its still-recoverable
+        // session secret, so refuse instead of silently replacing it.
+        let hasStoredLocalSecret = try Keychain.loadString(key: .pubkySecretKey)?.isEmpty == false
+        let hasStoredSession = try Keychain.loadString(key: .paykitSession)?.isEmpty == false
+        guard hasStoredLocalSecret || !hasStoredSession else {
+            throw PubkyServiceError.authFailed("A Pubky identity is already recoverable")
         }
 
         setProfileSetupPending(false)
@@ -390,9 +398,17 @@ class PubkyProfileManager: ObservableObject {
         profile = createdProfile
         cacheProfileMetadata(createdProfile)
         setProfileSetupPending(false)
+        try SharedPubkyIdentityReferenceStore.delete()
+        await reconcileBitkitOwnedIdentityIfNeededLocked(publicKey: publicKey)
     }
 
     func approveSignupAuth(request: PubkyAuthRequest) async throws {
+        try await Self.withIdentityLifecycleLock {
+            try await self.approveSignupAuthLocked(request: request)
+        }
+    }
+
+    private func approveSignupAuthLocked(request: PubkyAuthRequest) async throws {
         guard request.isSignup, let homeserver = request.homeserverPublicKey else {
             throw PubkyServiceError.invalidAuthUrl
         }
@@ -519,7 +535,48 @@ class PubkyProfileManager: ObservableObject {
         cacheProfileMetadata(updatedProfile)
     }
 
+    /// Orders profile deletion so it fails closed before anything is erased. Contact cleanup
+    /// deletes remote records over the session a borrowed identity established, so a revoked
+    /// source has to abort the flow here rather than at the deletion that follows the cleanup.
+    /// Validation takes the lifecycle lock on its own; no network work runs under that lock.
+    nonisolated static func deleteProfileWithContactCleanup(
+        revalidateSource: () async throws -> Void,
+        deleteContacts: () async -> Void,
+        deleteProfile: () async throws -> Void
+    ) async throws {
+        try await revalidateSource()
+        await deleteContacts()
+        try await deleteProfile()
+    }
+
+    /// Fails closed when a source revoked a borrowed identity, before a destructive flow starts.
+    /// Owned identities never read the shared vault.
+    func ensureSharedIdentitySourceIsValid() async throws {
+        try await Self.withIdentityLifecycleLock {
+            try self.revalidateSharedIdentitySource()
+        }
+    }
+
     func deleteProfile() async throws {
+        try await Self.withIdentityLifecycleLock {
+            try await self.deleteProfileLocked()
+        }
+    }
+
+    private func deleteProfileLocked() async throws {
+        // A source can revoke a borrowed identity between session establishment and the next
+        // foreground validation, so revalidate it here, under the lifecycle lock, before any
+        // remote deletion or cleanup runs on a credential Ring may no longer authorize.
+        try revalidateSharedIdentitySource()
+
+        let deletedPublicKey = publicKey
+        let ownsIdentity = hasLocalSecretKeyForCurrentProfile
+
+        // Remove and verify the interoperability mirror before touching the canonical private identity.
+        if ownsIdentity, let deletedPublicKey {
+            try SharedPubkyIdentityVault.deleteBitkitIdentity(pubky: deletedPublicKey)
+        }
+
         await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
         do {
             try await Task.detached {
@@ -534,7 +591,10 @@ class PubkyProfileManager: ObservableObject {
         }
 
         Self.clearPaykitSharingAfterProfileDeletion()
-        try await signOut(cleanPrivatePaykitEndpoints: false)
+        try await signOutLocked(cleanPrivatePaykitEndpoints: false)
+        if ownsIdentity, let deletedPublicKey {
+            try SharedPubkyIdentityVault.deleteBitkitIdentity(pubky: deletedPublicKey)
+        }
     }
 
     private func writeProfile(
@@ -558,6 +618,9 @@ class PubkyProfileManager: ObservableObject {
     }
 
     static func isRingAvailable() -> Bool {
+        // This is an availability hint, not an identity proof: URL schemes can be claimed by
+        // another app. Shared-Keychain entitlement and payload validation remain the trust
+        // boundary. A source-authenticated liveness handshake is a follow-up release hardening.
         guard let url = URL(string: "pubkyring://check") else {
             return false
         }
@@ -565,44 +628,242 @@ class PubkyProfileManager: ObservableObject {
         return UIApplication.shared.canOpenURL(url)
     }
 
-    // MARK: - Auth Flow (Ring)
+    // MARK: - Shared Identity Discovery
 
-    func cancelAuthentication() async {
-        activeAuthAttemptID = nil
+    func refreshSharedRingIdentities() async {
+        guard publicKey == nil else {
+            sharedRingIdentities = []
+            return
+        }
+
+        guard Self.isRingAvailable() else {
+            sharedRingIdentities = []
+            isSharedIdentityDiscoveryAvailable = true
+            return
+        }
+
+        isLoadingSharedRingIdentities = true
+        defer { isLoadingSharedRingIdentities = false }
+
+        do {
+            let references = try await Task.detached {
+                try SharedPubkyIdentityVault.list(source: .ring)
+            }.value
+            var options: [SharedPubkyIdentityOption] = []
+            for reference in references {
+                guard let prefixedPubky = SharedPubkyKeyFormat.prefixed(reference.pubky) else {
+                    continue
+                }
+                let profile = await fetchRemoteProfile(publicKey: prefixedPubky)
+                    ?? PubkyProfile.placeholder(publicKey: prefixedPubky)
+                options.append(SharedPubkyIdentityOption(reference: reference, profile: profile))
+            }
+
+            sharedRingIdentities = options.sorted {
+                let lhsName = $0.profile.name.localizedLowercase
+                let rhsName = $1.profile.name.localizedLowercase
+                return lhsName == rhsName
+                    ? $0.reference.pubky < $1.reference.pubky
+                    : lhsName < rhsName
+            }
+            isSharedIdentityDiscoveryAvailable = true
+        } catch SharedPubkyIdentityError.missingEntitlement {
+            sharedRingIdentities = []
+            isSharedIdentityDiscoveryAvailable = false
+            Logger.info("Shared Pubky Keychain entitlement is not available yet", context: "PubkyProfileManager")
+        } catch {
+            sharedRingIdentities = []
+            isSharedIdentityDiscoveryAvailable = false
+            Logger.warn("Failed to discover Pubky Ring identities: \(error)", context: "PubkyProfileManager")
+        }
+    }
+
+    @discardableResult
+    func useSharedRingIdentity(_ option: SharedPubkyIdentityOption) async throws -> String {
+        try await Self.withIdentityLifecycleLock {
+            try await self.useSharedRingIdentityLocked(option)
+        }
+    }
+
+    private func useSharedRingIdentityLocked(_ option: SharedPubkyIdentityOption) async throws -> String {
+        guard publicKey == nil,
+              try SharedPubkyIdentityReferenceStore.load() == nil,
+              try Keychain.loadString(key: .paykitSession)?.isEmpty != false,
+              try Keychain.loadString(key: .pubkySecretKey)?.isEmpty != false
+        else {
+            throw PubkyServiceError.authFailed("A Pubky identity is already recoverable")
+        }
+        guard Self.isRingAvailable() else {
+            throw SharedPubkyIdentityError.sourceUnavailable
+        }
+
+        authState = .authenticating
+        do {
+            try Task.checkCancellation()
+            let secretKey = try await Task.detached {
+                try SharedPubkyIdentityVault.loadCredential(reference: option.reference)
+            }.value
+            try Task.checkCancellation()
+            let prefixedPubky = try await Self.establishSharedIdentitySession(
+                reference: option.reference,
+                secretKey: secretKey,
+                saveReference: { try SharedPubkyIdentityReferenceStore.save($0) },
+                signIn: { try await PubkyService.signInSharedIdentity(secretKeyHex: $0) },
+                currentPublicKey: { await PubkyService.currentPublicKey() },
+                clearSession: { try await PubkyService.clearExternalSessionAccess() },
+                deleteReference: { try SharedPubkyIdentityReferenceStore.delete() }
+            )
+
+            UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+            Self.notifyAppStateBackupChanged()
+            publicKey = prefixedPubky
+            profile = option.profile
+            cacheProfileMetadata(option.profile)
+            authState = .completingAuthentication
+            await loadProfile()
+            return prefixedPubky
+        } catch {
+            authState = .idle
+            throw error
+        }
+    }
+
+    nonisolated static func establishSharedIdentitySession(
+        reference: SharedPubkyIdentityRefV1,
+        secretKey: String,
+        saveReference: (SharedPubkyIdentityRefV1) throws -> Void,
+        signIn: (String) async throws -> String,
+        currentPublicKey: () async -> String?,
+        clearSession: () async throws -> Void,
+        deleteReference: () throws -> Void
+    ) async throws -> String {
+        do {
+            // The reference is the crash-safety marker. A launch after this write can revalidate
+            // the source and sign in again; no borrowed session can exist without it.
+            try saveReference(reference)
+            _ = try await signIn(secretKey)
+
+            guard let signedInPublicKey = await currentPublicKey(),
+                  SharedPubkyKeyFormat.normalizedBare(signedInPublicKey) == reference.pubky,
+                  let prefixedPubky = SharedPubkyKeyFormat.prefixed(reference.pubky)
+            else {
+                throw SharedPubkyIdentityError.secretDoesNotMatchPublicKey
+            }
+            return prefixedPubky
+        } catch let adoptionError {
+            do {
+                // The durable source reference is also the cleanup-pending marker. Keep it until
+                // the local session is verifiably gone so launch/foreground validation retries.
+                try await clearSession()
+                try deleteReference()
+            } catch {
+                throw error
+            }
+            throw adoptionError
+        }
+    }
+
+    /// Revalidates a borrowed identity without retaining its shared secret.
+    func validateSharedIdentitySourceIfNeeded() async {
+        await Self.withIdentityLifecycleLock {
+            await self.validateSharedIdentitySourceIfNeededLocked()
+        }
+    }
+
+    private func validateSharedIdentitySourceIfNeededLocked() async {
+        let reference: SharedPubkyIdentityRefV1?
+        do {
+            reference = try SharedPubkyIdentityReferenceStore.load()
+        } catch {
+            await disconnectUnavailableSharedIdentityLocked()
+            return
+        }
+
+        guard let reference else {
+            if let publicKey {
+                await reconcileBitkitOwnedIdentityIfNeededLocked(publicKey: publicKey)
+            }
+            return
+        }
+
+        guard reference.sourceApp == .ring, Self.isRingAvailable() else {
+            await disconnectUnavailableSharedIdentityLocked()
+            return
+        }
+
+        do {
+            _ = try await Task.detached {
+                try SharedPubkyIdentityVault.loadCredential(reference: reference)
+            }.value
+        } catch {
+            Logger.warn("Shared Pubky source became unavailable: \(error)", context: "PubkyProfileManager")
+            await disconnectUnavailableSharedIdentityLocked()
+        }
+    }
+
+    private func sharedIdentitySourceIsUnavailable() -> Bool {
+        do {
+            guard let reference = try SharedPubkyIdentityReferenceStore.load() else {
+                return false
+            }
+            return reference.sourceApp != .ring || !Self.isRingAvailable()
+        } catch {
+            return true
+        }
+    }
+
+    private func disconnectUnavailableSharedIdentityLocked() async {
+        sharedRingIdentities = []
+        do {
+            try await Self.clearSharedIdentitySession()
+            clearAuthenticatedState()
+            sessionRestorationFailed = true
+        } catch {
+            // Keep the durable reference as a cleanup-pending marker and retry on the next
+            // launch/foreground validation. Authenticated operations still fail source checks.
+            Logger.error("Failed to clear unavailable shared Pubky session: \(error)", context: "PubkyProfileManager")
+            sessionRestorationFailed = true
+        }
+    }
+
+    static func clearSharedIdentitySession(
+        clearSession: () async throws -> Void = {
+            try await PubkyService.clearExternalSessionAccess()
+        },
+        deleteReference: () throws -> Void = {
+            try SharedPubkyIdentityReferenceStore.delete()
+        }
+    ) async throws {
+        // Session-first ordering prevents an orphaned session from ever outliving its source
+        // reference. If either step fails, the remaining reference drives a later retry.
+        try await clearSession()
+        try deleteReference()
+    }
+
+    private func reconcileBitkitOwnedIdentityIfNeededLocked(publicKey: String) async {
+        guard (try? SharedPubkyIdentityReferenceStore.load()) == nil,
+              let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
+              !secretKey.isEmpty,
+              Self.hasLocalSecretKey(for: publicKey)
+        else {
+            return
+        }
 
         do {
             try await Task.detached {
-                try await PubkyService.cancelAuth()
+                try SharedPubkyIdentityVault.publishBitkitIdentity(pubky: publicKey, secretKey: secretKey)
             }.value
-            restoreAuthStateAfterAuthFlow()
+        } catch SharedPubkyIdentityError.missingEntitlement {
+            Logger.info("Deferring shared Pubky mirror until its entitlement is available", context: "PubkyProfileManager")
         } catch {
-            restoreAuthStateAfterAuthFlow()
-            Logger.warn("Cancel auth failed: \(error)", context: "PubkyProfileManager")
+            Logger.warn("Failed to reconcile Bitkit-owned shared Pubky identity: \(error)", context: "PubkyProfileManager")
         }
     }
 
-    func handleAuthCallback(_ callback: PubkyRingAuthCallback) async -> PubkyRingAuthCallbackHandlingResult {
-        guard isCurrentAuthCallback(callback) else {
-            return await handleInvalidAuthCallback(callback)
-        }
+    // MARK: - Legacy Ring Callbacks
 
-        switch callback {
-        case .success:
-            Logger.info("Pubky Ring returned auth success callback", context: "PubkyProfileManager")
-        case .cancel:
-            Logger.info("Pubky Ring returned auth cancel callback", context: "PubkyProfileManager")
-            await cancelAuthentication()
-        case let .error(message, _):
-            Logger.warn("Pubky Ring returned auth error callback: \(message ?? "Unknown error")", context: "PubkyProfileManager")
-            await cancelAuthentication()
-            setAuthFlowError(message ?? t("profile__auth_error_title"))
-            return .trustedError(message: message)
-        }
-
-        return .handled
-    }
-
-    private func handleInvalidAuthCallback(_ callback: PubkyRingAuthCallback) async -> PubkyRingAuthCallbackHandlingResult {
+    /// Old callbacks remain recognized so they cannot fall through to payment handling.
+    func handleAuthCallback(_ callback: PubkyRingAuthCallback) {
         switch callback {
         case .success:
             Logger.warn("Ignoring Pubky Ring auth success callback with missing or invalid nonce", context: "PubkyProfileManager")
@@ -614,154 +875,6 @@ class PubkyProfileManager: ObservableObject {
                 context: "PubkyProfileManager"
             )
         }
-
-        return .ignored
-    }
-
-    func startAuthentication() async throws {
-        let attemptID = UUID()
-        activeAuthAttemptID = attemptID
-        authState = .authenticating
-
-        guard Self.isRingAvailable() else {
-            activeAuthAttemptID = nil
-            restoreAuthStateAfterAuthFlow()
-            throw PubkyServiceError.ringNotInstalled
-        }
-
-        let authUrl: String
-        do {
-            authUrl = try await Task.detached {
-                try await PubkyService.startAuth()
-            }.value
-        } catch {
-            activeAuthAttemptID = nil
-            restoreAuthStateAfterAuthFlow()
-            throw error
-        }
-
-        guard activeAuthAttemptID == attemptID else {
-            throw CancellationError()
-        }
-
-        let callbackAuthUrl = PubkyRingAuthURLBuilder.addingCallbacks(to: authUrl, nonce: attemptID) ?? authUrl
-
-        guard let url = PubkyRingAuthURLBuilder.ringHandoffURL(from: callbackAuthUrl) else {
-            await cancelPendingAuthSetup()
-            activeAuthAttemptID = nil
-            restoreAuthStateAfterAuthFlow()
-            throw PubkyServiceError.invalidAuthUrl
-        }
-
-        let canOpen = UIApplication.shared.canOpenURL(url)
-        guard canOpen else {
-            await cancelPendingAuthSetup()
-            activeAuthAttemptID = nil
-            restoreAuthStateAfterAuthFlow()
-            throw PubkyServiceError.ringNotInstalled
-        }
-
-        let didOpen = await UIApplication.shared.open(url)
-        guard didOpen else {
-            await cancelPendingAuthSetup()
-            activeAuthAttemptID = nil
-            restoreAuthStateAfterAuthFlow()
-            throw PubkyServiceError.authFailed("Failed to open Pubky Ring")
-        }
-    }
-
-    /// Long-polls the relay, activates the SDK session, then loads the profile.
-    @discardableResult
-    func completeAuthentication() async throws -> String {
-        try await completeAuthentication(
-            completeAuth: { try await PubkyService.completeAuth() },
-            currentPublicKey: { await PubkyService.currentPublicKey() },
-            discardSessionAccess: { sessionSecret in
-                await Task.detached {
-                    await PaykitSdkService.shared.discardCompletedAuthSession(sessionSecret: sessionSecret)
-                }.value
-            }
-        )
-    }
-
-    @discardableResult
-    private func completeAuthentication(
-        completeAuth: @escaping () async throws -> String,
-        currentPublicKey: @escaping () async -> String?,
-        discardSessionAccess: @escaping (String) async -> Void
-    ) async throws -> String {
-        guard let attemptID = activeAuthAttemptID else {
-            throw CancellationError()
-        }
-        var completedSessionSecret: String?
-
-        do {
-            completedSessionSecret = try await completeAuth()
-            try Task.checkCancellation()
-            guard activeAuthAttemptID == attemptID else {
-                throw CancellationError()
-            }
-
-            guard let pk = await currentPublicKey() else {
-                throw PubkyServiceError.sessionNotActive
-            }
-            try Task.checkCancellation()
-            guard activeAuthAttemptID == attemptID else {
-                throw CancellationError()
-            }
-
-            UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
-            Self.notifyAppStateBackupChanged()
-
-            activeAuthAttemptID = nil
-            publicKey = pk
-            authState = .completingAuthentication
-            Logger.info("Pubky auth completed for \(pk)", context: "PubkyProfileManager")
-            await loadProfile()
-            return pk
-        } catch is CancellationError {
-            await discardCompletedAuthSessionIfNeeded(
-                completedSessionSecret,
-                discardSessionAccess: discardSessionAccess
-            )
-            if activeAuthAttemptID == attemptID {
-                activeAuthAttemptID = nil
-                restoreAuthStateAfterAuthFlow()
-            }
-            throw CancellationError()
-        } catch let serviceError as PubkyServiceError {
-            await discardCompletedAuthSessionIfNeeded(
-                completedSessionSecret,
-                discardSessionAccess: discardSessionAccess
-            )
-            guard activeAuthAttemptID == attemptID else {
-                throw CancellationError()
-            }
-
-            activeAuthAttemptID = nil
-            restoreAuthStateAfterAuthFlow()
-            throw serviceError
-        } catch {
-            await discardCompletedAuthSessionIfNeeded(
-                completedSessionSecret,
-                discardSessionAccess: discardSessionAccess
-            )
-            guard activeAuthAttemptID == attemptID else {
-                throw CancellationError()
-            }
-
-            activeAuthAttemptID = nil
-            setAuthFlowError(error.localizedDescription)
-            throw error
-        }
-    }
-
-    private func discardCompletedAuthSessionIfNeeded(
-        _ completedSessionSecret: String?,
-        discardSessionAccess: @escaping (String) async -> Void
-    ) async {
-        guard let completedSessionSecret else { return }
-        await discardSessionAccess(completedSessionSecret)
     }
 
     private func discardAbandonedSession() async {
@@ -800,22 +913,6 @@ class PubkyProfileManager: ObservableObject {
         authState = .authenticated
     }
 
-    private func restoreAuthStateAfterAuthFlow() {
-        authState = publicKey == nil ? .idle : .authenticated
-    }
-
-    private func setAuthFlowError(_ message: String) {
-        authState = publicKey == nil ? .error(message) : .authenticated
-    }
-
-    private func isCurrentAuthCallback(_ callback: PubkyRingAuthCallback) -> Bool {
-        guard let activeAuthAttemptID else {
-            return false
-        }
-
-        return callback.nonce == activeAuthAttemptID.uuidString
-    }
-
     #if DEBUG
         func completeSignupAuthenticationForTesting(
             publicKey: String,
@@ -830,27 +927,6 @@ class PubkyProfileManager: ObservableObject {
                 approveAuth: approveAuth,
                 activateIdentity: activateIdentity,
                 authorizationTimeout: authorizationTimeout
-            )
-        }
-
-        func setActiveAuthAttemptIDForTesting(_ attemptID: UUID?) {
-            activeAuthAttemptID = attemptID
-        }
-
-        var activeAuthAttemptIDForTesting: UUID? {
-            activeAuthAttemptID
-        }
-
-        @discardableResult
-        func completeAuthenticationForTesting(
-            completeAuth: @escaping () async throws -> String,
-            currentPublicKey: @escaping () async -> String?,
-            discardSessionAccess: @escaping (String) async -> Void
-        ) async throws -> String {
-            try await completeAuthentication(
-                completeAuth: completeAuth,
-                currentPublicKey: currentPublicKey,
-                discardSessionAccess: discardSessionAccess
             )
         }
 
@@ -907,11 +983,14 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Sign Out
 
     static func clearLocalState() async {
+        // Callers replacing or deleting a Bitkit-owned private identity must first
+        // delete and verify its shared mirror. Ring-owned records are never deleted here.
         do {
             try await PubkyService.forgetSessionAccess()
         } catch {
             Logger.warn("Failed to forget local Pubky session access: \(error)", context: "PubkyProfileManager")
         }
+        try? SharedPubkyIdentityReferenceStore.delete()
         await clearLocalAppState()
     }
 
@@ -925,6 +1004,16 @@ class PubkyProfileManager: ObservableObject {
         ContactsManager.restoreContactProfileOverrides(nil)
         clearPublicPaykitSharingState()
         notifyAppStateBackupChanged()
+    }
+
+    private nonisolated static func deletePrivateIdentityCredentials() throws {
+        try Keychain.delete(key: .paykitSession)
+        try Keychain.delete(key: .pubkySecretKey)
+        guard try Keychain.load(key: .paykitSession) == nil,
+              try Keychain.load(key: .pubkySecretKey) == nil
+        else {
+            throw KeychainError.failedToDelete
+        }
     }
 
     private static func clearPublicPaykitSharingState() {
@@ -991,10 +1080,27 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func signOut() async throws {
-        try await signOut(cleanPrivatePaykitEndpoints: true)
+        try await Self.withIdentityLifecycleLock {
+            try await self.signOutLocked(cleanPrivatePaykitEndpoints: true)
+        }
     }
 
-    private func signOut(cleanPrivatePaykitEndpoints: Bool) async throws {
+    private func signOutLocked(cleanPrivatePaykitEndpoints: Bool) async throws {
+        let sharedReference = try SharedPubkyIdentityReferenceStore.load()
+        let localSecret = try Keychain.loadString(key: .pubkySecretKey)
+        if sharedReference != nil, localSecret?.isEmpty == false {
+            throw SharedPubkyIdentityError.provenanceConflict
+        }
+
+        let ownsIdentity = hasLocalSecretKeyForCurrentProfile
+        if localSecret?.isEmpty == false, !ownsIdentity {
+            throw SharedPubkyIdentityError.provenanceConflict
+        }
+        let hasSharedReference = sharedReference != nil
+        if ownsIdentity, let sourcePublicKey = publicKey {
+            try SharedPubkyIdentityVault.deleteBitkitIdentity(pubky: sourcePublicKey)
+        }
+
         let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
         let privateSharingEnabled = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
 
@@ -1005,6 +1111,12 @@ class PubkyProfileManager: ObservableObject {
                 }
                 await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
                 try await PubkyService.signOut()
+
+                if hasSharedReference {
+                    try await Self.clearSharedIdentitySession()
+                } else if ownsIdentity {
+                    try Self.deletePrivateIdentityCredentials()
+                }
                 await Self.clearLocalAppState()
             }.value
         } catch {
@@ -1013,6 +1125,10 @@ class PubkyProfileManager: ObservableObject {
                 privateSharingEnabled: privateSharingEnabled
             )
             throw error
+        }
+
+        if ownsIdentity, let sourcePublicKey = publicKey {
+            try SharedPubkyIdentityVault.deleteBitkitIdentity(pubky: sourcePublicKey)
         }
 
         setProfileSetupPending(false)
@@ -1047,7 +1163,37 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func refreshSessionIfPossible(after error: Error) async -> Bool {
-        await Self.refreshSessionIfPossible(
+        await Self.withIdentityLifecycleLock {
+            await self.refreshSessionIfPossibleLocked(after: error)
+        }
+    }
+
+    private func refreshSessionIfPossibleLocked(after error: Error) async -> Bool {
+        if let reference = try? SharedPubkyIdentityReferenceStore.load() {
+            guard Self.isSessionRefreshableError(error),
+                  Self.isRingAvailable()
+            else {
+                return false
+            }
+
+            do {
+                let secretKey = try SharedPubkyIdentityVault.loadCredential(reference: reference)
+                _ = try await PubkyService.signInSharedIdentity(secretKeyHex: secretKey)
+                guard let signedInPublicKey = await PubkyService.currentPublicKey(),
+                      SharedPubkyKeyFormat.normalizedBare(signedInPublicKey) == reference.pubky
+                else {
+                    throw SharedPubkyIdentityError.secretDoesNotMatchPublicKey
+                }
+                Logger.info("Refreshed Pubky session from source-owned identity", context: "PubkyProfileManager")
+                return true
+            } catch {
+                Logger.warn("Failed to refresh source-owned Pubky session: \(error)", context: "PubkyProfileManager")
+                await disconnectUnavailableSharedIdentityLocked()
+                return false
+            }
+        }
+
+        return await Self.refreshSessionIfPossible(
             after: error,
             loadKeychainString: { try Keychain.loadString(key: $0) },
             signInWithSecretKey: { try await PubkyService.signIn(secretKeyHex: $0) }
@@ -1095,12 +1241,39 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func activeSessionSecret() throws -> String {
+        try revalidateSharedIdentitySource()
+
         guard let sessionSecret = try? Keychain.loadString(key: .paykitSession),
               !sessionSecret.isEmpty
         else {
             throw PubkyServiceError.sessionNotActive
         }
         return sessionSecret
+    }
+
+    /// Re-reads a borrowed credential just in time. Owned identities never touch the shared vault.
+    private func revalidateSharedIdentitySource() throws {
+        try Self.validateSharedIdentitySource(
+            reference: SharedPubkyIdentityReferenceStore.load(),
+            isSourceAvailable: Self.isRingAvailable(),
+            loadSharedCredential: { try SharedPubkyIdentityVault.loadCredential(reference: $0) }
+        )
+    }
+
+    nonisolated static func validateSharedIdentitySource(
+        reference: SharedPubkyIdentityRefV1?,
+        isSourceAvailable: Bool,
+        loadSharedCredential: (SharedPubkyIdentityRefV1) throws -> String
+    ) throws {
+        guard let reference else {
+            return
+        }
+        guard reference.sourceApp == .ring, isSourceAvailable else {
+            throw SharedPubkyIdentityError.sourceUnavailable
+        }
+        // Loading re-derives the public key from the source record and fails closed when the
+        // source has removed, rotated or invalidated the identity Bitkit borrowed.
+        _ = try loadSharedCredential(reference)
     }
 
     // MARK: - Session & Backup Helpers
@@ -1114,12 +1287,63 @@ class PubkyProfileManager: ObservableObject {
     }
 
     nonisolated static func hasStoredIdentity() throws -> Bool {
-        for key in [KeychainEntryType.paykitSession, .pubkySecretKey] {
+        // A source-owned reference is a recoverable identity too: signup must never create a
+        // local identity while a borrowed one is connected or still pending cleanup.
+        for key in [KeychainEntryType.paykitSession, .pubkySecretKey, .sharedPubkyIdentityReference] {
             if let value = try Keychain.loadString(key: key), !value.isEmpty {
                 return true
             }
         }
         return false
+    }
+
+    /// Returns the active identity key only at the point of use. Shared keys are never persisted privately.
+    func activeIdentitySecretKey() throws -> String {
+        guard let expectedPublicKey = publicKey else {
+            throw PubkyServiceError.sessionNotActive
+        }
+
+        let reference = try SharedPubkyIdentityReferenceStore.load()
+        let localSecret = try Keychain.loadString(key: .pubkySecretKey)
+        return try Self.resolveActiveIdentitySecretKey(
+            expectedPublicKey: expectedPublicKey,
+            reference: reference,
+            localSecret: localSecret,
+            isSourceAvailable: Self.isRingAvailable(),
+            loadSharedCredential: {
+                try SharedPubkyIdentityVault.loadCredential(reference: $0)
+            }
+        )
+    }
+
+    nonisolated static func resolveActiveIdentitySecretKey(
+        expectedPublicKey: String,
+        reference: SharedPubkyIdentityRefV1?,
+        localSecret: String?,
+        isSourceAvailable: Bool,
+        loadSharedCredential: (SharedPubkyIdentityRefV1) throws -> String
+    ) throws -> String {
+        if let reference {
+            guard localSecret?.isEmpty != false else {
+                throw SharedPubkyIdentityError.provenanceConflict
+            }
+            guard reference.sourceApp == .ring, isSourceAvailable else {
+                throw SharedPubkyIdentityError.sourceUnavailable
+            }
+            guard SharedPubkyKeyFormat.normalizedBare(expectedPublicKey) == reference.pubky else {
+                throw SharedPubkyIdentityError.provenanceConflict
+            }
+            return try loadSharedCredential(reference)
+        }
+
+        guard let localSecret, !localSecret.isEmpty,
+              let derivedPublicKey = try? publicKeyFromSecretKey(localSecret),
+              SharedPubkyKeyFormat.normalizedBare(derivedPublicKey) ==
+              SharedPubkyKeyFormat.normalizedBare(expectedPublicKey)
+        else {
+            throw SharedPubkyIdentityError.provenanceConflict
+        }
+        return localSecret
     }
 
     nonisolated static func hasLocalSecretKey(for publicKey: String?) -> Bool {
@@ -1140,6 +1364,13 @@ class PubkyProfileManager: ObservableObject {
             try Keychain.loadString(key: $0)
         }
     ) throws -> PubkySessionBackupV1? {
+        if let sharedReference = try loadKeychainString(.sharedPubkyIdentityReference),
+           !sharedReference.isEmpty
+        {
+            // The source app remains authoritative; a borrowed identity is not a portable backup.
+            return nil
+        }
+
         if let secretKeyHex = try loadKeychainString(.pubkySecretKey),
            !secretKeyHex.isEmpty
         {
@@ -1169,6 +1400,9 @@ class PubkyProfileManager: ObservableObject {
         deleteKeychainValue: (KeychainEntryType) throws -> Void = {
             try Keychain.delete(key: $0)
         },
+        deleteBitkitSharedIdentities: () throws -> Void = {
+            try SharedPubkyIdentityVault.deleteAllBitkitIdentities()
+        },
         forgetSessionAccess: @escaping () async throws -> Void = {
             try await PubkyService.forgetSessionAccess()
         },
@@ -1179,21 +1413,64 @@ class PubkyProfileManager: ObservableObject {
             try await PubkyService.importExternalSession(secret: $0)
         }
     ) async throws {
+        try await withIdentityLifecycleLock {
+            try await restoreSessionBackupStateLocked(
+                backup,
+                loadKeychainString: loadKeychainString,
+                persistKeychainString: persistKeychainString,
+                deleteKeychainValue: deleteKeychainValue,
+                deleteBitkitSharedIdentities: deleteBitkitSharedIdentities,
+                forgetSessionAccess: forgetSessionAccess,
+                signInWithSecretKey: signInWithSecretKey,
+                importExternalSession: importExternalSession
+            )
+        }
+    }
+
+    private nonisolated static func restoreSessionBackupStateLocked(
+        _ backup: PubkySessionBackupV1?,
+        loadKeychainString: (KeychainEntryType) throws -> String?,
+        persistKeychainString: (KeychainEntryType, String) throws -> Void,
+        deleteKeychainValue: (KeychainEntryType) throws -> Void,
+        deleteBitkitSharedIdentities: () throws -> Void,
+        forgetSessionAccess: @escaping () async throws -> Void,
+        signInWithSecretKey: @escaping (String) async throws -> String,
+        importExternalSession: @escaping (String) async throws -> String
+    ) async throws {
+        let localSecretKey = try loadKeychainString(.pubkySecretKey)
+        let sharedReference = try loadKeychainString(.sharedPubkyIdentityReference)
+        if localSecretKey?.isEmpty == false, sharedReference?.isEmpty == false {
+            throw SharedPubkyIdentityError.provenanceConflict
+        }
+
+        if localSecretKey?.isEmpty == false {
+            // Backup restore can replace an identity without going through AppReset.
+            // Verify every Bitkit-owned mirror is gone before clearing private state.
+            try deleteBitkitSharedIdentities()
+        }
+
         do {
             try await forgetSessionAccess()
         } catch {
             Logger.warn("Failed to forget existing Pubky session before restore: \(error)", context: "PubkyProfileManager")
         }
+        try deleteKeychainValue(.paykitSession)
+        try deleteKeychainValue(.pubkySecretKey)
+        try deleteKeychainValue(.sharedPubkyIdentityReference)
+        guard try loadKeychainString(.paykitSession) == nil,
+              try loadKeychainString(.pubkySecretKey) == nil,
+              try loadKeychainString(.sharedPubkyIdentityReference) == nil
+        else {
+            throw KeychainError.failedToDelete
+        }
 
         switch backup?.kind {
         case .none:
             // Backups without pubky state do not carry recoverable pubky credentials.
-            try? deleteKeychainValue(.paykitSession)
-            try? deleteKeychainValue(.pubkySecretKey)
+            break
         case .localSeed:
             let secretKeyHex = try deriveLocalSecretKeyFromWalletSeed(loadKeychainString: loadKeychainString)
             try persistKeychainString(.pubkySecretKey, secretKeyHex)
-            try? deleteKeychainValue(.paykitSession)
             _ = try await signInWithSecretKey(secretKeyHex)
         case .externalSession:
             guard let sessionSecret = backup?.sessionSecret,
@@ -1205,20 +1482,28 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    private func cancelPendingAuthSetup() async {
-        do {
-            try await Task.detached {
-                try await PubkyService.cancelAuth()
-            }.value
-        } catch {
-            Logger.warn("Cancel pending auth setup failed: \(error)", context: "PubkyProfileManager")
-        }
-    }
-
     private nonisolated static func initializePersistedSession() async throws -> SessionInitializationResult {
         try await PubkyService.initialize()
 
         let savedSecret = try Keychain.loadString(key: .paykitSession)
+        if let sharedReference = try SharedPubkyIdentityReferenceStore.load() {
+            do {
+                let sharedSecret = try SharedPubkyIdentityVault.loadCredential(reference: sharedReference)
+                return await resolveSharedSessionInitialization(
+                    reference: sharedReference,
+                    savedSessionSecret: savedSecret,
+                    sharedSecretKey: sharedSecret,
+                    importSession: { try await PubkyService.importExternalSession(secret: $0) },
+                    signInWithSharedSecret: { try await PubkyService.signInSharedIdentity(secretKeyHex: $0) },
+                    currentPublicKey: { await PubkyService.currentPublicKey() }
+                )
+            } catch {
+                Logger.warn("Shared Pubky session source is unavailable: \(error)", context: "PubkyProfileManager")
+                try? await clearSharedIdentitySession()
+                return .restorationFailed
+            }
+        }
+
         let secretKeyHex = try Keychain.loadString(key: .pubkySecretKey)
         return await resolveSessionInitialization(
             savedSessionSecret: savedSecret,
@@ -1229,6 +1514,43 @@ class PubkyProfileManager: ObservableObject {
                 try? Keychain.delete(key: .paykitSession)
             }
         )
+    }
+
+    nonisolated static func resolveSharedSessionInitialization(
+        reference: SharedPubkyIdentityRefV1,
+        savedSessionSecret: String?,
+        sharedSecretKey: String,
+        importSession: (String) async throws -> String,
+        signInWithSharedSecret: (String) async throws -> String,
+        currentPublicKey: () async -> String?
+    ) async -> SessionInitializationResult {
+        if let savedSessionSecret, !savedSessionSecret.isEmpty {
+            do {
+                let restoredPublicKey = try await importSession(savedSessionSecret)
+                guard SharedPubkyKeyFormat.normalizedBare(restoredPublicKey) == reference.pubky,
+                      let prefixedPubky = SharedPubkyKeyFormat.prefixed(reference.pubky)
+                else {
+                    throw SharedPubkyIdentityError.secretDoesNotMatchPublicKey
+                }
+                return .restored(publicKey: prefixedPubky)
+            } catch {
+                Logger.warn("Shared Pubky session expired; signing in again from its source", context: "PubkyProfileManager")
+            }
+        }
+
+        do {
+            _ = try await signInWithSharedSecret(sharedSecretKey)
+            guard let signedInPublicKey = await currentPublicKey(),
+                  SharedPubkyKeyFormat.normalizedBare(signedInPublicKey) == reference.pubky,
+                  let prefixedPubky = SharedPubkyKeyFormat.prefixed(reference.pubky)
+            else {
+                throw SharedPubkyIdentityError.secretDoesNotMatchPublicKey
+            }
+            return .restored(publicKey: prefixedPubky)
+        } catch {
+            Logger.warn("Could not restore source-owned Pubky session: \(error)", context: "PubkyProfileManager")
+            return .restorationFailed
+        }
     }
 
     private nonisolated static func notifyAppStateBackupChanged() {

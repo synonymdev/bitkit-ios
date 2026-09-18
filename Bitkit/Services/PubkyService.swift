@@ -6,7 +6,6 @@ import Paykit
 
 enum PubkyServiceError: LocalizedError {
     case invalidAuthUrl
-    case ringNotInstalled
     case sessionNotActive
     case authFailed(String)
     case profileNotFound
@@ -15,8 +14,6 @@ enum PubkyServiceError: LocalizedError {
         switch self {
         case .invalidAuthUrl:
             return "Failed to generate auth URL"
-        case .ringNotInstalled:
-            return "Pubky Ring is not installed"
         case .sessionNotActive:
             return "No active Pubky session"
         case let .authFailed(reason):
@@ -66,23 +63,6 @@ enum PubkyService {
 
     static func currentPublicKey() async -> String? {
         try? await PaykitSdkService.shared.currentPublicKey()
-    }
-
-    // MARK: - Auth Flow
-
-    /// Step 1: Generate the pubkyauth:// URL to open in Pubky Ring.
-    static func startAuth() async throws -> String {
-        try await PaykitSdkService.shared.startAuth()
-    }
-
-    /// Step 2: Long-poll until Ring approves. Returns the raw session secret.
-    static func completeAuth() async throws -> String {
-        try await PaykitSdkService.shared.completeAuth()
-    }
-
-    /// Cancel an in-progress auth relay poll started by `startAuth`.
-    static func cancelAuth() async throws {
-        await PaykitSdkService.shared.cancelAuth()
     }
 
     // MARK: - Auth Approval (Bitkit as authenticator)
@@ -269,6 +249,15 @@ enum PubkyService {
         return result.sessionAccess.exportSessionSecret()
     }
 
+    /// Signs in with a source-owned shared identity without persisting its secret in Bitkit's private Keychain.
+    static func signInSharedIdentity(secretKeyHex: String) async throws -> String {
+        let result = try await PaykitSdkService.shared.signIn(
+            secretKeyHex: secretKeyHex,
+            shouldStoreLocalSecret: false
+        )
+        return result.sessionAccess.exportSessionSecret()
+    }
+
     // MARK: - File Fetching
 
     /// Fetch raw bytes from a `pubky://` URI via PKDNS resolution.
@@ -325,6 +314,10 @@ enum PubkyService {
     static func forgetSessionAccess() async throws {
         try await PaykitSdkService.shared.forgetSessionAccess()
     }
+
+    static func clearExternalSessionAccess() async throws {
+        try await PaykitSdkService.shared.clearExternalSessionAccess()
+    }
 }
 
 // MARK: - Paykit SDK Runtime
@@ -350,8 +343,6 @@ actor PaykitSdkService {
     private var republishPublicKey: String?
     private var nextIdentityRepublishAt = Date.distantPast
     private var sdk: PaykitSdk?
-    private var activeAuthRequest: Paykit.PubkyAuthRequest?
-    private var activeAuthRequestID: UUID?
 
     init(
         bootstrapFactory: @escaping BootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
@@ -522,7 +513,10 @@ actor PaykitSdkService {
         }
     }
 
-    func signIn(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
+    func signIn(
+        secretKeyHex: String,
+        shouldStoreLocalSecret: Bool = true
+    ) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
@@ -531,135 +525,14 @@ actor PaykitSdkService {
                 receiverNoiseSecretKey: receiverNoiseSecretKey,
                 requiredCapabilities: Self.requiredCapabilities()
             )
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
+            try await activateBootstrapResult(
+                result,
+                previousPublicKey: previousPublicKey,
+                shouldStoreLocalSecret: shouldStoreLocalSecret
+            )
             markWalletBackupDataChanged()
             return result
         }
-    }
-
-    func startAuth() async throws -> String {
-        try await operationLock.withLock {
-            let request = try await bootstrap().startSignInAuth(capabilities: Self.requiredCapabilities())
-            let requestID = UUID()
-            activeAuthRequest = request
-            activeAuthRequestID = requestID
-            return try await request.authorizationUrl()
-        }
-    }
-
-    func completeAuth() async throws -> String {
-        guard let request = activeAuthRequest else {
-            throw PubkyServiceError.invalidAuthUrl
-        }
-        guard let requestID = activeAuthRequestID else {
-            throw PubkyServiceError.invalidAuthUrl
-        }
-
-        let result: PubkySessionBootstrapResult
-        do {
-            result = try await request.complete(
-                localSecretKey: nil,
-                receiverNoiseSecretKey: sessionProvider.loadOrDeriveReceiverNoiseSecretKey(),
-                requiredCapabilities: Self.requiredCapabilities()
-            )
-        } catch {
-            clearActiveAuthRequest(ifCurrent: requestID)
-            throw error
-        }
-
-        return try await operationLock.withLock {
-            guard activeAuthRequestID == requestID, activeAuthRequest != nil else {
-                throw CancellationError()
-            }
-            defer {
-                clearActiveAuthRequest(ifCurrent: requestID)
-            }
-
-            let previousPublicKey = await currentSdkStatePublicKey()
-            let sessionSecret = try await Self.completeAuthActivation(
-                sessionSecret: result.sessionAccess.exportSessionSecret(),
-                activate: {
-                    try await self.activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: false)
-                },
-                discardSessionAccess: { sessionSecret in
-                    await Task.detached {
-                        await self.discardCompletedAuthSessionLocked(sessionSecret: sessionSecret)
-                    }.value
-                }
-            )
-            markWalletBackupDataChanged()
-            return sessionSecret
-        }
-    }
-
-    func discardCompletedAuthSession(sessionSecret: String) async {
-        await operationLock.withLock {
-            await discardCompletedAuthSessionLocked(sessionSecret: sessionSecret)
-        }
-    }
-
-    private func discardCompletedAuthSessionLocked(sessionSecret: String) async {
-        let didMatchSession = await Self.discardAuthSession(
-            sessionSecret: sessionSecret,
-            storedSessionSecret: { try Keychain.loadString(key: .paykitSession) },
-            revoke: { _ = try await self.handle().signOut() },
-            forget: {
-                do {
-                    _ = try await self.handle().forgetSessionAccess()
-                } catch {
-                    try self.sessionProvider.clearSessionAccess()
-                    throw error
-                }
-            }
-        )
-        if didMatchSession {
-            resetRuntime()
-            markWalletBackupDataChanged()
-        }
-    }
-
-    static func completeAuthActivation(
-        sessionSecret: String,
-        activate: () async throws -> Void,
-        discardSessionAccess: (String) async -> Void
-    ) async throws -> String {
-        do {
-            try await activate()
-            return sessionSecret
-        } catch {
-            await discardSessionAccess(sessionSecret)
-            throw error
-        }
-    }
-
-    static func discardAuthSession(
-        sessionSecret: String,
-        storedSessionSecret: () throws -> String?,
-        revoke: () async throws -> Void,
-        forget: () async throws -> Void
-    ) async -> Bool {
-        do {
-            guard try storedSessionSecret() == sessionSecret else { return false }
-        } catch {
-            Logger.warn("Failed to identify abandoned Pubky session: \(error)", context: "PaykitSdkService")
-            return false
-        }
-        do {
-            try await revoke()
-        } catch {
-            Logger.warn("Failed to revoke abandoned Pubky session: \(error)", context: "PaykitSdkService")
-            do {
-                try await forget()
-            } catch {
-                Logger.warn("Failed to forget abandoned Pubky session: \(error)", context: "PaykitSdkService")
-            }
-        }
-        return true
-    }
-
-    func cancelAuth() {
-        activeAuthRequest = nil
-        activeAuthRequestID = nil
     }
 
     func approveAuth(authUrl: String, expectedCapabilities: String, approvedClientID: String, secretKeyHex: String) async throws {
@@ -1060,9 +933,19 @@ actor PaykitSdkService {
     func forgetSessionAccess() async throws {
         defer { resetRuntime() }
         try await withStateRevisionTracking { sdk in
-            activeAuthRequest = nil
-            activeAuthRequestID = nil
             _ = try await sdk.forgetSessionAccess()
+        }
+    }
+
+    func clearExternalSessionAccess() async throws {
+        try await operationLock.withLock {
+            try Keychain.delete(key: .paykitSession)
+            guard try Keychain.load(key: .paykitSession) == nil else {
+                throw KeychainError.failedToDelete
+            }
+            sessionProvider.clearLiveSessionAccess()
+            resetRuntime()
+            markWalletBackupDataChanged()
         }
     }
 
@@ -1074,8 +957,6 @@ actor PaykitSdkService {
 
     private func clearStateLocked() {
         try? Keychain.delete(key: .paykitSdkState)
-        activeAuthRequest = nil
-        activeAuthRequestID = nil
         resetRuntime()
         markWalletBackupDataChanged()
     }
@@ -1154,28 +1035,48 @@ actor PaykitSdkService {
         sdk = nil
     }
 
-    private func clearActiveAuthRequest(ifCurrent requestID: UUID) {
-        guard activeAuthRequestID == requestID else { return }
-        activeAuthRequest = nil
-        activeAuthRequestID = nil
-    }
-
     private func persistSessionAccess(_ access: PubkySessionAccess, shouldStoreLocalSecret: Bool) throws {
+        let localSecret = access.exportLocalSecretKey()
+        if !shouldStoreLocalSecret,
+           let existingSecret = try Keychain.loadString(key: .pubkySecretKey),
+           !existingSecret.isEmpty
+        {
+            // An external or borrowed session must never silently replace a
+            // Bitkit-owned canonical identity.
+            throw PubkyServiceError.authFailed("A local Pubky identity already exists")
+        }
+        let localSecretHex = try Self.localSecretKeyHexForPersistence(
+            localSecret,
+            shouldStoreLocalSecret: shouldStoreLocalSecret
+        )
+
         guard let sessionData = access.exportSessionSecret().data(using: .utf8) else {
             throw KeychainError.failedToSave
         }
         try Keychain.upsert(key: .paykitSession, data: sessionData)
         try sessionProvider.persistReceiverNoiseSecretKey(access.exportReceiverNoiseSecretKey())
 
-        guard shouldStoreLocalSecret, let localSecret = access.exportLocalSecretKey() else {
-            try? Keychain.delete(key: .pubkySecretKey)
+        guard let localSecretHex else {
             return
         }
 
-        guard let secretData = Self.secretKeyHex(from: localSecret).data(using: .utf8) else {
+        guard let secretData = localSecretHex.data(using: .utf8) else {
             throw KeychainError.failedToSave
         }
         try Keychain.upsert(key: .pubkySecretKey, data: secretData)
+    }
+
+    static func localSecretKeyHexForPersistence(
+        _ localSecret: PubkyLocalSecretKey?,
+        shouldStoreLocalSecret: Bool
+    ) throws -> String? {
+        guard shouldStoreLocalSecret else {
+            return nil
+        }
+        guard let localSecret else {
+            throw PubkyServiceError.authFailed("Local Pubky session did not include its secret key")
+        }
+        return secretKeyHex(from: localSecret)
     }
 
     private func activateBootstrapResult(
@@ -1196,12 +1097,33 @@ actor PaykitSdkService {
     }
 
     private func publishReceiverMarkerIfLiveSessionAvailable(using sdk: PaykitSdk) async {
+        // A borrowed identity is owned by another app. Publishing a receiver marker would write
+        // persistent public state under the owner's namespace, bound to Bitkit's own noise key,
+        // and it would outlive the borrowed session once the source app goes away.
+        guard Self.shouldPublishReceiverMarker(loadSharedIdentityReference: {
+            try SharedPubkyIdentityReferenceStore.load()
+        }) else {
+            return
+        }
+
         do {
             let capabilities = try await receiverCapabilities(using: sdk)
             guard capabilities.privatePayments else { return }
             _ = try await sdk.publishPaykitReceiverMarker(capabilities: capabilities)
         } catch {
             Logger.warn("Failed to publish Paykit receiver marker: \(error)", context: "PaykitSdkService")
+        }
+    }
+
+    static func shouldPublishReceiverMarker(
+        loadSharedIdentityReference: () throws -> SharedPubkyIdentityRefV1?
+    ) -> Bool {
+        do {
+            return try loadSharedIdentityReference() == nil
+        } catch {
+            // An unreadable reference may still describe a borrowed identity, so fail closed.
+            Logger.warn("Skipping Paykit receiver marker: shared identity state is unreadable", context: "PaykitSdkService")
+            return false
         }
     }
 

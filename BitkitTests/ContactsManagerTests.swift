@@ -22,6 +22,24 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(PubkyPublicKeyFormat.normalized(prefixedKey), prefixedKey)
     }
 
+    func testPubkyPublicKeyFormatPreservesBareKeyBeginningWithPrefixText() {
+        let rawKey = "pubky\(String(repeating: "y", count: 47))"
+        let prefixedKey = "pubky\(rawKey)"
+
+        XCTAssertEqual(PubkyPublicKeyFormat.normalized(rawKey), prefixedKey)
+        XCTAssertEqual(PubkyPublicKeyFormat.normalized(prefixedKey), prefixedKey)
+        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated(rawKey), "pubk...yyyy")
+    }
+
+    func testPubkyPublicKeyFormatStripsPrefixFromNonCanonicalDisplayKeys() {
+        // Legacy and truncated keys are not bare keys, so the prefix remains display noise.
+        XCTAssertEqual(
+            PubkyPublicKeyFormat.displayTruncated("pubkyz6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"),
+            "z6Mk...2doK"
+        )
+        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated("pubkyz6MkhaXgBZDvotDk"), "z6Mk...otDk")
+    }
+
     func testPubkyPublicKeyFormatRejectsInvalidLengthAndCharacters() {
         XCTAssertNil(PubkyPublicKeyFormat.normalized("pubkyshort"))
         XCTAssertNil(PubkyPublicKeyFormat.normalized("pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5x0"))

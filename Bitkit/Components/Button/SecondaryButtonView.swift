@@ -8,6 +8,7 @@ struct SecondaryButtonView: View {
     let isPressed: Bool
     var isLoading: Bool = false
     let shouldExpand: Bool
+    let labelKerning: CGFloat
 
     var body: some View {
         HStack(spacing: 8) {
@@ -22,7 +23,7 @@ struct SecondaryButtonView: View {
             } else if size == .small {
                 CaptionBText(title, textColor: textColor)
             } else {
-                BodySSBText(title, textColor: textColor)
+                BodySSBText(title, textColor: textColor, kerning: labelKerning)
             }
         }
         .frame(maxWidth: (size == .large || shouldExpand) ? .infinity : nil)
