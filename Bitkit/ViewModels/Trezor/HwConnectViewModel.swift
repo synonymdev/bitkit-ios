@@ -6,36 +6,96 @@ import Foundation
 struct HwConnectResult: Equatable {
     let deviceId: String
     let walletId: String?
-    /// Name of the identity this session opened — its Bitkit-side label once it has one.
+    /// Name of the identity this session opened: its Bitkit-side label once it has one.
     let name: String
     /// The device's own name, from its label/model. A passphrase wallet has no label of its own
-    /// until the user gives it one, so this is what its step is prefilled with — the label of the
+    /// until the user gives it one, so this is what its step is prefilled with; the label of the
     /// identity that happened to be open before it is not its name.
     let deviceDefaultName: String
+    let vendor: HwWalletVendor
 
-    init(deviceId: String, walletId: String?, name: String, deviceDefaultName: String? = nil) {
+    init(
+        deviceId: String,
+        walletId: String?,
+        name: String,
+        deviceDefaultName: String? = nil,
+        vendor: HwWalletVendor = .trezor
+    ) {
         self.deviceId = deviceId
         self.walletId = walletId
         self.name = name
         self.deviceDefaultName = deviceDefaultName ?? name
+        self.vendor = vendor
     }
 }
 
-/// Device discovery/connection seam the Connect Hardware flow drives. `TrezorHwConnectService` is
-/// the production adapter over `TrezorManager`; tests inject a fake so the flow can be exercised
+/// A hardware wallet a scan found nearby. It carries the record its vendor's scan returned, so
+/// connecting dials the device exactly as it was found.
+struct HwNearbyDevice: Equatable, Identifiable {
+    enum Source: Equatable {
+        case trezor(TrezorDeviceInfo)
+        case jade(JadeDeviceInfo)
+    }
+
+    let source: Source
+
+    var vendor: HwWalletVendor {
+        switch source {
+        case .trezor: .trezor
+        case .jade: .blockstream
+        }
+    }
+
+    /// A Jade is known by its path until connecting reads its identity from the device.
+    var id: String {
+        switch source {
+        case let .trezor(device): device.id
+        case let .jade(device): device.path
+        }
+    }
+
+    var path: String {
+        switch source {
+        case let .trezor(device): device.path
+        case let .jade(device): device.path
+        }
+    }
+
+    var name: String? {
+        switch source {
+        case let .trezor(device): device.name
+        case let .jade(device): device.name
+        }
+    }
+
+    /// A Jade reports its model only once connected.
+    var model: String? {
+        switch source {
+        case let .trezor(device): device.model
+        case .jade: nil
+        }
+    }
+}
+
+/// Device discovery/connection seam the Connect Hardware flow drives. `HwConnectService` is the
+/// production adapter over the vendor managers; tests inject a fake so the flow can be exercised
 /// without the BLE stack.
 @MainActor
 protocol HwConnectServicing {
-    /// Reachable devices, unpaired first. Discovery normally hides paired devices; one is offered as
-    /// a fallback so its passphrase wallets can be added after the initial pairing.
-    func scanForDevices() async throws -> [TrezorDeviceInfo]
-    func connect(to device: TrezorDeviceInfo) async throws -> HwConnectResult
+    /// Reachable devices of every vendor, unpaired first. Discovery normally hides paired devices; one
+    /// is offered as a fallback so its passphrase wallets can be added after the initial pairing.
+    func scanForDevices() async throws -> [HwNearbyDevice]
+    func connect(to device: HwNearbyDevice) async throws -> HwConnectResult
     /// Opens the hidden wallet the passphrase unlocks and starts watching it; returns its wallet id.
     func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String
     /// The Bitkit-side name already stored for `walletId`, or nil when it has none.
     func storedName(forWallet walletId: String) -> String?
     func setWalletLabel(walletId: String, label: String)
     func cancelPairingCode()
+    /// Stops a connect in flight to `device` and releases its session. A task cancel alone never
+    /// reaches a Jade waiting for its PIN, and a Trezor session opened for a pairing the user left
+    /// must not linger.
+    func cancelPendingConnection(to device: HwNearbyDevice)
 }
 
 /// Backs the Connect Hardware bottom-sheet flow (Intro → Searching → Found → Paired). Drives device
@@ -67,7 +127,11 @@ final class HwConnectViewModel {
 
     private(set) var phase: Phase = .intro
     private(set) var isConnecting = false
-    private(set) var foundDevice: TrezorDeviceInfo?
+    private(set) var foundDevice: HwNearbyDevice?
+    /// Vendor of the device being paired, which decides the copy, illustration and steps shown.
+    private(set) var vendor: HwWalletVendor = .trezor
+    /// A Jade being connected is waiting for its PIN on the device.
+    private(set) var isUnlocking = false
     private(set) var foundDeviceModel = ""
     private(set) var pairedDeviceId: String?
     /// Identity paired on `pairedDeviceId`; resolved once its watch-only wallet is known.
@@ -136,11 +200,12 @@ final class HwConnectViewModel {
         }
     }
 
-    private func onDeviceFound(_ device: TrezorDeviceInfo) {
+    private func onDeviceFound(_ device: HwNearbyDevice) {
         searchTask?.cancel()
         searchTask = nil
         foundDevice = device
-        foundDeviceModel = resolveHwWalletName(label: nil, model: device.model)
+        vendor = device.vendor
+        foundDeviceModel = resolveHwWalletName(label: nil, model: device.model, vendor: device.vendor)
         errorMessage = nil
         phase = .found
     }
@@ -173,6 +238,8 @@ final class HwConnectViewModel {
 
     private func onConnected(_ result: HwConnectResult) {
         isConnecting = false
+        isUnlocking = false
+        vendor = result.vendor
         pairedDeviceId = result.deviceId
         // The device may hold several identities, so take the one this session opened rather than
         // any wallet sharing its transport id.
@@ -189,15 +256,37 @@ final class HwConnectViewModel {
 
     private func onConnectFailed(_ error: Error) {
         isConnecting = false
-        errorMessage = (error as? AppError)?.message ?? t("hardware__connect_error")
+        isUnlocking = false
+        errorMessage = connectErrorMessage(for: error)
         phase = .found
     }
 
-    /// The device asked for its one-time pairing code mid-connect; surface the inline step. Only
-    /// while a connect is in flight, so a stray flag can't hijack the flow.
+    /// A Jade failure keeps its own copy (a wrong PIN, the pinserver, a stale Bluetooth bond), which
+    /// the generic connect message would hide.
+    private func connectErrorMessage(for error: Error) -> String {
+        guard vendor == .blockstream else {
+            return (error as? AppError)?.message ?? t("hardware__connect_error")
+        }
+        if let jadeMessage = HwErrorPresenter.jadeMessage(from: error) {
+            return jadeMessage
+        }
+        if let appError = error as? AppError, !appError.isGeneric {
+            return appError.message
+        }
+        return t("hardware__connect_error")
+    }
+
+    /// The Trezor asked for its one-time pairing code mid-connect; surface the inline step. Only
+    /// while a Trezor connect is in flight, so a stray flag can't hijack the flow.
     func onPairingCodeRequested() {
-        guard isConnecting else { return }
+        guard isConnecting, vendor == .trezor else { return }
         phase = .pairCode
+    }
+
+    /// The device started or stopped waiting for its PIN. The hint only belongs to a Jade this flow is
+    /// connecting; a background reconnect never unlocks.
+    func onUnlockingChanged(_ isDeviceUnlocking: Bool) {
+        isUnlocking = isDeviceUnlocking && isConnecting && vendor == .blockstream
     }
 
     // MARK: - Paired
@@ -249,6 +338,7 @@ final class HwConnectViewModel {
     /// Each identity is labelled on its own paired step, so the one being left is persisted before
     /// the next passphrase wallet takes over the field.
     func onPassphraseClick() {
+        guard vendor.supportsPassphraseWallets else { return }
         persistLabel()
         passphraseInput = ""
         errorMessage = nil
@@ -270,7 +360,11 @@ final class HwConnectViewModel {
     /// The passphrase is dropped from state as soon as the device answers: it lives in the Trezor
     /// session, never in Bitkit.
     func onPassphraseSubmit() {
-        guard let deviceId = pairedDeviceId, !passphraseInput.isEmpty, connectTask == nil else { return }
+        guard vendor.supportsPassphraseWallets,
+              let deviceId = pairedDeviceId,
+              !passphraseInput.isEmpty,
+              connectTask == nil
+        else { return }
         let passphrase = passphraseInput
         isSubmittingPassphrase = true
         errorMessage = nil
@@ -341,12 +435,22 @@ final class HwConnectViewModel {
 
     // MARK: - Teardown
 
-    /// Cancels a pending connect/pairing-code request when the user backs out mid-connect.
+    /// Cancels a pending connect when the user backs out mid-connect, releasing the device it was
+    /// opening. Nothing is released when no connect is in flight, so leaving the sheet after pairing
+    /// keeps the session the flow just opened.
     func cancelConnect() {
+        let wasConnecting = connectTask != nil || isConnecting
         connectTask?.cancel()
         connectTask = nil
-        service.cancelPairingCode()
+        if wasConnecting {
+            if let foundDevice {
+                service.cancelPendingConnection(to: foundDevice)
+            } else {
+                service.cancelPairingCode()
+            }
+        }
         isConnecting = false
+        isUnlocking = false
     }
 
     /// Called when the sheet is dismissed: stop scanning/connecting and drop any pending pairing.
@@ -356,104 +460,5 @@ final class HwConnectViewModel {
         cancelConnect()
         passphraseInput = ""
         isSubmittingPassphrase = false
-    }
-}
-
-/// Production `HwConnectServicing` over `TrezorManager`. iOS is BLE-only, so discovery is a single
-/// BLE scan filtered to unpaired devices; `connect(to:)` reports success by inspecting the manager's
-/// `connectedDevice`/`deviceFeatures` (its own `connect` returns void and stores state) and surfaces
-/// the manager's error otherwise.
-@MainActor
-struct TrezorHwConnectService: HwConnectServicing {
-    let trezorManager: TrezorManager
-    let hwWalletManager: HwWalletManager
-
-    func scanForDevices() async throws -> [TrezorDeviceInfo] {
-        await trezorManager.startScan()
-        if let error = trezorManager.error {
-            throw AppError(message: error, debugMessage: nil)
-        }
-        // A device that is already paired is only offered once no new one is found, so its
-        // passphrase wallets can be added afterwards — otherwise Add Hardware Wallet would search
-        // forever on the only device in range.
-        let (paired, unpaired) = trezorManager.devices.partitioned { HwKnownDeviceStorage.isKnown(id: $0.id, vendor: .trezor) }
-        return unpaired + paired
-    }
-
-    func connect(to device: TrezorDeviceInfo) async throws -> HwConnectResult {
-        await trezorManager.connect(device: device)
-        guard let connected = trezorManager.connectedDevice, connected.id == device.id else {
-            throw AppError(message: trezorManager.error ?? t("hardware__connect_error"), debugMessage: nil)
-        }
-        let walletId = trezorManager.connectedWalletId
-        let deviceDefaultName = resolveHwWalletName(
-            label: connected.label ?? trezorManager.deviceFeatures?.label,
-            model: connected.model ?? trezorManager.deviceFeatures?.model
-        )
-        return HwConnectResult(
-            deviceId: connected.id,
-            walletId: walletId,
-            name: Self.pairedName(
-                walletId: walletId,
-                storedEntries: HwKnownDeviceStorage.loadAll(),
-                deviceDefaultName: deviceDefaultName
-            ),
-            deviceDefaultName: deviceDefaultName
-        )
-    }
-
-    /// The name to show the paired step under, so re-pairing doesn't appear to rename the wallet.
-    ///
-    /// Read from the store rather than from the published wallet list: connecting has just written
-    /// this identity's entry, and the tiles only catch up on the next device push. A wallet that was
-    /// removed and is now being re-added is not in that list at all, so its name — restored from a
-    /// backup or kept through the removal, and adopted onto the entry a moment ago — would fall back
-    /// to the device's own. Finishing the step then persists that fallback over it.
-    static func pairedName(
-        walletId: String?,
-        storedEntries: [HwKnownDevice],
-        deviceDefaultName: String
-    ) -> String {
-        storedName(walletId: walletId, storedEntries: storedEntries) ?? deviceDefaultName
-    }
-
-    /// The Bitkit-side name stored for `walletId`, or nil when it has none of its own.
-    static func storedName(walletId: String?, storedEntries: [HwKnownDevice]) -> String? {
-        guard let walletId,
-              let label = storedEntries.first(where: { $0.resolvedWalletId == walletId })?.customLabel,
-              !label.isEmpty
-        else {
-            return nil
-        }
-        return label
-    }
-
-    func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String {
-        try await hwWalletManager.connectWithPassphrase(deviceId: deviceId, passphrase: passphrase)
-    }
-
-    func storedName(forWallet walletId: String) -> String? {
-        Self.storedName(walletId: walletId, storedEntries: HwKnownDeviceStorage.loadAll())
-    }
-
-    func setWalletLabel(walletId: String, label: String) {
-        hwWalletManager.renameWallet(walletId: walletId, newName: label)
-    }
-
-    func cancelPairingCode() {
-        trezorManager.cancelPairingCode()
-    }
-}
-
-private extension Array {
-    /// Splits into (matching, rest), preserving order within each group.
-    func partitioned(by isMatch: (Element) -> Bool) -> (matching: [Element], rest: [Element]) {
-        reduce(into: ([Element](), [Element]())) { result, element in
-            if isMatch(element) {
-                result.0.append(element)
-            } else {
-                result.1.append(element)
-            }
-        }
     }
 }

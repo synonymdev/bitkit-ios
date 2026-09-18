@@ -2,13 +2,15 @@ import SwiftUI
 
 /// Paired step, shared by the standard wallet and by a passphrase wallet found afterwards: both
 /// confirm the watched balance and its Bitkit-side label over the coin illustration, and both can add
-/// another passphrase wallet from the same device before finishing.
+/// another passphrase wallet from the same device before finishing. A Jade holds one wallet per
+/// device, so its step offers Finish alone.
 struct HwPairedView: View {
     let deviceName: String
     let balanceSats: UInt64
     @Binding var labelText: String
     let onPassphrase: () -> Void
     let onFinish: () -> Void
+    var vendor: HwWalletVendor = .trezor
     /// Set for the step confirming a passphrase wallet, which says so in its own words.
     var isPassphraseWallet = false
 
@@ -16,7 +18,7 @@ struct HwPairedView: View {
     private let coinsWidthRatio: CGFloat = 256.0 / 375.0
 
     private var header: String {
-        isPassphraseWallet ? t("hardware__passphrase_paired_header") : t("hardware__paired_header")
+        isPassphraseWallet ? t("hardware__passphrase_paired_header") : vendor.pairedHeader
     }
 
     private var text: String {
@@ -67,10 +69,12 @@ struct HwPairedView: View {
                 Spacer(minLength: 0)
 
                 HStack(spacing: 16) {
-                    CustomButton(title: t("hardware__passphrase_button"), variant: .secondary, shouldExpand: true) {
-                        onPassphrase()
+                    if vendor.supportsPassphraseWallets {
+                        CustomButton(title: t("hardware__passphrase_button"), variant: .secondary, shouldExpand: true) {
+                            onPassphrase()
+                        }
+                        .accessibilityIdentifier("HardwareWalletPairedPassphrase")
                     }
-                    .accessibilityIdentifier("HardwareWalletPairedPassphrase")
 
                     CustomButton(title: t("hardware__paired_finish"), shouldExpand: true) {
                         onFinish()
@@ -115,6 +119,21 @@ private struct HwPairedBalanceView: View {
         labelText: .constant("Trezor Safe 3"),
         onPassphrase: {},
         onFinish: {}
+    )
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.black)
+    .environmentObject(CurrencyViewModel())
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Jade") {
+    HwPairedView(
+        deviceName: "Jade",
+        balanceSats: 10_562_411,
+        labelText: .constant("Jade"),
+        onPassphrase: {},
+        onFinish: {},
+        vendor: .blockstream
     )
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black)

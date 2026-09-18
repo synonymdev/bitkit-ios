@@ -6,17 +6,24 @@ import XCTest
 final class HwConnectViewModelTests: XCTestCase {
     private var service: FakeHwConnectService!
     private var sut: HwConnectViewModel!
+    private var jadeLog: JadeCallLog!
+    private var jadeService: FakeJadeService!
 
     override func setUp() {
         super.setUp()
         service = FakeHwConnectService()
         sut = HwConnectViewModel(service: service)
+        jadeLog = JadeCallLog()
+        jadeService = FakeJadeService(log: jadeLog)
     }
 
     override func tearDown() {
+        service.connectGate?.open()
         sut.reset()
         sut = nil
         service = nil
+        jadeService = nil
+        jadeLog = nil
         super.tearDown()
     }
 
@@ -31,7 +38,16 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertEqual(sut.phase, .found)
         XCTAssertEqual(sut.foundDevice?.id, "dev1")
         XCTAssertEqual(sut.foundDeviceModel, "Trezor Safe 3")
+        XCTAssertEqual(sut.vendor, .trezor)
         XCTAssertNil(sut.errorMessage)
+    }
+
+    func testFoundJadeTakesItsVendorAndModelName() async {
+        await givenJadeFound()
+
+        XCTAssertEqual(sut.foundDevice, jadeDevice)
+        XCTAssertEqual(sut.vendor, .blockstream)
+        XCTAssertEqual(sut.foundDeviceModel, "Jade")
     }
 
     func testOnIntroContinueSurfacesSearchFailureWhileSearching() async {
@@ -53,7 +69,7 @@ final class HwConnectViewModelTests: XCTestCase {
         sut.onConnect()
 
         await waitUntil { self.sut.phase == .paired }
-        XCTAssertEqual(service.connectedDeviceIds, ["dev1"])
+        XCTAssertEqual(service.connectedDevices, [makeDevice(id: "dev1", model: "Safe 3")], "the scanned record is dialled as found")
         XCTAssertEqual(sut.pairedDeviceId, "dev1")
         XCTAssertEqual(sut.deviceName, "Trezor Safe 3")
         XCTAssertEqual(sut.labelInput, "Trezor Safe 3")
@@ -89,6 +105,172 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertEqual(sut.errorMessage, t("hardware__connect_error"))
     }
 
+    func testConnectingAJadePairsUnderItsVendor() async {
+        await givenJadeFound()
+        service.connectResult = .success(jadeResult)
+
+        sut.onConnect()
+
+        await waitUntil { self.sut.phase == .paired }
+        XCTAssertEqual(service.connectedDevices, [jadeDevice])
+        XCTAssertEqual(sut.vendor, .blockstream)
+        XCTAssertEqual(sut.pairedDeviceId, JadeFixtures.deviceId)
+        XCTAssertEqual(sut.pairedWalletId, JadeFixtures.walletId)
+        XCTAssertEqual(sut.labelInput, "Jade")
+    }
+
+    /// A wrong PIN, the pinserver or a stale Bluetooth bond each have their own copy, which the
+    /// generic connect message would hide, whether core's error arrives as is or boxed.
+    func testJadeConnectFailureShowsJadeCopy() async {
+        await givenJadeFound()
+        service.connectResult = .failure(JadeError.InvalidPin)
+
+        sut.onConnect()
+
+        await waitUntil { self.sut.errorMessage != nil }
+        XCTAssertEqual(sut.phase, .found)
+        XCTAssertEqual(sut.errorMessage, t("hardware__jade_invalid_pin"))
+
+        service.connectResult = .failure(Bitkit.AppError(error: JadeError.InvalidPin))
+        sut.onConnect()
+        XCTAssertNil(sut.errorMessage)
+
+        await waitUntil { self.sut.errorMessage != nil }
+        XCTAssertEqual(sut.errorMessage, t("hardware__jade_invalid_pin"))
+        XCTAssertFalse(sut.isConnecting)
+    }
+
+    func testJadeConnectFailureWithoutAJadeErrorKeepsItsOwnWordsOrTheConnectError() async {
+        await givenJadeFound()
+        service.connectResult = .failure(Bitkit.AppError(message: "Could not read any account keys", debugMessage: nil))
+
+        sut.onConnect()
+
+        await waitUntil { self.sut.errorMessage != nil }
+        XCTAssertEqual(sut.errorMessage, "Could not read any account keys")
+
+        service.connectResult = .failure(Bitkit.AppError(error: TestError.stub))
+        sut.onConnect()
+
+        await waitUntil { self.sut.errorMessage != nil }
+        XCTAssertEqual(sut.errorMessage, t("hardware__connect_error"), "a generic error has no words of its own")
+    }
+
+    // MARK: - Unlocking
+
+    func testUnlockHintShowsOnlyWhileAJadeIsConnecting() async {
+        await givenJadeFound()
+        sut.onUnlockingChanged(true)
+        XCTAssertFalse(sut.isUnlocking, "no connect is in flight")
+
+        service.connectGate = AsyncGate()
+        service.connectResult = .success(jadeResult)
+        sut.onConnect()
+        sut.onUnlockingChanged(true)
+        XCTAssertTrue(sut.isUnlocking)
+
+        sut.onUnlockingChanged(false)
+        XCTAssertFalse(sut.isUnlocking)
+
+        sut.onUnlockingChanged(true)
+        service.connectGate?.open()
+        await waitUntil { self.sut.phase == .paired }
+        XCTAssertFalse(sut.isUnlocking, "pairing ends the PIN wait")
+    }
+
+    func testUnlockHintNeverShowsForATrezor() async {
+        await givenDeviceFound()
+        service.connectGate = AsyncGate()
+
+        sut.onConnect()
+        sut.onUnlockingChanged(true)
+
+        XCTAssertFalse(sut.isUnlocking)
+    }
+
+    func testAFailedJadeConnectEndsTheUnlockHint() async {
+        await givenJadeFound()
+        service.connectGate = AsyncGate()
+        service.connectResult = .failure(JadeError.InvalidPin)
+        sut.onConnect()
+        sut.onUnlockingChanged(true)
+
+        service.connectGate?.open()
+
+        await waitUntil { self.sut.errorMessage != nil }
+        XCTAssertFalse(sut.isUnlocking)
+    }
+
+    // MARK: - Cancel
+
+    func testCancelConnectCancelsThePendingJadeConnection() async {
+        await givenJadeConnecting()
+        sut.onUnlockingChanged(true)
+
+        sut.cancelConnect()
+
+        XCTAssertEqual(service.cancelledConnections, [jadeDevice])
+        XCTAssertEqual(service.cancelledConnections.first?.path, jadeDevice.path)
+        XCTAssertEqual(service.cancelPairingCount, 0, "a Jade has no pairing code to cancel")
+        XCTAssertFalse(sut.isConnecting)
+        XCTAssertFalse(sut.isUnlocking)
+    }
+
+    func testDismissingTheSheetMidConnectCancelsThePendingConnection() async {
+        await givenJadeConnecting()
+
+        sut.reset()
+
+        XCTAssertEqual(service.cancelledConnections, [jadeDevice])
+        XCTAssertFalse(sut.isConnecting)
+    }
+
+    func testCancelWithoutAConnectInFlightLeavesTheJadeAlone() async {
+        await givenJadeFound()
+
+        sut.cancelConnect()
+        sut.reset()
+
+        XCTAssertTrue(service.cancelledConnections.isEmpty)
+        XCTAssertEqual(service.cancelPairingCount, 0)
+    }
+
+    /// Leaving the sheet once pairing finished must keep the session the flow just opened.
+    func testDismissingAfterPairingKeepsTheSession() async {
+        await givenDevicePaired()
+
+        sut.reset()
+
+        XCTAssertTrue(service.cancelledConnections.isEmpty)
+        XCTAssertEqual(service.cancelPairingCount, 0)
+    }
+
+    /// The Trezor side drops its pairing code prompt and closes the session opened for the pairing
+    /// the user left.
+    func testCancelConnectReleasesTheTrezorBeingPaired() async {
+        await givenDeviceFound()
+        service.connectGate = AsyncGate()
+        sut.onConnect()
+        await waitUntil { !self.service.connectedDevices.isEmpty }
+
+        sut.cancelConnect()
+
+        XCTAssertEqual(service.cancelledConnections, [makeDevice(id: "dev1", model: "Safe 3")])
+        XCTAssertFalse(sut.isConnecting)
+    }
+
+    func testACancelledConnectDoesNotReportItsResult() async {
+        await givenJadeConnecting()
+        service.connectResult = .success(jadeResult)
+
+        sut.cancelConnect()
+        service.connectGate?.open()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(sut.phase, .found)
+        XCTAssertNil(sut.pairedDeviceId)
+    }
+
     // MARK: - Pairing code
 
     func testPairingCodeRequestSurfacesInlinePairCodeStepWhileConnecting() async {
@@ -107,6 +289,15 @@ final class HwConnectViewModelTests: XCTestCase {
     func testPairingCodeRequestIgnoredWhenNotConnecting() {
         sut.onPairingCodeRequested()
         XCTAssertEqual(sut.phase, .intro)
+    }
+
+    func testPairingCodeRequestIgnoredWhileConnectingAJade() async {
+        await givenJadeConnecting()
+
+        sut.onPairingCodeRequested()
+
+        XCTAssertEqual(sut.phase, .found)
+        XCTAssertTrue(sut.isConnecting)
     }
 
     // MARK: - Paired
@@ -316,6 +507,27 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertEqual(service.setLabelCalls.first?.label, "Standard Funds")
     }
 
+    /// A Jade holds one wallet per device, so there are no passphrase wallets to add.
+    func testJadeHidesPassphraseAndIgnoresItsClick() async {
+        await givenJadeFound()
+        service.connectResult = .success(jadeResult)
+        sut.onConnect()
+        await waitUntil { self.sut.phase == .paired }
+        XCTAssertFalse(sut.vendor.supportsPassphraseWallets)
+
+        sut.onPassphraseClick()
+        XCTAssertEqual(sut.phase, .paired)
+        XCTAssertTrue(service.setLabelCalls.isEmpty, "nothing is left, so nothing is persisted")
+
+        sut.onPassphraseChange("secret")
+        sut.onPassphraseSubmit()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertFalse(sut.isSubmittingPassphrase)
+        XCTAssertTrue(service.passphraseCalls.isEmpty)
+        XCTAssertEqual(sut.phase, .paired)
+    }
+
     func testBackFromThePassphraseStepDropsWhatWasTyped() async {
         await givenDevicePaired()
         sut.onPassphraseClick()
@@ -398,7 +610,122 @@ final class HwConnectViewModelTests: XCTestCase {
         XCTAssertTrue(finished)
     }
 
+    // MARK: - Connect service
+
+    func testScanOffersUnpairedDevicesOfEitherVendorBeforePairedOnes() throws {
+        let pairedTrezor = makeDevice(id: "paired-trezor", model: "Safe 3")
+        let newTrezor = makeDevice(id: "new-trezor", model: "Safe 5")
+        let pairedJade = makeJadeDevice()
+        let newJade = makeJadeDevice(path: "ble:new-jade", name: "Jade 111111")
+        let pairedIds: Set<String> = [pairedTrezor.id, pairedJade.id]
+
+        let devices = try HwConnectService.nearbyDevices(
+            trezor: .success([pairedTrezor, newTrezor]),
+            jade: .success([pairedJade, newJade]),
+            isPaired: { pairedIds.contains($0.id) }
+        )
+
+        XCTAssertEqual(devices, [newTrezor, newJade, pairedTrezor, pairedJade])
+    }
+
+    /// A rebooted Jade advertises under a new Bluetooth identifier, so only its name ties it to its
+    /// paired entry. It is still offered, after any new device, so it can be paired again.
+    func testScanOffersAPairedJadeThatCameBackUnderANewIdentifier() throws {
+        let connectService = makeConnectService(jadeManager: makeJadeManager(knownDevices: [JadeFixtures.knownEntry()]))
+        let readvertised = makeJadeDevice(path: JadeFixtures.readvertisedPath)
+        let newJade = makeJadeDevice(path: "ble:new-jade", name: "Jade 111111")
+
+        XCTAssertTrue(connectService.isPaired(readvertised))
+        XCTAssertFalse(connectService.isPaired(newJade))
+        XCTAssertEqual(
+            try HwConnectService.nearbyDevices(trezor: .success([]), jade: .success([readvertised, newJade]), isPaired: connectService.isPaired),
+            [newJade, readvertised]
+        )
+        XCTAssertEqual(
+            try HwConnectService.nearbyDevices(trezor: .success([]), jade: .success([readvertised]), isPaired: connectService.isPaired),
+            [readvertised]
+        )
+    }
+
+    /// A Jade scan fails quietly while core is busy, so only a failed Trezor scan with nothing found
+    /// is reported.
+    func testScanFailsOnlyWhenTheTrezorScanFailedAndNothingWasFound() throws {
+        let trezorFailure = Bitkit.AppError(message: "Bluetooth scan failed", debugMessage: nil)
+        let trezor = makeDevice(id: "dev1", model: "Safe 3")
+
+        XCTAssertThrowsError(
+            try HwConnectService.nearbyDevices(trezor: .failure(trezorFailure), jade: .failure(TestError.stub), isPaired: { _ in false })
+        ) { error in
+            XCTAssertEqual((error as? Bitkit.AppError)?.message, "Bluetooth scan failed")
+        }
+        XCTAssertThrowsError(
+            try HwConnectService.nearbyDevices(trezor: .failure(trezorFailure), jade: .success([]), isPaired: { _ in false })
+        )
+        XCTAssertEqual(
+            try HwConnectService.nearbyDevices(trezor: .success([]), jade: .failure(TestError.stub), isPaired: { _ in false }),
+            []
+        )
+        XCTAssertEqual(
+            try HwConnectService.nearbyDevices(trezor: .success([trezor]), jade: .failure(TestError.stub), isPaired: { _ in false }),
+            [trezor]
+        )
+    }
+
+    func testScanKeepsJadeResultsWhenTheTrezorScanFails() throws {
+        let devices = try HwConnectService.nearbyDevices(
+            trezor: .failure(TestError.stub),
+            jade: .success([jadeDevice]),
+            isPaired: { _ in false }
+        )
+
+        XCTAssertEqual(devices, [jadeDevice])
+    }
+
+    func testTheServicePairsAJadeUnderItsVendor() async throws {
+        jadeService.stubs.scanned = [JadeFixtures.device()]
+        let jadeManager = makeJadeManager()
+        let connectService = makeConnectService(jadeManager: jadeManager)
+
+        let result = try await connectService.connect(to: jadeDevice)
+
+        XCTAssertEqual(result.vendor, .blockstream)
+        XCTAssertEqual(result.deviceId, JadeFixtures.deviceId)
+        XCTAssertEqual(result.deviceDefaultName, "Jade")
+        XCTAssertEqual(jadeService.calls.connectPaths, [JadeFixtures.blePath])
+        XCTAssertEqual(jadeManager.connected?.id, JadeFixtures.deviceId)
+    }
+
+    /// A task cancel never reaches core, so leaving the pairing has to cancel the Jade request itself.
+    func testTheServiceCancelsAPendingJadeConnectionOnTheDevice() async {
+        let jadeManager = makeJadeManager()
+        let connectService = makeConnectService(jadeManager: jadeManager)
+
+        connectService.cancelPendingConnection(to: jadeDevice)
+
+        await waitUntil { self.jadeLog.contains("service.disconnect.done") }
+        XCTAssertTrue(jadeLog.contains("service.cancel"))
+        XCTAssertTrue(jadeLog.contains("transport.disconnect:\(JadeFixtures.blePath)"))
+    }
+
     // MARK: - Helpers
+
+    private func makeJadeManager(knownDevices: [HwKnownDevice] = []) -> JadeManager {
+        JadeManager(
+            service: jadeService,
+            transport: FakeJadeTransportControl(log: jadeLog),
+            store: InMemoryJadeKnownDeviceStore(devices: knownDevices),
+            backgroundTasks: FakeBackgroundTasks(),
+            network: { .regtest }
+        )
+    }
+
+    private func makeConnectService(jadeManager: JadeManager) -> HwConnectService {
+        HwConnectService(
+            trezorManager: TrezorManager(),
+            jadeManager: jadeManager,
+            hwWalletManager: HwWalletManager(jadeSession: jadeManager)
+        )
+    }
 
     private func givenDeviceFound() async {
         service.nearbyDevices = [makeDevice(id: "dev1", model: "Safe 3")]
@@ -413,12 +740,26 @@ final class HwConnectViewModelTests: XCTestCase {
         await waitUntil { self.sut.phase == .paired }
     }
 
+    private func givenJadeFound() async {
+        service.nearbyDevices = [jadeDevice]
+        sut.onIntroContinue()
+        await waitUntil { self.sut.phase == .found }
+    }
+
+    /// A Jade connect held in flight, as while the device waits for its PIN.
+    private func givenJadeConnecting() async {
+        await givenJadeFound()
+        service.connectGate = AsyncGate()
+        sut.onConnect()
+        await waitUntil { !self.service.connectedDevices.isEmpty }
+    }
+
     // MARK: - Paired step name
 
     /// Re-adding a removed wallet is the case the published wallet list cannot answer: the wallet is
     /// not in it yet, but the entry pairing just wrote already carries the name kept for it.
     func testPairedNameUsesTheStoredLabelOfAWalletMissingFromTheWalletList() {
-        let name = TrezorHwConnectService.pairedName(
+        let name = HwConnectService.pairedName(
             walletId: standardWalletId,
             storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: "No Pass")],
             deviceDefaultName: "Trezor T"
@@ -428,7 +769,7 @@ final class HwConnectViewModelTests: XCTestCase {
     }
 
     func testPairedNameFallsBackToTheDeviceNameWhenTheWalletWasNeverNamed() {
-        let name = TrezorHwConnectService.pairedName(
+        let name = HwConnectService.pairedName(
             walletId: standardWalletId,
             storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: nil)],
             deviceDefaultName: "Trezor T"
@@ -440,7 +781,7 @@ final class HwConnectViewModelTests: XCTestCase {
     /// A brand-new passphrase wallet has no entry of its own yet, and must not borrow the name of the
     /// identity that happened to be open before it.
     func testPairedNameIgnoresAnotherIdentitysLabel() {
-        let name = TrezorHwConnectService.pairedName(
+        let name = HwConnectService.pairedName(
             walletId: hiddenWalletId,
             storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: "No Pass")],
             deviceDefaultName: "Trezor T"
@@ -450,7 +791,7 @@ final class HwConnectViewModelTests: XCTestCase {
     }
 
     func testPairedNameFallsBackToTheDeviceNameBeforeTheIdentityResolves() {
-        let name = TrezorHwConnectService.pairedName(
+        let name = HwConnectService.pairedName(
             walletId: nil,
             storedEntries: [makeStoredEntry(walletId: standardWalletId, customLabel: "No Pass")],
             deviceDefaultName: "Trezor T"
@@ -472,8 +813,8 @@ final class HwConnectViewModelTests: XCTestCase {
         )
     }
 
-    private func makeDevice(id: String, model: String?) -> TrezorDeviceInfo {
-        TrezorDeviceInfo(
+    private func makeDevice(id: String, model: String?) -> HwNearbyDevice {
+        HwNearbyDevice(source: .trezor(TrezorDeviceInfo(
             id: id,
             transportType: .bluetooth,
             name: nil,
@@ -481,7 +822,19 @@ final class HwConnectViewModelTests: XCTestCase {
             label: nil,
             model: model,
             isBootloader: false
-        )
+        )))
+    }
+
+    private func makeJadeDevice(path: String = JadeFixtures.blePath, name: String? = JadeFixtures.advertisedName) -> HwNearbyDevice {
+        HwNearbyDevice(source: .jade(JadeFixtures.device(path: path, name: name)))
+    }
+
+    private var jadeDevice: HwNearbyDevice {
+        makeJadeDevice()
+    }
+
+    private var jadeResult: HwConnectResult {
+        HwConnectResult(deviceId: JadeFixtures.deviceId, walletId: JadeFixtures.walletId, name: "Jade", vendor: .blockstream)
     }
 
     private let standardWalletId = "trezor:standard"
@@ -519,19 +872,22 @@ private enum TestError: Error {
 
 @MainActor
 private final class FakeHwConnectService: HwConnectServicing {
-    var nearbyDevices: [TrezorDeviceInfo] = []
+    var nearbyDevices: [HwNearbyDevice] = []
     var scanError: Error?
     var connectResult: Result<HwConnectResult, Error> = .failure(TestError.stub)
+    /// Holds every connect until opened, so a test can act while one is in flight.
+    var connectGate: AsyncGate?
     var passphraseResult: Result<String, Error> = .failure(TestError.stub)
     var storedNames: [String: String] = [:]
 
     private(set) var scanCount = 0
-    private(set) var connectedDeviceIds: [String] = []
+    private(set) var connectedDevices: [HwNearbyDevice] = []
     private(set) var passphraseCalls: [(deviceId: String, passphrase: String)] = []
     private(set) var setLabelCalls: [(walletId: String, label: String)] = []
     private(set) var cancelPairingCount = 0
+    private(set) var cancelledConnections: [HwNearbyDevice] = []
 
-    func scanForDevices() async throws -> [TrezorDeviceInfo] {
+    func scanForDevices() async throws -> [HwNearbyDevice] {
         scanCount += 1
         if let scanError {
             throw scanError
@@ -539,8 +895,9 @@ private final class FakeHwConnectService: HwConnectServicing {
         return nearbyDevices
     }
 
-    func connect(to device: TrezorDeviceInfo) async throws -> HwConnectResult {
-        connectedDeviceIds.append(device.id)
+    func connect(to device: HwNearbyDevice) async throws -> HwConnectResult {
+        connectedDevices.append(device)
+        await connectGate?.wait()
         return try connectResult.get()
     }
 
@@ -559,5 +916,9 @@ private final class FakeHwConnectService: HwConnectServicing {
 
     func cancelPairingCode() {
         cancelPairingCount += 1
+    }
+
+    func cancelPendingConnection(to device: HwNearbyDevice) {
+        cancelledConnections.append(device)
     }
 }
