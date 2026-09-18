@@ -7,8 +7,6 @@ enum SeedQRCodeDecoderError: Error {
 
 enum SeedQRCodeDecoder {
     private static let compactEntropyLength = 16
-    private static let standardPayloadLength = 48
-    private static let wordIndexLength = 4
 
     static func decode(_ payload: QRCodePayload) throws -> String {
         if let string = payload.string,
@@ -28,41 +26,21 @@ enum SeedQRCodeDecoder {
                 throw SeedQRCodeDecoderError.invalidPayload
             }
 
-            let mnemonic = try entropyToMnemonic(entropy: entropy)
-            try validateMnemonic(mnemonicPhrase: mnemonic)
-            return mnemonic
+            do {
+                return try decodeCompactSeedQr(entropy: entropy)
+            } catch {
+                throw SeedQRCodeDecoderError.invalidPayload
+            }
         }
 
         throw SeedQRCodeDecoderError.invalidPayload
     }
 
     private static func decodeStandard(_ payload: String) throws -> String? {
-        guard payload.utf8.count == standardPayloadLength,
-              payload.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 })
-        else {
-            return nil
-        }
-
-        let wordlist = getBip39Wordlist()
-        let bytes = Array(payload.utf8)
-        var words = [String]()
-        words.reserveCapacity(standardPayloadLength / wordIndexLength)
-
-        for offset in stride(from: 0, to: bytes.count, by: wordIndexLength) {
-            guard let index = Int(String(decoding: bytes[offset ..< offset + wordIndexLength], as: UTF8.self)),
-                  wordlist.indices.contains(index)
-            else {
-                throw SeedQRCodeDecoderError.invalidPayload
-            }
-            words.append(wordlist[index])
-        }
-
-        let mnemonic = words.joined(separator: " ")
         do {
-            try validateMnemonic(mnemonicPhrase: mnemonic)
-            return mnemonic
+            return try decodeStandardSeedQr(payload: payload)
         } catch {
-            throw SeedQRCodeDecoderError.invalidPayload
+            return nil
         }
     }
 
