@@ -44,6 +44,11 @@ final class PushNotificationManager: ObservableObject {
     }
 
     func registerWithBackend(deviceToken: String) async throws {
+        guard !Env.isE2E else {
+            Logger.info("Skipped push registration in E2E build")
+            return
+        }
+
         try await waitForNodeToBeReady()
 
         guard let nodeId = LightningService.shared.nodeId else {
