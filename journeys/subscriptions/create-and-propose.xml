@@ -1,0 +1,32 @@
+<journey name="Create And Propose Subscription">
+  <description>
+    Creator side. Builds a subscription from the Subscriptions overview and proposes it to a saved,
+    linked contact, ending on the sent confirmation and the new row in the CREATED section. Requires
+    the two linked Bitkit instances described in README.md.
+
+    iOS differs from the Android original in two places. The description field is a text editor rather
+    than a text field, so `ui-automation type-text --element-ref` refuses it; tap the field and type
+    with `ui-automation type-text --text` instead, or skip the description and take the More Info step
+    of review-and-subscribe.xml as absent. The sent confirmation headline wraps as "Sent" over
+    "Proposal" rather than reading on one line.
+  </description>
+  <actions>
+    <action>Launch the E2E Bitkit app with Paykit UI enabled and the payer instance saved as a contact linked on receiver path "bitkit/wallet"</action>
+    <action>Open the drawer menu and tap Subscriptions</action>
+    <action>Verify the Subscriptions screen (id "SubscriptionsScreen") appears with the Overview tab (id "Tab-overview") selected</action>
+    <action>Tap Create (id "SubscriptionCreate")</action>
+    <action>Verify the create sheet (id "CreateSubscription") appears with Choose Recipient disabled</action>
+    <action>Tap the amount pencil (id "SubscriptionEditAmount"), enter "5000" on the keypad, and tap Continue (id "PaymentRequestAmountContinue")</action>
+    <action>Verify the amount reads 5,000 sats</action>
+    <action>Type "Journey Sub" into the subscription name field (id "SubscriptionName")</action>
+    <action>Type a short description into the description field (id "SubscriptionDescription"), so the payer's detail screen offers More Info later</action>
+    <action>Verify the frequency selector has "Monthly" selected (id "Tab-month")</action>
+    <action>Tap Choose Recipient (id "SubscriptionChooseRecipient"), now enabled</action>
+    <action>Verify the recipient step lists the linked contact under CONTACTS and that Propose Subscription (id "SubscriptionPropose") is disabled</action>
+    <action>Tap the linked contact row and verify it shows the selected checkmark</action>
+    <action>Tap Propose Subscription (id "SubscriptionPropose")</action>
+    <action>Verify the sent confirmation (id "SubscriptionProposalSent") shows headline "Sent Proposal", the recipient contact, and the subscription name with 5,000 sats</action>
+    <action>Tap OK</action>
+    <action>Verify a row for "Journey Sub" appears in the CREATED section with subtitle "Proposal sent"</action>
+  </actions>
+</journey>

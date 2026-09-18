@@ -44,6 +44,10 @@ enum PubkyService {
         try await PaykitSdkService.shared.initialize()
     }
 
+    static func republishIdentityIfNeeded(publicKey: String? = nil) async {
+        await PaykitSdkService.shared.republishIdentityIfNeeded(publicKey: publicKey)
+    }
+
     // MARK: - Session Management
 
     /// Import a session secret into paykit and return the public key.
@@ -69,8 +73,16 @@ enum PubkyService {
     }
 
     /// Approve a pubkyauth:// request using the local secret key.
-    static func approveAuth(authUrl: String, expectedCapabilities: String, approvedClientID: String, secretKeyHex: String) async throws {
-        try await PaykitSdkService.shared.approveAuth(
+    static func approveAuth(
+        authUrl: String,
+        expectedCapabilities: String,
+        approvedClientID: String,
+        secretKeyHex: String,
+        sdkService: PaykitSdkService = .shared
+    ) async throws {
+        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+        try Task.checkCancellation()
+        try await sdkService.approveAuth(
             authUrl: authUrl,
             expectedCapabilities: expectedCapabilities,
             approvedClientID: approvedClientID,
@@ -78,7 +90,9 @@ enum PubkyService {
         )
     }
 
-    static func approveRingAuth(authUrl: String, secretKeyHex: String) async throws {
+    static func approveRingAuth(authUrl: String, secretKeyHex: String, sdkService: PaykitSdkService = .shared) async throws {
+        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+        try Task.checkCancellation()
         try await ServiceQueue.background(.core) {
             try await BitkitCore.approvePubkyAuth(authUrl: authUrl, secretKeyHex: secretKeyHex)
         }
@@ -88,9 +102,12 @@ enum PubkyService {
         authUrl: String,
         approvedClientID: String,
         unsignedPayload: Data,
-        secretKeyHex: String
+        secretKeyHex: String,
+        sdkService: PaykitSdkService = .shared
     ) async throws {
-        try await PaykitSdkService.shared.approveAuthWithCompanionClaim(
+        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+        try Task.checkCancellation()
+        try await sdkService.approveAuthWithCompanionClaim(
             authUrl: authUrl,
             expectedCapabilities: PubkyAuthClaim.watchOnlyAccountCapabilities,
             approvedClientID: approvedClientID,
@@ -306,7 +323,7 @@ enum PubkyService {
 // MARK: - Paykit SDK Runtime
 
 actor PaykitSdkService {
-    typealias ApprovalBootstrapFactory = (String, PubkyClientConfig) throws -> PubkySessionBootstrap
+    typealias BootstrapFactory = (String, PubkyClientConfig) throws -> PubkySessionBootstrap
 
     static let shared = PaykitSdkService()
     private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
@@ -320,16 +337,21 @@ actor PaykitSdkService {
     private let paymentAdapter = PaykitSdkPaymentAdapter()
     private let operationLock = PaykitSdkOperationLock()
     private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
-    private let approvalBootstrapFactory: ApprovalBootstrapFactory
+    private let bootstrapFactory: BootstrapFactory
+    private var cachedBootstrap: PubkySessionBootstrap?
+    private var isRepublishingIdentity = false
+    private var republishPublicKey: String?
+    private var nextIdentityRepublishAt = Date.distantPast
     private var sdk: PaykitSdk?
 
     init(
-        approvalBootstrapFactory: @escaping ApprovalBootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
+        bootstrapFactory: @escaping BootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
     ) {
-        self.approvalBootstrapFactory = approvalBootstrapFactory
+        self.bootstrapFactory = bootstrapFactory
     }
 
     func initialize() async throws {
+        Task { await republishIdentityIfNeeded() }
         try await operationLock.withLock {
             var sdk = try handle()
             do {
@@ -350,6 +372,58 @@ actor PaykitSdkService {
                 sessionProvider.resumeStoredSessionAccess()
             }
             await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
+        }
+    }
+
+    func republishIdentityIfNeeded(publicKey: String? = nil, now: Date = Date(), timeout: Duration = .seconds(5)) async {
+        guard !Task.isCancelled else { return }
+        // Swift FFI may ignore cancellation; keep the in-flight guard until publication actually finishes.
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let publication = Task {
+            await republishIdentity(publicKey: publicKey, now: now)
+            continuation.finish()
+        }
+        let deadline = Task {
+            do {
+                try await Task.sleep(for: timeout)
+            } catch {
+                return
+            }
+            Logger.warn("Stopped waiting for Pubky identity republishing", context: "PaykitSdkService")
+            continuation.finish()
+        }
+        defer {
+            publication.cancel()
+            deadline.cancel()
+            continuation.finish()
+        }
+        for await _ in stream {}
+    }
+
+    private func republishIdentity(publicKey: String?, now: Date) async {
+        guard !Task.isCancelled, !isRepublishingIdentity else { return }
+        isRepublishingIdentity = true
+        defer { isRepublishingIdentity = false }
+
+        do {
+            let identity = try publicKey ?? sessionProvider.loadLocalSecretKey().map {
+                try Paykit.pubkyPublicKeyFromSecret(localSecretKey: $0)
+            }
+            guard let identity = identity.flatMap(PubkyPublicKeyFormat.normalized),
+                  identity != republishPublicKey || now >= nextIdentityRepublishAt
+            else { return }
+
+            republishPublicKey = identity
+            nextIdentityRepublishAt = now.addingTimeInterval(60)
+            if try await bootstrap().republishIdentity(publicKey: identity) {
+                nextIdentityRepublishAt = now.addingTimeInterval(30 * 60)
+                Logger.debug("Republished Pubky identity", context: "PaykitSdkService")
+            } else {
+                Logger.debug("Found no Pubky identity record to republish", context: "PaykitSdkService")
+            }
+        } catch is CancellationError {
+        } catch {
+            Logger.warn("Failed to republish Pubky identity: \(error)", context: "PaykitSdkService")
         }
     }
 
@@ -1019,6 +1093,7 @@ actor PaykitSdkService {
         let sdk = try handle()
         _ = try await sdk.initialize()
         await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
+        await republishIdentityIfNeeded(publicKey: result.publicKey)
     }
 
     private func publishReceiverMarkerIfLiveSessionAvailable(using sdk: PaykitSdk) async {
@@ -1108,10 +1183,10 @@ actor PaykitSdkService {
     }
 
     private func bootstrap() throws -> PubkySessionBootstrap {
-        try PubkySessionBootstrap.withPubkyClientConfig(
-            clientId: Self.clientID,
-            pubkyClient: pubkyClientConfig
-        )
+        if let cachedBootstrap { return cachedBootstrap }
+        let bootstrap = try bootstrapFactory(Self.clientID, pubkyClientConfig)
+        cachedBootstrap = bootstrap
+        return bootstrap
     }
 
     func approvalBootstrap(authUrl: String, approvedClientID: String) throws -> PubkySessionBootstrap {
@@ -1122,7 +1197,7 @@ actor PaykitSdkService {
                 debugMessage: "Approved Pubky client ID does not match auth request"
             )
         }
-        return try approvalBootstrapFactory(requestClientID, pubkyClientConfig)
+        return try bootstrapFactory(requestClientID, pubkyClientConfig)
     }
 
     nonisolated static func makePubkyClientConfig(localTestnetHost: String?) -> PubkyClientConfig {
