@@ -10,12 +10,11 @@ final class ChannelMigrationPersistenceTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // `pendingChannelMigration` is backed by UserDefaults.standard, which is the host app's own
+        // preferences. Nilling it unguarded discards a real pending migration — an RN channel manager
+        // and its monitors — so snapshot it first and put it back afterwards.
+        snapshotAppDefaults("rnPendingChannelMigration")
         migrations.pendingChannelMigration = nil
-    }
-
-    override func tearDown() {
-        migrations.pendingChannelMigration = nil
-        super.tearDown()
     }
 
     func testPendingMigrationIsRetainedWhenSetupFails() async {
