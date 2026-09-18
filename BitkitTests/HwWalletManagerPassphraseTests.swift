@@ -37,7 +37,7 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         private(set) var forgottenWalletIds: [String] = []
         private(set) var warmUpCalls: [String] = []
         private(set) var releaseCalls = 0
-        private(set) var autoReconnectCalls = 0
+        private(set) var startAutoReconnectCalls = 0
         private(set) var renameCalls: [(walletId: String, newName: String)] = []
 
         func ensureConnected(deviceId: String) async throws {
@@ -109,9 +109,11 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
             isSessionActive = false
         }
 
-        func autoReconnect() async {
-            autoReconnectCalls += 1
+        func startAutoReconnect() {
+            startAutoReconnectCalls += 1
         }
+
+        func resetForWipe() async {}
 
         func renameWallet(walletId: String, newName: String) {
             renameCalls.append((walletId, newName))

@@ -96,6 +96,11 @@ final class TrezorManager {
     /// when the disconnected device list appears.
     private var suppressNextAutoReconnect = false
 
+    /// The foreground reconnect `startAutoReconnect()` launched, set before it first runs so the
+    /// session already reads as active to another vendor.
+    private var autoReconnectTask: Task<Void, Never>?
+    private var autoReconnectGeneration = 0
+
     // MARK: - Bluetooth State
 
     /// Reads directly from BLEManager (@Observable chaining).
@@ -430,10 +435,11 @@ final class TrezorManager {
     }
 
     var isSessionActive: Bool {
-        connectedDevice != nil || isAutoReconnecting || isConnectionOperationActive
+        connectedDevice != nil || isAutoReconnecting || isConnectionOperationActive || autoReconnectTask != nil
     }
 
     func releaseSession() async {
+        cancelAutoReconnect()
         cancelPairingCode()
         // Detached because `withConnectionOperation` bails out on a cancelled task, and a caller
         // abandoning its own work must still leave the radio free for the other vendor.
@@ -446,6 +452,14 @@ final class TrezorManager {
                 self.suppressNextAutoReconnect = false
             }
         }.value
+    }
+
+    /// Drops the session and a pending foreground reconnect ahead of a wallet wipe, after any
+    /// connection work already running, so none of it saves a paired device back once the wipe has
+    /// cleared them. Clearing the loaded entries keeps a later reconnect from starting at all.
+    func resetForWipe() async {
+        await releaseSession()
+        knownDevices = []
     }
 
     // MARK: - UI Callbacks
@@ -877,6 +891,22 @@ final class TrezorManager {
     }
 
     // MARK: - Auto-Reconnect
+
+    func startAutoReconnect() {
+        guard autoReconnectTask == nil else { return }
+        autoReconnectGeneration &+= 1
+        let generation = autoReconnectGeneration
+        autoReconnectTask = Task { [weak self] in
+            await self?.autoReconnect()
+            guard let self, autoReconnectGeneration == generation else { return }
+            autoReconnectTask = nil
+        }
+    }
+
+    private func cancelAutoReconnect() {
+        autoReconnectTask?.cancel()
+        autoReconnectTask = nil
+    }
 
     func autoReconnect() async {
         do {

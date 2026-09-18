@@ -673,9 +673,10 @@ final class HwWalletManager {
             await disconnectOtherVendor(target)
             switch target {
             case .trezor:
-                // Launched rather than awaited so a scan for a Trezor that is not around does not hold
-                // the lock; `TrezorManager` runs its own connection work one at a time.
-                Task { [weak trezorSession] in await trezorSession?.autoReconnect() }
+                // Started rather than awaited so a scan for a Trezor that is not around does not hold
+                // the lock. It reads as active before the lock is released, so the next operation
+                // releases it instead of dialling alongside it.
+                trezorSession?.startAutoReconnect()
             case .blockstream:
                 jadeSession?.startAutoReconnect()
             }
@@ -701,6 +702,7 @@ final class HwWalletManager {
     }
 
     func resetForWipe() async {
+        await trezorSession?.resetForWipe()
         await jadeSession?.resetForWipe()
     }
 

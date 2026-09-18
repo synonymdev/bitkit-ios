@@ -31,8 +31,11 @@ protocol TrezorSessioning: AnyObject, Sendable {
     /// Closes the session, after any connection work already running, so another vendor can take
     /// over. Runs to completion even when the caller is cancelled.
     func releaseSession() async
-    /// Silently reconnects a known device, as on returning to the foreground.
-    func autoReconnect() async
+    /// Starts a silent reconnect of a known device, as on returning to the foreground, unless one is
+    /// running. The session reads as active from this call on, and releasing it cancels the reconnect.
+    func startAutoReconnect()
+    /// Drops the session and any pending reconnect ahead of a wallet wipe.
+    func resetForWipe() async
     func isKnownBluetoothDevice(deviceId: String) -> Bool
     func warmUpConnection(deviceId: String)
     /// Forgets every stored entry of `walletId`, keeping transport credentials while another

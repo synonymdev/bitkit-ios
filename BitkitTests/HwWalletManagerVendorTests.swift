@@ -38,7 +38,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
         private(set) var forgottenWalletIds: [String] = []
         private(set) var renameCalls: [(walletId: String, newName: String)] = []
         private(set) var releaseCalls = 0
-        private(set) var autoReconnectCalls = 0
+        private(set) var startAutoReconnectCalls = 0
 
         init(log: CallLog) {
             self.log = log
@@ -87,9 +87,16 @@ final class HwWalletManagerVendorTests: XCTestCase {
             connectedWalletId = nil
         }
 
-        func autoReconnect() async {
-            log.record("trezor.autoReconnect")
-            autoReconnectCalls += 1
+        /// Reads as active at once, as `TrezorManager` registers the reconnect before it first runs.
+        func startAutoReconnect() {
+            log.record("trezor.startAutoReconnect")
+            startAutoReconnectCalls += 1
+            isSessionActive = true
+        }
+
+        func resetForWipe() async {
+            log.record("trezor.resetForWipe")
+            isSessionActive = false
         }
 
         func isKnownBluetoothDevice(deviceId: String) -> Bool {
@@ -502,7 +509,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
         await settle()
 
         XCTAssertEqual(jade.startAutoReconnectCalls, 1)
-        XCTAssertEqual(trezor.autoReconnectCalls, 0)
+        XCTAssertEqual(trezor.startAutoReconnectCalls, 0)
     }
 
     func testForegroundReconnectPicksTheMostRecentlyUsedVendor() async {
@@ -516,7 +523,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
         await settle()
 
         XCTAssertEqual(jade.startAutoReconnectCalls, 1)
-        XCTAssertEqual(trezor.autoReconnectCalls, 0)
+        XCTAssertEqual(trezor.startAutoReconnectCalls, 0)
     }
 
     /// On a cold launch the foreground reconnect runs before the vendor managers load their entries,
@@ -529,16 +536,15 @@ final class HwWalletManagerVendorTests: XCTestCase {
         await settle()
 
         XCTAssertEqual(jade.startAutoReconnectCalls, 1)
-        XCTAssertEqual(trezor.autoReconnectCalls, 0)
+        XCTAssertEqual(trezor.startAutoReconnectCalls, 0)
     }
 
     func testForegroundReconnectDefaultsToTrezor() async {
         let manager = makeManager()
 
         await manager.reconnectOnForeground()
-        await waitUntil { self.trezor.autoReconnectCalls == 1 }
 
-        XCTAssertEqual(trezor.autoReconnectCalls, 1)
+        XCTAssertEqual(trezor.startAutoReconnectCalls, 1)
         XCTAssertEqual(jade.startAutoReconnectCalls, 0)
     }
 
@@ -548,9 +554,20 @@ final class HwWalletManagerVendorTests: XCTestCase {
         let manager = makeManager()
 
         await manager.reconnectOnForeground()
-        await waitUntil { self.trezor.autoReconnectCalls == 1 }
 
-        XCTAssertEqual(log.entries, ["jade.release", "trezor.autoReconnect"])
+        XCTAssertEqual(log.entries, ["jade.release", "trezor.startAutoReconnect"])
+    }
+
+    /// The Trezor reconnect outlives the lock, so it must already read as active when the next
+    /// operation takes it, or a Jade would dial alongside it.
+    func testAJadeOperationAfterAForegroundTrezorReconnectReleasesItFirst() async throws {
+        jade.storedDevices = [makeJadeEntry()]
+        let manager = makeManager()
+
+        await manager.reconnectOnForeground()
+        try await manager.ensureConnected(walletId: jadeWalletId)
+
+        XCTAssertEqual(log.entries, ["trezor.startAutoReconnect", "trezor.release", "jade.ensure:\(jadeDeviceId)"])
     }
 
     // MARK: - Bluetooth restored
@@ -599,7 +616,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
         await waitUntil { self.jade.startAutoReconnectCalls == 1 }
 
         XCTAssertEqual(jade.startAutoReconnectCalls, 1)
-        XCTAssertEqual(trezor.autoReconnectCalls, 0)
+        XCTAssertEqual(trezor.startAutoReconnectCalls, 0)
         withExtendedLifetime(manager) {}
     }
 
@@ -904,9 +921,18 @@ final class HwWalletManagerVendorTests: XCTestCase {
 
         manager.onAppBackgrounded()
         manager.onAppBecameActive()
+
+        XCTAssertEqual(log.entries, ["jade.backgrounded", "jade.active"])
+    }
+
+    /// A Trezor reconnect still running would otherwise save its device back after the wipe.
+    func testWipeResetsBothVendors() async {
+        trezor.isSessionActive = true
+        let manager = makeManager()
+
         await manager.resetForWipe()
 
-        XCTAssertEqual(log.entries, ["jade.backgrounded", "jade.active", "jade.resetForWipe"])
+        XCTAssertEqual(log.entries, ["trezor.resetForWipe", "jade.resetForWipe"])
     }
 
     // MARK: - Helpers
