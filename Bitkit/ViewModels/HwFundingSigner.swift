@@ -83,8 +83,9 @@ struct HwFundingSigner {
     }
 
     /// Reconnects, composes and signs a normal on-chain payment without broadcasting it.
-    /// `onConnectingDevice` brackets the initial reconnect (true before it, false once it returns or
-    /// throws), the one phase a caller may abandon because nothing has reached the device to sign yet.
+    /// `onConnectingDevice` brackets every reconnect (true before it, false once it returns or throws),
+    /// including the one before a sign retry: the phases a caller may abandon because nothing is on the
+    /// device to sign yet.
     func prepareSignedPayment(
         walletId: String,
         address: String,
@@ -100,7 +101,7 @@ struct HwFundingSigner {
         }
         let tx = try await compose(walletId: walletId, address: address, sats: sats, satsPerVByte: satsPerVByte)
         onComposed(tx)
-        return try await signStep(walletId: walletId, funding: tx)
+        return try await signStep(walletId: walletId, funding: tx, onConnectingDevice: onConnectingDevice)
     }
 
     /// Broadcasts a signed funding transaction without requiring the hardware device.
@@ -202,7 +203,11 @@ struct HwFundingSigner {
         }
     }
 
-    private func signStep(walletId: String, funding tx: HwFundingTransaction) async throws -> HwFundingSignedTx {
+    private func signStep(
+        walletId: String,
+        funding tx: HwFundingTransaction,
+        onConnectingDevice: (Bool) -> Void = { _ in }
+    ) async throws -> HwFundingSignedTx {
         do {
             return try await signOnce(walletId: walletId, funding: tx)
         } catch is CancellationError {
@@ -214,7 +219,11 @@ struct HwFundingSigner {
             guard error.isHwSessionFailure() else { throw error }
 
             await connecting.disconnectStaleSession(walletId: walletId)
-            try await ensureConnected(walletId: walletId)
+            do {
+                onConnectingDevice(true)
+                defer { onConnectingDevice(false) }
+                try await ensureConnected(walletId: walletId)
+            }
 
             do {
                 return try await signOnce(walletId: walletId, funding: tx)

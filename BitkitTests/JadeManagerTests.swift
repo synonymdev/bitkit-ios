@@ -829,6 +829,106 @@ final class JadeManagerTests: XCTestCase {
         XCTAssertLessThan(cancelIndex, pairingStart)
     }
 
+    func testACancelledPairingNeverDials() async {
+        service.stubs.scanned = [JadeFixtures.device()]
+        let sut = makeManager()
+
+        let pairing = Task { try await sut.connect(path: JadeFixtures.blePath) }
+        pairing.cancel()
+
+        do {
+            _ = try await pairing.value
+            XCTFail("a cancelled pairing must not connect")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertTrue(service.calls.connectPaths.isEmpty)
+        XCTAssertFalse(sut.isConnecting)
+    }
+
+    /// Stopping the reconnect in flight can take seconds, and leaving the pairing screen meanwhile
+    /// must not dial once it is stopped.
+    func testAPairingCancelledWhileStoppingAReconnectNeverDials() async {
+        store.devices = [JadeFixtures.knownEntry()]
+        service.stubs.scanned = [JadeFixtures.device()]
+        service.stubs.connectResults = [.failure(JadeError.UserCancelled)]
+        let connectGate = service.gate(.connect)
+        let cancelGate = service.gate(.cancel)
+        let sut = makeManager(timing: JadeManager.Timing(reconnectBackoff: 0.01))
+        sut.startAutoReconnect()
+        let dialling = await waitUntil { self.service.calls.connectPaths.count == 1 }
+        XCTAssertTrue(dialling)
+
+        let pairing = Task { try await sut.connect(path: JadeFixtures.blePath) }
+        let stopping = await waitUntil { self.log.contains("service.cancel") }
+        XCTAssertTrue(stopping)
+        pairing.cancel()
+        cancelGate.open()
+        connectGate.open()
+
+        do {
+            _ = try await pairing.value
+            XCTFail("a cancelled pairing must not connect")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(service.calls.connectPaths.count, 1, "only the stopped reconnect dialled")
+        XCTAssertFalse(sut.isConnecting)
+    }
+
+    func testAFailedReconnectAttemptIsRetried() async {
+        store.devices = [JadeFixtures.knownEntry()]
+        service.stubs.scanned = [JadeFixtures.device()]
+        service.stubs.connectResults = [.failure(JadeError.Timeout), .success(JadeFixtures.version(.locked))]
+        let sut = makeManager(timing: Self.fastTiming)
+
+        sut.startAutoReconnect()
+        let reconnected = await waitUntil { sut.connected != nil }
+
+        XCTAssertTrue(reconnected)
+        XCTAssertEqual(service.calls.connectPaths.count, 2)
+        XCTAssertEqual(sut.connected?.id, JadeFixtures.deviceId)
+        XCTAssertTrue(service.calls.unlockNetworks.isEmpty)
+    }
+
+    /// A busy Jade is waiting on the user, so dialling it again would only interrupt them.
+    func testTheReconnectLoopStopsWhenTheJadeIsBusy() async {
+        store.devices = [JadeFixtures.knownEntry()]
+        service.stubs.scanned = [JadeFixtures.device()]
+        service.stubs.connectResult = .failure(JadeError.DeviceBusy)
+        let sut = makeManager(timing: Self.fastTiming)
+
+        sut.startAutoReconnect()
+        let stopped = await waitUntil { !sut.isSessionActive }
+
+        XCTAssertTrue(stopped)
+        XCTAssertEqual(service.calls.connectPaths.count, 1)
+        XCTAssertNil(sut.connected)
+    }
+
+    /// A loop cancelled by a release unwinds after the next loop has started, and must not clear it.
+    func testACancelledReconnectLoopLeavesTheNewerLoopRunning() async {
+        store.devices = [JadeFixtures.knownEntry()]
+        service.stubs.scanned = [JadeFixtures.device()]
+        service.stubs.connectResult = .success(JadeFixtures.version(.locked))
+        let sut = makeManager(timing: JadeManager.Timing(reconnectBackoff: 0.2))
+
+        sut.startAutoReconnect()
+        await sut.releaseSession()
+        sut.startAutoReconnect()
+        var stayedActive = true
+        let dialled = await waitUntil {
+            stayedActive = stayedActive && sut.isSessionActive
+            return !self.service.calls.connectPaths.isEmpty
+        }
+
+        XCTAssertTrue(dialled)
+        XCTAssertTrue(stayedActive, "the session stays active until the newer loop dials")
+        let reconnected = await waitUntil { sut.connected != nil }
+        XCTAssertTrue(reconnected)
+        XCTAssertEqual(service.calls.connectPaths.count, 1)
+    }
+
     func testResetForWipeDropsTheSessionAndItsBackgroundWork() async throws {
         let sut = try await connectedManager(timing: JadeManager.Timing(backgroundRelease: 60))
         sut.onAppBackgrounded()

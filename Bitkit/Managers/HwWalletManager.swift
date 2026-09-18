@@ -515,6 +515,8 @@ final class HwWalletManager {
         let deviceId = try requireTransportDeviceId(for: walletId)
         await disconnectOtherVendor(.blockstream)
         await waitForStaleSessionCleanup(deviceId: deviceId)
+        // A cancelled send schedules the cleanup awaited above, so it must stop here rather than dial.
+        try Task.checkCancellation()
         try await jadeSession.ensureConnected(deviceId: deviceId)
         if let opened = jadeSession.connectedWalletId, opened != walletId {
             throw AppError(
@@ -657,6 +659,8 @@ final class HwWalletManager {
     func withVendorSession<T>(_ vendor: HwWalletVendor, _ operation: @MainActor () async throws -> T) async throws -> T {
         try await withSessionLock {
             await disconnectOtherVendor(vendor)
+            // Releasing the other vendor can take seconds, and a cancel landing then must not dial.
+            try Task.checkCancellation()
             return try await operation()
         }
     }
@@ -1423,7 +1427,15 @@ final class HwWalletManager {
         }
         // Without the key origins this carries, the Jade finds nothing of its own to sign.
         try await ensureConnected(walletId: walletId)
-        return try await jadeSession.masterFingerprint()
+        do {
+            return try await jadeSession.masterFingerprint()
+        } catch {
+            // Core keeps a failed link marked connected, so release it or every retry reuses it.
+            if error.isJadeSessionFailure() {
+                await disconnectStaleSession(walletId: walletId)
+            }
+            throw error
+        }
     }
 
     /// Offline coin-selection for the exact funding amount; returns the mining fee only.

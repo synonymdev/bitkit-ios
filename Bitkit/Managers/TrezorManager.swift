@@ -441,6 +441,9 @@ final class TrezorManager {
             guard let self else { return }
             try? await withConnectionOperation {
                 await self.disconnect()
+                // Handing the radio to the other vendor is not a manual disconnect, so the next
+                // foreground reconnect still runs.
+                self.suppressNextAutoReconnect = false
             }
         }.value
     }

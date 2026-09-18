@@ -462,7 +462,44 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a finished payment keeps its session")
     }
 
-    func testConnectingIsReportedAroundTheFirstReconnectOnly() async throws {
+    func testCoordinatorCanBeLeftWhileTheDeviceReconnectsBeforeASignRetry() async throws {
+        let walletId = "jade:wallet"
+        let funding = MockHwFunding()
+        funding.signErrors = [Bitkit.AppError(error: JadeError.DeviceDisconnected)]
+        let sign = AsyncGate()
+        funding.signGate = sign
+        let connecting = MockHwConnecting()
+        let manager = HwWalletManager()
+        let coordinator = makeCoordinator(walletId: walletId, funding: funding, connecting: connecting)
+
+        let payment = Task { try await self.signAndBroadcast(coordinator, manager: manager) }
+        await waitUntil { funding.signCalls == 1 }
+        let abandonedReconnect = AsyncGate()
+        connecting.connectGate = abandonedReconnect
+        sign.open()
+        await waitUntil { coordinator.isConnectingDevice }
+
+        XCTAssertTrue(coordinator.isSigning)
+        XCTAssertTrue(coordinator.isConnectingDevice)
+        XCTAssertTrue(coordinator.canLeave, "nothing is on the device to sign while it reconnects")
+
+        coordinator.cancel()
+
+        await assertThrowsAsync {
+            _ = try await payment.value
+        } _: { error in
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(connecting.staleDisconnects, [walletId, walletId], "the failed sign and leaving each release the device")
+
+        abandonedReconnect.open()
+        await Task.yield()
+
+        XCTAssertEqual(funding.signCalls, 1, "the abandoned reconnect never signs again")
+        XCTAssertEqual(funding.broadcastCalls, 0)
+    }
+
+    func testConnectingIsReportedAroundEveryReconnect() async throws {
         let funding = MockHwFunding()
         funding.signErrors = [Bitkit.AppError(error: JadeError.DeviceDisconnected)]
         let connecting = MockHwConnecting()
@@ -478,7 +515,7 @@ final class HwFundingSignerTests: XCTestCase {
         )
 
         XCTAssertEqual(connecting.ensureCalls, 2)
-        XCTAssertEqual(reports, [true, false], "the reconnect before the sign retry is not reported")
+        XCTAssertEqual(reports, [true, false, true, false], "the reconnect before the sign retry is reported too")
 
         reports = []
         connecting.connectError = MockHwFunding.TestError()

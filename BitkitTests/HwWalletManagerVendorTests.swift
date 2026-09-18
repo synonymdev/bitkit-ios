@@ -29,6 +29,8 @@ final class HwWalletManagerVendorTests: XCTestCase {
         var connectedFeatures: TrezorFeatures?
         var isSessionActive = false
         var knownBluetoothIds: Set<String> = []
+        /// Holds every release until opened, as closing a Trezor link can take seconds.
+        var releaseGate: AsyncGate?
 
         private(set) var openCalls: [TrezorWalletMode] = []
         private(set) var staleDisconnects: [String] = []
@@ -79,6 +81,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
         func releaseSession() async {
             log.record("trezor.release")
             releaseCalls += 1
+            await releaseGate?.wait()
             isSessionActive = false
             connectedDeviceId = nil
             connectedWalletId = nil
@@ -118,6 +121,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
         var ensureError: Error?
         var verifyErrors: [Error] = []
         var fingerprint = "deadbeef"
+        var fingerprintError: Error?
         var completedTransaction = CompletedTransaction(serializedTx: "rawtx", txid: "txid")
         var blocksEnsure = false
         var onEnsure: (() -> Void)?
@@ -164,6 +168,9 @@ final class HwWalletManagerVendorTests: XCTestCase {
 
         func masterFingerprint() async throws -> String {
             log.record("jade.fingerprint")
+            if let fingerprintError {
+                throw fingerprintError
+            }
             return fingerprint
         }
 
@@ -435,6 +442,54 @@ final class HwWalletManagerVendorTests: XCTestCase {
         XCTAssertEqual(log.entries, ["jade.ensure:\(jadeDeviceId)"])
     }
 
+    func testACancelWhileTheTrezorIsReleasedStopsThePairingBeforeItRuns() async {
+        trezor.isSessionActive = true
+        let release = AsyncGate()
+        trezor.releaseGate = release
+        let manager = makeManager()
+
+        let pairing = Task { @MainActor in
+            try await manager.withVendorSession(.blockstream) {
+                self.log.record("pair")
+            }
+        }
+        await waitUntil { self.trezor.releaseCalls == 1 }
+        pairing.cancel()
+        release.open()
+
+        do {
+            try await pairing.value
+            XCTFail("expected the cancelled pairing to stop")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(log.entries, ["trezor.release"])
+    }
+
+    func testACancelWhileTheTrezorIsReleasedNeverReachesTheJade() async {
+        trezor.storedDevices = [makeTrezorEntry()]
+        jade.storedDevices = [makeJadeEntry()]
+        trezor.isSessionActive = true
+        let release = AsyncGate()
+        trezor.releaseGate = release
+        let manager = makeManager()
+
+        let ensure = Task { @MainActor in
+            try await manager.ensureConnected(walletId: self.jadeWalletId)
+        }
+        await waitUntil { self.trezor.releaseCalls == 1 }
+        ensure.cancel()
+        release.open()
+
+        do {
+            try await ensure.value
+            XCTFail("expected the cancelled connect to stop")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(log.entries, ["trezor.release"])
+    }
+
     // MARK: - Foreground reconnect
 
     func testForegroundReconnectTargetsTheConnectedJade() async {
@@ -693,6 +748,28 @@ final class HwWalletManagerVendorTests: XCTestCase {
         XCTAssertEqual(composedParams?.wallet.fingerprint, "deadbeef")
         XCTAssertEqual(composedParams?.wallet.extendedKey, "zJade")
         XCTAssertEqual(log.entries, ["jade.ensure:\(jadeDeviceId)", "jade.fingerprint", "compose"])
+    }
+
+    /// Core keeps a link that failed mid-request marked connected, so the next attempt would reuse it.
+    func testAJadeLinkFailureReadingTheFingerprintReleasesTheStaleSession() async {
+        jade.storedDevices = [makeJadeEntry()]
+        jade.fingerprintError = JadeError.DeviceDisconnected
+        let manager = makeManager()
+
+        do {
+            _ = try await manager.composeFundingTransaction(
+                walletId: jadeWalletId,
+                address: "bcrt1qdestination",
+                sats: 1000,
+                satsPerVByte: 2
+            )
+            XCTFail("expected the link failure to be rethrown")
+        } catch {
+            XCTAssertEqual(error.underlyingJadeError, .DeviceDisconnected)
+        }
+
+        XCTAssertEqual(jade.staleDisconnects, [jadeDeviceId])
+        XCTAssertEqual(log.entries, ["jade.ensure:\(jadeDeviceId)", "jade.fingerprint", "jade.stale:\(jadeDeviceId)"])
     }
 
     func testSignFundingRefusesAJadeSessionOfAnotherWallet() async {

@@ -158,6 +158,8 @@ final class JadeManager {
             await cancelPendingConnection(deviceId: "")
         }
         try await awaitSetup()
+        // A cancel before the epoch below is captured would otherwise be missed.
+        try Task.checkCancellation()
         let token = beginAttempt(.connecting)
         defer { endAttempt(.connecting, token: token) }
         let epoch = connectEpoch
