@@ -117,6 +117,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func applicationWillTerminate(_ application: UIApplication) {
         try? StateLocker.unlock(.lightning)
+        // A Jade left holding a link when the process ends can drop its Bluetooth bond.
+        JadeTransport.shared.releaseAllImmediately()
     }
 }
 

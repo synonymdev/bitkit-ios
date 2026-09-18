@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import Combine
 import XCTest
 
 /// Covers how `HwWalletManager` routes device calls by the vendor stored on a wallet's entries, and
@@ -239,6 +240,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
     private var log = CallLog()
     private var trezor: FakeTrezorSession!
     private var jade: FakeJadeSession!
+    private var jadeBluetoothPoweredOn: PassthroughSubject<Void, Never>!
     private var savedDefaults: Data?
     private var savedPendingNames: [String: String]?
 
@@ -247,6 +249,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
         log = CallLog()
         trezor = FakeTrezorSession(log: log)
         jade = FakeJadeSession(log: log)
+        jadeBluetoothPoweredOn = PassthroughSubject()
         savedDefaults = UserDefaults.standard.data(forKey: Self.storageKey)
         savedPendingNames = UserDefaults.standard.dictionary(forKey: Self.pendingNamesKey) as? [String: String]
         HwKnownDeviceStorage.removeAll()
@@ -262,6 +265,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
         }
         trezor = nil
         jade = nil
+        jadeBluetoothPoweredOn = nil
         super.tearDown()
     }
 
@@ -530,6 +534,36 @@ final class HwWalletManagerVendorTests: XCTestCase {
         manager.onAppBecameActive()
         manager.onJadeBluetoothRestored()
         XCTAssertEqual(jade.startAutoReconnectCalls, 1)
+    }
+
+    func testTransportReportingBluetoothOnStartsASilentJadeReconnect() async {
+        jade.storedDevices = [makeJadeEntry()]
+        let manager = makeManager()
+
+        jadeBluetoothPoweredOn.send(())
+        await waitUntil { self.jade.startAutoReconnectCalls == 1 }
+
+        XCTAssertEqual(jade.startAutoReconnectCalls, 1)
+        XCTAssertEqual(trezor.autoReconnectCalls, 0)
+        withExtendedLifetime(manager) {}
+    }
+
+    /// Reports reach the manager on the main queue in the order sent, so a single reconnect after the
+    /// second report means the first, sent while in the background, was dropped.
+    func testTransportReportingBluetoothOnInTheBackgroundIsIgnored() async {
+        jade.storedDevices = [makeJadeEntry()]
+        let manager = makeManager()
+
+        manager.onAppBackgrounded()
+        jadeBluetoothPoweredOn.send(())
+        await settle()
+        manager.onAppBecameActive()
+        jadeBluetoothPoweredOn.send(())
+        await waitUntil { self.jade.startAutoReconnectCalls > 0 }
+        await settle()
+
+        XCTAssertEqual(jade.startAutoReconnectCalls, 1)
+        withExtendedLifetime(manager) {}
     }
 
     // MARK: - Passphrase
@@ -807,6 +841,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
         HwWalletManager(
             trezorSession: trezor,
             jadeSession: jade,
+            jadeBluetoothPoweredOn: jadeBluetoothPoweredOn.eraseToAnyPublisher(),
             watcherService: NoopWatcher(),
             monitoredTypes: { ["nativeSegwit"] },
             electrumUrl: { "ssl://test:1" },

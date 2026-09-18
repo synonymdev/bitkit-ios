@@ -136,10 +136,12 @@ final class HwWalletManager {
     @ObservationIgnored private var isSessionOperationActive = false
     @ObservationIgnored private var sessionOperationWaiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored private var isAppActive = true
+    @ObservationIgnored private var jadeBluetoothPoweredOnSubscription: AnyCancellable?
 
     init(
         trezorSession: TrezorSessioning? = nil,
         jadeSession: JadeSessioning? = nil,
+        jadeBluetoothPoweredOn: AnyPublisher<Void, Never> = JadeTransport.shared.bluetoothPoweredOn,
         watcherService: OnChainWatcherServicing = OnChainHwService.shared,
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
@@ -195,6 +197,12 @@ final class HwWalletManager {
         self.writeTagMetadata = writeTagMetadata ?? { records in
             try await CoreService.shared.activity.upsertPreActivityMetadata(records)
         }
+        // The transport publishes on its Bluetooth queue.
+        jadeBluetoothPoweredOnSubscription = jadeBluetoothPoweredOn
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.onJadeBluetoothRestored()
+            }
     }
 
     // MARK: - Device input

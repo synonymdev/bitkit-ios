@@ -846,6 +846,33 @@ final class JadeManagerTests: XCTestCase {
         XCTAssertEqual(log.count("service.initialize"), 2, "a wiped manager sets itself up again")
     }
 
+    // MARK: - App lifecycle without a paired Jade
+
+    /// Starting the Jade Bluetooth central is what shows the iOS Bluetooth prompt, so the calls the app
+    /// makes at launch, on scene changes and on a wipe must leave it alone until a Jade is paired.
+    func testAppLifecycleWithoutAPairedJadeNeverStartsBluetooth() async {
+        let bluetooth = JadeBLEManager()
+        let sut = JadeManager(
+            service: service,
+            transport: JadeTransport(driver: bluetooth, isTrezorBridgeEnabled: { false }),
+            store: store,
+            backgroundTasks: backgroundTasks,
+            timing: JadeManagerTests.fastTiming,
+            network: { .regtest }
+        )
+
+        sut.loadKnownDevices()
+        sut.onAppBecameActive()
+        sut.startAutoReconnect()
+        sut.onAppBackgrounded()
+        sut.onAppBecameActive()
+        await sut.resetForWipe()
+
+        XCTAssertFalse(bluetooth.hasCentral)
+        XCTAssertFalse(sut.isConnectInProgress)
+        XCTAssertTrue(backgroundTasks.begun.isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func makeManager(timing: JadeManager.Timing = JadeManagerTests.fastTiming) -> JadeManager {

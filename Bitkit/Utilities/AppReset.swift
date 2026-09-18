@@ -2,6 +2,11 @@ import BitkitCore
 import SwiftUI
 
 enum AppReset {
+    /// The live hardware wallet layer, registered by `AppScene`, which owns it. The wipe starts from
+    /// screens that have no other use for it, so it is not passed in. Weak, so it never keeps a replaced
+    /// app state tree alive.
+    @MainActor weak static var hardwareWallets: HwWalletManager?
+
     @MainActor
     static func wipe(
         app: AppViewModel,
@@ -24,6 +29,8 @@ enum AppReset {
         VssStoreIdProvider.shared.clearCache()
 
         OnChainHwService.shared.stopAllWatchers()
+        // Before the paired devices are wiped, so a reconnect still running cannot save one back.
+        await hardwareWallets?.resetForWipe()
 
         // Stop node and wipe LDK persistence via the wallet API.
         try await wallet.wipe()
