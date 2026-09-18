@@ -337,20 +337,6 @@ final class PubkyProfileManagerTests: XCTestCase {
 
     // MARK: - Ring callbacks
 
-    func testPubkyRingAuthURLBuilderAddsXCallbackParams() throws {
-        let url = try XCTUnwrap(PubkyRingAuthURLBuilder.addingCallbacks(to: "pubkyauth://auth?relay=https%3A%2F%2Frelay.example"))
-        let components = try XCTUnwrap(URLComponents(string: url))
-        let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
-            item.value.map { (item.name, $0) }
-        })
-
-        XCTAssertEqual(queryItems["relay"], "https://relay.example")
-        XCTAssertEqual(queryItems["x-success"], PubkyRingAuthURLBuilder.successCallback)
-        XCTAssertEqual(queryItems["x-cancel"], PubkyRingAuthURLBuilder.cancelCallback)
-        XCTAssertEqual(queryItems["x-error"], PubkyRingAuthURLBuilder.errorCallback)
-        XCTAssertEqual(queryItems["x-source"], PubkyRingAuthURLBuilder.source)
-    }
-
     func testPubkyRingAuthCallbackParsesSuccessCancelAndError() throws {
         XCTAssertEqual(
             try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/success"))),
@@ -364,57 +350,6 @@ final class PubkyProfileManagerTests: XCTestCase {
             try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/error?errorMessage=Denied"))),
             .error(message: "Denied", nonce: nil)
         )
-    }
-
-    func testPubkyRingAuthURLBuilderAddsNonceToCallbackParams() throws {
-        let nonce = try XCTUnwrap(UUID(uuidString: "12345678-1234-1234-1234-123456789ABC"))
-        let url = try XCTUnwrap(PubkyRingAuthURLBuilder.addingCallbacks(to: "pubkyauth://auth", nonce: nonce))
-        let components = try XCTUnwrap(URLComponents(string: url))
-        let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
-            item.value.map { (item.name, $0) }
-        })
-
-        XCTAssertEqual(queryItems["x-success"], "bitkit://pubky-auth/success?nonce=12345678-1234-1234-1234-123456789ABC")
-        XCTAssertEqual(queryItems["x-cancel"], "bitkit://pubky-auth/cancel?nonce=12345678-1234-1234-1234-123456789ABC")
-        XCTAssertEqual(queryItems["x-error"], "bitkit://pubky-auth/error?nonce=12345678-1234-1234-1234-123456789ABC")
-    }
-
-    func testPubkyRingAuthURLBuilderCreatesRingSpecificHandoff() throws {
-        let authUrl = "pubkyauth://signin?caps=/pub/bitkit.to/:rw&relay=https%3A%2F%2Frelay.example&secret=test"
-        let callbackAuthUrl = try XCTUnwrap(PubkyRingAuthURLBuilder.addingCallbacks(to: authUrl))
-        let ringUrl = try XCTUnwrap(PubkyRingAuthURLBuilder.ringHandoffURL(from: callbackAuthUrl))
-        let components = try XCTUnwrap(URLComponents(url: ringUrl, resolvingAgainstBaseURL: false))
-        let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
-            item.value.map { (item.name, $0) }
-        })
-
-        XCTAssertEqual(components.scheme, "pubkyring")
-        XCTAssertEqual(components.host, "signin")
-        XCTAssertEqual(components.path, "")
-        XCTAssertEqual(queryItems["caps"], "/pub/bitkit.to/:rw")
-        XCTAssertEqual(queryItems["relay"], "https://relay.example")
-        XCTAssertEqual(queryItems["secret"], "test")
-        XCTAssertEqual(queryItems["x-success"], PubkyRingAuthURLBuilder.successCallback)
-        XCTAssertEqual(queryItems["x-cancel"], PubkyRingAuthURLBuilder.cancelCallback)
-        XCTAssertEqual(queryItems["x-error"], PubkyRingAuthURLBuilder.errorCallback)
-        XCTAssertEqual(queryItems["x-source"], PubkyRingAuthURLBuilder.source)
-    }
-
-    func testPubkyRingAuthURLBuilderCreatesRingSpecificHandoffFromLegacyRootURL() throws {
-        let ringUrl = try XCTUnwrap(
-            PubkyRingAuthURLBuilder.ringHandoffURL(
-                from: "pubkyauth:///?caps=/pub/bitkit.to/:rw&relay=https%3A%2F%2Frelay.example&secret=test"
-            )
-        )
-        let components = try XCTUnwrap(URLComponents(url: ringUrl, resolvingAgainstBaseURL: false))
-
-        XCTAssertEqual(components.scheme, "pubkyring")
-        XCTAssertEqual(components.host, "signin")
-        XCTAssertEqual(components.path, "")
-    }
-
-    func testPubkyRingAuthURLBuilderRejectsOtherSchemes() {
-        XCTAssertNil(PubkyRingAuthURLBuilder.ringHandoffURL(from: "bitkit://pubky-auth/success"))
     }
 
     func testPubkyRingAuthCallbackParsesNonce() throws {
@@ -434,36 +369,41 @@ final class PubkyProfileManagerTests: XCTestCase {
     func testPubkyRingAuthCallbackRejectsOtherDeeplinks() throws {
         XCTAssertNil(try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://wallet/success"))))
         XCTAssertNil(try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "https://pubky-auth/success"))))
+        XCTAssertNil(try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/setup"))))
+        XCTAssertNil(try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/unknown"))))
     }
 
     @MainActor
-    func testNonceMismatchedCancelCallbackDoesNotAbortActiveAuthAttempt() async {
-        let manager = PubkyProfileManager()
-        let attemptID = UUID()
+    func testLegacyRingCallbacksPreserveCurrentIdentityAndAuthenticationState() {
+        let callbacks: [PubkyRingAuthCallback] = [
+            .success(nonce: nil),
+            .success(nonce: UUID().uuidString),
+            .cancel(nonce: nil),
+            .cancel(nonce: UUID().uuidString),
+            .error(message: "Denied", nonce: nil),
+            .error(message: "Untrusted callback message", nonce: UUID().uuidString),
+        ]
+        let states: [PubkyAuthState] = [
+            .idle, .authenticating, .completingAuthentication, .authenticated, .error("Existing error"),
+        ]
+        let publicKeys: [String?] = [nil, "pubky_test"]
 
-        manager.setActiveAuthAttemptIDForTesting(attemptID)
-        manager.authState = .authenticating
+        for publicKey in publicKeys {
+            for state in states {
+                let manager = PubkyProfileManager()
+                manager.publicKey = publicKey
+                manager.authState = state
+                manager.profile = publicKey.map { PubkyProfile.placeholder(publicKey: $0) }
 
-        let result = await manager.handleAuthCallback(.cancel(nonce: UUID().uuidString))
+                for callback in callbacks {
+                    manager.handleAuthCallback(callback)
 
-        XCTAssertEqual(result, .ignored)
-        XCTAssertEqual(manager.activeAuthAttemptIDForTesting, attemptID)
-        XCTAssertEqual(manager.authState, .authenticating)
-    }
-
-    @MainActor
-    func testNonceMismatchedErrorCallbackDoesNotAbortActiveAuthAttempt() async {
-        let manager = PubkyProfileManager()
-        let attemptID = UUID()
-
-        manager.setActiveAuthAttemptIDForTesting(attemptID)
-        manager.authState = .authenticating
-
-        let result = await manager.handleAuthCallback(.error(message: "Denied", nonce: UUID().uuidString))
-
-        XCTAssertEqual(result, .ignored)
-        XCTAssertEqual(manager.activeAuthAttemptIDForTesting, attemptID)
-        XCTAssertEqual(manager.authState, .authenticating)
+                    XCTAssertEqual(manager.publicKey, publicKey)
+                    XCTAssertEqual(manager.profile?.publicKey, publicKey)
+                    XCTAssertEqual(manager.authState, state)
+                }
+            }
+        }
     }
 
     @MainActor
@@ -516,84 +456,6 @@ final class PubkyProfileManagerTests: XCTestCase {
             XCTAssertTrue(publicPending)
             XCTAssertEqual(PublicPaykitService.pendingReconciliationMode(defaults: defaults), .removePublishedState)
             XCTAssertEqual(PrivatePaykitService.fullCleanupReconciliationMode(defaults: defaults), .removePublishedState)
-        }
-    }
-
-    @MainActor
-    func testCompleteAuthenticationRevokesSessionWhenAuthIsCanceledAfterCompletion() async {
-        let manager = PubkyProfileManager()
-        let attemptID = UUID()
-        var didDiscardSession = false
-
-        manager.setActiveAuthAttemptIDForTesting(attemptID)
-        manager.authState = .authenticating
-
-        do {
-            try await manager.completeAuthenticationForTesting(
-                completeAuth: {
-                    manager.setActiveAuthAttemptIDForTesting(nil)
-                    return "new-session"
-                },
-                currentPublicKey: {
-                    "pubky_test"
-                },
-                discardSessionAccess: { sessionSecret in
-                    XCTAssertEqual(sessionSecret, "new-session")
-                    didDiscardSession = true
-                }
-            )
-            XCTFail("Expected cancellation")
-        } catch is CancellationError {
-            XCTAssertTrue(didDiscardSession)
-            XCTAssertNil(manager.activeAuthAttemptIDForTesting)
-        } catch {
-            XCTFail("Expected CancellationError, got \(error)")
-        }
-    }
-
-    @MainActor
-    func testCompleteAuthenticationPreservesSessionWhenRelayFails() async {
-        let errors: [Error] = [PubkyServiceError.authFailed("offline"), CancellationError()]
-
-        for thrownError in errors {
-            let manager = PubkyProfileManager()
-            manager.setActiveAuthAttemptIDForTesting(UUID())
-            manager.authState = .authenticating
-            var didDiscardSession = false
-
-            do {
-                try await manager.completeAuthenticationForTesting(
-                    completeAuth: { throw thrownError },
-                    currentPublicKey: { "pubky_test" },
-                    discardSessionAccess: { _ in didDiscardSession = true }
-                )
-                XCTFail("Expected authentication activation to fail")
-            } catch {
-                XCTAssertFalse(didDiscardSession)
-            }
-        }
-    }
-
-    @MainActor
-    func testSupersededAuthenticationPreservesNewAttempt() async {
-        let manager = PubkyProfileManager()
-        manager.setActiveAuthAttemptIDForTesting(UUID())
-        manager.authState = .authenticating
-        let newAttemptID = UUID()
-
-        do {
-            try await manager.completeAuthenticationForTesting(
-                completeAuth: {
-                    manager.setActiveAuthAttemptIDForTesting(newAttemptID)
-                    throw CancellationError()
-                },
-                currentPublicKey: { nil },
-                discardSessionAccess: { _ in XCTFail("No session was activated") }
-            )
-            XCTFail("Expected cancellation")
-        } catch {
-            XCTAssertEqual(manager.activeAuthAttemptIDForTesting, newAttemptID)
-            XCTAssertEqual(manager.authState, .authenticating)
         }
     }
 
