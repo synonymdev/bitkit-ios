@@ -8,7 +8,6 @@ Most suites are ported from [`bitkit-android/journeys`](https://github.com/synon
 and deliberately keep the same file names, journey names and `<action>` prose so the two platforms
 stay diffable. Only the platform mechanics differ — `adb` becomes `xcodebuildmcp`, and Android
 `testTag`s become iOS `accessibilityIdentifier`s (the vocabulary is shared; see [Identifiers](#identifiers)).
-iOS-only suites are marked in the [Suites](#suites) table.
 
 **Journeys are the QA contract for a PR.** A PR with a user-visible change adds or updates the
 journeys that prove it and lists them in its body, and reviewers drive the listed journeys on a
@@ -145,19 +144,6 @@ journey, and a step it does not is a manual test in the PR body naming the missi
 | A Pubky identity and a two-wallet marketplace purchase | a Bitkit-generated Pubky profile, plus the integration fixture runtime: Pubky testnet, Paykit Server, regtest bitcoind and Fulcrum — [pubky-auth](pubky-auth/README.md), [pubky-marketplace](pubky-marketplace/README.md) |
 | Deep links handed to the app | `xcrun simctl openurl <device> "<uri>"`; only `bitkit://pubky-auth/setup`, web URLs, Pubky callbacks and payment URIs route — there is no screen or sheet router — [pubky-auth](pubky-auth/README.md), [Not ported](#not-ported) |
 
-## Suites
-
-| Suite | Journeys | Notes |
-| --- | --- | --- |
-| [amount-limits](amount-limits) | 4 | Number pad caps on all four amount screens; the two transfer journeys are adapted — iOS snaps to the max where Android rejects the keypress |
-| [widgets](widgets) | 2 | Widgets intro and add-widget flow |
-| [notification-permission](notification-permission) | 4 | Background-setup toggles |
-| [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
-| [hardware-wallet](hardware-wallet) | 16 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
-| [payment-requests](payment-requests) | 2 | Linked issuer interoperability plus the ported Android resolution-failure journey |
-| [pubky-marketplace](pubky-marketplace) | 1 | Adapted — two-wallet Paykit marketplace payment on regtest; integration fixture required |
-| [pubky-auth](pubky-auth) | 1 | Bitkit-specific OS handoff into watch-only consent; local Pubky identity required |
-
 ## Not ported
 
 **`deeplinks` (2 journeys).** The Android journeys exercise `bitkit://screen/...` routing with a
@@ -169,6 +155,11 @@ journeys are blocked on the feature existing, not on the harness.
 ## Porting from Android
 
 When you port an Android feature, port its journeys too — see the Journeys section in `AGENTS.md`.
+
+Some suites are adapted rather than ported verbatim: `amount-limits` because iOS snaps to the
+spending maximum differently, `cjit-notifications` because the notification copy differs, and
+`pubky-marketplace` because the two-wallet payment runs on regtest here. `pubky-auth` is
+iOS-only — a Bitkit-specific OS handoff into watch-only consent, with no Android counterpart.
 
 A journey is a shared spec, so a behaviour that is meant to match Android can be checked by running
 the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `bitkit-android`
