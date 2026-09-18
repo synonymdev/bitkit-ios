@@ -568,9 +568,7 @@ struct ReceiveQr: View {
         } catch HwPassphraseError.required {
             isPassphraseRequired = true
         } catch {
-            if !error.isTrezorUserCancellation() {
-                app.toast(error)
-            }
+            showHardwareVerifyError(error)
         }
     }
 
@@ -600,9 +598,7 @@ struct ReceiveQr: View {
             } catch HwPassphraseError.mismatch {
                 app.toast(HwTransferError.passphraseMismatch)
             } catch {
-                if !error.isTrezorUserCancellation() {
-                    app.toast(error)
-                }
+                showHardwareVerifyError(error)
             }
         }
     }
@@ -611,6 +607,17 @@ struct ReceiveQr: View {
         passphraseTask?.cancel()
         isPassphraseRequired = false
         isVerifyingPassphrase = false
+    }
+
+    private func showHardwareVerifyError(_ error: Error) {
+        if error.isHwUserCancellation() {
+            return
+        }
+        if let vendor = error.hwBusyVendor {
+            app.toast(HwTransferError.deviceBusy(vendor))
+        } else {
+            app.toast(error)
+        }
     }
 
     /// Strips the lightning parameter from a BIP21 URI while keeping other parameters

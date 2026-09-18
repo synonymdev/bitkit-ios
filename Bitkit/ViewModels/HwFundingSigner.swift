@@ -136,7 +136,7 @@ struct HwFundingSigner {
             disconnectAfterTimeout(walletId: walletId)
             throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(walletId: walletId))
         } catch {
-            if error.isTrezorUserCancellation() {
+            if error.isHwUserCancellation() {
                 throw error
             }
             // Swift has no cause chain, so this must be rethrown explicitly: the catch-all below
@@ -145,8 +145,13 @@ struct HwFundingSigner {
             if let passphrase = error as? HwPassphraseError {
                 throw passphrase
             }
-            if error.isTrezorDeviceBusy() {
-                throw HwTransferError.deviceBusy
+            if let vendor = error.hwBusyVendor {
+                throw HwTransferError.deviceBusy(vendor)
+            }
+            // A Jade that refuses to open (wrong PIN, unreachable PIN server, wrong network) says why
+            // in words the user can act on, which the reconnect copy would hide.
+            if error.underlyingJadeError != nil, !error.isJadeSessionFailure() {
+                throw HwTransferError.generic(HwErrorPresenter.userMessage(from: error))
             }
             throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(walletId: walletId))
         }
@@ -173,6 +178,17 @@ struct HwFundingSigner {
         } catch is Timeout {
             disconnectAfterTimeout(walletId: walletId)
             throw HwTransferError.signingTimeout
+        } catch where error.underlyingJadeError != nil {
+            // A Jade compose reconnects to read the fingerprint, so it fails the way a reconnect does
+            // and is reported the same way instead of with the raw core description.
+            if error.isJadeUserCancellation() {
+                throw error
+            }
+            if error.isJadeDeviceBusy() {
+                throw HwTransferError.deviceBusy(.blockstream)
+            }
+            let message = HwErrorPresenter.userMessage(from: error)
+            throw error.isJadeSessionFailure() ? HwTransferError.funding(message) : HwTransferError.generic(message)
         } catch {
             let message = (error as? AppError)?.debugMessage ?? (error as? AppError)?.message ?? error.localizedDescription
             throw HwTransferError.funding(message)
@@ -188,7 +204,7 @@ struct HwFundingSigner {
             disconnectAfterTimeout(walletId: walletId)
             throw HwTransferError.signingTimeout
         } catch {
-            guard error.isTrezorSessionFailure() else { throw error }
+            guard error.isHwSessionFailure() else { throw error }
 
             await connecting.disconnectStaleSession(walletId: walletId)
             try await ensureConnected(walletId: walletId)
@@ -199,7 +215,7 @@ struct HwFundingSigner {
                 disconnectAfterTimeout(walletId: walletId)
                 throw HwTransferError.signingTimeout
             } catch {
-                if error.isTrezorSessionFailure() {
+                if error.isHwSessionFailure() {
                     await connecting.disconnectStaleSession(walletId: walletId)
                 }
                 throw error
@@ -462,7 +478,7 @@ final class HwSendCoordinator {
         }
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
         if let operationTask {
-            guard operationRequest == request else { throw HwTransferError.deviceBusy }
+            guard operationRequest == request else { throw HwTransferError.deviceBusy(manager.vendor(walletId: walletId)) }
             return try await operationTask.value
         }
 

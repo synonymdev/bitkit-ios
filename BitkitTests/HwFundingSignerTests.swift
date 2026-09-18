@@ -527,6 +527,135 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(connecting.staleDisconnects, ["trezor:wallet"])
         XCTAssertEqual(connecting.ensureCalls, 2)
     }
+
+    // MARK: - Vendor errors
+
+    func testBusyJadeReportsJadeVendor() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = Bitkit.AppError(error: JadeError.DeviceLocked)
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .deviceBusy(.blockstream))
+        }
+        XCTAssertTrue(funding.composeCalls.isEmpty)
+    }
+
+    func testBusyTrezorReportsTrezorVendor() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = Bitkit.AppError(error: TrezorError.DeviceBusy)
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .deviceBusy(.trezor))
+        }
+        XCTAssertTrue(funding.composeCalls.isEmpty)
+    }
+
+    func testJadeWrongPinDuringReconnectShowsJadeCopy() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.isBluetooth = true
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        for (error, key) in [
+            (JadeError.InvalidPin, "hardware__jade_invalid_pin"),
+            (JadeError.PinServerError(errorDetails: "unreachable"), "hardware__jade_pinserver_error"),
+        ] {
+            connecting.connectError = Bitkit.AppError(error: error)
+            await assertThrowsAsync {
+                _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+            } _: { thrown in
+                XCTAssertEqual(thrown as? HwTransferError, .generic(t(key)), "\(error)")
+            }
+        }
+        XCTAssertTrue(funding.composeCalls.isEmpty)
+    }
+
+    func testAJadeLinkFailureDuringReconnectStillReportsAReconnect() async {
+        let connecting = MockHwConnecting()
+        connecting.connectError = Bitkit.AppError(error: JadeError.DeviceDisconnected)
+        connecting.isBluetooth = true
+        let signer = makeSigner(funding: MockHwFunding(), connecting: connecting)
+
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .reconnect(isBluetooth: true))
+        }
+    }
+
+    func testAJadeComposeFailureKeepsTheJadeCopy() async {
+        let funding = MockHwFunding()
+        funding.composeError = Bitkit.AppError(error: JadeError.InvalidPin)
+        let signer = makeSigner(funding: funding, connecting: MockHwConnecting())
+
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .generic(t("hardware__jade_invalid_pin")))
+        }
+
+        funding.composeError = Bitkit.AppError(error: JadeError.DeviceBusy)
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .deviceBusy(.blockstream))
+        }
+
+        funding.composeError = Bitkit.AppError(error: JadeError.Timeout)
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .funding(t("hardware__connect_error")))
+        }
+        XCTAssertEqual(funding.signCalls, 0)
+    }
+
+    func testAJadeSessionFailureRetriesSigningOnce() async throws {
+        let funding = MockHwFunding()
+        funding.signErrors = [Bitkit.AppError(error: JadeError.DeviceDisconnected)]
+        let connecting = MockHwConnecting()
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        let result = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+
+        XCTAssertEqual(result, funding.signedTx)
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(connecting.staleDisconnects, ["jade:wallet"])
+        XCTAssertEqual(connecting.ensureCalls, 2)
+    }
+
+    func testAJadeCancellationOnDeviceIsRethrown() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = JadeError.UserCancelled
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? JadeError, .UserCancelled, "a cancel on the Jade must not become a reconnect failure")
+        }
+        XCTAssertTrue(funding.composeCalls.isEmpty)
+
+        connecting.connectError = nil
+        funding.signError = Bitkit.AppError(error: JadeError.UserCancelled)
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertTrue(error.isJadeUserCancellation())
+            XCTAssertNil(error as? HwTransferError)
+        }
+        XCTAssertEqual(funding.signCalls, 1, "a cancel on the Jade is not retried")
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty)
+    }
 }
 
 /// Async variant of `XCTAssertThrowsError` using a plain (non-autoclosure) operation closure, so the

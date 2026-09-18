@@ -56,6 +56,13 @@
 "hardware__found_title" = "Found Device";
 "hardware__found_header" = "Found\n<accent>Trezor</accent>";
 "hardware__found_text" = "Would you like to securely pair this {model} with Bitkit?";
+"hardware__jade_device_busy" = "Your Jade is busy. Finish what is shown on the device, then try again.";
+"hardware__jade_firmware_outdated" = "Your Jade firmware is too old for this action. Update it with the Blockstream app, then try again.";
+"hardware__jade_invalid_pin" = "Wrong PIN. Try again on your Jade.";
+"hardware__jade_network_mismatch" = "Your Jade is set up for a different Bitcoin network.";
+"hardware__jade_pinserver_error" = "Could not reach the Jade PIN server. Check your internet connection and try again.";
+"hardware__jade_psbt_too_large" = "This transaction is too large for Jade to sign. Try sending a smaller amount.";
+"hardware__jade_uninitialized" = "This Jade has not been set up yet. Create or restore a wallet on the device, then try again.";
 "hardware__paired_title" = "Device Connected";
 "hardware__paired_header" = "Paired\n<accent>Trezor</accent>";
 "hardware__paired_text" = "Bitkit found funds on your device and added these to your balance.";

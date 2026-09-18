@@ -174,12 +174,12 @@ struct HwSendSignView: View {
     }
 
     private func showHardwareError(_ error: Error) {
-        if error.isTrezorUserCancellation() {
+        if error.isHwUserCancellation() {
             return
         }
-        if error.isTrezorDeviceBusy() {
-            app.toast(HwTransferError.deviceBusy)
-        } else if error.isTrezorFirmwareError() {
+        if let vendor = error.hwBusyVendor {
+            app.toast(HwTransferError.deviceBusy(vendor))
+        } else if error.isHwFirmwareError() {
             app.toast(HwTransferError.firmwareReconnect)
         } else if hwSend.hasPendingBroadcast, error.isBroadcastConnectivityFailure() {
             app.toast(HwTransferError.broadcastConnectivity)
