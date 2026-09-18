@@ -97,10 +97,12 @@ protocol HwTransferFunding: Sendable {
 
 /// The device-session capability the transfer flow needs for on-device signing, addressed by wallet
 /// identity: a device holds one wallet open at a time, so reaching a given wallet is more than
-/// reaching its transport. Implemented by `TrezorManager`.
+/// reaching its transport. Implemented by `HwWalletManager`.
 @MainActor
 protocol HwTransferConnecting: Sendable {
     func ensureConnected(walletId: String) async throws
+    /// How long `ensureConnected` may take for this wallet's device before the flow gives up.
+    func reconnectTimeout(walletId: String) -> Double
     func disconnectStaleSession(walletId: String) async
     func scheduleStaleSessionCleanup(walletId: String)
     /// Whether the wallet is reachable over a known Bluetooth device, so a reconnect failure can show
@@ -190,7 +192,7 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting? = nil,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
-        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
+        hwTimeouts: (compose: Double, sign: Double, broadcast: Double) = (compose: 45, sign: 120, broadcast: 120),
         onBalanceRefresh: (() async -> Void)? = nil
     ) {
         self.coreService = coreService
@@ -241,7 +243,7 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting?,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
-        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
+        hwTimeouts: (compose: Double, sign: Double, broadcast: Double) = (compose: 45, sign: 120, broadcast: 120),
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel()

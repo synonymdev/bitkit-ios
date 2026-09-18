@@ -2,7 +2,7 @@ import BitkitCore
 import Combine
 import Foundation
 
-/// Production hardware-wallet business layer. Tracks paired Trezor wallets as watch-only
+/// Production hardware-wallet business layer. Tracks paired Trezor and Jade wallets as watch-only
 /// balances by running one on-chain xpub watcher per (wallet, address type), aggregating the
 /// per-wallet balance in memory, and persisting each wallet's on-chain activity into
 /// bitkit-core scoped by its `walletId` (core 0.3.x wallet-scoped storage).
@@ -11,11 +11,15 @@ import Foundation
 /// wallet plus one identity per hidden wallet, all reached over the same transport id.
 ///
 /// Tile and watcher state come solely from `updateDevices(...)`, fed by the composition root
-/// (`AppScene`). The identity-aware session operations — opening a passphrase wallet, proving the
-/// live session belongs to the wallet being spent from — additionally read the device through the
-/// injected `TrezorSessioning` seam, and read the stored entries fresh from it: a connect that
-/// just wrote one lands there before the push does. Never references `TrezorManager` concretely.
+/// (`AppScene`). The identity-aware session operations (opening a passphrase wallet, proving the
+/// live session belongs to the wallet being spent from) additionally read the device through the
+/// injected `TrezorSessioning` and `JadeSessioning` seams, and read the stored entries fresh from
+/// them: a connect that just wrote one lands there before the push does. Never references a vendor
+/// manager concretely.
 ///
+/// Every device call is routed by the vendor stored on the wallet's entries. Only one vendor holds a
+/// session at a time: the operations that open one run under a FIFO session lock and release the
+/// other vendor's session first, so the two never compete for the radio.
 @Observable
 @MainActor
 final class HwWalletManager {
@@ -27,6 +31,12 @@ final class HwWalletManager {
         AccountType
     ) async throws -> AccountInfoResult
     typealias AddressProvider = @MainActor (TrezorGetAddressParams) async throws -> TrezorAddressResponse
+    typealias ComposeProvider = @MainActor (ComposeParams) async throws -> [ComposeResult]
+
+    /// How long reaching a wallet's device may take before the flow gives up. A Jade may be waiting
+    /// for its PIN, which is entered on the device.
+    static let trezorReconnectTimeout: Double = 30
+    static let jadeReconnectTimeout: Double = 300
 
     private enum Constants {
         static let watcherIdSeparator = "|"
@@ -65,15 +75,17 @@ final class HwWalletManager {
     private let networkProvider: () -> TrezorCoinType
     private let accountInfoProvider: AccountInfoProvider
     private let addressProvider: AddressProvider
+    private let composeProvider: ComposeProvider
     private let persistSnapshot: @MainActor (HwWalletSnapshot) async throws -> Void
     private let deleteActivities: @MainActor (String) async throws -> Void
     private let readTagMetadata: @MainActor (String) async throws -> [PreActivityMetadata]
     private let writeTagMetadata: @MainActor ([PreActivityMetadata]) async throws -> Void
 
-    /// The live device session. Only the identity-aware operations need it; tile and watcher state
-    /// still come solely from `updateDevices(...)`. Nil in previews and in tests that don't reach
-    /// the device.
-    private weak var session: TrezorSessioning?
+    /// The live device sessions, one per vendor. Only the identity-aware operations need them; tile
+    /// and watcher state still come solely from `updateDevices(...)`. Nil in previews and in tests
+    /// that don't reach the device. Weak because the composition root owns the vendor managers.
+    private weak var trezorSession: TrezorSessioning?
+    private weak var jadeSession: JadeSessioning?
 
     /// One chain per wallet id, shared by both writes: a snapshot landing after the delete it was
     /// racing would resurrect the wallet `removeDevice` just wiped.
@@ -121,9 +133,13 @@ final class HwWalletManager {
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
     private var staleSessionCleanupTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var isSessionOperationActive = false
+    @ObservationIgnored private var sessionOperationWaiters: [CheckedContinuation<Void, Never>] = []
+    @ObservationIgnored private var isAppActive = true
 
     init(
-        session: TrezorSessioning? = nil,
+        trezorSession: TrezorSessioning? = nil,
+        jadeSession: JadeSessioning? = nil,
         watcherService: OnChainWatcherServicing = OnChainHwService.shared,
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
@@ -140,12 +156,16 @@ final class HwWalletManager {
         addressProvider: @escaping AddressProvider = { params in
             try await TrezorService.shared.getAddress(params: params)
         },
+        composeProvider: @escaping ComposeProvider = { params in
+            try await OnChainHwService.shared.composeTransaction(params: params)
+        },
         persistSnapshot: (@MainActor (HwWalletSnapshot) async throws -> Void)? = nil,
         deleteActivities: (@MainActor (String) async throws -> Void)? = nil,
         readTagMetadata: (@MainActor (String) async throws -> [PreActivityMetadata])? = nil,
         writeTagMetadata: (@MainActor ([PreActivityMetadata]) async throws -> Void)? = nil
     ) {
-        self.session = session
+        self.trezorSession = trezorSession
+        self.jadeSession = jadeSession
         self.watcherService = watcherService
         networkProvider = network ?? { OnChainHwService.appDefaultCoinType }
         monitoredTypesProvider = monitoredTypes ?? {
@@ -154,6 +174,7 @@ final class HwWalletManager {
         electrumUrlProvider = electrumUrl ?? { OnChainHwService.getElectrumUrl() }
         self.accountInfoProvider = accountInfoProvider
         self.addressProvider = addressProvider
+        self.composeProvider = composeProvider
         // Both seams are plain writes: queueing, failure handling and cache repair live in
         // `persist(_:)` / `delete(walletId:)`, so an injected seam exercises them too.
         self.persistSnapshot = persistSnapshot ?? { snapshot in
@@ -210,7 +231,7 @@ final class HwWalletManager {
 
     /// Stop watching a paired hardware wallet and delete its stored activities. Other wallets on the
     /// same physical device are left untouched. The caller is responsible for forgetting the stored
-    /// entries (via `TrezorManager`).
+    /// entries (via the vendor's session).
     ///
     /// - Parameter keptMetadata: tag metadata to re-apply after each delete of this wallet, or empty
     /// to keep nothing. Passed on every call so a removal that keeps nothing clears what an earlier
@@ -278,13 +299,28 @@ final class HwWalletManager {
             }
         }
 
+        // Read before the removal: without sessions the vendor comes from the entries it drops.
+        let vendor = vendor(walletId: walletId)
         removeDevice(walletId: walletId, keptMetadata: keptMetadata)
         // The name rides the same store write that forgets the entries carrying it. A nil name is
         // passed deliberately when keeping nothing: it drops a name an earlier removal kept.
-        await session?.forgetWallet(
-            walletId: walletId,
-            pendingName: PendingHwWalletName(walletId: walletId, name: keptName)
-        )
+        let pendingName = PendingHwWalletName(walletId: walletId, name: keptName)
+        switch vendor {
+        case .trezor:
+            await trezorSession?.forgetWallet(walletId: walletId, pendingName: pendingName)
+        case .blockstream:
+            await jadeSession?.forgetWallet(walletId: walletId, pendingName: pendingName)
+        }
+    }
+
+    /// Sets the Bitkit-side name of `walletId` on the entries of its vendor.
+    func renameWallet(walletId: String, newName: String) {
+        switch vendor(walletId: walletId) {
+        case .trezor:
+            trezorSession?.renameWallet(walletId: walletId, newName: newName)
+        case .blockstream:
+            jadeSession?.renameWallet(walletId: walletId, newName: newName)
+        }
     }
 
     // MARK: - Wallet identity & the device session
@@ -292,7 +328,14 @@ final class HwWalletManager {
     /// Stored entries tracking one wallet identity, read fresh: a connect that just wrote one lands
     /// there before the `updateDevices(...)` push does.
     private func entries(for walletId: String) -> [HwKnownDevice] {
-        (session?.storedDevices ?? knownDevices).filter { $0.resolvedWalletId == walletId }
+        storedDevices.filter { $0.resolvedWalletId == walletId }
+    }
+
+    /// Every vendor's stored entries, read fresh from the sessions, or the pushed snapshot when there
+    /// are none.
+    private var storedDevices: [HwKnownDevice] {
+        guard trezorSession != nil || jadeSession != nil else { return knownDevices }
+        return (trezorSession?.storedDevices ?? []) + (jadeSession?.storedDevices ?? [])
     }
 
     /// The vendor of the device holding `walletId`, which decides how it is reached and signed with,
@@ -301,10 +344,19 @@ final class HwWalletManager {
         entries(for: walletId).first?.vendor ?? .trezor
     }
 
+    /// How long reaching `walletId`'s device may take before the flow gives up.
+    func reconnectTimeout(walletId: String) -> Double {
+        switch vendor(walletId: walletId) {
+        case .trezor: Self.trezorReconnectTimeout
+        case .blockstream: Self.jadeReconnectTimeout
+        }
+    }
+
     /// Transport id to reach `walletId` with: the connected entry, else the most recently used one.
     private func transportDeviceId(for walletId: String) -> String? {
         let entries = entries(for: walletId)
-        if let connected = entries.first(where: { $0.id == session?.connectedDeviceId }) {
+        let connectedIds = [trezorSession?.connectedDeviceId, jadeSession?.connectedDeviceId].compactMap { $0 }
+        if let connected = entries.first(where: { connectedIds.contains($0.id) }) {
             return connected.id
         }
         return entries.max(by: { $0.lastConnectedAt < $1.lastConnectedAt })?.id
@@ -327,7 +379,7 @@ final class HwWalletManager {
     /// Only the passphrase reopens a hidden wallet, so that is what a hidden target asks for. For any
     /// other wallet the device is simply not holding it, which no passphrase can fix.
     private func requireIdentity(of walletId: String) throws {
-        let opened = session?.connectedWalletId
+        let opened = trezorSession?.connectedWalletId
         guard opened != walletId else { return }
         guard !entries(for: walletId).contains(where: \.passphraseProtected) else {
             throw HwPassphraseError.required
@@ -339,14 +391,45 @@ final class HwWalletManager {
     }
 
     private func watchedWalletIds() -> Set<String> {
-        Set((session?.storedDevices ?? knownDevices).compactMap(\.resolvedWalletId))
+        Set(storedDevices.compactMap(\.resolvedWalletId))
+    }
+
+    /// Fails unless the live Jade session may sign for `walletId`. No session passes, since core then
+    /// reports it as not connected and the signer reconnects. A session whose accounts could not be
+    /// read reports no identity, so its entry has to belong to `walletId` instead.
+    ///
+    /// A foreground reconnect can replace the session between composing and signing, and a different
+    /// Jade would be asked to sign inputs it holds no keys for.
+    private func requireJadeSession(holding walletId: String) throws {
+        guard let jadeSession, let connectedDeviceId = jadeSession.connectedDeviceId else { return }
+        let holdsWallet = if let opened = jadeSession.connectedWalletId {
+            opened == walletId
+        } else {
+            entries(for: walletId).contains { $0.id == connectedDeviceId }
+        }
+        guard !holdsWallet else { return }
+        throw AppError(
+            message: "Reconnect Hardware Device",
+            debugMessage: "A different hardware wallet is connected than the one holding '\(walletId)'"
+        )
     }
 
     /// Opens the passphrase (hidden) wallet of an already paired device and starts watching it as
     /// its own identity, returning its wallet id. The passphrase is bound to a fresh Trezor session
-    /// and is never persisted; re-entering it is what makes the wallet reachable again.
+    /// and is never persisted; re-entering it is what makes the wallet reachable again. A Jade has no
+    /// passphrase wallets, so it is refused as a device with passphrase protection turned off.
     func connectWithPassphrase(deviceId: String, passphrase: String) async throws -> String {
-        guard let session else {
+        try await withSessionLock {
+            let isJade = jadeSession?.connectedDeviceId == deviceId
+                || storedDevices.contains { $0.id == deviceId && $0.vendor == .blockstream }
+            guard !isJade else { throw HwPassphraseError.protectionDisabled }
+            await disconnectOtherVendor(.trezor)
+            return try await connectWithPassphraseLocked(deviceId: deviceId, passphrase: passphrase)
+        }
+    }
+
+    private func connectWithPassphraseLocked(deviceId: String, passphrase: String) async throws -> String {
+        guard let session = trezorSession else {
             throw AppError(message: "Unavailable", debugMessage: "No device session to open a passphrase wallet with")
         }
         await waitForStaleSessionCleanup(deviceId: deviceId)
@@ -384,10 +467,20 @@ final class HwWalletManager {
     /// otherwise be accepted and sign with the wrong seed. The standard wallet needs no secret to
     /// reopen; a passphrase wallet does, which the caller has to collect.
     func ensureConnected(walletId: String) async throws {
-        guard let session else {
+        try await withSessionLock {
+            try await ensureConnectedLocked(walletId: walletId)
+        }
+    }
+
+    private func ensureConnectedLocked(walletId: String) async throws {
+        if vendor(walletId: walletId) == .blockstream {
+            return try await ensureJadeConnected(walletId: walletId)
+        }
+        guard let session = trezorSession else {
             throw AppError(message: "Unavailable", debugMessage: "No device session for wallet '\(walletId)'")
         }
         let deviceId = try requireTransportDeviceId(for: walletId)
+        await disconnectOtherVendor(.trezor)
         await waitForStaleSessionCleanup(deviceId: deviceId)
         try await session.ensureConnected(deviceId: deviceId)
         if session.connectedWalletId == walletId {
@@ -405,11 +498,29 @@ final class HwWalletManager {
         try requireIdentity(of: walletId)
     }
 
+    /// A Jade holds a single wallet, so a live session that resolved to another one cannot be
+    /// reopened for this wallet: the device itself is the wrong one.
+    private func ensureJadeConnected(walletId: String) async throws {
+        guard let jadeSession else {
+            throw AppError(message: "Unavailable", debugMessage: "No Jade session for wallet '\(walletId)'")
+        }
+        let deviceId = try requireTransportDeviceId(for: walletId)
+        await disconnectOtherVendor(.blockstream)
+        await waitForStaleSessionCleanup(deviceId: deviceId)
+        try await jadeSession.ensureConnected(deviceId: deviceId)
+        if let opened = jadeSession.connectedWalletId, opened != walletId {
+            throw AppError(
+                message: "Reconnect Hardware Device",
+                debugMessage: "Device '\(deviceId)' is not holding wallet '\(walletId)'"
+            )
+        }
+    }
+
     /// Whether reaching `walletId` needs the passphrase again. The device only holds one hidden
     /// wallet open at a time and forgets the passphrase with the session, so a passphrase wallet that
     /// is not the live session cannot be reconnected — or signed with — without it.
     func needsPassphrase(walletId: String) -> Bool {
-        entries(for: walletId).contains(where: \.passphraseProtected) && session?.connectedWalletId != walletId
+        entries(for: walletId).contains(where: \.passphraseProtected) && trezorSession?.connectedWalletId != walletId
     }
 
     func disconnectStaleSession(walletId: String) async {
@@ -418,7 +529,7 @@ final class HwWalletManager {
             await cleanup.value
             return
         }
-        await performStaleSessionCleanup(deviceId: deviceId)
+        await performStaleSessionCleanup(deviceId: deviceId, vendor: vendor(walletId: walletId))
     }
 
     /// Starts timeout recovery without blocking the current UI operation. Any subsequent connect
@@ -426,10 +537,12 @@ final class HwWalletManager {
     func scheduleStaleSessionCleanup(walletId: String) {
         guard let deviceId = transportDeviceId(for: walletId) else { return }
         guard staleSessionCleanupTasks[deviceId] == nil else { return }
+        // Captured now: a removal landing before the task runs would leave nothing to read it from.
+        let vendor = vendor(walletId: walletId)
 
         staleSessionCleanupTasks[deviceId] = Task { @MainActor [weak self] in
             guard let self else { return }
-            await performStaleSessionCleanup(deviceId: deviceId)
+            await performStaleSessionCleanup(deviceId: deviceId, vendor: vendor)
             staleSessionCleanupTasks[deviceId] = nil
         }
     }
@@ -438,13 +551,23 @@ final class HwWalletManager {
         await staleSessionCleanupTasks[deviceId]?.value
     }
 
-    private func performStaleSessionCleanup(deviceId: String) async {
-        await session?.disconnectStaleSession(deviceId: deviceId)
+    private func performStaleSessionCleanup(deviceId: String, vendor: HwWalletVendor) async {
+        switch vendor {
+        case .trezor:
+            await trezorSession?.disconnectStaleSession(deviceId: deviceId)
+        case .blockstream:
+            await jadeSession?.disconnectStaleSession(deviceId: deviceId)
+        }
     }
 
     func isKnownBluetoothDevice(walletId: String) -> Bool {
         guard let deviceId = transportDeviceId(for: walletId) else { return false }
-        return session?.isKnownBluetoothDevice(deviceId: deviceId) ?? false
+        switch vendor(walletId: walletId) {
+        case .trezor:
+            return trezorSession?.isKnownBluetoothDevice(deviceId: deviceId) ?? false
+        case .blockstream:
+            return jadeSession?.isKnownBluetoothDevice(deviceId: deviceId) ?? false
+        }
     }
 
     func warmUpConnection(walletId: String) {
@@ -455,7 +578,15 @@ final class HwWalletManager {
         guard !needsPassphrase(walletId: walletId) else { return }
         guard let deviceId = transportDeviceId(for: walletId) else { return }
         guard staleSessionCleanupTasks[deviceId] == nil else { return }
-        session?.warmUpConnection(deviceId: deviceId)
+        // Best effort only: taking the radio from the other vendor is left to an explicit connect.
+        let vendor = vendor(walletId: walletId)
+        guard !isOtherVendorActive(vendor) else { return }
+        switch vendor {
+        case .trezor:
+            trezorSession?.warmUpConnection(deviceId: deviceId)
+        case .blockstream:
+            jadeSession?.warmUpConnection(deviceId: deviceId)
+        }
     }
 
     /// Reopens a watched passphrase wallet for signing. A wrong passphrase is not rejected by the
@@ -463,7 +594,15 @@ final class HwWalletManager {
     /// its accounts resolve back to `walletId`; anything else is torn down again and reported as
     /// `HwPassphraseError.mismatch` rather than signing from the wrong wallet.
     func reconnectWithPassphrase(walletId: String, passphrase: String) async throws {
-        guard let session else {
+        try await withSessionLock {
+            guard vendor(walletId: walletId) == .trezor else { throw HwPassphraseError.protectionDisabled }
+            await disconnectOtherVendor(.trezor)
+            try await reconnectWithPassphraseLocked(walletId: walletId, passphrase: passphrase)
+        }
+    }
+
+    private func reconnectWithPassphraseLocked(walletId: String, passphrase: String) async throws {
+        guard let session = trezorSession else {
             throw AppError(message: "Unavailable", debugMessage: "No device session for wallet '\(walletId)'")
         }
         let deviceId = try requireTransportDeviceId(for: walletId)
@@ -501,6 +640,119 @@ final class HwWalletManager {
         }
         await session.disconnectStaleSession(deviceId: deviceId)
         throw HwPassphraseError.mismatch
+    }
+
+    // MARK: - Vendor sessions
+
+    /// Runs `operation` with the radio to `vendor` alone, releasing the other vendor's session first.
+    /// Pairing goes through here, so it queues behind the other session operations.
+    func withVendorSession<T>(_ vendor: HwWalletVendor, _ operation: @MainActor () async throws -> T) async throws -> T {
+        try await withSessionLock {
+            await disconnectOtherVendor(vendor)
+            return try await operation()
+        }
+    }
+
+    /// Silently reconnects the most relevant paired device after the app returns to the foreground.
+    /// Best effort: failures are logged by the vendor managers.
+    func reconnectOnForeground() async {
+        try? await withSessionLock {
+            let target = preferredReconnectVendor()
+            await disconnectOtherVendor(target)
+            switch target {
+            case .trezor:
+                // Launched rather than awaited so a scan for a Trezor that is not around does not hold
+                // the lock; `TrezorManager` runs its own connection work one at a time.
+                Task { [weak trezorSession] in await trezorSession?.autoReconnect() }
+            case .blockstream:
+                jadeSession?.startAutoReconnect()
+            }
+        }
+    }
+
+    /// Starts a silent Jade reconnect once Bluetooth is back on, when a Jade is paired, the Trezor is
+    /// idle and the app is in the foreground.
+    func onJadeBluetoothRestored() {
+        guard isAppActive, let jadeSession, !jadeSession.storedDevices.isEmpty else { return }
+        guard !isOtherVendorActive(.blockstream) else { return }
+        jadeSession.startAutoReconnect()
+    }
+
+    func onAppBackgrounded() {
+        isAppActive = false
+        jadeSession?.onAppBackgrounded()
+    }
+
+    func onAppBecameActive() {
+        isAppActive = true
+        jadeSession?.onAppBecameActive()
+    }
+
+    func resetForWipe() async {
+        await jadeSession?.resetForWipe()
+    }
+
+    /// The vendor a foreground reconnect targets: the one already connected, else the one whose
+    /// Bluetooth entry was used most recently. Read from the saved entries, because on a cold launch
+    /// this runs before the vendor managers have loaded theirs.
+    private func preferredReconnectVendor() -> HwWalletVendor {
+        if trezorSession?.connectedDeviceId != nil {
+            return .trezor
+        }
+        if jadeSession?.connectedDeviceId != nil {
+            return .blockstream
+        }
+        return HwKnownDeviceStorage.loadAll()
+            .filter { $0.transportType == "bluetooth" }
+            .max { $0.lastConnectedAt < $1.lastConnectedAt }?
+            .vendor ?? .trezor
+    }
+
+    private func isOtherVendorActive(_ vendor: HwWalletVendor) -> Bool {
+        switch vendor {
+        case .trezor: jadeSession?.isSessionActive == true
+        case .blockstream: trezorSession?.isSessionActive == true
+        }
+    }
+
+    /// Releases the other vendor's session so the radio and core belong to `vendor` alone. A release
+    /// cannot fail from here: each vendor drops its session state even when closing the device
+    /// fails, so the operation carries on regardless.
+    private func disconnectOtherVendor(_ vendor: HwWalletVendor) async {
+        guard isOtherVendorActive(vendor) else { return }
+        switch vendor {
+        case .trezor:
+            await jadeSession?.releaseSession()
+        case .blockstream:
+            await trezorSession?.releaseSession()
+        }
+    }
+
+    private func withSessionLock<T>(_ operation: @MainActor () async throws -> T) async throws -> T {
+        await acquireSessionLock()
+        defer { releaseSessionLock() }
+        try Task.checkCancellation()
+        return try await operation()
+    }
+
+    private func acquireSessionLock() async {
+        guard isSessionOperationActive else {
+            isSessionOperationActive = true
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            sessionOperationWaiters.append(continuation)
+        }
+    }
+
+    private func releaseSessionLock() {
+        guard !sessionOperationWaiters.isEmpty else {
+            isSessionOperationActive = false
+            return
+        }
+
+        sessionOperationWaiters.removeFirst().resume()
     }
 
     // MARK: - Watcher orchestration
@@ -1009,6 +1261,9 @@ final class HwWalletManager {
 
     /// Displays the exact address currently shown by Bitkit on the device and rejects a mismatch.
     func verifyReceiveAddress(walletId: String, receiveAddress: HwReceiveAddress) async throws {
+        if vendor(walletId: walletId) == .blockstream {
+            return try await verifyJadeReceiveAddress(walletId: walletId, receiveAddress: receiveAddress)
+        }
         try await ensureConnected(walletId: walletId)
 
         let response: TrezorAddressResponse
@@ -1032,6 +1287,46 @@ final class HwWalletManager {
             throw AppError(
                 message: t("hardware__verify_address_error"),
                 debugMessage: "Trezor returned '\(response.address)' for '\(receiveAddress.path)', expected '\(receiveAddress.address)'"
+            )
+        }
+    }
+
+    /// A Jade compares on the device itself: it shows the address and answers with a mismatch error.
+    private func verifyJadeReceiveAddress(walletId: String, receiveAddress: HwReceiveAddress) async throws {
+        guard let jadeSession else {
+            throw AppError(message: "Unavailable", debugMessage: "No Jade session for wallet '\(walletId)'")
+        }
+        func verifyOnDevice() async throws {
+            try await jadeSession.verifyAddress(
+                addressType: receiveAddress.addressType,
+                derivationPath: receiveAddress.path,
+                expectedAddress: receiveAddress.address
+            )
+        }
+
+        do {
+            try await ensureConnected(walletId: walletId)
+            do {
+                try await verifyOnDevice()
+            } catch {
+                guard error.isHwSessionFailure() else { throw error }
+                await disconnectStaleSession(walletId: walletId)
+                try await ensureConnected(walletId: walletId)
+                try Task.checkCancellation()
+                do {
+                    try await verifyOnDevice()
+                } catch {
+                    if error.isHwSessionFailure() {
+                        await disconnectStaleSession(walletId: walletId)
+                    }
+                    throw error
+                }
+            }
+        } catch {
+            guard case let .AddressMismatch(_, returned)? = error.underlyingJadeError else { throw error }
+            throw AppError(
+                message: t("hardware__verify_address_error"),
+                debugMessage: "Jade returned '\(returned)' for '\(receiveAddress.path)', expected '\(receiveAddress.address)'"
             )
         }
     }
@@ -1070,7 +1365,7 @@ final class HwWalletManager {
             feeRates: [Float(satsPerVByte)],
             coinSelection: .branchAndBound
         )
-        let results = try await OnChainHwService.shared.composeTransaction(params: params)
+        let results = try await composeProvider(params)
         for result in results {
             if case let .success(_, fee, _, totalSpent) = result {
                 return totalSpent > fee ? totalSpent - fee : 0
@@ -1091,7 +1386,8 @@ final class HwWalletManager {
 
     /// Compose the exact on-chain funding payment before prompting for the on-device signature.
     /// Requires the device to be connected (the fingerprint drives the PSBT derivation paths); the
-    /// caller must ensure the Trezor is connected first (via `TrezorManager`).
+    /// caller must ensure a Trezor is connected first (via `ensureConnected`). A Jade is connected
+    /// here, since its fingerprint is read from the live session.
     func composeFundingTransaction(
         walletId: String,
         address: String,
@@ -1099,7 +1395,7 @@ final class HwWalletManager {
         satsPerVByte: UInt64,
         addressType: AddressScriptType = hwFundingDefaultAddressType
     ) async throws -> HwFundingTransaction {
-        let fingerprint = try await TrezorService.shared.getDeviceFingerprint()
+        let fingerprint = try await signingFingerprint(walletId: walletId)
         return try await composeFundingTransactionInternal(
             walletId: walletId,
             address: address,
@@ -1108,6 +1404,18 @@ final class HwWalletManager {
             fingerprint: fingerprint,
             addressType: addressType
         )
+    }
+
+    private func signingFingerprint(walletId: String) async throws -> String {
+        guard vendor(walletId: walletId) == .blockstream else {
+            return try await TrezorService.shared.getDeviceFingerprint()
+        }
+        guard let jadeSession else {
+            throw AppError(message: "Unavailable", debugMessage: "No Jade session for wallet '\(walletId)'")
+        }
+        // Without the key origins this carries, the Jade finds nothing of its own to sign.
+        try await ensureConnected(walletId: walletId)
+        return try await jadeSession.masterFingerprint()
     }
 
     /// Offline coin-selection for the exact funding amount; returns the mining fee only.
@@ -1151,7 +1459,7 @@ final class HwWalletManager {
             feeRates: [Float(satsPerVByte)],
             coinSelection: .branchAndBound
         )
-        let results = try await OnChainHwService.shared.composeTransaction(params: params)
+        let results = try await composeProvider(params)
         for result in results {
             if case let .success(psbt, fee, feeRate, totalSpent) = result {
                 return HwFundingTransaction(
@@ -1178,17 +1486,34 @@ final class HwWalletManager {
 
     /// Sign a composed funding payment on the device. Requires the device to be connected. On signing
     /// failure the caller is responsible for clearing the stale session (via
-    /// `TrezorManager.disconnectStaleSession`). Broadcasting is a separate step so a device-signing
+    /// `disconnectStaleSession`). Broadcasting is a separate step so a device-signing
     /// timeout is never conflated with an in-flight broadcast.
     func signFunding(
         walletId: String,
         funding: HwFundingTransaction
     ) async throws -> HwFundingSignedTx {
+        if vendor(walletId: walletId) == .blockstream {
+            return try await signJadeFunding(walletId: walletId, funding: funding)
+        }
         // The session can change between connecting and signing, and signing from the wrong seed
         // would produce signatures that do not match the inputs being spent.
         try requireIdentity(of: walletId)
         let network = networkProvider()
         let signed = try await TrezorService.shared.signTxFromPsbt(psbtBase64: funding.psbt, network: network)
+        return HwFundingSignedTx(
+            serializedTx: signed.serializedTx,
+            miningFeeSats: funding.miningFeeSats,
+            feeRate: funding.feeRate,
+            totalSpent: funding.totalSpent
+        )
+    }
+
+    private func signJadeFunding(walletId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx {
+        guard let jadeSession else {
+            throw AppError(message: "Unavailable", debugMessage: "No Jade session for wallet '\(walletId)'")
+        }
+        try requireJadeSession(holding: walletId)
+        let signed = try await jadeSession.signPsbt(funding.psbt)
         return HwFundingSignedTx(
             serializedTx: signed.serializedTx,
             miningFeeSats: funding.miningFeeSats,

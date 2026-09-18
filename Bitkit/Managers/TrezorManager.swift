@@ -429,6 +429,22 @@ final class TrezorManager {
         connectedDevice != nil
     }
 
+    var isSessionActive: Bool {
+        connectedDevice != nil || isAutoReconnecting || isConnectionOperationActive
+    }
+
+    func releaseSession() async {
+        cancelPairingCode()
+        // Detached because `withConnectionOperation` bails out on a cancelled task, and a caller
+        // abandoning its own work must still leave the radio free for the other vendor.
+        await Task.detached { @MainActor [weak self] in
+            guard let self else { return }
+            try? await withConnectionOperation {
+                await self.disconnect()
+            }
+        }.value
+    }
+
     // MARK: - UI Callbacks
 
     func submitPin(_ pin: String) {

@@ -14,6 +14,7 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         var connectedDeviceId: String?
         var connectedWalletId: String?
         var connectedFeatures: TrezorFeatures?
+        var isSessionActive = false
 
         /// Wallet id the next `connectWithWalletMode` resolves to, per mode. A hidden open that is
         /// not listed here resolves to `openedWalletIdOnHidden`, standing in for the different wallet
@@ -35,6 +36,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         private(set) var staleDisconnects: [String] = []
         private(set) var forgottenWalletIds: [String] = []
         private(set) var warmUpCalls: [String] = []
+        private(set) var releaseCalls = 0
+        private(set) var autoReconnectCalls = 0
+        private(set) var renameCalls: [(walletId: String, newName: String)] = []
 
         func ensureConnected(deviceId: String) async throws {
             ensureCalls.append(deviceId)
@@ -98,6 +102,19 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
             if connectedWalletId == walletId {
                 connectedWalletId = nil
             }
+        }
+
+        func releaseSession() async {
+            releaseCalls += 1
+            isSessionActive = false
+        }
+
+        func autoReconnect() async {
+            autoReconnectCalls += 1
+        }
+
+        func renameWallet(walletId: String, newName: String) {
+            renameCalls.append((walletId, newName))
         }
     }
 
@@ -587,7 +604,7 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         addressProvider: @escaping HwWalletManager.AddressProvider = { _ in throw TrezorError.DeviceDisconnected }
     ) -> HwWalletManager {
         HwWalletManager(
-            session: session,
+            trezorSession: session,
             watcherService: NoopWatcher(),
             monitoredTypes: { ["nativeSegwit"] },
             electrumUrl: { "ssl://test:1" },

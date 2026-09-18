@@ -123,6 +123,8 @@ final class MockHwFunding: HwTransferFunding {
 @MainActor
 final class MockHwConnecting: HwTransferConnecting {
     var connectError: Error?
+    var connectDelay: Double = 0
+    var reconnectTimeoutSeconds: Double = 5
     var isBluetooth = false
     /// Wallets whose passphrase the device no longer holds, so signing has to ask for it again.
     var walletsNeedingPassphrase: Set<String> = []
@@ -134,9 +136,16 @@ final class MockHwConnecting: HwTransferConnecting {
 
     func ensureConnected(walletId _: String) async throws {
         ensureCalls += 1
+        if connectDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(connectDelay * 1_000_000_000))
+        }
         if let connectError {
             throw connectError
         }
+    }
+
+    func reconnectTimeout(walletId _: String) -> Double {
+        reconnectTimeoutSeconds
     }
 
     func needsPassphrase(walletId: String) -> Bool {

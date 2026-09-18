@@ -11,7 +11,7 @@ final class HwFundingSignerTests: XCTestCase {
         connecting: MockHwConnecting,
         feeRate: UInt64? = 2,
         address: String? = "bc1qtest",
-        timeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 5, compose: 5, sign: 5, broadcast: 5)
+        timeouts: (compose: Double, sign: Double, broadcast: Double) = (compose: 5, sign: 5, broadcast: 5)
     ) -> HwFundingSigner {
         HwFundingSigner(
             funding: funding,
@@ -377,6 +377,23 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.signCalls, 0)
     }
 
+    /// The reconnect deadline belongs to the wallet's device: a Jade may be waiting for its PIN.
+    func testReconnectUsesTheWalletsTimeout() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectDelay = 0.4
+        connecting.reconnectTimeoutSeconds = 0.05
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .reconnect(isBluetooth: false))
+        }
+        XCTAssertEqual(connecting.staleDisconnects, ["jade:wallet"], "the timed-out session is cleaned up")
+        XCTAssertTrue(funding.composeCalls.isEmpty)
+    }
+
     func testComposeFailureThrowsFundingError() async {
         let funding = MockHwFunding()
         funding.composeError = MockHwFunding.TestError()
@@ -396,7 +413,7 @@ final class HwFundingSignerTests: XCTestCase {
         let funding = MockHwFunding()
         funding.signDelay = 0.4
         let connecting = MockHwConnecting()
-        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 5, sign: 0.05, broadcast: 5))
+        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (compose: 5, sign: 0.05, broadcast: 5))
 
         await assertThrowsAsync {
             _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")
@@ -415,7 +432,7 @@ final class HwFundingSignerTests: XCTestCase {
         let signer = makeSigner(
             funding: funding,
             connecting: connecting,
-            timeouts: (reconnect: 5, compose: 5, sign: 0.05, broadcast: 5)
+            timeouts: (compose: 5, sign: 0.05, broadcast: 5)
         )
         let start = ContinuousClock.now
 
@@ -434,7 +451,7 @@ final class HwFundingSignerTests: XCTestCase {
         let funding = MockHwFunding()
         funding.broadcastDelay = 0.4
         let connecting = MockHwConnecting()
-        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 5, sign: 5, broadcast: 0.05))
+        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (compose: 5, sign: 5, broadcast: 0.05))
 
         await assertThrowsAsync {
             _ = try await signer.broadcastSignedFunding(funding.signedTx)
@@ -481,7 +498,7 @@ final class HwFundingSignerTests: XCTestCase {
         let funding = MockHwFunding()
         funding.composeDelay = 0.4
         let connecting = MockHwConnecting()
-        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (reconnect: 5, compose: 0.05, sign: 5, broadcast: 5))
+        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (compose: 0.05, sign: 5, broadcast: 5))
 
         await assertThrowsAsync {
             _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")

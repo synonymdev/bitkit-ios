@@ -258,7 +258,7 @@ struct AppScene: View {
         // Created ahead of `transfer` so the hardware-wallet transfer flow can reach the funding
         // (compose/sign/broadcast) and device-session (reconnect) capabilities.
         let trezorManager = TrezorManager()
-        let hwWalletManager = HwWalletManager(session: trezorManager)
+        let hwWalletManager = HwWalletManager(trezorSession: trezorManager)
 
         _transfer = StateObject(wrappedValue: TransferViewModel(
             transferService: transferService,
@@ -331,7 +331,7 @@ struct AppScene: View {
             .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
             .onChange(of: isPinVerified) { _, verified in
                 if verified {
-                    Task { await trezorManager.autoReconnect() }
+                    Task { await hwWalletManager.reconnectOnForeground() }
                 }
             }
             .onReceive(settings.settingsPublisher) { _ in hwWalletManager.reconcileForSettingsChange() }
@@ -943,7 +943,7 @@ struct AppScene: View {
         if newPhase == .active {
             // Reconnect a known hardware device so its connection indicator turns green again;
             if isPinVerified || !settings.pinEnabled {
-                Task { await trezorManager.autoReconnect() }
+                Task { await hwWalletManager.reconnectOnForeground() }
             }
             if wallet.walletExists == true {
                 Task {

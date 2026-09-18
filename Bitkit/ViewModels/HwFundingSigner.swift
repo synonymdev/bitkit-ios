@@ -19,7 +19,7 @@ struct HwFundingSigner {
     let feeRateProvider: () async -> UInt64?
     /// Provides a fee-estimation destination address (an app receive address); never broadcast to.
     let addressProvider: () async throws -> String
-    let timeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double)
+    let timeouts: (compose: Double, sign: Double, broadcast: Double)
 
     /// Conservative vbyte reserve, used only as a fallback when the real coin-selection estimate
     /// (a `sendMax` compose) is unavailable.
@@ -127,7 +127,7 @@ struct HwFundingSigner {
 
     private func ensureConnected(walletId: String) async throws {
         do {
-            try await withTimeout(timeouts.reconnect) {
+            try await withTimeout(connecting.reconnectTimeout(walletId: walletId)) {
                 try await connecting.ensureConnected(walletId: walletId)
             }
         } catch is CancellationError {
@@ -579,7 +579,7 @@ final class HwSendCoordinator {
             connecting: manager,
             feeRateProvider: { satsPerVByte },
             addressProvider: { address },
-            timeouts: (reconnect: 30, compose: 45, sign: 120, broadcast: 120)
+            timeouts: (compose: 45, sign: 120, broadcast: 120)
         )
     }
 

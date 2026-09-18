@@ -437,7 +437,7 @@ struct TrezorHwConnectService: HwConnectServicing {
     }
 
     func setWalletLabel(walletId: String, label: String) {
-        trezorManager.renameWallet(walletId: walletId, newName: label)
+        hwWalletManager.renameWallet(walletId: walletId, newName: label)
     }
 
     func cancelPairingCode() {
