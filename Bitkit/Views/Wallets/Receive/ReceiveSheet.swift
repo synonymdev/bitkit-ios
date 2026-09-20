@@ -43,6 +43,7 @@ struct ReceiveSheet: View {
     @EnvironmentObject private var tagManager: TagManager
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(TrezorManager.self) private var trezorManager
+    @Environment(\.scenePhase) private var scenePhase
 
     let config: ReceiveSheetItem
 
@@ -58,14 +59,36 @@ struct ReceiveSheet: View {
             }
             .id(config.id)
         }
-        .offlineSheetOverlay(title: t("wallet__receive_bitcoin"))
+        .offlineSheetOverlay(
+            title: t("wallet__receive_bitcoin"),
+            allowOffline: Self.canDisplayOfflineInvoice(
+                on: navigationPath.last ?? config.initialRoute,
+                hasPreparedInvoice: wallet.hasPreparedOfflineInvoice
+            )
+        )
+        .task(id: wallet.offlineInvoice?.expiresAt) {
+            while !Task.isCancelled, let expiresAt = wallet.offlineInvoice?.expiresAt {
+                wallet.expireOfflineInvoice()
+                guard wallet.offlineInvoice != nil else { return }
+                do {
+                    try await Task.sleep(for: .seconds(min(1, max(0.01, expiresAt.timeIntervalSinceNow))))
+                } catch { return }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { wallet.expireOfflineInvoice() }
+        }
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
+        }
+        .onDisappear {
+            wallet.resetOfflineReceive()
         }
         .onAppear {
             navigationPath = []
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""
+            wallet.resetOfflineReceive()
             tagManager.clearSelectedTags()
             Task {
                 // Reset tags for current payment ID before refreshing
@@ -86,6 +109,11 @@ struct ReceiveSheet: View {
                 }
             }
         )
+    }
+
+    static func canDisplayOfflineInvoice(on route: ReceiveRoute, hasPreparedInvoice: Bool) -> Bool {
+        guard hasPreparedInvoice, case .qr(cjitInvoice: nil, tab: _) = route else { return false }
+        return true
     }
 
     @ViewBuilder

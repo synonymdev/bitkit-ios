@@ -1747,3 +1747,8 @@
 "settings__adv__pp_both" = "Both";
 "settings__adv__pp_lightning_short" = "Lightning";
 "settings__adv__pp_onchain_short" = "On-chain";
+"wallet__receive_offline" = "Receive Offline";
+"wallet__receive_offline_description" = "Prepare this invoice to receive while Bitkit is closed.";
+"wallet__receive_offline_unavailable" = "Offline receiving is unavailable. Try again or turn off Receive Offline.";
+"wallet__receive_offline_liquidity" = "The amount is outside your available offline receiving liquidity.";
+"wallet__receive_offline_failed" = "Could not prepare an offline invoice. Please try again.";

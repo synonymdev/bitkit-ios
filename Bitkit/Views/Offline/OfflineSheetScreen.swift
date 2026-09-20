@@ -4,6 +4,10 @@ import SwiftUI
 struct OfflineSheetScreen: View {
     let title: String
 
+    static func shouldShow(isConnected: Bool, allowOffline: Bool, forceShow: Bool) -> Bool {
+        (!isConnected && !allowOffline) || forceShow
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             SheetHeader(title: title, showBackButton: false)
@@ -26,9 +30,10 @@ private struct OfflineSheetOverlayModifier: ViewModifier {
 
     let title: String
     var forceShow = false
+    var allowOffline = false
 
     private var isShowing: Bool {
-        !network.isConnected || forceShow
+        OfflineSheetScreen.shouldShow(isConnected: network.isConnected, allowOffline: allowOffline, forceShow: forceShow)
     }
 
     func body(content: Content) -> some View {
@@ -54,7 +59,7 @@ extension View {
     /// Overlays a `OfflineSheetScreen` when the device is offline, or whenever `forceShow` is true
     /// (e.g. connection issues beyond device connectivity, like an unreachable Lightning peer).
     /// The underlying content remains mounted so navigation state and inputs are preserved.
-    func offlineSheetOverlay(title: String, forceShow: Bool = false) -> some View {
-        modifier(OfflineSheetOverlayModifier(title: title, forceShow: forceShow))
+    func offlineSheetOverlay(title: String, forceShow: Bool = false, allowOffline: Bool = false) -> some View {
+        modifier(OfflineSheetOverlayModifier(title: title, forceShow: forceShow, allowOffline: allowOffline))
     }
 }
