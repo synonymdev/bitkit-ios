@@ -11,7 +11,7 @@ final class OfflineReceiveSessionTests: XCTestCase {
         XCTAssertFalse(session.isEligible)
         XCTAssertFalse(session.isSelected)
         do {
-            _ = try await session.prepareInvoice(eligibility: eligibility(), description: "", expirySecs: 3600)
+            _ = try await session.prepareInvoice(eligibility: eligibility(), description: "")
             XCTFail("Unsupported offline receiving must fail")
         } catch {
             XCTAssertTrue(error is OfflineReceiveError)
@@ -148,7 +148,7 @@ final class OfflineReceiveSessionTests: XCTestCase {
         provider.supported = false
 
         do {
-            _ = try await session.prepareInvoice(eligibility: eligibility(), description: "Test", expirySecs: 3600)
+            _ = try await session.prepareInvoice(eligibility: eligibility(), description: "Test")
             XCTFail("Revoked support must not create an invoice")
         } catch {
             XCTAssertTrue(error is OfflineReceiveError)
@@ -163,7 +163,7 @@ final class OfflineReceiveSessionTests: XCTestCase {
         let session = OfflineReceiveSession(provider: provider)
 
         do {
-            _ = try await session.prepareInvoice(eligibility: eligibility(), description: "Test", expirySecs: 3600)
+            _ = try await session.prepareInvoice(eligibility: eligibility(), description: "Test")
             XCTFail("Failed activation must not return an invoice")
         } catch {
             XCTAssertEqual(error as? TestFailure, .activationFailed)
@@ -171,15 +171,14 @@ final class OfflineReceiveSessionTests: XCTestCase {
         XCTAssertEqual(provider.prepareCount, 1)
     }
 
-    func testPreparationPassesExactAmountDescriptionAndExpiry() async throws {
+    func testPreparationPassesExactAmountAndDescription() async throws {
         let provider = TestOfflineReceiveProvider()
         let session = OfflineReceiveSession(provider: provider)
-        let result = try await session.prepareInvoice(eligibility: eligibility(), description: "Test", expirySecs: 3600)
+        let result = try await session.prepareInvoice(eligibility: eligibility(), description: "Test")
 
         XCTAssertEqual(result.bolt11, "prepared-offline-invoice")
         XCTAssertEqual(provider.preparedAmount, 1000)
         XCTAssertEqual(provider.preparedDescription, "Test")
-        XCTAssertEqual(provider.preparedExpiry, 3600)
     }
 
     func testRetryKeepsRequestIdentityAfterAReservationConsumesLiquidity() async throws {
@@ -189,7 +188,7 @@ final class OfflineReceiveSessionTests: XCTestCase {
         await session.updateEligibility(eligibility())
         session.setSelected(true)
         do {
-            _ = try await session.prepareInvoice(eligibility: eligibility(), description: "Test", expirySecs: 3600)
+            _ = try await session.prepareInvoice(eligibility: eligibility(), description: "Test")
             XCTFail("Expected lost activation response")
         } catch {}
 
@@ -197,7 +196,7 @@ final class OfflineReceiveSessionTests: XCTestCase {
         provider.preparationError = nil
         await session.updateEligibility(eligibility(capacity: 0))
         XCTAssertTrue(session.isSelected)
-        _ = try await session.prepareInvoice(eligibility: eligibility(capacity: 0), description: "Test", expirySecs: 3600)
+        _ = try await session.prepareInvoice(eligibility: eligibility(capacity: 0), description: "Test")
 
         XCTAssertEqual(provider.requestIds.count, 2)
         XCTAssertEqual(provider.requestIds.first, provider.requestIds.last)
@@ -210,11 +209,11 @@ final class OfflineReceiveSessionTests: XCTestCase {
     func testEditedRequestAndNewSessionUseNewIdentities() async throws {
         let provider = TestOfflineReceiveProvider()
         let session = OfflineReceiveSession(provider: provider)
-        _ = try await session.prepareInvoice(eligibility: eligibility(), description: "First", expirySecs: 3600)
-        _ = try await session.prepareInvoice(eligibility: eligibility(), description: "Second", expirySecs: 3600)
-        _ = try await session.prepareInvoice(eligibility: eligibility(amount: 999), description: "Second", expirySecs: 3600)
+        _ = try await session.prepareInvoice(eligibility: eligibility(), description: "First")
+        _ = try await session.prepareInvoice(eligibility: eligibility(), description: "Second")
+        _ = try await session.prepareInvoice(eligibility: eligibility(amount: 999), description: "Second")
         session.reset()
-        _ = try await session.prepareInvoice(eligibility: eligibility(amount: 999), description: "Second", expirySecs: 3600)
+        _ = try await session.prepareInvoice(eligibility: eligibility(amount: 999), description: "Second")
 
         XCTAssertEqual(Set(provider.requestIds).count, 4)
     }
@@ -261,7 +260,6 @@ private final class TestOfflineReceiveProvider: OfflineReceiveProviding {
     var prepareCount = 0
     var preparedAmount: UInt64?
     var preparedDescription: String?
-    var preparedExpiry: UInt32?
     var preparationError: Error?
     var requestIds: [String] = []
     var query: ((UInt64) async throws -> Bool)?
@@ -272,13 +270,12 @@ private final class TestOfflineReceiveProvider: OfflineReceiveProviding {
         return supported
     }
 
-    func prepareInvoice(requestId: String, amountSats: UInt64, description: String, expirySecs: UInt32) async throws -> PreparedOfflineInvoice {
+    func prepareInvoice(requestId: String, amountSats: UInt64, description: String) async throws -> PreparedOfflineInvoice {
         prepareCount += 1
         requestIds.append(requestId)
         if let preparationError { throw preparationError }
         preparedAmount = amountSats
         preparedDescription = description
-        preparedExpiry = expirySecs
         return PreparedOfflineInvoice(bolt11: "prepared-offline-invoice")
     }
 }

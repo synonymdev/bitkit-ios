@@ -577,8 +577,7 @@ class WalletViewModel: ObservableObject {
     private func prepareOfflineReceiveInvoice(amountSats: UInt64, note: String) async throws -> OfflineReceiveInvoice {
         let invoice = try await offlineReceive.prepareInvoice(
             eligibility: offlineReceiveEligibility(amountSats: amountSats),
-            description: note,
-            expirySecs: 60 * 60 * 24
+            description: note
         )
         return try await ServiceQueue.background(.ldk) {
             let parsed = try Bolt11Invoice.fromStr(invoiceStr: invoice.bolt11)

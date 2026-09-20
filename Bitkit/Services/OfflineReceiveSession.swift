@@ -23,7 +23,8 @@ protocol OfflineReceiveProviding {
 
     /// Returns only after FFOR activation and recovery data are durably stored.
     /// Implementations must not return an ordinary Lightning invoice on failure.
-    func prepareInvoice(requestId: String, amountSats: UInt64, description: String, expirySecs: UInt32) async throws -> PreparedOfflineInvoice
+    /// The native provider chooses an expiry permitted by its negotiated policy.
+    func prepareInvoice(requestId: String, amountSats: UInt64, description: String) async throws -> PreparedOfflineInvoice
 }
 
 enum OfflineReceiveError: LocalizedError {
@@ -45,9 +46,7 @@ struct UnavailableOfflineReceiveProvider: OfflineReceiveProviding {
 
     func canReceive(amountSats _: UInt64) async throws -> Bool { false }
 
-    func prepareInvoice(requestId _: String, amountSats _: UInt64, description _: String,
-                        expirySecs _: UInt32) async throws -> PreparedOfflineInvoice
-    {
+    func prepareInvoice(requestId _: String, amountSats _: UInt64, description _: String) async throws -> PreparedOfflineInvoice {
         throw OfflineReceiveError.unavailable
     }
 }
@@ -78,13 +77,11 @@ final class OfflineReceiveSession {
         let requestId = UUID().uuidString
         let amountSats: UInt64
         let description: String
-        let expirySecs: UInt32
         var attempted = false
 
-        init(amountSats: UInt64, description: String, expirySecs: UInt32) {
+        init(amountSats: UInt64, description: String) {
             self.amountSats = amountSats
             self.description = description
-            self.expirySecs = expirySecs
         }
     }
 
@@ -138,18 +135,16 @@ final class OfflineReceiveSession {
 
     func prepareInvoice(
         eligibility: OfflineReceiveEligibility,
-        description: String,
-        expirySecs: UInt32
+        description: String
     ) async throws -> PreparedOfflineInvoice {
         let preparation: Preparation
         if let current = self.preparation,
            current.amountSats == eligibility.amountSats,
-           current.description == description,
-           current.expirySecs == expirySecs
+           current.description == description
         {
             preparation = current
         } else {
-            preparation = Preparation(amountSats: eligibility.amountSats, description: description, expirySecs: expirySecs)
+            preparation = Preparation(amountSats: eligibility.amountSats, description: description)
             self.preparation = preparation
         }
         if !preparation.attempted {
@@ -161,8 +156,7 @@ final class OfflineReceiveSession {
         let invoice = try await provider.prepareInvoice(
             requestId: preparation.requestId,
             amountSats: eligibility.amountSats,
-            description: description,
-            expirySecs: expirySecs
+            description: description
         )
         try Task.checkCancellation()
         guard !invoice.bolt11.isEmpty else { throw OfflineReceiveError.invalidInvoice }

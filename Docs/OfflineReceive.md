@@ -28,9 +28,12 @@ after the node and its channel peer support the FFOR protocol. The provider must
 5. Recover pending registrations after restart and reconcile settlement through
    the wallet's normal payment and activity paths.
 
-The wallet additionally parses the returned BOLT11 and checks its exact amount,
-network and expiry. These checks do not prove FFOR activation. The node provider
-must establish that guarantee.
+The native provider chooses the invoice expiry and offline settlement window from
+its negotiated policy. The app does not request or assume a duration. It parses
+the returned BOLT11 and checks its exact amount, direct description, network and
+expiry, then uses that signed expiry for display. Invoice expiry and the protocol's
+settlement deadline are distinct. These checks do not prove FFOR activation. The
+node provider must establish that guarantee.
 
 The pinned LDK Node version has no FFOR registration or activation API. Rust
 Lightning channel support, the forwarding peer implementation, durable lifecycle
@@ -46,7 +49,7 @@ liquidity. Savings and hardware-only edits never offer it.
 
 Changing the amount clears selection. Losing capacity or provider eligibility
 before preparation also clears selection. An attempted preparation keeps its
-identity and selected mode for retries of the same amount, note and expiry,
+identity and selected mode for retries of the same amount and note,
 including after a lost activation response. A changed request or new session gets
 a new identity. Discarding a stale result does not cancel durable node state.
 Late eligibility responses cannot replace the current
