@@ -415,6 +415,34 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertFalse(contactState?.hasContactOwnedCacheState == true)
     }
 
+    func testCloseAndClearRemovesConsumedPrivatePaymentListVersions() async {
+        let defaults = UserDefaults.standard
+        let previousState = defaults.data(forKey: PrivatePaykitService.cacheStateKey)
+        defer {
+            if let previousState {
+                defaults.set(previousState, forKey: PrivatePaykitService.cacheStateKey)
+            } else {
+                defaults.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+            }
+        }
+
+        let service = PrivatePaykitService()
+        let publicKey = "pubkycontact"
+        var contactState = PrivatePaykitService.ContactState()
+        contactState.consumedPrivatePaymentListVersionsByReceiverPath[PaykitReceiverPath.server] = 9
+        await service.setTestContactState(contactState, publicKey: publicKey)
+
+        await service.closeAndClear()
+
+        let clearedState = await service.testContactState(publicKey: publicKey)
+        XCTAssertNil(clearedState)
+        let persistedData = defaults.data(forKey: PrivatePaykitService.cacheStateKey)
+        let persistedState = persistedData.flatMap {
+            try? JSONDecoder().decode(PrivatePaykitService.PrivatePaykitState.self, from: $0)
+        }
+        XCTAssertTrue(persistedState?.contacts.isEmpty == true)
+    }
+
     func testPrivatePaymentRecoveryUsesRequestedReceiverPath() async {
         let service = PrivatePaykitService()
         let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"

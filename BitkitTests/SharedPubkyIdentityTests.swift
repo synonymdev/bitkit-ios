@@ -479,6 +479,38 @@ final class SharedPubkyIdentityTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testUnavailableSharedIdentityCleanupClearsSessionAndPrivateStateBeforeReference() async throws {
+        var events: [String] = []
+
+        try await PubkyProfileManager.clearUnavailableSharedIdentitySession(
+            clearSession: { events.append("session") },
+            clearPrivatePaykitState: { events.append("private") },
+            deleteReference: { events.append("reference") }
+        )
+
+        XCTAssertEqual(events, ["session", "private", "reference"])
+    }
+
+    @MainActor
+    func testUnavailableSharedIdentityCleanupKeepsReferenceWhenSessionDeletionFails() async {
+        var events: [String] = []
+
+        do {
+            try await PubkyProfileManager.clearUnavailableSharedIdentitySession(
+                clearSession: {
+                    events.append("session")
+                    throw KeychainError.failedToDelete
+                },
+                clearPrivatePaykitState: { events.append("private") },
+                deleteReference: { events.append("reference") }
+            )
+            XCTFail("Expected session deletion failure")
+        } catch {
+            XCTAssertEqual(events, ["session"])
+        }
+    }
+
     func testIdentityLifecycleTransactionsDoNotInterleave() async {
         let events = SharedPubkyTestEventLog()
         let firstStarted = expectation(description: "first lifecycle transaction started")

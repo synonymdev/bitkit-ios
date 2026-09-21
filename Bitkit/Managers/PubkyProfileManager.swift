@@ -144,7 +144,7 @@ class PubkyProfileManager: ObservableObject {
         let result: SessionInitializationResult
         if sharedIdentitySourceIsUnavailable() {
             do {
-                try await Self.clearSharedIdentitySession()
+                try await Self.clearUnavailableSharedIdentitySession()
             } catch {
                 Logger.error("Failed to clear unavailable shared Pubky session: \(error)", context: "PubkyProfileManager")
             }
@@ -906,7 +906,7 @@ class PubkyProfileManager: ObservableObject {
     private func disconnectUnavailableSharedIdentityLocked() async {
         sharedRingIdentities = []
         do {
-            try await Self.clearSharedIdentitySession()
+            try await Self.clearUnavailableSharedIdentitySession()
             clearAuthenticatedState()
             sessionRestorationFailed = true
         } catch {
@@ -915,6 +915,24 @@ class PubkyProfileManager: ObservableObject {
             Logger.error("Failed to clear unavailable shared Pubky session: \(error)", context: "PubkyProfileManager")
             sessionRestorationFailed = true
         }
+    }
+
+    static func clearUnavailableSharedIdentitySession(
+        clearSession: () async throws -> Void = {
+            try await PubkyService.clearExternalSessionAccess()
+        },
+        clearPrivatePaykitState: () async -> Void = {
+            await PrivatePaykitService.shared.closeAndClear()
+        },
+        deleteReference: () throws -> Void = {
+            try SharedPubkyIdentityReferenceStore.delete()
+        }
+    ) async throws {
+        // Keep the durable reference until both identity-specific stores are gone. A session
+        // failure leaves both stores intact; a reference failure leaves an empty cache and a retry marker.
+        try await clearSession()
+        await clearPrivatePaykitState()
+        try deleteReference()
     }
 
     static func clearSharedIdentitySession(
@@ -1597,7 +1615,7 @@ class PubkyProfileManager: ObservableObject {
             } catch {
                 Logger.warn("Shared Pubky session source is unavailable: \(error)", context: "PubkyProfileManager")
                 if shouldDisconnectSharedIdentity(after: error) {
-                    try? await clearSharedIdentitySession()
+                    try? await clearUnavailableSharedIdentitySession()
                 }
                 return .restorationFailed
             }
