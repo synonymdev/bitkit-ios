@@ -272,6 +272,31 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(decoded.paykitSdkBackupState, backup.paykitSdkBackupState)
     }
 
+    func testPrivatePaykitBackupExcludesBorrowedIdentityState() throws {
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let reference = try SharedPubkyIdentityRefV1(sourceApp: .ring, pubky: publicKey)
+
+        XCTAssertFalse(try PrivatePaykitService.shouldExportBackupState(
+            currentPublicKey: publicKey,
+            loadSharedIdentityReference: { reference }
+        ))
+        XCTAssertTrue(try PrivatePaykitService.shouldExportBackupState(
+            currentPublicKey: publicKey,
+            loadSharedIdentityReference: { nil }
+        ))
+        XCTAssertFalse(try PrivatePaykitService.shouldExportBackupState(
+            currentPublicKey: nil,
+            loadSharedIdentityReference: {
+                XCTFail("No session should skip shared identity storage")
+                return reference
+            }
+        ))
+        XCTAssertThrowsError(try PrivatePaykitService.shouldExportBackupState(
+            currentPublicKey: publicKey,
+            loadSharedIdentityReference: { throw SharedPubkyIdentityError.invalidRecord }
+        ))
+    }
+
     func testReservationStoreBacksUpRestoredCeiling() async throws {
         let suiteName = "PrivatePaykitServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

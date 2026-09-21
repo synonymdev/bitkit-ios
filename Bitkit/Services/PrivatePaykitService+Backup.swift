@@ -4,7 +4,10 @@ import Foundation
 
 extension PrivatePaykitService {
     func backupSnapshot() async throws -> String? {
-        guard await PubkyService.currentPublicKey() != nil else {
+        guard try await Self.shouldExportBackupState(
+            currentPublicKey: PubkyService.currentPublicKey(),
+            loadSharedIdentityReference: { try SharedPubkyIdentityReferenceStore.load() }
+        ) else {
             return nil
         }
         let backup = try await Backup(
@@ -20,6 +23,14 @@ extension PrivatePaykitService {
             throw CocoaError(.fileWriteInapplicableStringEncoding)
         }
         return encoded
+    }
+
+    nonisolated static func shouldExportBackupState(
+        currentPublicKey: String?,
+        loadSharedIdentityReference: () throws -> SharedPubkyIdentityRefV1?
+    ) throws -> Bool {
+        guard currentPublicKey != nil else { return false }
+        return try loadSharedIdentityReference() == nil
     }
 
     func restoreBackup(_ backup: String?) async throws {
