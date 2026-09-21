@@ -409,7 +409,13 @@ struct AppScene: View {
 
     private var appEventContent: some View {
         configuredContent
-            .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
+            .onChange(of: pubkyProfile.authState, initial: true) { previousAuthState, authState in
+                if let isAllowed = Self.paykitMaintenancePermission(
+                    previousAuthState: previousAuthState,
+                    authState: authState
+                ) {
+                    wallet.setPaykitMaintenanceAllowed(isAllowed)
+                }
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
                     Task {
@@ -968,8 +974,11 @@ struct AppScene: View {
         }
 
         if newPhase == .active {
-            Task {
-                await pubkyProfile.validateSharedIdentitySourceIfNeeded()
+            wallet.setPaykitMaintenanceAllowed(false)
+            let sharedIdentityValidation = Task {
+                let canUsePaykit = await pubkyProfile.validateSharedIdentitySourceIfNeeded()
+                wallet.setPaykitMaintenanceAllowed(canUsePaykit)
+                return canUsePaykit
             }
             // Reconnect a known hardware device so its connection indicator turns green again;
             if isPinVerified || !settings.pinEnabled {
@@ -978,24 +987,53 @@ struct AppScene: View {
             if wallet.walletExists == true {
                 Task {
                     await clearDeliveredNotifications()
-                    await LightningService.shared.reconnectPeers()
-                    try? await wallet.sync()
-                    await retryPendingPaykitEndpointRemoval()
-                    await wallet.refreshPublicPaykitEndpointsOnForeground()
-                    if PaykitFeatureFlags.isUIEnabled {
-                        await refreshPrivateOnlyPaykitReceiverMarker()
-                        let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
-                        await PrivatePaykitService.shared.startInitialLinkBurst(
-                            for: contactPublicKeys,
-                            savedPublicKeys: contactPublicKeys,
-                            wallet: wallet,
-                            reason: "foreground"
-                        )
-                        await refreshIncomingPaykitPaymentRequests()
-                    }
+                    await Self.performForegroundMaintenance(
+                        waitForSharedIdentityValidation: { await sharedIdentityValidation.value },
+                        walletMaintenance: { canUsePaykit in
+                            await LightningService.shared.reconnectPeers()
+                            try? await wallet.sync(allowPaykitMaintenance: canUsePaykit)
+                        },
+                        paykitMaintenance: {
+                            await retryPendingPaykitEndpointRemoval()
+                            await wallet.refreshPublicPaykitEndpointsOnForeground()
+                            if PaykitFeatureFlags.isUIEnabled {
+                                await refreshPrivateOnlyPaykitReceiverMarker()
+                                let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
+                                await PrivatePaykitService.shared.startInitialLinkBurst(
+                                    for: contactPublicKeys,
+                                    savedPublicKeys: contactPublicKeys,
+                                    wallet: wallet,
+                                    reason: "foreground"
+                                )
+                                await refreshIncomingPaykitPaymentRequests()
+                            }
+                        }
+                    )
                 }
             }
         }
+    }
+
+    static func paykitMaintenancePermission(
+        previousAuthState: PubkyAuthState,
+        authState: PubkyAuthState
+    ) -> Bool? {
+        if previousAuthState != .authenticated, authState == .authenticated {
+            return true
+        }
+        return authState == .idle ? false : nil
+    }
+
+    @MainActor
+    static func performForegroundMaintenance(
+        waitForSharedIdentityValidation: () async -> Bool,
+        walletMaintenance: (Bool) async -> Void,
+        paykitMaintenance: () async -> Void
+    ) async {
+        let canUsePaykit = await waitForSharedIdentityValidation()
+        await walletMaintenance(canUsePaykit)
+        guard canUsePaykit else { return }
+        await paykitMaintenance()
     }
 
     private func refreshPrivateOnlyPaykitReceiverMarker() async {

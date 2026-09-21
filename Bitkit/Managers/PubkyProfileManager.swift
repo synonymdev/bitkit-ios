@@ -793,13 +793,13 @@ class PubkyProfileManager: ObservableObject {
     }
 
     /// Revalidates a borrowed identity without retaining its shared secret.
-    func validateSharedIdentitySourceIfNeeded() async {
+    func validateSharedIdentitySourceIfNeeded() async -> Bool {
         await Self.withIdentityLifecycleLock {
             await self.validateSharedIdentitySourceIfNeededLocked()
         }
     }
 
-    private func validateSharedIdentitySourceIfNeededLocked() async {
+    private func validateSharedIdentitySourceIfNeededLocked() async -> Bool {
         let reference: SharedPubkyIdentityRefV1?
         do {
             reference = try SharedPubkyIdentityReferenceStore.load()
@@ -809,19 +809,19 @@ class PubkyProfileManager: ObservableObject {
             } else {
                 Logger.warn("Deferring shared Pubky reference validation: \(error)", context: "PubkyProfileManager")
             }
-            return
+            return false
         }
 
         guard let reference else {
             if let publicKey {
                 await reconcileBitkitOwnedIdentityIfNeededLocked(publicKey: publicKey)
             }
-            return
+            return true
         }
 
         guard reference.sourceApp == .ring, Self.isRingAvailable() else {
             await disconnectUnavailableSharedIdentityLocked()
-            return
+            return false
         }
 
         do {
@@ -829,19 +829,21 @@ class PubkyProfileManager: ObservableObject {
                 try SharedPubkyIdentityVault.loadCredential(reference: reference)
             }.value
 
-            if let result = try await Self.retrySharedSessionRestorationIfNeeded(
+            let restorationResult = try await Self.retrySharedSessionRestorationIfNeeded(
                 currentPublicKey: publicKey,
                 restore: {
                     try await Task.detached {
                         try await Self.initializePersistedSession()
                     }.value
                 }
-            ) {
+            )
+            if let restorationResult {
                 initializationErrorMessage = nil
                 sessionRestorationFailed = false
-                await applySessionInitializationResult(result)
+                await applySessionInitializationResult(restorationResult)
                 isInitialized = true
             }
+            return Self.canPerformPaykitMaintenance(afterSharedSessionRestoration: restorationResult)
         } catch {
             if Self.shouldDisconnectSharedIdentity(after: error) {
                 Logger.warn("Shared Pubky source is no longer valid: \(error)", context: "PubkyProfileManager")
@@ -849,6 +851,7 @@ class PubkyProfileManager: ObservableObject {
             } else {
                 Logger.warn("Deferring shared Pubky source validation: \(error)", context: "PubkyProfileManager")
             }
+            return false
         }
     }
 
@@ -860,6 +863,15 @@ class PubkyProfileManager: ObservableObject {
             return nil
         }
         return try await restore()
+    }
+
+    static func canPerformPaykitMaintenance(afterSharedSessionRestoration result: SessionInitializationResult?) -> Bool {
+        switch result {
+        case nil, .some(.restored):
+            return true
+        case .some(.noSession), .some(.restorationFailed):
+            return false
+        }
     }
 
     nonisolated static func shouldDisconnectSharedIdentity(after error: Error) -> Bool {

@@ -5,6 +5,77 @@ import XCTest
 
 final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
+    func testForegroundMaintenanceWaitsForSharedIdentityValidation() async {
+        let validationStarted = expectation(description: "Shared identity validation started")
+        let validation = AsyncStream<Bool>.makeStream()
+        var walletPaykitPermission: Bool?
+        var didRunPaykitMaintenance = false
+
+        let task = Task { @MainActor in
+            await AppScene.performForegroundMaintenance(
+                waitForSharedIdentityValidation: {
+                    validationStarted.fulfill()
+                    for await result in validation.stream {
+                        return result
+                    }
+                    return false
+                },
+                walletMaintenance: { walletPaykitPermission = $0 },
+                paykitMaintenance: { didRunPaykitMaintenance = true }
+            )
+        }
+
+        await fulfillment(of: [validationStarted], timeout: 1)
+        await Task.yield()
+        XCTAssertNil(walletPaykitPermission)
+        XCTAssertFalse(didRunPaykitMaintenance)
+
+        validation.continuation.yield(true)
+        validation.continuation.finish()
+        await task.value
+        XCTAssertEqual(walletPaykitPermission, true)
+        XCTAssertTrue(didRunPaykitMaintenance)
+    }
+
+    @MainActor
+    func testForegroundMaintenancePreservesWalletSyncButStopsPaykitAfterFailedValidation() async {
+        var walletPaykitPermission: Bool?
+        var didRunPaykitMaintenance = false
+
+        await AppScene.performForegroundMaintenance(
+            waitForSharedIdentityValidation: { false },
+            walletMaintenance: { walletPaykitPermission = $0 },
+            paykitMaintenance: { didRunPaykitMaintenance = true }
+        )
+
+        XCTAssertEqual(walletPaykitPermission, false)
+        XCTAssertFalse(didRunPaykitMaintenance)
+    }
+
+    @MainActor
+    func testFailedSharedSessionRestorationDoesNotAuthorizePaykitMaintenance() {
+        XCTAssertTrue(PubkyProfileManager.canPerformPaykitMaintenance(afterSharedSessionRestoration: nil))
+        XCTAssertTrue(PubkyProfileManager.canPerformPaykitMaintenance(afterSharedSessionRestoration: .restored(publicKey: "pubky")))
+        XCTAssertFalse(PubkyProfileManager.canPerformPaykitMaintenance(afterSharedSessionRestoration: .noSession))
+        XCTAssertFalse(PubkyProfileManager.canPerformPaykitMaintenance(afterSharedSessionRestoration: .restorationFailed))
+    }
+
+    func testPaykitMaintenancePermissionChangesOnlyForRealAuthenticationTransitions() {
+        XCTAssertNil(AppScene.paykitMaintenancePermission(
+            previousAuthState: .authenticated,
+            authState: .authenticated
+        ))
+        XCTAssertEqual(AppScene.paykitMaintenancePermission(
+            previousAuthState: .idle,
+            authState: .authenticated
+        ), true)
+        XCTAssertEqual(AppScene.paykitMaintenancePermission(
+            previousAuthState: .authenticated,
+            authState: .idle
+        ), false)
+    }
+
+    @MainActor
     func testSharedIdentityDiscoveryTransitionsHideCreationUntilSuccessfulEmptyLoad() async {
         let manager = PubkyProfileManager()
         let (stream, continuation) = AsyncStream<[SharedPubkyIdentityRefV1]>.makeStream()
