@@ -192,6 +192,7 @@ actor PaykitPaymentProofService {
     private let store: any PaykitPaymentProofStoring
     private let lightningPaymentLookup: any PaykitLightningPaymentProofLookingUp
     private let onchainPaymentLookup: any PaykitOnchainPaymentProofLookingUp
+    private let revalidateSourceBeforeWrite: @Sendable () async throws -> Void
     private let logInfo: @Sendable (String) -> Void
     private let logWarning: @Sendable (String) -> Void
 
@@ -200,6 +201,9 @@ actor PaykitPaymentProofService {
         store: any PaykitPaymentProofStoring = PaykitPaymentProofStore(),
         lightningPaymentLookup: any PaykitLightningPaymentProofLookingUp = PaykitLightningPaymentProofLookup(),
         onchainPaymentLookup: any PaykitOnchainPaymentProofLookingUp = PaykitOnchainPaymentProofLookup(),
+        revalidateSourceBeforeWrite: @escaping @Sendable () async throws -> Void = {
+            try PubkyProfileManager.revalidateSharedIdentitySourceBeforeWrite()
+        },
         logInfo: @escaping @Sendable (String) -> Void = {
             Logger.info($0, context: "PaykitPaymentProof")
         },
@@ -211,6 +215,7 @@ actor PaykitPaymentProofService {
         self.store = store
         self.lightningPaymentLookup = lightningPaymentLookup
         self.onchainPaymentLookup = onchainPaymentLookup
+        self.revalidateSourceBeforeWrite = revalidateSourceBeforeWrite
         self.logInfo = logInfo
         self.logWarning = logWarning
     }
@@ -467,6 +472,8 @@ actor PaykitPaymentProofService {
         do {
             let pendingProofs = try await loadProofs()
             guard !pendingProofs.isEmpty else { return }
+            try await revalidateSourceBeforeWrite()
+            try Task.checkCancellation()
             guard let identityStatus = try await sdk.identityStatus(),
                   identityStatus.liveSessionAvailable,
                   let publicKey = identityStatus.publicKey,
@@ -581,6 +588,8 @@ actor PaykitPaymentProofService {
     private func submit(_ pendingProof: PendingPaykitPaymentProof) async -> Bool {
         guard let proofData = pendingProof.proofData else { return false }
         do {
+            try await revalidateSourceBeforeWrite()
+            try Task.checkCancellation()
             guard let identityStatus = try await sdk.identityStatus(),
                   identityStatus.liveSessionAvailable,
                   PubkyPublicKeyFormat.matches(identityStatus.publicKey, pendingProof.identity)

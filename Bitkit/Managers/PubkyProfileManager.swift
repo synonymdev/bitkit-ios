@@ -560,7 +560,7 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    static func revalidateSharedIdentitySourceBeforeContactWrite() throws {
+    static func revalidateSharedIdentitySourceBeforeWrite() throws {
         try validateSharedIdentitySource(
             reference: SharedPubkyIdentityReferenceStore.load(),
             isSourceAvailable: isRingAvailable(),

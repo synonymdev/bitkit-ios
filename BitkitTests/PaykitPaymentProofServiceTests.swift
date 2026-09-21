@@ -96,6 +96,70 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(processCallCount, 1)
     }
 
+    func testReconcilePreservesCompletedProofWhenBorrowedIdentityIsRevokedBeforeSubmission() async throws {
+        let record = try paymentRequestRecord()
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let proof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: request.id,
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            paymentStarted: true,
+            paymentIdentifier: paymentHash,
+            proofData: preimage
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let source = PaymentProofSourceValidationMock()
+        await source.revoke(afterSuccessfulValidations: 1)
+        let service = paymentProofService(
+            sdk: sdk,
+            store: store,
+            revalidateSourceBeforeWrite: { try await source.validate() }
+        )
+
+        await service.reconcile()
+
+        let remainingProofs = await store.snapshot()
+        let submissionCount = await sdk.submissionCount()
+        let processCallCount = await sdk.processCallCount()
+        let identityStatusCallCount = await sdk.identityStatusCallCount()
+        XCTAssertEqual(remainingProofs, [proof])
+        XCTAssertEqual(submissionCount, 0)
+        XCTAssertEqual(processCallCount, 0)
+        XCTAssertEqual(identityStatusCallCount, 1)
+    }
+
+    func testProofSubmissionPreservesCompletedProofWhenBorrowedIdentityWasRevoked() async throws {
+        let record = try paymentRequestRecord()
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let source = PaymentProofSourceValidationMock()
+        let service = paymentProofService(
+            sdk: sdk,
+            store: store,
+            revalidateSourceBeforeWrite: { try await source.validate() }
+        )
+        try await service.prepare(
+            request: request,
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning
+        )
+        try await service.associateLightningPayment(request, paymentHash: paymentHash)
+        await source.revoke()
+
+        await service.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+
+        let persistedProof = await store.snapshot().first
+        let submissionCount = await sdk.submissionCount()
+        let processCallCount = await sdk.processCallCount()
+        XCTAssertEqual(persistedProof?.proofData, preimage)
+        XCTAssertEqual(submissionCount, 0)
+        XCTAssertEqual(processCallCount, 0)
+    }
+
     func testMismatchedLightningPreimageIsNotSubmitted() async throws {
         let record = try paymentRequestRecord()
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
@@ -848,7 +912,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         lightningStatus: PaykitLightningPaymentProofStatus = .unknown,
         onchainTxids: [String] = [],
         existingOnchainTxids: Set<String> = [],
-        onchainLookupFails: Bool = false
+        onchainLookupFails: Bool = false,
+        revalidateSourceBeforeWrite: @escaping @Sendable () async throws -> Void = {}
     ) -> PaykitPaymentProofService {
         PaykitPaymentProofService(
             sdk: sdk,
@@ -859,6 +924,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
                 existingTransactionIds: existingOnchainTxids,
                 transactionLookupFails: onchainLookupFails
             ),
+            revalidateSourceBeforeWrite: revalidateSourceBeforeWrite,
             logInfo: { _ in },
             logWarning: { _ in }
         )
@@ -974,6 +1040,22 @@ private actor PaymentProofMemoryStore: PaykitPaymentProofStoring {
 
     func seed(_ proofs: [PendingPaykitPaymentProof]) {
         self.proofs = proofs
+    }
+}
+
+private actor PaymentProofSourceValidationMock {
+    private var successfulValidationsBeforeRevocation: Int?
+
+    func revoke(afterSuccessfulValidations: Int = 0) {
+        successfulValidationsBeforeRevocation = afterSuccessfulValidations
+    }
+
+    func validate() throws {
+        guard let successfulValidationsBeforeRevocation else { return }
+        guard successfulValidationsBeforeRevocation > 0 else {
+            throw SharedPubkyIdentityError.sourceIdentityMissing
+        }
+        self.successfulValidationsBeforeRevocation = successfulValidationsBeforeRevocation - 1
     }
 }
 

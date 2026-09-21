@@ -2580,6 +2580,102 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.processCallCount, 2)
     }
 
+    func testLifecycleWritesRevalidateBorrowedIdentityBeforeSdkMutation() async throws {
+        let record = try paymentRequestRecord()
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let service = PaykitPaymentRequestService(
+            sdk: sdk,
+            revalidateSourceBeforeWrite: {
+                throw SharedPubkyIdentityError.sourceIdentityMissing
+            },
+            logWarning: { _ in }
+        )
+        let actions: [() async throws -> Void] = [
+            { try await service.accept(request) },
+            { try await service.reject(request) },
+            { try await service.cancel(request) },
+        ]
+
+        for action in actions {
+            do {
+                try await action()
+                XCTFail("Expected revoked shared identity to stop the lifecycle write")
+            } catch {
+                XCTAssertEqual(error as? SharedPubkyIdentityError, .sourceIdentityMissing)
+            }
+        }
+
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.lifecycleMutationCallCount, 0)
+        XCTAssertEqual(snapshot.processCallCount, 0)
+    }
+
+    func testProposalWritesRevalidateBorrowedIdentityBeforeSdkMutation() async throws {
+        let optionKey = PublicPaykitService.lightningPaymentOptionEnabledKey
+        let previousOption = UserDefaults.standard.object(forKey: optionKey)
+        defer { UserDefaults.standard.set(previousOption, forKey: optionKey) }
+        UserDefaults.standard.set(true, forKey: optionKey)
+
+        let identity = "pubky\(String(repeating: "z", count: 52))"
+        let counterparty = "pubky\(String(repeating: "y", count: 52))"
+        let target = PaykitPaymentRequestTarget(publicKey: counterparty, receiverPath: PaykitReceiverPath.wallet)
+        let expiration = Date().addingTimeInterval(60)
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: counterparty, path: target.receiverPath, state: .linked)],
+            receiverPathsByPublicKey: [counterparty: [target.receiverPath]]
+        )
+        let service = PaykitPaymentRequestService(
+            sdk: sdk,
+            isPrivatePaymentPublishingEnabled: { true },
+            revalidateSourceBeforeWrite: {
+                throw SharedPubkyIdentityError.sourceIdentityMissing
+            },
+            logWarning: { _ in }
+        )
+
+        do {
+            _ = try await service.propose(
+                PaykitPaymentRequestDraft(amountSats: 1, note: "", expiresAt: expiration),
+                to: target,
+                savedPublicKeys: [counterparty],
+                expectedIdentity: identity
+            )
+            XCTFail("Expected revoked shared identity to stop the proposal")
+        } catch {
+            XCTAssertEqual(error as? SharedPubkyIdentityError, .sourceIdentityMissing)
+        }
+
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.purple.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        do {
+            _ = try await service.proposeSubscription(
+                PaykitSubscriptionDraft(
+                    amountSats: 1,
+                    name: "Support",
+                    description: "",
+                    frequency: .month,
+                    expiresAt: expiration,
+                    iconData: XCTUnwrap(image.pngData())
+                ),
+                to: target,
+                savedPublicKeys: [counterparty],
+                expectedIdentity: identity,
+                validateBeforeProposing: {}
+            )
+            XCTFail("Expected revoked shared identity to stop the subscription icon upload")
+        } catch {
+            XCTAssertEqual(error as? SharedPubkyIdentityError, .sourceIdentityMissing)
+        }
+
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.uploadCount, 0)
+        XCTAssertTrue(snapshot.proposedRequests.isEmpty)
+    }
+
     func testQueuedAcceptanceSucceedsWhenImmediateDeliveryIsCancelled() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
@@ -3292,6 +3388,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
     private var isProcessPaused = false
     private var processContinuation: CheckedContinuation<Void, Never>?
     private var receiveError: PaymentRequestSdkMockError?
+    private var lifecycleMutationCallCount = 0
     private var acceptedRequests: [PaymentRequestInvocation] = []
     private var rejectedRequests: [PaymentRequestInvocation] = []
     private var acceptFailuresAfterRemoval = 0
@@ -3435,6 +3532,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         counterpartyReceiverPath: String,
         paymentRequestId: String
     ) async throws -> PaymentRequestRecord {
+        lifecycleMutationCallCount += 1
         if shouldPauseNextAccept {
             shouldPauseNextAccept = false
             isAcceptPaused = true
@@ -3476,6 +3574,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         paymentRequestId: String,
         reason _: String?
     ) throws -> PaymentRequestRecord {
+        lifecycleMutationCallCount += 1
         let record = try removeRecord(
             counterparty: counterparty,
             counterpartyReceiverPath: counterpartyReceiverPath,
@@ -3499,7 +3598,8 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         paymentRequestId: String,
         reason _: String?
     ) throws -> PaymentRequestRecord {
-        try removeRecord(
+        lifecycleMutationCallCount += 1
+        return try removeRecord(
             counterparty: counterparty,
             counterpartyReceiverPath: counterpartyReceiverPath,
             id: paymentRequestId
@@ -3624,6 +3724,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
             uploadCount: uploadCount,
             processCallCount: processCallCount,
             receiveCallCount: receiveCallCount,
+            lifecycleMutationCallCount: lifecycleMutationCallCount,
             acceptedRequests: acceptedRequests,
             rejectedRequests: rejectedRequests,
             proposedRequests: proposedRequests
@@ -3650,6 +3751,7 @@ private struct PaymentRequestSdkSnapshot {
     let uploadCount: Int
     let processCallCount: Int
     let receiveCallCount: Int
+    let lifecycleMutationCallCount: Int
     let acceptedRequests: [PaymentRequestInvocation]
     let rejectedRequests: [PaymentRequestInvocation]
     let proposedRequests: [ProposedPaymentRequestInvocation]

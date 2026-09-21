@@ -505,6 +505,7 @@ struct PaykitPaymentRequestService {
     private let sdk: any PaykitPaymentRequestSdkHandling
     private let now: @Sendable () -> Date
     private let isPrivatePaymentPublishingEnabled: @Sendable () -> Bool
+    private let revalidateSourceBeforeWrite: @Sendable () async throws -> Void
     private let logWarning: @Sendable (String) -> Void
     private let incomingRejectionLog = IncomingPaykitPaymentRequestRejectionLog()
 
@@ -514,6 +515,9 @@ struct PaykitPaymentRequestService {
         isPrivatePaymentPublishingEnabled: @escaping @Sendable () -> Bool = {
             UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
         },
+        revalidateSourceBeforeWrite: @escaping @Sendable () async throws -> Void = {
+            try PubkyProfileManager.revalidateSharedIdentitySourceBeforeWrite()
+        },
         logWarning: @escaping @Sendable (String) -> Void = {
             Logger.warn($0, context: "PaykitPaymentRequest")
         }
@@ -521,6 +525,7 @@ struct PaykitPaymentRequestService {
         self.sdk = sdk
         self.now = now
         self.isPrivatePaymentPublishingEnabled = isPrivatePaymentPublishingEnabled
+        self.revalidateSourceBeforeWrite = revalidateSourceBeforeWrite
         self.logWarning = logWarning
     }
 
@@ -636,12 +641,14 @@ struct PaykitPaymentRequestService {
             acceptedPaymentEndpointIdentifiers: acceptedPaymentEndpointIdentifiers,
             metadata: Paykit.PrivateJsonObject(text: metadataText)
         )
-        let record = try await sdk.proposePaymentRequest(
-            counterparty: target.publicKey,
-            counterpartyReceiverPath: target.receiverPath,
-            terms: terms,
-            expectedIdentity: expectedIdentity
-        )
+        let record = try await performLifecycleWrite {
+            try await sdk.proposePaymentRequest(
+                counterparty: target.publicKey,
+                counterpartyReceiverPath: target.receiverPath,
+                terms: terms,
+                expectedIdentity: expectedIdentity
+            )
+        }
         let reports = await (try? processPendingMessages()) ?? []
         let deliveryStatus = proposalWasSent(record, reports: reports) ? PaykitPaymentRequest.DeliveryStatus.sent : .queued
         return PaykitPaymentRequest(
@@ -685,11 +692,13 @@ struct PaykitPaymentRequestService {
             proposalDate: validationDate
         ))
         let iconURI: String? = if let iconData = draft.iconData {
-            try await sdk.uploadProfileAvatar(
-                bytes: Self.compressedSubscriptionIcon(iconData),
-                contentType: "image/jpeg",
-                expectedIdentity: expectedIdentity
-            )
+            try await performLifecycleWrite {
+                try await sdk.uploadProfileAvatar(
+                    bytes: Self.compressedSubscriptionIcon(iconData),
+                    contentType: "image/jpeg",
+                    expectedIdentity: expectedIdentity
+                )
+            }
         } else {
             nil
         }
@@ -711,12 +720,14 @@ struct PaykitPaymentRequestService {
             proposalDate: proposalDate
         )
         try PaykitSubscriptionProposal.validate(terms)
-        let record = try await sdk.proposePaymentRequest(
-            counterparty: target.publicKey,
-            counterpartyReceiverPath: target.receiverPath,
-            terms: terms,
-            expectedIdentity: expectedIdentity
-        )
+        let record = try await performLifecycleWrite {
+            try await sdk.proposePaymentRequest(
+                counterparty: target.publicKey,
+                counterpartyReceiverPath: target.receiverPath,
+                terms: terms,
+                expectedIdentity: expectedIdentity
+            )
+        }
         let reports = await (try? processPendingMessages()) ?? []
         let deliveryStatus = proposalWasSent(record, reports: reports)
             ? PaykitPaymentRequest.DeliveryStatus.sent
@@ -772,11 +783,13 @@ struct PaykitPaymentRequestService {
             throw PaykitPaymentRequestError.requestExpired
         }
 
-        _ = try await sdk.acceptPaymentRequest(
-            counterparty: request.counterparty,
-            counterpartyReceiverPath: request.counterpartyReceiverPath,
-            paymentRequestId: request.paymentRequestId
-        )
+        _ = try await performLifecycleWrite {
+            try await sdk.acceptPaymentRequest(
+                counterparty: request.counterparty,
+                counterpartyReceiverPath: request.counterpartyReceiverPath,
+                paymentRequestId: request.paymentRequestId
+            )
+        }
         _ = try? await processPendingMessages()
     }
 
@@ -785,22 +798,26 @@ struct PaykitPaymentRequestService {
             throw PaykitPaymentRequestError.requestExpired
         }
 
-        _ = try await sdk.rejectPaymentRequest(
-            counterparty: request.counterparty,
-            counterpartyReceiverPath: request.counterpartyReceiverPath,
-            paymentRequestId: request.paymentRequestId,
-            reason: nil
-        )
+        _ = try await performLifecycleWrite {
+            try await sdk.rejectPaymentRequest(
+                counterparty: request.counterparty,
+                counterpartyReceiverPath: request.counterpartyReceiverPath,
+                paymentRequestId: request.paymentRequestId,
+                reason: nil
+            )
+        }
         _ = try? await processPendingMessages()
     }
 
     func cancel(_ request: PaykitPaymentRequest) async throws {
-        _ = try await sdk.cancelPaymentRequest(
-            counterparty: request.counterparty,
-            counterpartyReceiverPath: request.counterpartyReceiverPath,
-            paymentRequestId: request.paymentRequestId,
-            reason: nil
-        )
+        _ = try await performLifecycleWrite {
+            try await sdk.cancelPaymentRequest(
+                counterparty: request.counterparty,
+                counterpartyReceiverPath: request.counterpartyReceiverPath,
+                paymentRequestId: request.paymentRequestId,
+                reason: nil
+            )
+        }
         _ = try? await processPendingMessages()
     }
 
@@ -809,11 +826,13 @@ struct PaykitPaymentRequestService {
             throw PaykitPaymentRequestError.requestExpired
         }
 
-        let record = try await sdk.acceptPaymentRequest(
-            counterparty: subscription.counterparty,
-            counterpartyReceiverPath: subscription.counterpartyReceiverPath,
-            paymentRequestId: subscription.paymentRequestId
-        )
+        let record = try await performLifecycleWrite {
+            try await sdk.acceptPaymentRequest(
+                counterparty: subscription.counterparty,
+                counterpartyReceiverPath: subscription.counterpartyReceiverPath,
+                paymentRequestId: subscription.paymentRequestId
+            )
+        }
         _ = try? await processPendingMessages()
         guard let subscription = PaykitSubscription(record: record) else {
             throw PaykitPaymentRequestError.requestUnavailable
@@ -826,17 +845,25 @@ struct PaykitPaymentRequestService {
             throw PaykitPaymentRequestError.requestUnavailable
         }
 
-        let record = try await sdk.cancelPaymentRequest(
-            counterparty: subscription.counterparty,
-            counterpartyReceiverPath: subscription.counterpartyReceiverPath,
-            paymentRequestId: subscription.paymentRequestId,
-            reason: nil
-        )
+        let record = try await performLifecycleWrite {
+            try await sdk.cancelPaymentRequest(
+                counterparty: subscription.counterparty,
+                counterpartyReceiverPath: subscription.counterpartyReceiverPath,
+                paymentRequestId: subscription.paymentRequestId,
+                reason: nil
+            )
+        }
         _ = try? await processPendingMessages()
         guard let subscription = PaykitSubscription(record: record) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         return subscription
+    }
+
+    private func performLifecycleWrite<T>(_ write: () async throws -> T) async throws -> T {
+        try await revalidateSourceBeforeWrite()
+        try Task.checkCancellation()
+        return try await write()
     }
 
     private static func acceptedPaymentEndpointIdentifiers() -> [String] {
