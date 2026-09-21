@@ -72,19 +72,20 @@ struct PubkyChoiceView: View {
     private var optionCards: some View {
         VStack(spacing: 8) {
             if pubkyProfile.sharedRingIdentities.isEmpty {
-                createCard
-            }
-
-            ForEach(pubkyProfile.sharedRingIdentities) { identity in
-                sharedIdentityCard(identity)
-            }
-
-            if pubkyProfile.isLoadingSharedRingIdentities,
-               pubkyProfile.sharedRingIdentities.isEmpty
-            {
-                discoveryLoadingCard
-            } else if !pubkyProfile.isSharedIdentityDiscoveryAvailable {
-                discoveryErrorCard
+                switch pubkyProfile.sharedRingIdentityDiscoveryState {
+                case .initial:
+                    EmptyView()
+                case .loading:
+                    discoveryLoadingCard
+                case .loaded:
+                    createCard
+                case .unavailable:
+                    discoveryErrorCard
+                }
+            } else {
+                ForEach(pubkyProfile.sharedRingIdentities) { identity in
+                    sharedIdentityCard(identity)
+                }
             }
         }
     }

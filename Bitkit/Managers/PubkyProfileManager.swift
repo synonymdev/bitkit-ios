@@ -92,6 +92,13 @@ class PubkyProfileManager: ObservableObject {
         case restorationFailed
     }
 
+    enum SharedRingIdentityDiscoveryState: Equatable {
+        case initial
+        case loading
+        case loaded
+        case unavailable
+    }
+
     @Published var authState: PubkyAuthState = .idle
     @Published var profile: PubkyProfile?
     @Published var publicKey: String?
@@ -103,8 +110,7 @@ class PubkyProfileManager: ObservableObject {
     @Published private(set) var cachedImageUri: String?
     @Published private(set) var isProfileSetupPending: Bool
     @Published private(set) var sharedRingIdentities: [SharedPubkyIdentityOption] = []
-    @Published private(set) var isLoadingSharedRingIdentities = false
-    @Published private(set) var isSharedIdentityDiscoveryAvailable = true
+    @Published private(set) var sharedRingIdentityDiscoveryState: SharedRingIdentityDiscoveryState = .initial
 
     private nonisolated static let identityLifecycleLock = PubkyIdentityLifecycleLock()
     private var isSignupInFlight = false
@@ -642,24 +648,36 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Shared Identity Discovery
 
     func refreshSharedRingIdentities() async {
+        await refreshSharedRingIdentities(
+            isRingAvailable: Self.isRingAvailable(),
+            loadReferences: {
+                try await Task.detached {
+                    try SharedPubkyIdentityVault.list(source: .ring)
+                }.value
+            }
+        )
+    }
+
+    func refreshSharedRingIdentities(
+        isRingAvailable: Bool,
+        loadReferences: () async throws -> [SharedPubkyIdentityRefV1]
+    ) async {
         guard publicKey == nil else {
             sharedRingIdentities = []
+            sharedRingIdentityDiscoveryState = .initial
             return
         }
 
-        guard Self.isRingAvailable() else {
+        guard isRingAvailable else {
             sharedRingIdentities = []
-            isSharedIdentityDiscoveryAvailable = true
+            sharedRingIdentityDiscoveryState = .loaded
             return
         }
 
-        isLoadingSharedRingIdentities = true
-        defer { isLoadingSharedRingIdentities = false }
+        sharedRingIdentityDiscoveryState = .loading
 
         do {
-            let references = try await Task.detached {
-                try SharedPubkyIdentityVault.list(source: .ring)
-            }.value
+            let references = try await loadReferences()
             var options: [SharedPubkyIdentityOption] = []
             for reference in references {
                 guard let prefixedPubky = SharedPubkyKeyFormat.prefixed(reference.pubky) else {
@@ -677,14 +695,14 @@ class PubkyProfileManager: ObservableObject {
                     ? $0.reference.pubky < $1.reference.pubky
                     : lhsName < rhsName
             }
-            isSharedIdentityDiscoveryAvailable = true
+            sharedRingIdentityDiscoveryState = .loaded
         } catch SharedPubkyIdentityError.missingEntitlement {
             sharedRingIdentities = []
-            isSharedIdentityDiscoveryAvailable = false
+            sharedRingIdentityDiscoveryState = .unavailable
             Logger.info("Shared Pubky Keychain entitlement is not available yet", context: "PubkyProfileManager")
         } catch {
             sharedRingIdentities = []
-            isSharedIdentityDiscoveryAvailable = false
+            sharedRingIdentityDiscoveryState = .unavailable
             Logger.warn("Failed to discover Pubky Ring identities: \(error)", context: "PubkyProfileManager")
         }
     }
@@ -1302,6 +1320,8 @@ class PubkyProfileManager: ObservableObject {
         publicKey = nil
         profile = nil
         authState = .idle
+        sharedRingIdentities = []
+        sharedRingIdentityDiscoveryState = .initial
         clearCachedProfileMetadata()
     }
 

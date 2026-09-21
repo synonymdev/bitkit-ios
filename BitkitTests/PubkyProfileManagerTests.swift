@@ -5,6 +5,48 @@ import XCTest
 
 final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
+    func testSharedIdentityDiscoveryTransitionsHideCreationUntilSuccessfulEmptyLoad() async {
+        let manager = PubkyProfileManager()
+        let (stream, continuation) = AsyncStream<[SharedPubkyIdentityRefV1]>.makeStream()
+
+        await manager.refreshSharedRingIdentities(
+            isRingAvailable: false,
+            loadReferences: {
+                XCTFail("Ring absence should complete without reading shared storage")
+                return []
+            }
+        )
+        XCTAssertEqual(manager.sharedRingIdentityDiscoveryState, .loaded)
+
+        let loadingStarted = expectation(description: "Shared identity discovery started")
+        let refresh = Task { @MainActor in
+            await manager.refreshSharedRingIdentities(
+                isRingAvailable: true,
+                loadReferences: {
+                    loadingStarted.fulfill()
+                    for await references in stream {
+                        return references
+                    }
+                    return []
+                }
+            )
+        }
+        await fulfillment(of: [loadingStarted], timeout: 1)
+        XCTAssertEqual(manager.sharedRingIdentityDiscoveryState, .loading)
+
+        continuation.yield([])
+        continuation.finish()
+        await refresh.value
+        XCTAssertEqual(manager.sharedRingIdentityDiscoveryState, .loaded)
+
+        await manager.refreshSharedRingIdentities(
+            isRingAvailable: true,
+            loadReferences: { throw SharedPubkyIdentityError.temporarilyUnavailable }
+        )
+        XCTAssertEqual(manager.sharedRingIdentityDiscoveryState, .unavailable)
+    }
+
+    @MainActor
     func testIdentityRestorationPreservesCredentialsForRetry() async throws {
         for failedStep in ["load", "signIn", "profile"] {
             for failure in [PubkyServiceError.authFailed("offline") as Error, CancellationError()] {
