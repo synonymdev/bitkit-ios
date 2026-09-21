@@ -66,47 +66,26 @@ struct SubscriptionsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            NavigationBar(title: t("subscriptions__title"))
-            SegmentedControl(
-                selectedTab: $selectedTab,
-                tabItems: [
-                    TabItem(.overview),
-                    TabItem(.payments, badge: paymentRequests.pendingRequests.count),
-                ],
-                inactiveColor: .white.opacity(0.5)
+        ZStack(alignment: .bottom) {
+            InsetHeaderScrollView(
+                header: { header },
+                content: {
+                    Group {
+                        if selectedTab == .payments {
+                            PaymentRequestsView()
+                        } else if !hasVisibleSubscriptions {
+                            emptyState
+                        } else {
+                            overview
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.horizontal, 16)
+                }
             )
 
-            if selectedTab == .payments {
-                PaymentRequestsView()
-            } else if !hasVisibleSubscriptions {
-                emptyState
-            } else {
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 32) {
-                        metrics
-                        section(t("subscriptions__proposals"), subscriptions: proposals)
-                        section(t("subscriptions__active"), subscriptions: active)
-                        section(t("subscriptions__expired"), subscriptions: expired)
-                        section(t("subscriptions__created"), subscriptions: created)
-                    }
-                    .padding(.top, 32)
-                    .padding(.bottom, 32)
-                }
-            }
-
-            if selectedTab == .overview {
-                CustomButton(
-                    title: t("subscriptions__create"),
-                    variant: .secondary
-                ) {
-                    sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .create))
-                }
-                .padding(.bottom, 16)
-                .accessibilityIdentifier("SubscriptionCreate")
-            }
+            footer
         }
-        .padding(.horizontal, 16)
         .background(Color.black)
         .navigationBarHidden(true)
         .accessibilityElement(children: .contain)
@@ -114,7 +93,7 @@ struct SubscriptionsView: View {
         .task {
             await paymentRequests.refresh()
         }
-        .onChange(of: showPayments, initial: true) { _, showPayments in
+        .onChange(of: showPayments) { _, showPayments in
             selectedTab = showPayments ? .payments : .overview
         }
         .task(id: nextTransitionDate) {
@@ -130,6 +109,51 @@ struct SubscriptionsView: View {
 
     private var nextTransitionDate: Date? {
         subscriptionNextTransitionDate(subscriptions: paymentRequests.subscriptions, now: now)
+    }
+
+    private var header: some View {
+        VStack(spacing: 0) {
+            NavigationBar(title: t("subscriptions__title"))
+            SegmentedControl(
+                selectedTab: $selectedTab,
+                tabItems: [
+                    TabItem(.overview),
+                    TabItem(.payments, badge: paymentRequests.pendingRequests.count),
+                ],
+                inactiveColor: .white.opacity(0.5)
+            )
+        }
+        .padding(.horizontal, 16)
+        .background(BlurView().ignoresSafeArea(edges: .top))
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.5), radius: 8, x: 0, y: 20)
+    }
+
+    private var overview: some View {
+        LazyVStack(alignment: .leading, spacing: 32) {
+            metrics
+            section(t("subscriptions__proposals"), subscriptions: proposals)
+            section(t("subscriptions__active"), subscriptions: active)
+            section(t("subscriptions__expired"), subscriptions: expired)
+            section(t("subscriptions__created"), subscriptions: created)
+        }
+        .padding(.top, 32)
+        .padding(.bottom, ScreenLayout.floatingFooterClearance)
+    }
+
+    private var footer: some View {
+        Group {
+            if selectedTab == .overview {
+                CustomButton(title: t("subscriptions__create"), variant: .secondary) {
+                    sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .create))
+                }
+                .accessibilityIdentifier("SubscriptionCreate")
+            } else {
+                PaymentRequestsFooterButton()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
     }
 
     private var emptyState: some View {
@@ -150,7 +174,7 @@ struct SubscriptionsView: View {
             BodyMText(t("subscriptions__empty_description"), textColor: .white64)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, 32)
+        .padding(.bottom, ScreenLayout.floatingFooterClearance)
     }
 
     private var metrics: some View {
@@ -234,6 +258,12 @@ func subscriptionMonthlyCostSats(subscriptions: [PaykitSubscription], now: Date)
     }
 }
 
+/// When a subscription stopped running. An open-ended one has no end date of its own, so the last
+/// period it was paid for is when it lapsed.
+func subscriptionEndDate(subscription: PaykitSubscription) -> Date? {
+    subscription.recurrence.endsAt ?? subscription.paidPeriods.map(\.endsAt).max()
+}
+
 func subscriptionNextTransitionDate(
     subscriptions: [PaykitSubscription],
     now: Date
@@ -290,9 +320,8 @@ struct SubscriptionRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .opacity(subscription.isExpired(at: now) ? 0.5 : 1)
         .contentShape(Rectangle())
-        .accessibilityIdentifier(
-            "SubscriptionRow-\(subscription.paymentRequestId)-\(subscription.counterparty)-\(subscription.counterpartyReceiverPath)"
-        )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("SubscriptionRow-\(subscription.paymentRequestId)")
     }
 }
 
@@ -312,9 +341,9 @@ struct SubscriptionAvatar: View {
         } else if subscription.isCreatedByUser {
             SubscriptionDefaultIcon(size: size)
         } else if let contact {
-            PubkyContactAvatar(contact: contact, size: size)
+            PubkyContactAvatar(contact: contact, size: size, cornerRadius: size / 5)
         } else {
-            ContactAvatarLetter(source: subscription.counterparty, size: size)
+            ContactAvatarLetter(source: subscription.counterparty, size: size, cornerRadius: size / 5)
         }
     }
 }
@@ -409,7 +438,7 @@ struct SubscriptionDetailView: View {
                 value: subscription.statusLabel(at: now),
                 icon: "check-mark"
             )
-            if subscription.isActive(at: now) || subscription.recurrence.endsAt != nil {
+            if subscription.isActive(at: now) || subscription.isExpired(at: now) || subscription.recurrence.endsAt != nil {
                 LabeledDetailCell(
                     title: timingTitle(subscription),
                     value: renewalText(subscription),
@@ -425,7 +454,7 @@ struct SubscriptionDetailView: View {
                 LabeledDetailCell(
                     title: t("subscriptions__payments"),
                     value: "\(subscription.payments.count)",
-                    icon: "arrow-down"
+                    icon: "coins"
                 )
             }
         }
@@ -445,7 +474,7 @@ struct SubscriptionDetailView: View {
                 if canCancel {
                     CustomButton(
                         title: subscription.isCreatedByUser ? t("common__delete") : t("subscriptions__cancel"),
-                        icon: Image("x-mark").resizable().frame(width: 16, height: 16)
+                        icon: Image(subscription.isCreatedByUser ? "trash" : "x-mark").resizable().frame(width: 16, height: 16)
                     ) {
                         sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .cancel(subscription)))
                     }
@@ -466,8 +495,10 @@ struct SubscriptionDetailView: View {
                 ForEach(payments) { payment in
                     PaymentRequestCard(
                         request: payment,
+                        titleOverride: subscription.note ?? t("subscriptions__subscription"),
                         subtitleOverride: payment.createdAt.map(Self.dateFormatter.string),
                         isHighlighted: false,
+                        showsAmountSymbol: false,
                         paymentDirection: payment.direction
                     )
                 }
@@ -477,7 +508,7 @@ struct SubscriptionDetailView: View {
 
     private func renewalText(_ subscription: PaykitSubscription) -> String {
         guard subscription.isActive(at: now) else {
-            return subscription.recurrence.endsAt.map(Self.dateFormatter.string) ?? t("subscriptions__expired")
+            return subscriptionEndDate(subscription: subscription).map(Self.dateFormatter.string) ?? t("subscriptions__expired")
         }
         let date = subscription.recurrence.endsAt ?? subscription.recurrence.nextPeriod(after: now)?.startsAt
         return date.map(Self.dateFormatter.string) ?? t("subscriptions__ongoing")
@@ -503,7 +534,7 @@ struct SubscriptionDetailView: View {
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = .autoupdatingCurrent
-        formatter.setLocalizedDateFormatFromTemplate("MMMMdyyyy")
+        formatter.setLocalizedDateFormatFromTemplate("MMMMd")
         return formatter
     }()
 }
@@ -645,7 +676,7 @@ struct SubscriptionSheet: View {
                     title: payOnAcceptance
                         ? t("subscriptions__swipe_to_subscribe_and_pay")
                         : t("subscriptions__swipe_to_subscribe"),
-                    accentColor: .purpleAccent,
+                    accentColor: .brandAccent,
                     isLoading: isAccepting || paymentRequests.isProcessingSubscription
                 ) {
                     do {
@@ -835,7 +866,7 @@ struct SubscriptionSheet: View {
             }
 
             Spacer()
-            Image("cross")
+            Image(subscription.isCreatedByUser ? "subscription-trash" : "cross")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 256, height: 256)
@@ -846,7 +877,7 @@ struct SubscriptionSheet: View {
                 title: subscription.isCreatedByUser
                     ? t("subscriptions__swipe_to_delete")
                     : t("subscriptions__swipe_to_cancel"),
-                accentColor: .redAccent,
+                accentColor: .brandAccent,
                 isLoading: paymentRequests.isProcessingSubscription
             ) {
                 do {
