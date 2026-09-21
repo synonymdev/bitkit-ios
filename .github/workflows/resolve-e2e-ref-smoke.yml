@@ -1,4 +1,5 @@
 name: resolve-e2e-ref smoke
+# race retry $(date)
 
 on:
   push:
