@@ -138,30 +138,10 @@ jobs:
     steps:
       - name: Resolve E2E tests ref
         id: e2e-ref
-        env:
-          SELECTED: ${{ needs.e2e-branch.outputs.branch }}
-          E2E_BRANCH_INPUT: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-        run: |
-          set -euo pipefail
-          TEST_REPO="synonymdev/bitkit-e2e-tests"
-          SELECTED="${SELECTED:-}"
-
-          if [ -z "$SELECTED" ] || [ "$SELECTED" = "main" ]; then
-            REF="main"
-          elif git ls-remote --exit-code "https://github.com/${TEST_REPO}.git" "refs/heads/${SELECTED}" >/dev/null 2>&1; then
-            REF="$SELECTED"
-          elif [ -n "${E2E_BRANCH_INPUT}" ] && [ "${E2E_BRANCH_INPUT}" != "main" ] && [ "${E2E_BRANCH_INPUT}" != "default-feature-branch" ]; then
-            echo "::error title=Missing e2e_branch::Branch '${SELECTED}' was requested via e2e_branch='${E2E_BRANCH_INPUT}' but no longer exists in ${TEST_REPO}."
-            exit 1
-          else
-            echo "::warning title=Missing E2E branch::Determined branch '${SELECTED}' no longer exists in ${TEST_REPO}; falling back to main."
-            REF="main"
-          fi
-
-          echo "Selected E2E branch: ${SELECTED:-<empty>}"
-          echo "e2e_branch input: ${E2E_BRANCH_INPUT}"
-          echo "Effective E2E tests ref: ${REF}"
-          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+        uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@ci/resolve-e2e-ref
+        with:
+          selected: ${{ needs.e2e-branch.outputs.branch }}
+          e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
       - name: Clone E2E tests
         uses: actions/checkout@v7
@@ -286,30 +266,10 @@ jobs:
     steps:
       - name: Resolve E2E tests ref
         id: e2e-ref
-        env:
-          SELECTED: ${{ needs.e2e-branch.outputs.branch }}
-          E2E_BRANCH_INPUT: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-        run: |
-          set -euo pipefail
-          TEST_REPO="synonymdev/bitkit-e2e-tests"
-          SELECTED="${SELECTED:-}"
-
-          if [ -z "$SELECTED" ] || [ "$SELECTED" = "main" ]; then
-            REF="main"
-          elif git ls-remote --exit-code "https://github.com/${TEST_REPO}.git" "refs/heads/${SELECTED}" >/dev/null 2>&1; then
-            REF="$SELECTED"
-          elif [ -n "${E2E_BRANCH_INPUT}" ] && [ "${E2E_BRANCH_INPUT}" != "main" ] && [ "${E2E_BRANCH_INPUT}" != "default-feature-branch" ]; then
-            echo "::error title=Missing e2e_branch::Branch '${SELECTED}' was requested via e2e_branch='${E2E_BRANCH_INPUT}' but no longer exists in ${TEST_REPO}."
-            exit 1
-          else
-            echo "::warning title=Missing E2E branch::Determined branch '${SELECTED}' no longer exists in ${TEST_REPO}; falling back to main."
-            REF="main"
-          fi
-
-          echo "Selected E2E branch: ${SELECTED:-<empty>}"
-          echo "e2e_branch input: ${E2E_BRANCH_INPUT}"
-          echo "Effective E2E tests ref: ${REF}"
-          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+        uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@ci/resolve-e2e-ref
+        with:
+          selected: ${{ needs.e2e-branch.outputs.branch }}
+          e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
       - name: Checkout E2E tests
         uses: actions/checkout@v7
