@@ -480,35 +480,88 @@ final class SharedPubkyIdentityTests: XCTestCase {
     }
 
     @MainActor
-    func testUnavailableSharedIdentityCleanupClearsSessionAndPrivateStateBeforeReference() async throws {
+    func testUnavailableSharedIdentityCleanupRemovesEndpointsBeforeSessionAndLocalState() async throws {
         var events: [String] = []
 
         try await PubkyProfileManager.clearUnavailableSharedIdentitySession(
+            removePrivatePaykitEndpoints: {
+                events.append("private-endpoints")
+                return true
+            },
+            removePublicPaykitEndpoints: {
+                events.append("public-endpoints")
+                return true
+            },
             clearSession: { events.append("session") },
-            clearPrivatePaykitState: { events.append("private") },
+            clearPrivatePaykitState: { events.append("private-state") },
+            clearPaykitSharingState: { events.append("sharing-state") },
             deleteReference: { events.append("reference") }
         )
 
-        XCTAssertEqual(events, ["session", "private", "reference"])
+        XCTAssertEqual(
+            events,
+            ["private-endpoints", "public-endpoints", "session", "private-state", "sharing-state", "reference"]
+        )
     }
 
     @MainActor
-    func testUnavailableSharedIdentityCleanupKeepsReferenceWhenSessionDeletionFails() async {
+    func testUnavailableSharedIdentityCleanupKeepsLocalStateWhenSessionDeletionFails() async {
         var events: [String] = []
 
         do {
             try await PubkyProfileManager.clearUnavailableSharedIdentitySession(
+                removePrivatePaykitEndpoints: {
+                    events.append("private-endpoints")
+                    return true
+                },
+                removePublicPaykitEndpoints: {
+                    events.append("public-endpoints")
+                    return true
+                },
                 clearSession: {
                     events.append("session")
                     throw KeychainError.failedToDelete
                 },
-                clearPrivatePaykitState: { events.append("private") },
+                clearPrivatePaykitState: { events.append("private-state") },
+                clearPaykitSharingState: { events.append("sharing-state") },
                 deleteReference: { events.append("reference") }
             )
             XCTFail("Expected session deletion failure")
         } catch {
-            XCTAssertEqual(events, ["session"])
+            XCTAssertEqual(events, ["private-endpoints", "public-endpoints", "session"])
         }
+    }
+
+    @MainActor
+    func testUnavailableSharedIdentityCleanupContinuesAfterBestEffortEndpointFailures() async throws {
+        var events: [String] = []
+
+        try await PubkyProfileManager.clearUnavailableSharedIdentitySession(
+            removePrivatePaykitEndpoints: {
+                events.append("private-endpoints-failed")
+                return false
+            },
+            removePublicPaykitEndpoints: {
+                events.append("public-endpoints-failed")
+                return false
+            },
+            clearSession: { events.append("session") },
+            clearPrivatePaykitState: { events.append("private-state") },
+            clearPaykitSharingState: { events.append("sharing-state") },
+            deleteReference: { events.append("reference") }
+        )
+
+        XCTAssertEqual(
+            events,
+            [
+                "private-endpoints-failed",
+                "public-endpoints-failed",
+                "session",
+                "private-state",
+                "sharing-state",
+                "reference",
+            ]
+        )
     }
 
     func testIdentityLifecycleTransactionsDoNotInterleave() async {

@@ -905,33 +905,54 @@ class PubkyProfileManager: ObservableObject {
 
     private func disconnectUnavailableSharedIdentityLocked() async {
         sharedRingIdentities = []
+        // Stop UI/event-driven identity work before remote cleanup so nothing can republish while
+        // the cached session is used one final time to remove Bitkit's endpoints.
+        clearAuthenticatedState()
+        sessionRestorationFailed = true
         do {
             try await Self.clearUnavailableSharedIdentitySession()
-            clearAuthenticatedState()
-            sessionRestorationFailed = true
         } catch {
             // Keep the durable reference as a cleanup-pending marker and retry on the next
-            // launch/foreground validation. Authenticated operations still fail source checks.
+            // launch/foreground validation. The borrowed identity remains unavailable in the UI.
             Logger.error("Failed to clear unavailable shared Pubky session: \(error)", context: "PubkyProfileManager")
-            sessionRestorationFailed = true
         }
     }
 
     static func clearUnavailableSharedIdentitySession(
+        removePrivatePaykitEndpoints: () async -> Bool = {
+            await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(
+                context: "PubkyProfileManager.sharedIdentitySourceLoss"
+            )
+        },
+        removePublicPaykitEndpoints: () async -> Bool = {
+            await PubkyProfileManager.removePublicPaykitEndpointsBestEffort(
+                context: "PubkyProfileManager.sharedIdentitySourceLoss"
+            )
+        },
         clearSession: () async throws -> Void = {
             try await PubkyService.clearExternalSessionAccess()
         },
         clearPrivatePaykitState: () async -> Void = {
             await PrivatePaykitService.shared.closeAndClear()
         },
+        clearPaykitSharingState: () async -> Void = {
+            await PubkyProfileManager.clearPublicPaykitSharingState()
+        },
         deleteReference: () throws -> Void = {
             try SharedPubkyIdentityReferenceStore.delete()
         }
     ) async throws {
+        // Published endpoints outlive the borrowed identity, so remove them while its session is
+        // still usable. Cleanup is best effort: source loss must still revoke local session access.
+        _ = await removePrivatePaykitEndpoints()
+        _ = await removePublicPaykitEndpoints()
+
         // Keep the durable reference until both identity-specific stores are gone. A session
-        // failure leaves both stores intact; a reference failure leaves an empty cache and a retry marker.
+        // failure leaves local state and its retry markers intact; a reference failure leaves an
+        // empty cache and a retry marker.
         try await clearSession()
         await clearPrivatePaykitState()
+        await clearPaykitSharingState()
         try deleteReference()
     }
 
@@ -1161,12 +1182,15 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    static func removePublicPaykitEndpointsBestEffort(context: String) async {
+    @discardableResult
+    static func removePublicPaykitEndpointsBestEffort(context: String) async -> Bool {
         do {
             try await removePublicPaykitEndpoints(context: context)
             PublicPaykitService.setCleanupPending(false)
+            return true
         } catch {
             PublicPaykitService.setCleanupPending(true)
+            return false
         }
     }
 
@@ -1181,12 +1205,15 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    static func removePrivatePaykitEndpointsBestEffort(context: String) async {
+    @discardableResult
+    static func removePrivatePaykitEndpointsBestEffort(context: String) async -> Bool {
         do {
             try await removePrivatePaykitEndpoints(context: context)
             PrivatePaykitService.setContactSharingCleanupPending(false)
+            return true
         } catch {
             PrivatePaykitService.setContactSharingCleanupPending(true)
+            return false
         }
     }
 
