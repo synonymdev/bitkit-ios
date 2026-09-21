@@ -61,17 +61,26 @@ use that same mode, and failed offline preparation cannot silently create an
 ordinary invoice or retain a stale QR. A newer refresh or edit prevents an older
 request from publishing its invoice.
 
+Before registering an offline invoice for display, the app checks native payment
+history for a matching successful inbound BOLT11 payment. A payment event during
+that lookup forces a fresh history snapshot. The final display update also checks
+that the candidate still belongs to the current session and has not been retired
+by a matching payment event. Missing payment history refuses display.
+
 A prepared invoice remains visible and shareable in its QR screen after the
 device disconnects or the node stops. Channel events do not replace it. The
 connection overlay still covers ordinary invoices and invoice editing. Expiry
 removes the prepared QR, and a matching payment event retires its display state.
 Display state belongs to the current receive session; native registration and
-recovery across app restarts remain provider responsibilities.
+recovery across app restarts remain provider responsibilities. Offline BOLT11 and
+BIP21 strings stay in memory and never enter the ordinary receive invoice cache.
 
 ## Verification
 
 `OfflineReceiveSessionTests` uses an injected provider to exercise capability,
 liquidity boundaries, stale responses, session reset and failed activation.
+`OfflineReceiveRegistrationTests` covers paid-history checks, payment and session
+races, expiry and isolation from the ordinary persistent invoice cache.
 Existing receive tests cover the ordinary invoice liquidity rules and edit
 navigation. These are application contract tests, not a live FFOR payment test.
 
