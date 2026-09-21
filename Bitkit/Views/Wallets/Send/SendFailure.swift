@@ -1,15 +1,98 @@
+import LDKNode
 import SwiftUI
 
-// TODO: add error message and retry button
+func sendFailureMessage(for error: Error) -> String {
+    let fallbackMessage = t("wallet__payment_failed_description")
+
+    if error is QuickPayConversionError {
+        return t("wallet__send_quickpay__currency_conversion")
+    }
+
+    if let reason = (error as? AppError)?.paymentFailureReason {
+        return PaymentFailureReason.userMessage(for: reason)
+    }
+
+    if let requestError = error as? PaykitPaymentRequestError {
+        return requestError.localizedDescription
+    }
+
+    return fallbackMessage
+}
+
+func shouldResetRoutingCachesOnRetry(for error: Error) -> Bool {
+    guard let reason = (error as? AppError)?.paymentFailureReason else {
+        return false
+    }
+
+    return reason.shouldResetRoutingCachesOnRetry
+}
+
+func sendFailureType(for error: Error) -> String {
+    if let reason = (error as? AppError)?.paymentFailureReason {
+        return compactFailureType(String(describing: reason))
+    }
+
+    if let requestError = error as? PaykitPaymentRequestError {
+        return compactFailureType(String(describing: requestError))
+    }
+
+    if let appError = error as? AppError, let underlyingError = appError.underlyingError {
+        return compactFailureType(String(describing: underlyingError))
+    }
+
+    return compactFailureType(String(describing: error))
+}
+
+private func compactFailureType(_ value: String) -> String {
+    var result = value
+
+    if result.hasPrefix("Optional("), result.hasSuffix(")") {
+        result = String(result.dropFirst("Optional(".count).dropLast())
+    }
+
+    if let parenthesisIndex = result.firstIndex(of: "(") {
+        result = String(result[..<parenthesisIndex])
+    }
+
+    if let lastComponent = result.split(separator: ".").last {
+        result = String(lastComponent)
+    }
+
+    return result.trimmingCharacters(in: .whitespacesAndNewlines)
+}
 
 struct SendFailure: View {
+    @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var wallet: WalletViewModel
+
+    let context: SendFailureContext
+    let onRetryReady: (Bool) async -> Void
+    let onSecondaryAction: (() -> Void)?
+
+    private var title: String {
+        if context.isInitialSubscriptionPayment {
+            return t("subscriptions__first_payment_failed")
+        }
+        switch context.retryRoute {
+        case .confirm:
+            return app.selectedWalletToPayFrom == .lightning ? t("wallet__send_instant_failed") : t("wallet__send_error_tx_failed")
+        case .quickpay, .lnurlPayConfirm:
+            return t("wallet__send_instant_failed")
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
                 VStack(alignment: .leading, spacing: 0) {
-                    SheetHeader(title: t("wallet__send_error_tx_failed"), showBackButton: false)
+                    SheetHeader(title: title, showBackButton: false)
+                        .accessibilityIdentifier("SendFailure")
+
+                    BodyMText(context.message ?? t("wallet__payment_failed_description"))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("SendFailureMessage")
 
                     Spacer()
 
@@ -22,10 +105,27 @@ struct SendFailure: View {
 
                     Spacer()
 
-                    HStack(spacing: 16) {
-                        CustomButton(title: t("common__close")) {
-                            sheets.hideSheet()
+                    VStack(spacing: 16) {
+                        CustomButton(
+                            title: context.isInitialSubscriptionPayment ? t("wallet__payment_requests_not_now") : t("wallet__send_error_support"),
+                            variant: .secondary,
+                            isDisabled: wallet.isRetryingLightningPayment
+                        ) {
+                            if let onSecondaryAction {
+                                onSecondaryAction()
+                            } else {
+                                contactSupport()
+                            }
                         }
+                        .accessibilityIdentifier(context.isInitialSubscriptionPayment ? "NotNow" : "Support")
+
+                        CustomButton(
+                            title: context.isInitialSubscriptionPayment ? t("subscriptions__retry_payment") : t("common__try_again"),
+                            isLoading: wallet.isRetryingLightningPayment
+                        ) {
+                            retryPayment()
+                        }
+                        .accessibilityIdentifier("Retry")
                     }
                 }
                 .padding(.horizontal, 16)
@@ -34,5 +134,72 @@ struct SendFailure: View {
             .allowSwipeBack(false)
             .sheetBackground()
         }
+    }
+
+    private func retryPayment() {
+        guard !wallet.isRetryingLightningPayment else { return }
+        wallet.isRetryingLightningPayment = true
+
+        Task { @MainActor in
+            defer {
+                wallet.isRetryingLightningPayment = false
+            }
+
+            do {
+                if context.resetRoutingCachesOnRetry {
+                    var cacheResetError: Error?
+                    do {
+                        try await wallet.resetPaymentRoutingCaches()
+                    } catch {
+                        cacheResetError = error
+                    }
+
+                    try await wallet.start()
+                    let refreshStartedAt = Date()
+
+                    if let cacheResetError {
+                        throw cacheResetError
+                    }
+
+                    try await wallet.waitForPaymentRoutingDataRefresh(startedAt: refreshStartedAt)
+                }
+
+                await onRetryReady(context.resetRoutingCachesOnRetry)
+            } catch {
+                Logger.error("Failed to reset routing caches before payment retry: \(error)", context: "SendFailure")
+                app.toast(error)
+            }
+        }
+    }
+
+    private func contactSupport() {
+        sheets.hideSheet()
+        navigation.navigate(.reportIssue(ReportIssuePrefill(message: supportMessage())))
+    }
+
+    private func supportMessage() -> String {
+        return """
+        I need help with a failed send payment.
+
+        Failure type: \(context.failureType)
+        Payment method: \(app.selectedWalletToPayFrom)
+        Routing cache reset attempted: \(context.routingCacheResetAttempted ? "Yes" : "No")
+
+        Payment request: \(context.paymentRequest ?? supportPaymentRequest())
+
+        Please investigate this payment failure.
+        """
+    }
+
+    private func supportPaymentRequest() -> String {
+        if let invoice = app.scannedLightningInvoice {
+            return invoice.bolt11
+        }
+
+        if let lnurlPayData = app.lnurlPayData {
+            return "LNURL: \(lnurlPayData.uri)"
+        }
+
+        return "Unavailable"
     }
 }

@@ -71,7 +71,9 @@ struct MMKVParser {
             }
 
             shift += 7
-            if shift >= 64 { return nil }
+            if shift >= 64 {
+                return nil
+            }
         }
 
         return nil
@@ -291,7 +293,7 @@ enum RNKeychainKey {
 
 // MARK: - Channel Migration Data
 
-struct PendingChannelMigration: Codable {
+struct PendingChannelMigration: Codable, Equatable {
     let channelManager: Data
     let channelMonitors: [Data]
 }
@@ -399,6 +401,17 @@ class MigrationsService: ObservableObject {
     var pendingChannelMigration: PendingChannelMigration? {
         get { getCodable(forKey: Self.rnPendingChannelMigrationKey) }
         set { setCodable(newValue, forKey: Self.rnPendingChannelMigrationKey) }
+    }
+
+    func withPendingChannelMigration(
+        _ operation: (PendingChannelMigration?) async throws -> Void
+    ) async rethrows {
+        let migration = pendingChannelMigration
+        try await operation(migration)
+
+        if pendingChannelMigration == migration {
+            pendingChannelMigration = nil
+        }
     }
 
     /// Stored activity data from RN remote backup for reapplying metadata after sync (persisted)
@@ -1400,6 +1413,7 @@ extension MigrationsService {
             let invoice = (item.address?.isEmpty == false) ? item.address! : "migrated:\(item.id)"
 
             let lightning = BitkitCore.LightningActivity(
+                walletId: WalletScope.default,
                 id: item.id,
                 txType: txType,
                 status: status,
@@ -1752,7 +1766,7 @@ extension MigrationsService {
                 // Try to find on-chain activity by txId first
                 if let onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: activityId) {
                     try await CoreService.shared.activity.upsertTags([
-                        ActivityTags(activityId: onchain.id, tags: tagList),
+                        ActivityTags(walletId: WalletScope.default, activityId: onchain.id, tags: tagList),
                     ])
                     applied += 1
                 } else if let activity = try? await CoreService.shared.activity.getActivity(id: activityId) {
@@ -1760,12 +1774,12 @@ extension MigrationsService {
                     switch activity {
                     case .lightning:
                         try await CoreService.shared.activity.upsertTags([
-                            ActivityTags(activityId: activityId, tags: tagList),
+                            ActivityTags(walletId: WalletScope.default, activityId: activityId, tags: tagList),
                         ])
                         applied += 1
                     case let .onchain(onchain):
                         try await CoreService.shared.activity.upsertTags([
-                            ActivityTags(activityId: onchain.id, tags: tagList),
+                            ActivityTags(walletId: WalletScope.default, activityId: onchain.id, tags: tagList),
                         ])
                         applied += 1
                     }
@@ -1843,6 +1857,7 @@ extension MigrationsService {
                 let activityTimestamp = timestampSecs > 0 ? timestampSecs : now
 
                 let onchain = BitkitCore.OnchainActivity(
+                    walletId: WalletScope.default,
                     id: item.id,
                     txType: item.txType == "sent" ? .sent : .received,
                     txId: txId,
@@ -1908,9 +1923,15 @@ extension MigrationsService {
         func getBool(from dict: [String: Any], key: String, fallbackKey: String? = nil, defaultValue: Bool) -> Bool {
             let keys = fallbackKey != nil ? [key, fallbackKey!] : [key]
             for k in keys {
-                if let val = dict[k] as? Bool { return val }
-                if let val = dict[k] as? Int { return val != 0 }
-                if let val = dict[k] as? NSNumber { return val.boolValue }
+                if let val = dict[k] as? Bool {
+                    return val
+                }
+                if let val = dict[k] as? Int {
+                    return val != 0
+                }
+                if let val = dict[k] as? NSNumber {
+                    return val.boolValue
+                }
             }
             return defaultValue
         }
@@ -1920,7 +1941,9 @@ extension MigrationsService {
             var selectedPairs = ["BTC/USD"]
             if let pairsArray = (prefs["pairs"] as? [String]) ?? (prefs["enabledPairs"] as? [String]) {
                 selectedPairs = pairsArray.map { $0.replacingOccurrences(of: "_", with: "/") }
-                if selectedPairs.isEmpty { selectedPairs = ["BTC/USD"] }
+                if selectedPairs.isEmpty {
+                    selectedPairs = ["BTC/USD"]
+                }
             }
             let rnPeriod = prefs["period"] as? String ?? "1D"
             let periodMap = ["ONE_DAY": "1D", "ONE_WEEK": "1W", "ONE_MONTH": "1M", "ONE_YEAR": "1Y"]

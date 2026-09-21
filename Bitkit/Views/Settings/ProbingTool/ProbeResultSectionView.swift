@@ -27,13 +27,13 @@ struct ProbeResultSectionView: View {
             }
             .font(.subheadline)
 
-            if let fee = result.estimatedFeeSats {
+            if let fee = result.routeFeeMsat {
                 HStack {
                     Image(systemName: "bitcoinsign.circle")
                         .foregroundStyle(.secondary)
-                    Text("Estimated Fee")
+                    Text("Route Fee")
                     Spacer()
-                    Text("\(fee) sats")
+                    Text("\(fee) msat")
                         .foregroundStyle(.secondary)
                 }
                 .font(.subheadline)

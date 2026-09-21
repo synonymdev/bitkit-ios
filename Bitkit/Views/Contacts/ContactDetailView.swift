@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ContactDetailView: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
@@ -8,17 +10,21 @@ struct ContactDetailView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     let publicKey: String
+    var showsDeleteAction = false
 
     @State private var profile: PubkyProfile?
     @State private var isLoading = true
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("contacts__detail_title"))
+            NavigationBar(title: t(showsDeleteAction ? "contacts__saved_title" : "contacts__detail_title"))
                 .padding(.horizontal, 16)
 
             if isLoading {
@@ -50,6 +56,17 @@ struct ContactDetailView: View {
                 navigation.path = [.contacts]
             }
         }
+        .alert(
+            t("contacts__delete_title", variables: ["name": profile?.name ?? ""]),
+            isPresented: $showDeleteConfirmation
+        ) {
+            Button(t("contacts__delete_confirm"), role: .destructive) {
+                Task { await deleteContact() }
+            }
+            Button(t("common__dialog_cancel"), role: .cancel) {}
+        } message: {
+            Text(t("contacts__delete_description", variables: ["name": profile?.name ?? ""]))
+        }
     }
 
     // MARK: - Contact Body
@@ -62,6 +79,7 @@ struct ContactDetailView: View {
                     name: profile.name,
                     bio: profile.bio,
                     imageUrl: profile.imageUrl,
+                    showDivider: false,
                     nameAccessibilityIdentifier: "ContactViewName",
                     notesAccessibilityIdentifier: "ContactViewNotes"
                 )
@@ -69,7 +87,9 @@ struct ContactDetailView: View {
                 .padding(.bottom, 24)
 
                 contactActions
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 24)
+
+                CustomDivider()
 
                 VStack(alignment: .leading, spacing: 0) {
                     if !profile.links.isEmpty {
@@ -95,8 +115,15 @@ struct ContactDetailView: View {
     private var contactActions: some View {
         HStack(spacing: 16) {
             GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send")) {
-                Task {
-                    await payContact()
+                if canRequestPayment {
+                    sheets.showSheet(
+                        .receive,
+                        data: ReceiveConfig(view: .requestOrPay(publicKey: publicKey))
+                    )
+                } else {
+                    Task {
+                        await payContact()
+                    }
                 }
             }
             .accessibilityIdentifier("ContactPay")
@@ -117,11 +144,26 @@ struct ContactDetailView: View {
             }
             .accessibilityIdentifier("ContactShare")
 
-            GradientCircleButton(icon: "pencil", accessibilityLabel: t("common__edit")) {
-                navigation.navigate(.editContact(publicKey: publicKey))
+            GradientCircleButton(
+                icon: showsDeleteAction ? "trash" : "pencil",
+                accessibilityLabel: t(showsDeleteAction ? "common__delete" : "common__edit")
+            ) {
+                if showsDeleteAction {
+                    showDeleteConfirmation = true
+                } else {
+                    navigation.navigate(.editContact(publicKey: publicKey))
+                }
             }
-            .accessibilityIdentifier("ContactEdit")
+            .accessibilityIdentifier(showsDeleteAction ? "ContactDelete" : "ContactEdit")
         }
+    }
+
+    private var canRequestPayment: Bool {
+        PaykitFeatureFlags.isUIAvailable &&
+            isPaykitUIEnabled &&
+            paymentRequests.eligibleTargets.contains {
+                PubkyPublicKeyFormat.matches($0.publicKey, publicKey)
+            }
     }
 
     // MARK: - Links / Metadata
@@ -213,6 +255,21 @@ struct ContactDetailView: View {
         }
     }
 
+    private func deleteContact() async {
+        do {
+            try await contactsManager.removeContact(publicKey: publicKey)
+            app.toast(
+                type: .success,
+                title: t("contacts__delete_success"),
+                accessibilityIdentifier: "ContactDeletedToast"
+            )
+            navigation.path = [.contacts]
+        } catch {
+            Logger.error("Failed to delete contact: \(error)", context: "ContactDetailView")
+            app.toast(type: .error, title: t("contacts__delete_error"))
+        }
+    }
+
     // MARK: - Loading & Empty States
 
     private var loadingContent: some View {
@@ -266,52 +323,16 @@ struct ContactDetailView: View {
     }
 
     private func payContact() async {
-        do {
-            let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: publicKey, wallet: wallet)
-
-            switch result {
-            case let .opened(paymentRequest):
-                _ = await openContactPayment(paymentRequest: paymentRequest)
-            case .noEndpoint, .notOpened:
-                if let messageKey = result.contactPaymentFailureMessageKey {
-                    app.toast(
-                        type: .warning,
-                        title: t("slashtags__error_pay_title"),
-                        description: t(messageKey)
-                    )
-                }
-            }
-        } catch {
-            Logger.error("Failed to pay contact \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "ContactDetailView")
-            app.toast(
-                type: .error,
-                title: t("slashtags__error_pay_title"),
-                description: error.localizedDescription
-            )
+        await PaymentNavigationHelper.openPrivateContactPayment(
+            publicKey: publicKey,
+            app: app,
+            currency: currency,
+            settings: settings,
+            wallet: wallet,
+            alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+        ) { route in
+            sheets.showSheet(.send, data: SendConfig(view: route))
         }
-    }
-
-    @MainActor
-    private func openContactPayment(paymentRequest: String) async -> Bool {
-        do {
-            try await app.handleScannedData(paymentRequest)
-        } catch {
-            Logger.warn("Failed to decode contact payment request: \(error)", context: "ContactDetailView")
-            app.toast(
-                type: .warning,
-                title: t("slashtags__error_pay_title"),
-                description: t("slashtags__error_pay_not_opened_msg")
-            )
-            return false
-        }
-
-        guard let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings) else {
-            return false
-        }
-
-        app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
-        sheets.showSheet(.send, data: SendConfig(view: route))
-        return true
     }
 }
 
@@ -325,6 +346,7 @@ struct ContactDetailView: View {
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
             .environmentObject(WalletViewModel())
+            .environment(HwWalletManager())
     }
     .preferredColorScheme(.dark)
 }

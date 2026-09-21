@@ -23,6 +23,8 @@ enum AppReset {
         await VssBackupClient.shared.reset()
         VssStoreIdProvider.shared.clearCache()
 
+        OnChainHwService.shared.stopAllWatchers()
+
         // Stop node and wipe LDK persistence via the wallet API.
         try await wallet.wipe()
 
@@ -44,6 +46,7 @@ enum AppReset {
         if let bundleID = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
         }
+        try await WatchOnlyAccountManager.shared.clear()
 
         // Singleton retains stale @AppStorage values after removePersistentDomain
         SettingsViewModel.shared.resetToDefaults()

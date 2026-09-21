@@ -6,7 +6,7 @@ import XCTest
 final class ContactsManagerTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
     }
 
     override func tearDown() {
@@ -35,11 +35,19 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(PubkyPublicKeyFormat.matches(prefixedKey, "pubkyinvalid"))
     }
 
+    func testPubkyPublicKeyFormatDisplaysRawTruncatedKey() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated(rawKey), "3rsd...w5xg")
+        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated("pubky\(rawKey)"), "3rsd...w5xg")
+    }
+
     func testActivityContactResolvesLightningContactKey() {
         let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         let contact = makeContact(publicKey: "pubky\(rawKey)")
         let activity = Activity.lightning(
             LightningActivity(
+                walletId: WalletScope.default,
                 id: "test-lightning-contact",
                 txType: .sent,
                 status: .succeeded,
@@ -64,6 +72,7 @@ final class ContactsManagerTests: XCTestCase {
         let contact = makeContact(publicKey: "pubky\(rawKey)")
         let activity = Activity.onchain(
             OnchainActivity(
+                walletId: WalletScope.default,
                 id: "test-onchain-boosting-contact",
                 txType: .sent,
                 txId: "txid",
@@ -94,6 +103,7 @@ final class ContactsManagerTests: XCTestCase {
         let replacedTxId = "replaced_tx_id"
         let activity = Activity.onchain(
             OnchainActivity(
+                walletId: WalletScope.default,
                 id: replacedTxId,
                 txType: .sent,
                 txId: replacedTxId,

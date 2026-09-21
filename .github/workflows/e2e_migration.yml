@@ -7,27 +7,35 @@ on:
         description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
         required: false
         default: "default-feature-branch"
+      post_to_slack:
+        description: "Post E2E migration summary to Slack (#bitkit-staging-nightly)"
+        type: boolean
+        default: false
+        required: false
   schedule:
     - cron: "0 3 * * *"
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 env:
   TERM: xterm-256color
   FORCE_COLOR: 1
+  GIT_LFS_SKIP_SMUDGE: "1"
   SIMULATOR_NAME: "iPhone 17"
   IOS_VERSION: "26.2"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
   build:
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-')))
     runs-on: macos-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -48,7 +56,7 @@ jobs:
           brew install xcbeautify
 
       - name: Cache Swift Package Manager
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
@@ -103,20 +111,20 @@ jobs:
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
 
       - name: Upload iOS app (regtest)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: e2e-app/
 
   e2e-branch:
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-')))
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
     with:
       app_branch: ${{ github.head_ref || github.ref_name }}
       e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
   prepare-wallets:
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-')))
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@main
     needs: [e2e-branch]
     strategy:
@@ -136,7 +144,7 @@ jobs:
       scenario_name: ${{ matrix.scenario.name }}
 
   e2e-tests:
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-')))
     runs-on: macos-latest
     needs: [build, e2e-branch, prepare-wallets]
 
@@ -163,20 +171,20 @@ jobs:
         run: echo $E2E_BRANCH
 
       - name: Clone E2E tests
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
           path: bitkit-e2e-tests
           ref: ${{ needs.e2e-branch.outputs.branch }}
 
       - name: Download iOS app
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
 
       - name: Download migration env
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: migration-env_${{ matrix.rn_version }}_${{ matrix.scenario.name }}
           path: bitkit-e2e-tests/artifacts
@@ -210,12 +218,12 @@ jobs:
         run: ls -la bitkit-e2e-tests/aut
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
       - name: Cache npm cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -315,7 +323,35 @@ jobs:
 
       - name: Upload E2E Artifacts (${{ matrix.scenario.name }})
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts_${{ matrix.scenario.name }}_${{ matrix.rn_version }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
+
+  slack-report:
+    if: >-
+      always() &&
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_dispatch' && inputs.post_to_slack == true))
+    runs-on: ubuntu-latest
+    needs: [build, e2e-branch, prepare-wallets, e2e-tests]
+    steps:
+      - name: Checkout E2E tests
+        uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ needs.e2e-branch.outputs.branch }}
+
+      - name: Post Slack summary
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_STAGING }}
+          PLATFORM: ios
+          MIGRATION_RESULT: ${{ needs.build.result == 'success' && needs.e2e-branch.result == 'success' && needs.prepare-wallets.result == 'success' && needs.e2e-tests.result == 'success' && 'success' || 'failure' }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          E2E_BRANCH_RESULT: ${{ needs.e2e-branch.result }}
+          PREPARE_WALLETS_RESULT: ${{ needs.prepare-wallets.result }}
+          E2E_TESTS_RESULT: ${{ needs.e2e-tests.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          E2E_TESTS_REF: ${{ needs.e2e-branch.outputs.branch }}
+        run: python3 scripts/slack_summary.py e2e-migration

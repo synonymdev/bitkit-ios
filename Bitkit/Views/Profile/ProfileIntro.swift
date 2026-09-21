@@ -17,6 +17,7 @@ struct ProfileIntroView: View {
             },
             accentColor: .pubkyGreen,
             imagePosition: .center,
+            titleDescriptionSpacing: 8,
             testID: "ProfileIntro"
         )
         .navigationBarHidden(true)

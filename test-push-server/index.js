@@ -1,9 +1,9 @@
-const PushNotifications = require('node-pushnotifications');
+const apn = require('@parse/node-apn');
 
-const { pushSettings, config } = require('./settings');
+const { providerOptions, config } = require('./settings');
 const { createPushData } = require('./helpers');
 
-const push = new PushNotifications(pushSettings);
+const provider = new apn.Provider(providerOptions);
 
 const deviceToken = config.device.token;
 
@@ -12,25 +12,26 @@ if (!deviceToken) {
     process.exit(1);
 }
 
-const data = createPushData({ type: 'payment' });
+const notification = createPushData({ type: 'payment' });
 
 console.log("🚀 Sending test notification...");
 
-push.send(deviceToken, data)
-    .then((results) => {
-        if (results[0].success) {
+provider.send(notification, deviceToken)
+    .then((result) => {
+        if (result.sent.length > 0) {
             console.log('✅ SENT!');
             return;
         }
 
         console.log("❌ No success from APS.");
-        console.error(JSON.stringify(results));
+        console.error(JSON.stringify(result.failed));
     })
     .catch((error) => {
         console.error("❌ Error sending push notification.");
         console.log(JSON.stringify(error));
     })
     .finally(() => {
+        provider.shutdown();
         console.log("🏁 Done.");
         process.exit(0);
     });

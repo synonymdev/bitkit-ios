@@ -329,7 +329,7 @@ struct LegacyRnRecoveryScreen: View {
                 throw AppError(message: "Destination address unavailable", debugMessage: nil)
             }
 
-            let feeRate = (try? await CoreService.shared.blocktank.fees(refresh: false))
+            let feeRate = await (try? CoreService.shared.blocktank.fees(refresh: false))
                 .map { TransactionSpeed.normal.getFeeRate(from: $0) }
 
             sweepPreview = try await CoreService.shared.utility.prepareLegacyRnNativeSegwitRecoverySweep(

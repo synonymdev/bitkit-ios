@@ -75,8 +75,20 @@ enum Env {
         isE2E && e2eBackend == "local"
     }
 
+    private static var e2eLocalHost: String {
+        configValue("E2E_LOCAL_HOST") ?? "127.0.0.1"
+    }
+
     private static var e2eHomegateUrl: String {
-        infoPlistValue("E2E_HOMEGATE_URL") ?? "http://127.0.0.1:6288"
+        infoPlistValue("E2E_HOMEGATE_URL") ?? "http://\(e2eLocalHost):6288"
+    }
+
+    static var e2eHomeserverPubky: String? {
+        isLocalE2EBackend ? infoPlistValue("E2E_HOMESERVER_PUBKY") : nil
+    }
+
+    static var pubkyLocalTestnetHost: String? {
+        isLocalE2EBackend ? e2eLocalHost : nil
     }
 
     private static var e2eNetwork: LDKNode.Network {
@@ -129,6 +141,13 @@ enum Env {
         return .bitcoin
     }()
 
+    /// Whether LN -> onchain swaps can reach a Boltz backend. Boltz only serves a public API on
+    /// mainnet: its testnet deployment is deprecated and regtest resolves to a local backend that
+    /// no build of ours can reach. Elsewhere the transfer to savings closes a channel instead.
+    static var isSwapSupported: Bool {
+        network == .bitcoin
+    }
+
     static let ldkLogLevel = LDKNode.LogLevel.trace
 
     static let walletSyncIntervalSecs: UInt64 = 10 // TODO: play around with this
@@ -164,17 +183,20 @@ enum Env {
 
     // MARK: Server URLs
 
-    static var electrumServerUrl: String {
-        if isE2E, e2eBackend == "local" {
-            return "tcp://127.0.0.1:60001"
-        }
-
+    static func electrumServerUrl(for network: LDKNode.Network) -> String {
         switch network {
         case .bitcoin: return "ssl://bitkit.to:9999"
         case .signet: return "ssl://mempool.space:60602"
         case .testnet: return "ssl://electrum.blockstream.info:60002"
         case .regtest: return "ssl://electrs.bitkit.stag0.blocktank.to:9999"
         }
+    }
+
+    static var electrumServerUrl: String {
+        if isE2E, e2eBackend == "local" {
+            return "tcp://\(e2eLocalHost):60001"
+        }
+        return electrumServerUrl(for: network)
     }
 
     static var trezorBridgeEnabled: Bool {
@@ -288,7 +310,7 @@ enum Env {
 
     static var btcRatesServer: String {
         switch network {
-        case .bitcoin: "https://blocktank.synonym.to/fx/rates/btc"
+        case .bitcoin: "https://api1.blocktank.to/api/fx/rates/btc"
         case .signet: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
         case .testnet: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
         case .regtest: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
@@ -330,16 +352,6 @@ enum Env {
         switch network {
         case .bitcoin: "https://blocktank.synonym.to/backups-ldk"
         default: "https://bitkit.stag0.blocktank.to/backups-ldk"
-        }
-    }
-
-    /// Pubky/Paykit capabilities — production for mainnet, staging for regtest/testnet/signet.
-    static var pubkyCapabilities: String {
-        switch network {
-        case .bitcoin:
-            return "/pub/bitkit.to/:rw,/pub/pubky.app/:r,/pub/paykit/v0/:rw"
-        default:
-            return "/pub/staging.bitkit.to/:rw,/pub/staging.pubky.app/:r,/pub/paykit/v0/:rw"
         }
     }
 

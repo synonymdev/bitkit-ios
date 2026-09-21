@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeWidgetsView: View {
     @Environment(CalculatorInputManager.self) private var calculatorInput
+    @Environment(HwWalletManager.self) private var hwWalletManager
     @EnvironmentObject var app: AppViewModel
     @Environment(KeyboardManager.self) private var keyboard
     @EnvironmentObject var navigation: NavigationViewModel
@@ -42,13 +43,18 @@ struct HomeWidgetsView: View {
     /// Widgets to display; suggestions widget is hidden when it would show no cards (unless editing).
     private var widgetsToShow: [Widget] {
         widgets.savedWidgets.filter { widget in
-            if widget.type != .suggestions { return true }
-            if isEditingWidgets { return true }
+            if widget.type != .suggestions {
+                return true
+            }
+            if isEditingWidgets {
+                return true
+            }
             return !Suggestions.visibleCards(
                 wallet: wallet,
                 app: app,
                 settings: settings,
                 suggestionsManager: suggestionsManager,
+                hasHardwareWallet: !hwWalletManager.wallets.isEmpty,
                 isPaykitUIEnabled: isPaykitUIActive
             ).isEmpty
         }
@@ -403,8 +409,12 @@ private func slotDistanceKey(_ point: CGPoint, _ rect: CGRect) -> (CGFloat, CGFl
 
 /// Distance from `value` to the closed interval `[min, max]`; zero when inside.
 private func axisDistance(_ value: CGFloat, _ min: CGFloat, _ max: CGFloat) -> CGFloat {
-    if value < min { return min - value }
-    if value > max { return value - max }
+    if value < min {
+        return min - value
+    }
+    if value > max {
+        return value - max
+    }
     return 0
 }
 

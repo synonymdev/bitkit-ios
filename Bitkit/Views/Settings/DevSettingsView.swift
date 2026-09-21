@@ -3,9 +3,10 @@ import UIKit
 
 struct DevSettingsView: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
-    @AppStorage("hasConfirmedPublicPaykitEndpoints") private var hasConfirmedPublicPaykitEndpoints = false
+    @AppStorage(ContactPaymentsService.confirmedPreferenceKey) private var hasConfirmedPublicPaykitEndpoints = false
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
+    @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
@@ -52,6 +53,25 @@ struct DevSettingsView: View {
                     NavigationLink(value: Route.orders) {
                         SettingsRow(title: "Orders")
                     }
+
+                    NavigationLink(value: Route.trezor) {
+                        SettingsRow(title: "Trezor Hardware Wallet")
+                    }
+                    .accessibilityIdentifier("Trezor")
+
+                    SettingsSectionHeader("SWAPS")
+                        .padding(.top, 16)
+
+                    NavigationLink(value: Route.swaps) {
+                        SettingsRow(title: "Swaps")
+                    }
+
+                    SettingsRow(
+                        title: "Enable Savings Swap",
+                        rightIcon: nil,
+                        toggle: $isSavingsSwapEnabled,
+                        testIdentifier: "SavingsSwapToggle"
+                    )
 
                     SettingsSectionHeader("RECOVERY")
                         .padding(.top, 16)
@@ -194,7 +214,7 @@ struct DevSettingsView: View {
                 }
             }
         } message: {
-            Text("Paykit features are still experimental and may not work reliably until supporting homeserver changes are deployed.")
+            Text("Paykit features are experimental and may not work reliably.")
         }
     }
 
@@ -211,22 +231,25 @@ struct DevSettingsView: View {
         var cleanupError: Error?
         do {
             try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
+            PublicPaykitService.setCleanupPending(false)
         } catch {
             cleanupError = error
+            PublicPaykitService.setCleanupPending(true)
             Logger.warn("Failed to remove public Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
         }
 
         do {
             try await PrivatePaykitService.shared.removePublishedEndpoints()
+            PrivatePaykitService.setContactSharingCleanupPending(false)
         } catch {
             if cleanupError == nil {
                 cleanupError = error
             }
+            PrivatePaykitService.setContactSharingCleanupPending(true)
             Logger.warn("Failed to remove private Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
         }
 
         if let cleanupError {
-            PrivatePaykitService.setContactSharingCleanupPending(true)
             app.toast(
                 type: .error,
                 title: "Paykit UI disabled",
@@ -236,6 +259,7 @@ struct DevSettingsView: View {
             return
         }
 
+        PublicPaykitService.setCleanupPending(false)
         PrivatePaykitService.setContactSharingCleanupPending(false)
         app.toast(type: .success, title: "Paykit UI disabled", accessibilityIdentifier: "PaykitUiDisabledToast")
     }

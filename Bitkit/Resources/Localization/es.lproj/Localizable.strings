@@ -871,7 +871,16 @@
 "wallet__tags_no" = "Aún no hay etiquetas disponibles";
 "wallet__toast_payment_success_title" = "Pago Enviado";
 "wallet__toast_payment_failed_title" = "Pago Fallido";
-"wallet__toast_payment_failed_description" = "Tu pago instantáneo falló. Por favor, inténtalo de nuevo.";
+"wallet__payment_failed_description" = "Tu pago instantáneo falló. Por favor, inténtalo de nuevo.";
+"wallet__payment_recipient_rejected" = "El destinatario ha rechazado este pago Lightning. Comprueba la factura e inténtalo de nuevo.";
+"wallet__payment_abandoned" = "El pago Lightning se detuvo antes de completarse.";
+"wallet__payment_expired" = "Este pago Lightning ha caducado. Solicita una factura nueva.";
+"wallet__payment_timeout" = "El pago agotó el tiempo de espera. Inténtalo de nuevo.";
+"wallet__payment_route_not_found" = "Bitkit no ha podido encontrar una ruta Lightning para este pago.";
+"wallet__payment_retries_exhausted" = "Bitkit ha probado varias rutas Lightning, pero el pago no se ha podido completar.";
+"wallet__payment_unknown_required_features" = "Esta factura Lightning usa funciones que Bitkit aún no admite.";
+"wallet__payment_invoice_request_expired" = "Esta solicitud de factura Lightning ha caducado. Solicita una factura nueva.";
+"wallet__payment_invoice_request_rejected" = "El destinatario ha rechazado esta solicitud de factura Lightning.";
 "wallet__toast_received_transaction_replaced_title" = "Transacción Recibida Reemplazada";
 "wallet__toast_received_transaction_replaced_description" = "Tu transacción recibida fue reemplazada por un aumento de comisión";
 "wallet__toast_transaction_replaced_title" = "Transacción Reemplazada";
@@ -898,12 +907,15 @@
 "wallet__receive_connect_additional" = "Para recibir más Bitcoin instantáneo, Bitkit tiene que aumentar tu liquidez. Una comisión de red de <accent>{networkFee}</accent> y una comisión del proveedor de servicio de <accent>{serviceFee}</accent> se deducirán de la cantidad que especificaste.";
 "wallet__receive_liquidity__nav_title" = "Configuración del Saldo de Gasto";
 "wallet__receive_liquidity__nav_title_additional" = "Incrementar Capacidad de Recepción";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit recibió una cotización de liquidez no válida. Inténtalo de nuevo.";
 "wallet__receive_liquidity__text" = "Tu Saldo de Gasto usa la Red Lightning para hacer tus pagos más baratos, rápidos y privados.\n\nEsto funciona como el acceso a Internet, pero pagas por liquidez y enrutamiento en lugar de ancho de banda.\n\nEsta configuración incluye algunos costos únicos.";
 "wallet__receive_liquidity__text_additional" = "Tu Saldo de Gasto usa la Red Lightning para hacer tus pagos más baratos, rápidos y privados.\n\nEsto funciona como el acceso a Internet, pero pagas por liquidez y enrutamiento en lugar de ancho de banda.\n\nBitkit necesita aumentar la capacidad de recepción de tu saldo de gasto para procesar este pago.";
 "wallet__receive_liquidity__label" = "Liquidez del Saldo de Gasto";
 "wallet__receive_liquidity__label_additional" = "Liquidez Adicional del Saldo de Gasto";
 "wallet__receive_cjit_error" = "Transacción ha fallado";
 "wallet__receive_cjit_error_msg" = "Fallo al enviar fondos a la cuenta de gastos.";
+"wallet__receive_cjit_error_node_capacity__title" = "Capacidad adicional no disponible";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit no puede añadir más capacidad de gasto a esta cartera en este momento.";
 "wallet__receive_will" = "Recibirás";
 "wallet__minimum" = "MÍNIMO";
 "wallet__activity" = "Actividad";
@@ -987,6 +999,7 @@
 "wallet__boost_recomended_button" = "Usar Comisión Sugerida";
 "wallet__boost_swipe" = "Deslizar para impulsar";
 "wallet__payment_received" = "Bitcoin recibido";
+"wallet__payment_request" = "Solicitud de pago";
 "wallet__instant_payment_received" = "Bitcoin Instantáneo Recibido";
 "wallet__error_create_tx_msg" = "Ocurrió un error. Por favor, intente de nuevo {raw}";
 "wallet__filter_title" = "Seleccione Rango";
@@ -1043,3 +1056,4 @@
 "widgets__weather__condition__good__short_title" = "Favorables";
 "widgets__weather__condition__average__short_title" = "Promedio";
 "widgets__weather__condition__poor__short_title" = "Desfavorables";
+"wallet__send_error_support" = "Contactar con el servicio de asistencia";

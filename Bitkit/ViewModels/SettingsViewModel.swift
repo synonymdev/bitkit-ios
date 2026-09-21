@@ -49,6 +49,8 @@ class SettingsViewModel: NSObject, ObservableObject {
     private let defaults = UserDefaults.standard
 
     @Published private(set) var isChangingAddressType = false
+    /// The address type calls collapse failures into `false`; this keeps the cause available for diagnostics.
+    private(set) var lastAddressTypeError: Error?
     /// Set during restore when backup contained explicit monitored address types.
     private(set) var restoredMonitoredTypesFromBackup = false
     private var observedKeys: Set<String> = []
@@ -102,6 +104,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
     @AppStorage("enableQuickpay") var enableQuickpay: Bool = false
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
+    @AppStorage("quickpayDailyLimitMultiplier") var quickpayDailyLimitMultiplier: Double = 5
     @AppStorage("enableNotifications") var enableNotifications: Bool = false
     @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
     @AppStorage("ignoresSwitchUnitToast") var ignoresSwitchUnitToast: Bool = false
@@ -124,6 +127,8 @@ class SettingsViewModel: NSObject, ObservableObject {
     // RGS Server Settings
     @Published var rgsServerUrl: String = ""
     @Published var rgsIsLoading: Bool = false
+    @Published var rgsUrlIsValid: Bool = false
+    private var rgsValidationCancellable: AnyCancellable?
 
     // Services
     let lightningService: LightningService
@@ -166,6 +171,17 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         updatePinEnabledState()
+        setupRgsValidationDebounce()
+    }
+
+    private func setupRgsValidationDebounce() {
+        rgsValidationCancellable = $rgsServerUrl
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .receive(on: DispatchQueue.global(qos: .userInitiated))
+            .map { [weak self] url in self?.isValidRgsUrl(url) ?? false }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isValid in self?.rgsUrlIsValid = isValid }
     }
 
     deinit {
@@ -202,12 +218,14 @@ class SettingsViewModel: NSObject, ObservableObject {
         warnWhenSendingOver100 = false
         enableQuickpay = false
         quickpayAmount = 5
+        quickpayDailyLimitMultiplier = 5
         enableNotifications = false
         enableNotificationsAmount = false
         UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
-        UserDefaults.standard.set(false, forKey: "hasConfirmedPublicPaykitEndpoints")
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.cleanupPendingKey)
+        UserDefaults.standard.set(false, forKey: ContactPaymentsService.confirmedPreferenceKey)
         UserDefaults.standard.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
         UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
         ignoresSwitchUnitToast = false
@@ -220,6 +238,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         _coinSelectionAlgorithm = CoinSelectionAlgorithm.branchAndBound.stringValue
         _selectedAddressType = "nativeSegwit"
         _addressTypesToMonitor = "nativeSegwit"
+        BlocktankRefundAddressStore().clear()
         pinEnabled = false
         isChangingAddressType = false
         restoredMonitoredTypesFromBackup = false
@@ -251,7 +270,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     var rgsCanConnect: Bool {
         let formUrl = rgsServerUrl.trimmingCharacters(in: .whitespaces)
-        return rgsHasEdited && !formUrl.isEmpty && isValidRgsUrl(formUrl)
+        return rgsHasEdited && !formUrl.isEmpty && rgsUrlIsValid
     }
 
     var rgsCanReset: Bool {
@@ -286,9 +305,6 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     /// Address Type Settings
-    /// Address types that support native SegWit scripts (required for Lightning).
-    private static let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
-
     @AppStorage("selectedAddressType") private var _selectedAddressType: String = "nativeSegwit"
 
     @AppStorage("addressTypesToMonitor") private var _addressTypesToMonitor: String = "nativeSegwit"
@@ -317,10 +333,27 @@ class SettingsViewModel: NSObject, ObservableObject {
         return balance.totalSats
     }
 
+    /// ldk-node can commit an address-type change and still surface a timeout. Re-running the
+    /// change then reports the node is already in the desired state, which is not a failure —
+    /// treating it as one strands the persisted list permanently out of sync with the node.
+    private static func nodeAlreadyInDesiredState(_ error: Error, enabled: Bool) -> Bool {
+        guard let nodeError = error as? NodeError ?? (error as? AppError)?.underlyingError as? NodeError else {
+            return false
+        }
+
+        switch nodeError {
+        case .AddressTypeAlreadyMonitored: return enabled
+        case .AddressTypeNotMonitored: return !enabled
+        default: return false
+        }
+    }
+
     func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
         guard !isChangingAddressType else { return false }
+        guard enabled || addressType != .nativeSegwit else { return false }
 
         isChangingAddressType = true
+        lastAddressTypeError = nil
         defer { isChangingAddressType = false }
 
         let previousAddressTypesToMonitor = addressTypesToMonitor
@@ -333,26 +366,36 @@ class SettingsViewModel: NSObject, ObservableObject {
 
                 do {
                     try await lightningService.addAddressTypeToMonitor(addressType)
+                } catch {
+                    guard Self.nodeAlreadyInDesiredState(error, enabled: true) else {
+                        Logger.error("Failed to add address type to monitor: \(error)")
+                        lastAddressTypeError = error
+                        addressTypesToMonitor = previousAddressTypesToMonitor
+                        return false
+                    }
+                    Logger.info("Node already monitors \(addressType); keeping it in the persisted list")
+                }
+
+                // The type is monitored at this point, so a failed sync only delays balances.
+                do {
                     try await lightningService.sync()
                 } catch {
-                    Logger.error("Failed to add address type to monitor: \(error)")
-                    addressTypesToMonitor = previousAddressTypesToMonitor
-                    return false
+                    Logger.warn("Added \(addressType) to monitoring but sync failed: \(error)")
                 }
             }
         } else {
-            if addressType == selectedAddressType { return false }
-
-            do {
-                let balance = try await getBalanceForAddressType(addressType)
-                if balance > 0 { return false }
-            } catch {
-                Logger.error("Failed to check balance for \(addressType), preventing disable: \(error)")
+            if addressType == selectedAddressType {
                 return false
             }
 
-            let remainingNativeWitness = current.filter { $0 != addressType && Self.nativeWitnessTypes.contains($0) }
-            if remainingNativeWitness.isEmpty {
+            do {
+                let balance = try await getBalanceForAddressType(addressType)
+                if balance > 0 {
+                    return false
+                }
+            } catch {
+                Logger.error("Failed to check balance for \(addressType), preventing disable: \(error)")
+                lastAddressTypeError = error
                 return false
             }
 
@@ -361,11 +404,21 @@ class SettingsViewModel: NSObject, ObservableObject {
 
             do {
                 try await lightningService.removeAddressTypeFromMonitor(addressType)
+            } catch {
+                guard Self.nodeAlreadyInDesiredState(error, enabled: false) else {
+                    Logger.error("Failed to remove address type from monitor: \(error)")
+                    lastAddressTypeError = error
+                    addressTypesToMonitor = previousAddressTypesToMonitor
+                    return false
+                }
+                Logger.info("Node already stopped monitoring \(addressType); keeping it out of the persisted list")
+            }
+
+            // The type is no longer monitored at this point, so a failed sync only delays balances.
+            do {
                 try await lightningService.sync()
             } catch {
-                Logger.error("Failed to remove address type from monitor: \(error)")
-                addressTypesToMonitor = previousAddressTypesToMonitor
-                return false
+                Logger.warn("Removed \(addressType) from monitoring but sync failed: \(error)")
             }
         }
 
@@ -393,6 +446,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         let nodeMonitored = lightningService.listMonitoredAddressTypes()
         var combined = Set(nodeMonitored)
         combined.insert(selectedAddressType)
+        combined.insert(.nativeSegwit)
         addressTypesToMonitor = AddressScriptType.allAddressTypes.filter { combined.contains($0) }
     }
 
@@ -424,7 +478,9 @@ class SettingsViewModel: NSObject, ObservableObject {
 
         for type in addressTypesToMonitor {
             // Always keep nativeSegwit (primary, required for Lightning)
-            if type == .nativeSegwit { continue }
+            if type == .nativeSegwit {
+                continue
+            }
 
             do {
                 let balance = try await getBalanceForAddressType(type)
@@ -439,12 +495,9 @@ class SettingsViewModel: NSObject, ObservableObject {
             }
         }
 
-        // Ensure at least one native witness type
-        if !newMonitored.contains(where: { Self.nativeWitnessTypes.contains($0) }) {
-            if !newMonitored.contains(.nativeSegwit) {
-                newMonitored.append(.nativeSegwit)
-                changed = true
-            }
+        if !newMonitored.contains(.nativeSegwit) {
+            newMonitored.append(.nativeSegwit)
+            changed = true
         }
 
         guard changed else { return }
@@ -469,12 +522,9 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
-    /// True if disabling this would leave no native witness wallet (required for Lightning).
-    func isLastRequiredNativeWitnessWallet(_ addressType: AddressScriptType) -> Bool {
-        guard Self.nativeWitnessTypes.contains(addressType) else { return false }
-
-        let remainingNativeWitness = addressTypesToMonitor.filter { $0 != addressType && Self.nativeWitnessTypes.contains($0) }
-        return remainingNativeWitness.isEmpty
+    /// Native SegWit monitoring is required to detect delayed Blocktank refund payments.
+    func isRequiredRefundAddressType(_ addressType: AddressScriptType) -> Bool {
+        addressType == .nativeSegwit
     }
 
     var selectedAddressType: AddressScriptType {
@@ -491,6 +541,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         guard addressType != selectedAddressType else { return true }
 
         isChangingAddressType = true
+        lastAddressTypeError = nil
         defer { isChangingAddressType = false }
 
         let previousSelectedAddressType = selectedAddressType
@@ -503,11 +554,9 @@ class SettingsViewModel: NSObject, ObservableObject {
 
         do {
             try await lightningService.setPrimaryAddressType(addressType)
-            syncMonitoredTypesFromNode()
-            try await lightningService.sync()
-            await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
         } catch {
             Logger.error("Failed to set primary address type: \(error)")
+            lastAddressTypeError = error
             selectedAddressType = previousSelectedAddressType
             addressTypesToMonitor = previousAddressTypesToMonitor
             UserDefaults.standard.set(previousOnchainAddress, forKey: "onchainAddress")
@@ -519,6 +568,17 @@ class SettingsViewModel: NSObject, ObservableObject {
             wallet?.syncState()
             return false
         }
+
+        syncMonitoredTypesFromNode()
+
+        // The node's primary type is already changed, so a failed sync only delays balances.
+        do {
+            try await lightningService.sync()
+        } catch {
+            Logger.warn("Set primary address type to \(addressType) but sync failed: \(error)")
+        }
+
+        await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
 
         wallet?.syncState()
         return true
@@ -547,7 +607,12 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     // MARK: - RGS URL Validation
 
-    func isValidRgsUrl(_ url: String) -> Bool {
+    private nonisolated static let rgsUrlRegex = try? NSRegularExpression(
+        pattern: URLValidationPattern.rgsServerUrl,
+        options: .caseInsensitive
+    )
+
+    nonisolated func isValidRgsUrl(_ url: String) -> Bool {
         // Allow empty URL (disables RGS)
         if url.isEmpty {
             return true
@@ -563,8 +628,8 @@ class SettingsViewModel: NSObject, ObservableObject {
             return false
         }
 
-        // Must have a host
-        guard urlObj.host != nil else {
+        // Must have a host, and reject over-long hosts before running the regex
+        guard let host = urlObj.host, host.count <= URLValidationPattern.maxHostLength else {
             return false
         }
 
@@ -573,11 +638,11 @@ class SettingsViewModel: NSObject, ObservableObject {
             return true
         }
 
-        // Basic URL pattern validation
-        let pattern = #"^(https?:\/\/)?((([a-z\d]([a-z\d-]*[a-z\d])*)\.)+[a-z]{2,}|((\d{1,3}\.){3}\d{1,3}))(\:\d+)?(\/[-a-z\d%_.~+]*)*"#
-        let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        guard let regex = Self.rgsUrlRegex else {
+            return false
+        }
         let range = NSRange(location: 0, length: url.utf16.count)
-        return regex?.firstMatch(in: url, options: [], range: range) != nil
+        return regex.firstMatch(in: url, options: [], range: range) != nil
     }
 
     // MARK: - Backup/Restore
@@ -638,7 +703,7 @@ class SettingsViewModel: NSObject, ObservableObject {
                     dict["coinSelectPreference"] = androidPreference
                 } else {
                     let androidKey = SettingsBackupConfig.iosToAndroidFieldMapping[key] ?? key
-                    if key == "quickpayAmount", let doubleValue = value as? Double {
+                    if key == "quickpayAmount" || key == "quickpayDailyLimitMultiplier", let doubleValue = value as? Double {
                         dict[androidKey] = Int(doubleValue)
                     } else {
                         dict[androidKey] = value
@@ -648,10 +713,14 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
-        if !electrumServerUrl.isEmpty { dict["electrumServer"] = electrumServerUrl }
+        if !electrumServerUrl.isEmpty {
+            dict["electrumServer"] = electrumServerUrl
+        }
 
         let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
-        if !rgsServerUrl.isEmpty { dict["rgsServerUrl"] = rgsServerUrl }
+        if !rgsServerUrl.isEmpty {
+            dict["rgsServerUrl"] = rgsServerUrl
+        }
 
         dict["isDevModeEnabled"] = Env.isDebug && Env.network != .bitcoin
 
@@ -762,6 +831,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         syncAppStorageFromDefaults()
+        ensureMonitoring(.nativeSegwit)
 
         let restoredMonitored = addressTypesToMonitor
         let restoredPrimary = selectedAddressType
@@ -784,6 +854,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         warnWhenSendingOver100 = defaults.bool(forKey: "warnWhenSendingOver100")
         enableQuickpay = defaults.bool(forKey: "enableQuickpay")
         quickpayAmount = defaults.double(forKey: "quickpayAmount")
+        quickpayDailyLimitMultiplier = QuickPayLimits.sanitizedMultiplier(defaults.double(forKey: "quickpayDailyLimitMultiplier"))
         enableNotifications = defaults.bool(forKey: "enableNotifications")
         requirePinForPayments = defaults.bool(forKey: "requirePinForPayments")
         useBiometrics = defaults.bool(forKey: "useBiometrics")
@@ -795,8 +866,10 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     /// Gets the current app cache data for backup
-    func getAppCacheData() -> AppCacheData {
-        AppCacheData(
+    func getAppCacheData() throws -> AppCacheData {
+        let spend = QuickPaySpendStore.shared.backupSnapshot()
+        let refundAddress = try BlocktankRefundAddressStore().load()
+        return AppCacheData(
             hasSeenContactsIntro: defaults.bool(forKey: "hasSeenContactsIntro"),
             hasSeenProfileIntro: defaults.bool(forKey: "hasSeenProfileIntro"),
             hasSeenNotificationsIntro: defaults.bool(forKey: "hasSeenNotificationsIntro"),
@@ -812,12 +885,14 @@ class SettingsViewModel: NSObject, ObservableObject {
             highBalanceIgnoreCount: defaults.integer(forKey: "highBalanceIgnoreCount"),
             highBalanceIgnoreTimestamp: defaults.double(forKey: "highBalanceIgnoreTimestamp"),
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
-            lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? []
+            lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
+            quickPayLedger: spend,
+            blocktankRefundAddress: refundAddress
         )
     }
 
     /// Restores app cache data from backup
-    func restoreAppCacheData(_ cache: AppCacheData) {
+    func restoreAppCacheData(_ cache: AppCacheData) throws {
         defaults.set(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
         defaults.set(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
         defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
@@ -834,5 +909,12 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.highBalanceIgnoreTimestamp, forKey: "highBalanceIgnoreTimestamp")
         defaults.set(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
         defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
+        QuickPaySpendStore.shared.restoreFromBackup(ledger: cache.quickPayLedger)
+        let refundAddressStore = BlocktankRefundAddressStore()
+        if let refundAddress = cache.blocktankRefundAddress {
+            try refundAddressStore.save(refundAddress)
+        } else {
+            refundAddressStore.clear()
+        }
     }
 }

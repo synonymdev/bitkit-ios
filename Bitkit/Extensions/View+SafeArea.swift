@@ -8,6 +8,8 @@ enum ScreenLayout {
     static let headerSpacing: CGFloat = 16
     static let tabBarHeight: CGFloat = 64
     static let bottomSpacing: CGFloat = 32
+    /// Space a scrolling list reserves so its last row clears a footer button floating over it.
+    static let floatingFooterClearance: CGFloat = 88
 
     /// Safe area top + header + spacing (e.g. HomeScreen, HomeWalletView, HomeWidgetsView)
     static var topPaddingWithSafeArea: CGFloat {

@@ -1,21 +1,27 @@
-import LDKNode
 import SwiftUI
 
 struct SendQuickpay: View {
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     @Binding var navigationPath: [SendRoute]
+    let routingCacheResetAttempted: Bool
+    var replaceQuickPay: (SendRoute) -> Void
+    @State private var didStartPayment = false
+    @State private var displayedSats: UInt64?
+
+    private var paymentSats: UInt64? {
+        displayedSats ?? app.lnurlPayData?.minSendableSat ?? app.scannedLightningInvoice?.amountSatoshis
+    }
 
     var body: some View {
         VStack {
             SheetHeader(title: t("wallet__send_quickpay__nav_title"))
 
-            if let lnurlPayData = app.lnurlPayData {
-                MoneyStack(sats: Int(lnurlPayData.minSendableSat), showSymbol: true)
-            } else if let invoice = app.scannedLightningInvoice {
-                MoneyStack(sats: Int(invoice.amountSatoshis), showSymbol: true)
+            if let paymentSats {
+                MoneyStack(sats: Int(paymentSats), showSymbol: true)
             }
 
             Spacer(minLength: 32)
@@ -33,64 +39,26 @@ struct SendQuickpay: View {
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            Task {
-                try await performPayment()
+            if displayedSats == nil {
+                displayedSats = app.lnurlPayData?.minSendableSat ?? app.scannedLightningInvoice?.amountSatoshis
             }
-        }
-    }
-
-    private func performPayment() async throws {
-        var bolt11Invoice: String?
-
-        // Handle LNURL Pay
-        if let lnurlPayData = app.lnurlPayData {
-            // Set the amount in sats for the success screen
-            wallet.sendAmountSats = lnurlPayData.minSendableSat
-
-            bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
-                callbackUrl: lnurlPayData.callback,
-                amountMsats: lnurlPayData.callbackAmountMsats()
-            )
-        } else if let scannedInvoice = app.scannedLightningInvoice {
-            wallet.sendAmountSats = scannedInvoice.amountSatoshis
-            bolt11Invoice = scannedInvoice.bolt11
-        }
-
-        guard let bolt11 = bolt11Invoice else {
-            throw NSError(
-                domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "No Lightning invoice found"]
+            guard !didStartPayment else { return }
+            didStartPayment = true
+            QuickPayPaymentCoordinator.shared.pay(
+                app: app,
+                wallet: wallet,
+                settings: settings,
+                currency: currency,
+                presentation: QuickPayPaymentCoordinator.Presentation(
+                    appendRoute: { navigationPath.append($0) },
+                    replaceQuickPay: replaceQuickPay,
+                    addPendingPaymentHash: { app.addPendingPaymentHash($0) },
+                    routingCacheResetAttempted: routingCacheResetAttempted
+                )
             )
         }
-
-        let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
-        let paymentHash = String(describing: parsedInvoice.paymentHash())
-
-        do {
-            // Quickpay only triggers for invoices with built-in amounts, so pass sats: nil
-            // to let LDK use the invoice's native millisatoshi precision.
-            try await wallet.sendWithTimeout(
-                bolt11: bolt11,
-                sats: nil,
-                onTimeout: {
-                    app.addPendingPaymentHash(paymentHash)
-                    navigationPath.append(.pending(paymentHash: paymentHash))
-                }
-            )
-            Logger.info("Quickpay payment successful: \(paymentHash)")
-            navigationPath.append(.success(paymentId: paymentHash))
-        } catch is PaymentTimeoutError {
-            // onTimeout callback already navigated to .pending; suppress throw
-            return
-        } catch {
-            Logger.error("Quickpay payment failed: \(error)")
-
-            // TODO: remove toast and use failure screen instead
-            app.toast(error)
-
-            // TODO: this is a hack to make sure the navigation binding is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                navigationPath.append(.failure)
-            }
+        .onDisappear {
+            QuickPayPaymentCoordinator.shared.detach()
         }
     }
 }

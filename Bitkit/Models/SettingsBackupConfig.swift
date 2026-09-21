@@ -32,6 +32,8 @@ enum SettingsBackupConfig {
         "highBalanceIgnoreTimestamp",
         "dismissedSuggestions",
         "lastUsedTags",
+        "quickPayLedger",
+        BlocktankRefundAddressStore.key,
     ]
 
     static let settingsKeyTypes: [String: SettingKeyType] = [
@@ -53,6 +55,7 @@ enum SettingsBackupConfig {
         "backupVerified": .bool,
         "enableNotifications": .bool,
         "quickpayAmount": .double(optional: false),
+        "quickpayDailyLimitMultiplier": .double(optional: false),
     ]
 
     static var settingsKeys: [String] {
@@ -65,6 +68,8 @@ enum SettingsBackupConfig {
         "warnWhenSendingOver100": "enableSendAmountWarning",
         "bitcoinDisplayUnit": "displayUnit",
         "enableQuickpay": "isQuickPayEnabled",
+        "quickpayAmount": "quickPayAmount",
+        "quickpayDailyLimitMultiplier": "quickPayDailyLimitMultiplier",
         "enableNotifications": "notificationsGranted",
         // Note: PIN settings are intentionally NOT backed up for security
         // PIN itself cannot be backed up, so PIN settings shouldn't be either

@@ -1,6 +1,5 @@
 import BitkitCore
 import Combine
-import CoreBluetooth
 import Foundation
 
 /// Represents the current step in the send transaction flow
@@ -10,82 +9,79 @@ enum SendStep {
     case signed
 }
 
-/// ViewModel for Trezor hardware wallet integration
-@Observable
-@MainActor
-class TrezorViewModel {
-    // MARK: - Network Configuration
+/// Account-type override for on-chain xpub tools. `automatic` preserves the
+/// bitkit-core prefix detector; explicit values cover ambiguous xpub/tpub keys.
+enum TrezorAccountTypeSelection: String, CaseIterable, Identifiable, CustomStringConvertible {
+    case automatic
+    case legacy
+    case wrappedSegwit
+    case nativeSegwit
+    case taproot
 
-    /// The network selected in the Trezor dashboard (independent of app's global network)
-    var selectedNetwork: TrezorCoinType
+    var id: String {
+        rawValue
+    }
 
-    /// Map the app's current network to the corresponding TrezorCoinType (used for default initialization)
-    static var appDefaultCoinType: TrezorCoinType {
-        switch Env.network {
-        case .bitcoin: .bitcoin
-        case .testnet: .testnet
-        case .signet: .signet
-        case .regtest: .regtest
+    /// Segment label when rendered by `SegmentedControl`
+    var description: String {
+        title
+    }
+
+    var accountType: AccountType? {
+        switch self {
+        case .automatic: nil
+        case .legacy: .legacy
+        case .wrappedSegwit: .wrappedSegwit
+        case .nativeSegwit: .nativeSegwit
+        case .taproot: .taproot
         }
     }
 
-    /// BIP44 coin type component based on the dashboard's selected network: "0'" for mainnet, "1'" for test networks
-    var coinTypeComponent: String {
-        selectedNetwork == .bitcoin ? "0'" : "1'"
+    var title: String {
+        switch self {
+        case .automatic: "Auto"
+        case .legacy: "Legacy"
+        case .wrappedSegwit: "Wrapped"
+        case .nativeSegwit: "Native"
+        case .taproot: "Taproot"
+        }
     }
 
-    /// BIP44 coin type component based on the app's global network (used for initial default values)
-    private static var defaultCoinTypeComponent: String {
-        Env.network == .bitcoin ? "0'" : "1'"
+    var subtitle: String {
+        switch self {
+        case .automatic: "Prefix"
+        case .legacy: "BIP44"
+        case .wrappedSegwit: "BIP49"
+        case .nativeSegwit: "BIP84"
+        case .taproot: "BIP86"
+        }
     }
+}
 
-    // MARK: - Connection State
+/// ViewModel for the Trezor hardware-wallet dev/dashboard screens. Owns only the dev-screen
+/// tools (address generation, signing, lookups, the single dev watcher, etc.); device/connection
+/// orchestration and pairing/PIN/passphrase coordination live in `TrezorManager`, injected here
+/// as `connection`.
+@Observable
+@MainActor
+class TrezorViewModel {
+    // MARK: - Connection Manager
 
-    /// Whether the Trezor manager is initialized
-    private var isInitialized: Bool = false
+    /// Device/connection orchestration and pairing/PIN/passphrase coordination.
+    let connection: TrezorManager
 
-    /// Whether currently scanning for devices
-    var isScanning: Bool = false
+    // MARK: - Operation State
 
     /// Whether currently performing an operation (address, signing, etc.)
     var isOperating: Bool = false
 
-    /// List of discovered devices
-    var devices: [TrezorDeviceInfo] = []
-
-    /// Currently connected device
-    var connectedDevice: TrezorDeviceInfo?
-
-    /// Features of the connected device
-    var deviceFeatures: TrezorFeatures?
-
-    /// Device root fingerprint (hex string)
-    var deviceFingerprint: String?
-
-    /// Last error message
+    /// Last error message from a dev operation
     var error: String?
-
-    // MARK: - UI Dialog State
-
-    /// Show PIN entry dialog
-    var showPinEntry: Bool = false
-
-    /// Show passphrase entry dialog
-    var showPassphraseEntry: Bool = false
-
-    /// Show BLE pairing code dialog
-    var showPairingCode: Bool = false
-
-    /// Show "Confirm on device" overlay
-    var showConfirmOnDevice: Bool = false
-
-    /// Message for confirm on device overlay
-    var confirmMessage: String = ""
 
     // MARK: - Address Generation State
 
     /// Current derivation path
-    var derivationPath: String = "m/84'/\(defaultCoinTypeComponent)/0'/0/0"
+    var derivationPath: String = "m/84'/\(OnChainHwService.defaultCoinTypeComponent)/0'/0/0"
 
     /// Current script type for address generation
     var selectedScriptType: TrezorScriptType = .spendWitness
@@ -102,25 +98,10 @@ class TrezorViewModel {
     var messageToSign: String = "Hello, Trezor!"
 
     /// Path for message signing
-    var messageSigningPath: String = "m/84'/\(defaultCoinTypeComponent)/0'/0/0"
+    var messageSigningPath: String = "m/84'/\(OnChainHwService.defaultCoinTypeComponent)/0'/0/0"
 
     /// Signed message result
     var signedMessage: TrezorSignedMessageResponse?
-
-    // MARK: - Known Devices & Auto-Reconnect
-
-    /// Previously connected devices loaded from storage
-    var knownDevices: [TrezorKnownDevice] = []
-
-    /// Whether auto-reconnect is in progress
-    var isAutoReconnecting: Bool = false
-
-    /// Status text during auto-reconnect
-    var autoReconnectStatus: String?
-
-    /// Prevents a user-initiated disconnect from immediately reconnecting
-    /// when the disconnected device list appears.
-    private var suppressNextAutoReconnect = false
 
     // MARK: - Address Index
 
@@ -130,7 +111,7 @@ class TrezorViewModel {
     // MARK: - Public Key State
 
     /// Account-level derivation path for public key
-    var publicKeyPath: String = "m/84'/\(defaultCoinTypeComponent)/0'"
+    var publicKeyPath: String = "m/84'/\(OnChainHwService.defaultCoinTypeComponent)/0'"
 
     /// Retrieved xpub string
     var xpub: String?
@@ -220,63 +201,88 @@ class TrezorViewModel {
     /// Error specific to the send flow
     var sendError: String?
 
-    // MARK: - Bluetooth State
+    // MARK: - Event Watcher State
 
-    /// Current Bluetooth state — reads directly from BLEManager (@Observable chaining)
-    var bluetoothState: CBManagerState {
-        TrezorBLEManager.shared.bluetoothState
+    /// Connection status of the active watcher
+    enum WatcherConnectionStatus {
+        case idle
+        case starting
+        case connected
+        case disconnected
+        case error
     }
 
-    var isBridgeModeEnabled: Bool {
-        transport.isBridgeEnabled
+    /// Extended public key to watch
+    var watcherExtendedKey: String = ""
+
+    /// Gap limit input (string for the text field)
+    var watcherGapLimit: String = "20"
+
+    /// Optional account-type override shared by the on-chain xpub tools.
+    /// Changing it restarts a running (or starting) watcher so the subscription uses the new type.
+    var onchainAccountTypeSelection: TrezorAccountTypeSelection = .automatic {
+        didSet {
+            guard oldValue != onchainAccountTypeSelection else { return }
+            restartWatcherIfRunning()
+        }
+    }
+
+    /// Identifier of the active watcher, nil when not watching
+    var activeWatcherId: String?
+
+    /// Current connection status of the active watcher
+    var watcherConnectionStatus: WatcherConnectionStatus = .idle
+
+    /// Latest balance reported by the watcher
+    var watcherBalance: WalletBalance?
+
+    /// Latest block height reported by the watcher
+    var watcherBlockHeight: UInt32 = 0
+
+    /// Account type reported by the watcher
+    var watcherAccountType: AccountType?
+
+    /// Transaction count reported by the watcher
+    var watcherTransactionCount: UInt32 = 0
+
+    /// Latest activities reported by the watcher (core builds these in 0.3.4).
+    var watcherActivities: [Activity] = []
+
+    /// Rolling event log (most recent last, capped)
+    var watcherEvents: [String] = []
+
+    /// Error scoped to the watcher section.
+    var watcherError: String?
+
+    /// Whether a watcher is in the process of starting
+    var isStartingWatcher: Bool = false
+
+    /// Identifier of a watcher whose native start call is still in flight.
+    private var startingWatcherId: String?
+
+    /// Strong reference to the active listener so it stays alive while watching
+    private var watcherListener: TrezorEventListener?
+
+    /// Whether the watcher section has status or output worth keeping visible.
+    var hasVisibleWatcherStatus: Bool {
+        activeWatcherId != nil ||
+            isStartingWatcher ||
+            watcherConnectionStatus == .error ||
+            watcherBalance != nil ||
+            !watcherEvents.isEmpty
     }
 
     // MARK: - Private Properties
 
     private let trezorService = TrezorService.shared
-    private let transport = TrezorTransport.shared
-    private let uiHandler = TrezorUiHandler.shared
-    private var cancellables = Set<AnyCancellable>()
-    private var hasSetupSubscriptions = false
+    private let onChainService = OnChainHwService.shared
+    private let watcherService: OnChainWatcherServicing
 
     // MARK: - Initialization
 
-    init() {
-        selectedNetwork = Self.appDefaultCoinType
-        // Callback subscriptions are deferred to initialize() to avoid
-        // triggering BLE stack and Combine overhead at app launch.
-    }
-
-    /// Subscribe to callback publishers for UI notifications
-    private func setupCallbackSubscriptions() {
-        // Pairing code request
-        transport.needsPairingCodePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] in
-                self?.showPairingCode = true
-            }
-            .store(in: &cancellables)
-
-        // PIN request from device
-        uiHandler.needsPinPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] in
-                self?.showPinEntry = true
-            }
-            .store(in: &cancellables)
-
-        // Passphrase request from device
-        uiHandler.needsPassphrasePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] onDevice in
-                if onDevice {
-                    self?.showConfirmOnDevice = true
-                    self?.confirmMessage = "Enter passphrase on your Trezor"
-                } else {
-                    self?.showPassphraseEntry = true
-                }
-            }
-            .store(in: &cancellables)
+    init(connection: TrezorManager, watcherService: OnChainWatcherServicing = OnChainHwService.shared) {
+        self.connection = connection
+        self.watcherService = watcherService
     }
 
     // MARK: - Debug Log Helper
@@ -294,163 +300,12 @@ class TrezorViewModel {
         TrezorDebugLog.shared.log(message)
     }
 
-    // MARK: - Manager Setup
-
-    /// Set up subscriptions and start BLE stack (synchronous, non-blocking).
-    /// Called from TrezorRootView's .task to prepare the UI layer.
-    func setup() {
-        guard !hasSetupSubscriptions else { return }
-        if !transport.isBridgeEnabled {
-            // Start BLE stack early so bluetoothState is updated by the time
-            // TrezorDeviceListView renders (the delegate callback fires async).
-            TrezorBLEManager.shared.ensureStarted()
-        }
-        setupCallbackSubscriptions()
-        hasSetupSubscriptions = true
-    }
-
-    /// Initialize the Trezor FFI manager (async, may be slow).
-    /// Called lazily before first scan/connect.
-    func initialize() async {
-        setup()
-
-        guard !isInitialized else { return }
-
-        do {
-            try await trezorService.initialize()
-            isInitialized = true
-            error = nil
-            trezorLog("TrezorViewModel initialized")
-        } catch {
-            self.error = errorMessage(from: error)
-            trezorLog("Failed to initialize Trezor: \(error)", level: "error")
-        }
-    }
-
-    // MARK: - Device Scanning
-
-    /// Start scanning for Trezor devices
-    /// - Parameter clearExisting: Whether to clear existing device list before scanning
-    func startScan(clearExisting: Bool = true) async {
-        if !isInitialized {
-            await initialize()
-        }
-
-        isScanning = true
-        error = nil
-
-        if clearExisting {
-            devices = []
-        }
-
-        if !transport.isBridgeEnabled {
-            // Start BLE scanning
-            transport.startBLEScanning()
-
-            // Wait for BLE to discover devices (like Android's 3-second scan)
-            // This ensures devices are found before we call the FFI enumerate
-            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
-
-            // Stop BLE scanning before calling FFI to prevent race conditions
-            transport.stopBLEScanning()
-        }
-
-        do {
-            // Trigger FFI scan which will use our transport callbacks
-            let foundDevices = try await trezorService.scan()
-
-            // Deduplicate by path (in case of duplicate scan results)
-            var seenPaths = Set<String>()
-            let uniqueDevices = foundDevices.filter { device in
-                if seenPaths.contains(device.path) {
-                    return false
-                }
-                seenPaths.insert(device.path)
-                return true
-            }
-
-            devices = uniqueDevices
-            trezorLog("Found \(uniqueDevices.count) Trezor devices (filtered from \(foundDevices.count))")
-        } catch {
-            self.error = errorMessage(from: error)
-            trezorLog("Scan failed: \(error)", level: "error")
-        }
-
-        isScanning = false
-    }
-
-    /// Stop scanning for devices
-    func stopScan() {
-        transport.stopBLEScanning()
-        isScanning = false
-    }
-
-    // MARK: - Connection
-
-    /// Connect to a device
-    func connect(device: TrezorDeviceInfo) async {
-        error = nil
-        suppressNextAutoReconnect = false
-
-        trezorLog("=== Connecting to device: \(device.path) ===")
-
-        do {
-            let features = try await trezorService.connect(deviceId: device.path)
-            connectedDevice = device
-            deviceFeatures = features
-            showConfirmOnDevice = false
-
-            saveCurrentDeviceAsKnown()
-            trezorLog("Connected to Trezor: \(device.path)")
-        } catch {
-            let errorMsg = errorMessage(from: error)
-            self.error = errorMsg
-            showConfirmOnDevice = false
-            trezorLog("Connection failed: \(error)", level: "error")
-        }
-    }
-
-    /// Disconnect from current device
-    func disconnect() async {
-        guard connectedDevice != nil else { return }
-        suppressNextAutoReconnect = true
-
-        do {
-            try await trezorService.disconnect()
-            // Clear connection state but preserve device list for quick reconnection
-            connectedDevice = nil
-            deviceFeatures = nil
-            deviceFingerprint = nil
-            generatedAddress = nil
-            signedMessage = nil
-            xpub = nil
-            publicKeyHex = nil
-            error = nil
-            showPinEntry = false
-            showPassphraseEntry = false
-            showConfirmOnDevice = false
-
-            trezorLog("Disconnected from Trezor")
-        } catch {
-            // Even if disconnect fails, clear local state
-            connectedDevice = nil
-            deviceFeatures = nil
-            self.error = errorMessage(from: error)
-            trezorLog("Disconnect failed: \(error)", level: "error")
-        }
-    }
-
-    /// Check if currently connected
-    var isConnected: Bool {
-        connectedDevice != nil
-    }
-
     // MARK: - Address Operations
 
     /// Get address from connected device
     /// - Parameter showOnDevice: Whether to display address on Trezor screen
     func getAddress(showOnDevice: Bool = true) async {
-        guard isConnected else {
+        guard connection.isConnected else {
             error = "Not connected to a Trezor"
             return
         }
@@ -461,19 +316,19 @@ class TrezorViewModel {
         do {
             let params = TrezorGetAddressParams(
                 path: derivationPath,
-                coin: selectedNetwork,
+                coin: connection.selectedNetwork,
                 showOnTrezor: showOnDevice,
                 scriptType: selectedScriptType
             )
 
             let response = try await trezorService.getAddress(params: params)
             generatedAddress = response.address
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
 
             trezorLog("Generated address: \(response.address)")
         } catch {
             self.error = errorMessage(from: error)
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
             trezorLog("Get address failed: \(error)", level: "error")
         }
 
@@ -484,7 +339,7 @@ class TrezorViewModel {
 
     /// Sign a message with the connected device
     func signMessage() async {
-        guard isConnected else {
+        guard connection.isConnected else {
             error = "Not connected to a Trezor"
             return
         }
@@ -501,17 +356,17 @@ class TrezorViewModel {
             let params = TrezorSignMessageParams(
                 path: messageSigningPath,
                 message: messageToSign,
-                coin: selectedNetwork
+                coin: connection.selectedNetwork
             )
 
             let response = try await trezorService.signMessage(params: params)
             signedMessage = response
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
 
             trezorLog("Message signed successfully")
         } catch {
             self.error = errorMessage(from: error)
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
             trezorLog("Sign message failed: \(error)", level: "error")
         }
 
@@ -520,7 +375,7 @@ class TrezorViewModel {
 
     /// Verify a signed message
     func verifyMessage(address: String, signature: String, message: String) async -> Bool {
-        guard isConnected else {
+        guard connection.isConnected else {
             error = "Not connected to a Trezor"
             return false
         }
@@ -533,11 +388,11 @@ class TrezorViewModel {
                 address: address,
                 signature: signature,
                 message: message,
-                coin: selectedNetwork
+                coin: connection.selectedNetwork
             )
 
             let isValid = try await trezorService.verifyMessage(params: params)
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
 
             trezorLog("Message verification result: \(isValid)")
 
@@ -545,132 +400,12 @@ class TrezorViewModel {
             return isValid
         } catch {
             self.error = errorMessage(from: error)
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
             trezorLog("Verify message failed: \(error)", level: "error")
 
             isOperating = false
             return false
         }
-    }
-
-    // MARK: - UI Callbacks
-
-    /// Submit PIN from UI
-    func submitPin(_ pin: String) {
-        showPinEntry = false
-        uiHandler.submitPin(pin)
-    }
-
-    /// Cancel PIN entry
-    func cancelPin() {
-        showPinEntry = false
-        uiHandler.cancelPin()
-    }
-
-    /// Submit passphrase from UI
-    func submitPassphrase(_ passphrase: String) {
-        showPassphraseEntry = false
-        showConfirmOnDevice = false
-        uiHandler.submitPassphrase(passphrase)
-    }
-
-    /// Cancel passphrase entry
-    func cancelPassphrase() {
-        showPassphraseEntry = false
-        showConfirmOnDevice = false
-        uiHandler.cancelPassphrase()
-    }
-
-    /// Submit pairing code from UI
-    func submitPairingCode(_ code: String) {
-        showPairingCode = false
-        transport.submitPairingCode(code)
-    }
-
-    /// Cancel pairing code entry
-    func cancelPairingCode() {
-        showPairingCode = false
-        transport.cancelPairingCode()
-    }
-
-    /// Dismiss confirm on device overlay
-    func dismissConfirmOnDevice() {
-        showConfirmOnDevice = false
-        confirmMessage = ""
-        uiHandler.acknowledgeOnDevicePassphrase()
-    }
-
-    // MARK: - Known Devices
-
-    /// Load known devices from storage
-    func loadKnownDevices() {
-        knownDevices = TrezorKnownDeviceStorage.loadAll()
-    }
-
-    /// Save the currently connected device as a known device
-    func saveCurrentDeviceAsKnown() {
-        guard let device = connectedDevice else { return }
-        let known = TrezorKnownDevice(
-            id: device.id,
-            name: device.name ?? "Trezor",
-            path: device.path,
-            transportType: device.transportType == .bluetooth ? "bluetooth" : "usb",
-            label: device.label ?? deviceFeatures?.label,
-            model: device.model ?? deviceFeatures?.model,
-            lastConnectedAt: Date()
-        )
-        TrezorKnownDeviceStorage.save(known)
-        loadKnownDevices()
-        trezorLog("Saved known device: \(known.name)")
-    }
-
-    /// Forget a known device — removes from storage and clears credentials
-    func forgetDevice(id: String) async {
-        // Find the device to get its path for credential clearing
-        if let device = knownDevices.first(where: { $0.id == id }) {
-            do {
-                try await trezorService.clearCredentials(deviceId: device.path)
-            } catch {
-                trezorLog("Failed to clear credentials for forgotten device: \(error)", level: "warn")
-            }
-            TrezorCredentialStorage.delete(deviceId: device.path)
-        }
-        TrezorKnownDeviceStorage.remove(id: id)
-        loadKnownDevices()
-        trezorLog("Forgot device: \(id)")
-    }
-
-    // MARK: - Auto-Reconnect
-
-    /// Automatically scan and reconnect to the first matching known device
-    func autoReconnect() async {
-        guard !knownDevices.isEmpty else { return }
-        guard !isAutoReconnecting else { return }
-        if suppressNextAutoReconnect {
-            suppressNextAutoReconnect = false
-            trezorLog("Auto-reconnect: skipped after manual disconnect")
-            return
-        }
-
-        isAutoReconnecting = true
-        autoReconnectStatus = "Scanning for known devices..."
-        trezorLog("Auto-reconnect: starting scan")
-
-        await startScan(clearExisting: true)
-
-        // Find the first scanned device that matches a known device
-        let knownIds = Set(knownDevices.map(\.id))
-        if let match = devices.first(where: { knownIds.contains($0.id) }) {
-            autoReconnectStatus = "Connecting to \(match.label ?? match.name ?? "Trezor")..."
-            trezorLog("Auto-reconnect: found known device \(match.path)")
-            await connect(device: match)
-        } else {
-            autoReconnectStatus = nil
-            trezorLog("Auto-reconnect: no known devices found nearby")
-        }
-
-        isAutoReconnecting = false
-        autoReconnectStatus = nil
     }
 
     // MARK: - Address Index
@@ -700,7 +435,7 @@ class TrezorViewModel {
 
     /// Get public key (xpub) from connected device
     func getPublicKey(showOnDevice: Bool = false) async {
-        guard isConnected else {
+        guard connection.isConnected else {
             error = "Not connected to a Trezor"
             return
         }
@@ -711,19 +446,19 @@ class TrezorViewModel {
         do {
             let params = TrezorGetPublicKeyParams(
                 path: publicKeyPath,
-                coin: selectedNetwork,
+                coin: connection.selectedNetwork,
                 showOnTrezor: showOnDevice
             )
 
             let response = try await trezorService.getPublicKey(params: params)
             xpub = response.xpub
             publicKeyHex = response.publicKey
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
 
             trezorLog("Got public key for path: \(publicKeyPath)")
         } catch {
             self.error = errorMessage(from: error)
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
             trezorLog("Get public key failed: \(error)", level: "error")
         }
 
@@ -734,7 +469,7 @@ class TrezorViewModel {
 
     /// Sign a Bitcoin transaction
     func signTx(params: TrezorSignTxParams) async -> TrezorSignedTx? {
-        guard isConnected else {
+        guard connection.isConnected else {
             error = "Not connected to a Trezor"
             return nil
         }
@@ -744,13 +479,13 @@ class TrezorViewModel {
 
         do {
             let result = try await trezorService.signTx(params: params)
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
             trezorLog("Transaction signed successfully")
             isOperating = false
             return result
         } catch {
             self.error = errorMessage(from: error)
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
             trezorLog("Sign tx failed: \(error)", level: "error")
             isOperating = false
             return nil
@@ -763,7 +498,7 @@ class TrezorViewModel {
     /// - Parameter psbtBase64: Base64-encoded PSBT data
     /// - Returns: The signed transaction, or nil on failure
     func signTxFromPsbt(psbtBase64: String) async -> TrezorSignedTx? {
-        guard isConnected else {
+        guard connection.isConnected else {
             error = "Not connected to a Trezor"
             return nil
         }
@@ -774,15 +509,15 @@ class TrezorViewModel {
         do {
             let result = try await trezorService.signTxFromPsbt(
                 psbtBase64: psbtBase64,
-                network: selectedNetwork
+                network: connection.selectedNetwork
             )
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
             trezorLog("PSBT signed successfully")
             isOperating = false
             return result
         } catch {
             self.error = errorMessage(from: error)
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
             trezorLog("Sign PSBT failed: \(error)", level: "error")
             isOperating = false
             return nil
@@ -793,7 +528,7 @@ class TrezorViewModel {
 
     /// Get the device's master root fingerprint
     func getDeviceFingerprint() async {
-        guard isConnected else {
+        guard connection.isConnected else {
             error = "Not connected to a Trezor"
             return
         }
@@ -803,7 +538,7 @@ class TrezorViewModel {
 
         do {
             let fingerprint = try await trezorService.getDeviceFingerprint()
-            deviceFingerprint = fingerprint
+            connection.deviceFingerprint = fingerprint
             trezorLog("Device fingerprint: \(fingerprint)")
         } catch {
             self.error = errorMessage(from: error)
@@ -813,45 +548,27 @@ class TrezorViewModel {
         isOperating = false
     }
 
-    // MARK: - Electrum URL Helpers
-
-    /// Get the Electrum server URL for a specific network (hardcoded per-network URLs)
-    static func electrumUrlForNetwork(_ network: TrezorCoinType) -> String {
-        if network == .regtest, let trezorElectrumUrl = Env.trezorElectrumUrl {
-            return trezorElectrumUrl
-        }
-
-        switch network {
-        case .bitcoin:
-            return "ssl://bitkit.to:9999"
-        case .testnet, .signet:
-            return "ssl://electrum.blockstream.info:60002"
-        case .regtest:
-            return "ssl://electrs.bitkit.stag0.blocktank.to:9999"
-        }
-    }
-
-    /// Get the current Electrum server URL from configuration (uses app's configured server)
-    static func getElectrumUrl() -> String {
-        let configService = ElectrumConfigService()
-        let server = configService.getCurrentServer()
-        return server.fullUrl.isEmpty ? Env.electrumServerUrl : server.fullUrl
-    }
-
     // MARK: - Network Switching
 
-    /// Switch the dashboard's network independently of the app's global network
-    func setSelectedNetwork(_ network: TrezorCoinType) {
-        guard network != selectedNetwork else { return }
-        selectedNetwork = network
+    /// React to a dashboard network switch by resetting the dev-tool derivation paths,
+    /// results and the dev watcher. The network change itself is owned by `TrezorManager`.
+    func handleNetworkChange() {
+        // A running watcher is bound to the previous network's Electrum server.
+        stopWatcher()
 
         // Reset derivation paths with the new coin type
-        derivationPath = "m/84'/\(coinTypeComponent)/0'/0/0"
-        publicKeyPath = "m/84'/\(coinTypeComponent)/0'"
-        messageSigningPath = "m/84'/\(coinTypeComponent)/0'/0/0"
+        derivationPath = "m/84'/\(connection.coinTypeComponent)/0'/0/0"
+        publicKeyPath = "m/84'/\(connection.coinTypeComponent)/0'"
+        messageSigningPath = "m/84'/\(connection.coinTypeComponent)/0'/0/0"
         addressIndex = 0
 
-        // Clear results from previous network
+        clearWalletResults()
+    }
+
+    /// Clear dev-tool results derived from the connected wallet (generated address, xpub, public
+    /// key, signed message and lookup results). Called on network switch, disconnect and
+    /// wallet-mode change so a previous wallet's data is never shown for a different/absent wallet.
+    func clearWalletResults() {
         generatedAddress = nil
         xpub = nil
         publicKeyHex = nil
@@ -861,8 +578,6 @@ class TrezorViewModel {
         addressResult = nil
         lookupError = nil
         resetSendFlow()
-
-        trezorLog("Switched dashboard network to \(network)")
     }
 
     // MARK: - Balance Lookup Operations
@@ -903,21 +618,22 @@ class TrezorViewModel {
         addressResult = nil
         resetSendFlow()
 
-        let electrumUrl = Self.electrumUrlForNetwork(selectedNetwork)
+        let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
 
         do {
             switch Self.detectInputType(trimmedInput) {
             case .extendedKey:
-                accountResult = try await trezorService.getAccountInfo(
+                accountResult = try await onChainService.getAccountInfo(
                     extendedKey: trimmedInput,
                     electrumUrl: electrumUrl,
-                    network: selectedNetwork
+                    network: connection.selectedNetwork,
+                    scriptType: onchainAccountTypeSelection.accountType
                 )
             case .address:
-                addressResult = try await trezorService.getAddressInfo(
+                addressResult = try await onChainService.getAddressInfo(
                     address: trimmedInput,
                     electrumUrl: electrumUrl,
-                    network: selectedNetwork
+                    network: connection.selectedNetwork
                 )
             case .unknown:
                 lookupError = "Unrecognized input. Enter a Bitcoin address or extended public key (xpub/ypub/zpub/tpub/upub/vpub)."
@@ -951,6 +667,8 @@ class TrezorViewModel {
                 return "Invalid transaction ID: \(errorDetails)"
             case let .TransactionNotFound(errorDetails):
                 return "Transaction not found: \(errorDetails)"
+            case let .WatcherError(errorDetails):
+                return "Watcher error: \(errorDetails)"
             }
         }
         if let appError = error as? AppError,
@@ -972,13 +690,14 @@ class TrezorViewModel {
         txHistoryError = nil
         txHistoryResult = nil
 
-        let electrumUrl = Self.electrumUrlForNetwork(selectedNetwork)
+        let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
 
         do {
-            txHistoryResult = try await trezorService.getTransactionHistory(
+            txHistoryResult = try await onChainService.getTransactionHistory(
                 extendedKey: trimmedKey,
                 electrumUrl: electrumUrl,
-                network: selectedNetwork
+                network: connection.selectedNetwork,
+                scriptType: onchainAccountTypeSelection.accountType
             )
         } catch {
             txHistoryError = formatLookupError(error)
@@ -999,14 +718,15 @@ class TrezorViewModel {
         txDetailError = nil
         txDetailResult = nil
 
-        let electrumUrl = Self.electrumUrlForNetwork(selectedNetwork)
+        let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
 
         do {
-            txDetailResult = try await trezorService.getTransactionDetail(
+            txDetailResult = try await onChainService.getTransactionDetail(
                 extendedKey: trimmedKey,
                 electrumUrl: electrumUrl,
                 txid: trimmedTxid,
-                network: selectedNetwork
+                network: connection.selectedNetwork,
+                scriptType: onchainAccountTypeSelection.accountType
             )
         } catch {
             txDetailError = formatLookupError(error)
@@ -1055,9 +775,9 @@ class TrezorViewModel {
         // Ensure we have the device fingerprint for proper PSBT derivation paths.
         // Without it, BDK produces relative paths (e.g. m/0/0) that the Trezor
         // rejects as "Forbidden key path".
-        if deviceFingerprint == nil {
+        if connection.deviceFingerprint == nil {
             do {
-                deviceFingerprint = try await trezorService.getDeviceFingerprint()
+                connection.deviceFingerprint = try await trezorService.getDeviceFingerprint()
             } catch {
                 trezorLog("Failed to get device fingerprint: \(error)", level: "error")
                 sendError = "Failed to get device fingerprint"
@@ -1075,13 +795,13 @@ class TrezorViewModel {
             ? .sendMax(address: address)
             : .payment(address: address, amountSats: UInt64(sendAmountSats) ?? 0)
 
-        let electrumUrl = Self.electrumUrlForNetwork(selectedNetwork)
-        let network = toNetwork(selectedNetwork)
+        let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
+        let network = connection.selectedNetwork.coreNetwork
 
         let wallet = WalletParams(
             extendedKey: extendedKey,
             electrumUrl: electrumUrl,
-            fingerprint: deviceFingerprint,
+            fingerprint: connection.deviceFingerprint,
             network: network,
             accountType: accountInfo.accountType
         )
@@ -1094,7 +814,7 @@ class TrezorViewModel {
         )
 
         do {
-            let results = try await trezorService.composeTransaction(params: params)
+            let results = try await onChainService.composeTransaction(params: params)
             handleComposeResults(results)
         } catch {
             trezorLog("composeTx FAILED: \(error)", level: "error")
@@ -1150,7 +870,7 @@ class TrezorViewModel {
             return
         }
 
-        guard isConnected else {
+        guard connection.isConnected else {
             sendError = "Not connected to a Trezor"
             return
         }
@@ -1166,9 +886,9 @@ class TrezorViewModel {
             trezorLog("Calling trezor signTxFromPsbt...")
             let signedTx = try await trezorService.signTxFromPsbt(
                 psbtBase64: psbt,
-                network: selectedNetwork
+                network: connection.selectedNetwork
             )
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
 
             trezorLog("=== signComposedTx SUCCESS ===")
             trezorLog("signatures=\(signedTx.signatures.count), txid=\(signedTx.txid ?? "nil"), rawTxLen=\(signedTx.serializedTx.count)")
@@ -1176,7 +896,7 @@ class TrezorViewModel {
             signedTxResult = signedTx
             sendStep = .signed
         } catch {
-            showConfirmOnDevice = false
+            connection.showConfirmOnDevice = false
             trezorLog("signComposedTx FAILED: \(error)", level: "error")
             sendError = errorMessage(from: error)
         }
@@ -1191,10 +911,10 @@ class TrezorViewModel {
         isBroadcasting = true
         sendError = nil
 
-        let electrumUrl = Self.electrumUrlForNetwork(selectedNetwork)
+        let electrumUrl = OnChainHwService.electrumUrlForNetwork(connection.selectedNetwork)
 
         do {
-            let txid = try await trezorService.broadcastRawTx(serializedTx: rawTx, electrumUrl: electrumUrl)
+            let txid = try await onChainService.broadcastRawTx(serializedTx: rawTx, electrumUrl: electrumUrl)
             trezorLog("BROADCAST SUCCESS txid=\(txid)")
             broadcastTxid = txid
         } catch {
@@ -1231,133 +951,280 @@ class TrezorViewModel {
 
     // MARK: - Helpers
 
-    /// Convert TrezorCoinType to the Network enum used by onchain FFI functions
-    private func toNetwork(_ coin: TrezorCoinType) -> Network? {
-        switch coin {
-        case .bitcoin: return .bitcoin
-        case .testnet: return .testnet
-        case .signet: return .signet
-        case .regtest: return .regtest
-        }
-    }
+    // Convert TrezorCoinType to the Network enum used by onchain FFI functions
 
     // MARK: - Error Handling
 
     /// Extract a user-friendly error message from a Trezor error
     private func errorMessage(from error: Error) -> String {
-        // ServiceQueue wraps all errors in AppError, so extract the original message
-        if let appError = error as? AppError {
-            // debugMessage contains the original error's localizedDescription
-            if let debugMessage = appError.debugMessage, !debugMessage.isEmpty {
-                // Check for common Trezor error patterns in the debug message
-                return formatTrezorErrorMessage(debugMessage)
-            }
-            // Fall through to show the app error message if no debug info
-            return appError.message
-        }
-
-        // Handle TrezorError directly (if not wrapped)
-        if let trezorError = error as? TrezorError {
-            return trezorError.localizedDescription
-        }
-
-        // Handle TrezorBLEError from BLE layer
-        if let bleError = error as? TrezorBLEError {
-            return bleError.localizedDescription
-        }
-
-        // Handle TrezorTransportError from transport layer
-        if let transportError = error as? TrezorTransportError {
-            return transportError.localizedDescription
-        }
-
-        // For any other error, try to get a meaningful description
-        let description = error.localizedDescription
-        if description == "The operation couldn't be completed." || description.isEmpty {
-            return "Connection failed. Please ensure your Trezor is in pairing mode and try again."
-        }
-        return description
+        TrezorErrorPresenter.userMessage(from: error)
     }
 
-    /// Format Trezor error messages for user display
-    private func formatTrezorErrorMessage(_ message: String) -> String {
-        // Clean up common Trezor error prefixes for better readability
-        let cleanedMessage = message
-            .replacingOccurrences(of: "Transport error: ", with: "")
-            .replacingOccurrences(of: "Connection error: ", with: "")
-            .replacingOccurrences(of: "Protocol error: ", with: "")
-            .replacingOccurrences(of: "Device error: ", with: "")
-            .replacingOccurrences(of: "Session error: ", with: "")
-            .replacingOccurrences(of: "IO error: ", with: "")
+    // MARK: - Event Watcher Operations
 
-        // Map technical messages to user-friendly ones
-        if message.contains("Stale Bluetooth pairing") || message.contains("Peer removed pairing") {
-            return "Stale Bluetooth pairing detected. Go to iOS Settings → Bluetooth, forget your Trezor device, then put it back in pairing mode and try again."
+    /// Copy the most recently retrieved xpub into the watcher's extended-key field.
+    func populateWatcherFromXpub() {
+        if let xpub {
+            watcherExtendedKey = xpub
         }
-        if message.contains("Unable to open device") || message.contains("Failed to connect") {
-            return "Failed to connect to Trezor. Please ensure it's in pairing mode and try again."
-        }
-        if message.contains("Pairing required") {
-            return "Bluetooth pairing required. Please put your Trezor in pairing mode."
-        }
-        if message.contains("Pairing failed") || message.contains("Invalid credentials") {
-            return "Pairing failed. Please try putting your Trezor back in pairing mode."
-        }
-        if message.contains("THP handshake failed") {
-            return "Connection handshake failed. Please disconnect and try again."
-        }
-        if message.contains("timed out") || message.contains("Timeout") {
-            return "Connection timed out. Please try again."
-        }
-        if message.contains("Device disconnected") {
-            return "Trezor disconnected. Please reconnect and try again."
-        }
-        if message.contains("Action cancelled") {
-            return "Action was cancelled on the device."
-        }
-
-        // Return the cleaned message if no specific mapping
-        return cleanedMessage
     }
 
-    // MARK: - Credential Management
+    /// Start watching the entered extended key for on-chain activity.
+    func startWatcher() async {
+        let key = watcherExtendedKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            watcherError = "Enter an extended public key to watch"
+            return
+        }
+        guard !isStartingWatcher, activeWatcherId == nil else { return }
 
-    /// Clear stored credentials for current device
-    func clearCredentials() async {
-        guard let device = connectedDevice else {
-            error = "No device connected"
+        guard let gapLimit = UInt32(watcherGapLimit.trimmingCharacters(in: .whitespacesAndNewlines)), gapLimit > 0 else {
+            watcherError = "Gap limit must be a positive integer"
             return
         }
 
-        do {
-            try await trezorService.clearCredentials(deviceId: device.path)
-            trezorLog("Cleared credentials for \(device.path)")
-        } catch {
-            self.error = errorMessage(from: error)
-            trezorLog("Failed to clear credentials: \(error)", level: "error")
+        let watcherId = UUID().uuidString
+        let network = connection.selectedNetwork
+        let accountType = onchainAccountTypeSelection.accountType
+
+        // Dev watcher: scope its emitted activities under an id derived from the watched key.
+        let walletId = (try? HwWalletId.derive(xpubs: ["watcher": key])) ?? "trezor:watcher"
+        let params = WatcherParams(
+            watcherId: watcherId,
+            walletId: walletId,
+            extendedKey: key,
+            electrumUrl: OnChainHwService.electrumUrlForNetwork(network),
+            network: network.coreNetwork,
+            accountType: accountType,
+            gapLimit: gapLimit
+        )
+
+        let listener = TrezorEventListener { [weak self] id, event in
+            self?.handleWatcherEvent(watcherId: id, event: event)
         }
+        watcherListener = listener
+
+        isStartingWatcher = true
+        startingWatcherId = watcherId
+        watcherConnectionStatus = .starting
+        watcherActivities = []
+        watcherEvents = ["starting: \(watcherId)"]
+        watcherBalance = nil
+        watcherTransactionCount = 0
+        watcherBlockHeight = 0
+        watcherAccountType = nil
+        watcherError = nil
+        trezorLog("Starting watcher \(watcherId) for \(key.prefix(12))...")
+
+        do {
+            try await watcherService.startWatcher(params: params, listener: listener)
+            guard startingWatcherId == watcherId else {
+                try? watcherService.stopWatcher(watcherId: watcherId)
+                trezorLog("Stopped stale watcher start: \(watcherId)", level: "warn")
+                return
+            }
+
+            if connection.selectedNetwork != network {
+                try? watcherService.stopWatcher(watcherId: watcherId)
+                finishStoppedWatcherStartup(watcherId: watcherId)
+                return
+            }
+
+            if onchainAccountTypeSelection.accountType != accountType {
+                try? watcherService.stopWatcher(watcherId: watcherId)
+                finishStoppedWatcherStartup(watcherId: watcherId)
+                trezorLog("Account type changed during watcher startup, restarting: \(watcherId)")
+                scheduleWatcherRestart()
+                return
+            }
+
+            activeWatcherId = watcherId
+            startingWatcherId = nil
+            isStartingWatcher = false
+            appendWatcherEvent("started")
+            trezorLog("Watcher started: \(watcherId)")
+        } catch {
+            guard startingWatcherId == watcherId else {
+                trezorLog("Superseded watcher start failed: \(watcherId)", level: "warn")
+                return
+            }
+
+            // A native-side stop that aborts the Rust startup surfaces here as a
+            // thrown error rather than a return. A Swift-side stop is already handled
+            // by the quarantine in stopWatcher() and the stale guard above; this covers
+            // the core stopping the watcher directly. It's a cancellation, not a
+            // failure the user caused.
+            if Self.isWatcherStartupCancellation(error) {
+                finishStoppedWatcherStartup(watcherId: watcherId)
+                return
+            }
+
+            let message = errorMessage(from: error)
+            watcherError = message
+            watcherConnectionStatus = .error
+            activeWatcherId = nil
+            startingWatcherId = nil
+            watcherListener = nil
+            appendWatcherEvent("start failed: \(message)")
+            trezorLog("Watcher start failed: \(error)", level: "error")
+            isStartingWatcher = false
+        }
+    }
+
+    /// Stop the active watcher, if any. A watcher whose native start call is still
+    /// in flight is stopped too: its id is quarantined so handleWatcherEvent drops
+    /// any events that arrive before the native call returns.
+    func stopWatcher() {
+        if let startingId = startingWatcherId {
+            // Abort the in-flight native startup and quarantine the id; if the
+            // native call still returns success, startWatcher's stale-start check
+            // stops the watcher then.
+            try? watcherService.stopWatcher(watcherId: startingId)
+            finishStoppedWatcherStartup(watcherId: startingId)
+        }
+
+        guard let watcherId = activeWatcherId else { return }
+        do {
+            try watcherService.stopWatcher(watcherId: watcherId)
+        } catch {
+            trezorLog("Watcher stop failed: \(error)", level: "warn")
+        }
+        activeWatcherId = nil
+        watcherConnectionStatus = .idle
+        watcherListener = nil
+        watcherBalance = nil
+        watcherActivities = []
+        watcherTransactionCount = 0
+        watcherBlockHeight = 0
+        watcherAccountType = nil
+        watcherEvents = []
+        watcherError = nil
+        trezorLog("Watcher stopped: \(watcherId)")
+    }
+
+    /// Full teardown when the Trezor dashboard is dismissed: stop only this dashboard's dev
+    /// watcher and reset the watcher input state so the next visit starts fresh. The global
+    /// `watcherService.stopAllWatchers()` is intentionally NOT called here — production
+    /// hardware watchers owned by `HwWalletManager` share the same service and must stay live;
+    /// the global stop is reserved for app reset/wipe (`AppReset`).
+    func handleDashboardDismiss() {
+        stopWatcher()
+        watcherExtendedKey = ""
+        watcherGapLimit = "20"
+        onchainAccountTypeSelection = .automatic
+    }
+
+    /// Restart a running watcher (e.g. after the account-type override changes)
+    /// so the Electrum subscription reflects the new settings. A change that lands
+    /// while a start is still in flight is handled by startWatcher itself, which
+    /// re-checks the selection once the native call returns.
+    private func restartWatcherIfRunning() {
+        guard activeWatcherId != nil else { return }
+        stopWatcher()
+        scheduleWatcherRestart()
+    }
+
+    /// Start a replacement watcher on the next main-actor turn. Bails if the input
+    /// state was cleared in the meantime (dashboard dismissed) so an unsolicited
+    /// restart never revives a watcher or surfaces a validation error.
+    private func scheduleWatcherRestart() {
+        Task {
+            guard !watcherExtendedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            await startWatcher()
+        }
+    }
+
+    /// Handle a watcher event on the main actor. Filters out events from stale watchers.
+    private func handleWatcherEvent(watcherId: String, event: WatcherEvent) {
+        guard watcherId == activeWatcherId || watcherId == startingWatcherId else { return }
+
+        switch event {
+        case let .transactionsChanged(activities, _, balance, txCount, blockHeight, accountType, _):
+            watcherConnectionStatus = .connected
+            watcherError = nil
+            watcherActivities = activities
+            watcherBalance = balance
+            watcherTransactionCount = txCount
+            watcherBlockHeight = blockHeight
+            watcherAccountType = accountType
+            appendWatcherEvent("transactionsChanged: \(txCount) txs, balance \(balance.total) sats")
+        case let .error(message):
+            watcherConnectionStatus = .error
+            watcherError = message
+            appendWatcherEvent("error: \(message)")
+        case let .disconnected(message):
+            watcherConnectionStatus = .disconnected
+            appendWatcherEvent("disconnected: \(message)")
+        case .reconnected:
+            watcherConnectionStatus = .connected
+            appendWatcherEvent("reconnected")
+        }
+    }
+
+    /// Append to the rolling event log, capping at the most recent 50 entries.
+    private func appendWatcherEvent(_ message: String) {
+        watcherEvents.append(message)
+        if watcherEvents.count > 50 {
+            watcherEvents.removeFirst(watcherEvents.count - 50)
+        }
+    }
+
+    /// Message the Rust core throws when a stop aborts a watcher whose startup is
+    /// still in flight — a cancellation, not a genuine failure.
+    private static let watcherStartupCancelledMessage = "Watcher stopped during startup"
+
+    /// True when a thrown startup error is the Rust core reporting that the watcher
+    /// was deliberately stopped mid-startup. ServiceQueue wraps core errors in
+    /// AppError, so check the wrapped debug message as well as the typed error.
+    private static func isWatcherStartupCancellation(_ error: Error) -> Bool {
+        if let accountInfoError = error as? AccountInfoError,
+           case let .WatcherError(errorDetails) = accountInfoError
+        {
+            return errorDetails.contains(watcherStartupCancelledMessage)
+        }
+        if let appError = error as? AppError, let debugMessage = appError.debugMessage {
+            return debugMessage.contains(watcherStartupCancelledMessage)
+        }
+        return false
+    }
+
+    private func finishStoppedWatcherStartup(watcherId: String) {
+        guard startingWatcherId == watcherId else { return }
+        activeWatcherId = nil
+        startingWatcherId = nil
+        isStartingWatcher = false
+        watcherConnectionStatus = .idle
+        watcherListener = nil
+        watcherBalance = nil
+        watcherActivities = []
+        watcherTransactionCount = 0
+        watcherBlockHeight = 0
+        watcherAccountType = nil
+        watcherEvents = []
+        watcherError = nil
+        trezorLog("Watcher startup stopped before activation: \(watcherId)")
     }
 
     // MARK: - AI Test Hooks
 
     func testShowPinPrompt() {
         guard Env.isTrezorEmulatorTesting else { return }
-        showPinEntry = true
+        connection.showPinEntry = true
     }
 
     func testShowPassphrasePrompt() {
         guard Env.isTrezorEmulatorTesting else { return }
-        showPassphraseEntry = true
+        connection.showPassphraseEntry = true
     }
 
     func testShowPairingCodePrompt() {
         guard Env.isTrezorEmulatorTesting else { return }
-        showPairingCode = true
+        connection.showPairingCode = true
     }
 
     func testShowConfirmOnDevicePrompt() {
         guard Env.isTrezorEmulatorTesting else { return }
-        confirmMessage = "Confirm test action on your Trezor"
-        showConfirmOnDevice = true
+        connection.confirmMessage = "Confirm test action on your Trezor"
+        connection.showConfirmOnDevice = true
     }
 }

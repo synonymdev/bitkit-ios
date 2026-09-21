@@ -65,13 +65,17 @@ class TrezorService {
 
     // MARK: - Connection Management
 
-    /// Connect to a Trezor device by its ID
-    /// - Parameter deviceId: The device identifier (path)
+    /// Connect to a Trezor device by its ID, opening the wallet given by `selection`.
+    /// On THP devices (Safe 5/7) the passphrase is bound to the session at creation, so
+    /// it is supplied per-connect rather than cached between calls.
+    /// - Parameters:
+    ///   - deviceId: The device identifier (path)
+    ///   - selection: Which wallet to open (standard / hidden / on-device passphrase)
     /// - Returns: Device features after successful connection
-    func connect(deviceId: String) async throws -> TrezorFeatures {
+    func connect(deviceId: String, selection: WalletSelection) async throws -> TrezorFeatures {
         try await ServiceQueue.background(.core) { [self] in
             ensureCallbacksRegistered()
-            return try await trezorConnect(deviceId: deviceId, selection: .standard)
+            return try await trezorConnect(deviceId: deviceId, selection: selection)
         }
     }
 
@@ -96,6 +100,14 @@ class TrezorService {
     /// Get cached features of the currently connected device
     func getFeatures() async -> TrezorFeatures? {
         await trezorGetFeatures()
+    }
+
+    /// Refresh device features from the connected Trezor without reconnecting.
+    func refreshFeatures() async throws -> TrezorFeatures {
+        try await ServiceQueue.background(.core) { [self] in
+            ensureCallbacksRegistered()
+            return try await trezorRefreshFeatures()
+        }
     }
 
     /// Get the device's master root fingerprint as an 8-character hex string
@@ -165,119 +177,6 @@ class TrezorService {
     func verifyMessage(params: TrezorVerifyMessageParams) async throws -> Bool {
         try await ServiceQueue.background(.core) {
             try await trezorVerifyMessage(params: params)
-        }
-    }
-
-    // MARK: - Account/Address Info (No Device Required)
-
-    /// Get account info (balance, UTXOs) for an extended public key (xpub/ypub/zpub/tpub/upub/vpub).
-    /// This does NOT require a connected Trezor device — it queries the Electrum server directly.
-    func getAccountInfo(
-        extendedKey: String,
-        electrumUrl: String,
-        network: TrezorCoinType? = nil,
-        gapLimit: UInt32? = nil,
-        scriptType: AccountType? = nil
-    ) async throws -> AccountInfoResult {
-        let networkParam = toNetwork(network)
-        return try await ServiceQueue.background(.core) {
-            try await onchainGetAccountInfo(
-                extendedKey: extendedKey,
-                electrumUrl: electrumUrl,
-                network: networkParam,
-                gapLimit: gapLimit,
-                scriptType: scriptType
-            )
-        }
-    }
-
-    /// Get address info (balance, UTXOs) for a single Bitcoin address.
-    /// This does NOT require a connected Trezor device — it queries the Electrum server directly.
-    func getAddressInfo(
-        address: String,
-        electrumUrl: String,
-        network: TrezorCoinType? = nil
-    ) async throws -> SingleAddressInfoResult {
-        let networkParam = toNetwork(network)
-        return try await ServiceQueue.background(.core) {
-            try await onchainGetAddressInfo(
-                address: address,
-                electrumUrl: electrumUrl,
-                network: networkParam
-            )
-        }
-    }
-
-    // MARK: - Transaction History & Detail (No Device Required)
-
-    /// Get transaction history for an extended public key (xpub/ypub/zpub/tpub/upub/vpub).
-    /// This does NOT require a connected Trezor device — it queries the Electrum server directly.
-    func getTransactionHistory(
-        extendedKey: String,
-        electrumUrl: String,
-        network: TrezorCoinType? = nil,
-        scriptType: AccountType? = nil
-    ) async throws -> TransactionHistoryResult {
-        let networkParam = toNetwork(network)
-        return try await ServiceQueue.background(.core) {
-            try await onchainGetTransactionHistory(
-                extendedKey: extendedKey,
-                electrumUrl: electrumUrl,
-                network: networkParam,
-                scriptType: scriptType
-            )
-        }
-    }
-
-    /// Get detailed information for a specific transaction by its ID.
-    /// This does NOT require a connected Trezor device — it queries the Electrum server directly.
-    func getTransactionDetail(
-        extendedKey: String,
-        electrumUrl: String,
-        txid: String,
-        network: TrezorCoinType? = nil,
-        scriptType: AccountType? = nil
-    ) async throws -> TransactionDetail {
-        let networkParam = toNetwork(network)
-        return try await ServiceQueue.background(.core) {
-            try await onchainGetTransactionDetail(
-                extendedKey: extendedKey,
-                electrumUrl: electrumUrl,
-                txid: txid,
-                network: networkParam,
-                scriptType: scriptType
-            )
-        }
-    }
-
-    // MARK: - Transaction Composition & Broadcasting
-
-    /// Compose a transaction using BDK-based PSBT generation (signer-agnostic).
-    /// Does NOT require a connected Trezor device.
-    func composeTransaction(params: ComposeParams) async throws -> [ComposeResult] {
-        try await ServiceQueue.background(.core) {
-            await onchainComposeTransaction(params: params)
-        }
-    }
-
-    /// Broadcast a signed raw transaction via Electrum.
-    /// - Returns: The transaction ID (txid)
-    func broadcastRawTx(serializedTx: String, electrumUrl: String) async throws -> String {
-        try await ServiceQueue.background(.core) {
-            try await onchainBroadcastRawTx(serializedTx: serializedTx, electrumUrl: electrumUrl)
-        }
-    }
-
-    // MARK: - Helpers
-
-    /// Convert TrezorCoinType to the Network enum used by onchain FFI functions
-    private func toNetwork(_ coin: TrezorCoinType?) -> Network? {
-        guard let coin else { return nil }
-        switch coin {
-        case .bitcoin: return .bitcoin
-        case .testnet: return .testnet
-        case .signet: return .signet
-        case .regtest: return .regtest
         }
     }
 

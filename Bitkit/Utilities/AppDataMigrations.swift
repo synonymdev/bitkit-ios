@@ -20,7 +20,9 @@ enum AppDataMigrations {
         let key = "savedWidgets"
         guard let data = UserDefaults.standard.data(forKey: key), !data.isEmpty else { return }
         guard var list = try? JSONDecoder().decode([SavedWidget].self, from: data) else { return }
-        if list.contains(where: { $0.type == .suggestions }) { return }
+        if list.contains(where: { $0.type == .suggestions }) {
+            return
+        }
         list.insert(SavedWidget(type: .suggestions), at: 0)
         if let encoded = try? JSONEncoder().encode(list) {
             UserDefaults.standard.set(encoded, forKey: key)

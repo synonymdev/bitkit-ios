@@ -191,11 +191,6 @@ struct ProfileEditFormView<Avatar: View>: View {
 
                 Spacer()
 
-                Image(systemName: "pencil")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white50)
-                    .accessibilityHidden(true)
-
                 Button {
                     links.remove(at: index)
                 } label: {
@@ -227,18 +222,27 @@ struct ProfileEditFormView<Avatar: View>: View {
 
             switch deleteActionStyle {
             case .buttonWithIcon:
-                CustomButton(
-                    title: label,
-                    size: .small,
-                    icon: Image("trash")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundColor(.redAccent)
-                        .frame(width: 16, height: 16),
-                    shouldExpand: false
-                ) {
-                    action()
+                Button(action: action) {
+                    HStack(spacing: 8) {
+                        Image("trash")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundColor(.redAccent)
+                            .frame(width: 16, height: 16)
+
+                        BodySSBText(label, textColor: .redAccent)
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: 40)
+                    .background(Color.gray6)
+                    .clipShape(Capsule())
+                    .overlay {
+                        Capsule()
+                            .stroke(Color.white10, lineWidth: 1)
+                    }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(label)
             case .textOnly:
                 Button(action: action) {
                     HStack {
@@ -289,34 +293,22 @@ struct ProfileEditFormView<Avatar: View>: View {
     }
 
     private var footerBar: some View {
-        VStack(spacing: 0) {
-            LinearGradient(
-                colors: [.customBlack.opacity(0), .customBlack],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 24)
-
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 16) {
-                    CustomButton(title: t("common__cancel"), variant: .secondary) {
-                        onCancel()
-                    }
-                    .accessibilityIdentifier("ProfileEditCancel")
-
-                    CustomButton(
-                        title: t("common__save"),
-                        isLoading: isSaving
-                    ) {
-                        await onSave()
-                    }
-                    .accessibilityIdentifier("ProfileEditSave")
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        BottomActionBar {
+            HStack(spacing: 16) {
+                CustomButton(title: t("common__cancel"), variant: .secondary) {
+                    onCancel()
                 }
+                .accessibilityIdentifier("ProfileEditCancel")
+
+                CustomButton(
+                    title: t("common__save"),
+                    isLoading: isSaving
+                ) {
+                    await onSave()
+                }
+                .accessibilityIdentifier("ProfileEditSave")
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-            .background(Color.customBlack)
         }
     }
 

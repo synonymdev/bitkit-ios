@@ -9,6 +9,7 @@ struct BlocktankRegtestScreen: View {
     @State private var selectedMineBlockCount: Int = 1
     @State private var depositAmount: String = "100000"
     @State private var depositAddress: String = ""
+    @State private var depositAddressGenerationID = UUID()
     @State private var paymentInvoice: String = ""
     @State private var paymentAmount: String = ""
     @State private var forceCloseAfterSeconds: String = ""
@@ -19,6 +20,9 @@ struct BlocktankRegtestScreen: View {
     @State private var isClosingChannelLoading = false
 
     private let mineBlockOptions = [1, 3, 20, 144]
+    private var trimmedDepositAddress: String {
+        depositAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -38,14 +42,26 @@ struct BlocktankRegtestScreen: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            // Generate a fresh address when the view appears
-            Task {
-                do {
-                    let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
-                    let newAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
-                    depositAddress = newAddress
-                } catch {
-                    // Fallback to wallet's current address if generation fails
+            refreshDepositAddress(showError: false)
+        }
+    }
+
+    private func refreshDepositAddress(showError: Bool) {
+        let requestID = UUID()
+        let initialAddress = depositAddress
+        depositAddressGenerationID = requestID
+
+        Task {
+            do {
+                let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+                let newAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
+                guard depositAddressGenerationID == requestID, depositAddress == initialAddress else { return }
+                depositAddress = newAddress
+            } catch {
+                guard depositAddressGenerationID == requestID, depositAddress == initialAddress else { return }
+                if showError {
+                    app.toast(type: .error, title: "Failed to generate address", description: error.localizedDescription)
+                } else {
                     depositAddress = wallet.onchainAddress
                 }
             }
@@ -71,17 +87,7 @@ struct BlocktankRegtestScreen: View {
                     }
 
                     Button {
-                        Task {
-                            do {
-                                let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
-                                let newAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(
-                                    addressType: addressType
-                                )
-                                depositAddress = newAddress
-                            } catch {
-                                app.toast(type: .error, title: "Failed to generate address", description: error.localizedDescription)
-                            }
-                        }
+                        refreshDepositAddress(showError: true)
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
@@ -90,27 +96,33 @@ struct BlocktankRegtestScreen: View {
                 TextField("Amount (sats)", text: $depositAmount)
                     .keyboardType(.numberPad)
 
-                CustomButton(title: "Deposit", size: .small, isDisabled: depositAmount.isEmpty, isLoading: isDepositLoading) {
+                CustomButton(
+                    title: "Deposit",
+                    size: .small,
+                    isDisabled: depositAmount.isEmpty || trimmedDepositAddress.isEmpty,
+                    isLoading: isDepositLoading
+                ) {
                     isDepositLoading = true
                     defer { isDepositLoading = false }
                     do {
-                        Logger.debug("Initiating regtest deposit with amount: \(depositAmount)", context: "BlocktankRegtestScreen")
+                        let address = trimmedDepositAddress
+                        Logger.debug("Initiating regtest deposit to \(address) with amount: \(depositAmount)", context: "BlocktankRegtestScreen")
+                        guard !address.isEmpty else {
+                            Logger.error("Invalid deposit address: empty", context: "BlocktankRegtestScreen")
+                            throw ValidationError("Invalid address")
+                        }
                         guard let amount = UInt64(depositAmount) else {
                             Logger.error("Invalid deposit amount: \(depositAmount)", context: "BlocktankRegtestScreen")
                             throw ValidationError("Invalid amount")
                         }
 
-                        let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
-                        let newAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
-                        Logger.debug("Generated new address for deposit: \(newAddress)", context: "BlocktankRegtestScreen")
-
                         let txId = try await CoreService.shared.blocktank.regtestDepositFunds(
-                            address: newAddress,
+                            address: address,
                             amountSat: amount
                         )
                         Logger.debug("Deposit successful with txId: \(txId)", context: "BlocktankRegtestScreen")
                         app.toast(type: .success, title: "Success", description: "Deposit successful. TxID: \(txId)")
-                        depositAddress = newAddress
+                        depositAddress = address
                         Task { try? await wallet.sync() }
                     } catch {
                         Logger.error("Regtest action failed: \(error.localizedDescription)", context: "BlocktankRegtestScreen")

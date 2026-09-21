@@ -12,7 +12,7 @@ struct SuggestionCardData: Identifiable, Hashable {
 enum SuggestionAction: Hashable {
     case backup
     case buyBitcoin
-    // case hardware
+    case hardware
     case invite
     case notifications
     case profile
@@ -33,9 +33,9 @@ enum WalletSuggestionState {
 /// Ordered suggestion card IDs per wallet state (priority: first = highest).
 /// Max 4 cards are shown; when one is dismissed or completed, the next in this list is shown.
 private let suggestionOrderByState: [WalletSuggestionState: [String]] = [
-    .empty: ["buyBitcoin", "transferToSpending", "support", "backupSeedPhrase", "pin", "profile", "invite"],
-    .onchain: ["backupSeedPhrase", "pin", "transferToSpending", "support", "profile", "invite", "buyBitcoin"],
-    .spending: ["quickpay", "notifications", "shop", "profile", "support", "invite", "buyBitcoin"],
+    .empty: ["buyBitcoin", "transferToSpending", "hardware", "support", "backupSeedPhrase", "pin", "profile", "invite"],
+    .onchain: ["backupSeedPhrase", "pin", "transferToSpending", "hardware", "support", "profile", "invite", "buyBitcoin"],
+    .spending: ["quickpay", "notifications", "shop", "hardware", "profile", "support", "invite", "buyBitcoin"],
 ]
 
 let cards: [SuggestionCardData] = [
@@ -119,14 +119,14 @@ let cards: [SuggestionCardData] = [
         color: .brand24,
         action: .profile
     ),
-    // SuggestionCardData(
-    //     id: "hardware",
-    //     title: t("cards__hardware__title"),
-    //     description: t("cards__hardware__description"),
-    //     imageName: "trezor-card",
-    //     color: .blue24,
-    //     action: .hardware
-    // ),
+    SuggestionCardData(
+        id: "hardware",
+        title: t("cards__hardware__title"),
+        description: t("cards__hardware__description"),
+        imageName: "trezor-card",
+        color: .blue24,
+        action: .hardware
+    ),
 ]
 
 private let cardsById: [String: SuggestionCardData] = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })
@@ -138,8 +138,8 @@ extension SuggestionCardData {
             return "back_up"
         case .buyBitcoin:
             return "buy"
-        // case .hardware:
-        //     return "hardware"
+        case .hardware:
+            return "hardware"
         case .invite:
             return "invite"
         case .notifications:
@@ -164,6 +164,10 @@ struct Suggestions: View {
     /// When true, show a fixed set of static cards and ignore taps (e.g. widget preview).
     var isPreview: Bool = false
 
+    /// When editing the home grid, keep the widget visible (and reorderable/removable) by falling
+    /// back to the static preview set when there are no live cards to show.
+    var isEditing: Bool = false
+
     var previewCardIds: [String]?
 
     static let previewSheetCardIds = ["backupSeedPhrase", "pin", "transferToSpending", "support"]
@@ -175,6 +179,7 @@ struct Suggestions: View {
     @EnvironmentObject var suggestionsManager: SuggestionsManager
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
     @State private var showShareSheet = false
@@ -192,6 +197,7 @@ struct Suggestions: View {
         settings: SettingsViewModel,
         suggestionsManager: SuggestionsManager,
         pubkyProfile: PubkyProfileManager? = nil,
+        hasHardwareWallet: Bool = false,
         isPaykitUIEnabled: Bool = PaykitFeatureFlags.isUIEnabled,
         isPreview: Bool = false,
         previewCardIds: [String]? = nil
@@ -213,21 +219,30 @@ struct Suggestions: View {
         var result: [SuggestionCardData] = []
         for id in orderedIds {
             guard let card = cardsById[id] else { continue }
-            if !isPaykitUIEnabled, card.isPaykitCard { continue }
-            if isCardCompleted(card, app: app, settings: settings, pubkyProfile: pubkyProfile) { continue }
-            if suggestionsManager.isDismissed(card.id) { continue }
+            if !isPaykitUIEnabled, card.isPaykitCard {
+                continue
+            }
+            if isCardCompleted(card, app: app, settings: settings, pubkyProfile: pubkyProfile, hasHardwareWallet: hasHardwareWallet) {
+                continue
+            }
+            if suggestionsManager.isDismissed(card.id) {
+                continue
+            }
             result.append(card)
-            if result.count >= 4 { break }
+            if result.count >= 4 {
+                break
+            }
         }
         return result
     }
 
     /// Whether the user has completed this suggestion (e.g. backup verified, pin enabled, notifications on).
     private static func isCardCompleted(_ card: SuggestionCardData, app: AppViewModel, settings: SettingsViewModel,
-                                        pubkyProfile: PubkyProfileManager? = nil) -> Bool
+                                        pubkyProfile: PubkyProfileManager? = nil, hasHardwareWallet: Bool = false) -> Bool
     {
         switch card.action {
         case .backup: return app.backupVerified
+        case .hardware: return hasHardwareWallet
         case .notifications: return settings.enableNotifications
         case .profile: return pubkyProfile?.isAuthenticated ?? false
         case .quickpay: return settings.enableQuickpay
@@ -244,14 +259,37 @@ struct Suggestions: View {
             settings: settings,
             suggestionsManager: suggestionsManager,
             pubkyProfile: pubkyProfile,
+            hasHardwareWallet: isPreview ? false : !hwWalletManager.wallets.isEmpty,
             isPaykitUIEnabled: isPaykitUIActive,
             isPreview: isPreview,
             previewCardIds: previewCardIds
         )
     }
 
+    private var isEditingFallback: Bool {
+        isEditing && !isPreview && visibleCards.isEmpty
+    }
+
+    private var cardsToShow: [SuggestionCardData] {
+        guard isEditingFallback else { return visibleCards }
+        return Self.visibleCards(
+            wallet: wallet,
+            app: app,
+            settings: settings,
+            suggestionsManager: suggestionsManager,
+            pubkyProfile: pubkyProfile,
+            isPaykitUIEnabled: isPaykitUIActive,
+            isPreview: true,
+            previewCardIds: Self.previewSheetCardIds
+        )
+    }
+
+    private var renderStatic: Bool {
+        isPreview || isEditingFallback
+    }
+
     var body: some View {
-        if visibleCards.isEmpty {
+        if cardsToShow.isEmpty {
             EmptyView()
         } else {
             LazyVGrid(
@@ -261,17 +299,21 @@ struct Suggestions: View {
                 ],
                 spacing: 16
             ) {
-                ForEach(visibleCards) { card in
+                ForEach(cardsToShow) { card in
                     SuggestionCard(
                         title: card.title,
                         description: card.description,
                         imageName: card.imageName,
                         accentColor: card.color,
-                        onTap: { if !isPreview { onItemTap(card) } },
+                        onTap: {
+                            if !renderStatic {
+                                onItemTap(card)
+                            }
+                        },
                         onDismiss: { dismissCard(card) }
                     )
                     .background {
-                        if isPreview {
+                        if renderStatic {
                             RoundedRectangle(cornerRadius: 16).fill(Color.black)
                         }
                     }
@@ -279,7 +321,7 @@ struct Suggestions: View {
                     .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
                 }
             }
-            .allowsHitTesting(!isPreview)
+            .allowsHitTesting(!renderStatic)
             .sheet(isPresented: $showShareSheet) {
                 ShareSheet(activityItems: [
                     t(
@@ -295,7 +337,9 @@ struct Suggestions: View {
     }
 
     private func onItemTap(_ card: SuggestionCardData) {
-        if card.isPaykitCard, !PaykitFeatureFlags.isUIEnabled { return }
+        if card.isPaykitCard, !PaykitFeatureFlags.isUIEnabled {
+            return
+        }
         var route: Route?
 
         switch card.action {
@@ -327,8 +371,8 @@ struct Suggestions: View {
             route = app.hasSeenShopIntro ? .shopDiscover : .shopIntro
         case .support:
             route = .support
-        // case .hardware:
-        //     route = .support
+        case .hardware:
+            sheets.showSheet(.hardwareConnect)
         case .transferToSpending:
             route = app.hasSeenTransferIntro ? .fundingOptions : .transferIntro
         }
@@ -372,5 +416,6 @@ struct SuggestionsPreviewTile: View {
     .environmentObject(SuggestionsManager())
     .environmentObject(WalletViewModel())
     .environmentObject(PubkyProfileManager())
+    .environment(HwWalletManager())
     .preferredColorScheme(.dark)
 }

@@ -8,20 +8,9 @@ struct WalletBackupV1: Codable {
     let createdAt: UInt64
     let transfers: [Transfer]
     let privatePaykitHighestReservedReceiveIndexByAddressType: [String: UInt32]?
-    let privatePaykitContactLinks: [String: PrivatePaykitContactLinkBackupV1]?
-}
-
-struct PrivatePaykitContactLinkBackupV1: Codable, Equatable {
-    let publicKey: String
-    let linkSnapshotHex: String?
-    let handshakeSnapshotHex: String?
-    let remoteEndpoints: [String: String]
-    let linkCompletedAt: UInt64?
-    let handshakeUpdatedAt: UInt64?
-    let recoveryStartedAt: UInt64?
-    let mainRecoveryAttemptId: String?
-    let responderRecoveryAttemptId: String?
-    var awaitingRecoveredRemoteEndpoints: Bool? = nil
+    let paykitSdkBackupState: String?
+    let watchOnlyAccounts: [WatchOnlyAccountRecord]?
+    let watchOnlyAccountAllocationState: WatchOnlyAccountAllocationState?
 }
 
 struct MetadataBackupV1: Codable {
@@ -30,6 +19,29 @@ struct MetadataBackupV1: Codable {
     let tagMetadata: [PreActivityMetadata]
     let cache: AppCacheData
     let pubkySession: PubkySessionBackupV1?
+    let pubkyContactProfileOverrides: [String: PubkyProfileData]?
+    /// User-set hardware wallet names, keyed by bitkit-core wallet id. Nil in envelopes written
+    /// before this field, and in envelopes from an app that knows no names. Shared with
+    /// bitkit-android, which spells the key the same way — see its `MetadataBackupV1`.
+    let hwWalletNames: [String: String]?
+
+    init(
+        version: Int,
+        createdAt: UInt64,
+        tagMetadata: [PreActivityMetadata],
+        cache: AppCacheData,
+        pubkySession: PubkySessionBackupV1?,
+        pubkyContactProfileOverrides: [String: PubkyProfileData]?,
+        hwWalletNames: [String: String]? = nil
+    ) {
+        self.version = version
+        self.createdAt = createdAt
+        self.tagMetadata = tagMetadata
+        self.cache = cache
+        self.pubkySession = pubkySession
+        self.pubkyContactProfileOverrides = pubkyContactProfileOverrides
+        self.hwWalletNames = hwWalletNames
+    }
 }
 
 struct PubkySessionBackupV1: Codable, Equatable {
@@ -40,6 +52,11 @@ struct PubkySessionBackupV1: Codable, Equatable {
 
     let kind: Kind
     let sessionSecret: String?
+}
+
+struct BlocktankRefundAddress: Codable, Equatable {
+    let address: String
+    let index: UInt32
 }
 
 struct AppCacheData: Codable {
@@ -59,6 +76,8 @@ struct AppCacheData: Codable {
     let highBalanceIgnoreTimestamp: TimeInterval
     let dismissedSuggestions: [String]
     let lastUsedTags: [String]
+    let quickPayLedger: QuickPayLedger?
+    let blocktankRefundAddress: BlocktankRefundAddress?
 
     init(
         hasSeenContactsIntro: Bool,
@@ -76,7 +95,9 @@ struct AppCacheData: Codable {
         highBalanceIgnoreCount: Int,
         highBalanceIgnoreTimestamp: TimeInterval,
         dismissedSuggestions: [String],
-        lastUsedTags: [String]
+        lastUsedTags: [String],
+        quickPayLedger: QuickPayLedger? = nil,
+        blocktankRefundAddress: BlocktankRefundAddress? = nil
     ) {
         self.hasSeenContactsIntro = hasSeenContactsIntro
         self.hasSeenProfileIntro = hasSeenProfileIntro
@@ -94,26 +115,30 @@ struct AppCacheData: Codable {
         self.highBalanceIgnoreTimestamp = highBalanceIgnoreTimestamp
         self.dismissedSuggestions = dismissedSuggestions
         self.lastUsedTags = lastUsedTags
+        self.quickPayLedger = quickPayLedger
+        self.blocktankRefundAddress = blocktankRefundAddress
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        hasSeenContactsIntro = try c.decode(Bool.self, forKey: .hasSeenContactsIntro)
-        hasSeenProfileIntro = try c.decode(Bool.self, forKey: .hasSeenProfileIntro)
-        hasSeenNotificationsIntro = try c.decode(Bool.self, forKey: .hasSeenNotificationsIntro)
-        hasSeenQuickpayIntro = try c.decode(Bool.self, forKey: .hasSeenQuickpayIntro)
-        hasSeenShopIntro = try c.decode(Bool.self, forKey: .hasSeenShopIntro)
-        hasSeenTransferIntro = try c.decode(Bool.self, forKey: .hasSeenTransferIntro)
-        hasSeenTransferToSpendingIntro = try c.decode(Bool.self, forKey: .hasSeenTransferToSpendingIntro)
-        hasSeenTransferToSavingsIntro = try c.decode(Bool.self, forKey: .hasSeenTransferToSavingsIntro)
-        hasSeenWidgetsIntro = try c.decode(Bool.self, forKey: .hasSeenWidgetsIntro)
+        hasSeenContactsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenContactsIntro) ?? false
+        hasSeenProfileIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenProfileIntro) ?? false
+        hasSeenNotificationsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenNotificationsIntro) ?? false
+        hasSeenQuickpayIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenQuickpayIntro) ?? false
+        hasSeenShopIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenShopIntro) ?? false
+        hasSeenTransferIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferIntro) ?? false
+        hasSeenTransferToSpendingIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferToSpendingIntro) ?? false
+        hasSeenTransferToSavingsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferToSavingsIntro) ?? false
+        hasSeenWidgetsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenWidgetsIntro) ?? false
         hasDismissedWidgetsOnboardingHint = try c.decodeIfPresent(Bool.self, forKey: .hasDismissedWidgetsOnboardingHint) ?? false
-        appUpdateIgnoreTimestamp = try c.decode(TimeInterval.self, forKey: .appUpdateIgnoreTimestamp)
-        backupIgnoreTimestamp = try c.decode(TimeInterval.self, forKey: .backupIgnoreTimestamp)
-        highBalanceIgnoreCount = try c.decode(Int.self, forKey: .highBalanceIgnoreCount)
-        highBalanceIgnoreTimestamp = try c.decode(TimeInterval.self, forKey: .highBalanceIgnoreTimestamp)
-        dismissedSuggestions = try c.decode([String].self, forKey: .dismissedSuggestions)
-        lastUsedTags = try c.decode([String].self, forKey: .lastUsedTags)
+        appUpdateIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .appUpdateIgnoreTimestamp) ?? 0
+        backupIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .backupIgnoreTimestamp) ?? 0
+        highBalanceIgnoreCount = try c.decodeIfPresent(Int.self, forKey: .highBalanceIgnoreCount) ?? 0
+        highBalanceIgnoreTimestamp = try c.decodeIfPresent(TimeInterval.self, forKey: .highBalanceIgnoreTimestamp) ?? 0
+        dismissedSuggestions = try c.decodeIfPresent([String].self, forKey: .dismissedSuggestions) ?? []
+        lastUsedTags = try c.decodeIfPresent([String].self, forKey: .lastUsedTags) ?? []
+        quickPayLedger = try c.decodeIfPresent(QuickPayLedger.self, forKey: .quickPayLedger)
+        blocktankRefundAddress = try c.decodeIfPresent(BlocktankRefundAddress.self, forKey: .blocktankRefundAddress)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -122,6 +147,8 @@ struct AppCacheData: Codable {
         case hasSeenWidgetsIntro, hasDismissedWidgetsOnboardingHint
         case appUpdateIgnoreTimestamp, backupIgnoreTimestamp, highBalanceIgnoreCount, highBalanceIgnoreTimestamp
         case dismissedSuggestions, lastUsedTags
+        case quickPayLedger
+        case blocktankRefundAddress
     }
 }
 

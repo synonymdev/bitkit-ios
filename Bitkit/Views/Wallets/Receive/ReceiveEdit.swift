@@ -5,29 +5,45 @@ struct ReceiveEdit: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
-    @EnvironmentObject private var transfer: TransferViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var tagManager: TagManager
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @Binding var navigationPath: [ReceiveRoute]
+    let sourceTab: ReceiveQr.ReceiveTab
+    let onchainOnly: Bool
+    let replacesCurrentQr: Bool
+    let onSendPaymentRequest: (PaykitPaymentRequestDraft) -> Void
 
     @State private var amountViewModel = AmountInputViewModel()
     @State private var note = ""
+    @State private var isPreparingReceive = false
     @State private var isAmountInputFocused: Bool = false
     @FocusState private var isNoteEditorFocused: Bool
-
-    var navTitle: String {
-        isAmountInputFocused ? t("wallet__receive_specify") : t("wallet__receive_amount")
-    }
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
     }
 
+    private var liquiditySource: ReceiveLiquiditySource {
+        switch sourceTab {
+        case .savings:
+            return .savings
+        case .unified:
+            return .auto
+        case .spending:
+            return .spending
+        case .trezor:
+            return .savings
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: navTitle, showBackButton: true)
+            SheetHeader(title: t("wallet__receive_specify"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
                 NumberPadTextField(
@@ -49,29 +65,14 @@ struct ReceiveEdit: View {
                     CaptionMText(t("wallet__note"))
                         .padding(.bottom, 8)
 
-                    ZStack(alignment: .topLeading) {
-                        if note.isEmpty {
-                            BodySSBText(t("wallet__receive_note_placeholder"), textColor: .textSecondary)
-                        }
+                    NoteTextEditor(
+                        text: $note,
+                        placeholder: t("wallet__receive_note_placeholder"),
+                        testIdentifier: "ReceiveNote",
+                        isFocused: $isNoteEditorFocused
+                    )
 
-                        TextEditor(text: $note)
-                            .focused($isNoteEditorFocused)
-                            .font(.custom(Fonts.semiBold, size: 15))
-                            .foregroundColor(.textPrimary)
-                            .accentColor(.brandAccent)
-                            .submitLabel(.done)
-                            .scrollContentBackground(.hidden)
-                            .padding(EdgeInsets(top: -8, leading: -5, bottom: -5, trailing: -5))
-                            .frame(minHeight: 30, maxHeight: 50)
-                            .dismissKeyboardOnReturn(text: $note, isFocused: $isNoteEditorFocused)
-                            .accessibilityValue(note)
-                            .accessibilityIdentifier("ReceiveNote")
-                    }
-                    .padding()
-                    .background(Color.white06)
-                    .cornerRadius(8)
-
-                    if !isNoteEditorFocused {
+                    if !isNoteEditorFocused, !onchainOnly {
                         VStack(alignment: .leading, spacing: 0) {
                             CaptionMText(t("wallet__tags"))
                                 .padding(.top, 16)
@@ -95,7 +96,29 @@ struct ReceiveEdit: View {
 
                     Spacer()
 
-                    CustomButton(title: t("wallet__receive_show_qr")) {
+                    if !onchainOnly,
+                       PaykitFeatureFlags.isUIAvailable,
+                       isPaykitUIEnabled,
+                       !paymentRequests.eligibleTargets.isEmpty
+                    {
+                        CustomButton(
+                            title: t("wallet__payment_request_send"),
+                            variant: .secondary,
+                            isDisabled: amountSats == 0
+                        ) {
+                            onSendPaymentRequest(
+                                PaykitPaymentRequestDraft(
+                                    amountSats: amountSats,
+                                    note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+                                    expiresAt: PaymentRequestExpiration.week.date(from: .now)
+                                )
+                            )
+                        }
+                        .padding(.bottom, 12)
+                        .accessibilityIdentifier("PaymentRequestSendButton")
+                    }
+
+                    CustomButton(title: t("wallet__receive_show_qr"), isLoading: isPreparingReceive) {
                         Task {
                             await onShowQR()
                         }
@@ -144,21 +167,97 @@ struct ReceiveEdit: View {
     }
 
     private func onShowQR() async {
+        guard !isPreparingReceive else {
+            return
+        }
+
+        isPreparingReceive = true
+        defer { isPreparingReceive = false }
+
+        wallet.invoiceAmountSats = amountSats
+        wallet.invoiceNote = note
+
+        await Self.finishEditing(
+            onchainOnly: onchainOnly,
+            dismiss: { dismiss() },
+            prepareLightningInvoice: prepareLightningInvoice
+        )
+    }
+
+    static func finishEditing(
+        onchainOnly: Bool,
+        dismiss: () -> Void,
+        prepareLightningInvoice: () async -> Void
+    ) async {
+        guard !onchainOnly else {
+            dismiss()
+            return
+        }
+        await prepareLightningInvoice()
+    }
+
+    static func replaceEditedQrRoute(in navigationPath: inout [ReceiveRoute], with route: ReceiveRoute) {
+        guard let currentRouteIndex = navigationPath.indices.last else {
+            navigationPath.append(route)
+            return
+        }
+
+        var replacementStartIndex = currentRouteIndex
+        if let qrIndex = navigationPath[..<currentRouteIndex].lastIndex(where: { route in
+            if case .qr = route {
+                return true
+            }
+            return false
+        }) {
+            replacementStartIndex = qrIndex
+
+            if let editIndex = navigationPath[..<qrIndex].lastIndex(where: { route in
+                if case .edit = route {
+                    return true
+                }
+                return false
+            }) {
+                replacementStartIndex = editIndex
+            }
+        }
+
+        navigationPath.replaceSubrange(replacementStartIndex..., with: [route])
+    }
+
+    private func prepareLightningInvoice() async {
         // Wait until node is running if it's in starting state
         if await wallet.waitForNodeToRun() {
             do {
-                wallet.invoiceAmountSats = amountSats
-                wallet.invoiceNote = note
-                try await wallet.refreshBip21(forceRefreshBolt11: true)
+                var maxCjitAmountSats: UInt64?
+                if needsCjitLimitsForAdditionalLiquidity() {
+                    try? await blocktank.refreshMinCjitSats()
+                    maxCjitAmountSats = try? await blocktank.maxCjitAmountSats()
+                }
 
-                // Check if CJIT flow should be shown
-                if needsAdditionalCjit() {
+                switch additionalLiquidityAction(maxCjitAmountSats: maxCjitAmountSats) {
+                case .none:
+                    try await wallet.refreshBip21(forceRefreshBolt11: true)
+                    finishWithQr()
+                case .chooseAmount:
+                    try await wallet.refreshBip21(forceRefreshBolt11: true)
+                    finishWithRoute(.cjitAmount)
+                case let .createCjit(amountSats):
                     let entry = try await blocktank.createCjit(amountSats: amountSats, description: note)
-                    navigationPath.append(.cjitConfirm(entry: entry, receiveAmountSats: amountSats, isAdditional: true))
-                } else {
-                    dismiss()
+                    finishWithRoute(.cjitConfirm(entry: entry, receiveAmountSats: amountSats, isAdditional: true))
+                case .geoBlocked:
+                    finishWithRoute(.cjitGeoBlocked)
                 }
             } catch {
+                if error.isCjitNodeCapacityExceeded {
+                    showNodeCapacityExceededToast()
+                    return
+                }
+
+                if error.isChannelSizeExceedsMaximum {
+                    finishWithRoute(.cjitAmount)
+                    return
+                }
+
                 app.toast(error)
             }
         } else {
@@ -169,6 +268,30 @@ struct ReceiveEdit: View {
                 description: "Lightning node must be running to create an invoice"
             )
         }
+    }
+
+    private func finishWithQr() {
+        if replacesCurrentQr {
+            Self.replaceEditedQrRoute(in: &navigationPath, with: .qr(cjitInvoice: nil, tab: sourceTab))
+        } else {
+            dismiss()
+        }
+    }
+
+    private func finishWithRoute(_ route: ReceiveRoute) {
+        if replacesCurrentQr {
+            Self.replaceEditedQrRoute(in: &navigationPath, with: route)
+        } else {
+            navigationPath.append(route)
+        }
+    }
+
+    private func showNodeCapacityExceededToast() {
+        app.toast(
+            type: .warning,
+            title: t("wallet__receive_cjit_error_node_capacity__title"),
+            description: t("wallet__receive_cjit_error_node_capacity__description")
+        )
     }
 
     private func deleteTag(_ tag: String) async {
@@ -187,32 +310,24 @@ struct ReceiveEdit: View {
         }
     }
 
-    private func needsAdditionalCjit() -> Bool {
-        let isGeoBlocked = GeoService.shared.isGeoBlocked
-        let minimumAmount = blocktank.minCjitSats ?? 0
-        let inboundCapacity = wallet.totalInboundLightningSats ?? 0
-        let invoiceAmount = amountViewModel.amountSats
+    private func additionalLiquidityAction(maxCjitAmountSats: UInt64?) -> ReceiveAdditionalLiquidityAction {
+        ReceiveLiquidityDecision.additionalLiquidityAction(
+            source: liquiditySource,
+            invoiceAmountSats: amountViewModel.amountSats,
+            inboundCapacitySats: wallet.totalReadyInboundLightningSats,
+            minCjitSats: blocktank.minCjitSats,
+            maxCjitAmountSats: maxCjitAmountSats,
+            isGeoBlocked: GeoService.shared.isGeoBlocked
+        )
+    }
 
-        // Calculate maxClientBalance using TransferViewModel
-        let maxChannelSize = blocktank.info?.options.maxChannelSizeSat ?? 0
-        let maxClientBalance = transfer.getMaxClientBalance(maxChannelSize: UInt64(maxChannelSize))
-
-        if
-            // user is geo-blocked
-            isGeoBlocked ||
-            // failed to get minimum amount
-            minimumAmount == 0 ||
-            // amount is less than minimum CJIT amount
-            invoiceAmount < minimumAmount ||
-            // there is enough inbound capacity
-            invoiceAmount <= inboundCapacity ||
-            // amount is above the maximum client balance
-            invoiceAmount > maxClientBalance
-        {
-            return false
-        }
-
-        return true
+    private func needsCjitLimitsForAdditionalLiquidity() -> Bool {
+        ReceiveLiquidityDecision.needsCjitLimitsForAdditionalLiquidity(
+            source: liquiditySource,
+            invoiceAmountSats: amountViewModel.amountSats,
+            inboundCapacitySats: wallet.totalReadyInboundLightningSats,
+            isGeoBlocked: GeoService.shared.isGeoBlocked
+        )
     }
 
     @ViewBuilder

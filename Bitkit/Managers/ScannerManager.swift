@@ -18,6 +18,8 @@ class ScannerManager: ObservableObject {
     private var navigation: NavigationViewModel?
     private var pubkyProfile: PubkyProfileManager?
     private var sheets: SheetViewModel?
+    private var wallet: WalletViewModel?
+    private weak var hwWalletManager: HwWalletManager?
 
     func configure(
         app: AppViewModel,
@@ -26,7 +28,9 @@ class ScannerManager: ObservableObject {
         settings: SettingsViewModel? = nil,
         navigation: NavigationViewModel? = nil,
         pubkyProfile: PubkyProfileManager? = nil,
-        sheets: SheetViewModel? = nil
+        sheets: SheetViewModel? = nil,
+        wallet: WalletViewModel? = nil,
+        hwWalletManager: HwWalletManager? = nil
     ) {
         self.app = app
         self.contactsManager = contactsManager
@@ -35,6 +39,8 @@ class ScannerManager: ObservableObject {
         self.navigation = navigation
         self.pubkyProfile = pubkyProfile
         self.sheets = sheets
+        self.wallet = wallet
+        self.hwWalletManager = hwWalletManager
     }
 
     func handleScan(_ uri: String, context: ScannerContext) async {
@@ -73,7 +79,10 @@ class ScannerManager: ObservableObject {
                 return
             }
 
-            try await app.handleScannedData(uri)
+            try await app.handleScannedData(
+                uri,
+                alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0
+            )
             guard shouldOpenPaymentFlow(for: uri) else { return }
 
             if let currency, let settings, let sheets {
@@ -109,10 +118,22 @@ class ScannerManager: ObservableObject {
             sheets?.hideSheetIfActive(sheetId, reason: reason)
         }
         navigation.navigate(route)
+        if case let .contactDetail(publicKey) = route,
+           let contactsManager,
+           let wallet
+        {
+            Task {
+                await contactsManager.refreshContactReceiverPaths(publicKey: publicKey, wallet: wallet)
+            }
+        }
         return true
     }
 
-    func handleSendScan(_ uri: String, completion: @escaping (SendRoute?) -> Void) async {
+    func handleSendScan(
+        _ uri: String,
+        scope: ScanHandlingScope = .unrestricted,
+        completion: @escaping (SendRoute?) -> Void
+    ) async {
         guard let app, let currency, let settings else {
             completion(nil)
             return
@@ -120,13 +141,27 @@ class ScannerManager: ObservableObject {
 
         Haptics.play(.scanSuccess)
 
+        guard !PubkyAuthRequest.isProtocolURL(uri) else {
+            app.toast(
+                type: .error,
+                title: t("other__qr_error_header"),
+                description: t("other__qr_error_text")
+            )
+            completion(nil)
+            return
+        }
+
         do {
             if handlePubkyRouteIfNeeded(uri, hiding: .send, reason: "Send scanner routed pubky key") {
                 completion(nil)
                 return
             }
 
-            try await app.handleScannedData(uri)
+            try await app.handleScannedData(
+                uri,
+                scope: scope,
+                alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0
+            )
             guard shouldOpenPaymentFlow(for: uri) else {
                 completion(nil)
                 return
@@ -151,7 +186,7 @@ class ScannerManager: ObservableObject {
     }
 
     private func shouldOpenPaymentFlow(for uri: String) -> Bool {
-        !SamRockSetupRequest.isProtocolURL(uri)
+        !SamRockSetupRequest.isProtocolURL(uri) && !PubkyAuthRequest.isProtocolURL(uri)
     }
 
     private func handleElectrumScan(_ uri: String) async {
@@ -199,7 +234,12 @@ class ScannerManager: ObservableObject {
         await handleScan(uri.trimmingCharacters(in: .whitespacesAndNewlines), context: context)
     }
 
-    func handleImageSelection(_ item: PhotosPickerItem?, context: ScannerContext, completion: @escaping (SendRoute?) -> Void = { _ in }) async {
+    func handleImageSelection(
+        _ item: PhotosPickerItem?,
+        context: ScannerContext,
+        scope: ScanHandlingScope = .unrestricted,
+        completion: @escaping (SendRoute?) -> Void = { _ in }
+    ) async {
         guard let app, let item else { return }
 
         do {
@@ -266,7 +306,7 @@ class ScannerManager: ObservableObject {
                 DispatchQueue.main.async {
                     if context == .send {
                         Task {
-                            await self?.handleSendScan(payload, completion: completion)
+                            await self?.handleSendScan(payload, scope: scope, completion: completion)
                         }
                     } else {
                         Task {

@@ -10,6 +10,9 @@ struct ActivityExplorerView: View {
 
     @State private var item: Activity
     @State private var txDetails: BitkitCore.TransactionDetails?
+    /// Distinguishes "still fetching" from "core has no details for this transaction", so the
+    /// inputs/outputs section reads as pending rather than silently absent.
+    @State private var isLoadingTxDetails = true
     @State private var boostTxDoesExist: [String: Bool] = [:] // Maps boostTxId -> doesExist
 
     init(item: Activity) {
@@ -48,19 +51,24 @@ struct ActivityExplorerView: View {
         guard let onchain else { return }
 
         do {
-            let details = try await CoreService.shared.activity.getTransactionDetails(txid: onchain.txId)
+            let details = try await CoreService.shared.activity.getTransactionDetails(
+                txid: onchain.txId,
+                walletId: item.walletId
+            )
             await MainActor.run {
                 txDetails = details
+                isLoadingTxDetails = false
             }
         } catch {
             Logger.error("Failed to load transaction details for \(onchain.txId): \(error)", context: "ActivityExplorerView")
+            await MainActor.run { isLoadingTxDetails = false }
         }
     }
 
     private func loadBoostTxDoesExist() async {
         guard let onchain else { return }
 
-        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: onchain.boostTxIds)
+        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: onchain.boostTxIds, walletId: onchain.walletId)
         await MainActor.run {
             boostTxDoesExist = doesExistMap
         }
@@ -68,7 +76,10 @@ struct ActivityExplorerView: View {
 
     private func refreshActivity() async {
         do {
-            if let updatedActivity = try await CoreService.shared.activity.getActivity(id: activityId) {
+            if let updatedActivity = try await CoreService.shared.activity.getActivity(
+                id: activityId,
+                walletId: item.walletId
+            ) {
                 await MainActor.run {
                     item = updatedActivity
                 }
@@ -202,6 +213,13 @@ struct ActivityExplorerView: View {
                         }
                     }
                     .padding(.bottom, 16)
+                } else if isLoadingTxDetails {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 16)
+                } else {
+                    BodySSBText(t("wallet__activity_details_unavailable"), textColor: .white64)
+                        .padding(.bottom, 16)
                 }
 
                 if !onchain.boostTxIds.isEmpty {
@@ -273,6 +291,7 @@ struct ActivityExplorer_Previews: PreviewProvider {
             ActivityExplorerView(
                 item: .lightning(
                     LightningActivity(
+                        walletId: WalletScope.default,
                         id: "test-lightning-1",
                         txType: .received,
                         status: .succeeded,
@@ -295,6 +314,7 @@ struct ActivityExplorer_Previews: PreviewProvider {
             ActivityExplorerView(
                 item: .onchain(
                     OnchainActivity(
+                        walletId: WalletScope.default,
                         id: "test-onchain-1",
                         txType: .received,
                         txId: "9c60a69005cbdb7323f8f0551d5c6f79a8c9c27c32475e4a0ad4a47d305c629d",

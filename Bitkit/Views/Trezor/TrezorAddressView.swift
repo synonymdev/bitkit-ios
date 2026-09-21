@@ -39,6 +39,7 @@ enum TrezorAddressScriptType: String, CaseIterable {
 
 /// Inline content for address generation, used by expandable section.
 struct TrezorAddressContent: View {
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(TrezorViewModel.self) private var trezor
     @State private var selectedScriptType: TrezorAddressScriptType = .segwit
 
@@ -51,7 +52,7 @@ struct TrezorAddressContent: View {
             AddressResultSection()
         }
         .onChange(of: selectedScriptType) { newValue in
-            trezor.derivationPath = newValue.defaultPath(coinType: trezor.coinTypeComponent)
+            trezor.derivationPath = newValue.defaultPath(coinType: trezorManager.coinTypeComponent)
             trezor.selectedScriptType = newValue.trezorScriptType
             trezor.addressIndex = 0
         }
@@ -104,6 +105,7 @@ private struct AddressTypeSection: View {
 // MARK: - Derivation Path Section
 
 private struct DerivationPathSection: View {
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(TrezorViewModel.self) private var trezor
     let selectedScriptType: TrezorAddressScriptType
     @FocusState private var isFieldFocused: Bool
@@ -157,7 +159,7 @@ private struct DerivationPathSection: View {
             .trezorAccessibilityAnchor("TrezorAddressIndex")
 
             Button(action: {
-                trezor.derivationPath = selectedScriptType.defaultPath(coinType: trezor.coinTypeComponent)
+                trezor.derivationPath = selectedScriptType.defaultPath(coinType: trezorManager.coinTypeComponent)
                 trezor.addressIndex = 0
             }) {
                 Text("Use default path")
@@ -404,7 +406,8 @@ private struct CopyButton: View {
             NavigationStack {
                 TrezorAddressView()
             }
-            .environment(TrezorViewModel())
+            .environment(TrezorManager())
+            .environment(TrezorViewModel(connection: TrezorManager()))
         }
     }
 #endif

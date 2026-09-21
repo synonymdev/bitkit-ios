@@ -9,6 +9,8 @@ struct ScannerScreen: View {
     @EnvironmentObject private var scanner: ScannerManager
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
     @State private var isManualEntryPresented = false
     @State private var manualEntry = ""
 
@@ -72,7 +74,9 @@ struct ScannerScreen: View {
                 settings: settings,
                 navigation: navigation,
                 pubkyProfile: pubkyProfile,
-                sheets: sheets
+                sheets: sheets,
+                wallet: wallet,
+                hwWalletManager: hwWalletManager
             )
         }
         .sheet(isPresented: $isManualEntryPresented) {

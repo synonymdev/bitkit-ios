@@ -41,6 +41,7 @@ extension Color {
     static let white64 = Color.white.opacity(0.64)
     static let white80 = Color.white.opacity(0.80)
 
+    static let blue16 = Color.blueAccent.opacity(0.16)
     static let blue24 = Color.blueAccent.opacity(0.24)
     static let brand08 = Color.brandAccent.opacity(0.08)
     static let brand16 = Color.brandAccent.opacity(0.16)

@@ -110,7 +110,7 @@ struct AddContactSheet: View {
         .sheetBackground()
         .presentationDetents([.medium])
         .presentationCornerRadius(32)
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
     }
 }
 

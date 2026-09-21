@@ -37,7 +37,7 @@ class ActivityItemViewModel: ObservableObject {
 
     func loadTags() async {
         do {
-            tags = try await coreService.activity.tags(forActivity: activityId)
+            tags = try await coreService.activity.tags(forActivity: activityId, walletId: activity.walletId)
         } catch {
             Logger.error(error, context: "Failed to load tags for activity \(activityId)")
             tags = []
@@ -46,7 +46,7 @@ class ActivityItemViewModel: ObservableObject {
 
     func removeTag(_ tag: String) async {
         do {
-            try await coreService.activity.dropTags(fromActivity: activityId, [tag])
+            try await coreService.activity.dropTags(fromActivity: activityId, [tag], walletId: activity.walletId)
             await loadTags() // Reload tags after removal
         } catch {
             Logger.error(error, context: "Failed to remove tag \(tag) from activity \(activityId)")
@@ -55,7 +55,7 @@ class ActivityItemViewModel: ObservableObject {
 
     func refreshActivity() async {
         do {
-            if let updatedActivity = try await coreService.activity.getActivity(id: activityId) {
+            if let updatedActivity = try await coreService.activity.getActivity(id: activityId, walletId: activity.walletId) {
                 activity = updatedActivity
             } else {
                 // Activity not found by ID - it might have been replaced by RBF
@@ -67,8 +67,14 @@ class ActivityItemViewModel: ObservableObject {
                     for attempt in 1 ... 3 {
                         Logger.debug("Attempt \(attempt) to find RBF replacement", context: "ActivityItemViewModel.refreshActivity")
 
-                        // Get all recent activities to find potential replacement
-                        let recentActivities = try await coreService.activity.get(filter: .onchain, limit: 50)
+                        // Get all recent activities to find potential replacement. A hardware row can
+                        // now disappear when its transaction drops out of a watcher snapshot, so the
+                        // lookup has to stay in the activity's own wallet.
+                        let recentActivities = try await coreService.activity.get(
+                            filter: .onchain,
+                            limit: 50,
+                            walletId: activity.walletId
+                        )
 
                         // Look for a boosted transaction that could be our replacement
                         for recentActivity in recentActivities {

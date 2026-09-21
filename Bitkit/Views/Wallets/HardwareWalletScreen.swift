@@ -1,0 +1,219 @@
+import BitkitCore
+import SwiftUI
+
+/// Detail overview of a paired hardware wallet, tracked as a watch-only balance. Mirrors the
+/// Savings/Spending screens: device name + blue Bitcoin icon in the top bar, balance header, the
+/// device's on-chain activity grouped by date (blue hardware icons), a Transfer-To-Spending action
+/// on funded devices, and a Remove action. Ports bitkit-android's `HardwareWalletScreen`.
+struct HardwareWalletScreen: View {
+    let walletId: String
+
+    @EnvironmentObject var activity: ActivityListViewModel
+    @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(TrezorManager.self) private var trezorManager
+
+    @State private var activities: [Activity] = []
+    @State private var showRemoveDialog = false
+    @State private var keepBackupDataOnRemoval = true
+
+    private var wallet: HwWallet? {
+        hwWalletManager.wallets.first { $0.id == walletId }
+    }
+
+    var body: some View {
+        let wallet = wallet
+
+        return ZStack(alignment: .top) {
+            if let wallet {
+                NavigationBar(title: wallet.name, icon: "btc-circle-blue")
+                    .padding(.horizontal, 16)
+
+                content(for: wallet)
+
+                bottomGradient
+            }
+        }
+        .navigationBarHidden(true)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("HardwareWalletScreen")
+        .task(id: wallet?.walletId) {
+            await loadActivities()
+        }
+        .task {
+            await app.checkGeoStatus()
+        }
+        .onReceive(activity.activitiesChangedPublisher) { _ in
+            Task { await loadActivities() }
+        }
+        // Leave the screen once the device is gone, whether removed here or forgotten elsewhere.
+        .onChange(of: wallet != nil) { _, stillPaired in
+            if hwWalletManager.walletsLoaded, !stillPaired {
+                navigation.navigateBack()
+            }
+        }
+        .removeHwWalletDialog(
+            walletName: showRemoveDialog ? wallet?.name : nil,
+            keepBackupData: $keepBackupDataOnRemoval,
+            onConfirm: { Task { await removeWallet() } },
+            onDismiss: { showRemoveDialog = false }
+        )
+    }
+
+    private func content(for wallet: HwWallet) -> some View {
+        let hasActivity = !activities.isEmpty
+        // Only the native-segwit account can currently fund a transfer to spending.
+        let canTransferToSpending = wallet.fundingBalanceSats > 0
+
+        return VStack(spacing: 0) {
+            ScrollView(showsIndicators: false) {
+                MoneyStack(
+                    sats: Int(clamping: wallet.balanceSats),
+                    showSymbol: true,
+                    enableSwipeGesture: true,
+                    enableHide: true,
+                    testIdPrefix: "TotalBalance"
+                )
+
+                if canTransferToSpending {
+                    transferButton
+                        .padding(.top, 28)
+                }
+
+                if hasActivity {
+                    HardwareWalletActivityList(activities: activities)
+                        .padding(.top, 32)
+                }
+
+                removeButton(for: wallet)
+                    .padding(.top, 16)
+            }
+            .contentMargins(.top, ScreenLayout.topPaddingWithoutSafeArea)
+            .contentMargins(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
+            .frame(maxWidth: .infinity, minHeight: 400)
+        }
+        .padding(.horizontal)
+        .background(alignment: .topTrailing) {
+            trezorIllustration
+                // Align the device's top with the balance header and bleed off the trailing edge.
+                .offset(x: 118, y: ScreenLayout.topPaddingWithoutSafeArea)
+        }
+    }
+
+    /// The shared upright Trezor device, transformed to match the Figma "Wallet Overview" visual:
+    /// cover-filled into a square, rotated -15°, and clipped to a 256pt box that bleeds off the
+    /// screen's trailing edge. Reuses the generic `trezor-device` asset — no screen-specific crop is
+    /// baked in, so the same image can be adapted elsewhere with SwiftUI.
+    private var trezorIllustration: some View {
+        Image("trezor-device")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: 268, height: 268)
+            .clipped()
+            .rotationEffect(.degrees(-15))
+            .offset(x: 9, y: 13)
+            .frame(width: 256, height: 256)
+            .clipped()
+    }
+
+    private var transferButton: some View {
+        CustomButton(
+            title: t("lightning__transfer_to_spending_button"),
+            variant: .secondary,
+            icon: Image("arrow-up-down")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+                .foregroundColor(.white80),
+            isDisabled: GeoService.shared.isGeoBlocked
+        ) {
+            if app.hasSeenTransferToSpendingIntro {
+                navigation.navigate(.spendingAmountHw(walletId: walletId))
+            } else {
+                navigation.navigate(.spendingIntroHw(walletId: walletId))
+            }
+        }
+        .accessibilityIdentifier("HardwareTransferToSpending")
+    }
+
+    private func removeButton(for wallet: HwWallet) -> some View {
+        CustomButton(
+            title: t("hardware__remove_button", variables: ["name": wallet.name]),
+            variant: .tertiary
+        ) {
+            // Reset on open rather than on dismiss, so a cancel or a failed removal starts from the
+            // default rather than from the last choice.
+            keepBackupDataOnRemoval = true
+            showRemoveDialog = true
+        }
+        .accessibilityIdentifier("RemoveHardwareWallet")
+    }
+
+    private var bottomGradient: some View {
+        VStack {
+            Spacer()
+            LinearGradient(
+                colors: [.black.opacity(0), .black],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: ScreenLayout.bottomPaddingWithSafeArea)
+        }
+        .ignoresSafeArea(edges: .bottom)
+        .allowsHitTesting(false)
+    }
+
+    @MainActor
+    private func loadActivities() async {
+        guard let walletId = wallet?.walletId else { return }
+        do {
+            activities = try await CoreService.shared.activity.get(filter: .all, walletId: walletId)
+        } catch {
+            Logger.error(error, context: "HardwareWalletScreen failed to load activities")
+        }
+    }
+
+    /// Stop watching this wallet and forget its stored entries, leaving the device paired for any
+    /// other wallet it holds. Dropping the entries re-pushes the device snapshot and removes the
+    /// tile, and the reactive auto-pop above then leaves the screen.
+    private func removeWallet() async {
+        guard let wallet else { return }
+        let keepBackupData = keepBackupDataOnRemoval
+        showRemoveDialog = false
+        do {
+            try await hwWalletManager.removeWallet(walletId: wallet.id, keepBackupData: keepBackupData)
+        } catch {
+            app.toast(type: .error, title: t("common__error"), description: RemoveHwWalletDialog.errorDescription(for: error))
+        }
+    }
+}
+
+/// The hardware wallet's on-chain activity, grouped by date and rendered with the shared activity
+/// row. Hardware activities draw the blue icon automatically (derived from their `walletId`).
+private struct HardwareWalletActivityList: View {
+    @EnvironmentObject var activity: ActivityListViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
+
+    let activities: [Activity]
+
+    var body: some View {
+        let groupedItems = activity.groupActivities(activities)
+
+        LazyVStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(zip(groupedItems.indices, groupedItems)), id: \.1) { index, groupItem in
+                switch groupItem {
+                case let .header(title):
+                    CaptionMText(title)
+                        .frame(height: 34, alignment: .bottom)
+
+                case let .activity(item):
+                    NavigationLink(value: Route.activityDetail(item)) {
+                        ActivityRow(item: item, feeEstimates: feeEstimatesManager.estimates)
+                    }
+                    .accessibilityIdentifier("Activity-\(index)")
+                }
+            }
+        }
+    }
+}

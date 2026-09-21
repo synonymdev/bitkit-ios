@@ -7,6 +7,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -21,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -33,7 +36,7 @@ jobs:
           brew install xcbeautify
 
       - name: Cache Swift Package Manager
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
@@ -71,12 +74,13 @@ jobs:
             -skip-testing:BitkitTests/UtxoSelectionTests \
             -skip-testing:BitkitTests/BlocktankTests \
             -skip-testing:BitkitTests/PaymentFlowTests \
+            -skip-testing:BitkitTests/BlocktankRefundAddressLiveIntegrationTests \
             -skip-testing:BitkitTests/AddressTypeIntegrationTests \
             | xcbeautify --report junit
           echo "✅ Unit tests completed at $(date)"
 
       - name: Upload test results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: success() || failure()
         with:
           name: test-results

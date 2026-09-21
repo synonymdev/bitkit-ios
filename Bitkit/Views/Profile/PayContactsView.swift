@@ -1,17 +1,12 @@
 import SwiftUI
 
 struct PayContactsView: View {
-    @AppStorage("hasConfirmedPublicPaykitEndpoints") private var hasConfirmedPublicPaykitEndpoints = false
-    @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
-    @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
-
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var wallet: WalletViewModel
 
-    @State private var enablePayments = true
     @State private var isSaving = false
 
     var body: some View {
@@ -44,14 +39,6 @@ struct PayContactsView: View {
 
             Spacer()
 
-            Toggle(isOn: $enablePayments) {
-                BodyMText(t("profile__pay_contacts_toggle"), textColor: .white)
-            }
-            .tint(.pubkyGreen)
-            .disabled(isSaving)
-            .accessibilityIdentifier("PayContactsToggle")
-            .padding(.horizontal, 32)
-
             CustomButton(title: t("common__continue"), isLoading: isSaving) {
                 await continueFlow()
             }
@@ -63,59 +50,27 @@ struct PayContactsView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
-        .task {
-            enablePayments = hasConfirmedPublicPaykitEndpoints ? (sharesPrivatePaykitEndpoints || sharesPublicPaykitEndpoints) : true
-        }
     }
 
     private func continueFlow() async {
-        let publish = enablePayments
         isSaving = true
         defer { isSaving = false }
 
         do {
-            if publish {
-                try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: true)
-                let canUsePrivateContactPayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
-                sharesPrivatePaykitEndpoints = canUsePrivateContactPayments
-                sharesPublicPaykitEndpoints = true
-                hasConfirmedPublicPaykitEndpoints = true
-                if canUsePrivateContactPayments {
-                    PrivatePaykitService.setContactSharingCleanupPending(false)
-                    await PrivatePaykitService.shared.prepareSavedContacts(
-                        contactsManager.contacts.map(\.publicKey),
-                        wallet: wallet
-                    )
-                }
-            } else {
-                var cleanupError: Error?
-                sharesPrivatePaykitEndpoints = false
-                sharesPublicPaykitEndpoints = false
-                hasConfirmedPublicPaykitEndpoints = true
-                do {
-                    try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
-                } catch {
-                    cleanupError = error
-                    Logger.warn("Failed to remove public Paykit endpoints while disabling contact payments: \(error)", context: "PayContactsView")
-                }
-                do {
-                    try await PrivatePaykitService.shared.removePublishedEndpoints()
-                } catch {
-                    if cleanupError == nil {
-                        cleanupError = error
-                    }
-                    Logger.warn("Failed to remove private Paykit endpoints while disabling contact payments: \(error)", context: "PayContactsView")
-                }
-                if let cleanupError {
-                    PrivatePaykitService.setContactSharingCleanupPending(true)
-                    throw cleanupError
-                }
-                PrivatePaykitService.setContactSharingCleanupPending(false)
+            let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
+            if canUsePrivatePayments, let publicKey = pubkyProfile.publicKey {
+                try await contactsManager.loadContactsIfNeeded(for: publicKey)
             }
+
+            try await ContactPaymentsService.setEnabled(
+                true,
+                wallet: wallet,
+                contactPublicKeys: contactsManager.contacts.map(\.publicKey),
+                canUsePrivatePayments: canUsePrivatePayments
+            )
             navigation.path = [.profile]
         } catch {
-            enablePayments = hasConfirmedPublicPaykitEndpoints ? (sharesPrivatePaykitEndpoints || sharesPublicPaykitEndpoints) : true
-            Logger.error("Failed to sync public payment endpoints: \(error)", context: "PayContactsView")
+            Logger.error("Failed to enable contact payments: \(error)", context: "PayContactsView")
             app.toast(
                 type: .error,
                 title: t("common__error"),

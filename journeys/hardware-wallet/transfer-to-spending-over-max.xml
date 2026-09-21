@@ -1,0 +1,39 @@
+<journey name="hardware transfer to spending amount over max is blocked">
+  <description>
+    Verifies the hardware Transfer To Spending amount number pad enforces the transferable maximum:
+    an entry above it snaps down to the maximum with the "Spending Balance Maximum" warning toast,
+    and deleting digits still works while at the cap.
+
+    iOS-only — there is no counterpart under `bitkit-android/journeys/hardware-wallet`. It was added
+    alongside the fix for the bug it covers. `SpendingAmountHw` observed `maxAllowed` without
+    `initial: true`, and since that value lives on the shared `TransferViewModel` and outlives the
+    screen, arriving with the limits already computed produced no change to observe. The freshly
+    created `AmountInputViewModel` then kept `maxAmountOverride` nil, leaving the pad bounded only by
+    the global 999 999 999 sat ceiling. Measured on an iPhone 17 simulator: nine taps on `N9` entered
+    999 999 999 against an AVAILABLE of 610 015, with no toast and no snap. Continue stayed disabled,
+    so nothing unaffordable could be ordered — the gap was in the input, not in the order.
+
+    Precondition: a paired Bridge emulator whose native-segwit account holds spendable regtest funds,
+    and a reachable Blocktank LSP so a real maximum can be quoted. Start on the wallet home screen.
+
+    The screen is entered twice on purpose. A first entry that computes the limits from zero fires
+    the change either way, so it passes even with the bug; the second entry, where the limits are
+    already settled, is the one that regressed.
+  </description>
+  <actions>
+    <action>Tap the hardware wallet tile (id "ActivityHardware") beneath the SAVINGS and SPENDING tiles, and verify the hardware wallet detail screen opens (id "HardwareWalletScreen")</action>
+    <action>Tap the "Transfer To Spending" button (id "HardwareTransferToSpending")</action>
+    <action>If the first-run Transfer To Spending intro is shown, tap "Get Started"</action>
+    <action>Verify the transfer amount screen opens (id "HardwareTransferAmount")</action>
+    <action>Wait for the limits to load (id "N9", predicate enabled) — the number pad is held disabled behind the AVAILABLE spinner until the device balance and the LSP quote return</action>
+    <action>Verify the AVAILABLE amount (id "HardwareTransferAmountAvailable") shows a positive value</action>
+    <action>Tap the "9" key (id "N9") nine times to enter an amount far larger than the maximum allowed</action>
+    <action>Verify a "Spending Balance Maximum" warning toast appears (id "HardwareTransferAmountExceededToast") and names the maximum</action>
+    <action>Verify the amount in the input field snapped to the maximum and does not exceed the AVAILABLE amount — 999 999 999 here is the regression this journey exists for</action>
+    <action>Tap the delete key (id "NRemove") once, and verify the amount decreased</action>
+    <action>Tap back (id "NavigationBack") to return to the hardware wallet screen</action>
+    <action>Tap "Transfer To Spending" (id "HardwareTransferToSpending") again — this second entry arrives with the limits already computed, which is the case that regressed</action>
+    <action>Wait for the number pad (id "N9", predicate enabled), then tap the "9" key nine times again</action>
+    <action>Verify the toast appears again (id "HardwareTransferAmountExceededToast") and the amount snapped to the same maximum, not to 999 999 999</action>
+  </actions>
+</journey>

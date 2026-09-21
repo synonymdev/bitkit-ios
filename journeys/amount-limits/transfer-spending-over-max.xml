@@ -1,0 +1,29 @@
+<journey name="transfer to spending amount over max is blocked">
+  <description>
+    Verifies the "Transfer to Spending" amount number pad blocks input exceeding the maximum allowed
+    transfer amount, shows the "Spending Balance Maximum" warning toast, and still allows deleting
+    digits while at the cap.
+
+    Precondition: onboarded dev wallet with a POSITIVE on-chain Savings balance and a running node
+    connected to the LSP (so a real max can be quoted). The max starts at 0 behind a spinner — wait
+    for it to populate. Note the cap may be lower than the visible "Available" due to fees. Start on
+    the wallet home screen.
+
+    Enter via the Savings card, not the Spending card: the Spending screen only offers
+    "Transfer From Savings" while the spending balance is zero, and shows "Transfer To Savings"
+    once a balance exists. The Savings card's "Transfer To Spending" reaches the same screen in
+    both states.
+  </description>
+  <actions>
+    <action>Tap the Savings balance card on the home screen (id "ActivitySavings")</action>
+    <action>Tap "Transfer To Spending" (id "TransferToSpending")</action>
+    <action>If a transfer intro screen appears, tap "Get Started"</action>
+    <action>Verify the spending amount screen (id "SpendingAmount") is visible</action>
+    <action>Wait until the available/maximum amount (id "SpendingAmountAvailable") finishes loading and shows a positive value</action>
+    <action>Tap the "9" key (id "N9") nine times to enter an amount far larger than the maximum allowed</action>
+    <action>Verify a "Spending Balance Maximum" warning toast appears (id "SpendingAmountExceededToast")</action>
+    <action>Verify the amount in the input field (id "SpendingAmountNumberField") does not exceed the stated maximum</action>
+    <action>Tap the delete key (id "NRemove") once</action>
+    <action>Verify the amount in the input field (id "SpendingAmountNumberField") decreased after the delete</action>
+  </actions>
+</journey>

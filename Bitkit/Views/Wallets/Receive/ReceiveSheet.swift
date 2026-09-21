@@ -3,35 +3,46 @@ import SwiftUI
 
 enum ReceiveRoute: Hashable {
     case qr(cjitInvoice: String?, tab: ReceiveQr.ReceiveTab?)
-    case edit
+    case edit(tab: ReceiveQr.ReceiveTab, onchainOnly: Bool, replacesCurrentQr: Bool = false)
     case tag
     case cjitAmount
     case cjitConfirm(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
     case cjitLearnMore(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
     case cjitGeoBlocked
+    case requestOrPay(publicKey: String)
+    case paymentRequestRecipient(PaykitPaymentRequestDraft)
+    case paymentRequestAmount(PaykitPaymentRequestDraft, PaykitPaymentRequestTarget)
+    case paymentRequestDetails(PaykitPaymentRequestDraft, PaykitPaymentRequestTarget)
+    case paymentRequestSent(PaykitPaymentRequest)
 }
 
 struct ReceiveConfig {
     let initialRoute: ReceiveRoute
+    let hardwareWalletId: String?
 
-    init(view: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil)) {
+    init(view: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil), hardwareWalletId: String? = nil) {
         initialRoute = view
+        self.hardwareWalletId = hardwareWalletId
     }
 }
 
 struct ReceiveSheetItem: SheetItem {
-    let id: SheetID = .receive
+    let id: UUID
     let size: SheetSize = .large
     let initialRoute: ReceiveRoute
+    let hardwareWalletId: String?
 
-    init(initialRoute: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil)) {
+    init(id: UUID = UUID(), initialRoute: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil), hardwareWalletId: String? = nil) {
+        self.id = id
         self.initialRoute = initialRoute
+        self.hardwareWalletId = hardwareWalletId
     }
 }
 
 struct ReceiveSheet: View {
     @EnvironmentObject private var tagManager: TagManager
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(TrezorManager.self) private var trezorManager
 
     let config: ReceiveSheetItem
 
@@ -45,9 +56,14 @@ struct ReceiveSheet: View {
                         viewForRoute(route)
                     }
             }
+            .id(config.id)
         }
         .offlineSheetOverlay(title: t("wallet__receive_bitcoin"))
+        .sheet(isPresented: reconnectPairingBinding) {
+            HardwarePairingSheet(config: HardwarePairingSheetItem())
+        }
         .onAppear {
+            navigationPath = []
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""
             tagManager.clearSelectedTags()
@@ -61,13 +77,31 @@ struct ReceiveSheet: View {
         }
     }
 
+    private var reconnectPairingBinding: Binding<Bool> {
+        Binding(
+            get: { trezorManager.showPairingCode },
+            set: { isPresented in
+                if !isPresented, trezorManager.showPairingCode {
+                    trezorManager.cancelPairingCode()
+                }
+            }
+        )
+    }
+
     @ViewBuilder
     private func viewForRoute(_ route: ReceiveRoute) -> some View {
         switch route {
         case let .qr(cjitInvoice, tab):
-            ReceiveQr(navigationPath: $navigationPath, cjitInvoice: cjitInvoice, tab: tab)
-        case .edit:
-            ReceiveEdit(navigationPath: $navigationPath)
+            ReceiveQr(
+                navigationPath: $navigationPath,
+                cjitInvoice: cjitInvoice,
+                tab: tab,
+                hardwareWalletId: config.hardwareWalletId
+            )
+        case let .edit(tab, onchainOnly, replacesCurrentQr):
+            ReceiveEdit(navigationPath: $navigationPath, sourceTab: tab, onchainOnly: onchainOnly, replacesCurrentQr: replacesCurrentQr) { draft in
+                navigationPath.append(.paymentRequestRecipient(draft))
+            }
         case .tag:
             ReceiveTag(navigationPath: $navigationPath)
         case .cjitAmount:
@@ -78,6 +112,49 @@ struct ReceiveSheet: View {
             ReceiveCjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditional)
         case .cjitGeoBlocked:
             ReceiveCjitGeoBlocked()
+        case let .requestOrPay(publicKey):
+            RequestOrPayView(publicKey: publicKey) { target in
+                navigationPath.append(.paymentRequestAmount(Self.defaultPaymentRequestDraft, target))
+            }
+        case let .paymentRequestRecipient(draft):
+            PaymentRequestRecipientView { target in
+                if draft.amountSats == 0 {
+                    navigationPath.append(.paymentRequestAmount(draft, target))
+                } else {
+                    navigationPath.append(.paymentRequestDetails(draft, target))
+                }
+            }
+        case let .paymentRequestAmount(draft, target):
+            PaymentRequestAmountView(initialDraft: draft, target: target) { updatedDraft in
+                navigationPath.append(.paymentRequestDetails(updatedDraft, target))
+            }
+        case let .paymentRequestDetails(draft, target):
+            PaymentRequestDetailsView(
+                initialDraft: draft,
+                target: target,
+                onEditAmount: { updatedDraft in
+                    if let route = navigationPath.last, case .paymentRequestDetails = route {
+                        navigationPath.removeLast()
+                    }
+                    if let route = navigationPath.last, case .paymentRequestAmount = route {
+                        navigationPath.removeLast()
+                    }
+                    navigationPath.append(.paymentRequestAmount(updatedDraft, target))
+                },
+                onSent: { request in
+                    navigationPath.append(.paymentRequestSent(request))
+                }
+            )
+        case let .paymentRequestSent(request):
+            PaymentRequestSentView(request: request)
         }
+    }
+
+    static var defaultPaymentRequestDraft: PaykitPaymentRequestDraft {
+        PaykitPaymentRequestDraft(
+            amountSats: 0,
+            note: "",
+            expiresAt: PaymentRequestExpiration.week.date(from: Date())
+        )
     }
 }

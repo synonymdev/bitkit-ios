@@ -6,8 +6,11 @@ struct TrezorPinPad: View {
     /// Current PIN being entered
     @Binding var pin: String
 
-    /// Maximum PIN length
-    var maxLength: Int = 9
+    /// Maximum PIN length. Trezor PINs can be up to 50 digits.
+    var maxLength: Int = 50
+
+    /// Number of entered-digit dots to render per row before wrapping.
+    private let dotsPerRow = 9
 
     /// PIN pad layout (positions map to device keypad)
     /// The Trezor shows scrambled numbers, we show only position dots
@@ -19,12 +22,30 @@ struct TrezorPinPad: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            // PIN display
-            HStack(spacing: 12) {
-                ForEach(0 ..< maxLength, id: \.self) { index in
-                    Circle()
-                        .fill(index < pin.count ? Color.white : Color.white.opacity(0.3))
-                        .frame(width: 12, height: 12)
+            // PIN display — one dot per entered digit, wrapping across rows so long
+            // PINs (Trezor allows up to 50 digits) don't overflow a single line.
+            VStack(spacing: 8) {
+                if pin.isEmpty {
+                    // Placeholder row so the layout doesn't collapse before entry.
+                    HStack(spacing: 12) {
+                        ForEach(0 ..< dotsPerRow, id: \.self) { _ in
+                            Circle()
+                                .fill(Color.white.opacity(0.3))
+                                .frame(width: 12, height: 12)
+                        }
+                    }
+                } else {
+                    let rowCount = (pin.count + dotsPerRow - 1) / dotsPerRow
+                    ForEach(0 ..< rowCount, id: \.self) { row in
+                        let dotsInRow = min(dotsPerRow, pin.count - row * dotsPerRow)
+                        HStack(spacing: 12) {
+                            ForEach(0 ..< dotsInRow, id: \.self) { _ in
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: 12, height: 12)
+                            }
+                        }
+                    }
                 }
             }
             .padding(.bottom, 24)

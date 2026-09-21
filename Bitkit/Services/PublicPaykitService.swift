@@ -1,12 +1,14 @@
 import BitkitCore
 import Foundation
 import LDKNode
+import Paykit
 
 enum PublicPaykitError: LocalizedError {
     case noSupportedEndpoint
     case walletNotReady
     case invalidPayload
     case routeHintsUnavailable
+    case publicationFailed
 
     var errorDescription: String? {
         switch self {
@@ -18,23 +20,63 @@ enum PublicPaykitError: LocalizedError {
             return "The public payment endpoint payload is invalid."
         case .routeHintsUnavailable:
             return "A reachable Lightning payment endpoint is not available yet."
+        case .publicationFailed:
+            return "Bitkit could not publish Paykit payment endpoints."
+        }
+    }
+}
+
+struct PrivatePaykitPaymentContext: Equatable {
+    let receiverPath: String
+    let paymentListVersion: UInt64
+}
+
+enum IncomingPaykitPaymentRequestFailureReason: String, Hashable {
+    case noSupportedEndpoint = "no_supported_endpoint"
+    case endpointNotPayable = "endpoint_not_payable"
+    case paymentDetailsPending = "payment_details_pending"
+    case invalidPaymentTarget = "invalid_payment_target"
+    case paymentTargetNotRoutable = "payment_target_not_routable"
+    case requestExpired = "request_expired"
+    case resolutionFailed = "resolution_failed"
+
+    var category: String {
+        switch self {
+        case .noSupportedEndpoint, .endpointNotPayable, .paymentDetailsPending, .resolutionFailed:
+            "resolution"
+        case .invalidPaymentTarget, .paymentTargetNotRoutable, .requestExpired:
+            "presentation"
         }
     }
 }
 
 enum PublicPaykitPaymentLaunchResult {
-    case opened(paymentRequest: String)
+    case opened(paymentRequest: String, privatePaymentContext: PrivatePaykitPaymentContext?)
     case noEndpoint
     case notOpened
+    case waitingForUpdatedPaymentList
 
     var contactPaymentFailureMessageKey: String? {
         switch self {
         case .opened:
             nil
-        case .noEndpoint:
+        case .noEndpoint, .waitingForUpdatedPaymentList:
             "slashtags__error_pay_empty_msg"
         case .notOpened:
             "slashtags__error_pay_not_opened_msg"
+        }
+    }
+
+    var incomingPaymentRequestFailureReason: IncomingPaykitPaymentRequestFailureReason? {
+        switch self {
+        case .opened:
+            nil
+        case .noEndpoint:
+            .noSupportedEndpoint
+        case .notOpened:
+            .endpointNotPayable
+        case .waitingForUpdatedPaymentList:
+            .paymentDetailsPending
         }
     }
 }
@@ -75,6 +117,27 @@ enum PublicPaykitService {
     static let publishingEnabledKey = "sharesPublicPaykitEndpoints"
     static let lightningPaymentOptionEnabledKey = "paykitPaymentOptionLightningEnabled"
     static let onchainPaymentOptionEnabledKey = "paykitPaymentOptionOnchainEnabled"
+    static let cleanupPendingKey = "publicPaykitCleanupPending"
+
+    static func setCleanupPending(_ isPending: Bool) {
+        UserDefaults.standard.set(isPending, forKey: cleanupPendingKey)
+    }
+
+    static var isCleanupPending: Bool {
+        UserDefaults.standard.bool(forKey: cleanupPendingKey)
+    }
+
+    enum PendingReconciliationMode: Equatable {
+        case publishEndpoints
+        case removePublishedState
+    }
+
+    static func pendingReconciliationMode(defaults: UserDefaults = .standard) -> PendingReconciliationMode {
+        if defaults.bool(forKey: publishingEnabledKey) {
+            return .publishEndpoints
+        }
+        return .removePublishedState
+    }
 
     enum MethodId: String, Hashable, CaseIterable {
         case bitcoinLightningBolt11 = "btc-lightning-bolt11"
@@ -180,18 +243,16 @@ enum PublicPaykitService {
         }
     }
 
-    struct EndpointSyncPlan: Equatable {
-        let endpointsToSet: [Endpoint]
-        let methodIdsToRemove: [MethodId]
-    }
-
     static func fetchPublicEndpoints(publicKey: String) async throws -> [Endpoint] {
         let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
-        let paymentEntries = try await PubkyService.getPaymentList(publicKey: normalizedKey)
+        let resolution = try await PaykitSdkService.shared.resolvePublicContactPayment(
+            counterparty: normalizedKey,
+            receiverPath: PaykitReceiverPath.wallet
+        )
         var endpointsByMethodId: [MethodId: Endpoint] = [:]
 
-        for entry in paymentEntries {
-            guard let endpoint = parseEndpoint(methodId: entry.methodId, endpointData: entry.endpointData) else {
+        for resolvedEndpoint in resolution.payableEndpoints {
+            guard let endpoint = parseEndpoint(identifier: resolvedEndpoint.identifier, payload: resolvedEndpoint.target.payload) else {
                 continue
             }
 
@@ -201,12 +262,19 @@ enum PublicPaykitService {
         return MethodId.payablePreferenceOrder.compactMap { endpointsByMethodId[$0] }
     }
 
-    static func parseEndpoint(methodId rawMethodId: String, endpointData: String) -> Endpoint? {
+    static func parseEndpoint(
+        methodId rawMethodId: String,
+        endpointData: String,
+        network: LDKNode.Network = Env.network
+    ) -> Endpoint? {
         guard let methodId = MethodId(rawValue: rawMethodId) else {
             return nil
         }
+        if let onchainNetwork = methodId.onchainNetwork, onchainNetwork != network {
+            return nil
+        }
 
-        guard let payload = parsePayload(endpointData) else {
+        guard let payload = PaykitIssuerInterop.parseEndpointPayload(endpointData) else {
             return nil
         }
 
@@ -217,6 +285,18 @@ enum PublicPaykitService {
             max: payload.max,
             rawPayload: endpointData
         )
+    }
+
+    static func parseEndpoint(identifier: String, payload: PaymentPayload) -> Endpoint? {
+        parseEndpoint(methodId: identifier, endpointData: payload.exportText())
+    }
+
+    static func parseEndpoint(candidate: PublicPaymentEndpointCandidate) -> Endpoint? {
+        parseEndpoint(identifier: candidate.identifier, payload: candidate.payload)
+    }
+
+    static func parseEndpoint(candidate: PrivatePaymentEndpointCandidate) -> Endpoint? {
+        parseEndpoint(identifier: candidate.identifier, payload: candidate.payload)
     }
 
     static func serializePayload(value: String) throws -> String {
@@ -234,30 +314,53 @@ enum PublicPaykitService {
     }
 
     @MainActor
-    static func syncPublishedEndpoints(wallet: WalletViewModel, publish: Bool) async throws {
+    static func syncPublishedEndpoints(
+        wallet: WalletViewModel,
+        publish: Bool
+    ) async throws {
         guard publish else {
-            try await removePublishedEndpoints()
+            var firstError: Error?
+            do {
+                try await removePublishedEndpoints()
+            } catch {
+                firstError = firstError ?? error
+            }
+            do {
+                try await syncLocalReceiverMarker(publicSharingEnabled: false)
+            } catch {
+                firstError = firstError ?? error
+            }
+            if let firstError {
+                throw firstError
+            }
             return
         }
 
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true)
+        try await syncLocalReceiverMarker(publicSharingEnabled: true)
         try await applyPublishedEndpoints(desiredEndpoints)
     }
 
     @MainActor
     static func syncCurrentPublishedEndpoints(wallet: WalletViewModel) async throws {
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false, requireEndpoint: false)
+        try await syncLocalReceiverMarker(publicSharingEnabled: true)
         try await applyPublishedEndpoints(desiredEndpoints)
     }
 
     static func removePublishedEndpoints() async throws {
-        try await endpointLock.withLock {
-            let existingMethodIds = try await currentPublishedMethodIds()
+        try await applyPublishedEndpoints([])
+    }
 
-            for methodId in methodIdsToRemoveWhenUnpublishing(existingMethodIds: existingMethodIds) {
-                try await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
-            }
-        }
+    static func syncLocalReceiverMarker(
+        publicSharingEnabled: Bool? = nil,
+        privateSharingEnabled: Bool? = nil
+    ) async throws {
+        let publicSharing = publicSharingEnabled ?? UserDefaults.standard.bool(forKey: publishingEnabledKey)
+        let privateSharing = privateSharingEnabled ?? UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
+        try await PaykitSdkService.shared.syncLocalReceiverMarker(
+            isDiscoverable: publicSharing || privateSharing
+        )
     }
 
     static func hasPayablePublicEndpoint(publicKey: String) async throws -> Bool {
@@ -292,7 +395,7 @@ enum PublicPaykitService {
             return endpoints.isEmpty ? .noEndpoint : .notOpened
         }
 
-        return .opened(paymentRequest: paymentRequest(from: payableEndpoints))
+        return .opened(paymentRequest: paymentRequest(from: payableEndpoints), privatePaymentContext: nil)
     }
 
     static func paymentRequest(from endpoints: [Endpoint]) -> String {
@@ -326,10 +429,6 @@ enum PublicPaykitService {
         return MethodId.onchainMethodId(network: network, scriptType: scriptType)
     }
 
-    static func methodIdsToRemoveWhenUnpublishing(existingMethodIds: Set<MethodId>) -> [MethodId] {
-        MethodId.publishableMethodIds.filter { existingMethodIds.contains($0) }
-    }
-
     static func isLightningPaymentOptionEnabled(defaults: UserDefaults = .standard) -> Bool {
         defaults.object(forKey: lightningPaymentOptionEnabledKey) as? Bool ?? true
     }
@@ -346,80 +445,13 @@ enum PublicPaykitService {
         return invoice.routeHints().contains { !$0.isEmpty }
     }
 
-    static func publishedEndpointSyncPlan(existingEndpoints: [MethodId: String], desiredEndpoints: [Endpoint]) -> EndpointSyncPlan {
-        let desiredMethodIds = Set(desiredEndpoints.map(\.methodId))
-        return EndpointSyncPlan(
-            endpointsToSet: desiredEndpoints.filter { existingEndpoints[$0.methodId] != $0.rawPayload },
-            methodIdsToRemove: MethodId.publishableMethodIds.filter { existingEndpoints[$0] != nil && !desiredMethodIds.contains($0) }
-        )
-    }
-
-    private struct ParsedPayload {
-        let value: String
-        let min: String?
-        let max: String?
-    }
-
-    private static func parsePayload(_ endpointData: String) -> ParsedPayload? {
-        let trimmedPayload = endpointData.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPayload.isEmpty else {
-            return nil
-        }
-
-        if let data = trimmedPayload.data(using: .utf8),
-           let payloadObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let value = (payloadObject["value"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !value.isEmpty
-        {
-            return ParsedPayload(
-                value: value,
-                min: payloadObject["min"] as? String,
-                max: payloadObject["max"] as? String
-            )
-        }
-
-        return nil
-    }
-
     private static func applyPublishedEndpoints(_ desiredEndpoints: [Endpoint]) async throws {
         try await endpointLock.withLock {
-            let existingEndpoints = try await currentPublishedEndpoints()
-            let plan = publishedEndpointSyncPlan(existingEndpoints: existingEndpoints, desiredEndpoints: desiredEndpoints)
-
-            for endpoint in plan.endpointsToSet {
-                try await PubkyService.setPaymentEndpoint(
-                    methodId: endpoint.methodId.rawValue,
-                    endpointData: endpoint.rawPayload
-                )
-            }
-
-            for methodId in plan.methodIdsToRemove {
-                try await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
+            let report = try await PaykitSdkService.shared.syncPublicEndpoints(desiredEndpoints)
+            guard report.failed.isEmpty else {
+                throw PublicPaykitError.publicationFailed
             }
         }
-    }
-
-    private static func currentPublishedMethodIds() async throws -> Set<MethodId> {
-        let endpoints = try await currentPublishedEndpoints()
-        return Set(endpoints.keys)
-    }
-
-    private static func currentPublishedEndpoints() async throws -> [MethodId: String] {
-        guard let publicKey = await PubkyService.currentPublicKey() else {
-            throw PubkyServiceError.sessionNotActive
-        }
-
-        let paymentEntries = try await PubkyService.getPaymentList(publicKey: publicKey)
-        var endpoints: [MethodId: String] = [:]
-        for entry in paymentEntries {
-            guard let methodId = MethodId(rawValue: entry.methodId) else {
-                continue
-            }
-
-            endpoints[methodId] = entry.endpointData
-        }
-
-        return endpoints
     }
 
     @MainActor

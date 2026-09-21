@@ -122,32 +122,46 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertTrue(settings.addressTypesToMonitor.contains(.taproot))
     }
 
-    // MARK: - isLastRequiredNativeWitnessWallet
+    // MARK: - Required refund address type
 
-    func testIsLastRequiredNativeWitnessWalletWhenOnlyNativeSegwit() {
+    func testNativeSegwitIsAlwaysRequiredForRefundMonitoring() {
         settings.addressTypesToMonitor = [.nativeSegwit]
-        XCTAssertTrue(settings.isLastRequiredNativeWitnessWallet(.nativeSegwit))
+        XCTAssertTrue(settings.isRequiredRefundAddressType(.nativeSegwit))
     }
 
-    func testIsLastRequiredNativeWitnessWalletWhenOnlyTaproot() {
+    func testTaprootDoesNotReplaceNativeSegwitRefundMonitoring() {
         settings.addressTypesToMonitor = [.taproot]
-        XCTAssertTrue(settings.isLastRequiredNativeWitnessWallet(.taproot))
+        XCTAssertFalse(settings.isRequiredRefundAddressType(.taproot))
     }
 
-    func testIsLastRequiredNativeWitnessWalletFalseForLegacy() {
+    func testLegacyIsNotRequiredForRefundMonitoring() {
         settings.addressTypesToMonitor = [.legacy]
-        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.legacy))
+        XCTAssertFalse(settings.isRequiredRefundAddressType(.legacy))
     }
 
-    func testIsLastRequiredNativeWitnessWalletFalseForNestedSegwit() {
+    func testNestedSegwitIsNotRequiredForRefundMonitoring() {
         settings.addressTypesToMonitor = [.nestedSegwit]
-        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.nestedSegwit))
+        XCTAssertFalse(settings.isRequiredRefundAddressType(.nestedSegwit))
     }
 
-    func testIsLastRequiredNativeWitnessWalletFalseWhenOtherNativeWitnessExists() {
+    func testNativeSegwitRemainsRequiredWhenTaprootIsMonitored() {
         settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
-        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.nativeSegwit))
-        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.taproot))
+        XCTAssertTrue(settings.isRequiredRefundAddressType(.nativeSegwit))
+        XCTAssertFalse(settings.isRequiredRefundAddressType(.taproot))
+    }
+
+    func testStartupStateNormalizesTaprootOnlyMonitoring() throws {
+        let suiteName = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set("taproot", forKey: "selectedAddressType")
+        defaults.set("taproot", forKey: "addressTypesToMonitor")
+
+        let state = LightningService.addressTypeStateFromUserDefaults(defaults)
+
+        XCTAssertEqual(state.selectedType, .taproot)
+        XCTAssertEqual(state.monitoredTypes, [.taproot, .nativeSegwit])
+        XCTAssertEqual(defaults.string(forKey: "addressTypesToMonitor"), "taproot,nativeSegwit")
     }
 
     // MARK: - resetToDefaults
@@ -185,6 +199,16 @@ final class AddressTypeSettingsTests: XCTestCase {
 
         XCTAssertEqual(UserDefaults.standard.string(forKey: "selectedAddressType"), "taproot")
         XCTAssertEqual(UserDefaults.standard.string(forKey: "addressTypesToMonitor"), "nativeSegwit,taproot")
+    }
+
+    func testRestoreSettingsDictionaryNormalizesTaprootOnlyMonitoring() {
+        settings.restoreSettingsDictionary([
+            "selectedAddressType": "taproot",
+            "addressTypesToMonitor": "taproot",
+        ])
+
+        XCTAssertEqual(settings.selectedAddressType, .taproot)
+        XCTAssertEqual(settings.addressTypesToMonitor, [.taproot, .nativeSegwit])
     }
 
     func testRestoreSettingsDictionaryFiltersInvalidAddressTypes() {
@@ -253,6 +277,8 @@ final class AddressTypeSettingsTests: XCTestCase {
         settings.addressTypesToMonitor = [.nativeSegwit, .taproot, .legacy]
         settings.hideBalance = true
         settings.enableQuickpay = true
+        settings.quickpayAmount = 1
+        settings.quickpayDailyLimitMultiplier = 10
         UserDefaults.standard.synchronize()
 
         let backupDict = settings.getSettingsDictionary()
@@ -274,5 +300,29 @@ final class AddressTypeSettingsTests: XCTestCase {
                        "hideBalance should survive full backup→reset→restore cycle")
         XCTAssertEqual(settings.enableQuickpay, true,
                        "enableQuickpay should survive full backup→reset→restore cycle")
+        XCTAssertEqual(settings.quickpayAmount, 1,
+                       "quickpayAmount should survive full backup→reset→restore cycle")
+        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 10,
+                       "quickpayDailyLimitMultiplier should survive full backup→reset→restore cycle")
+        XCTAssertEqual(backupDict["quickPayAmount"] as? Int, 1)
+        XCTAssertEqual(backupDict["quickPayDailyLimitMultiplier"] as? Int, 10)
+    }
+
+    func testRestoresQuickpayAmountFromAndroidKey() {
+        settings.restoreSettingsDictionary(["quickPayAmount": 1])
+
+        XCTAssertEqual(settings.quickpayAmount, 1)
+    }
+
+    func testRestoresDailyLimitMultiplierFromAndroidKey() {
+        settings.restoreSettingsDictionary(["quickPayDailyLimitMultiplier": 3])
+
+        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 3)
+    }
+
+    func testInvalidDailyLimitMultiplierFallsBackToDefault() {
+        settings.restoreSettingsDictionary(["quickPayDailyLimitMultiplier": 7])
+
+        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 5)
     }
 }

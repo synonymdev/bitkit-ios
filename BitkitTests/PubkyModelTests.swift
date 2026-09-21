@@ -14,7 +14,7 @@ final class PubkyModelTests: XCTestCase {
             status: nil
         )
 
-        XCTAssertEqual(profile.truncatedPublicKey, "pubk...2doK")
+        XCTAssertEqual(profile.truncatedPublicKey, "z6Mk...2doK")
     }
 
     func testTruncatedPublicKeyShortKey() {
@@ -65,7 +65,7 @@ final class PubkyModelTests: XCTestCase {
         let placeholder = PubkyProfile.placeholder(publicKey: "pubkyz6MkhaXgBZDvotDk")
 
         XCTAssertEqual(placeholder.publicKey, "pubkyz6MkhaXgBZDvotDk")
-        XCTAssertEqual(placeholder.name, "pubk...otDk")
+        XCTAssertEqual(placeholder.name, "z6Mk...otDk")
         XCTAssertTrue(placeholder.bio.isEmpty)
         XCTAssertNil(placeholder.imageUrl)
         XCTAssertTrue(placeholder.links.isEmpty)
@@ -97,6 +97,31 @@ final class PubkyModelTests: XCTestCase {
         XCTAssertEqual(profile.links.count, 1)
         XCTAssertEqual(profile.links.first?.label, "X")
         XCTAssertEqual(profile.status, "online")
+    }
+
+    func testProfileUsesFallbackNameWhenNameIsEmpty() {
+        let profile = PubkyProfile(
+            publicKey: "pk1",
+            name: "",
+            bio: "Bio",
+            imageUrl: "pubky://avatar",
+            links: [PubkyProfileLink(label: "Web", url: "https://example.com")],
+            status: "online"
+        )
+
+        let updated = profile.withNameFallback("Alice")
+
+        XCTAssertEqual(updated.name, "Alice")
+        XCTAssertEqual(updated.bio, "Bio")
+        XCTAssertEqual(updated.imageUrl, "pubky://avatar")
+        XCTAssertEqual(updated.links.count, 1)
+        XCTAssertEqual(updated.status, "online")
+    }
+
+    func testProfileKeepsExistingNameOverFallback() {
+        let profile = PubkyProfile(publicKey: "pk1", name: "Bob", bio: "", imageUrl: nil, links: [], status: nil)
+
+        XCTAssertEqual(profile.withNameFallback("Alice").name, "Bob")
     }
 
     // MARK: - PubkyContact

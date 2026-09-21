@@ -1,0 +1,16 @@
+<journey name="widgets intro">
+  <description>Precondition: onboarded dev wallet, widgets enabled, widgets intro unseen.</description>
+  <actions>
+    <action>Tap the menu icon</action>
+    <action>Tap "Widgets" (id "DrawerWidgets")</action>
+    <action>Verify the widgets intro screen (id "WidgetsOnboarding") is visible showing "Hello, Widgets", "View &amp; Organize", and "Add Widget"</action>
+    <action>Tap "Add Widget" (id "WidgetsOnboardingAddWidget") — this also marks the intro as seen, so the journey cannot be repeated without resetting hasSeenWidgetsIntro</action>
+    <action>Verify the "Add Widget" sheet is visible with "Bitcoin Price" and "Bitcoin Weather"</action>
+    <action>Verify the widgets intro remains visible behind the sheet backdrop at the top</action>
+    <action>Tap the "Bitcoin Weather" widget card (id "WidgetListItem-weather")</action>
+    <action>Verify the sheet navigates to "Bitcoin Weather" and "Save Widget" (id "WidgetSave") is visible</action>
+    <action>Tap "Save Widget" (id "WidgetSave")</action>
+    <action>Verify the wallet overview widgets section is visible</action>
+    <action>Verify "Bitcoin Weather" appears as the last widget in the current widget set</action>
+  </actions>
+</journey>

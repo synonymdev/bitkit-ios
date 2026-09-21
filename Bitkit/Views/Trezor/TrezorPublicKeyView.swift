@@ -155,7 +155,7 @@ private struct CopyableField: View {
             NavigationStack {
                 TrezorPublicKeyView()
             }
-            .environment(TrezorViewModel())
+            .environment(TrezorViewModel(connection: TrezorManager()))
         }
     }
 #endif

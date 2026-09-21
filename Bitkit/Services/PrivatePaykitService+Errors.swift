@@ -3,33 +3,105 @@ import LDKNode
 import Paykit
 
 enum PrivatePaykitError: LocalizedError {
+    case invalidPublicKey
     case privateUnavailable
-    case payloadTooLarge
-    case staleLinkState
+    case paymentListAlreadyConsumed
     case routeHintsUnavailable
 
     var errorDescription: String? {
         switch self {
+        case .invalidPublicKey:
+            "The contact public key is invalid."
         case .privateUnavailable:
             "Private Paykit is not available."
-        case .payloadTooLarge:
-            "The private Paykit payload is too large."
-        case .staleLinkState:
-            "The private Paykit link state changed."
+        case .paymentListAlreadyConsumed:
+            "Private payment details are no longer available."
         case .routeHintsUnavailable:
             "A reachable private Lightning endpoint is not available yet."
         }
     }
 }
 
-// MARK: - Error Classification
+enum PaykitResolutionFailureDiagnostics {
+    static func reason(for error: Error) -> String {
+        if let error = error as? PaykitError {
+            return paykitReason(error)
+        }
+        if let error = error as? PrivatePaykitError {
+            return privateReason(error)
+        }
+        if let error = error as? PublicPaykitError {
+            return publicReason(error)
+        }
+        return "unknown/\(String(reflecting: type(of: error)))"
+    }
+
+    private static func paykitReason(_ error: PaykitError) -> String {
+        switch error {
+        case let .Storage(code, _):
+            "storage/\(safeCode(code))"
+        case let .Identity(code, _):
+            "identity/\(safeCode(code))"
+        case let .Transport(code, _):
+            "transport/\(safeCode(code))"
+        case let .NotFound(code, _):
+            "not_found/\(safeCode(code))"
+        case let .Protocol(code, _):
+            "protocol/\(safeCode(code))"
+        case let .Policy(code, _):
+            "policy/\(safeCode(code))"
+        case let .PaymentAdapter(code, _):
+            "payment_adapter/\(safeCode(code))"
+        case let .RecoveryRequired(code, _):
+            "recovery_required/\(safeCode(code))"
+        }
+    }
+
+    private static func privateReason(_ error: PrivatePaykitError) -> String {
+        switch error {
+        case .invalidPublicKey:
+            "private/invalid_public_key"
+        case .privateUnavailable:
+            "private/unavailable"
+        case .paymentListAlreadyConsumed:
+            "private/payment_list_already_consumed"
+        case .routeHintsUnavailable:
+            "private/route_hints_unavailable"
+        }
+    }
+
+    private static func publicReason(_ error: PublicPaykitError) -> String {
+        switch error {
+        case .noSupportedEndpoint:
+            "public/no_supported_endpoint"
+        case .walletNotReady:
+            "public/wallet_not_ready"
+        case .invalidPayload:
+            "public/invalid_payload"
+        case .routeHintsUnavailable:
+            "public/route_hints_unavailable"
+        case .publicationFailed:
+            "public/publication_failed"
+        }
+    }
+
+    private static func safeCode(_ code: String) -> String {
+        guard !code.isEmpty,
+              code.utf8.count <= 64,
+              code.utf8.allSatisfy({ byte in
+                  byte == 45 || byte == 95 || (48 ... 57).contains(byte) || (97 ... 122).contains(byte)
+              })
+        else { return "unknown_code" }
+        return code
+    }
+}
+
+// MARK: - Error Helpers
 
 extension PrivatePaykitService {
     static func isDuplicatePaymentError(_ error: Error) -> Bool {
-        if let nodeError = error as? NodeError {
-            if case .DuplicatePayment = nodeError {
-                return true
-            }
+        if let nodeError = error as? NodeError, case .DuplicatePayment = nodeError {
+            return true
         }
 
         let reason: String = if let appError = error as? AppError {
@@ -42,71 +114,5 @@ extension PrivatePaykitService {
 
         let lowercasedReason = reason.lowercased()
         return lowercasedReason.contains("duplicate payment") || lowercasedReason.contains("duplicatepayment")
-    }
-
-    func shouldCountAsStaleLinkFailure(_ error: Error) -> Bool {
-        if let paykitError = error as? PaykitFfiError {
-            switch paykitError {
-            case let .Transport(reason):
-                return isNoiseStateFailure(reason) || isEncryptedLinkStateFailure(reason)
-            case let .InvalidData(reason), let .NotFound(reason), let .Validation(reason):
-                return isEncryptedLinkStateFailure(reason)
-            case .Session:
-                return false
-            }
-        }
-
-        let wrappedReason = staleLinkFailureReason(from: error)
-        return isNoiseStateFailure(wrappedReason) || isEncryptedLinkStateFailure(wrappedReason)
-    }
-
-    func staleLinkFailureReason(from error: Error) -> String {
-        if let appError = error as? AppError {
-            return [appError.message, appError.debugMessage]
-                .compactMap { $0 }
-                .joined(separator: " ")
-        }
-
-        return error.localizedDescription
-    }
-
-    func isNoiseStateFailure(_ reason: String) -> Bool {
-        let lowercasedReason = reason.lowercased()
-        return [
-            "decrypt",
-            "decryption",
-            "cipher",
-            "invalid tag",
-            "bad mac",
-        ].contains { lowercasedReason.contains($0) }
-    }
-
-    func isEncryptedLinkStateFailure(_ reason: String) -> Bool {
-        let lowercasedReason = reason.lowercased()
-        return [
-            "unknown encrypted-link handle",
-            "unknown encrypted link handle",
-            "encrypted-link handle is closed",
-            "encrypted link handle is closed",
-            "failed to restore encrypted link",
-            "encrypted link restore requires transport-phase snapshot",
-            "remote_pubkey does not match snapshot recipient",
-        ].contains { lowercasedReason.contains($0) }
-    }
-
-    func isEncryptedHandshakeStateFailure(_ error: Error) -> Bool {
-        let lowercasedReason = staleLinkFailureReason(from: error).lowercased()
-        return isNoiseStateFailure(lowercasedReason) ||
-            isEncryptedLinkStateFailure(lowercasedReason) ||
-            [
-                "restoreplayerror",
-                "handshake restore failed",
-            ].contains { lowercasedReason.contains($0) }
-    }
-
-    func isEncryptedHandshakePendingError(_ error: Error) -> Bool {
-        let lowercasedReason = staleLinkFailureReason(from: error).lowercased()
-        return lowercasedReason.contains("transition_transport failed") &&
-            lowercasedReason.contains("ishandshake")
     }
 }

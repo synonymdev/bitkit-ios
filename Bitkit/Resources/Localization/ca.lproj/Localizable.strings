@@ -850,7 +850,16 @@
 "wallet__tags_no" = "Cap etiqueta disponible encara";
 "wallet__toast_payment_success_title" = "Pagament enviat";
 "wallet__toast_payment_failed_title" = "Pagament fallit";
-"wallet__toast_payment_failed_description" = "El teu pagament instantani ha fallat. Si us plau, torna-ho a provar.";
+"wallet__payment_failed_description" = "El teu pagament instantani ha fallat. Si us plau, torna-ho a provar.";
+"wallet__payment_recipient_rejected" = "El destinatari ha rebutjat aquest pagament Lightning. Comprova la factura i torna-ho a provar.";
+"wallet__payment_abandoned" = "El pagament Lightning s'ha aturat abans de completar-se.";
+"wallet__payment_expired" = "Aquest pagament Lightning ha caducat. Demana una factura nova.";
+"wallet__payment_timeout" = "El pagament ha esgotat el temps d'espera. Torna-ho a provar.";
+"wallet__payment_route_not_found" = "Bitkit no ha pogut trobar cap ruta Lightning per a aquest pagament.";
+"wallet__payment_retries_exhausted" = "Bitkit ha provat diverses rutes Lightning, però el pagament no s'ha pogut completar.";
+"wallet__payment_unknown_required_features" = "Aquesta factura Lightning utilitza funcions que Bitkit encara no admet.";
+"wallet__payment_invoice_request_expired" = "Aquesta sol·licitud de factura Lightning ha caducat. Demana una factura nova.";
+"wallet__payment_invoice_request_rejected" = "El destinatari ha rebutjat aquesta sol·licitud de factura Lightning.";
 "wallet__toast_received_transaction_replaced_title" = "Transacció rebuda substituïda";
 "wallet__toast_received_transaction_replaced_description" = "La teva transacció rebuda s\'ha substituït per un augment de comissió";
 "wallet__toast_transaction_replaced_title" = "Transacció substituïda";
@@ -876,11 +885,14 @@
 "wallet__receive_connect_initial" = "Per configurar el teu saldo de despesa, es descomptarà una comissió de xarxa de <accent>{networkFee}</accent> i una comissió de proveïdor de servei de <accent>{serviceFee}</accent>.";
 "wallet__receive_connect_additional" = "Per rebre més Bitcoin instantani, Bitkit ha d\'augmentar la teva liquiditat. Una comissió de xarxa de <accent>{networkFee}</accent> i una comissió de proveïdor de servei de <accent>{serviceFee}</accent> es descomptaran de l\'import que has especificat.";
 "wallet__receive_liquidity__nav_title" = "Configuració del saldo de despesa";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit ha rebut una cotització de liquiditat no vàlida. Torna-ho a provar.";
 "wallet__receive_liquidity__text" = "El teu saldo de despesa utilitza Lightning Network per fer els teus pagaments més barats, ràpids i privats.\n\nAixò funciona com l\'accés a Internet, però pagues per liquiditat i encaminament en lloc d\'amplada de banda.\n\nAquesta configuració inclou alguns costos únics.";
 "wallet__receive_liquidity__text_additional" = "El teu saldo de despesa utilitza Lightning Network per fer els teus pagaments més barats, ràpids i privats.\n\nAixò funciona com l\'accés a Internet, però pagues per liquiditat i encaminament en lloc d\'amplada de banda.\n\nBitkit necessita augmentar la capacitat de recepció del teu saldo de despesa per processar aquest pagament.";
 "wallet__receive_liquidity__label" = "Liquiditat del saldo de despesa";
 "wallet__receive_liquidity__label_additional" = "Liquiditat addicional del saldo de despesa";
 "wallet__receive_cjit_error" = "Transacció fallida";
+"wallet__receive_cjit_error_node_capacity__title" = "Capacitat addicional no disponible";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit no pot afegir més capacitat de despesa a aquesta cartera ara mateix.";
 "wallet__receive_will" = "Rebràs";
 "wallet__minimum" = "MÍNIM";
 "wallet__activity" = "Activitat";
@@ -961,6 +973,7 @@
 "wallet__boost_fee_recomended" = "La teva transacció pot liquidar-se més ràpid si incloues una comissió de xarxa addicional. Aquí tens una recomanació:";
 "wallet__boost_swipe" = "Llisca per impulsar";
 "wallet__payment_received" = "Rebut Bitcoin";
+"wallet__payment_request" = "Sol·licitud de pagament";
 "wallet__instant_payment_received" = "Rebut Bitcoin instantani";
 "wallet__filter_title" = "Selecciona rang";
 "wallet__filter_clear" = "Neteja";
@@ -1014,3 +1027,4 @@
 "widgets__weather__condition__good__short_title" = "Favorables";
 "widgets__weather__condition__average__short_title" = "Mitjanes";
 "widgets__weather__condition__poor__short_title" = "Dolentes";
+"wallet__send_error_support" = "Contacta amb el suport";

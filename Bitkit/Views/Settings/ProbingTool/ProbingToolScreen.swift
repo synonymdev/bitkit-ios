@@ -249,29 +249,23 @@ struct ProbingToolScreen: View {
             let durationMs = Int(Date().timeIntervalSince(start) * 1000)
 
             if resolved.success {
-                let estimatedFee: UInt64? = switch target {
-                case let .invoice(bolt11, _):
-                    try? await lightningService.estimateRoutingFees(bolt11: bolt11, amountSats: amountSatsValue)
-                case .nodeId:
-                    nil
-                }
                 await MainActor.run {
                     probeResult = ProbeResult(
                         success: true,
                         durationMs: durationMs,
-                        estimatedFeeSats: estimatedFee,
+                        routeFeeMsat: resolved.routeFeeMsat,
                         errorMessage: nil
                     )
                 }
                 app.toast(type: .success, title: "Probe Successful", description: "Route verified in \(durationMs) ms")
             } else {
-                let scidText = resolved.shortChannelId.map(String.init) ?? "unknown"
+                let scidText = resolved.shortChannelId ?? "unknown"
                 let message = "Hash: \(resolved.paymentHash), SCID: \(scidText)"
                 await MainActor.run {
                     probeResult = ProbeResult(
                         success: false,
                         durationMs: durationMs,
-                        estimatedFeeSats: nil,
+                        routeFeeMsat: resolved.routeFeeMsat,
                         errorMessage: message
                     )
                 }
@@ -283,7 +277,7 @@ struct ProbingToolScreen: View {
                 probeResult = ProbeResult(
                     success: false,
                     durationMs: durationMs,
-                    estimatedFeeSats: nil,
+                    routeFeeMsat: nil,
                     errorMessage: error.localizedDescription
                 )
             }

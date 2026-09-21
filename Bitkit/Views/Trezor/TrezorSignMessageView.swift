@@ -369,7 +369,7 @@ private struct VerificationResultBanner: View {
             NavigationStack {
                 TrezorSignMessageView()
             }
-            .environment(TrezorViewModel())
+            .environment(TrezorViewModel(connection: TrezorManager()))
         }
     }
 #endif

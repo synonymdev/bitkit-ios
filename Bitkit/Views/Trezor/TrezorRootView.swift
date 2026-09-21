@@ -28,6 +28,7 @@ struct TrezorRootView: View {
                 }
             }
         }
+        .modifier(TrezorLifecycleModifier())
         .modifier(TrezorDialogsModifier())
     }
 }
@@ -56,20 +57,110 @@ extension View {
 /// Isolates the connected/disconnected toggle so only this view
 /// re-renders when connection state changes.
 private struct TrezorContentSwitcher: View {
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
         Group {
-            if trezor.isConnected {
+            if trezorManager.isConnected {
                 TrezorConnectedView()
             } else {
                 TrezorDeviceListView()
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: trezor.isConnected)
-        .task {
-            trezor.setup()
+        .animation(.easeInOut(duration: 0.25), value: trezorManager.isConnected)
+        .onChange(of: trezorManager.isConnected) { _, isConnected in
+            // Drop the previous wallet's dev-tool results on disconnect so a different/absent
+            // wallet never shows stale xpub/address/public-key data.
+            if !isConnected {
+                trezor.clearWalletResults()
+            }
         }
+        .onChange(of: trezorManager.walletMode) { _, _ in
+            // A wallet-mode switch rebinds the session to a different wallet but keeps the device
+            // connected, so the disconnect path above doesn't fire — clear results here too.
+            trezor.clearWalletResults()
+        }
+    }
+}
+
+// MARK: - Lifecycle Modifier
+
+/// Setup/teardown tied to the whole dashboard's lifetime. This must live on
+/// TrezorRootView's stable root: Group distributes modifiers to the active
+/// branch of TrezorContentSwitcher's conditional, so an onDisappear there fires
+/// on every connect/disconnect and would tear down watchers mid-session.
+/// The ViewModel is only accessed inside closures, so the root body still
+/// establishes no observation dependencies.
+private struct TrezorLifecycleModifier: ViewModifier {
+    @Environment(TrezorManager.self) private var trezorManager
+    @Environment(TrezorViewModel.self) private var trezor
+
+    func body(content: Content) -> some View {
+        content
+            .task {
+                trezorManager.setup()
+            }
+            .onDisappear {
+                // The ViewModel outlives this screen (app-lifetime), so watchers and
+                // their input state are torn down when the dashboard is dismissed —
+                // the iOS counterpart of Android's onCleared.
+                trezor.handleDashboardDismiss()
+            }
+    }
+}
+
+// MARK: - Dialogs Modifier
+
+/// Groups all sheet and overlay presentations that depend on ViewModel state, keeping
+/// TrezorRootView's body free of @Environment access. Dev-only: this is the independent PIN/passphrase
+/// path used by the Trezor dashboard / emulator testing. The user-facing hardware transfer flow relies
+/// on the on-connect flow (`HardwareConnectSheet`) and on-device PIN entry instead.
+private struct TrezorDialogsModifier: ViewModifier {
+    @Environment(TrezorManager.self) private var trezorManager
+
+    func body(content: Content) -> some View {
+        @Bindable var trezorManager = trezorManager
+        content
+            .sheet(isPresented: $trezorManager.showPinEntry) {
+                TrezorPinEntrySheet()
+            }
+            // Pairing code is presented app-wide via the SheetViewModel system (see MainNavView),
+            // so the home hardware feature shows it regardless of being on this dev screen.
+            .sheet(isPresented: $trezorManager.showPassphraseEntry) {
+                TrezorPassphraseSheet()
+            }
+            .confirmationDialog(
+                "Passphrase Entry",
+                isPresented: $trezorManager.showWalletModeChooser,
+                titleVisibility: .visible
+            ) {
+                Button("On this phone") {
+                    trezorManager.choosePhonePassphraseEntry()
+                }
+                .accessibilityIdentifier("TrezorWalletModeOnPhone")
+
+                Button("On the Trezor") {
+                    Task { await trezorManager.chooseDevicePassphraseEntry() }
+                }
+                .accessibilityIdentifier("TrezorWalletModeOnTrezor")
+
+                Button("Cancel", role: .cancel) {
+                    trezorManager.showWalletModeChooser = false
+                }
+            } message: {
+                Text("Where do you want to enter the passphrase for your hidden wallet?")
+            }
+            .overlay {
+                if trezorManager.showConfirmOnDevice {
+                    TrezorConfirmOnDeviceOverlay(
+                        message: trezorManager.confirmMessage,
+                        onCancel: {
+                            trezorManager.dismissConfirmOnDevice()
+                        }
+                    )
+                }
+            }
     }
 }
 
@@ -87,41 +178,10 @@ private struct TrezorDebugLogWrapper: View {
     }
 }
 
-// MARK: - Dialogs Modifier
-
-/// Groups all sheet and overlay presentations that depend on ViewModel state,
-/// keeping TrezorRootView's body free of @Environment access.
-private struct TrezorDialogsModifier: ViewModifier {
-    @Environment(TrezorViewModel.self) private var trezor
-
-    func body(content: Content) -> some View {
-        @Bindable var trezor = trezor
-        content
-            .sheet(isPresented: $trezor.showPinEntry) {
-                TrezorPinEntrySheet()
-            }
-            .sheet(isPresented: $trezor.showPairingCode) {
-                TrezorPairingCodeSheet()
-            }
-            .sheet(isPresented: $trezor.showPassphraseEntry) {
-                TrezorPassphraseSheet()
-            }
-            .overlay {
-                if trezor.showConfirmOnDevice {
-                    TrezorConfirmOnDeviceOverlay(
-                        message: trezor.confirmMessage,
-                        onCancel: {
-                            trezor.dismissConfirmOnDevice()
-                        }
-                    )
-                }
-            }
-    }
-}
-
 // MARK: - Network Selector
 
 private struct NetworkSelectorRow: View {
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(TrezorViewModel.self) private var trezor
 
     private let networks: [(TrezorCoinType, String)] = [
@@ -139,13 +199,13 @@ private struct NetworkSelectorRow: View {
             HStack(spacing: 8) {
                 ForEach(Array(networks.enumerated()), id: \.offset) { _, item in
                     let (network, label) = item
-                    Button(action: { trezor.setSelectedNetwork(network) }) {
+                    Button(action: { selectNetwork(network) }) {
                         Text(label)
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(trezor.selectedNetwork == network ? .white : .white.opacity(0.5))
+                            .foregroundColor(trezorManager.selectedNetwork == network ? .white : .white.opacity(0.5))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 6)
-                            .background(trezor.selectedNetwork == network ? Color.white.opacity(0.2) : Color.white.opacity(0.05))
+                            .background(trezorManager.selectedNetwork == network ? Color.white.opacity(0.2) : Color.white.opacity(0.05))
                             .clipShape(Capsule())
                     }
                     .accessibilityIdentifier("TrezorNetwork-\(label)")
@@ -156,12 +216,18 @@ private struct NetworkSelectorRow: View {
         .frame(maxWidth: .infinity)
         .background(Color.white.opacity(0.02))
     }
+
+    private func selectNetwork(_ network: TrezorCoinType) {
+        guard network != trezorManager.selectedNetwork else { return }
+        trezorManager.setSelectedNetwork(network)
+        trezor.handleNetworkChange()
+    }
 }
 
 // MARK: - PIN Entry Sheet
 
 struct TrezorPinEntrySheet: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(\.dismiss) private var dismiss
     @State private var pin: String = ""
 
@@ -190,7 +256,7 @@ struct TrezorPinEntrySheet: View {
             // Buttons
             HStack(spacing: 16) {
                 Button(action: {
-                    trezor.cancelPin()
+                    trezorManager.cancelPin()
                     dismiss()
                 }) {
                     Text("Cancel")
@@ -204,7 +270,7 @@ struct TrezorPinEntrySheet: View {
                 .accessibilityIdentifier("TrezorPinCancel")
 
                 Button(action: {
-                    trezor.submitPin(pin)
+                    trezorManager.submitPin(pin)
                     dismiss()
                 }) {
                     Text("Confirm")
@@ -232,7 +298,7 @@ struct TrezorPinEntrySheet: View {
 // MARK: - Pairing Code Sheet
 
 struct TrezorPairingCodeSheet: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(\.dismiss) private var dismiss
     @State private var code: String = ""
     @State private var hasSubmitted = false
@@ -264,7 +330,7 @@ struct TrezorPairingCodeSheet: View {
             // Buttons
             HStack(spacing: 16) {
                 Button(action: {
-                    trezor.cancelPairingCode()
+                    trezorManager.cancelPairingCode()
                     dismiss()
                 }) {
                     Text("Cancel")
@@ -280,7 +346,7 @@ struct TrezorPairingCodeSheet: View {
                 Button(action: {
                     guard !hasSubmitted else { return }
                     hasSubmitted = true
-                    trezor.submitPairingCode(code)
+                    trezorManager.submitPairingCode(code)
                     dismiss()
                 }) {
                     Text("Confirm")
@@ -306,7 +372,7 @@ struct TrezorPairingCodeSheet: View {
             if newValue.count == digitCount {
                 guard !hasSubmitted else { return }
                 hasSubmitted = true
-                trezor.submitPairingCode(newValue)
+                trezorManager.submitPairingCode(newValue)
                 dismiss()
             }
         }
@@ -316,7 +382,7 @@ struct TrezorPairingCodeSheet: View {
 // MARK: - Passphrase Sheet
 
 struct TrezorPassphraseSheet: View {
-    @Environment(TrezorViewModel.self) private var trezor
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(\.dismiss) private var dismiss
     @State private var passphrase: String = ""
     @State private var confirmPassphrase: String = ""
@@ -381,6 +447,16 @@ struct TrezorPassphraseSheet: View {
                         .font(.system(size: 14))
                         .foregroundColor(.red)
                 }
+
+                // Offer on-device entry when the connected Trezor supports it
+                if trezorManager.passphraseEntryCapable {
+                    CustomButton(title: "Enter on Trezor instead", variant: .tertiary) {
+                        dismiss()
+                        await trezorManager.chooseDevicePassphraseEntry()
+                    }
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("TrezorPassphraseUseDevice")
+                }
             }
             .padding(.horizontal, 16)
 
@@ -389,7 +465,7 @@ struct TrezorPassphraseSheet: View {
             // Buttons
             HStack(spacing: 16) {
                 Button(action: {
-                    trezor.cancelPassphrase()
+                    trezorManager.cancelPassphrase()
                     dismiss()
                 }) {
                     Text("Cancel")
@@ -403,8 +479,9 @@ struct TrezorPassphraseSheet: View {
                 .accessibilityIdentifier("TrezorPassphraseCancel")
 
                 Button(action: {
-                    trezor.submitPassphrase(passphrase)
+                    let entered = passphrase
                     dismiss()
+                    Task { await trezorManager.submitPassphrase(entered) }
                 }) {
                     Text("Confirm")
                         .font(.system(size: 16, weight: .semibold))
@@ -598,7 +675,8 @@ struct TrezorDebugLogPanel: View {
     struct TrezorRootView_Previews: PreviewProvider {
         static var previews: some View {
             TrezorRootView()
-                .environment(TrezorViewModel())
+                .environment(TrezorManager())
+                .environment(TrezorViewModel(connection: TrezorManager()))
         }
     }
 #endif

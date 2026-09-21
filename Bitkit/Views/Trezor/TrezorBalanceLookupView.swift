@@ -4,10 +4,14 @@ import SwiftUI
 /// Inline content for balance lookup, used by expandable section.
 struct TrezorBalanceLookupContent: View {
     @State private var input: String = ""
+    @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
+        @Bindable var trezor = trezor
         VStack(spacing: 24) {
             InputSection(input: $input)
+
+            TrezorAccountTypeSelector(selection: $trezor.onchainAccountTypeSelection)
 
             LookupButtonWrapper(input: input)
 
@@ -52,6 +56,7 @@ private struct LookupButtonWrapper: View {
 /// keeping the parent body free of ViewModel property accesses.
 private struct BalanceLookupResultsSection: View {
     let input: String
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(TrezorViewModel.self) private var trezor
 
     private var hasResults: Bool {
@@ -85,7 +90,7 @@ private struct BalanceLookupResultsSection: View {
                     isComposing: trezor.isComposing,
                     isOperating: trezor.isOperating,
                     isBroadcasting: trezor.isBroadcasting,
-                    isDeviceConnected: trezor.isConnected,
+                    isDeviceConnected: trezorManager.isConnected,
                     composeResult: trezor.composeResult,
                     signedTxResult: trezor.signedTxResult,
                     broadcastTxid: trezor.broadcastTxid,

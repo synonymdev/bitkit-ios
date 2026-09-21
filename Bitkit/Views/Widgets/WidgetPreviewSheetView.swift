@@ -6,11 +6,18 @@ struct WidgetPreviewSheetView: View {
     let type: WidgetType
     @Binding var navigationPath: [WidgetsRoute]
 
+    @Environment(HwWalletManager.self) private var hwWalletManager
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var suggestionsManager: SuggestionsManager
+    @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var widgets: WidgetsViewModel
+
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @State private var carouselPage: Int
     @State private var showDeleteAlert = false
@@ -53,6 +60,24 @@ struct WidgetPreviewSheetView: View {
 
     private var chosenSize: WidgetSize {
         carouselPage == 0 && supportsSmall ? .small : .wide
+    }
+
+    private var isPaykitUIActive: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    /// Whether the Suggestions widget would currently show no cards (mirrors what the live
+    /// `Suggestions` view renders, including the `pubkyProfile` completion check).
+    private var suggestionsAreEmpty: Bool {
+        Suggestions.visibleCards(
+            wallet: wallet,
+            app: app,
+            settings: settings,
+            suggestionsManager: suggestionsManager,
+            pubkyProfile: pubkyProfile,
+            hasHardwareWallet: !hwWalletManager.wallets.isEmpty,
+            isPaykitUIEnabled: isPaykitUIActive
+        ).isEmpty
     }
 
     var body: some View {
@@ -261,6 +286,9 @@ struct WidgetPreviewSheetView: View {
     // MARK: - Actions
 
     private func onSave() {
+        if type == .suggestions, suggestionsAreEmpty {
+            suggestionsManager.resetDismissed()
+        }
         widgets.saveWidget(type, size: chosenSize)
         sheets.hideSheet()
         navigation.reset()
@@ -557,7 +585,9 @@ private struct CalculatorWidePreview: View {
     private func fiatValue(for bitcoinValue: String) -> String {
         guard !bitcoinValue.isEmpty else { return "" }
         let sats = CalculatorWidgetFormatter.bitcoinValueToSats(bitcoinValue, displayUnit: currency.displayUnit)
-        if sats == 0 { return "0.00" }
+        if sats == 0 {
+            return "0.00"
+        }
         guard let converted = currency.convert(sats: sats) else { return "" }
         return CalculatorWidgetFormatter.fiatRawValue(from: converted.value)
     }
@@ -612,7 +642,9 @@ private struct CalculatorSmallPreview: View {
     private func fiatValue(for bitcoinValue: String) -> String {
         guard !bitcoinValue.isEmpty else { return "" }
         let sats = CalculatorWidgetFormatter.bitcoinValueToSats(bitcoinValue, displayUnit: currency.displayUnit)
-        if sats == 0 { return "0.00" }
+        if sats == 0 {
+            return "0.00"
+        }
         guard let converted = currency.convert(sats: sats) else { return "" }
         return CalculatorWidgetFormatter.fiatRawValue(from: converted.value)
     }

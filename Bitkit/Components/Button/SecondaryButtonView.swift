@@ -6,21 +6,27 @@ struct SecondaryButtonView: View {
     let icon: AnyView?
     let isDisabled: Bool
     let isPressed: Bool
+    var isLoading: Bool = false
+    let shouldExpand: Bool
 
     var body: some View {
         HStack(spacing: 8) {
-            if let icon {
+            if let icon, !isLoading {
                 icon
             }
 
-            if size == .small {
+            if isLoading {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: textColor))
+                    .frame(width: 20, height: 20)
+            } else if size == .small {
                 CaptionBText(title, textColor: textColor)
             } else {
                 BodySSBText(title, textColor: textColor)
             }
         }
-        .frame(maxWidth: size == .large ? .infinity : nil)
-        .frame(height: buttonHeight)
+        .frame(maxWidth: (size == .large || shouldExpand) ? .infinity : nil)
+        .frame(height: size.height)
         .padding(.horizontal, 16)
         .background(isPressed ? Color.white10 : Color.clear)
         .background(BlurView())
@@ -30,18 +36,13 @@ struct SecondaryButtonView: View {
     }
 
     private var textColor: Color {
-        isDisabled ? .white32 : .white80
+        guard !isDisabled else { return .white32 }
+        return size == .small ? .white64 : .white80
     }
 
     private var borderColor: Color {
-        isDisabled ? .clear : .gray4
-    }
-
-    private var buttonHeight: CGFloat {
-        switch size {
-        case .small: 37
-        case .large: 56
-        }
+        guard !isDisabled else { return .clear }
+        return size == .small ? .white16 : .gray4
     }
 
     private var strokeWidth: CGFloat {

@@ -2,15 +2,19 @@ import SwiftUI
 
 struct AddTagConfig {
     let activityId: String
+    /// Wallet scoping the activity — an activity id is only unique within its wallet, so this is
+    /// required rather than defaulted: a defaulted scope would silently address the normal wallet.
+    let walletId: String
 }
 
 struct AddTagSheetItem: SheetItem, Equatable {
     let id: SheetID = .addTag
     let size: SheetSize = .small
     let activityId: String
+    let walletId: String
 
     static func == (lhs: AddTagSheetItem, rhs: AddTagSheetItem) -> Bool {
-        return lhs.activityId == rhs.activityId
+        return lhs.activityId == rhs.activityId && lhs.walletId == rhs.walletId
     }
 }
 
@@ -59,7 +63,7 @@ struct AddTagSheet: View {
 
         do {
             tagManager.addToLastUsedTags(tag)
-            try await activityListViewModel.appendTags(toActivity: config.activityId, tags: [tag])
+            try await activityListViewModel.appendTags(toActivity: config.activityId, tags: [tag], walletId: config.walletId)
             sheets.hideSheet()
         } catch {
             app.toast(type: .error, title: "Failed to add tag", description: error.localizedDescription)

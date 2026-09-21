@@ -26,9 +26,8 @@ final class TrezorTransport: TrezorTransportCallback {
 
     // MARK: - Debug Logging
 
-    /// Log to both Logger and in-app TrezorDebugLog
+    /// Log to the in-app Trezor debug panel only (not persisted to disk via Logger).
     private func debugLog(_ message: String) {
-        Logger.debug(message, context: "TrezorTransport")
         TrezorDebugLog.shared.log("[FFI] \(message)")
     }
 
@@ -86,10 +85,10 @@ final class TrezorTransport: TrezorTransportCallback {
                 throw error
             }
 
-            return TrezorTransportWriteResult(success: true, error: "")
+            return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
         } catch {
             debugLog("openDevice FAILED: \(error.localizedDescription)")
-            return TrezorTransportWriteResult(success: false, error: error.localizedDescription)
+            return TrezorTransportWriteResult(success: false, error: error.localizedDescription, errorCode: nil)
         }
     }
 
@@ -102,11 +101,11 @@ final class TrezorTransport: TrezorTransportCallback {
         }
 
         guard path.hasPrefix("ble:") else {
-            return TrezorTransportWriteResult(success: false, error: "Invalid device path: \(path)")
+            return TrezorTransportWriteResult(success: false, error: "Invalid device path: \(path)", errorCode: nil)
         }
 
         bleManager.disconnect(path: path)
-        return TrezorTransportWriteResult(success: true, error: "")
+        return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
     }
 
     /// Read a chunk of data from the device
@@ -123,10 +122,10 @@ final class TrezorTransport: TrezorTransportCallback {
             let data = try bleManager.readChunk(path: path)
             debugLog("readChunk: \(data.count) bytes")
 
-            return TrezorTransportReadResult(success: true, data: data, error: "")
+            return TrezorTransportReadResult(success: true, data: data, error: "", errorCode: nil)
         } catch {
             debugLog("readChunk FAILED: \(error.localizedDescription)")
-            return TrezorTransportReadResult(success: false, data: Data(), error: error.localizedDescription)
+            return TrezorTransportReadResult(success: false, data: Data(), error: error.localizedDescription, errorCode: nil)
         }
     }
 
@@ -162,10 +161,10 @@ final class TrezorTransport: TrezorTransportCallback {
                 throw error
             }
 
-            return TrezorTransportWriteResult(success: true, error: "")
+            return TrezorTransportWriteResult(success: true, error: "", errorCode: nil)
         } catch {
             debugLog("writeChunk FAILED: \(error.localizedDescription)")
-            return TrezorTransportWriteResult(success: false, error: error.localizedDescription)
+            return TrezorTransportWriteResult(success: false, error: error.localizedDescription, errorCode: nil)
         }
     }
 
@@ -197,6 +196,10 @@ final class TrezorTransport: TrezorTransportCallback {
         pairingCodeLock.lock()
         submittedPairingCode = ""
         pairingCodeLock.unlock()
+
+        // Drain any leftover signal from a prior (cancelled/submitted) pairing so this request
+        // doesn't return an empty code instantly and abort the handshake mid-pairing.
+        while pairingCodeSemaphore.wait(timeout: DispatchTime.now()) == .success {}
 
         // Notify UI to show pairing code dialog
         DispatchQueue.main.async {
@@ -268,9 +271,8 @@ final class TrezorTransport: TrezorTransportCallback {
         return result
     }
 
-    /// Forward Rust-level debug messages to Logger and TrezorDebugLog
+    /// Forward Rust-level debug messages to the in-app Trezor debug panel only.
     func logDebug(tag: String, message: String) {
-        Logger.debug("[\(tag)] \(message)", context: "TrezorTransport")
         TrezorDebugLog.shared.log("[\(tag)] \(message)")
     }
 
@@ -303,6 +305,12 @@ final class TrezorTransport: TrezorTransportCallback {
     /// Get Bluetooth state
     var bluetoothState: CBManagerState {
         bleManager.bluetoothState
+    }
+
+    /// Emits a device path when an established BLE connection drops unexpectedly
+    /// (out of range or phone Bluetooth turned off).
+    var externalDisconnectPublisher: PassthroughSubject<String, Never> {
+        bleManager.externalDisconnectPublisher
     }
 
     var isBridgeEnabled: Bool {

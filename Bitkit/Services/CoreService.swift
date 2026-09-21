@@ -2,6 +2,19 @@ import BitkitCore
 import Combine
 import Foundation
 import LDKNode
+import os
+
+/// Wallet scoping for bitkit-core's wallet-scoped activity storage (added in core 0.3.x).
+/// The app's normal on-chain/Lightning wallet uses the core default (`"bitkit"`); paired
+/// hardware wallets use their own derived id (see `HwWalletId`).
+///
+/// Defined here (rather than its own file) because `CoreService.swift` is shared with the
+/// notification and widget extension targets, so the type must live in a file those targets
+/// already compile.
+enum WalletScope {
+    /// The default Bitkit wallet id (`DEFAULT_WALLET_ID` in bitkit-core).
+    static let `default`: String = getDefaultWalletId()
+}
 
 // MARK: - Local Types (removed from BitkitCore in Trezor module rewrite)
 
@@ -30,6 +43,12 @@ class ActivityService {
         activitiesChangedSubject.eraseToAnyPublisher()
     }
 
+    /// Notify observers that activities changed after a write made directly through BitkitCore
+    /// (bypassing this service), e.g. hardware-wallet watcher persistence.
+    func notifyActivitiesChanged() {
+        activitiesChangedSubject.send()
+    }
+
     private let metadataChangedSubject = PassthroughSubject<Void, Never>()
 
     var metadataChangedPublisher: AnyPublisher<Void, Never> {
@@ -53,26 +72,38 @@ class ActivityService {
 
     // MARK: - BoostTxIds Cache
 
-    /// Cached set of transaction IDs that appear in boostTxIds (for filtering replaced transactions)
-    private var cachedTxIdsInBoostTxIds: Set<String> = []
+    /// Cached transaction IDs that appear in boostTxIds, per wallet id (for filtering replaced
+    /// transactions). Scoped because a boost chain only ever exists within one wallet.
+    ///
+    /// Lock-guarded rather than actor- or `MainActor`-isolated: `updateBoostTxIdsCache` is called
+    /// from inside the synchronous `ServiceQueue.background(.core)` blocks below, which must stay
+    /// non-async (see `replaceHwSnapshot`), while readers run on whichever executor calls
+    /// `getTxIdsInBoostTxIds`. Never hold the lock across an `await`.
+    private let cachedTxIdsInBoostTxIds = OSAllocatedUnfairLock(initialState: [String: Set<String>]())
 
     /// Get the set of transaction IDs that appear in boostTxIds (cached for performance)
-    func getTxIdsInBoostTxIds() async -> Set<String> {
-        if cachedTxIdsInBoostTxIds.isEmpty {
-            await refreshBoostTxIdsCache()
+    func getTxIdsInBoostTxIds(walletId: String = WalletScope.default) async -> Set<String> {
+        if let cached = cachedTxIdsInBoostTxIds.withLock({ $0[walletId] }) {
+            return cached
         }
-        return cachedTxIdsInBoostTxIds
+        await refreshBoostTxIdsCache(walletId: walletId)
+        return cachedTxIdsInBoostTxIds.withLock { $0[walletId] ?? [] }
     }
 
     private func updateBoostTxIdsCache(for activity: Activity) {
-        if case let .onchain(onchain) = activity {
-            cachedTxIdsInBoostTxIds.formUnion(onchain.boostTxIds)
+        guard case let .onchain(onchain) = activity, !onchain.boostTxIds.isEmpty else { return }
+        cachedTxIdsInBoostTxIds.withLock {
+            // Only merge into an already-warmed wallet. Seeding a cold one would make
+            // `getTxIdsInBoostTxIds` treat this single activity's ids as the whole set and skip its
+            // refresh, so the rest of the wallet's boost chain would be invisible.
+            guard $0[onchain.walletId] != nil else { return }
+            $0[onchain.walletId, default: []].formUnion(onchain.boostTxIds)
         }
     }
 
-    private func refreshBoostTxIdsCache() async {
+    private func refreshBoostTxIdsCache(walletId: String = WalletScope.default) async {
         do {
-            let allOnchainActivities = try await get(filter: .onchain)
+            let allOnchainActivities = try await get(filter: .onchain, walletId: walletId)
             var txIds: Set<String> = []
             for activity in allOnchainActivities {
                 if case let .onchain(onchain) = activity {
@@ -80,11 +111,9 @@ class ActivityService {
                 }
             }
             let txIdsToCache = txIds
-            await MainActor.run {
-                self.cachedTxIdsInBoostTxIds = txIdsToCache
-            }
+            cachedTxIdsInBoostTxIds.withLock { $0[walletId] = txIdsToCache }
         } catch {
-            Logger.error("Failed to refresh boostTxIds cache: \(error)", context: "ActivityService")
+            Logger.error("Failed to refresh boostTxIds cache for '\(walletId)': \(error)", context: "ActivityService")
         }
     }
 
@@ -110,6 +139,7 @@ class ActivityService {
         }
 
         return BitkitCore.TransactionDetails(
+            walletId: WalletScope.default,
             txId: txid,
             amountSats: details.amountSats,
             inputs: inputs,
@@ -126,17 +156,17 @@ class ActivityService {
         }
     }
 
-    func getTransactionDetails(txid: String) async throws -> BitkitCore.TransactionDetails? {
+    func getTransactionDetails(txid: String, walletId: String = WalletScope.default) async throws -> BitkitCore.TransactionDetails? {
         try await ServiceQueue.background(.core) {
-            try BitkitCore.getTransactionDetails(txId: txid)
+            try BitkitCore.getTransactionDetails(walletId: walletId, txId: txid)
         }
     }
 
     // MARK: - Seen Tracking
 
-    func isActivitySeen(id: String) async -> Bool {
+    func isActivitySeen(id: String, walletId: String = WalletScope.default) async -> Bool {
         do {
-            if let activity = try getActivityById(activityId: id) {
+            if let activity = try getActivityById(walletId: walletId, activityId: id) {
                 switch activity {
                 case let .onchain(onchain):
                     return onchain.seenAt != nil
@@ -150,17 +180,17 @@ class ActivityService {
         return false
     }
 
-    func isOnchainActivitySeen(txid: String) async -> Bool {
-        let activity = try? await getOnchainActivityByTxId(txid: txid)
+    func isOnchainActivitySeen(txid: String, walletId: String = WalletScope.default) async -> Bool {
+        let activity = try? await getOnchainActivityByTxId(txid: txid, walletId: walletId)
         return activity?.seenAt != nil
     }
 
-    func markActivityAsSeen(id: String, seenAt: UInt64? = nil) async {
+    func markActivityAsSeen(id: String, walletId: String = WalletScope.default, seenAt: UInt64? = nil) async {
         let timestamp = seenAt ?? UInt64(Date().timeIntervalSince1970)
 
         do {
             try await ServiceQueue.background(.core) {
-                try BitkitCore.markActivityAsSeen(activityId: id, seenAt: timestamp)
+                try BitkitCore.markActivityAsSeen(walletId: walletId, activityId: id, seenAt: timestamp)
                 self.activitiesChangedSubject.send()
             }
         } catch {
@@ -168,40 +198,44 @@ class ActivityService {
         }
     }
 
-    func markOnchainActivityAsSeen(txid: String, seenAt: UInt64? = nil) async {
+    func markOnchainActivityAsSeen(txid: String, walletId: String = WalletScope.default, seenAt: UInt64? = nil) async {
         do {
-            guard let activity = try await getOnchainActivityByTxId(txid: txid) else {
+            guard let activity = try await getOnchainActivityByTxId(txid: txid, walletId: walletId) else {
                 return
             }
-            await markActivityAsSeen(id: activity.id, seenAt: seenAt)
+            await markActivityAsSeen(id: activity.id, walletId: activity.walletId, seenAt: seenAt)
         } catch {
             Logger.error("Failed to mark onchain activity for \(txid) as seen: \(error)", context: "ActivityService")
         }
     }
 
+    /// Marks every unseen activity across all wallets as seen, each under its own wallet id.
     func markAllUnseenActivitiesAsSeen() async {
         let timestamp = UInt64(Date().timeIntervalSince1970)
 
         do {
-            let activities = try await get()
+            let activities = try await get(walletId: nil)
             var didMarkAny = false
 
             for activity in activities {
                 let id: String
+                let walletId: String
                 let isSeen: Bool
 
                 switch activity {
                 case let .onchain(onchain):
                     id = onchain.id
+                    walletId = onchain.walletId
                     isSeen = onchain.seenAt != nil
                 case let .lightning(lightning):
                     id = lightning.id
+                    walletId = lightning.walletId
                     isSeen = lightning.seenAt != nil
                 }
 
                 if !isSeen {
                     try await ServiceQueue.background(.core) {
-                        try BitkitCore.markActivityAsSeen(activityId: id, seenAt: timestamp)
+                        try BitkitCore.markActivityAsSeen(walletId: walletId, activityId: id, seenAt: timestamp)
                     }
                     didMarkAny = true
                 }
@@ -290,19 +324,19 @@ class ActivityService {
 
     /// Get doesExist status for boostTxIds to determine RBF vs CPFP. RBF transactions have doesExist = false (replaced), CPFP transactions have
     /// doesExist = true (child transactions).
-    func getBoostTxDoesExist(boostTxIds: [String]) async -> [String: Bool] {
+    func getBoostTxDoesExist(boostTxIds: [String], walletId: String = WalletScope.default) async -> [String: Bool] {
         var doesExistMap: [String: Bool] = [:]
         for boostTxId in boostTxIds {
-            if let boostActivity = try? await getOnchainActivityByTxId(txid: boostTxId) {
+            if let boostActivity = try? await getOnchainActivityByTxId(txid: boostTxId, walletId: walletId) {
                 doesExistMap[boostTxId] = boostActivity.doesExist
             }
         }
         return doesExistMap
     }
 
-    func isCpfpChildTransaction(txId: String) async -> Bool {
-        guard await getTxIdsInBoostTxIds().contains(txId),
-              let activity = try? await getOnchainActivityByTxId(txid: txId)
+    func isCpfpChildTransaction(txId: String, walletId: String = WalletScope.default) async -> Bool {
+        guard await getTxIdsInBoostTxIds(walletId: walletId).contains(txId),
+              let activity = try? await getOnchainActivityByTxId(txid: txId, walletId: walletId)
         else {
             return false
         }
@@ -314,23 +348,30 @@ class ActivityService {
         addressSearchCoordinator = AddressSearchCoordinator()
     }
 
+    /// Deletes every activity in every wallet, including paired hardware wallets.
     func removeAll() async throws {
         try await ServiceQueue.background(.core) {
             // Get all activities and delete them one by one
             let activities = try getActivities(
-                filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil
+                walletId: nil,
+                filter: .all,
+                txType: nil,
+                tags: nil,
+                search: nil,
+                minDate: nil,
+                maxDate: nil,
+                limit: nil,
+                sortDirection: nil
             )
             for activity in activities {
-                let id: String = switch activity {
-                case let .lightning(ln): ln.id
-                case let .onchain(on): on.id
-                }
-
-                _ = try deleteActivityById(activityId: id)
+                _ = try deleteActivityById(
+                    walletId: ActivityScope.walletId(of: activity),
+                    activityId: ActivityScope.id(of: activity)
+                )
             }
 
             // Clear cache since all activities are deleted
-            self.cachedTxIdsInBoostTxIds.removeAll()
+            self.cachedTxIdsInBoostTxIds.withLock { $0.removeAll() }
             self.activitiesChangedSubject.send()
         }
     }
@@ -347,6 +388,117 @@ class ActivityService {
         try await ServiceQueue.background(.core) {
             try upsertActivities(activities: activities)
             await self.refreshBoostTxIdsCache()
+            self.activitiesChangedSubject.send()
+        }
+    }
+
+    /// Replace the complete stored on-chain snapshot for a watch-only hardware wallet.
+    ///
+    /// `pruneMissing` must be false unless `activities` merges *every* watcher belonging to the
+    /// wallet: anything scoped to `walletId` that a prunable snapshot no longer contains is deleted,
+    /// which is how a reorged or replaced transaction stops showing. Locally written transfer
+    /// metadata survives either way (see `HwSnapshotMerge`).
+    func replaceHwSnapshot(
+        walletId: String,
+        activities: [Activity],
+        transactionDetails: [BitkitCore.TransactionDetails],
+        pruneMissing: Bool,
+        transferChannelIdsByFundingTxId: [String: String] = [:]
+    ) async throws {
+        // The closure must stay non-async. `ServiceQueue.background`'s async overload is
+        // `queue.async { Task { … } }`, whose Task hops straight off the core queue — the
+        // read → delete → upsert below would then run unserialized, and a concurrent
+        // `markOnchainActivityAsTransfer` could interleave with it. Anything needing `await` runs
+        // after this returns.
+        let removedActivities = try await ServiceQueue.background(.core) {
+            return try Self.applyHwSnapshot(
+                walletId: walletId,
+                activities: activities,
+                transactionDetails: transactionDetails,
+                pruneMissing: pruneMissing,
+                currentTimestamp: UInt64(Date().timeIntervalSince1970),
+                transferChannelIdsByFundingTxId: transferChannelIdsByFundingTxId
+            )
+        }
+
+        // Rows may have been pruned, so drop the cached set rather than rebuilding it here: a
+        // rebuild is a full-wallet scan on every watcher poll, hardware rows never carry boostTxIds
+        // (boosting is gated off for watch-only wallets), and `getTxIdsInBoostTxIds` rebuilds
+        // lazily on the next read. Rebuilding inside the block above would also deadlock — it
+        // re-enters the core queue.
+        cachedTxIdsInBoostTxIds.withLock { $0[walletId] = nil }
+        activitiesChangedSubject.send()
+
+        // A deletion cascades into `activity_tags`, so the metadata envelope carrying this wallet's
+        // tags is now stale. A plain upsert cannot drop a tag, which is why the ordinary watcher
+        // poll must not re-upload it.
+        if removedActivities {
+            metadataChangedSubject.send()
+        }
+    }
+
+    /// One core-queue transaction: read what is stored, then apply the plan. Deliberately non-async
+    /// and static, so it cannot reach instance state and reintroduce an `await` in the queue block.
+    /// Returns whether any activity was deleted; the caller turns that into the metadata backup
+    /// signal, since it cannot reach `metadataChangedSubject` from here.
+    private static func applyHwSnapshot(
+        walletId: String,
+        activities: [Activity],
+        transactionDetails: [BitkitCore.TransactionDetails],
+        pruneMissing: Bool,
+        currentTimestamp: UInt64,
+        transferChannelIdsByFundingTxId: [String: String]
+    ) throws -> Bool {
+        let plan = try HwSnapshotMerge.plan(
+            existing: storedOnchainActivities(walletId: walletId),
+            incoming: activities,
+            pruneMissing: pruneMissing,
+            currentTimestamp: currentTimestamp,
+            transferChannelIdsByFundingTxId: transferChannelIdsByFundingTxId
+        )
+
+        for activity in plan.toDelete {
+            _ = try deleteActivityById(walletId: walletId, activityId: activity.id)
+            _ = try deleteTransactionDetails(walletId: walletId, txId: activity.txId)
+        }
+
+        if !plan.toUpsert.isEmpty {
+            try upsertActivities(activities: plan.toUpsert)
+        }
+
+        if !transactionDetails.isEmpty {
+            try upsertTransactionDetails(detailsList: transactionDetails)
+        }
+
+        return !plan.toDelete.isEmpty
+    }
+
+    private static func storedOnchainActivities(walletId: String) throws -> [OnchainActivity] {
+        try getActivities(
+            walletId: walletId,
+            filter: .onchain,
+            txType: nil,
+            tags: nil,
+            search: nil,
+            minDate: nil,
+            maxDate: nil,
+            limit: nil,
+            sortDirection: nil
+        ).compactMap { activity in
+            guard case let .onchain(onchain) = activity else { return nil }
+            return onchain
+        }
+    }
+
+    /// Delete every activity scoped to a watch-only hardware wallet, e.g. when the device is
+    /// unpaired. Returns the number of rows removed.
+    @discardableResult
+    func deleteByWalletId(_ walletId: String) async throws -> UInt32 {
+        try await ServiceQueue.background(.core) {
+            let deleted = try deleteActivitiesByWalletId(walletId: walletId)
+            self.activitiesChangedSubject.send()
+            self.notifyHardwareTagsChanged(walletId: walletId)
+            return deleted
         }
     }
 
@@ -379,13 +531,17 @@ class ActivityService {
         let paymentTimestamp = payment.latestUpdateTimestamp
 
         // Look for existing activity by id first, then by txid (for migrated activities)
-        var existingActivity = try getActivityById(activityId: payment.id)
+        var existingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id)
         if existingActivity == nil {
-            existingActivity = try BitkitCore.getActivityByTxId(txId: txid).map { .onchain($0) }
+            existingActivity = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txid).map { .onchain($0) }
         }
 
         // Determine if confirmation status is changing
-        let ldkConfirmed = if case .confirmed = txStatus { true } else { false }
+        let ldkConfirmed = if case .confirmed = txStatus {
+            true
+        } else {
+            false
+        }
 
         // Skip if existing activity has newer timestamp, unless confirmation status is changing
         if let existingActivity, case let .onchain(existing) = existingActivity {
@@ -483,6 +639,7 @@ class ActivityService {
         }()
 
         let onchain = OnchainActivity(
+            walletId: WalletScope.default,
             id: payment.id,
             txType: payment.direction == .outbound ? .sent : .received,
             txId: txid,
@@ -699,8 +856,12 @@ class ActivityService {
         guard !(payment.status == .pending && payment.direction == .inbound) else { return }
 
         let paymentTimestamp = UInt64(payment.latestUpdateTimestamp)
-        let existingActivity = try getActivityById(activityId: payment.id)
-        let existingLightning: LightningActivity? = if let existingActivity, case let .lightning(ln) = existingActivity { ln } else { nil }
+        let existingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id)
+        let existingLightning: LightningActivity? = if let existingActivity, case let .lightning(ln) = existingActivity {
+            ln
+        } else {
+            nil
+        }
 
         let state: BitkitCore.PaymentState = switch payment.status {
         case .failed: .failed
@@ -727,6 +888,7 @@ class ActivityService {
         }
 
         let ln = LightningActivity(
+            walletId: WalletScope.default,
             id: payment.id,
             txType: payment.direction == .outbound ? .sent : .received,
             status: state,
@@ -770,7 +932,7 @@ class ActivityService {
             for payment in payments {
                 if case let .onchain(txid, _) = payment.kind {
                     do {
-                        let hadExistingActivity = try getActivityById(activityId: payment.id) != nil
+                        let hadExistingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id) != nil
                         try await self.processOnchainPayment(payment, transactionDetails: nil)
                         if hadExistingActivity {
                             updatedCount += 1
@@ -783,7 +945,7 @@ class ActivityService {
                     }
                 } else if case .bolt11 = payment.kind {
                     do {
-                        let hadExistingActivity = try getActivityById(activityId: payment.id) != nil
+                        let hadExistingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id) != nil
                         try await self.processLightningPayment(payment)
                         if hadExistingActivity {
                             updatedCount += 1
@@ -809,9 +971,11 @@ class ActivityService {
 
     /// Marks replacement transactions (with originalTxId in boostTxIds) as doesExist = false when original confirms
     /// Finds the channel ID associated with a transaction based on its direction
-    private func findChannelForTransaction(txid: String, direction: PaymentDirection,
-                                           transactionDetails: BitkitCore.TransactionDetails? = nil) async -> String?
-    {
+    private func findChannelForTransaction(
+        txid: String,
+        direction: PaymentDirection,
+        transactionDetails: BitkitCore.TransactionDetails? = nil
+    ) async -> String? {
         switch direction {
         case .inbound:
             // Check if this transaction is a channel close by checking if it spends a closed channel's funding UTXO
@@ -848,7 +1012,11 @@ class ActivityService {
             let closedChannels = try getAllClosedChannels(sortDirection: .desc)
             guard !closedChannels.isEmpty else { return nil }
 
-            let details = if let provided = transactionDetails { provided } else { await fetchTransactionDetails(txid: txid) }
+            let details = if let provided = transactionDetails {
+                provided
+            } else {
+                await fetchTransactionDetails(txid: txid)
+            }
             guard let details else {
                 Logger.warn("Transaction details not available for \(txid)", context: "CoreService.findClosedChannelForTransaction")
                 return nil
@@ -933,10 +1101,16 @@ class ActivityService {
     }
 
     /// Find the receiving address for an onchain transaction
-    private func findReceivingAddress(for txid: String, value: UInt64,
-                                      transactionDetails: BitkitCore.TransactionDetails? = nil) async throws -> String?
-    {
-        let details = if let provided = transactionDetails { provided } else { await fetchTransactionDetails(txid: txid) }
+    private func findReceivingAddress(
+        for txid: String,
+        value: UInt64,
+        transactionDetails: BitkitCore.TransactionDetails? = nil
+    ) async throws -> String? {
+        let details = if let provided = transactionDetails {
+            provided
+        } else {
+            await fetchTransactionDetails(txid: txid)
+        }
         guard let details else {
             Logger.warn("Transaction details not available for \(txid)", context: "CoreService.findReceivingAddress")
             return nil
@@ -961,15 +1135,15 @@ class ActivityService {
         return details.outputs.first?.scriptpubkeyAddress
     }
 
-    func getActivity(id: String) async throws -> Activity? {
+    func getActivity(id: String, walletId: String = WalletScope.default) async throws -> Activity? {
         try await ServiceQueue.background(.core) {
-            try getActivityById(activityId: id)
+            try getActivityById(walletId: walletId, activityId: id)
         }
     }
 
-    func getOnchainActivityByTxId(txid: String) async throws -> OnchainActivity? {
+    func getOnchainActivityByTxId(txid: String, walletId: String = WalletScope.default) async throws -> OnchainActivity? {
         try await ServiceQueue.background(.core) {
-            try BitkitCore.getActivityByTxId(txId: txid)
+            try BitkitCore.getActivityByTxId(walletId: walletId, txId: txid)
         }
     }
 
@@ -991,6 +1165,9 @@ class ActivityService {
         }
     }
 
+    /// Fetch activities. `walletId` defaults to the normal Bitkit wallet; pass `nil` to query
+    /// every wallet globally (Bitkit + watch-only hardware wallets) for the merged Home / All
+    /// Activity lists.
     func get(
         filter: ActivityFilter? = nil,
         txType: PaymentType? = nil,
@@ -999,10 +1176,12 @@ class ActivityService {
         minDate: UInt64? = nil,
         maxDate: UInt64? = nil,
         limit: UInt32? = nil,
-        sortDirection: SortDirection? = nil
+        sortDirection: SortDirection? = nil,
+        walletId: String? = WalletScope.default
     ) async throws -> [Activity] {
         try await ServiceQueue.background(.core) {
             try getActivities(
+                walletId: walletId,
                 filter: filter,
                 txType: txType,
                 tags: tags,
@@ -1017,12 +1196,10 @@ class ActivityService {
 
     func get(contact publicKey: String, sortDirection: SortDirection = .desc) async throws -> [Activity] {
         let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
-        let txIdsInBoostTxIds = await getTxIdsInBoostTxIds()
         // TODO: push contact filtering into BitkitCore once the activity store exposes it.
-        let activities = try await get(filter: .all, sortDirection: sortDirection)
-
-        return activities
-            .filter { !isReplacedSentTransaction($0, txIdsInBoostTxIds: txIdsInBoostTxIds) }
+        // walletId nil → global. Contacts can be assigned to hardware activities, so scoping this to
+        // the default wallet would let the assignment succeed and then hide the row it was made on.
+        let matches = try await get(filter: .all, sortDirection: sortDirection, walletId: nil)
             .filter { activity in
                 switch activity {
                 case let .lightning(lightning):
@@ -1031,6 +1208,18 @@ class ActivityService {
                     return PubkyPublicKeyFormat.matches(onchain.contact, normalizedKey)
                 }
             }
+
+        // Boost chains never cross wallets, so each wallet is checked against its own cached set —
+        // one shared set would test a hardware row against the normal wallet's boost ids. Resolved
+        // after contact filtering so only the wallets that actually matched are warmed.
+        var txIdsInBoostTxIdsByWallet: [String: Set<String>] = [:]
+        for walletId in Set(matches.map(ActivityScope.walletId(of:))) {
+            txIdsInBoostTxIdsByWallet[walletId] = await getTxIdsInBoostTxIds(walletId: walletId)
+        }
+
+        return matches.filter {
+            !isReplacedSentTransaction($0, txIdsInBoostTxIds: txIdsInBoostTxIdsByWallet[ActivityScope.walletId(of: $0)] ?? [])
+        }
     }
 
     private func isReplacedSentTransaction(_ activity: Activity, txIdsInBoostTxIds: Set<String>) -> Bool {
@@ -1055,22 +1244,41 @@ class ActivityService {
     }
 
     /// Create sent onchain activity from send result so it appears immediately; LDK events update it later (e.g. confirmation).
+    ///
+    /// `walletId` scopes the row: a transfer funded from a watch-only hardware wallet is written
+    /// under that wallet's id, so the merged activity list shows one hardware-owned transfer row
+    /// rather than a main-wallet row plus a hardware duplicate.
     func createSentOnchainActivityFromSendResult(
         txid: String,
         address: String,
         amount: UInt64,
         fee: UInt64,
         feeRate: UInt32,
-        contact: String? = nil
+        isTransfer: Bool = false,
+        contact: String? = nil,
+        walletId: String = WalletScope.default
     ) async {
+        let normalizedContact = contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
         do {
             try await ServiceQueue.background(.core) {
-                if let _ = try? BitkitCore.getActivityByTxId(txId: txid) {
+                if let existing = try? BitkitCore.getActivityByTxId(walletId: walletId, txId: txid) {
+                    var updated = existing
+                    if isTransfer {
+                        updated.isTransfer = true
+                    }
+                    if let normalizedContact {
+                        updated.contact = normalizedContact
+                    }
+                    if updated != existing {
+                        try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                        self.activitiesChangedSubject.send()
+                    }
                     Logger.debug("Activity already exists for txid \(txid), skipping immediate creation", context: "ActivityService")
                     return
                 }
                 let now = UInt64(Date().timeIntervalSince1970)
                 let onchain = OnchainActivity(
+                    walletId: walletId,
                     id: txid,
                     txType: .sent,
                     txId: txid,
@@ -1082,12 +1290,12 @@ class ActivityService {
                     timestamp: now,
                     isBoosted: false,
                     boostTxIds: [],
-                    isTransfer: false,
+                    isTransfer: isTransfer,
                     doesExist: true,
                     confirmTimestamp: nil,
                     channelId: nil,
                     transferTxId: nil,
-                    contact: contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 },
+                    contact: normalizedContact,
                     createdAt: now,
                     updatedAt: now,
                     seenAt: now
@@ -1102,11 +1310,80 @@ class ActivityService {
         }
     }
 
-    func setContact(_ publicKey: String?, forActivity id: String) async throws {
+    /// Atomically mark the on-chain activity for `txId` as a transfer associated with `channelId`,
+    /// in a single core-queue transaction so a concurrent watcher sync can't clobber it. No-op when
+    /// no matching activity exists or it is already correctly tagged.
+    ///
+    /// The funding transaction can live under the normal wallet or, when it was signed on a
+    /// hardware wallet, under that device's wallet id, so every scope is searched.
+    func markOnchainActivityAsTransfer(txId: String, channelId: String) async {
+        do {
+            try await ServiceQueue.background(.core) {
+                guard let existing = try Self.findOnchainActivityAcrossWallets(txId: txId) else { return }
+                if existing.isTransfer, existing.channelId == channelId {
+                    return
+                }
+                var updated = existing
+                updated.isTransfer = true
+                updated.channelId = channelId
+                try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                self.activitiesChangedSubject.send()
+                Logger.debug("Marked activity \(existing.id) as transfer for channel \(channelId)", context: "ActivityService")
+            }
+        } catch {
+            Logger.error("Failed to mark activity as transfer for \(txId): \(error)", context: "ActivityService")
+        }
+    }
+
+    /// Resolve the on-chain activity for `txId`, preferring the row that most likely represents the
+    /// transfer: one already flagged as a transfer, then a hardware-wallet send (the hardware
+    /// funding path), then whatever else matches.
+    private static func findOnchainActivityAcrossWallets(txId: String) throws -> OnchainActivity? {
+        let defaultMatch = try? BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txId)
+        // The normal wallet sorts first in the preference order below, so a row it already flags as
+        // a transfer is the answer. Skip the cross-wallet scan, which has to read every stored
+        // activity in every wallet — core exposes no wallet-id enumeration. This is the common
+        // path: the normal transfer flow writes the row through
+        // `createSentOnchainActivityFromSendResult(isTransfer: true)` before this runs.
+        if let defaultMatch, defaultMatch.isTransfer {
+            return defaultMatch
+        }
+
+        var matches: [OnchainActivity] = []
+        if let defaultMatch {
+            matches.append(defaultMatch)
+        }
+        matches += try storedWalletIds().subtracting([WalletScope.default]).sorted()
+            .compactMap { try? BitkitCore.getActivityByTxId(walletId: $0, txId: txId) }
+
+        return matches.first { $0.isTransfer }
+            ?? matches.first { $0.walletId != WalletScope.default && $0.txType == .sent }
+            ?? matches.first
+    }
+
+    private static func storedWalletIds() throws -> Set<String> {
+        let activities = try getActivities(
+            walletId: nil,
+            filter: .all,
+            txType: nil,
+            tags: nil,
+            search: nil,
+            minDate: nil,
+            maxDate: nil,
+            limit: nil,
+            sortDirection: nil
+        )
+        return Set(activities.map(ActivityScope.walletId(of:)))
+    }
+
+    func setContact(_ publicKey: String?, forActivity id: String, walletId: String = WalletScope.default) async throws {
         let normalizedContact = publicKey.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
 
         try await ServiceQueue.background(.core) {
-            guard let activity = try getActivityById(activityId: id) ?? (try? BitkitCore.getActivityByTxId(txId: id)).map(Activity.onchain) else {
+            guard let activity = try getActivityById(walletId: walletId, activityId: id) ?? (try? BitkitCore.getActivityByTxId(
+                walletId: walletId,
+                txId: id
+            )).map(Activity.onchain) else {
                 throw AppError(message: "Activity not found", debugMessage: "Activity with ID \(id) not found")
             }
 
@@ -1126,7 +1403,11 @@ class ActivityService {
                     try updateActivity(activityId: onchain.id, activity: .onchain(onchain))
                 }
 
-                let replacementContactChanged = try self.updateReplacementContactIfNeeded(for: onchain, normalizedContact: normalizedContact)
+                let replacementContactChanged = try self.updateReplacementContactIfNeeded(
+                    for: onchain,
+                    normalizedContact: normalizedContact,
+                    walletId: walletId
+                )
                 if contactChanged || replacementContactChanged {
                     self.activitiesChangedSubject.send()
                 }
@@ -1134,10 +1415,15 @@ class ActivityService {
         }
     }
 
-    private func updateReplacementContactIfNeeded(for activity: OnchainActivity, normalizedContact: String?) throws -> Bool {
+    private func updateReplacementContactIfNeeded(
+        for activity: OnchainActivity,
+        normalizedContact: String?,
+        walletId: String = WalletScope.default
+    ) throws -> Bool {
         guard !activity.doesExist, activity.txType == .sent else { return false }
 
         let activities = try getActivities(
+            walletId: walletId,
             filter: .onchain,
             txType: nil,
             tags: nil,
@@ -1158,39 +1444,50 @@ class ActivityService {
         return didUpdate
     }
 
-    func delete(id: String) async throws -> Bool {
+    func delete(id: String, walletId: String = WalletScope.default) async throws -> Bool {
         try await ServiceQueue.background(.core) {
             // Rebuild cache if deleting an onchain activity with boostTxIds
-            let activity = try? getActivityById(activityId: id)
+            let activity = try? getActivityById(walletId: walletId, activityId: id)
             if let activity, case let .onchain(onchain) = activity, !onchain.boostTxIds.isEmpty {
-                await self.refreshBoostTxIdsCache()
+                await self.refreshBoostTxIdsCache(walletId: walletId)
             }
 
-            let result = try deleteActivityById(activityId: id)
+            let result = try deleteActivityById(walletId: walletId, activityId: id)
             self.activitiesChangedSubject.send()
+            self.notifyHardwareTagsChanged(walletId: walletId)
             return result
         }
     }
 
     // MARK: - Tag Methods
 
-    func appendTags(toActivity id: String, _ tags: [String]) async throws {
+    func appendTags(toActivity id: String, _ tags: [String], walletId: String = WalletScope.default) async throws {
         try await ServiceQueue.background(.core) {
-            try addTags(activityId: id, tags: tags)
+            try addTags(walletId: walletId, activityId: id, tags: tags)
             self.activitiesChangedSubject.send()
+            self.notifyHardwareTagsChanged(walletId: walletId)
         }
     }
 
-    func dropTags(fromActivity id: String, _ tags: [String]) async throws {
+    func dropTags(fromActivity id: String, _ tags: [String], walletId: String = WalletScope.default) async throws {
         try await ServiceQueue.background(.core) {
-            try removeTags(activityId: id, tags: tags)
+            try removeTags(walletId: walletId, activityId: id, tags: tags)
             self.activitiesChangedSubject.send()
+            self.notifyHardwareTagsChanged(walletId: walletId)
         }
     }
 
-    func tags(forActivity id: String) async throws -> [String] {
+    /// Hardware wallet tags ride in the metadata backup rather than the activity one, so a change
+    /// to them has to mark that envelope stale. Default-wallet tags are carried by the activity
+    /// backup, which `activitiesChangedSubject` already covers.
+    private func notifyHardwareTagsChanged(walletId: String) {
+        guard walletId != WalletScope.default else { return }
+        metadataChangedSubject.send()
+    }
+
+    func tags(forActivity id: String, walletId: String = WalletScope.default) async throws -> [String] {
         try await ServiceQueue.background(.core) {
-            try getTags(activityId: id)
+            try getTags(walletId: walletId, activityId: id)
         }
     }
 
@@ -1200,9 +1497,54 @@ class ActivityService {
         }
     }
 
+    /// Tags for the normal Bitkit wallet only. Watch-only hardware wallets are re-derived from the
+    /// device on pairing, so their activities are left out of the backup payload — and a tag whose
+    /// activity is missing would fail core's foreign key on restore. Their tags travel in the
+    /// metadata backup instead, see `getHardwareTagsAsPreActivityMetadata`.
     func getAllActivitiesTags() async throws -> [ActivityTags] {
         try await ServiceQueue.background(.core) {
-            try BitkitCore.getAllActivitiesTags()
+            try BitkitCore.getAllActivitiesTags().filter { $0.walletId == WalletScope.default }
+        }
+    }
+
+    /// Tags on watch-only hardware activities, shaped as `PreActivityMetadata` for the metadata
+    /// backup — see `HwActivityTagBackup` for why they cannot ride the activity backup.
+    func getHardwareTagsAsPreActivityMetadata() async throws -> [BitkitCore.PreActivityMetadata] {
+        try await ServiceQueue.background(.core) { () throws -> [BitkitCore.PreActivityMetadata] in
+            // The wrapper above is filtered to the default wallet; this needs its inverse, and
+            // calling the wrapper from here would re-enter the core queue.
+            let hardwareTags = try BitkitCore.getAllActivitiesTags().filter { $0.walletId != WalletScope.default }
+            guard !hardwareTags.isEmpty else { return [] }
+
+            let activities = try Set(hardwareTags.map(\.walletId)).sorted().flatMap { walletId in
+                try Self.storedOnchainActivities(walletId: walletId)
+            }
+
+            return HwActivityTagBackup.preActivityMetadata(activities: activities, tags: hardwareTags)
+        }
+    }
+
+    /// The slice of the metadata backup's tag data that belongs to `walletId`, built the same way the
+    /// envelope builds it so a caller can preserve a wallet's tags across a deletion.
+    ///
+    /// Both sources are needed: core drops a wallet's stored `PreActivityMetadata` along with its
+    /// activities, and those rows are not covered by the rendered set, which only shapes tags that
+    /// already reached an activity.
+    func tagMetadata(forWallet walletId: String) async throws -> [BitkitCore.PreActivityMetadata] {
+        try await ServiceQueue.background(.core) { () throws -> [BitkitCore.PreActivityMetadata] in
+            let stored = try BitkitCore.getAllPreActivityMetadata().filter { $0.walletId == walletId }
+            let hardwareTags = try BitkitCore.getAllActivitiesTags().filter { $0.walletId == walletId }
+            let rendered = try hardwareTags.isEmpty
+                ? []
+                : HwActivityTagBackup.preActivityMetadata(
+                    activities: Self.storedOnchainActivities(walletId: walletId),
+                    tags: hardwareTags
+                )
+
+            // Rendered first, matching the envelope build and for the same reason: a stored row can
+            // outlive the activity it was meant for and hold tags the user has since edited, and
+            // keeping a wallet's tags means keeping what the user currently sees.
+            return HwActivityTagBackup.deduplicated(rendered + stored)
         }
     }
 
@@ -1223,34 +1565,34 @@ class ActivityService {
 
     func addPreActivityMetadataTags(paymentId: String, tags: [String]) async throws {
         try await ServiceQueue.background(.core) {
-            try BitkitCore.addPreActivityMetadataTags(paymentId: paymentId, tags: tags)
+            try BitkitCore.addPreActivityMetadataTags(walletId: WalletScope.default, paymentId: paymentId, tags: tags)
             self.metadataChangedSubject.send()
         }
     }
 
     func removePreActivityMetadataTags(paymentId: String, tags: [String]) async throws {
         try await ServiceQueue.background(.core) {
-            try BitkitCore.removePreActivityMetadataTags(paymentId: paymentId, tags: tags)
+            try BitkitCore.removePreActivityMetadataTags(walletId: WalletScope.default, paymentId: paymentId, tags: tags)
             self.metadataChangedSubject.send()
         }
     }
 
     func getPreActivityMetadata(searchKey: String, searchByAddress: Bool = false) async throws -> BitkitCore.PreActivityMetadata? {
         try await ServiceQueue.background(.core) {
-            try BitkitCore.getPreActivityMetadata(searchKey: searchKey, searchByAddress: searchByAddress)
+            try BitkitCore.getPreActivityMetadata(walletId: WalletScope.default, searchKey: searchKey, searchByAddress: searchByAddress)
         }
     }
 
     func deletePreActivityMetadata(paymentId: String) async throws {
         try await ServiceQueue.background(.core) {
-            try BitkitCore.deletePreActivityMetadata(paymentId: paymentId)
+            try BitkitCore.deletePreActivityMetadata(walletId: WalletScope.default, paymentId: paymentId)
             self.metadataChangedSubject.send()
         }
     }
 
     func resetPreActivityMetadataTags(paymentId: String) async throws {
         try await ServiceQueue.background(.core) {
-            try BitkitCore.resetPreActivityMetadataTags(paymentId: paymentId)
+            try BitkitCore.resetPreActivityMetadataTags(walletId: WalletScope.default, paymentId: paymentId)
             self.metadataChangedSubject.send()
         }
     }
@@ -1260,6 +1602,9 @@ class ActivityService {
     func upsertPreActivityMetadata(_ preActivityMetadata: [BitkitCore.PreActivityMetadata]) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.upsertPreActivityMetadata(preActivityMetadata: preActivityMetadata)
+            // Rows written back after a hardware wallet's delete cascade have to reach the next
+            // envelope; a restore's own upsert is inert here, since `shouldSkipBackup` gates it.
+            self.metadataChangedSubject.send()
         }
     }
 
@@ -1272,7 +1617,7 @@ class ActivityService {
     func boostOnchainTransaction(activityId: String, feeRate: UInt32) async throws -> String {
         return try await ServiceQueue.background(.core) {
             // Get the existing activity
-            guard let existingActivity = try getActivityById(activityId: activityId) else {
+            guard let existingActivity = try getActivityById(walletId: WalletScope.default, activityId: activityId) else {
                 throw AppError(message: "Activity not found", debugMessage: "Activity with ID \(activityId) not found")
             }
 
@@ -1344,6 +1689,7 @@ class ActivityService {
                     case .lightning:
                         .lightning(
                             LightningActivity(
+                                walletId: WalletScope.default,
                                 id: id,
                                 txType: template.txType,
                                 status: template.status,
@@ -1362,6 +1708,7 @@ class ActivityService {
                     case .onchain:
                         .onchain(
                             OnchainActivity(
+                                walletId: WalletScope.default,
                                 id: id,
                                 txType: template.txType,
                                 txId: String(repeating: "a", count: 64),
@@ -1450,7 +1797,9 @@ private actor AddressSearchCoordinator {
         func findMatch(in addresses: [String]) -> String? {
             if let exact = details.outputs.first(where: { $0.value == value }),
                let addr = exact.scriptpubkeyAddress, addresses.contains(addr)
-            { return addr }
+            {
+                return addr
+            }
             return addresses.first { matchesTransaction($0) }
         }
 
@@ -1499,7 +1848,9 @@ private actor AddressSearchCoordinator {
                     }
                     if let found = currentAddressBatch {
                         let stopIndex = found > UInt32.max - batchSize ? UInt32.max : found + batchSize
-                        if index >= stopIndex { break }
+                        if index >= stopIndex {
+                            break
+                        }
                     }
                     index += batchSize
                 }

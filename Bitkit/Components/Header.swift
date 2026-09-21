@@ -8,6 +8,8 @@ struct Header: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject private var sheets: SheetViewModel
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     /// When true, shows the widget edit button (only on the widgets tab).
     var showWidgetEditButton: Bool = false
@@ -35,14 +37,44 @@ struct Header: View {
                 AppStatus(
                     testID: "HeaderAppStatus",
                     onPress: {
-                        if dismissCalculatorIfNeeded() { return }
+                        if dismissCalculatorIfNeeded() {
+                            return
+                        }
                         navigation.navigate(.appStatus)
                     }
                 )
 
+                if isPaykitUIActive, !paymentRequests.pendingRequests.isEmpty {
+                    Button {
+                        if dismissCalculatorIfNeeded() {
+                            return
+                        }
+                        sheets.showSheet(.paymentRequests)
+                    } label: {
+                        Image("bell")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundColor(.brandAccent)
+                            .frame(width: 24, height: 24)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                            .shadow(color: .brandAccent.opacity(0.5), radius: 8)
+                    }
+                    .accessibilityLabel(t("wallet__payment_requests"))
+                    .accessibilityValue(
+                        t(
+                            "wallet__payment_requests_pending_count",
+                            variables: ["count": "\(paymentRequests.pendingRequests.count)"]
+                        )
+                    )
+                    .accessibilityIdentifier("PaymentRequestsBell")
+                }
+
                 if showWidgetEditButton {
                     Button(action: {
-                        if dismissCalculatorIfNeeded() { return }
+                        if dismissCalculatorIfNeeded() {
+                            return
+                        }
                         isEditingWidgets.toggle()
                     }) {
                         Image(isEditingWidgets ? "check-mark" : "pencil")
@@ -57,7 +89,9 @@ struct Header: View {
                 }
 
                 Button {
-                    if dismissCalculatorIfNeeded() { return }
+                    if dismissCalculatorIfNeeded() {
+                        return
+                    }
 
                     withAnimation {
                         app.showDrawer = true
@@ -81,7 +115,9 @@ struct Header: View {
 
     private var profileButton: some View {
         Button {
-            if dismissCalculatorIfNeeded() { return }
+            if dismissCalculatorIfNeeded() {
+                return
+            }
 
             if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
                 navigation.navigate(.profile)

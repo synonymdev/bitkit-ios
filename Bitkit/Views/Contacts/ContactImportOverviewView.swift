@@ -11,6 +11,12 @@ struct ContactImportOverviewView: View {
 
     @State private var isImporting = false
 
+    private enum AvatarLayout {
+        static let size: CGFloat = 32
+        static let overlap: CGFloat = 8
+        static let step = size - overlap
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("contacts__import_nav_title"))
@@ -26,7 +32,9 @@ struct ContactImportOverviewView: View {
                     .padding(.bottom, 8)
 
                     BodyMText(
-                        t("contacts__import_found_description", variables: ["key": profile.truncatedPublicKey])
+                        t("contacts__import_found_description", variables: ["key": profile.truncatedPublicKey]),
+                        accentColor: .white,
+                        accentFont: Fonts.bold
                     )
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 32)
@@ -34,19 +42,16 @@ struct ContactImportOverviewView: View {
                     profileRow
                         .padding(.bottom, 24)
 
-                    CustomDivider()
-
                     contactsSummary
-                        .padding(.top, 24)
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, 16)
             }
 
             Spacer()
 
-            buttonBar
-                .padding(.horizontal, 32)
-                .padding(.bottom, 16)
+            BottomActionBar {
+                buttonBar
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .bottomSafeAreaPadding()
@@ -89,43 +94,56 @@ struct ContactImportOverviewView: View {
 
     @ViewBuilder
     private var avatarStack: some View {
-        let displayContacts = Array(contacts.prefix(4))
+        let displayContacts = Array(contacts.prefix(5))
         let overflow = contacts.count - displayContacts.count
+        let avatarCount = displayContacts.count + (overflow > 0 ? 1 : 0)
 
         ZStack(alignment: .leading) {
             ForEach(Array(displayContacts.enumerated()), id: \.element.id) { index, contact in
                 contactImportAvatar(contact)
-                    .offset(x: CGFloat(index * 22))
+                    .offset(x: CGFloat(index) * AvatarLayout.step)
             }
 
             if overflow > 0 {
                 Circle()
-                    .fill(Color.gray4)
-                    .frame(width: 36, height: 36)
+                    .fill(Color(hex: 0x05050A))
+                    .frame(width: AvatarLayout.size, height: AvatarLayout.size)
                     .overlay {
-                        CaptionBText("+\(overflow)", textColor: .textPrimary)
+                        AccentedText(
+                            "+\(overflow)",
+                            font: Fonts.medium(size: 14),
+                            fontColor: .textPrimary
+                        )
                     }
                     .overlay(
                         Circle()
-                            .stroke(Color.customBlack, lineWidth: 2)
+                            .strokeBorder(Color(hex: 0x89898F), lineWidth: 1)
                     )
-                    .offset(x: CGFloat(displayContacts.count * 22))
+                    .contactImportAvatarShadow()
+                    .offset(x: CGFloat(displayContacts.count) * AvatarLayout.step)
             }
         }
-        .frame(width: CGFloat(max(displayContacts.count - 1, 0) * 22 + 36), height: 36, alignment: .leading)
+        .frame(
+            width: CGFloat(max(avatarCount - 1, 0)) * AvatarLayout.step + AvatarLayout.size,
+            height: AvatarLayout.size,
+            alignment: .leading
+        )
         .accessibilityHidden(true)
     }
 
     @ViewBuilder
     private func contactImportAvatar(_ contact: PubkyContact) -> some View {
         if let imageUrl = contact.profile.imageUrl {
-            PubkyImage(uri: imageUrl, size: 36)
-                .overlay(
-                    Circle()
-                        .stroke(Color.customBlack, lineWidth: 2)
-                )
+            PubkyImage(uri: imageUrl, size: AvatarLayout.size)
+                .contactImportAvatarShadow()
         } else {
-            ContactAvatarLetter(source: contact.displayName, size: 36, strokeColor: .customBlack, strokeWidth: 2)
+            ContactAvatarLetter(
+                source: contact.displayName,
+                size: AvatarLayout.size,
+                backgroundColor: Color(hex: 0x303034),
+                textFont: Fonts.medium(size: 14)
+            )
+            .contactImportAvatarShadow()
         }
     }
 
@@ -161,6 +179,13 @@ struct ContactImportOverviewView: View {
         } catch {
             app.toast(type: .error, title: t("contacts__import_error"))
         }
+    }
+}
+
+private extension View {
+    func contactImportAvatarShadow() -> some View {
+        shadow(color: Color(hex: 0x05050A).opacity(0.25), radius: 3, x: 0, y: 1)
+            .shadow(color: Color(hex: 0x05050A).opacity(0.25), radius: 2, x: 0, y: 1)
     }
 }
 

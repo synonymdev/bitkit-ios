@@ -5,10 +5,14 @@ import SwiftUI
 struct TrezorTransactionDetailContent: View {
     @State private var xpubInput: String = ""
     @State private var txidInput: String = ""
+    @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
+        @Bindable var trezor = trezor
         VStack(spacing: 24) {
             TxDetailInputSection(xpubInput: $xpubInput, txidInput: $txidInput)
+
+            TrezorAccountTypeSelector(selection: $trezor.onchainAccountTypeSelection)
 
             TxDetailButtonWrapper(xpubInput: xpubInput, txidInput: txidInput)
 
@@ -58,18 +62,16 @@ private struct TxDetailResultsSection: View {
     @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
-        Group {
-            if let detail = trezor.txDetailResult {
-                TxDetailOverviewSection(detail: detail)
+        if let detail = trezor.txDetailResult {
+            TxDetailOverviewSection(detail: detail)
 
-                TxDetailInputsSection(inputs: detail.inputs)
+            TxDetailInputsSection(inputs: detail.inputs)
 
-                TxDetailOutputsSection(outputs: detail.outputs)
-            }
+            TxDetailOutputsSection(outputs: detail.outputs)
+        }
 
-            if let error = trezor.txDetailError {
-                TrezorErrorBanner(message: error)
-            }
+        if let error = trezor.txDetailError {
+            TrezorErrorBanner(message: error)
         }
     }
 }
@@ -524,7 +526,7 @@ private struct ResultRow: View {
             NavigationStack {
                 TrezorTransactionDetailView()
             }
-            .environment(TrezorViewModel())
+            .environment(TrezorViewModel(connection: TrezorManager()))
         }
     }
 #endif

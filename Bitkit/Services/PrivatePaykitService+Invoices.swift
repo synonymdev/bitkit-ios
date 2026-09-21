@@ -6,19 +6,17 @@ import UIKit
 // MARK: - Invoice Rotation
 
 extension PrivatePaykitService {
-    func currentOrRotatedInvoice(for publicKey: String, wallet: WalletViewModel, generation: UInt64,
-                                 forceRefresh: Bool = false) async throws -> StoredInvoice
-    {
-        if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey) {
+    func currentOrRotatedInvoice(
+        for publicKey: String,
+        receiverPath: String,
+        wallet: WalletViewModel,
+        forceRefresh: Bool = false
+    ) async throws -> StoredInvoice {
+        if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey, receiverPath: receiverPath) {
             return invoice
         }
 
         let bolt11 = try await createVariableInvoice(wallet)
-        try ensureCurrentGeneration(generation)
-        if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey) {
-            return invoice
-        }
-
         guard case let .lightning(decodedInvoice) = try await decode(invoice: bolt11) else {
             throw PublicPaykitError.invalidPayload
         }
@@ -31,7 +29,7 @@ extension PrivatePaykitService {
             paymentHash: decodedInvoice.paymentHash.hex,
             expiresAt: Double(decodedInvoice.timestampSeconds + decodedInvoice.expirySeconds)
         )
-        state.contacts[publicKey, default: ContactState()].localInvoice = invoice
+        setLocalInvoice(invoice, publicKey: publicKey, receiverPath: receiverPath)
         persistState()
         return invoice
     }
@@ -44,16 +42,16 @@ extension PrivatePaykitService {
 
         contactState.receivedInvoicePaymentHashes.append(paymentHash)
         if contactState.receivedInvoicePaymentHashes.count > Self.maxReceivedInvoicePaymentHashesPerContact {
-            contactState
-                .receivedInvoicePaymentHashes = Array(contactState.receivedInvoicePaymentHashes
-                    .suffix(Self.maxReceivedInvoicePaymentHashesPerContact))
+            contactState.receivedInvoicePaymentHashes = Array(
+                contactState.receivedInvoicePaymentHashes.suffix(Self.maxReceivedInvoicePaymentHashesPerContact)
+            )
         }
         state.contacts[publicKey] = contactState
         persistState()
     }
 
-    func reusablePrivateInvoice(for publicKey: String) async -> StoredInvoice? {
-        guard let invoice = state.contacts[publicKey]?.localInvoice,
+    func reusablePrivateInvoice(for publicKey: String, receiverPath: String) async -> StoredInvoice? {
+        guard let invoice = localInvoice(for: publicKey, receiverPath: receiverPath),
               invoice.expiresAt > Date().timeIntervalSince1970 + Self.invoiceRefreshBufferSeconds,
               await !isReceivedInvoiceSettled(paymentHash: invoice.paymentHash),
               case let .lightning(decodedInvoice) = try? await decode(invoice: invoice.bolt11),
@@ -84,29 +82,22 @@ extension PrivatePaykitService {
         wallet.hasUsableChannels
     }
 
-    func shouldRetryMissingPrivateLightningEndpoint(for publicKey: String, wallet: WalletViewModel) async -> Bool {
-        guard PublicPaykitService.isLightningPaymentOptionEnabled(),
-              await walletHasUsableChannels(wallet)
-        else {
-            return false
-        }
-
-        return await reusablePrivateInvoice(for: publicKey) == nil
+    @MainActor
+    func canPublishPrivateEndpoints(wallet: WalletViewModel) async -> Bool {
+        await privateEndpointPublicationUnavailabilityReason(wallet: wallet) == nil
     }
 
     @MainActor
-    func canPublishPrivateEndpoints(wallet: WalletViewModel) async -> Bool {
-        guard PaykitFeatureFlags.isUIEnabled,
-              UserDefaults.standard.bool(forKey: Self.publishingEnabledKey),
-              UIApplication.shared.applicationState == .active,
-              wallet.walletExists == true,
-              wallet.nodeLifecycleState == .running,
-              let ownPublicKey = await PubkyService.currentPublicKey()
-        else {
-            return false
-        }
+    func privateEndpointPublicationUnavailabilityReason(wallet: WalletViewModel) async -> String? {
+        guard PaykitFeatureFlags.isUIEnabled else { return "Paykit UI is disabled" }
+        guard UserDefaults.standard.bool(forKey: Self.publishingEnabledKey) else { return "private publication is disabled" }
+        guard UIApplication.shared.applicationState == .active else { return "the app is not active" }
+        guard wallet.walletExists == true else { return "the wallet is unavailable" }
+        guard wallet.nodeLifecycleState == .running else { return "the Lightning node is not running" }
+        guard let ownPublicKey = await PubkyService.currentPublicKey() else { return "the Pubky session is not active" }
+        guard PubkyProfileManager.hasLocalSecretKey(for: ownPublicKey) else { return "the local Pubky secret key is unavailable" }
 
-        return PubkyProfileManager.hasLocalSecretKey(for: ownPublicKey)
+        return nil
     }
 
     @MainActor
@@ -116,13 +107,9 @@ extension PrivatePaykitService {
 
     func settledPrivateInvoicePaymentHashes() async -> [String] {
         let settledHashes = await receivedSettledPaymentHashes()
-        return state.contacts.compactMap { _, contactState in
-            guard let paymentHash = contactState.localInvoice?.paymentHash,
-                  settledHashes.contains(paymentHash)
-            else { return nil }
-
-            return paymentHash
-        }
+        return state.contacts.values.flatMap { localInvoices($0) }
+            .map(\.paymentHash)
+            .filter(settledHashes.contains)
     }
 
     func isReceivedInvoiceSettled(paymentHash: String) async -> Bool {
@@ -157,5 +144,19 @@ extension PrivatePaykitService {
                 return payment.id
             }
         )
+    }
+
+    func localInvoice(for publicKey: String, receiverPath: String) -> StoredInvoice? {
+        state.contacts[publicKey]?.localInvoicesByReceiverPath[receiverPath]
+    }
+
+    func localInvoices(_ contactState: ContactState) -> [StoredInvoice] {
+        Array(contactState.localInvoicesByReceiverPath.values)
+    }
+
+    private func setLocalInvoice(_ invoice: StoredInvoice, publicKey: String, receiverPath: String) {
+        var contactState = state.contacts[publicKey, default: ContactState()]
+        contactState.localInvoicesByReceiverPath[receiverPath] = invoice
+        state.contacts[publicKey] = contactState
     }
 }

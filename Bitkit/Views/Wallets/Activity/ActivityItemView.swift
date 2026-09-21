@@ -135,7 +135,15 @@ struct ActivityItemView: View {
         return DateFormatterHelpers.formatActivityDetail(activity.timestamp)
     }
 
+    private var isHardwareActivity: Bool {
+        viewModel.activity.isHardwareWallet
+    }
+
     private var shouldDisableBoostButton: Bool {
+        // Watch-only hardware wallets have no signing keys, so RBF is impossible.
+        if isHardwareActivity {
+            return true
+        }
         switch viewModel.activity {
         case .lightning:
             return true
@@ -164,7 +172,7 @@ struct ActivityItemView: View {
     private func loadBoostTxDoesExist() async {
         guard case let .onchain(activity) = viewModel.activity else { return }
 
-        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: activity.boostTxIds)
+        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: activity.boostTxIds, walletId: activity.walletId)
         await MainActor.run {
             boostTxDoesExist = doesExistMap
         }
@@ -248,7 +256,7 @@ struct ActivityItemView: View {
         .task {
             // Check if this is a CPFP child transaction
             if case let .onchain(activity) = viewModel.activity {
-                isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: activity.txId)
+                isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: activity.txId, walletId: activity.walletId)
             }
 
             // Load boostTxIds doesExist status to determine RBF vs CPFP
@@ -523,7 +531,9 @@ struct ActivityItemView: View {
                         shouldExpand: true
                     ) {
                         if assignedContact == nil {
-                            navigation.navigate(.assignActivityContact(activityId: viewModel.activityId))
+                            navigation.navigate(
+                                .assignActivityContact(activityId: viewModel.activityId, walletId: viewModel.activity.walletId)
+                            )
                         } else {
                             Task {
                                 await detachContact()
@@ -539,13 +549,10 @@ struct ActivityItemView: View {
                         .foregroundColor(accentColor),
                     shouldExpand: true
                 ) {
-                    let activityId: String = switch viewModel.activity {
-                    case let .lightning(activity):
-                        activity.id
-                    case let .onchain(activity):
-                        activity.id
-                    }
-                    sheets.showSheet(.addTag, data: AddTagConfig(activityId: activityId))
+                    sheets.showSheet(
+                        .addTag,
+                        data: AddTagConfig(activityId: viewModel.activityId, walletId: viewModel.activity.walletId)
+                    )
                 }
                 .accessibilityIdentifier("ActivityTag")
             }
@@ -566,36 +573,40 @@ struct ActivityItemView: View {
                 }
                 .accessibilityIdentifier(boostButtonIdentifier)
 
-                if isTransfer, let channelId = transferChannelId {
-                    CustomButton(
-                        title: t("lightning__connection"), size: .small,
-                        icon: Image("bolt-hollow")
-                            .foregroundColor(accentColor),
-                        shouldExpand: true
-                    ) {
-                        navigation.navigate(.connectionDetail(channelId: channelId))
-                    }
-                    .accessibilityIdentifier("ChannelButton")
-                } else {
-                    CustomButton(
-                        title: t("wallet__activity_explore"), size: .small,
-                        icon: Image("branch")
-                            .foregroundColor(accentColor),
-                        shouldExpand: true
-                    ) {
-                        navigation.navigate(.activityExplorer(viewModel.activity))
-                    }
-                    .accessibilityIdentifier("ActivityTxDetails")
-                }
+                exploreButton
             }
             .frame(maxWidth: .infinity)
+
+            if isTransfer, let channelId = transferChannelId {
+                CustomButton(
+                    title: t("lightning__connection"), size: .small,
+                    icon: Image("bolt-hollow")
+                        .foregroundColor(accentColor),
+                    shouldExpand: true
+                ) {
+                    navigation.navigate(.connectionDetail(channelId: channelId))
+                }
+                .accessibilityIdentifier("ChannelButton")
+            }
         }
         .frame(maxWidth: .infinity)
     }
 
+    private var exploreButton: some View {
+        CustomButton(
+            title: t("wallet__activity_explore"), size: .small,
+            icon: Image("branch")
+                .foregroundColor(accentColor),
+            shouldExpand: true
+        ) {
+            navigation.navigate(.activityExplorer(viewModel.activity))
+        }
+        .accessibilityIdentifier("ActivityTxDetails")
+    }
+
     private func detachContact() async {
         do {
-            try await activityList.setContact(nil, forPaymentId: viewModel.activityId)
+            try await activityList.setContact(nil, forPaymentId: viewModel.activityId, walletId: viewModel.activity.walletId)
             await viewModel.refreshActivity()
         } catch {
             Logger.error("Failed to detach contact from activity \(viewModel.activityId): \(error)", context: "ActivityItemView")
@@ -640,6 +651,7 @@ struct ActivityItemView_Previews: PreviewProvider {
             ActivityItemView(
                 item: .lightning(
                     LightningActivity(
+                        walletId: WalletScope.default,
                         id: "test-lightning-1",
                         txType: .sent,
                         status: .succeeded,
@@ -664,6 +676,7 @@ struct ActivityItemView_Previews: PreviewProvider {
             ActivityItemView(
                 item: .onchain(
                     OnchainActivity(
+                        walletId: WalletScope.default,
                         id: "test-onchain-1",
                         txType: .received,
                         txId: "abc123",

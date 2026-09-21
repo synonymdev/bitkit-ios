@@ -15,23 +15,30 @@ enum PaykitFeatureFlags {
         isUIAvailable && UserDefaults.standard.bool(forKey: uiEnabledKey)
     }
 
-    static func enforceBuildAvailability() {
-        let defaults = UserDefaults.standard
-        let hasPublishedState = defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) ||
-            defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey) ||
-            defaults.bool(forKey: "hasConfirmedPublicPaykitEndpoints") ||
+    static func enforceBuildAvailability(defaults: UserDefaults = .standard, isUIEnabled: Bool = Self.isUIEnabled) {
+        let hasPublicPublishedState = defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) ||
+            defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey) ||
             !(defaults.string(forKey: "publicPaykitBolt11") ?? "").isEmpty
-
+        let hasPrivatePublishedState = defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey)
+        let hasPublishedState = hasPublicPublishedState ||
+            hasPrivatePublishedState ||
+            defaults.bool(forKey: PublicPaykitService.cleanupPendingKey) ||
+            defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey)
         guard !isUIEnabled, hasPublishedState else { return }
 
         defaults.set(false, forKey: uiEnabledKey)
-        defaults.set(false, forKey: "hasConfirmedPublicPaykitEndpoints")
+        defaults.set(false, forKey: ContactPaymentsService.confirmedPreferenceKey)
         defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
         defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         defaults.removeObject(forKey: "publicPaykitBolt11")
         defaults.removeObject(forKey: "publicPaykitBolt11PaymentHash")
         defaults.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
 
-        PrivatePaykitService.setContactSharingCleanupPending(true)
+        if hasPublicPublishedState {
+            defaults.set(true, forKey: PublicPaykitService.cleanupPendingKey)
+        }
+        if hasPrivatePublishedState {
+            defaults.set(true, forKey: PrivatePaykitService.cleanupPendingKey)
+        }
     }
 }

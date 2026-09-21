@@ -15,14 +15,130 @@ struct TransferValues {
     var maxClientBalance: UInt64 = 0
 }
 
+/// Limits/flags for the hardware-wallet transfer-to-spending flow, sourced from the device balance.
+struct HwSpendingState: Equatable {
+    var isLoading = false
+    var isSigning = false
+    var hasPendingBroadcast = false
+    /// The hidden wallet needs its passphrase before the device can sign for it.
+    var isPassphraseRequired = false
+    var isVerifyingPassphrase = false
+    var miningFeeSats: UInt64 = 0
+    var maxAllowedToSend: UInt64 = 0
+    var balanceAfterFee: UInt64 = 0
+    var quarterAmount: UInt64 = 0
+}
+
+private struct PendingHwFundingBroadcast {
+    let orderId: String
+    let walletId: String
+    let address: String
+    let amountSats: UInt64
+    let signedTx: HwFundingSignedTx
+
+    func matches(order: IBtOrder, walletId: String, address: String) -> Bool {
+        orderId == order.id &&
+            self.walletId == walletId &&
+            self.address == address &&
+            amountSats == order.feeSat
+    }
+}
+
+/// A recoverable failure surfaced by the hardware-wallet transfer flow. The Sign screen maps each
+/// case to the matching localized toast.
+enum HwTransferError: Error, Equatable {
+    /// Reconnect failed. `isBluetooth` selects the softer INFO toast for a known BLE device
+    /// (advertises intermittently — "check that it is unlocked and try again") vs the ERROR toast.
+    case reconnect(isBluetooth: Bool)
+    case signingTimeout
+    case broadcastUncertain
+    /// Signed tx is retained but Electrum/network is unreachable — retry broadcast later.
+    case broadcastConnectivity
+    /// Trezor is locked or otherwise busy before signing can start.
+    case deviceBusy
+    /// Firmware error (code 99) — user must reconnect the device.
+    case firmwareReconnect
+    /// The entered passphrase opened a different wallet than the one being spent from.
+    case passphraseMismatch
+    case funding(String?)
+    case generic(String?)
+}
+
+/// The hardware-wallet funding capability the transfer flow needs. Implemented by `HwWalletManager`;
+/// declared as a protocol so the flow stays testable.
+@MainActor
+protocol HwTransferFunding: Sendable {
+    func getFundingAccount(walletId: String, addressType: AddressScriptType) throws -> HwFundingAccount
+    func maxSpendableFunding(
+        walletId: String,
+        destinationAddress: String,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> UInt64
+    func composeFundingTransaction(
+        walletId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> HwFundingTransaction
+    /// Offline coin-selection estimate for the exact funding amount (`fingerprint: nil`); fee only.
+    func estimateOfflineFundingMiningFee(
+        walletId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> UInt64
+    func signFunding(walletId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
+    func broadcastFunding(serializedTx: String) async throws -> String
+}
+
+/// The device-session capability the transfer flow needs for on-device signing, addressed by wallet
+/// identity: a device holds one wallet open at a time, so reaching a given wallet is more than
+/// reaching its transport. Implemented by `TrezorManager`.
+@MainActor
+protocol HwTransferConnecting: Sendable {
+    func ensureConnected(walletId: String) async throws
+    func disconnectStaleSession(walletId: String) async
+    func scheduleStaleSessionCleanup(walletId: String)
+    /// Whether the wallet is reachable over a known Bluetooth device, so a reconnect failure can show
+    /// the softer BLE "check that it is unlocked and try again" toast instead of the generic error.
+    func isKnownBluetoothDevice(walletId: String) -> Bool
+    /// Best-effort pre-connect when the sign screen appears, so tapping Open Trezor Connect is less
+    /// likely to hit a cold reconnect. Fire-and-forget.
+    func warmUpConnection(walletId: String)
+    /// Whether the wallet's passphrase has to be collected again before the device can sign for it.
+    func needsPassphrase(walletId: String) -> Bool
+    /// Reopens a hidden wallet for signing, refusing a session that resolves to a different wallet.
+    func reconnectWithPassphrase(walletId: String, passphrase: String) async throws
+}
+
 @MainActor
 class TransferViewModel: ObservableObject {
     @Published var uiState = TransferUiState()
     @Published var lightningSetupStep: Int = 0
     @Published var transferValues = TransferValues()
+
+    @Published var isSettlingAdvancedCapacity = false
     @Published var selectedChannelIds: [String] = []
     @Published var channelsToClose: [ChannelDetails] = []
     @Published var transferUnavailable = false
+
+    /// How the LN -> onchain "transfer to savings" is executed. Closing a channel is the
+    /// default because it always works; swapping funds out keeps channels open and is used
+    /// whenever a priced quote is available.
+    @Published var savingsTransferMode: SavingsTransferMode = .close
+    @Published var savingsSwapState = SavingsSwapState()
+
+    /// Hardware-wallet transfer-to-spending state.
+    @Published var hwSpending = HwSpendingState()
+    /// Bumped when a hardware funding tx is signed + broadcast, so the Sign screen advances.
+    @Published var hwSignedEvent = 0
+    /// Set when funding is paid and recorded; observed app-wide so navigation survives leaving the sign screen.
+    @Published var hwFundingComplete = false
+    /// A recoverable hardware transfer failure the Sign screen should toast, then clear.
+    @Published var hwTransferError: HwTransferError?
 
     private let coreService: CoreService
     private let lightningService: LightningService
@@ -30,13 +146,38 @@ class TransferViewModel: ObservableObject {
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
     private let onBalanceRefresh: (() async -> Void)?
+    /// The device-signing orchestration for a hardware-wallet transfer; nil when the HW capabilities
+    /// aren't injected (previews/plain init).
+    private let hwSigner: HwFundingSigner?
+    private let hwConnecting: HwTransferConnecting?
 
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
+    private var hwSignTask: Task<Void, Never>?
+    private var hwPassphraseTask: Task<Void, Never>?
+    private var pendingHwFundingBroadcast: PendingHwFundingBroadcast?
+    private var activeHwTransferWalletId: String?
 
     private let retryInterval: TimeInterval = 60 // 1 min
     private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
     private var coopCloseRetryTask: Task<Void, Never>?
+
+    private let boltzService: BoltzService = .shared
+    /// The in-flight or completed swap execution for the current transfer commit. Held here so
+    /// SwiftUI cancelling and re-running the progress screen's `.task` neither cancels the swap
+    /// nor creates and pays a second one: re-entry awaits the same run and its memoized result.
+    private var savingsSwapRun: Task<SavingsSwapResult, Never>?
+    /// The amount (sat) that will actually be swapped out; adjustable via the confirm slider.
+    private var pendingSwapAmountSat: UInt64 = 0
+    /// Cached swap limits so the slider can re-price locally without hitting the network.
+    private var reverseSwapLimits: BoltzPairInfo?
+    /// How long the confirm/progress flow waits for the on-chain claim before backgrounding it.
+    private let swapClaimTimeout: TimeInterval = 30
+    /// Upper bound for fetching swap limits before the confirm screen gives up on a quote.
+    private let swapQuoteTimeout: TimeInterval = 15
+    /// Minimum sats held back from a swap to cover Lightning routing fees.
+    private static let minLnRoutingFeeReserveSats: UInt64 = 10
+    private static let maxAffordabilityRounds = 2
 
     init(
         coreService: CoreService = .shared,
@@ -44,6 +185,11 @@ class TransferViewModel: ObservableObject {
         currencyService: CurrencyService = .shared,
         transferService: TransferService,
         sheetViewModel: SheetViewModel,
+        hwFunding: HwTransferFunding? = nil,
+        hwConnecting: HwTransferConnecting? = nil,
+        hwFeeRateProvider: (() async -> UInt64?)? = nil,
+        hwAddressProvider: (() async throws -> String)? = nil,
+        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
         onBalanceRefresh: (() async -> Void)? = nil
     ) {
         self.coreService = coreService
@@ -52,6 +198,19 @@ class TransferViewModel: ObservableObject {
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
         self.onBalanceRefresh = onBalanceRefresh
+        if let hwFunding, let hwConnecting {
+            self.hwConnecting = hwConnecting
+            hwSigner = HwFundingSigner(
+                funding: hwFunding,
+                connecting: hwConnecting,
+                feeRateProvider: hwFeeRateProvider ?? { nil },
+                addressProvider: hwAddressProvider ?? { throw AppError(message: "No address provider", debugMessage: "") },
+                timeouts: hwTimeouts
+            )
+        } else {
+            self.hwConnecting = nil
+            hwSigner = nil
+        }
     }
 
     /// Convenience initializer for testing and previews
@@ -71,6 +230,35 @@ class TransferViewModel: ObservableObject {
             currencyService: currencyService,
             transferService: transferService,
             sheetViewModel: sheetViewModel
+        )
+    }
+
+    /// Convenience initializer for hardware-wallet transfer tests. Builds the `TransferService`
+    /// inside the app module so callers don't construct cross-module service types.
+    convenience init(
+        hwFunding: HwTransferFunding?,
+        hwConnecting: HwTransferConnecting?,
+        hwFeeRateProvider: (() async -> UInt64?)? = nil,
+        hwAddressProvider: (() async throws -> String)? = nil,
+        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
+        coreService: CoreService = .shared,
+        lightningService: LightningService = .shared,
+        sheetViewModel: SheetViewModel = SheetViewModel()
+    ) {
+        let transferService = TransferService(
+            lightningService: lightningService,
+            blocktankService: coreService.blocktank
+        )
+        self.init(
+            coreService: coreService,
+            lightningService: lightningService,
+            transferService: transferService,
+            sheetViewModel: sheetViewModel,
+            hwFunding: hwFunding,
+            hwConnecting: hwConnecting,
+            hwFeeRateProvider: hwFeeRateProvider,
+            hwAddressProvider: hwAddressProvider,
+            hwTimeouts: hwTimeouts
         )
     }
 
@@ -103,12 +291,16 @@ class TransferViewModel: ObservableObject {
     }
 
     func onOrderCreated(order: IBtOrder) {
+        clearPendingHwFundingBroadcast()
+        hwSpending.miningFeeSats = 0
         uiState.order = order
         uiState.isAdvanced = false
         uiState.defaultOrder = nil
     }
 
     func onAdvancedOrderCreated(order: IBtOrder) {
+        clearPendingHwFundingBroadcast()
+        hwSpending.miningFeeSats = 0
         let defaultOrder = uiState.order
         uiState.order = order
         uiState.defaultOrder = defaultOrder
@@ -154,28 +346,49 @@ class TransferViewModel: ObservableObject {
 
         let txTotalSats = order.feeSat + txFee
 
-        // Create transfer tracking record for spending
-        do {
-            // Create pre-activity metadata for the transfer transaction
-            let currentTime = UInt64(Date().timeIntervalSince1970)
-            let preActivityMetadata = BitkitCore.PreActivityMetadata(
-                paymentId: txid,
-                tags: [],
-                paymentHash: nil,
-                txId: txid,
-                address: address,
-                isReceive: false,
-                feeRate: UInt64(satsPerVbyte),
-                isTransfer: true,
-                channelId: nil,
-                createdAt: currentTime
-            )
-            try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
+        // Pre-activity metadata lets the LDK activity sync recognize this send as a transfer.
+        let currentTime = UInt64(Date().timeIntervalSince1970)
+        let preActivityMetadata = BitkitCore.PreActivityMetadata(
+            walletId: WalletScope.default,
+            paymentId: txid,
+            tags: [],
+            paymentHash: nil,
+            txId: txid,
+            address: address,
+            isReceive: false,
+            feeRate: UInt64(satsPerVbyte),
+            isTransfer: true,
+            channelId: nil,
+            createdAt: currentTime
+        )
+        try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
 
+        await fundPaidOrder(
+            order: order,
+            txId: txid,
+            txTotalSats: txTotalSats,
+            preTransferOnchainSats: preTransferOnchainSats
+        )
+    }
+
+    /// Records a paid order and starts watching it, after the funding tx was broadcast (local LDK
+    /// send or hardware-signed). For the hardware path, also creates the pending on-chain activity
+    /// (the tx is broadcast externally, so LDK's own activity sync won't surface it).
+    private func fundPaidOrder(
+        order: IBtOrder,
+        txId: String,
+        createTransferActivity: Bool = false,
+        fee: UInt64 = 0,
+        feeRate: UInt64 = 0,
+        txTotalSats: UInt64? = nil,
+        preTransferOnchainSats: UInt64? = nil,
+        activityWalletId: String = WalletScope.default
+    ) async {
+        do {
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
                 amountSats: order.clientBalanceSat,
-                fundingTxId: txid,
+                fundingTxId: txId,
                 lspOrderId: order.id,
                 txTotalSats: txTotalSats,
                 preTransferOnchainSats: preTransferOnchainSats
@@ -186,7 +399,18 @@ class TransferViewModel: ObservableObject {
             // Don't throw - we still want to continue with the order
         }
 
+        if createTransferActivity {
+            await transferService.createPendingToSpendingActivity(
+                order: order,
+                txId: txId,
+                fee: fee,
+                feeRate: feeRate,
+                walletId: activityWalletId
+            )
+        }
+
         lightningSetupStep = 0
+        await onBalanceRefresh?()
         watchOrder(orderId: order.id)
     }
 
@@ -308,16 +532,291 @@ class TransferViewModel: ObservableObject {
     }
 
     func onDefaultClick() {
+        clearPendingHwFundingBroadcast()
+        hwSpending.miningFeeSats = 0
         let defaultOrder = uiState.defaultOrder
         uiState.order = defaultOrder
         uiState.defaultOrder = nil
         uiState.isAdvanced = false
     }
 
-    func resetState() {
-        uiState = TransferUiState()
-        transferValues = TransferValues()
-        selectedChannelIds = []
+    // MARK: - Hardware Wallet Transfer
+
+    /// Compute the available/MAX/quarter limits for a hardware-wallet transfer: the signer resolves
+    /// the device's native-segwit balance minus an on-chain fee reserve, then the shared
+    /// spending-limit calculation clamps it to the LSP receiving cap.
+    func updateHwLimits(
+        walletId: String,
+        blocktankInfo: IBtInfo?,
+        estimateOrderFee: @escaping (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws
+            -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async {
+        guard let hwSigner else { return }
+        clearPendingHwFundingBroadcast()
+        hwSpending.isLoading = true
+
+        let availability: HwFundingSigner.Availability
+        do {
+            availability = try await hwSigner.availability(walletId: walletId)
+        } catch {
+            hwSpending = HwSpendingState(isLoading: false)
+            hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
+            return
+        }
+
+        do {
+            let (avail, maxAmount) = try await calculateSpendingLimits(
+                onchainAvailable: availability.available,
+                lspMaxClientBalance: blocktankInfo?.options.maxClientBalanceSat,
+                transferValues: { self.calculateTransferValues(clientBalanceSat: $0, blocktankInfo: blocktankInfo) },
+                estimateOrderFee: estimateOrderFee
+            )
+            hwSpending.balanceAfterFee = avail
+            hwSpending.maxAllowedToSend = maxAmount
+            hwSpending.quarterAmount = min(availability.balanceSats / 4, maxAmount)
+        } catch {
+            hwSpending.balanceAfterFee = 0
+            hwSpending.maxAllowedToSend = 0
+            hwSpending.quarterAmount = 0
+        }
+
+        hwSpending.isLoading = false
+    }
+
+    /// Best-effort offline mining-fee estimate for the Sign screen (`fingerprint: nil` compose).
+    func updateHwFundingFeeEstimate(order: IBtOrder, walletId: String) async {
+        guard let hwSigner else { return }
+        guard !hwSpending.hasPendingBroadcast else { return }
+        guard let address = order.payment?.onchain?.address, !address.isEmpty else { return }
+        do {
+            hwSpending.miningFeeSats = try await hwSigner.estimateOfflineFundingMiningFee(
+                walletId: walletId,
+                address: address,
+                sats: order.feeSat
+            )
+        } catch {
+            Logger.debug("Skipped offline hardware funding fee estimate for '\(walletId)'", context: "TransferViewModel")
+        }
+    }
+
+    /// Pay for the order by composing and signing the funding send on the Trezor (via the signer),
+    /// then record and watch it. Coordination only — the device orchestration lives in `HwFundingSigner`.
+    func onTransferToSpendingHwConfirm(order: IBtOrder, walletId: String) {
+        guard !hwSpending.isSigning else { return }
+        guard let hwSigner else {
+            hwTransferError = .generic(t("common__error"))
+            return
+        }
+        guard let address = order.payment?.onchain?.address, !address.isEmpty else {
+            hwTransferError = .generic(t("common__error"))
+            return
+        }
+        // A hidden wallet whose session is gone can only be reopened with its passphrase, and the
+        // device would otherwise sign from whichever wallet the current session holds. A signed
+        // transaction awaiting a broadcast retry is the exception: broadcasting never reaches the
+        // device, so holding the retry behind a passphrase would strand funds the user already
+        // approved — the same reason `cancelHwSigning` leaves the device alone while one is pending.
+        let isBroadcastRetry = pendingHwFundingBroadcast?.matches(order: order, walletId: walletId, address: address) == true
+        if !isBroadcastRetry, hwConnecting?.needsPassphrase(walletId: walletId) == true {
+            hwSpending.isPassphraseRequired = true
+            return
+        }
+
+        activeHwTransferWalletId = walletId
+        hwSpending.isSigning = true
+        hwTransferError = nil
+
+        hwSignTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.hwSpending.isSigning = false
+                self.hwSignTask = nil
+            }
+
+            do {
+                let signedTx: HwFundingSignedTx
+                if let pending = pendingHwFundingBroadcast, pending.matches(order: order, walletId: walletId, address: address) {
+                    signedTx = pending.signedTx
+                    hwSpending.miningFeeSats = signedTx.miningFeeSats
+                } else {
+                    signedTx = try await hwSigner.prepareSignedFunding(
+                        order: order,
+                        walletId: walletId,
+                        address: address
+                    ) { [weak self] funding in
+                        self?.hwSpending.miningFeeSats = funding.miningFeeSats
+                    }
+                    pendingHwFundingBroadcast = PendingHwFundingBroadcast(
+                        orderId: order.id,
+                        walletId: walletId,
+                        address: address,
+                        amountSats: order.feeSat,
+                        signedTx: signedTx
+                    )
+                    hwSpending.hasPendingBroadcast = true
+                }
+                let result = try await hwSigner.broadcastSignedFunding(signedTx)
+                clearPendingHwFundingBroadcast()
+                await fundPaidOrder(
+                    order: order,
+                    txId: result.txId,
+                    createTransferActivity: true,
+                    fee: result.miningFeeSats,
+                    feeRate: result.feeRate,
+                    // The wallet being spent from is the wallet the transfer is recorded against.
+                    activityWalletId: walletId
+                )
+                activeHwTransferWalletId = nil
+                hwFundingComplete = true
+                hwSignedEvent += 1
+            } catch is CancellationError {
+                // User dismissed the flow — no toast.
+            } catch let error as HwTransferError {
+                self.handleHardwareTransferFailure(error, walletId: walletId)
+            } catch {
+                if error.isTrezorUserCancellation() {
+                    Logger.info("Hardware transfer cancelled on device for '\(walletId)'", context: "TransferViewModel")
+                    return
+                }
+                handleRawHardwareTransferFailure(error, walletId: walletId)
+            }
+        }
+    }
+
+    /// Reopens the hidden wallet with the entered passphrase and, once its accounts prove it is the
+    /// wallet the transfer is for, continues into signing. The passphrase is passed straight through
+    /// to the device session; it is never kept in view state.
+    func onHwPassphraseSubmit(order: IBtOrder, walletId: String, passphrase: String) {
+        guard !passphrase.isEmpty, let hwConnecting, hwPassphraseTask == nil else { return }
+
+        hwSpending.isVerifyingPassphrase = true
+        hwTransferError = nil
+
+        // Tracked separately from `hwSignTask`: on success this hands over to the confirm below,
+        // which installs its own signing task that this one's cleanup must not tear down.
+        hwPassphraseTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.hwSpending.isVerifyingPassphrase = false
+                self.hwPassphraseTask = nil
+            }
+            do {
+                try await hwConnecting.reconnectWithPassphrase(walletId: walletId, passphrase: passphrase)
+                // The prompt can be dismissed while the device is still reopening the wallet, and
+                // the confirm below would start a signing task a late dismiss could not reach.
+                guard hwSpending.isPassphraseRequired else { return }
+                hwSpending.isPassphraseRequired = false
+                onTransferToSpendingHwConfirm(order: order, walletId: walletId)
+            } catch is CancellationError {
+                // User dismissed the prompt — no toast.
+            } catch HwPassphraseError.mismatch {
+                Logger.warn("Rejected wrong passphrase for hardware wallet '\(walletId)'", context: "TransferViewModel")
+                hwTransferError = .passphraseMismatch
+            } catch {
+                handleRawHardwareTransferFailure(error, walletId: walletId)
+            }
+        }
+    }
+
+    /// Backing out of the prompt also drops the reopen it started, so no signature is requested.
+    func onHwPassphraseDismiss() {
+        hwPassphraseTask?.cancel()
+        hwPassphraseTask = nil
+        hwSpending.isPassphraseRequired = false
+        hwSpending.isVerifyingPassphrase = false
+    }
+
+    /// Pre-connect the hardware device when the sign screen appears, mirroring Android's warm-up, so
+    /// tapping Open Trezor Connect is less likely to hit a cold reconnect. Best-effort no-op without
+    /// the HW capabilities.
+    func warmUpHardwareConnection(walletId: String) {
+        guard !hwSpending.hasPendingBroadcast else { return }
+        hwSigner?.warmUp(walletId: walletId)
+    }
+
+    /// Cancel an in-flight hardware signing task when the user abandons the sign flow, so a later
+    /// on-device approval can't still sign/broadcast/record. Idempotent. No-op while a signed tx
+    /// is awaiting broadcast retry.
+    func cancelHwSigning() {
+        // The prompt and the reopen it started belong to the screen being left. Neither touches a
+        // signed transaction waiting to be broadcast, so they are dropped before the guard below —
+        // otherwise leaving mid-verify would leave the reopen running and the prompt set to reappear.
+        onHwPassphraseDismiss()
+
+        guard pendingHwFundingBroadcast == nil else { return }
+        let walletId = activeHwTransferWalletId
+        hwSignTask?.cancel()
+        hwSignTask = nil
+        hwSpending.isSigning = false
+        activeHwTransferWalletId = nil
+        if let walletId, let hwConnecting {
+            Task {
+                await hwConnecting.disconnectStaleSession(walletId: walletId)
+            }
+        }
+    }
+
+    func consumeHwFundingComplete() {
+        hwFundingComplete = false
+    }
+
+    private func clearPendingHwFundingBroadcast() {
+        pendingHwFundingBroadcast = nil
+        hwSpending.hasPendingBroadcast = false
+    }
+
+    private func handleHardwareTransferFailure(_ error: HwTransferError, walletId: String) {
+        switch error {
+        case .reconnect:
+            Logger.error("Failed to reconnect hardware device '\(walletId)'", context: "TransferViewModel")
+        case .signingTimeout:
+            Logger.warn("Timed out hardware transfer signing for '\(walletId)'", context: "TransferViewModel")
+        case .broadcastUncertain:
+            Logger.warn("Hardware funding broadcast timed out (uncertain) for '\(walletId)'", context: "TransferViewModel")
+        case .broadcastConnectivity:
+            Logger.warn("Hardware funding broadcast connectivity failure for '\(walletId)'", context: "TransferViewModel")
+        case .deviceBusy:
+            Logger.warn("Blocked hardware transfer for locked or busy Trezor '\(walletId)'", context: "TransferViewModel")
+        case .firmwareReconnect:
+            Logger.warn("Received Trezor firmware error for '\(walletId)'", context: "TransferViewModel")
+        case .passphraseMismatch:
+            Logger.warn("Rejected wrong passphrase for hardware wallet '\(walletId)'", context: "TransferViewModel")
+        case let .funding(message):
+            Logger.warn("Failed to compose hardware funding for '\(walletId)': \(message ?? "")", context: "TransferViewModel")
+        case .generic:
+            break
+        }
+        hwTransferError = error
+    }
+
+    private func handleRawHardwareTransferFailure(_ error: Error, walletId: String) {
+        // The device is open on another identity and only this wallet's passphrase reopens it, so
+        // raise the prompt instead of reporting a failure the user can do nothing about.
+        if case HwPassphraseError.required = error {
+            Logger.info("Asking for the passphrase to reopen hardware wallet '\(walletId)'", context: "TransferViewModel")
+            hwSpending.isPassphraseRequired = true
+            return
+        }
+        if case HwPassphraseError.mismatch = error {
+            hwTransferError = .passphraseMismatch
+            return
+        }
+        if error.isTrezorDeviceBusy() {
+            hwTransferError = .deviceBusy
+            return
+        }
+        if error.isTrezorFirmwareError() {
+            hwTransferError = .firmwareReconnect
+            return
+        }
+        if pendingHwFundingBroadcast != nil {
+            if error.isBroadcastConnectivityFailure() {
+                hwTransferError = .broadcastConnectivity
+                return
+            }
+            clearPendingHwFundingBroadcast()
+        }
+        hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
     }
 
     // MARK: - Balance Calculation
@@ -356,8 +855,291 @@ class TransferViewModel: ObservableObject {
         )
     }
 
-    func updateTransferValues(clientBalanceSat: UInt64, blocktankInfo: IBtInfo?) {
-        transferValues = calculateTransferValues(clientBalanceSat: clientBalanceSat, blocktankInfo: blocktankInfo)
+    /// Liquidity options for the advanced screen, with the maximum receiving capacity settled on one
+    /// the budget can pay the order fee for.
+    ///
+    /// The LSP prices both sides of the channel, so a higher capacity costs more, and its advertised
+    /// maximum knows nothing of the client balance already committed.
+    func updateAdvancedTransferValues(
+        clientBalanceSat: UInt64,
+        budget: () async -> UInt64?,
+        transferValues: (_ clientBalanceSat: UInt64) -> TransferValues,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async {
+        isSettlingAdvancedCapacity = true
+        defer { isSettlingAdvancedCapacity = false }
+
+        // Publish the advertised options before the budget is read: until they land the screen has no
+        // cap at all, and reading the budget is itself a round trip.
+        var values = transferValues(clientBalanceSat)
+        self.transferValues = values
+
+        guard values.maxLspBalance > values.minLspBalance, let budget = await budget() else { return }
+
+        let settled = await settleAdvancedLspBalance(
+            clientBalance: clientBalanceSat,
+            budget: budget,
+            minLspBalance: values.minLspBalance,
+            maxLspBalance: values.maxLspBalance,
+            estimateOrderFee: estimateOrderFee
+        )
+
+        guard let settled, settled < values.maxLspBalance else { return }
+        Logger.info("Settled max capacity '\(values.maxLspBalance)' on affordable '\(settled)'", context: "TransferViewModel")
+        values.maxLspBalance = settled
+        // The Default button must not hand back a capacity the settled max just excluded.
+        values.defaultLspBalance = min(values.defaultLspBalance, settled)
+        self.transferValues = values
+    }
+
+    /// The highest receiving capacity `budget` can pay the order fee for, or nil when even
+    /// `minLspBalance` is out of reach — the confirm step does the rejecting rather than this
+    /// presenting a range with nothing valid in it.
+    func settleAdvancedLspBalance(
+        clientBalance: UInt64,
+        budget: UInt64,
+        minLspBalance: UInt64,
+        maxLspBalance: UInt64,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> UInt64? {
+        let headroom = budget.saturatingSub(clientBalance)
+
+        guard let maxFee = await lspFeeQuote(clientBalance: clientBalance, lspBalance: maxLspBalance, estimateOrderFee: estimateOrderFee) else {
+            Logger.warn("Advertising unsettled max capacity '\(maxLspBalance)', fee quote unavailable", context: "TransferViewModel")
+            return maxLspBalance
+        }
+        if maxFee <= headroom {
+            return maxLspBalance
+        }
+
+        guard let minFee = await lspFeeQuote(clientBalance: clientBalance, lspBalance: minLspBalance, estimateOrderFee: estimateOrderFee),
+              minFee <= headroom
+        else { return nil }
+
+        return await settleCapacity(
+            clientBalance: clientBalance,
+            headroom: headroom,
+            affordable: minLspBalance,
+            affordableFee: minFee,
+            overBudget: maxLspBalance,
+            overBudgetFee: maxFee,
+            estimateOrderFee: estimateOrderFee
+        )
+    }
+
+    /// Nil when the LSP will not quote: callers skip the check rather than reject.
+    private func lspFeeQuote(
+        clientBalance: UInt64,
+        lspBalance: UInt64,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> UInt64? {
+        guard let fee = try? await estimateOrderFee(clientBalance, lspBalance) else { return nil }
+        return fee.networkFeeSat.saturatingAdd(fee.serviceFeeSat)
+    }
+
+    /// Walks the affordable/over-budget bracket inward along the fee rate its two priced ends imply.
+    ///
+    /// A satoshi off the capacity only takes a fraction of a satoshi off the fee, so stepping down by
+    /// the shortfall would barely move; interpolating lands in a round or two. The invariant
+    /// `affordableFee <= headroom < overBudgetFee` keeps every candidate inside the bracket.
+    private func settleCapacity(
+        clientBalance: UInt64,
+        headroom: UInt64,
+        affordable: UInt64,
+        affordableFee: UInt64,
+        overBudget: UInt64,
+        overBudgetFee: UInt64,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> UInt64 {
+        var settled = affordable
+        var settledFee = affordableFee
+        var ceiling = overBudget
+        var ceilingFee = overBudgetFee
+
+        for _ in 0 ..< Self.maxAffordabilityRounds {
+            let feeSpan = ceilingFee.saturatingSub(settledFee)
+            guard feeSpan > 0 else { return settled }
+
+            let candidate = settled.saturatingAdd(
+                Self.scaledSpan(
+                    span: ceiling.saturatingSub(settled),
+                    numerator: headroom.saturatingSub(settledFee),
+                    denominator: feeSpan
+                )
+            )
+            guard candidate > settled,
+                  let candidateFee = await lspFeeQuote(clientBalance: clientBalance, lspBalance: candidate, estimateOrderFee: estimateOrderFee)
+            else { return settled }
+
+            if candidateFee <= headroom {
+                settled = candidate
+                settledFee = candidateFee
+            } else {
+                ceiling = candidate
+                ceilingFee = candidateFee
+            }
+        }
+
+        return settled
+    }
+
+    /// `span * numerator / denominator` without overflowing the intermediate product. The caller's
+    /// bracket guarantees `numerator < denominator`; the guard keeps `dividingFullWidth` from
+    /// trapping if a misconfigured LSP breaks that.
+    private static func scaledSpan(span: UInt64, numerator: UInt64, denominator: UInt64) -> UInt64 {
+        guard denominator > 0 else { return 0 }
+        let product = span.multipliedFullWidth(by: numerator)
+        guard product.high < denominator else { return span }
+        return denominator.dividingFullWidth(product).quotient
+    }
+
+    /// Backstop before a raised capacity is ordered. Like `canFundOrder`, only a quoted and
+    /// definitively unaffordable capacity is rejected.
+    func canFundAdvancedOrder(
+        clientBalance: UInt64,
+        receivingAmount: UInt64,
+        budget: UInt64?,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> Bool {
+        guard let budget else {
+            Logger.warn("Skipped capacity check for '\(receivingAmount)', no sized budget available", context: "TransferViewModel")
+            return true
+        }
+        guard let fee = try? await estimateOrderFee(clientBalance, receivingAmount) else {
+            Logger.warn("Skipped capacity check for '\(receivingAmount)', fee quote unavailable", context: "TransferViewModel")
+            return true
+        }
+
+        let cost = clientBalance.saturatingAdd(fee.networkFeeSat.saturatingAdd(fee.serviceFeeSat))
+        if cost > budget {
+            Logger.info("Priced capacity '\(receivingAmount)' at '\(cost)', over funding budget '\(budget)'", context: "TransferViewModel")
+        }
+        return cost <= budget
+    }
+
+    /// The device's spendable balance, re-read at decision time. Never on-chain savings, which would
+    /// reject every hardware transfer. Nil without hardware capabilities, leaving the guards
+    /// non-blocking in previews and tests.
+    func hwFundingBudget(walletId: String) async -> UInt64? {
+        guard let hwSigner else { return nil }
+        return try? await hwSigner.availability(walletId: walletId).available
+    }
+
+    /// Calculates the max amount transferable to spending and the value to display as "Available".
+    ///
+    /// The prospective client balance is clamped to the LSP's `maxClientBalanceSat` before
+    /// computing liquidity options: an on-chain balance larger than the LSP's max channel size
+    /// otherwise makes the liquidity calculation report `maxClientBalanceSat = 0` (the balance
+    /// already saturates the channel), collapsing the spendable amount to zero and stranding the
+    /// funds on-chain.
+    ///
+    /// - `transferValues`: liquidity options for a given client balance (prod: `calculateTransferValues`)
+    /// - `estimateOrderFee`: Blocktank order fee for a given client/LSP balance
+    func calculateSpendingLimits(
+        onchainAvailable: UInt64,
+        lspMaxClientBalance: UInt64?,
+        transferValues: (_ clientBalance: UInt64) -> TransferValues,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async rethrows -> (available: UInt64, max: UInt64) {
+        // First pass: estimate the LSP fee against the full on-chain balance.
+        let values1 = transferValues(onchainAvailable)
+        let lspBalance1 = max(values1.defaultLspBalance, values1.minLspBalance)
+        let fee1 = try await estimateOrderFee(onchainAvailable, lspBalance1)
+        let balanceAfterLspFee = onchainAvailable.saturatingSub(fee1.networkFeeSat.saturatingAdd(fee1.serviceFeeSat))
+
+        let cappedClientBalance: UInt64 = {
+            guard let cap = lspMaxClientBalance, cap > 0 else { return balanceAfterLspFee }
+            return min(balanceAfterLspFee, cap)
+        }()
+
+        // Second pass with the clamped balance.
+        let values2 = transferValues(cappedClientBalance)
+        guard values2.maxClientBalance > 0 else { return (0, 0) }
+        let lspBalance2 = max(values2.defaultLspBalance, values2.minLspBalance)
+        let fee2 = try await estimateOrderFee(cappedClientBalance, lspBalance2)
+
+        let affordable = await resolveAffordableClientBalance(
+            availableAmount: onchainAvailable,
+            quotedBalance: cappedClientBalance,
+            quotedFee: fee2.networkFeeSat.saturatingAdd(fee2.serviceFeeSat),
+            transferValues: transferValues,
+            estimateOrderFee: estimateOrderFee
+        )
+        let result = min(values2.maxClientBalance, affordable)
+        return (result, result)
+    }
+
+    /// Settles the advertised max on a client balance the LSP has actually priced.
+    ///
+    /// `availableAmount - fee` is a different balance from the one that fee priced, and the service
+    /// fee moves with the client/LSP split — up with the client balance in production, down on
+    /// staging and regtest — so an order built there can cost more than the wallet holds. Each round
+    /// re-quotes its own candidate.
+    private func resolveAffordableClientBalance(
+        availableAmount: UInt64,
+        quotedBalance: UInt64,
+        quotedFee: UInt64,
+        transferValues: (_ clientBalance: UInt64) -> TransferValues,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> UInt64 {
+        var candidate = quotedBalance
+        var fee = quotedFee
+
+        for _ in 0 ..< Self.maxAffordabilityRounds {
+            if candidate.saturatingAdd(fee) <= availableAmount {
+                return candidate
+            }
+            candidate = availableAmount.saturatingSub(fee)
+            // Re-price against the split order creation will pick for this balance, not the earlier one.
+            let values = transferValues(candidate)
+            let lspBalance = max(values.defaultLspBalance, values.minLspBalance)
+            guard let requoted = await lspFeeQuote(clientBalance: candidate, lspBalance: lspBalance, estimateOrderFee: estimateOrderFee) else {
+                Logger.warn("Advertising unverified max '\(candidate)', fee quote unavailable", context: "TransferViewModel")
+                return candidate
+            }
+            fee = requoted
+        }
+
+        if candidate.saturatingAdd(fee) <= availableAmount {
+            return candidate
+        }
+        let fallback = availableAmount.saturatingSub(fee)
+        Logger.warn(
+            "Max '\(candidate)' still over budget '\(availableAmount)' after \(Self.maxAffordabilityRounds) rounds, "
+                + "advertising unverified '\(fallback)'",
+            context: "TransferViewModel"
+        )
+        return fallback
+    }
+
+    /// Backstop before an order is created: re-quote the fee and confirm the funding source still
+    /// covers it and the balance.
+    ///
+    /// A missing budget or quote does not block — that would lock people out whenever the node is
+    /// briefly unready, and the confirm step stays the authority. Both are logged.
+    func canFundOrder(
+        clientBalance: UInt64,
+        budget: UInt64?,
+        transferValues: (_ clientBalance: UInt64) -> TransferValues,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> Bool {
+        guard let budget else {
+            Logger.warn("Skipped funding check for '\(clientBalance)', no sized budget available", context: "TransferViewModel")
+            return true
+        }
+
+        let values = transferValues(clientBalance)
+        let lspBalance = max(values.defaultLspBalance, values.minLspBalance)
+        guard let fee = try? await estimateOrderFee(clientBalance, lspBalance) else {
+            Logger.warn("Skipped funding check for '\(clientBalance)', fee quote unavailable", context: "TransferViewModel")
+            return true
+        }
+
+        let cost = clientBalance.saturatingAdd(fee.networkFeeSat.saturatingAdd(fee.serviceFeeSat))
+        if cost > budget {
+            Logger.info("Priced amount '\(clientBalance)' at '\(cost)', over funding budget '\(budget)'", context: "TransferViewModel")
+        }
+        return cost <= budget
     }
 
     /// Calculates max client balance accounting for LDK reserve requirement
@@ -526,9 +1308,19 @@ class TransferViewModel: ObservableObject {
         selectedChannelIds = ids
     }
 
-    func onTransferToSavingsConfirm(channels: [ChannelDetails]) {
+    /// Commit the transfer and pick how it runs. A swap needs a priced quote, so without one
+    /// (swaps unsupported on this network, Boltz unreachable, or an amount below the swap
+    /// minimum) the transfer closes a channel exactly as it did before swaps existed.
+    func onTransferToSavingsConfirm(channels: [ChannelDetails], mode: SavingsTransferMode? = nil) {
+        savingsTransferMode = mode ?? resolvedSavingsTransferMode
         selectedChannelIds = []
         channelsToClose = channels
+        // Each swipe commit is a new transfer; the previous run's memo must not satisfy it.
+        savingsSwapRun = nil
+    }
+
+    private var resolvedSavingsTransferMode: SavingsTransferMode {
+        savingsSwapState.quote != nil ? .swap : .close
     }
 
     func closeSelectedChannels() async throws -> [ChannelDetails] {
@@ -719,6 +1511,309 @@ class TransferViewModel: ObservableObject {
 
         return trustedChannels.count
     }
+
+    // MARK: - Savings Swap (Boltz reverse swap)
+
+    /// Fetch swap limits, derive the adjustable amount range, and publish an initial fee quote
+    /// (defaulting to the maximum transferable) so the user sees the cost before confirming.
+    /// The confirm slider then re-prices locally via `onSwapAmountChange`. A quote is the only
+    /// thing that unlocks the swap, so every failure simply leaves it nil and the transfer
+    /// falls back to closing a channel. Skipped entirely where swaps are unsupported or the
+    /// flow is switched off in dev settings, see `BoltzService.isSwapEnabled`.
+    /// Show the quote's loading state ahead of `loadSavingsSwapQuote`, covering work that runs
+    /// before the fetch (the confirm screen's balance sync) so the swipe cannot briefly land in
+    /// the channel-close fallback while a quote is still on its way.
+    func beginSavingsSwapQuoteLoad() {
+        guard boltzService.isSwapEnabled else { return }
+        savingsSwapState = SavingsSwapState(isLoading: true)
+    }
+
+    func loadSavingsSwapQuote(requestedSat: UInt64, spendableSats: UInt64) async {
+        guard boltzService.isSwapEnabled else { return }
+        guard requestedSat > 0 else {
+            savingsSwapState = SavingsSwapState()
+            return
+        }
+        savingsSwapState = SavingsSwapState(isLoading: true)
+
+        let fetchedLimits = await fetchReverseSwapLimits()
+        // The confirm screen restarts this whenever the amount changes; a superseded invocation
+        // must not clobber the state its replacement is about to publish.
+        guard !Task.isCancelled else { return }
+
+        guard let limits = fetchedLimits else {
+            reverseSwapLimits = nil
+            savingsSwapState = SavingsSwapState()
+            return
+        }
+        reverseSwapLimits = limits
+
+        // Reserve headroom for Lightning routing fees. Paying an invoice for 100% of
+        // outbound capacity leaves nothing for fees and fails to route, so cap the
+        // swap at outbound minus ~1% (with a small floor).
+        let routingReserve = max(spendableSats / 100, Self.minLnRoutingFeeReserveSats)
+        let sendable = spendableSats > routingReserve ? spendableSats - routingReserve : 0
+        let maxSat = min(requestedSat, limits.maximalSat, sendable)
+        let minSat = limits.minimalSat
+
+        guard maxSat >= minSat, maxSat > 0 else {
+            // Below the swap minimum: revert to the pre-swap view where the swipe closes
+            // the channel instead. No fees, slider, or extra close action are shown.
+            pendingSwapAmountSat = 0
+            savingsSwapState = SavingsSwapState()
+            return
+        }
+
+        // Default to transferring as much as possible; the slider can lower it.
+        pendingSwapAmountSat = maxSat
+        savingsSwapState = SavingsSwapState(
+            quote: SavingsSwapQuote.build(amountSat: maxSat, limits: limits),
+            minSat: minSat,
+            maxSat: maxSat
+        )
+    }
+
+    /// Bounded so a hanging Boltz request cannot leave the confirm swipe stuck loading.
+    private func fetchReverseSwapLimits() async -> BoltzPairInfo? {
+        await withTaskGroup(of: BoltzPairInfo?.self) { group in
+            group.addTask {
+                do {
+                    return try await self.boltzService.reverseLimits()
+                } catch {
+                    Logger.error("Failed to load reverse swap limits", context: error.localizedDescription)
+                    return nil
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(self.swapQuoteTimeout * 1_000_000_000))
+                return nil
+            }
+            defer { group.cancelAll() }
+            return await group.next() ?? nil
+        }
+    }
+
+    /// Re-price the swap for a slider-selected amount, clamped to the allowed range.
+    func onSwapAmountChange(_ sat: UInt64) {
+        guard let limits = reverseSwapLimits, savingsSwapState.quote != nil, savingsSwapState.maxSat >= savingsSwapState.minSat else {
+            return
+        }
+        let amount = min(max(sat, savingsSwapState.minSat), savingsSwapState.maxSat)
+        pendingSwapAmountSat = amount
+        savingsSwapState.quote = SavingsSwapQuote.build(amountSat: amount, limits: limits)
+    }
+
+    /// Execute the LN -> onchain swap: derive a fresh claim address, create the swap, pay the
+    /// returned hold invoice over Lightning, then wait for whichever resolves first: the on-chain
+    /// claim, a Boltz error, or a Lightning routing failure on the payment. A timeout is not a
+    /// failure; the claim is auto-broadcast by the updates stream once the lockup confirms, so the
+    /// swap completes in the background. `onEvent`/`removeEvent` register a node event listener so
+    /// an unroutable payment can be observed (see `awaitSwapOutcome`).
+    ///
+    /// At most one swap runs per confirm commit: the run is owned by the view model, so the
+    /// progress screen's `.task` being cancelled and re-entered joins the same run instead of
+    /// creating and paying a second swap.
+    func executeSavingsSwap(
+        onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
+        removeEvent: @escaping (String) -> Void
+    ) async -> SavingsSwapResult {
+        if let run = savingsSwapRun {
+            return await run.value
+        }
+        let run = Task { await performSavingsSwap(onEvent: onEvent, removeEvent: removeEvent) }
+        savingsSwapRun = run
+        return await run.value
+    }
+
+    private func performSavingsSwap(
+        onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
+        removeEvent: @escaping (String) -> Void
+    ) async -> SavingsSwapResult {
+        let amount = pendingSwapAmountSat
+        guard amount > 0 else {
+            return .failure(message: t("lightning__savings_confirm__amount_too_low"))
+        }
+
+        do {
+            let claimAddress = try await lightningService.newAddress()
+            let swap = try await boltzService.createReverseSwap(amountSat: amount, claimAddress: claimAddress)
+            Logger.info("Created savings transfer swap \(swap.id)", context: "TransferViewModel")
+
+            // Subscribe before paying so a claim settling faster than the payment call returns is
+            // not missed (events buffer from stream creation).
+            let events = boltzService.events()
+
+            // Pay the hold invoice. `send` returns a payment id as soon as the HTLC is dispatched;
+            // a hold invoice never settles until Boltz claims on-chain, so this does not block on
+            // the claim. A failure to dispatch the payment throws and is surfaced immediately.
+            let paymentId = try await lightningService.send(bolt11: swap.invoice)
+
+            let result = await awaitSwapOutcome(
+                swapId: swap.id,
+                paymentId: paymentId,
+                events: events,
+                onEvent: onEvent,
+                removeEvent: removeEvent
+            )
+            await onBalanceRefresh?()
+            return result
+        } catch {
+            Logger.error("Savings transfer swap failed", context: error.localizedDescription)
+            return .failure(message: error.localizedDescription)
+        }
+    }
+
+    /// Wait for whichever swap outcome resolves first. `send` returning does not mean the payment
+    /// routed, and a paid hold invoice never settles until the on-chain claim, so an unroutable
+    /// payment would otherwise idle into the claim timeout and read as a settling transfer that
+    /// never completes. Watching the node's payment-failed event alongside the claim surfaces it
+    /// as a failure instead. A timeout still resolves to `.pending`: the claim settles later.
+    private func awaitSwapOutcome(
+        swapId: String,
+        paymentId: String,
+        events: AsyncStream<BoltzSwapEvent>,
+        onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
+        removeEvent: @escaping (String) -> Void
+    ) async -> SavingsSwapResult {
+        let eventId = "savings-swap-\(swapId)"
+        let paymentFailure = SwapPaymentFailureCapture()
+
+        // LDK events are dispatched on the main actor, so this handler runs there; it records a
+        // routing failure for the paid hold invoice and resumes the failure wait below. The
+        // returned payment id may land in either the event's payment id or its payment hash field.
+        onEvent(eventId) { event in
+            guard case let .paymentFailed(eventPaymentId, eventPaymentHash, reason) = event else { return }
+            guard [eventPaymentId, eventPaymentHash].compactMap({ $0 }).contains(paymentId) else { return }
+            Task { await paymentFailure.markFailed(reason: reason) }
+        }
+
+        // Capture main-actor state locally so the detached group tasks stay Sendable.
+        let claimTimeout = swapClaimTimeout
+
+        let outcome = await withTaskGroup(of: SavingsSwapResult?.self) { group in
+            // On-chain claim or a Boltz-side error.
+            group.addTask {
+                for await event in events {
+                    switch event {
+                    case let .claimed(swapId: id, txid: txid) where id == swapId:
+                        return .success(txid: txid)
+                    case let .error(swapId: id, message: message) where id == swapId:
+                        return .failure(message: message)
+                    default:
+                        continue
+                    }
+                }
+                return nil
+            }
+            // Lightning routing failure on the paid hold invoice, surfaced the moment the node
+            // reports it, with the failure reason mapped to a user-facing message.
+            group.addTask {
+                let wait = await withTaskCancellationHandler {
+                    await paymentFailure.waitForFailure()
+                } onCancel: {
+                    Task { await paymentFailure.cancelWaits() }
+                }
+                guard case let .failed(reason) = wait else { return nil }
+                return .failure(message: PaymentFailureReason.userMessage(for: reason))
+            }
+            // Bounded wait: a timeout is not a failure, the claim settles in the background.
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(claimTimeout * 1_000_000_000))
+                return .pending
+            }
+
+            var result: SavingsSwapResult = .pending
+            for await value in group {
+                if let value {
+                    result = value
+                    break
+                }
+            }
+            group.cancelAll()
+            return result
+        }
+
+        removeEvent(eventId)
+        return outcome
+    }
+}
+
+/// Captures a Lightning routing failure for the savings swap's hold-invoice payment. The node
+/// event handler runs on the main actor and resumes the waiting continuation, so the racing
+/// wait in `awaitSwapOutcome` surfaces the failure the moment it is reported instead of polling.
+actor SwapPaymentFailureCapture {
+    enum Wait: Equatable {
+        case failed(reason: PaymentFailureReason?)
+        case cancelled
+    }
+
+    private var outcome: Wait?
+    private var waiters: [CheckedContinuation<Wait, Never>] = []
+
+    func markFailed(reason: PaymentFailureReason?) {
+        finish(with: .failed(reason: reason))
+    }
+
+    /// Unblocks the wait when its surrounding task is cancelled (another branch of the race
+    /// won); a continuation left pending would keep the task group from ever finishing.
+    func cancelWaits() {
+        finish(with: .cancelled)
+    }
+
+    func waitForFailure() async -> Wait {
+        if let outcome {
+            return outcome
+        }
+        return await withCheckedContinuation { waiters.append($0) }
+    }
+
+    private func finish(with wait: Wait) {
+        guard outcome == nil else { return }
+        outcome = wait
+        let pending = waiters
+        waiters = []
+        for waiter in pending {
+            waiter.resume(returning: wait)
+        }
+    }
+}
+
+/// Whether a transfer to savings swaps funds out or closes a channel (default).
+enum SavingsTransferMode {
+    case swap
+    case close
+}
+
+struct SavingsSwapQuote: Equatable {
+    let amountSat: UInt64
+    let networkFeeSat: UInt64
+    let swapFeeSat: UInt64
+    let receiveSat: UInt64
+
+    /// Estimate the fee breakdown for swapping `amountSat` out under the given pair limits.
+    static func build(amountSat: UInt64, limits: BoltzPairInfo) -> SavingsSwapQuote {
+        let swapFee = UInt64(max(0, (Double(amountSat) * limits.feePercentage / 100.0).rounded()))
+        let networkFee = limits.minerFeesSat
+        let totalFees = swapFee + networkFee
+        let receive = amountSat > totalFees ? amountSat - totalFees : 0
+        return SavingsSwapQuote(amountSat: amountSat, networkFeeSat: networkFee, swapFeeSat: swapFee, receiveSat: receive)
+    }
+}
+
+struct SavingsSwapState {
+    var isLoading = false
+    var quote: SavingsSwapQuote?
+    /// Inclusive adjustable range for the confirm slider (sat). Equal/zero when unavailable.
+    var minSat: UInt64 = 0
+    var maxSat: UInt64 = 0
+}
+
+enum SavingsSwapResult: Equatable {
+    /// Funds landed on-chain during the flow.
+    case success(txid: String)
+    /// Swap created and invoice paid; the claim completes in the background.
+    case pending
+    case failure(message: String)
 }
 
 /// Actor to safely capture channel data from channel pending events
@@ -739,3 +1834,8 @@ actor ChannelPendingCapture {
         return channelData
     }
 }
+
+// MARK: - Hardware transfer capability conformances
+
+extension HwWalletManager: HwTransferFunding {}
+extension HwWalletManager: HwTransferConnecting {}

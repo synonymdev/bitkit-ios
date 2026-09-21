@@ -9,6 +9,7 @@ struct AddContactView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     let publicKey: String
 
@@ -20,9 +21,7 @@ struct AddContactView: View {
     @State private var hasPayableEndpoint = false
 
     private var truncatedPublicKey: String {
-        let displayKey = normalizedPublicKey ?? publicKey
-        guard displayKey.count > 10 else { return displayKey }
-        return "\(displayKey.prefix(4))...\(displayKey.suffix(4))"
+        PubkyPublicKeyFormat.displayTruncated(normalizedPublicKey ?? publicKey)
     }
 
     private var normalizedPublicKey: String? {
@@ -68,7 +67,7 @@ struct AddContactView: View {
                 .padding(.top, 24)
                 .padding(.bottom, 16)
 
-            ContactAvatarLetter(source: publicKey, size: 80)
+            ContactAvatarLetter(source: publicKey, size: 96)
                 .padding(.bottom, 24)
 
             DisplayText(t("contacts__add_retrieving"), accentColor: .pubkyGreen)
@@ -132,39 +131,32 @@ struct AddContactView: View {
 
             Spacer()
 
-            BodySText(
-                t("contacts__add_disclaimer", variables: ["name": profile.name]),
-                textColor: .white50
-            )
-            .multilineTextAlignment(.leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 32)
-            .padding(.bottom, 16)
+            BottomActionBar {
+                VStack(alignment: .leading, spacing: 16) {
+                    BodySText(
+                        t("contacts__add_disclaimer", variables: ["name": profile.name]),
+                        textColor: .white50
+                    )
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-            if hasPayableEndpoint {
-                CustomButton(title: t("wallet__send"), variant: .secondary) {
-                    await payContact()
+                    HStack(spacing: 16) {
+                        if hasPayableEndpoint {
+                            CustomButton(title: t("common__pay"), variant: .secondary) {
+                                await payContact()
+                            }
+                            .accessibilityIdentifier("AddContactPay")
+                        }
+
+                        CustomButton(title: t("common__save"), isLoading: isSaving) {
+                            await saveContact()
+                        }
+                        .disabled(isSaving)
+                        .accessibilityIdentifier("AddContactSave")
+                    }
                 }
-                .accessibilityIdentifier("AddContactPay")
-                .padding(.horizontal, 32)
-                .padding(.bottom, 16)
             }
-
-            HStack(spacing: 16) {
-                CustomButton(title: t("common__discard"), variant: .secondary) {
-                    navigation.navigateBack()
-                }
-                .accessibilityIdentifier("AddContactDiscard")
-
-                CustomButton(title: t("common__save"), isLoading: isSaving) {
-                    await saveContact()
-                }
-                .disabled(isSaving)
-                .accessibilityIdentifier("AddContactSave")
-            }
-            .padding(.horizontal, 32)
-            .padding(.bottom, 32)
         }
     }
 
@@ -222,6 +214,9 @@ struct AddContactView: View {
             errorMessage = t("contacts__add_error_existing")
             canRetryError = false
             isLoading = false
+            if let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) {
+                await contactsManager.refreshContactReceiverPaths(publicKey: normalizedKey, wallet: wallet)
+            }
             return
         case let .valid(normalizedKey):
             if let profile = await contactsManager.fetchContactProfile(publicKey: normalizedKey, includePlaceholder: true) {
@@ -252,8 +247,7 @@ struct AddContactView: View {
                 existingProfile: fetchedProfile,
                 ownPublicKey: pubkyProfile.publicKey
             )
-            app.toast(type: .success, title: t("contacts__add_success"), accessibilityIdentifier: "ContactSavedToast")
-            navigation.navigateBack()
+            navigation.path = [.contacts, .contactSaved(publicKey: normalizedPublicKey)]
         } catch {
             Logger.error("Failed to save contact: \(error)", context: "AddContactView")
             app.toast(type: .error, title: t("contacts__add_error"), description: error.localizedDescription)
@@ -270,9 +264,9 @@ struct AddContactView: View {
             let result = try await PublicPaykitService.beginPayment(to: normalizedPublicKey)
 
             switch result {
-            case let .opened(paymentRequest):
+            case let .opened(paymentRequest, _):
                 _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey)
-            case .noEndpoint, .notOpened:
+            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
                         type: .warning,
@@ -293,9 +287,23 @@ struct AddContactView: View {
 
     @MainActor
     private func openContactPayment(paymentRequest: String, publicKey: String) async -> Bool {
+        let contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
+        guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
+
         do {
-            try await app.handleScannedData(paymentRequest)
+            try await app.handleScannedData(
+                paymentRequest,
+                claimedContactPaymentContext: contactPaymentContext,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+            )
+        } catch is CancellationError {
+            if app.ownsContactPaymentContext(contactPaymentContext) {
+                app.resetSendState()
+            }
+            return false
         } catch {
+            guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
+            app.resetSendState()
             Logger.warn("Failed to decode contact payment request: \(error)", context: "AddContactView")
             app.toast(
                 type: .warning,
@@ -305,12 +313,13 @@ struct AddContactView: View {
             return false
         }
 
+        guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
         guard let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings) else {
+            app.resetSendState()
             return false
         }
 
         navigation.navigateBack()
-        app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
         sheets.showSheet(.send, data: SendConfig(view: route))
         return true
     }
@@ -327,6 +336,7 @@ struct AddContactView: View {
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
             .environmentObject(WalletViewModel())
+            .environment(HwWalletManager())
     }
     .preferredColorScheme(.dark)
 }

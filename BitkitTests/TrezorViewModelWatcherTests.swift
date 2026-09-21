@@ -1,0 +1,523 @@
+@testable import Bitkit
+import BitkitCore
+import XCTest
+
+/// Watcher tests for TrezorViewModel, ported from bitkit-android's `TrezorViewModelTest.kt`.
+final class TrezorViewModelWatcherTests: XCTestCase {
+    // MARK: - Mock
+
+    /// Mock watcher service, standing in for Android's mocked `TrezorRepo`.
+    /// `holdStart` mirrors the `CompletableDeferred`-backed mock used to keep
+    /// the native start call in flight until the test resolves it.
+    private final class MockWatcherService: OnChainWatcherServicing, @unchecked Sendable {
+        private let lock = NSLock()
+
+        private(set) var startedParams: [WatcherParams] = []
+        private(set) var startedListeners: [EventListener] = []
+        private(set) var stoppedWatcherIds: [String] = []
+        private(set) var stopAllWatchersCallCount = 0
+
+        var holdStart = false
+
+        private var startContinuation: CheckedContinuation<Void, Error>?
+        private var pendingStartResult: Result<Void, Error>?
+
+        func startWatcher(params: WatcherParams, listener: EventListener) async throws {
+            lock.lock()
+            startedParams.append(params)
+            startedListeners.append(listener)
+            let shouldHold = holdStart
+            lock.unlock()
+
+            guard shouldHold else { return }
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+                defer { lock.unlock() }
+                if let result = pendingStartResult {
+                    pendingStartResult = nil
+                    continuation.resume(with: result)
+                } else {
+                    startContinuation = continuation
+                }
+            }
+        }
+
+        func completeStart(with result: Result<Void, Error> = .success(())) {
+            lock.lock()
+            defer { lock.unlock() }
+            if let continuation = startContinuation {
+                startContinuation = nil
+                continuation.resume(with: result)
+            } else {
+                pendingStartResult = result
+            }
+        }
+
+        func stopWatcher(watcherId: String) throws {
+            lock.lock()
+            defer { lock.unlock() }
+            stoppedWatcherIds.append(watcherId)
+        }
+
+        func stopAllWatchers() {
+            lock.lock()
+            defer { lock.unlock() }
+            stopAllWatchersCallCount += 1
+        }
+
+        var startedCount: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return startedParams.count
+        }
+
+        func firstStartedWatcherId() -> String? {
+            lock.lock()
+            defer { lock.unlock() }
+            return startedParams.first?.watcherId
+        }
+
+        func snapshotStartedParams() -> [WatcherParams] {
+            lock.lock()
+            defer { lock.unlock() }
+            return startedParams
+        }
+
+        func snapshotStoppedWatcherIds() -> [String] {
+            lock.lock()
+            defer { lock.unlock() }
+            return stoppedWatcherIds
+        }
+    }
+
+    // MARK: - Fixtures
+
+    private static let sampleBalance = WalletBalance(
+        confirmed: 150_000,
+        immature: 0,
+        trustedPending: 5000,
+        untrustedPending: 1000,
+        spendable: 155_000,
+        total: 156_000
+    )
+
+    private static func onchainActivity(txId: String, value: UInt64, txType: PaymentType) -> Activity {
+        .onchain(OnchainActivity(
+            walletId: "trezor:watcher",
+            id: txId,
+            txType: txType,
+            txId: txId,
+            value: value,
+            fee: 0,
+            feeRate: 1,
+            address: "",
+            confirmed: true,
+            timestamp: 1_700_000_000,
+            isBoosted: false,
+            boostTxIds: [],
+            isTransfer: false,
+            doesExist: true,
+            confirmTimestamp: 1_700_000_000,
+            channelId: nil,
+            transferTxId: nil,
+            contact: nil,
+            createdAt: 1_700_000_000,
+            updatedAt: 1_700_000_000,
+            seenAt: nil
+        ))
+    }
+
+    private static let sampleActivities: [Activity] = [
+        onchainActivity(txId: "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16", value: 50000, txType: .received),
+        onchainActivity(txId: "a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d", value: 19500, txType: .sent),
+        onchainActivity(txId: "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516", value: 500, txType: .sent),
+    ]
+
+    private static func sampleTransactionsChangedEvent() -> WatcherEvent {
+        .transactionsChanged(
+            activities: sampleActivities,
+            transactionDetails: [],
+            balance: sampleBalance,
+            txCount: 3,
+            blockHeight: 850_000,
+            accountType: .nativeSegwit,
+            nextUnusedExternalAddress: BitkitCore.AddressInfo(
+                address: "bcrt1qwatcher",
+                path: "m/84'/1'/0'/0/0",
+                transfers: 0
+            )
+        )
+    }
+
+    // MARK: - Helpers
+
+    @MainActor
+    private func makeViewModel(service: MockWatcherService) -> TrezorViewModel {
+        let viewModel = TrezorViewModel(connection: TrezorManager(), watcherService: service)
+        viewModel.watcherExtendedKey = "xpub6test123"
+        return viewModel
+    }
+
+    /// Poll until `condition` is true or the timeout elapses, yielding the main
+    /// actor between checks so listener Tasks can run (Android: advanceUntilIdle).
+    @discardableResult
+    @MainActor
+    private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return condition()
+    }
+
+    @MainActor
+    private func requireWaitUntil(
+        timeout: TimeInterval = 5,
+        _ condition: () -> Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        let satisfied = await waitUntil(timeout: timeout, condition)
+        XCTAssertTrue(satisfied, file: file, line: line)
+    }
+
+    // MARK: - Tests
+
+    @MainActor
+    func testStartWatcherDoesNotExposeActiveWatcherUntilStartCompletes() async {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await requireWaitUntil { service.startedCount >= 1 }
+
+        XCTAssertEqual(service.startedCount, 1)
+        XCTAssertTrue(viewModel.isStartingWatcher)
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .starting)
+
+        service.completeStart()
+        await startTask.value
+
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertEqual(viewModel.activeWatcherId, service.snapshotStartedParams()[0].watcherId)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .starting)
+    }
+
+    @MainActor
+    func testStartWatcherRejectsZeroGapLimit() async {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+        viewModel.watcherGapLimit = "0"
+
+        await viewModel.startWatcher()
+
+        XCTAssertTrue(service.snapshotStartedParams().isEmpty)
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertNotNil(viewModel.watcherError)
+    }
+
+    @MainActor
+    func testDisconnectedStateResetClearsSensitiveWalletState() {
+        let connection = TrezorManager()
+
+        TrezorUiHandler.shared.setWalletMode(.passphraseHost, hostPassphrase: "secret")
+        connection.walletMode = .passphraseHost
+        connection.deviceFingerprint = "73c5da0a"
+        connection.showPinEntry = true
+        connection.showPassphraseEntry = true
+        connection.showConfirmOnDevice = true
+        connection.showWalletModeChooser = true
+
+        connection.clearDisconnectedDeviceState(errorMessage: "disconnect failed")
+
+        XCTAssertNil(connection.deviceFingerprint)
+        XCTAssertNil(connection.connectedDevice)
+        XCTAssertNil(connection.deviceFeatures)
+        XCTAssertEqual(connection.error, "disconnect failed")
+        XCTAssertFalse(connection.showPinEntry)
+        XCTAssertFalse(connection.showPassphraseEntry)
+        XCTAssertFalse(connection.showConfirmOnDevice)
+        XCTAssertFalse(connection.showWalletModeChooser)
+        XCTAssertEqual(connection.walletMode, .standard)
+
+        switch TrezorUiHandler.shared.currentSelection() {
+        case .standard:
+            break
+        default:
+            XCTFail("Expected cached Trezor wallet selection to reset to standard")
+        }
+    }
+
+    @MainActor
+    func testWatcherTransactionEventMarksWatcherConnected() async throws {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+
+        await viewModel.startWatcher()
+        let watcherId = try XCTUnwrap(viewModel.activeWatcherId)
+        let listener = try XCTUnwrap(service.startedListeners.first)
+
+        listener.onEvent(watcherId: watcherId, event: Self.sampleTransactionsChangedEvent())
+        await waitUntil { viewModel.watcherConnectionStatus == .connected }
+
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .connected)
+        XCTAssertEqual(viewModel.watcherBalance?.total, Self.sampleBalance.total)
+        XCTAssertEqual(viewModel.watcherTransactionCount, 3)
+    }
+
+    @MainActor
+    func testWatcherEventIsHandledWhileStartIsInFlight() async throws {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await requireWaitUntil { service.startedCount >= 1 }
+        let watcherId = try XCTUnwrap(service.firstStartedWatcherId())
+        let listener = try XCTUnwrap(service.startedListeners.first)
+
+        listener.onEvent(watcherId: watcherId, event: Self.sampleTransactionsChangedEvent())
+        await waitUntil { viewModel.watcherConnectionStatus == .connected }
+
+        XCTAssertTrue(viewModel.isStartingWatcher)
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .connected)
+
+        service.completeStart()
+        await startTask.value
+
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertEqual(viewModel.activeWatcherId, watcherId)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .connected)
+    }
+
+    @MainActor
+    func testStopWatcherStopsServiceWatcherAndClearsWatcherState() async throws {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+
+        await viewModel.startWatcher()
+        let watcherId = try XCTUnwrap(viewModel.activeWatcherId)
+        let listener = try XCTUnwrap(service.startedListeners.first)
+        listener.onEvent(watcherId: watcherId, event: Self.sampleTransactionsChangedEvent())
+        await waitUntil { viewModel.watcherConnectionStatus == .connected }
+
+        viewModel.stopWatcher()
+
+        XCTAssertEqual(service.stoppedWatcherIds, [watcherId])
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+        XCTAssertNil(viewModel.watcherBalance)
+        XCTAssertTrue(viewModel.watcherActivities.isEmpty)
+    }
+
+    /// iOS-specific: stopping while the native start call is still in flight
+    /// quarantines the starting watcher — its events are dropped immediately
+    /// instead of repopulating balance/transaction state until the call returns.
+    @MainActor
+    func testStopWatcherDuringInFlightStartQuarantinesStartingWatcher() async throws {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await requireWaitUntil { service.startedCount >= 1 }
+        let watcherId = try XCTUnwrap(service.firstStartedWatcherId())
+        let listener = try XCTUnwrap(service.startedListeners.first)
+
+        viewModel.stopWatcher()
+
+        XCTAssertEqual(service.stoppedWatcherIds, [watcherId])
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+
+        // Events from the canceled startup must not repopulate watcher state.
+        listener.onEvent(watcherId: watcherId, event: Self.sampleTransactionsChangedEvent())
+        await waitUntil(timeout: 0.2) { viewModel.watcherBalance != nil }
+
+        XCTAssertNil(viewModel.watcherBalance)
+        XCTAssertTrue(viewModel.watcherActivities.isEmpty)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+
+        // The held native call returning success must not activate the watcher.
+        service.completeStart()
+        await startTask.value
+
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+    }
+
+    /// iOS-specific: dashboard dismissal stops only this dashboard's dev watcher and resets
+    /// the watcher input fields. It must NOT call the global stop, since production hardware
+    /// watchers owned by HwWalletManager share the same service and have to stay live.
+    @MainActor
+    func testHandleDashboardDismissStopsDevWatcherAndClearsInputState() async throws {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+        viewModel.watcherGapLimit = "30"
+        viewModel.onchainAccountTypeSelection = .legacy
+
+        await viewModel.startWatcher()
+        let watcherId = try XCTUnwrap(viewModel.activeWatcherId)
+
+        viewModel.handleDashboardDismiss()
+
+        XCTAssertEqual(service.stoppedWatcherIds, [watcherId])
+        XCTAssertEqual(service.stopAllWatchersCallCount, 0)
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertEqual(viewModel.watcherExtendedKey, "")
+        XCTAssertEqual(viewModel.watcherGapLimit, "20")
+        XCTAssertEqual(viewModel.onchainAccountTypeSelection, .automatic)
+    }
+
+    /// iOS-specific: changing the account-type override restarts a running watcher
+    /// so the Electrum subscription reflects the new type.
+    @MainActor
+    func testAccountTypeChangeRestartsRunningWatcher() async throws {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+
+        await viewModel.startWatcher()
+        let firstWatcherId = try XCTUnwrap(viewModel.activeWatcherId)
+
+        viewModel.onchainAccountTypeSelection = .taproot
+        await requireWaitUntil { service.startedCount >= 2 && viewModel.activeWatcherId != nil }
+
+        let started = service.snapshotStartedParams()
+        XCTAssertEqual(service.snapshotStoppedWatcherIds(), [firstWatcherId])
+        XCTAssertEqual(started.count, 2)
+        XCTAssertEqual(started.last?.accountType, .taproot)
+        let secondWatcherId = try XCTUnwrap(viewModel.activeWatcherId)
+        XCTAssertNotEqual(secondWatcherId, firstWatcherId)
+    }
+
+    /// iOS-specific: an account-type change that lands while the start call is still
+    /// in flight is picked up once the call returns — the stale watcher is stopped
+    /// and a replacement starts with the new type.
+    @MainActor
+    func testAccountTypeChangeDuringStartRestartsWithNewType() async throws {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await requireWaitUntil { service.startedCount >= 1 }
+        let firstWatcherId = try XCTUnwrap(service.firstStartedWatcherId())
+
+        viewModel.onchainAccountTypeSelection = .taproot
+        service.holdStart = false
+        service.completeStart()
+        await startTask.value
+        await requireWaitUntil { service.startedCount >= 2 && viewModel.activeWatcherId != nil }
+
+        let started = service.snapshotStartedParams()
+        XCTAssertEqual(service.snapshotStoppedWatcherIds(), [firstWatcherId])
+        XCTAssertEqual(started.count, 2)
+        XCTAssertEqual(started.last?.accountType, .taproot)
+        XCTAssertEqual(viewModel.activeWatcherId, started.last?.watcherId)
+    }
+
+    /// iOS-specific: dismissing the dashboard right after an account-type change
+    /// cancels the pending restart instead of reviving a watcher or surfacing a
+    /// validation error for the cleared key.
+    @MainActor
+    func testDismissAfterAccountTypeChangeCancelsPendingRestart() async throws {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+
+        await viewModel.startWatcher()
+        let firstWatcherId = try XCTUnwrap(viewModel.activeWatcherId)
+
+        viewModel.onchainAccountTypeSelection = .taproot
+        viewModel.handleDashboardDismiss()
+        await waitUntil(timeout: 0.2) { service.startedCount > 1 }
+
+        XCTAssertEqual(service.startedCount, 1)
+        XCTAssertEqual(service.snapshotStoppedWatcherIds(), [firstWatcherId])
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertNil(viewModel.watcherError)
+    }
+
+    /// iOS-specific: dismissing the dashboard while the native start call is in flight
+    /// aborts the Rust-side startup, which surfaces as a thrown
+    /// "Watcher stopped during startup" (wrapped in AppError by ServiceQueue).
+    /// That is a cancellation, not a failure — no error is shown to the user.
+    @MainActor
+    func testDismissDuringInFlightStartTreatsAbortedStartupAsCancellation() async {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await requireWaitUntil { service.startedCount >= 1 }
+
+        viewModel.handleDashboardDismiss()
+        let nativeError = AccountInfoError.WatcherError(errorDetails: "Watcher stopped during startup")
+        service.completeStart(with: .failure(AppError(error: nativeError)))
+        await startTask.value
+
+        XCTAssertNil(viewModel.watcherError)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertNil(viewModel.activeWatcherId)
+        XCTAssertEqual(viewModel.watcherExtendedKey, "")
+    }
+
+    /// iOS-specific: the native cancellation error is treated as graceful even when
+    /// no stop was requested on the Swift side (e.g. the core stopped the watcher
+    /// directly), based on the typed error alone.
+    @MainActor
+    func testNativeStartupCancellationWithoutStopRequestFinishesGracefully() async {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await requireWaitUntil { service.startedCount >= 1 }
+
+        service.completeStart(with: .failure(AccountInfoError.WatcherError(errorDetails: "Watcher stopped during startup")))
+        await startTask.value
+
+        XCTAssertNil(viewModel.watcherError)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .idle)
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertNil(viewModel.activeWatcherId)
+    }
+
+    /// iOS-specific: a genuine native failure (not a cancellation) still surfaces
+    /// to the user as a watcher error.
+    @MainActor
+    func testGenuineStartFailureStillSurfacesError() async {
+        let service = MockWatcherService()
+        service.holdStart = true
+        let viewModel = makeViewModel(service: service)
+
+        let startTask = Task { await viewModel.startWatcher() }
+        await requireWaitUntil { service.startedCount >= 1 }
+
+        let nativeError = AccountInfoError.ElectrumError(errorDetails: "connection refused")
+        service.completeStart(with: .failure(AppError(error: nativeError)))
+        await startTask.value
+
+        XCTAssertNotNil(viewModel.watcherError)
+        XCTAssertEqual(viewModel.watcherConnectionStatus, .error)
+        XCTAssertFalse(viewModel.isStartingWatcher)
+        XCTAssertNil(viewModel.activeWatcherId)
+    }
+
+    /// iOS-specific: changing the account type while no watcher runs starts nothing.
+    @MainActor
+    func testAccountTypeChangeDoesNotStartWatcherWhenIdle() async {
+        let service = MockWatcherService()
+        let viewModel = makeViewModel(service: service)
+
+        viewModel.onchainAccountTypeSelection = .taproot
+        await waitUntil(timeout: 0.2) { service.startedCount > 0 }
+
+        XCTAssertTrue(service.snapshotStartedParams().isEmpty)
+        XCTAssertNil(viewModel.activeWatcherId)
+    }
+}

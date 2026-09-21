@@ -135,17 +135,8 @@ struct LdkDebugScreen: View {
     }
 
     func deleteNetworkGraph() async {
-        // Delete network graph from VSS
         do {
-            _ = try await VssBackupClient.shared.deleteKey("network_graph")
-        } catch {
-            Logger.debug("VSS deleteKey(network_graph): \(error)", context: "LdkDebugScreen")
-        }
-
-        // Delete local network graph cache
-        do {
-            let lightningService = LightningService.shared
-            try await lightningService.deleteNetworkGraph()
+            try await wallet.clearNetworkGraph()
             app.toast(type: .success, title: "Network Graph Deleted", description: "Network graph deleted successfully")
         } catch {
             Logger.error("Failed to delete network graph: \(error)")

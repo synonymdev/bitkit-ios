@@ -14,6 +14,8 @@ enum SheetID: String, CaseIterable {
     case lnurlWithdraw
     case pubkyAuthApproval
     case notifications
+    case paymentRequests
+    case subscription
     case quickpay
     case receive
     case receivedTx
@@ -24,24 +26,36 @@ enum SheetID: String, CaseIterable {
     case tagFilter
     case dateRangeSelector
     case widgets
+    case hardwareConnect
+    case hardwarePairing
+    case renameHardwareWallet
 }
 
 struct SheetConfiguration {
     let id: SheetID
     let data: Any?
+    let presentationID = UUID()
 }
 
 class SheetViewModel: ObservableObject {
     @Published var activeSheetConfiguration: SheetConfiguration? = nil
+    @Published var hardwareConnectHandlesPairing = false
+    @Published private(set) var isReplacingSheet = false
 
     func showSheet(_ id: SheetID, data: Any? = nil) {
+        if activeSheetConfiguration?.id == .send, id == .receivedTx {
+            Logger.debug("Skipping received-transaction sheet while send is active", context: "SheetViewModel")
+            return
+        }
         if isAnySheetOpen {
             // If any other sheet is open, close it and delay before showing the new sheet
             // to prevent the new sheet from closing immediately (bug)
+            isReplacingSheet = true
             hideSheet()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                 guard let self else { return }
+                isReplacingSheet = false
                 Logger.debug("Showing sheet \(id.rawValue) after delay", context: "SheetViewModel")
                 activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 playHaptics(for: id)
@@ -52,6 +66,7 @@ class SheetViewModel: ObservableObject {
                 }
             }
         } else {
+            isReplacingSheet = false
             // If no sheet is open, show the new sheet immediately
             Logger.debug("Showing sheet \(id.rawValue)", context: "SheetViewModel")
             activeSheetConfiguration = SheetConfiguration(id: id, data: data)
@@ -82,6 +97,22 @@ class SheetViewModel: ObservableObject {
         }
     }
 
+    func hideSheetBeforePerforming(reason: String, action: @escaping () -> Void) {
+        guard isAnySheetOpen else {
+            action()
+            return
+        }
+
+        isReplacingSheet = true
+        hideSheet(reason: reason)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            guard let self else { return }
+            isReplacingSheet = false
+            guard activeSheetConfiguration == nil else { return }
+            action()
+        }
+    }
+
     func hideSheetIfActive(_ id: SheetID, reason: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
         guard activeSheetConfiguration?.id == id else {
             let fallback = "\(URL(fileURLWithPath: file).lastPathComponent):\(line) \(function)"
@@ -106,9 +137,8 @@ class SheetViewModel: ObservableObject {
     var addTagSheetItem: AddTagSheetItem? {
         get {
             guard let config = activeSheetConfiguration, config.id == .addTag else { return nil }
-            let addTagConfig = config.data as? AddTagConfig
-            guard let activityId = addTagConfig?.activityId else { return nil }
-            return AddTagSheetItem(activityId: activityId)
+            guard let addTagConfig = config.data as? AddTagConfig else { return nil }
+            return AddTagSheetItem(activityId: addTagConfig.activityId, walletId: addTagConfig.walletId)
         }
         set {
             if newValue == nil {
@@ -239,8 +269,8 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .pubkyAuthApproval else { return nil }
             let pubkyConfig = config.data as? PubkyAuthApprovalConfig
-            guard let authUrl = pubkyConfig?.authUrl, let request = pubkyConfig?.request else { return nil }
-            return PubkyAuthApprovalSheetItem(authUrl: authUrl, request: request)
+            guard let request = pubkyConfig?.request else { return nil }
+            return PubkyAuthApprovalSheetItem(request: request)
         }
         set {
             if newValue == nil {
@@ -253,6 +283,30 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .notifications else { return nil }
             return NotificationsSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var paymentRequestsSheetItem: PaymentRequestsSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .paymentRequests else { return nil }
+            return PaymentRequestsSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var subscriptionSheetItem: SubscriptionSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .subscription else { return nil }
+            return config.data as? SubscriptionSheetItem
         }
         set {
             if newValue == nil {
@@ -278,7 +332,7 @@ class SheetViewModel: ObservableObject {
             guard let config = activeSheetConfiguration, config.id == .receive else { return nil }
             let receiveConfig = config.data as? ReceiveConfig
             let initialRoute = receiveConfig?.initialRoute ?? .qr(cjitInvoice: nil, tab: nil)
-            return ReceiveSheetItem(initialRoute: initialRoute)
+            return ReceiveSheetItem(id: config.presentationID, initialRoute: initialRoute, hardwareWalletId: receiveConfig?.hardwareWalletId)
         }
         set {
             if newValue == nil {
@@ -293,6 +347,43 @@ class SheetViewModel: ObservableObject {
             let receivedTxConfig = config.data as? ReceivedTxSheetDetails
             guard let details = receivedTxConfig else { return nil }
             return ReceivedTxSheetItem(details: details)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var hardwareConnectSheetItem: HardwareConnectSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .hardwareConnect else { return nil }
+            return HardwareConnectSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var hardwarePairingSheetItem: HardwarePairingSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .hardwarePairing else { return nil }
+            return HardwarePairingSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var renameHardwareWalletSheetItem: RenameHardwareWalletSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .renameHardwareWallet else { return nil }
+            guard let data = config.data as? RenameHardwareWalletConfig else { return nil }
+            return RenameHardwareWalletSheetItem(walletId: data.walletId, currentName: data.currentName)
         }
         set {
             if newValue == nil {
@@ -346,7 +437,7 @@ class SheetViewModel: ObservableObject {
             guard let config = activeSheetConfiguration, config.id == .send else { return nil }
             let sendConfig = config.data as? SendConfig
             let initialRoute = sendConfig?.initialRoute ?? .options
-            return SendSheetItem(initialRoute: initialRoute)
+            return SendSheetItem(initialRoute: initialRoute, hardwareWalletId: sendConfig?.hardwareWalletId)
         }
         set {
             if newValue == nil {

@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const glob = require('glob');
 
 // Collection of all errors and warnings
 const errors = [];
@@ -16,6 +15,21 @@ const KEY_PATTERN = '[a-zA-Z0-9_]+';
 function isKeyUsed(key) {
     if (usedKeys.has(key)) return true;
     return dynamicKeyPatterns.some(({ prefix, suffix }) => key.startsWith(prefix) && key.endsWith(suffix) && key.length > prefix.length + suffix.length);
+}
+
+/** Recursively collect .swift file paths under dir, relative to this script's directory. */
+function collectSwiftFiles(dir) {
+    const results = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith('.')) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            results.push(...collectSwiftFiles(fullPath));
+        } else if (entry.isFile() && entry.name.endsWith('.swift')) {
+            results.push(path.relative(__dirname, fullPath));
+        }
+    }
+    return results;
 }
 
 /** Collect all localization keys referenced in Swift (literal and dynamic patterns). */
@@ -229,7 +243,7 @@ function main() {
     console.log('Validating translations...');
 
     // Find all Swift files - search from parent directory
-    const swiftFiles = glob.sync('../Bitkit/**/*.swift', { cwd: __dirname });
+    const swiftFiles = collectSwiftFiles(path.join(__dirname, '../Bitkit')).sort((a, b) => a.localeCompare(b, 'en'));
 
     // Collect keys referenced in Swift (for unused-key check)
     collectUsedKeys(swiftFiles);

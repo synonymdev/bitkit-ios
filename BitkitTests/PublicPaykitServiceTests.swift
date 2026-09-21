@@ -4,6 +4,16 @@ import LDKNode
 import XCTest
 
 final class PublicPaykitServiceTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        clearPaykitDefaults()
+    }
+
+    override func tearDown() {
+        clearPaykitDefaults()
+        super.tearDown()
+    }
+
     func testParseEndpointReadsSpecPayloadObject() {
         let endpoint = PublicPaykitService.parseEndpoint(
             methodId: "btc-lightning-bolt11",
@@ -48,20 +58,22 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertEqual(
             PublicPaykitService.parseEndpoint(
                 methodId: "btc-testnet-p2wpkh",
-                endpointData: #"{"value":"tb1qexample"}"#
+                endpointData: #"{"value":"tb1qexample"}"#,
+                network: .testnet
             )?.methodId,
             .testnetOnchainP2wpkh
         )
         XCTAssertEqual(
             PublicPaykitService.parseEndpoint(
                 methodId: "btc-regtest-p2tr",
-                endpointData: #"{"value":"bcrt1pexample"}"#
+                endpointData: #"{"value":"bcrt1pexample"}"#,
+                network: .regtest
             )?.methodId,
             .regtestOnchainP2tr
         )
     }
 
-    func testParseEndpointRejectsNonSpecLegacyLnurlMethodId() {
+    func testParseEndpointRejectsUnsupportedLnurlMethodId() {
         let endpoint = PublicPaykitService.parseEndpoint(
             methodId: "btc-lightning-lnurl-pay",
             endpointData: #"{"value":"lnurl1example"}"#
@@ -142,9 +154,57 @@ final class PublicPaykitServiceTests: XCTestCase {
     }
 
     func testPaymentLaunchResultFailureMessageKeys() {
-        XCTAssertNil(PublicPaykitPaymentLaunchResult.opened(paymentRequest: "bitcoin:bcrt1ptest").contactPaymentFailureMessageKey)
+        XCTAssertNil(
+            PublicPaykitPaymentLaunchResult.opened(
+                paymentRequest: "bitcoin:bcrt1ptest",
+                privatePaymentContext: nil
+            ).contactPaymentFailureMessageKey
+        )
         XCTAssertEqual(PublicPaykitPaymentLaunchResult.noEndpoint.contactPaymentFailureMessageKey, "slashtags__error_pay_empty_msg")
         XCTAssertEqual(PublicPaykitPaymentLaunchResult.notOpened.contactPaymentFailureMessageKey, "slashtags__error_pay_not_opened_msg")
+        XCTAssertEqual(
+            PublicPaykitPaymentLaunchResult.waitingForUpdatedPaymentList.contactPaymentFailureMessageKey,
+            "slashtags__error_pay_empty_msg"
+        )
+    }
+
+    func testPaymentLaunchResultHasReasonSpecificIncomingRequestFailures() {
+        XCTAssertNil(
+            PublicPaykitPaymentLaunchResult.opened(
+                paymentRequest: "bitcoin:bcrt1ptest",
+                privatePaymentContext: nil
+            ).incomingPaymentRequestFailureReason
+        )
+        XCTAssertEqual(PublicPaykitPaymentLaunchResult.noEndpoint.incomingPaymentRequestFailureReason, .noSupportedEndpoint)
+        XCTAssertEqual(PublicPaykitPaymentLaunchResult.notOpened.incomingPaymentRequestFailureReason, .endpointNotPayable)
+        XCTAssertEqual(
+            PublicPaykitPaymentLaunchResult.waitingForUpdatedPaymentList.incomingPaymentRequestFailureReason,
+            .paymentDetailsPending
+        )
+    }
+
+    func testIncomingRequestFailureReasonsHaveStableCategories() {
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.noSupportedEndpoint.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.endpointNotPayable.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.paymentDetailsPending.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.resolutionFailed.category, "resolution")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.invalidPaymentTarget.category, "presentation")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.paymentTargetNotRoutable.category, "presentation")
+        XCTAssertEqual(IncomingPaykitPaymentRequestFailureReason.requestExpired.category, "presentation")
+    }
+
+    func testAppSceneFeedbackMapsRequestedExpirationToExpiredDiagnosticsAndToast() {
+        let feedback = IncomingPaykitPaymentRequestPresentationFeedback(
+            deferral: .requestExpired(wasRequested: true),
+            fallbackReason: .resolutionFailed
+        )
+
+        XCTAssertEqual(feedback.diagnosticReason, .requestExpired)
+        XCTAssertEqual(feedback.diagnosticReason.rawValue, "request_expired")
+        XCTAssertTrue(feedback.isTerminal)
+        XCTAssertEqual(feedback.toast?.titleKey, "wallet__payment_request")
+        XCTAssertEqual(feedback.toast?.descriptionKey, "wallet__payment_request_expired")
+        XCTAssertEqual(feedback.toast?.accessibilityIdentifier, "PaymentRequestExpiredToast")
     }
 
     func testPayableEndpointsFiltersInvalidDecodedEndpoints() async {
@@ -156,77 +216,34 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertTrue(payable.isEmpty)
     }
 
-    func testMethodIdsToRemoveWhenUnpublishingOnlyIncludesBitkitManagedEndpoints() {
-        let methodIds = PublicPaykitService.methodIdsToRemoveWhenUnpublishing(existingMethodIds: [
-            .bitcoinLightningBolt11,
-            .bitcoinLightningLnurl,
-            .bitcoinOnchainP2tr,
-        ])
+    func testBuildAvailabilityMarksPublicCleanupPendingForPublishedPublicState() throws {
+        try withIsolatedDefaults { defaults in
+            defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
 
-        XCTAssertEqual(methodIds, [.bitcoinLightningBolt11, .bitcoinOnchainP2tr])
+            PaykitFeatureFlags.enforceBuildAvailability(defaults: defaults, isUIEnabled: false)
+
+            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
+            XCTAssertFalse(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey))
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
     }
 
-    func testPublishedEndpointSyncPlanRemovesStalePublishedMethods() {
-        let desired = [
-            endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice"),
-            endpoint(.bitcoinOnchainP2tr, value: "bc1ptaproot"),
+    func testPendingReconciliationHandlesWriterProducedSharingStates() throws {
+        let expectedModes: [(publicEnabled: Bool, privateEnabled: Bool, mode: PublicPaykitService.PendingReconciliationMode)] = [
+            (true, true, .publishEndpoints),
+            (true, false, .publishEndpoints),
+            (false, true, .removePublishedState),
+            (false, false, .removePublishedState),
         ]
 
-        let plan = PublicPaykitService.publishedEndpointSyncPlan(
-            existingEndpoints: [
-                .bitcoinLightningBolt11: #"{"value":"oldinvoice"}"#,
-                .bitcoinOnchainP2wpkh: #"{"value":"bc1qsegwit"}"#,
-                .bitcoinOnchainP2sh: #"{"value":"3nested"}"#,
-            ],
-            desiredEndpoints: desired
-        )
+        for expected in expectedModes {
+            try withIsolatedDefaults { defaults in
+                defaults.set(expected.publicEnabled, forKey: PublicPaykitService.publishingEnabledKey)
+                defaults.set(expected.privateEnabled, forKey: PrivatePaykitService.publishingEnabledKey)
 
-        XCTAssertEqual(plan.endpointsToSet, desired)
-        XCTAssertEqual(plan.methodIdsToRemove, [.bitcoinOnchainP2wpkh, .bitcoinOnchainP2sh])
-    }
-
-    func testPublishedEndpointSyncPlanSkipsUnchangedPublishedPayloads() {
-        let bolt11 = endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice")
-        let taproot = endpoint(.bitcoinOnchainP2tr, value: "bc1ptaproot")
-
-        let plan = PublicPaykitService.publishedEndpointSyncPlan(
-            existingEndpoints: [
-                .bitcoinLightningBolt11: bolt11.rawPayload,
-                .bitcoinOnchainP2tr: #"{"value":"oldtaproot"}"#,
-            ],
-            desiredEndpoints: [bolt11, taproot]
-        )
-
-        XCTAssertEqual(plan.endpointsToSet, [taproot])
-        XCTAssertTrue(plan.methodIdsToRemove.isEmpty)
-    }
-
-    func testPublishedEndpointSyncPlanPreservesExternallyOwnedLnurlEndpoint() {
-        let bolt11 = endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice")
-
-        let plan = PublicPaykitService.publishedEndpointSyncPlan(
-            existingEndpoints: [
-                .bitcoinLightningLnurl: #"{"value":"lnurl1external"}"#,
-            ],
-            desiredEndpoints: [bolt11]
-        )
-
-        XCTAssertEqual(plan.endpointsToSet, [bolt11])
-        XCTAssertTrue(plan.methodIdsToRemove.isEmpty)
-    }
-
-    func testPublishedEndpointSyncPlanRemovesAllManagedEndpointsWhenDesiredSetIsEmpty() {
-        let plan = PublicPaykitService.publishedEndpointSyncPlan(
-            existingEndpoints: [
-                .bitcoinLightningBolt11: #"{"value":"lnbc1old"}"#,
-                .bitcoinLightningLnurl: #"{"value":"lnurl1external"}"#,
-                .bitcoinOnchainP2wpkh: #"{"value":"bc1qold"}"#,
-            ],
-            desiredEndpoints: []
-        )
-
-        XCTAssertTrue(plan.endpointsToSet.isEmpty)
-        XCTAssertEqual(plan.methodIdsToRemove, [.bitcoinLightningBolt11, .bitcoinOnchainP2wpkh])
+                XCTAssertEqual(PublicPaykitService.pendingReconciliationMode(defaults: defaults), expected.mode)
+            }
+        }
     }
 
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {
@@ -237,5 +254,23 @@ final class PublicPaykitServiceTests: XCTestCase {
             max: nil,
             rawPayload: #"{"value":"\#(value)"}"#
         )
+    }
+
+    private func clearPaykitDefaults() {
+        UserDefaults.standard.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.removeObject(forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.removeObject(forKey: PublicPaykitService.cleanupPendingKey)
+        UserDefaults.standard.removeObject(forKey: ContactPaymentsService.confirmedPreferenceKey)
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
+    }
+
+    private func withIsolatedDefaults(_ body: (UserDefaults) throws -> Void) throws {
+        let suiteName = "PublicPaykitServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        try body(defaults)
     }
 }

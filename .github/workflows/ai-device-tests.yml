@@ -22,6 +22,7 @@ on:
 env:
   TERM: xterm-256color
   FORCE_COLOR: 1
+  GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.suite }}
@@ -36,10 +37,10 @@ jobs:
 
     steps:
       - name: Checkout Bitkit iOS
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Checkout bitkit-docker
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-docker
           ref: main
@@ -121,7 +122,7 @@ jobs:
 
       - name: Upload diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ai-device-tests-trezor-${{ github.run_number }}
           path: ai-device-artifacts/trezor

@@ -7,8 +7,10 @@ struct SendContactSelectView: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
+    let hwSend: HwSendCoordinator
     @State private var selectedContactKey: String?
 
     private var contacts: [PubkyContact] {
@@ -61,9 +63,13 @@ struct SendContactSelectView: View {
             let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: contact.publicKey, wallet: wallet)
 
             switch result {
-            case let .opened(paymentRequest):
-                _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: contact.publicKey)
-            case .noEndpoint, .notOpened:
+            case let .opened(paymentRequest, privatePaymentContext):
+                _ = await openContactPayment(
+                    paymentRequest: paymentRequest,
+                    publicKey: contact.publicKey,
+                    privatePaymentContext: privatePaymentContext
+                )
+            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
                         type: .warning,
@@ -79,10 +85,32 @@ struct SendContactSelectView: View {
     }
 
     @MainActor
-    private func openContactPayment(paymentRequest: String, publicKey: String) async -> Bool {
+    private func openContactPayment(
+        paymentRequest: String,
+        publicKey: String,
+        privatePaymentContext: PrivatePaykitPaymentContext?
+    ) async -> Bool {
+        let contactPaymentContext = ContactPaymentContext(
+            publicKey: publicKey,
+            privatePaymentContext: privatePaymentContext
+        )
+        guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
+
         do {
-            try await app.handleScannedData(paymentRequest)
+            try await app.handleScannedData(
+                paymentRequest,
+                claimedContactPaymentContext: contactPaymentContext,
+                scope: hwSend.isActive ? .onchainPayments : .unrestricted,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+            )
+        } catch is CancellationError {
+            if app.ownsContactPaymentContext(contactPaymentContext) {
+                app.resetSendState()
+            }
+            return false
         } catch {
+            guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
+            app.resetSendState()
             Logger.warn("Failed to decode contact payment request: \(error)", context: "SendContactSelectView")
             app.toast(
                 type: .warning,
@@ -92,11 +120,12 @@ struct SendContactSelectView: View {
             return false
         }
 
+        guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
         guard let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings) else {
+            app.resetSendState()
             return false
         }
 
-        app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
         navigationPath.append(route)
         return true
     }

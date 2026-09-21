@@ -73,6 +73,7 @@ struct NotificationsSettings: View {
                         openPhoneSettings()
                     }
                 )
+                .accessibilityIdentifier("NotificationsOpenSystemSettings")
                 .padding(.top, 16)
 
                 Spacer()

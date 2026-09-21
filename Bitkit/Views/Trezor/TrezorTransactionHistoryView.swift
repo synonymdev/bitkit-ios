@@ -4,10 +4,14 @@ import SwiftUI
 /// Inline content for transaction history lookup, used by expandable section.
 struct TrezorTransactionHistoryContent: View {
     @State private var input: String = ""
+    @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
+        @Bindable var trezor = trezor
         VStack(spacing: 24) {
             TxHistoryInputSection(input: $input)
+
+            TrezorAccountTypeSelector(selection: $trezor.onchainAccountTypeSelection)
 
             TxHistoryButtonWrapper(input: input)
 
@@ -51,16 +55,14 @@ private struct TxHistoryResultsSection: View {
     @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
-        Group {
-            if let result = trezor.txHistoryResult {
-                TxHistorySummarySection(result: result)
+        if let result = trezor.txHistoryResult {
+            TxHistorySummarySection(result: result)
 
-                TxHistoryListSection(transactions: result.transactions)
-            }
+            TxHistoryListSection(transactions: result.transactions)
+        }
 
-            if let error = trezor.txHistoryError {
-                TrezorErrorBanner(message: error)
-            }
+        if let error = trezor.txHistoryError {
+            TrezorErrorBanner(message: error)
         }
     }
 }
@@ -407,7 +409,7 @@ private struct ResultRow: View {
             NavigationStack {
                 TrezorTransactionHistoryView()
             }
-            .environment(TrezorViewModel())
+            .environment(TrezorViewModel(connection: TrezorManager()))
         }
     }
 #endif

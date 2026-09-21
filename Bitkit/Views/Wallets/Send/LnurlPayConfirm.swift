@@ -11,12 +11,15 @@ struct LnurlPayConfirm: View {
 
     @Binding var navigationPath: [SendRoute]
     let requestPinCheck: () async -> Bool
+    let prepareIncomingPaymentRequest: () async throws -> Void
+    let routingCacheResetAttempted: Bool
 
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var comment = ""
+    @State private var hasStartedAutomaticPayment = false
     @FocusState private var isCommentFocused: Bool
 
     var uri: String {
@@ -24,9 +27,45 @@ struct LnurlPayConfirm: View {
     }
 
     var body: some View {
+        ZStack {
+            confirmationContent
+            if app.contactPaymentContext?.isInitialSubscriptionPayment == true {
+                InitialSubscriptionPaymentProgress()
+            }
+        }
+        .alert(t("common__are_you_sure"), isPresented: $showWarningAlert) {
+            Button(t("common__dialog_cancel"), role: .cancel) {
+                alertContinuation?.resume(returning: false)
+                alertContinuation = nil
+            }
+            Button(t("wallet__send_yes")) {
+                alertContinuation?.resume(returning: true)
+                alertContinuation = nil
+            }
+        } message: {
+            Text(t("wallet__send_dialog1"))
+        }
+        .alert(
+            t("security__bio_error_title"),
+            isPresented: $showingBiometricError
+        ) {
+            Button(t("common__ok")) {
+                // Error handled, user acknowledged
+            }
+        } message: {
+            Text(biometricErrorMessage)
+        }
+        .task {
+            guard !Task.isCancelled else { return }
+            // PIN navigation can cancel the view task while authorization is awaiting its result.
+            Task { @MainActor in await startAutomaticPaymentIfNeeded() }
+        }
+    }
+
+    private var confirmationContent: some View {
         VStack {
             SheetHeader(
-                title: t("wallet__lnurl_p_title"),
+                title: reviewTitle,
                 showBackButton: true,
                 action: AnyView(SendContactHeaderAvatar())
             )
@@ -101,82 +140,98 @@ struct LnurlPayConfirm: View {
             Spacer()
 
             SwipeButton(
-                title: t("wallet__send_swipe"),
-                accentColor: .greenAccent
+                title: app.contactPaymentContext?.isInitialSubscriptionPayment == true
+                    ? t("subscriptions__swipe_to_subscribe_and_pay")
+                    : t("wallet__send_swipe"),
+                accentColor: .greenAccent,
+                isLoading: hasStartedAutomaticPayment
             ) {
-                // Check if we need to show warning for amounts over $100 USD
-                if settings.warnWhenSendingOver100 {
-                    let sats: UInt64 = if let invoice = app.scannedLightningInvoice {
-                        wallet.sendAmountSats ?? invoice.amountSatoshis
-                    } else {
-                        0
-                    }
-
-                    // Convert to USD to check if over $100
-                    if let usdAmount = currency.convert(sats: sats, to: "USD") {
-                        if usdAmount.value > 100.0 {
-                            showWarningAlert = true
-                            // Wait for the alert to be dismissed
-                            let shouldProceed = try await waitForAlertDismissal()
-                            if !shouldProceed {
-                                // User cancelled, throw error to reset SwipeButton
-                                throw CancellationError()
-                            }
-                            // User confirmed, continue with authentication if needed
-                        }
-                    }
-                }
-
-                // Check if authentication is required for payments
-                if settings.requirePinForPayments && settings.pinEnabled {
-                    if settings.useBiometrics && BiometricAuth.isAvailable {
-                        let result = await BiometricAuth.authenticate()
-                        switch result {
-                        case .success:
-                            break
-                        case .cancelled:
-                            throw CancellationError()
-                        case let .failed(message):
-                            biometricErrorMessage = message
-                            showingBiometricError = true
-                            throw CancellationError()
-                        }
-                    } else {
-                        let shouldProceed = await requestPinCheck()
-                        guard shouldProceed else {
-                            throw CancellationError()
-                        }
-                    }
-                }
-
-                try await performPayment()
+                try await submitPayment()
             }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
-        .alert(t("common__are_you_sure"), isPresented: $showWarningAlert) {
-            Button(t("common__dialog_cancel"), role: .cancel) {
-                alertContinuation?.resume(returning: false)
-                alertContinuation = nil
-            }
-            Button(t("wallet__send_yes")) {
-                alertContinuation?.resume(returning: true)
-                alertContinuation = nil
-            }
-        } message: {
-            Text(t("wallet__send_dialog1"))
+    }
+
+    private var reviewTitle: String {
+        paykitPaymentReviewTitle(context: app.contactPaymentContext, fallback: t("wallet__lnurl_p_title"))
+    }
+
+    @MainActor
+    private func startAutomaticPaymentIfNeeded() async {
+        guard app.contactPaymentContext?.isInitialSubscriptionPayment == true,
+              !hasStartedAutomaticPayment
+        else { return }
+        hasStartedAutomaticPayment = true
+        do {
+            try await submitPayment()
+        } catch is CancellationError {
+            navigationPath.append(.failure(SendFailureContext(
+                error: CancellationError(),
+                retryRoute: .lnurlPayConfirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: app.scannedLightningInvoice?.bolt11,
+                contactPaymentContext: app.contactPaymentContext
+            )))
+        } catch {
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .lnurlPayConfirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: "LNURL: \(uri)",
+                contactPaymentContext: app.contactPaymentContext
+            )))
         }
-        .alert(
-            t("security__bio_error_title"),
-            isPresented: $showingBiometricError
-        ) {
-            Button(t("common__ok")) {
-                // Error handled, user acknowledged
+    }
+
+    private func submitPayment() async throws {
+        // Check if we need to show warning for amounts over $100 USD
+        if settings.warnWhenSendingOver100 {
+            let sats: UInt64 = if let invoice = app.scannedLightningInvoice {
+                wallet.sendAmountSats ?? invoice.amountSatoshis
+            } else {
+                0
             }
-        } message: {
-            Text(biometricErrorMessage)
+
+            // Convert to USD to check if over $100
+            if let usdAmount = currency.convert(sats: sats, to: "USD") {
+                if usdAmount.value > 100.0 {
+                    showWarningAlert = true
+                    // Wait for the alert to be dismissed
+                    let shouldProceed = try await waitForAlertDismissal()
+                    if !shouldProceed {
+                        // User cancelled, throw error to reset SwipeButton
+                        throw CancellationError()
+                    }
+                    // User confirmed, continue with authentication if needed
+                }
+            }
         }
+
+        // Check if authentication is required for payments
+        if settings.requirePinForPayments && settings.pinEnabled {
+            if settings.useBiometrics && BiometricAuth.isAvailable {
+                let result = await BiometricAuth.authenticate()
+                switch result {
+                case .success:
+                    break
+                case .cancelled:
+                    throw CancellationError()
+                case let .failed(message):
+                    biometricErrorMessage = message
+                    showingBiometricError = true
+                    throw CancellationError()
+                }
+            } else {
+                let shouldProceed = await requestPinCheck()
+                guard shouldProceed else {
+                    throw CancellationError()
+                }
+            }
+        }
+
+        try await performPayment()
     }
 
     private func waitForAlertDismissal() async throws -> Bool {
@@ -191,46 +246,115 @@ struct LnurlPayConfirm: View {
         }
 
         let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
-
-        // Fetch the Lightning invoice from LNURL
-        let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
-            callbackUrl: lnurlPayData.callback,
-            amountMsats: amountMsats,
-            comment: comment.isEmpty ? nil : comment
-        )
-
-        let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
-        let paymentHash = String(describing: parsedInvoice.paymentHash())
-        let contactPublicKey = app.contactPaymentContext?.publicKey
+        let contactPaymentContext = app.contactPaymentContext
+        let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
+        var bolt11Invoice: String?
+        var lightningPaymentHash: String?
+        var shouldCancelPaymentProof = false
+        var lightningPaymentSubmitted = false
 
         do {
+            try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
+            if let incomingPaymentRequest {
+                let endpointIdentifier = PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue
+                try await PaykitPaymentProofService.shared.prepare(
+                    request: incomingPaymentRequest,
+                    paymentEndpointIdentifier: endpointIdentifier,
+                    kind: .lightning
+                )
+                shouldCancelPaymentProof = true
+            }
+            try await prepareIncomingPaymentRequest()
+            try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
+
+            // Fetch the Lightning invoice from LNURL
+            let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
+                data: lnurlPayData,
+                amountMsats: amountMsats,
+                comment: comment.isEmpty ? nil : comment
+            )
+            bolt11Invoice = bolt11
+
+            let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
+            let paymentHash = String(describing: parsedInvoice.paymentHash())
+            if let incomingPaymentRequest {
+                try await PaykitPaymentProofService.shared.associateLightningPayment(
+                    incomingPaymentRequest,
+                    paymentHash: paymentHash
+                )
+            }
+            lightningPaymentHash = paymentHash
+
             // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
             // LNURL server returns invoices with the amount baked in, so pass sats: nil
             // to let LDK use the invoice's native millisatoshi precision.
             try await wallet.sendWithTimeout(
                 bolt11: bolt11,
                 sats: nil,
-                onTimeout: {
-                    app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
-                    navigationPath.append(.pending(paymentHash: paymentHash))
+                afterListening: { _ in lightningPaymentSubmitted = true },
+                onTimeout: { timedOutHash in
+                    app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
+                    navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .lnurlPayConfirm, paymentRequest: bolt11))
                 }
             )
-            app.addPendingContactPaymentContext(paymentHash, contactPublicKey: contactPublicKey)
+            shouldCancelPaymentProof = false
+            app.addPendingContactPaymentContext(paymentHash, context: contactPaymentContext)
             Logger.info("LNURL payment successful: \(paymentHash)")
             navigationPath.append(.success(paymentId: paymentHash))
         } catch is PaymentTimeoutError {
             // onTimeout callback already navigated to .pending; suppress throw
+            shouldCancelPaymentProof = false
+            return
+        } catch is CancellationError {
+            if shouldCancelPaymentProof, let incomingPaymentRequest {
+                await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
+            }
             return
         } catch {
+            if let lightningPaymentHash {
+                if incomingPaymentRequest != nil, !lightningPaymentSubmitted {
+                    let failed = await PaykitPaymentProofService.shared.failLightningPayment(
+                        paymentHash: lightningPaymentHash,
+                        submissionError: error
+                    )
+                    if !failed {
+                        shouldCancelPaymentProof = false
+                        app.addPendingPaymentHash(lightningPaymentHash, contactPaymentContext: contactPaymentContext)
+                        navigationPath.append(.pending(
+                            paymentHash: lightningPaymentHash,
+                            retryRoute: .lnurlPayConfirm,
+                            paymentRequest: bolt11Invoice
+                        ))
+                        return
+                    }
+                } else {
+                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: lightningPaymentHash)
+                }
+            }
+            if shouldCancelPaymentProof, let incomingPaymentRequest {
+                await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
+            }
             Logger.error("LNURL payment failed: \(error)")
 
-            // TODO: remove toast and use failure screen instead
-            app.toast(error)
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .lnurlPayConfirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: bolt11Invoice ?? "LNURL: \(lnurlPayData.uri)",
+                contactPaymentContext: contactPaymentContext
+            )))
+        }
+    }
 
-            // TODO: this is a hack to make sure the navigation binding is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                navigationPath.append(.failure)
-            }
+    private func validateIncomingPaymentRequest(_ context: ContactPaymentContext?, amountMsats: UInt64) throws {
+        guard let context, let request = context.incomingPaymentRequest else { return }
+        guard !request.isExpired(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
+        guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
+        guard let amountSats = wallet.sendAmountSats,
+              request.acceptsPaymentAmount(amountSats),
+              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats)
+        else {
+            throw PaykitPaymentRequestError.amountMismatch
         }
     }
 }

@@ -3,12 +3,24 @@ import SwiftUI
 struct SwipeButton: View {
     let title: String
     let accentColor: Color
+    /// Blocks interaction without presenting the post-swipe loading state.
+    var isDisabled = false
+    /// Blocks interaction and shows the knob spinner while an operation is running.
+    var isLoading = false
     /// Optional binding for swipe progress (0...1), e.g. to drive animations in the parent.
     var swipeProgress: Binding<CGFloat>?
     let onComplete: () async throws -> Void
 
     @State private var offset: CGFloat = 0
-    @State private var isLoading = false
+    @State private var isSubmitting = false
+
+    private var isBusy: Bool {
+        isDisabled || isLoading || isSubmitting
+    }
+
+    private var showsSpinner: Bool {
+        isLoading || isSubmitting
+    }
 
     private let buttonHeight: CGFloat = 76
     private let innerPadding: CGFloat = 16
@@ -37,11 +49,12 @@ struct SwipeButton: View {
                             .frame(height: buttonHeight - innerPadding)
                             .padding(.horizontal, innerPadding / 2)
                     }
+                    .opacity(isDisabled ? 0.5 : 1)
 
                 // Track text
                 BodySSBText(title)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .opacity(Double(1.0 - textProgress))
+                    .opacity(Double(1.0 - textProgress) * (isDisabled ? 0.5 : 1))
 
                 // Knob
                 Circle()
@@ -49,7 +62,7 @@ struct SwipeButton: View {
                     .frame(width: buttonHeight - innerPadding, height: buttonHeight - innerPadding)
                     .overlay(
                         ZStack {
-                            if isLoading {
+                            if showsSpinner {
                                 ActivityIndicator(theme: .dark)
                             } else {
                                 Image("arrow-right")
@@ -69,38 +82,30 @@ struct SwipeButton: View {
                     .accessibilityIdentifier("GRAB")
                     .offset(x: clampedOffset)
                     .padding(.horizontal, innerPadding / 2)
+                    .opacity(isDisabled ? 0.5 : 1)
                     .gesture(
                         DragGesture()
                             .onChanged { value in
-                                guard !isLoading else { return }
+                                guard !isBusy else { return }
                                 withAnimation(.interactiveSpring()) {
                                     offset = value.translation.width
                                     swipeProgress?.wrappedValue = max(0, min(1, offset / maxOffset))
                                 }
                             }
                             .onEnded { _ in
-                                guard !isLoading else { return }
+                                guard !isBusy else { return }
                                 withAnimation(.spring()) {
                                     let threshold = geometry.size.width * 0.7
                                     if offset > threshold {
                                         Haptics.play(.medium)
                                         offset = geometry.size.width - buttonHeight
                                         swipeProgress?.wrappedValue = 1
-                                        isLoading = true
+                                        isSubmitting = true
                                         Task { @MainActor in
                                             do {
                                                 try await onComplete()
                                             } catch {
-                                                // Reset the slider back to the start on error
-                                                withAnimation(.spring(duration: 0.3)) {
-                                                    offset = 0
-                                                    swipeProgress?.wrappedValue = 0
-                                                }
-
-                                                // Adjust the delay to match animation duration
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                                    isLoading = false
-                                                }
+                                                reset()
                                             }
                                         }
                                     } else {
@@ -114,6 +119,17 @@ struct SwipeButton: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: buttonHeight)
+    }
+
+    private func reset() {
+        withAnimation(.spring(duration: 0.3)) {
+            offset = 0
+            swipeProgress?.wrappedValue = 0
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            isSubmitting = false
+        }
     }
 
     private var backgroundGradient: LinearGradient {

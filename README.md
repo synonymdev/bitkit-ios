@@ -48,6 +48,10 @@ E2E_BACKEND=network E2E_NETWORK=bitcoin \
   build
 ```
 
+Local E2E builds use `127.0.0.1` for Electrum, Homegate, and the Pubky/Paykit testnet when running in the simulator. Set `E2E_LOCAL_HOST`
+to the development machine's LAN address when running on a physical device. `E2E_HOMEGATE_URL` remains available when Homegate needs a
+different host or port.
+
 ## Localization
 
 ### Pulling Translations
@@ -113,6 +117,97 @@ This installs a pre-commit hook that lints Swift files with SwiftFormat.
 ### Xcode Previews
 
 Due to the Rust dependencies in the project, Xcode previews are only compatible with iOS 17 and below.
+
+### XcodeBuildMCP
+
+Builds, simulator control and UI automation go through the [XcodeBuildMCP](https://github.com/getsentry/XcodeBuildMCP) CLI rather than raw `xcodebuild`, `xcrun` and `simctl`. It is also what agents use to run the specs in `journeys/`.
+
+**Install:**
+```bash
+brew tap getsentry/xcodebuildmcp && brew install xcodebuildmcp
+```
+
+**Configure project defaults:**
+```bash
+xcodebuildmcp setup
+```
+
+The wizard writes `.xcodebuildmcp/config.yaml`, which is gitignored because the CLI materializes a machine-local simulator UDID into it. The values this repo wants are project `Bitkit.xcodeproj`, scheme `Bitkit`, configuration `Debug`, simulator `iPhone 17`. There is no standalone `.xcworkspace` here, so this is `--project-path`, never `--workspace-path`.
+
+**Build and run:**
+```bash
+xcodebuildmcp simulator build-and-run
+```
+
+See the Agent CLI section in `AGENTS.md` for E2E compilation flags, UI automation and the cross-platform commands.
+
+### Common Tasks
+
+Day-to-day commands live in the `Justfile`:
+
+```bash
+# Build, install and launch on a connected device (wraps ./run.sh)
+just run [release] [logs]
+
+# Clear caches, cheapest first
+just clean [build|derived-data|modules|spm|all]...
+```
+
+## Troubleshooting
+
+### After bumping a Rust/UniFFI dependency
+
+`bitkit-core`, `ldk-node`, `paykit` and `vss-rust-client-ffi` ship UniFFI-generated headers whose size changes on almost every version. Xcode keys its explicit precompiled modules (`.pcm`) on the header's size and mtime, and in explicit-modules mode a stale `.pcm` is a hard error — nothing is allowed to rebuild it mid-compile. The build fails with:
+
+```
+error: file '.../include/bitkitcoreFFI.h' has been modified since the module file '.../bitkitcoreFFI-<hash>.pcm' was built
+note: size changed from expected 121271 to 128544
+```
+
+followed by a cascade of misleading `cannot find 'uniffi_bitkitcore_checksum_func_*' in scope` errors in `bitkitcore.swift`. The root-cause line is easy to miss — it is emitted as `<unknown>:0:` and sorts away from the rest. Clear the module caches and rebuild:
+
+```bash
+just clean modules
+```
+
+Xcode's **File ▸ Packages ▸ Reset Package Caches** does *not* clear these.
+
+### `cannot find checksum func` with no "has been modified" error
+
+Same message, different cause: the downloaded binary artifact genuinely lacks the symbol, because a re-cut tag reuses a URL that SPM has already cached. Check which one you have before reaching for the heavier fix:
+
+Packages are resolved into a different root depending on how you built, so use the one that matches:
+
+```bash
+# Built in Xcode
+grep -rl uniffi_bitkitcore_checksum_func_<name> \
+  ~/Library/Developer/Xcode/DerivedData/Bitkit-*/SourcePackages/artifacts/bitkit-core
+
+# Built with `just run` / `./run.sh` (resolves into the repo-local build/)
+grep -rl uniffi_bitkitcore_checksum_func_<name> \
+  build/SourcePackages/artifacts/bitkit-core
+```
+
+Prints one or more header paths → the artifact has the symbol, so this is the module cache and `just clean modules` is enough. Prints nothing → the artifact really is stale:
+
+```bash
+just clean spm
+xcodebuild -resolvePackageDependencies -project Bitkit.xcodeproj -scheme Bitkit
+```
+
+The first CLI resolve often dies with `fatalError` or `file not found at path: .../<Name>.xcframework.zip` while fetching the large binary artifacts. Run it again — it can take two or three attempts.
+
+### `There is no XCFramework found at ...`
+
+An aborted resolve can leave an artifact half-extracted, with only a `__MACOSX` directory where the `.xcframework` should be. Re-running `-resolvePackageDependencies` reports success without repairing it, because SPM's workspace state still claims the artifact is present. Use `just clean spm` and re-resolve.
+
+### Why we don't disable explicit modules
+
+`SWIFT_ENABLE_EXPLICIT_MODULES` is deliberately left at Xcode's default (`YES`). Setting it to `NO` would make the stale-`.pcm` error above disappear, but it slows every clean build — including CI, which never caches DerivedData — and trades a loud error for silently stale modules. For a one-off local build you can still override it:
+
+```bash
+xcodebuild ... SWIFT_ENABLE_EXPLICIT_MODULES=NO
+```
 
 ## Contributing
 

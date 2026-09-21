@@ -6,6 +6,8 @@ import LDKNode
 // TODO: catch all errors and pass a readable error message to the UI
 
 class LightningService {
+    private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
+
     private var node: Node?
     var currentWalletIndex: Int = 0
 
@@ -27,6 +29,25 @@ class LightningService {
     }
 
     static var shared = LightningService()
+
+    private static let scoringBasePenaltyMsat: UInt64 = 40000
+    private static let scoringLiquidityPenaltyMultiplierMsat: UInt64 = 10000
+    private static let scoringLiquidityPenaltyAmountMultiplierMsat: UInt64 = 10000
+    private static let scoringHistoricalLiquidityPenaltyAmountMultiplierMsat: UInt64 = 20000
+    private static let scoringConsideredImpossiblePenaltyMsat: UInt64 = 1_000_000_000_000
+
+    private static let defaultScoringFeeParameters = ScoringFeeParameters(
+        basePenaltyMsat: 1024,
+        basePenaltyAmountMultiplierMsat: 131_072,
+        liquidityPenaltyMultiplierMsat: 0,
+        liquidityPenaltyAmountMultiplierMsat: 0,
+        historicalLiquidityPenaltyMultiplierMsat: 10000,
+        historicalLiquidityPenaltyAmountMultiplierMsat: 1250,
+        antiProbingPenaltyMsat: 250,
+        consideredImpossiblePenaltyMsat: 100_000_000_000,
+        linearSuccessProbability: false,
+        probingDiversityPenaltyMsat: 0
+    )
 
     private init() {}
 
@@ -54,6 +75,13 @@ class LightningService {
 
         Logger.debug("Checking lightning process lock...")
         try await StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
+        // Unlock if setup fails before a node exists. After a successful build the node keeps the lock until stop.
+        var shouldReleaseLightningLock = true
+        defer {
+            if shouldReleaseLightningLock {
+                try? StateLocker.unlock(.lightning)
+            }
+        }
 
         guard var mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
@@ -85,6 +113,9 @@ class LightningService {
         let (selectedAddressType, monitoredTypes) = Self.addressTypeStateFromUserDefaults()
         config.addressType = selectedAddressType
         config.addressTypesToMonitor = monitoredTypes.filter { $0 != selectedAddressType }
+        #if !BITKIT_NOTIFICATION_EXTENSION
+            config.onchainWalletAccounts = try Self.watchOnlyAccountConfigs(walletIndex: walletIndex)
+        #endif
 
         let builder = Builder.fromConfig(config: config)
         builder.setCustomLogger(logWriter: LdkLogWriter())
@@ -97,7 +128,9 @@ class LightningService {
                 lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
                 feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
             ),
-            connectionTimeoutSecs: 10
+            connectionTimeoutSecs: 10,
+            additionalWalletFullScanBatchSize: 100,
+            additionalWalletFullScanStopGap: 1000
         )
         builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
 
@@ -107,6 +140,8 @@ class LightningService {
             builder.setPathfindingScoresSource(url: scorerUrl)
         }
 
+        builder.setScoringFeeParams(params: Self.scoringFeeParameters(config: config))
+
         // Configure gossip source from current settings
         configureGossipSource(builder: builder, rgsServerUrl: rgsServerUrl)
 
@@ -114,7 +149,7 @@ class LightningService {
         let storeId = try await VssStoreIdProvider.shared.getVssStoreId(walletIndex: walletIndex)
 
         let vssUrl = Env.vssServerUrl
-        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl
+        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         Logger.debug("Building ldk-node with vssUrl: '\(vssUrl)'")
         Logger.debug("Building ldk-node with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)'")
 
@@ -125,49 +160,19 @@ class LightningService {
 
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
-        try await ServiceQueue.background(.ldk) {
-            do {
-                if !lnurlAuthServerUrl.isEmpty {
-                    self.node = try builder.buildWithVssStore(
-                        vssUrl: vssUrl,
-                        storeId: storeId,
-                        lnurlAuthServerUrl: lnurlAuthServerUrl,
-                        fixedHeaders: [:]
-                    )
-                } else {
-                    self.node = try builder.buildWithVssStoreAndFixedHeaders(
-                        vssUrl: vssUrl,
-                        storeId: storeId,
-                        fixedHeaders: [:]
-                    )
-                }
-            } catch let error as BuildError {
-                guard case .DangerousValue = error else { throw error }
-
-                // Stale ChannelMonitor vs ChannelManager — retry with accept_stale to recover.
-                Logger.warn(
-                    "Build failed with DangerousValue. Retrying with accept_stale_channel_monitors for recovery.",
-                    context: "Recovery"
-                )
-                builder.setAcceptStaleChannelMonitors(accept: true)
-
-                if !lnurlAuthServerUrl.isEmpty {
-                    self.node = try builder.buildWithVssStore(
-                        vssUrl: vssUrl,
-                        storeId: storeId,
-                        lnurlAuthServerUrl: lnurlAuthServerUrl,
-                        fixedHeaders: [:]
-                    )
-                } else {
-                    self.node = try builder.buildWithVssStoreAndFixedHeaders(
-                        vssUrl: vssUrl,
-                        storeId: storeId,
-                        fixedHeaders: [:]
-                    )
-                }
-                Logger.info("Stale monitor recovery: build succeeded with accept_stale", context: "Recovery")
-            }
+        guard !lnurlAuthServerUrl.isEmpty else {
+            throw CustomServiceError.vssAuthRequired
         }
+
+        try await ServiceQueue.background(.ldk) {
+            self.node = try builder.buildWithVssStore(
+                vssUrl: vssUrl,
+                storeId: storeId,
+                lnurlAuthServerUrl: lnurlAuthServerUrl,
+                fixedHeaders: [:]
+            )
+        }
+        shouldReleaseLightningLock = false
 
         Logger.info("LDK node setup")
 
@@ -257,6 +262,14 @@ class LightningService {
             try node.start()
         }
 
+        #if !BITKIT_NOTIFICATION_EXTENSION
+            do {
+                try await reconcileWatchOnlyAccounts()
+            } catch {
+                Logger.error(error, context: "Failed to reconcile Paykit Server accounts during startup")
+            }
+        #endif
+
         await refreshChannelCache()
         await refreshCache()
 
@@ -336,6 +349,15 @@ class LightningService {
         }
         try FileManager.default.removeItem(at: graphPath)
         Logger.info("Deleted network graph cache at: \(graphPath.path)")
+    }
+
+    func networkGraphCacheModificationDate() -> Date? {
+        let graphPath = Env.ldkStorage(walletIndex: currentWalletIndex).appendingPathComponent("network_graph_cache")
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: graphPath.path),
+              let modificationDate = attributes[.modificationDate] as? Date
+        else { return nil }
+
+        return modificationDate
     }
 
     func connectToTrustedPeers(remotePeers: [LnPeer]? = nil) async throws {
@@ -458,6 +480,10 @@ class LightningService {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
+        #if !BITKIT_NOTIFICATION_EXTENSION
+            try await reconcileWatchOnlyAccounts()
+        #endif
+
         Logger.debug("Syncing LDK...")
         try await ServiceQueue.background(.ldk) {
             try node.syncWallets()
@@ -478,6 +504,133 @@ class LightningService {
             syncStatusChangedSubject.send(syncTimestamp)
         }
     }
+
+    func exportWatchOnlyAccountXpub(accountIndex: UInt32, addressType: LDKNode.AddressType) async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.exportOnchainWalletAccountXpub(addressType: addressType, accountIndex: accountIndex)
+        }
+    }
+
+    func setWatchOnlyAccountTracking(
+        accountIndex: UInt32,
+        addressType: LDKNode.AddressType,
+        xpub: String,
+        enabled: Bool
+    ) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        try await ServiceQueue.background(.ldk) {
+            let isTracked = node.listOnchainWalletAccounts().contains {
+                $0.addressType == addressType && $0.accountIndex == accountIndex
+            }
+
+            if enabled {
+                var didAddAccount = false
+                do {
+                    if !isTracked {
+                        try node.addOnchainWalletAccount(addressType: addressType, accountIndex: accountIndex, xpub: xpub)
+                        didAddAccount = true
+                    }
+                    try node.onchainPayment().revealReceiveAddressesToAccount(
+                        addressType: addressType,
+                        accountIndex: accountIndex,
+                        index: Self.watchOnlyAccountHighestPreRevealedAddressIndex
+                    )
+                    if didAddAccount {
+                        try node.syncWallets()
+                    }
+                } catch {
+                    if didAddAccount {
+                        do {
+                            try node.removeOnchainWalletAccount(addressType: addressType, accountIndex: accountIndex)
+                        } catch let cleanupError {
+                            Logger.error(cleanupError, context: "Failed to roll back Paykit Server account tracking")
+                        }
+                    }
+                    throw error
+                }
+            } else if !enabled, isTracked {
+                try node.removeOnchainWalletAccount(addressType: addressType, accountIndex: accountIndex)
+            }
+        }
+    }
+
+    #if !BITKIT_NOTIFICATION_EXTENSION
+        func reconcileWatchOnlyAccounts() async throws {
+            try await WatchOnlyAccountManager.shared.reconcileTracking()
+        }
+
+        func reconcileWatchOnlyAccountTracking(
+            records: [WatchOnlyAccountRecord],
+            managedRecords: [WatchOnlyAccountRecord]
+        ) async throws {
+            guard let node else {
+                throw AppError(serviceError: .nodeNotSetup)
+            }
+            let walletRecords = records.filter { $0.walletIndex == currentWalletIndex }
+            let managedWalletRecords = managedRecords.filter { $0.walletIndex == currentWalletIndex }
+            let desiredConfigs = try Self.watchOnlyAccountConfigs(records: walletRecords)
+
+            try await ServiceQueue.background(.ldk) {
+                let trackedAccounts = node.listOnchainWalletAccounts()
+                let managedKeys = Set(managedWalletRecords.map { "\($0.addressType):\($0.accountIndex)" })
+                let desiredKeys = Set(desiredConfigs.map { "\($0.addressType.stringValue):\($0.accountIndex)" })
+
+                for trackedAccount in trackedAccounts {
+                    let key = "\(trackedAccount.addressType.stringValue):\(trackedAccount.accountIndex)"
+                    if managedKeys.contains(key), !desiredKeys.contains(key) {
+                        try node.removeOnchainWalletAccount(
+                            addressType: trackedAccount.addressType,
+                            accountIndex: trackedAccount.accountIndex
+                        )
+                    }
+                }
+
+                for config in desiredConfigs {
+                    let isTracked = trackedAccounts.contains {
+                        $0.addressType == config.addressType && $0.accountIndex == config.accountIndex
+                    }
+                    if !isTracked {
+                        try node.addOnchainWalletAccount(
+                            addressType: config.addressType,
+                            accountIndex: config.accountIndex,
+                            xpub: config.xpub
+                        )
+                    }
+                    try node.onchainPayment().revealReceiveAddressesToAccount(
+                        addressType: config.addressType,
+                        accountIndex: config.accountIndex,
+                        index: Self.watchOnlyAccountHighestPreRevealedAddressIndex
+                    )
+                }
+            }
+        }
+
+        private static func watchOnlyAccountConfigs(walletIndex: Int) throws -> [OnchainWalletAccountConfig] {
+            try watchOnlyAccountConfigs(records: WatchOnlyAccountStore.enabledAccounts(for: walletIndex))
+        }
+
+        private static func watchOnlyAccountConfigs(records: [WatchOnlyAccountRecord]) throws -> [OnchainWalletAccountConfig] {
+            try records.filter {
+                ($0.setupState == .active || $0.setupState == .authorizing) && $0.isTrackingEnabled
+            }.map { record in
+                guard let addressType = LDKNode.AddressType.from(string: record.addressType) else {
+                    throw WatchOnlyAccountError.invalidExtendedPublicKey
+                }
+                return OnchainWalletAccountConfig(
+                    addressType: addressType,
+                    accountIndex: record.accountIndex,
+                    xpub: record.xpub
+                )
+            }
+        }
+    #endif
 
     func newAddress() async throws -> String {
         guard let node else {
@@ -833,8 +986,12 @@ class LightningService {
         for (index, channel) in channels.enumerated() {
             totalOutboundMsat += channel.outboundCapacityMsat
             totalInboundMsat += channel.inboundCapacityMsat
-            if channel.isUsable { usableChannels += 1 }
-            if channel.isAnnounced { announcedChannels += 1 }
+            if channel.isUsable {
+                usableChannels += 1
+            }
+            if channel.isAnnounced {
+                announcedChannels += 1
+            }
 
             sb += "  Channel \(index + 1):\n"
             sb += "    - Channel ID: \(channel.channelId)\n"
@@ -973,6 +1130,10 @@ extension LightningService {
 
     var nodeId: String? {
         node?.nodeId()
+    }
+
+    var hasNode: Bool {
+        node != nil
     }
 
     /// Use cached values to avoid blocking LDK calls on main thread
@@ -1138,13 +1299,18 @@ extension LightningService {
         return totalFundable
     }
 
-    /// Reads selected and monitored address types from UserDefaults. Use when calling from UI/balance flow.
+    /// Reads selected and monitored address types from UserDefaults and keeps native SegWit enabled
+    /// so delayed Blocktank refund payments remain detectable.
     static func addressTypeStateFromUserDefaults(_ defaults: UserDefaults = .standard)
         -> (selectedType: LDKNode.AddressType, monitoredTypes: [LDKNode.AddressType])
     {
         let selectedType = LDKNode.AddressType.fromStorage(defaults.string(forKey: "selectedAddressType"))
         let monitoredString = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
-        let monitoredTypes = LDKNode.AddressType.parseCommaSeparated(monitoredString)
+        var monitoredTypes = LDKNode.AddressType.parseCommaSeparated(monitoredString)
+        if !monitoredTypes.contains(.nativeSegwit) {
+            monitoredTypes.append(.nativeSegwit)
+            defaults.set(monitoredTypes.map(\.stringValue).joined(separator: ","), forKey: "addressTypesToMonitor")
+        }
         return (selectedType, monitoredTypes)
     }
 
@@ -1245,9 +1411,9 @@ extension LightningService {
                     Logger.info(
                         "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)"
                     )
-                case let .probeSuccessful(paymentId, paymentHash):
+                case let .probeSuccessful(paymentId, paymentHash, _):
                     Logger.info("🤑 Probe successful: paymentId: \(paymentId) paymentHash: \(paymentHash)")
-                case let .probeFailed(paymentId, paymentHash, shortChannelId):
+                case let .probeFailed(paymentId, paymentHash, shortChannelId, _):
                     Logger
                         .info(
                             "❌ Probe failed: paymentId: \(paymentId) paymentHash: \(paymentHash) shortChannelId: \(String(describing: shortChannelId))"
@@ -1568,6 +1734,23 @@ extension LightningService {
     }
 
     // MARK: - Probing
+
+    private static func scoringFeeParameters(config: Config) -> ScoringFeeParameters {
+        let defaultParameters = config.scoringFeeParams ?? defaultScoringFeeParameters
+
+        return ScoringFeeParameters(
+            basePenaltyMsat: scoringBasePenaltyMsat,
+            basePenaltyAmountMultiplierMsat: defaultParameters.basePenaltyAmountMultiplierMsat,
+            liquidityPenaltyMultiplierMsat: scoringLiquidityPenaltyMultiplierMsat,
+            liquidityPenaltyAmountMultiplierMsat: scoringLiquidityPenaltyAmountMultiplierMsat,
+            historicalLiquidityPenaltyMultiplierMsat: defaultParameters.historicalLiquidityPenaltyMultiplierMsat,
+            historicalLiquidityPenaltyAmountMultiplierMsat: scoringHistoricalLiquidityPenaltyAmountMultiplierMsat,
+            antiProbingPenaltyMsat: defaultParameters.antiProbingPenaltyMsat,
+            consideredImpossiblePenaltyMsat: scoringConsideredImpossiblePenaltyMsat,
+            linearSuccessProbability: defaultParameters.linearSuccessProbability,
+            probingDiversityPenaltyMsat: defaultParameters.probingDiversityPenaltyMsat
+        )
+    }
 
     /// Sends a probe to test if a payment route exists for the given invoice.
     /// - Parameters:

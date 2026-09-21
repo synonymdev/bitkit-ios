@@ -56,6 +56,7 @@ class WalletViewModel: ObservableObject {
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
     private var eventHandlers: [String: (Event) -> Void] = [:]
+    private var watchSendContinuations: [String: CheckedContinuation<SettledLightningPayment, Error>] = [:]
     private var probeOutcomes: [PaymentId: ProbeOutcome] = [:]
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
@@ -91,6 +92,7 @@ class WalletViewModel: ObservableObject {
     @Published var balanceInTransferToSpending: Int = 0
     @Published var forceCloseClaimableAtHeight: UInt32?
     @Published var currentBlockHeight: UInt32 = 0
+    @Published var isRetryingLightningPayment = false
 
     init(
         lightningService: LightningService = .shared,
@@ -137,6 +139,11 @@ class WalletViewModel: ObservableObject {
     }
 
     func start(walletIndex: Int = 0) async throws {
+        if !lightningService.hasNode, nodeLifecycleState == .running {
+            Logger.warn("Node lifecycle was running but service node is missing, restarting", context: "WalletViewModel")
+            nodeLifecycleState = .stopped
+        }
+
         // Guard against concurrent starts - only allow start from stopped, initializing, or error states
         switch nodeLifecycleState {
         case .stopped, .initializing, .errorStarting:
@@ -156,39 +163,23 @@ class WalletViewModel: ObservableObject {
             let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
             let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
 
-            var channelMigration: ChannelDataMigration?
-            if let migration = MigrationsService.shared.pendingChannelMigration {
-                channelMigration = ChannelDataMigration(
-                    channelManager: [UInt8](migration.channelManager),
-                    channelMonitors: migration.channelMonitors.map { [UInt8]($0) }
+            try await MigrationsService.shared.withPendingChannelMigration { migration in
+                let channelMigration = migration.map {
+                    ChannelDataMigration(
+                        channelManager: [UInt8]($0.channelManager),
+                        channelMonitors: $0.channelMonitors.map { [UInt8]($0) }
+                    )
+                }
+
+                await runLegacyNetworkGraphCleanupIfNeeded()
+
+                try await lightningService.setup(
+                    walletIndex: walletIndex,
+                    electrumServerUrl: electrumServerUrl,
+                    rgsServerUrl: rgsServerUrl.isEmpty ? nil : rgsServerUrl,
+                    channelMigration: channelMigration
                 )
-                MigrationsService.shared.pendingChannelMigration = nil
             }
-
-            // // If no local migration data, try fetching from RN remote backup (one-time)
-            // if channelMigration == nil {
-            //     let (remoteMigration, allRetrieved) = await fetchOrphanedChannelMonitorsIfNeeded(walletIndex: walletIndex)
-            //     if let remoteMigration {
-            //         channelMigration = ChannelDataMigration(
-            //             // don't overwrite channel manager, we only need the monitors for the sweep
-            //             channelManager: nil,
-            //             channelMonitors: remoteMigration.channelMonitors.map { [UInt8]($0) }
-            //         )
-            //         MigrationsService.shared.pendingChannelMigration = nil
-            //     }
-            //     if allRetrieved {
-            //         MigrationsService.shared.isChannelRecoveryChecked = true
-            //     }
-            // }
-
-            await runLegacyNetworkGraphCleanupIfNeeded()
-
-            try await lightningService.setup(
-                walletIndex: walletIndex,
-                electrumServerUrl: electrumServerUrl,
-                rgsServerUrl: rgsServerUrl.isEmpty ? nil : rgsServerUrl,
-                channelMigration: channelMigration
-            )
             try await lightningService.start(onEvent: { event in
                 Task { @MainActor in
                     // Notify all event handlers
@@ -198,19 +189,21 @@ class WalletViewModel: ObservableObject {
 
                     // Handle specific events for targeted UI updates
                     switch event {
-                    case let .probeSuccessful(paymentId, paymentHash: paymentHash):
+                    case let .probeSuccessful(paymentId, paymentHash: paymentHash, routeFeeMsat: routeFeeMsat):
                         self.cacheProbeOutcome(
                             success: true,
                             paymentId: paymentId,
                             paymentHash: paymentHash,
-                            shortChannelId: nil
+                            shortChannelId: nil,
+                            routeFeeMsat: routeFeeMsat
                         )
-                    case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId):
+                    case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId, routeFeeMsat: routeFeeMsat):
                         self.cacheProbeOutcome(
                             success: false,
                             paymentId: paymentId,
                             paymentHash: paymentHash,
-                            shortChannelId: shortChannelId
+                            shortChannelId: shortChannelId.map(String.init),
+                            routeFeeMsat: routeFeeMsat
                         )
                     case let .paymentReceived(_, paymentHash, _, _):
                         self.bolt11 = ""
@@ -227,10 +220,14 @@ class WalletViewModel: ObservableObject {
                     case .channelReady:
                         self.bolt11 = ""
                         Task {
+                            await self.refreshAndSyncState()
+                            try? await self.refreshBip21()
                             await self.reconnectTrustedPeers()
                             await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
                             try? await Task.sleep(nanoseconds: Self.paykitChannelUsabilityRefreshDelay)
                             guard !Task.isCancelled else { return }
+                            await self.refreshAndSyncState()
+                            try? await self.refreshBip21()
                             await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
                                 reason: "channel-ready delayed refresh",
                                 forceRefreshLightning: true
@@ -385,8 +382,11 @@ class WalletViewModel: ObservableObject {
         case .unreachablePeers:
             Logger.warn("⚠️ [DEBUG] Simulating unreachable API peers")
             return [
-                LnPeer(nodeId: "000000000000000000000000000000000000000000000000000000000000000001",
-                       host: "192.0.2.1", port: 9735),
+                LnPeer(
+                    nodeId: "000000000000000000000000000000000000000000000000000000000000000001",
+                    host: "192.0.2.1",
+                    port: 9735
+                ),
             ]
         case .none:
             break
@@ -424,10 +424,99 @@ class WalletViewModel: ObservableObject {
 
     func stopLightningNode(clearEventCallback: Bool = false) async throws {
         nodeLifecycleState = .stopping
-        try await lightningService.stop(clearEventCallback: clearEventCallback)
+        // Stop the swap updates stream with the node; it restarts on the next wallet start.
+        await stopSwapUpdates()
+
+        do {
+            try await lightningService.stop(clearEventCallback: clearEventCallback)
+        } catch {
+            Logger.warn("Failed to stop Lightning node: \(error)", context: "WalletViewModel")
+            nodeLifecycleState = lightningService.hasNode ? .running : .stopped
+            syncState()
+            throw error
+        }
+
         nodeLifecycleState = .stopped
         probeOutcomes.removeAll()
         syncState()
+    }
+
+    // MARK: - Boltz swap updates stream
+
+    /// Base backoff between swap updates stream attempts; scales linearly per attempt.
+    private static let swapUpdatesRetryDelay: TimeInterval = 5
+    /// Upper bound for the backoff between swap updates stream attempts.
+    private static let swapUpdatesRetryCap: TimeInterval = 60
+    /// Ceiling on swap updates stream start attempts per run (~14 min of backoff). Giving up is
+    /// safe: the stream is retried on the next node start and when entering a swap flow.
+    private static let swapUpdatesMaxAttempts = 20
+
+    private var swapUpdatesTask: Task<Void, Never>?
+    private var swapEventsTask: Task<Void, Never>?
+    private var swapUpdatesRunning = false
+
+    /// Ensure the swap updates stream is running so pending LN -> onchain swaps are tracked and
+    /// auto-claimed. A live stream is left untouched: restarting it would abort bitkit-core's
+    /// background tasks and could race an in-flight claim. Safe to call repeatedly. Runs only
+    /// where swaps are supported and enabled in dev settings, see `BoltzService.isSwapEnabled`.
+    func ensureSwapUpdatesRunning() {
+        guard BoltzService.shared.isSwapEnabled else { return }
+        collectSwapEventsOnce()
+        guard !swapUpdatesRunning, swapUpdatesTask == nil else { return }
+        swapUpdatesTask = Task { [weak self] in
+            await self?.startSwapUpdatesWithRetry()
+        }
+    }
+
+    /// Open the swap updates stream so any pending LN -> onchain swaps resume and auto-claim.
+    /// Uses the wallet's current fee rate for the claim tx. Retries up to a ceiling: without the
+    /// stream a paid swap has nothing to broadcast its claim, so give up only after
+    /// `swapUpdatesMaxAttempts` and leave the next trigger to retry. Once started, bitkit-core
+    /// keeps the WebSocket alive with its own reconnect loop.
+    private func startSwapUpdatesWithRetry() async {
+        var attempt = 0
+        while !Task.isCancelled, attempt < Self.swapUpdatesMaxAttempts {
+            do {
+                var feeRate: Double?
+                if let rates = await feeEstimatesManager.getEstimates() {
+                    feeRate = Double(SettingsViewModel.shared.defaultTransactionSpeed.getFeeRate(from: rates))
+                }
+                try await BoltzService.shared.startUpdates(feeRateSatPerVb: feeRate, acceptZeroConf: true)
+                swapUpdatesRunning = true
+                return
+            } catch {
+                attempt += 1
+                Logger.warn("Failed to start swap updates, attempt \(attempt)", context: "WalletViewModel")
+                let delay = min(Self.swapUpdatesRetryDelay * Double(attempt), Self.swapUpdatesRetryCap)
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+        }
+        if !Task.isCancelled {
+            Logger.warn("Gave up starting swap updates after \(attempt) attempts", context: "WalletViewModel")
+            // Free the slot so the next trigger (node start or entering a swap flow) can retry;
+            // a parked spent task would keep ensureSwapUpdatesRunning from ever starting one.
+            swapUpdatesTask = nil
+        }
+    }
+
+    /// Refresh balances when a swap lands on-chain so savings reflect it without a manual sync.
+    private func collectSwapEventsOnce() {
+        guard swapEventsTask == nil else { return }
+        swapEventsTask = Task { [weak self] in
+            for await event in BoltzService.shared.events() {
+                if case let .claimed(swapId, _) = event {
+                    Logger.info("Savings swap claimed: \(swapId)", context: "WalletViewModel")
+                    await self?.syncStateAsync()
+                }
+            }
+        }
+    }
+
+    private func stopSwapUpdates() async {
+        swapUpdatesTask?.cancel()
+        swapUpdatesTask = nil
+        swapUpdatesRunning = false
+        await BoltzService.shared.stopUpdates()
     }
 
     func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
@@ -496,6 +585,7 @@ class WalletViewModel: ObservableObject {
 
         isSyncingWallet = false
         syncState()
+        QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
         if isPaykitUIActive {
             await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
             await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
@@ -509,7 +599,12 @@ class WalletViewModel: ObservableObject {
     ///   - isMaxAmount: Whether this is a max amount send (uses sendAllToAddress)
     /// - Returns: The transaction ID (txid) of the sent transaction
     /// - Throws: An error if the transaction fails or if fee rates cannot be retrieved
-    func send(address: String, sats: UInt64, isMaxAmount: Bool = false) async throws -> Txid {
+    func send(
+        address: String,
+        sats: UInt64,
+        isMaxAmount: Bool = false,
+        beforeBroadcastAttempt: () async throws -> Void = {}
+    ) async throws -> Txid {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
@@ -520,6 +615,7 @@ class WalletViewModel: ObservableObject {
             Logger.warn("No UTXO selected, using default selection algorithm.")
         }
 
+        try await beforeBroadcastAttempt()
         let txid = try await lightningService.send(
             address: address,
             sats: sats,
@@ -692,7 +788,13 @@ class WalletViewModel: ObservableObject {
         let success: Bool
         let paymentId: PaymentId
         let paymentHash: PaymentHash
-        let shortChannelId: UInt64?
+        let shortChannelId: String?
+        let routeFeeMsat: UInt64?
+    }
+
+    struct SettledLightningPayment {
+        let paymentHash: PaymentHash
+        let feePaidSats: UInt64
     }
 
     /// Waits for probe results that match one of the returned probe `paymentId`s.
@@ -711,13 +813,13 @@ class WalletViewModel: ObservableObject {
         var pendingPaymentIds = paymentIds
         var lastFailure: ProbeOutcome?
 
-        return await withCheckedContinuation { continuation in
+        return await withCheckedContinuation { (continuation: CheckedContinuation<ProbeOutcome, Never>) in
             var resumed = false
 
             addOnEvent(id: eventId) { event in
                 guard !resumed else { return }
                 switch event {
-                case let .probeSuccessful(paymentId, paymentHash: paymentHash):
+                case let .probeSuccessful(paymentId, paymentHash: paymentHash, routeFeeMsat: routeFeeMsat):
                     guard pendingPaymentIds.contains(paymentId) else { return }
                     resumed = true
                     self.removeOnEvent(id: eventId)
@@ -725,15 +827,17 @@ class WalletViewModel: ObservableObject {
                         success: true,
                         paymentId: paymentId,
                         paymentHash: paymentHash,
-                        shortChannelId: nil
+                        shortChannelId: nil,
+                        routeFeeMsat: routeFeeMsat
                     ))
-                case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId):
+                case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId, routeFeeMsat: routeFeeMsat):
                     guard pendingPaymentIds.remove(paymentId) != nil else { return }
                     lastFailure = .init(
                         success: false,
                         paymentId: paymentId,
                         paymentHash: paymentHash,
-                        shortChannelId: shortChannelId
+                        shortChannelId: shortChannelId.map(String.init),
+                        routeFeeMsat: routeFeeMsat
                     )
                     if pendingPaymentIds.isEmpty, let lastFailure {
                         resumed = true
@@ -747,12 +851,13 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    private func cacheProbeOutcome(success: Bool, paymentId: PaymentId, paymentHash: PaymentHash, shortChannelId: UInt64?) {
+    private func cacheProbeOutcome(success: Bool, paymentId: PaymentId, paymentHash: PaymentHash, shortChannelId: String?, routeFeeMsat: UInt64?) {
         probeOutcomes[paymentId] = ProbeOutcome(
             success: success,
             paymentId: paymentId,
             paymentHash: paymentHash,
-            shortChannelId: shortChannelId
+            shortChannelId: shortChannelId,
+            routeFeeMsat: routeFeeMsat
         )
     }
 
@@ -781,13 +886,31 @@ class WalletViewModel: ObservableObject {
         bolt11: String,
         sats: UInt64? = nil,
         timeoutSeconds: TimeInterval = 10,
-        onTimeout: (@MainActor () -> Void)? = nil
-    ) async throws -> PaymentHash {
-        try await withThrowingTaskGroup(of: PaymentHash.self) { group in
-            group.addTask { try await self.send(bolt11: bolt11, sats: sats) }
+        afterListening: (@MainActor (String) -> Void)? = nil,
+        onTimeout: (@MainActor (String) -> Void)? = nil
+    ) async throws -> SettledLightningPayment {
+        let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
+        let paymentHash = String(hash)
+        afterListening?(paymentHash)
+        return try await waitForLightningPayment(
+            hash: paymentHash,
+            timeoutSeconds: timeoutSeconds,
+            onTimeout: onTimeout
+        )
+    }
+
+    func waitForLightningPayment(
+        hash: String,
+        timeoutSeconds: TimeInterval = 10,
+        onTimeout: (@MainActor (String) -> Void)? = nil
+    ) async throws -> SettledLightningPayment {
+        try await withThrowingTaskGroup(of: SettledLightningPayment.self) { group in
+            group.addTask { try await self.watchSend(hash: hash) }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
-                if let onTimeout { await MainActor.run { onTimeout() } }
+                if let onTimeout {
+                    await MainActor.run { onTimeout(hash) }
+                }
                 throw PaymentTimeoutError.timedOut
             }
             let first = try await group.next()!
@@ -800,36 +923,54 @@ class WalletViewModel: ObservableObject {
     /// A LN payment can throw an error right away, be successful right away,
     /// or take a while to complete/fail because it's retrying different paths.
     /// So we need to handle all these cases here.
-    func send(bolt11: String, sats: UInt64? = nil) async throws -> PaymentHash {
+    func send(bolt11: String, sats: UInt64? = nil) async throws -> SettledLightningPayment {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
-        let eventId = String(hash)
+        return try await watchSend(hash: String(hash))
+    }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            // Add event listener for this specific payment
-            addOnEvent(id: eventId) { event in
-                switch event {
-                case let .paymentSuccessful(_, paymentHash, _, _):
-                    if paymentHash == hash {
-                        self.removeOnEvent(id: eventId)
-                        continuation.resume(returning: paymentHash)
-                    }
-                case .paymentFailed(paymentId: _, let paymentHash, let reason):
-                    // TODO: this is not working for routeNotFound
-                    if paymentHash == hash {
-                        self.removeOnEvent(id: eventId)
-                        continuation.resume(throwing: NSError(
-                            domain: "Lightning",
-                            code: -1,
-                            userInfo: [NSLocalizedDescriptionKey: reason.debugDescription]
-                        ))
-                    }
-                default:
-                    break
+    /// Observes task cancellation so `waitForLightningPayment`'s task group can unwind after its
+    /// timeout instead of awaiting a continuation that only an LDK event would resume.
+    private func watchSend(hash: String) async throws -> SettledLightningPayment {
+        let eventId = hash
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SettledLightningPayment, Error>) in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
                 }
-            }
+                watchSendContinuations[eventId] = continuation
+                addOnEvent(id: eventId) { [weak self] event in
+                    switch event {
+                    case let .paymentSuccessful(_, paymentHash, _, feePaidMsat):
+                        if paymentHash == hash {
+                            self?.finishWatchSend(id: eventId, result: .success(SettledLightningPayment(
+                                paymentHash: paymentHash,
+                                feePaidSats: (feePaidMsat ?? 0) / 1000
+                            )))
+                        }
+                    case .paymentFailed(paymentId: _, let paymentHash, let reason):
+                        if paymentHash == hash {
+                            self?.finishWatchSend(id: eventId, result: .failure(AppError(paymentFailureReason: reason)))
+                        }
+                    default:
+                        break
+                    }
+                }
 
-            syncState()
+                syncState()
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.finishWatchSend(id: eventId, result: .failure(CancellationError()))
+            }
         }
+    }
+
+    private func finishWatchSend(id: String, result: Result<SettledLightningPayment, Error>) {
+        guard let continuation = watchSendContinuations.removeValue(forKey: id) else { return }
+        removeOnEvent(id: id)
+        continuation.resume(with: result)
     }
 
     func closeChannel(_ channel: ChannelDetails, force: Bool = false, forceCloseReason: String? = nil) async throws {
@@ -873,16 +1014,88 @@ class WalletViewModel: ObservableObject {
         guard !legacyNetworkGraphCleanupDone else { return }
         Logger.info("Running legacy network graph cleanup", context: "WalletViewModel")
         do {
-            _ = try await VssBackupClient.shared.deleteKey("network_graph")
+            try await clearNetworkGraph()
         } catch {
-            Logger.debug("VSS deleteKey(network_graph): \(error)", context: "WalletViewModel")
-        }
-        do {
-            try await lightningService.deleteNetworkGraph()
-        } catch {
-            Logger.debug("Local network graph cache cleanup: \(error)", context: "WalletViewModel")
+            Logger.debug("Legacy network graph cleanup: \(error)", context: "WalletViewModel")
         }
         legacyNetworkGraphCleanupDone = true
+    }
+
+    /// Manual recovery action: stop the node and clear the cached network graph so a fresh full
+    /// snapshot is downloaded on the next startup. Non-destructive to funds. Propagates failures
+    /// since a reset that leaves the graph in VSS is ineffective. Caller should restart afterwards.
+    func resetNetworkGraph() async throws {
+        Logger.warn("Resetting network graph (manual)", context: "WalletViewModel")
+        // Let any in-progress startup settle so a node assigned mid-setup isn't missed.
+        let settled = await waitForNodeToRun(timeoutSeconds: 5.0)
+        if !settled, nodeLifecycleState == .starting {
+            throw AppError(message: "Node still starting", debugMessage: "resetNetworkGraph aborted: startup in flight")
+        }
+        if lightningService.hasNode {
+            try await stopLightningNode()
+        }
+        try await clearNetworkGraph()
+    }
+
+    func resetPaymentRoutingCaches() async throws {
+        Logger.warn("Resetting payment routing caches", context: "WalletViewModel")
+        var resetErrors: [Error] = []
+
+        do {
+            try await resetNetworkGraph()
+        } catch {
+            resetErrors.append(error)
+        }
+
+        do {
+            try await VssBackupClient.shared.deleteLdkScorerCache()
+        } catch {
+            resetErrors.append(error)
+        }
+
+        if let firstError = resetErrors.first {
+            throw firstError
+        }
+    }
+
+    func waitForPaymentRoutingDataRefresh(startedAt: Date, timeoutSeconds: Double = 20.0) async throws {
+        let startedAtTimestamp = UInt64(startedAt.timeIntervalSince1970)
+        let requiresRgsRefresh = Env.network != .regtest && !rgsConfigService.getCurrentServerUrl().isEmpty
+        let requiresScorerRefresh = Env.ldkScorerUrl != nil
+
+        guard requiresRgsRefresh || requiresScorerRefresh else { return }
+
+        let startTime = Date()
+
+        while Date().timeIntervalSince(startTime) <= timeoutSeconds {
+            await lightningService.refreshCache()
+            if let status = lightningService.status {
+                let graphCacheModificationDate = lightningService.networkGraphCacheModificationDate()
+                let rgsFresh = !requiresRgsRefresh || (graphCacheModificationDate ?? .distantPast) > startedAt
+
+                let scorerFresh = !requiresScorerRefresh || (status.latestPathfindingScoresSyncTimestamp ?? 0) >= startedAtTimestamp
+
+                if rgsFresh, scorerFresh {
+                    Logger.info("Payment routing data refreshed", context: "WalletViewModel")
+                    return
+                }
+            }
+
+            try await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        throw AppError(
+            message: "wallet__payment_failed_description",
+            debugMessage: "Timed out waiting for RGS and scorer data before retrying payment"
+        )
+    }
+
+    /// Clears the cached Lightning network graph: the local cache file and the VSS backup copy.
+    /// Shared by the legacy one-time startup cleanup, the manual recovery reset, and the LDK debug screen.
+    func clearNetworkGraph() async throws {
+        try await lightningService.deleteNetworkGraph()
+        _ = try await VssBackupClient.shared.deleteKey("network_graph")
+        Logger.info("Cleared network graph from VSS", context: "WalletViewModel")
     }
 
     /// Refreshes cache and syncs all UI state including balance
@@ -990,14 +1203,43 @@ class WalletViewModel: ObservableObject {
         return capacity
     }
 
+    var totalReadyInboundLightningSats: UInt64? {
+        guard let channels else {
+            return nil
+        }
+
+        var capacity: UInt64 = 0
+        for channel in channels where channel.isChannelReady {
+            capacity += channel.inboundCapacityMsat / 1000
+        }
+        return capacity
+    }
+
     /// Returns true if there's at least one channel that is ready
     var hasReadyChannels: Bool {
         return channels?.contains(where: \.isChannelReady) ?? false
     }
 
+    var hasExistingChannels: Bool {
+        channelCount > 0 || channels?.isEmpty == false
+    }
+
     /// Returns true if there's at least one usable channel (ready AND peer connected)
     var hasUsableChannels: Bool {
         return channels?.contains(where: \.isUsable) ?? false
+    }
+
+    var canCreateReceiveLightningInvoice: Bool {
+        let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
+        return canCreateReceiveLightningInvoice(amountSats: amountSats)
+    }
+
+    func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool {
+        ReceiveLiquidityDecision.canCreateLightningInvoice(
+            hasReadyChannels: hasReadyChannels,
+            inboundCapacitySats: totalReadyInboundLightningSats,
+            invoiceAmountSats: amountSats
+        )
     }
 
     @discardableResult
@@ -1044,10 +1286,7 @@ class WalletViewModel: ObservableObject {
                     guard case .routeHintsUnavailable = error else {
                         throw error
                     }
-                    Logger.warn(
-                        "Public Paykit Lightning invoice has no route hints yet; publishing without Lightning for now",
-                        context: "WalletViewModel"
-                    )
+                    Logger.warn("Public Paykit Lightning invoice has no route hints; publishing on-chain endpoint only", context: "WalletViewModel")
                 }
             }
         } else if includeLightning {
@@ -1159,8 +1398,7 @@ class WalletViewModel: ObservableObject {
 
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
 
-        // Create Lightning invoice if at least one channel is ready
-        if hasReadyChannels {
+        if canCreateReceiveLightningInvoice(amountSats: amountSats) {
             if forceRefreshBolt11 || bolt11.isEmpty {
                 bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
             } else {
@@ -1229,6 +1467,7 @@ class WalletViewModel: ObservableObject {
 
         let currentTime = UInt64(Date().timeIntervalSince1970)
         let preActivityMetadata = BitkitCore.PreActivityMetadata(
+            walletId: WalletScope.default,
             paymentId: paymentId,
             tags: tags,
             paymentHash: paymentHash,
@@ -1247,7 +1486,7 @@ class WalletViewModel: ObservableObject {
     /// Formats satoshi amount to Bitcoin decimal format for BIP21 URIs
     /// - Parameter sats: Amount in satoshis
     /// - Returns: Formatted Bitcoin amount as string (e.g., "0.00123000")
-    static func formatBitcoinAmount(sats: UInt64) -> String {
+    nonisolated static func formatBitcoinAmount(sats: UInt64) -> String {
         let btcAmount = Double(sats) / 100_000_000.0
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal

@@ -1,3 +1,4 @@
+import Combine
 import CoreBluetooth
 import Foundation
 import Observation
@@ -47,6 +48,15 @@ class TrezorBLEManager: NSObject {
     private var connectedPeripheral: CBPeripheral?
     private var connectedPath: String?
 
+    /// Paths whose disconnect was user-initiated (via `disconnect(path:)`), so the
+    /// spontaneous-disconnect signal is suppressed for deliberate teardowns.
+    private var expectedDisconnectPaths: Set<String> = []
+
+    /// Emits the device path when an established connection drops for a reason the
+    /// user did not request — device out of range or phone Bluetooth turned off.
+    /// `TrezorManager` subscribes (via `TrezorTransport`) to clear the stale session.
+    let externalDisconnectPublisher = PassthroughSubject<String, Never>()
+
     /// GATT characteristics
     private var writeCharacteristic: CBCharacteristic?
     private var notifyCharacteristic: CBCharacteristic?
@@ -64,6 +74,11 @@ class TrezorBLEManager: NSObject {
     /// Continuation for service discovery
     private var serviceDiscoveryContinuation: CheckedContinuation<Void, Error>?
 
+    private var connectContinuationId: UInt64 = 0
+    private var writeContinuationId: UInt64 = 0
+    private var serviceDiscoveryContinuationId: UInt64 = 0
+    private var notificationContinuationId: UInt64 = 0
+
     /// Lock protecting all continuation properties from concurrent access.
     /// Timeouts fire on DispatchQueue.global() while delegate callbacks fire on
     /// centralQueue — without synchronization both can resume the same continuation.
@@ -72,61 +87,96 @@ class TrezorBLEManager: NSObject {
     // MARK: - Continuation Helpers
 
     /// Atomically take and nil-out a continuation so it can only be resumed once.
-    private func takeConnectContinuation() -> CheckedContinuation<Void, Error>? {
+    private func takeConnectContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
+        if let id, id != connectContinuationId {
+            return nil
+        }
         let cont = connectContinuation
         connectContinuation = nil
         return cont
     }
 
-    private func takeWriteContinuation() -> CheckedContinuation<Void, Error>? {
+    private func takeWriteContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
+        if let id, id != writeContinuationId {
+            return nil
+        }
         let cont = writeContinuation
         writeContinuation = nil
         return cont
     }
 
-    private func takeServiceDiscoveryContinuation() -> CheckedContinuation<Void, Error>? {
+    private func takeServiceDiscoveryContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
+        if let id, id != serviceDiscoveryContinuationId {
+            return nil
+        }
         let cont = serviceDiscoveryContinuation
         serviceDiscoveryContinuation = nil
         return cont
     }
 
-    private func takeNotificationContinuation() -> CheckedContinuation<Void, Error>? {
+    private func takeNotificationContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
+        if let id, id != notificationContinuationId {
+            return nil
+        }
         let cont = notificationContinuation
         notificationContinuation = nil
         return cont
     }
 
+    private func failPendingContinuations(with error: Error) {
+        takeConnectContinuation()?.resume(throwing: error)
+        takeServiceDiscoveryContinuation()?.resume(throwing: error)
+        takeNotificationContinuation()?.resume(throwing: error)
+        takeWriteContinuation()?.resume(throwing: error)
+    }
+
     /// Atomically store a continuation.
-    private func setConnectContinuation(_ cont: CheckedContinuation<Void, Error>) {
+    @discardableResult
+    private func setConnectContinuation(_ cont: CheckedContinuation<Void, Error>) -> UInt64 {
         continuationLock.lock()
+        connectContinuationId &+= 1
+        let id = connectContinuationId
         connectContinuation = cont
         continuationLock.unlock()
+        return id
     }
 
-    private func setWriteContinuation(_ cont: CheckedContinuation<Void, Error>) {
+    @discardableResult
+    private func setWriteContinuation(_ cont: CheckedContinuation<Void, Error>) -> UInt64 {
         continuationLock.lock()
+        writeContinuationId &+= 1
+        let id = writeContinuationId
         writeContinuation = cont
         continuationLock.unlock()
+        return id
     }
 
-    private func setServiceDiscoveryContinuation(_ cont: CheckedContinuation<Void, Error>) {
+    @discardableResult
+    private func setServiceDiscoveryContinuation(_ cont: CheckedContinuation<Void, Error>) -> UInt64 {
         continuationLock.lock()
+        serviceDiscoveryContinuationId &+= 1
+        let id = serviceDiscoveryContinuationId
         serviceDiscoveryContinuation = cont
         continuationLock.unlock()
+        return id
     }
 
-    private func setNotificationContinuation(_ cont: CheckedContinuation<Void, Error>) {
+    @discardableResult
+    private func setNotificationContinuation(_ cont: CheckedContinuation<Void, Error>) -> UInt64 {
         continuationLock.lock()
+        notificationContinuationId &+= 1
+        let id = notificationContinuationId
         notificationContinuation = cont
         continuationLock.unlock()
+        return id
     }
 
     // MARK: - Observable State
@@ -151,9 +201,8 @@ class TrezorBLEManager: NSObject {
 
     // MARK: - Debug Logging
 
-    /// Log to both Logger and in-app TrezorDebugLog
+    /// Log to the in-app Trezor debug panel only (not persisted to disk via Logger).
     private func debugLog(_ message: String) {
-        Logger.debug(message, context: "TrezorBLEManager")
         Task { @MainActor in
             TrezorDebugLog.shared.log("[BLE] \(message)")
         }
@@ -284,6 +333,10 @@ class TrezorBLEManager: NSObject {
         // Clean up any stale connection state (preserves discoveredPeripherals cache)
         cleanupConnectionState()
 
+        // Drop any stale deliberate-disconnect marker from a prior session so it can't
+        // suppress a future spontaneous drop on this reused path.
+        expectedDisconnectPaths.remove(path)
+
         debugLog("connectOnce: \(path)")
 
         // Try to get peripheral from cache first
@@ -317,9 +370,9 @@ class TrezorBLEManager: NSObject {
 
         // Handle stale or transitioning OS-level connection from previous app session
         // After force-quit, iOS may keep the BLE connection alive briefly. Connecting
-        // to an already-connected peripheral can produce a stale GATT session that
+        // to an already-connected/disconnecting peripheral can produce a stale GATT session that
         // the Trezor then drops. Cancel it first and wait for disconnect to complete.
-        if peripheral.state == .connected || peripheral.state == .connecting {
+        if peripheral.state == .connected || peripheral.state == .connecting || peripheral.state == .disconnecting {
             debugLog("Cancelling stale connection (state: \(peripheral.state.rawValue))")
             centralManager?.cancelPeripheralConnection(peripheral)
             try await Task.sleep(nanoseconds: 500_000_000) // 500ms for disconnect to complete
@@ -328,14 +381,14 @@ class TrezorBLEManager: NSObject {
         // Step 1: Connect to peripheral
         debugLog("CBConnect starting...")
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.setConnectContinuation(continuation)
+            let continuationId = self.setConnectContinuation(continuation)
             self.connectionError = nil
 
             centralManager?.connect(peripheral, options: nil)
 
             // Set up timeout
             DispatchQueue.global().asyncAfter(deadline: .now() + Self.connectionTimeoutSeconds) { [weak self] in
-                self?.takeConnectContinuation()?.resume(throwing: TrezorBLEError.connectionTimeout)
+                self?.takeConnectContinuation(id: continuationId)?.resume(throwing: TrezorBLEError.connectionTimeout)
             }
         }
 
@@ -358,13 +411,13 @@ class TrezorBLEManager: NSObject {
 
         debugLog("Enabling notifications...")
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.setNotificationContinuation(continuation)
+            let continuationId = self.setNotificationContinuation(continuation)
             peripheral.setNotifyValue(true, for: notifyChar)
 
             // Timeout for notification enable
             DispatchQueue.global().asyncAfter(deadline: .now() + 5.0) { [weak self] in
                 // Don't fail, just continue
-                self?.takeNotificationContinuation()?.resume()
+                self?.takeNotificationContinuation(id: continuationId)?.resume()
             }
         }
 
@@ -385,12 +438,12 @@ class TrezorBLEManager: NSObject {
     private func discoverServicesAndCharacteristics(peripheral: CBPeripheral) async throws {
         // Discover Trezor service
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.setServiceDiscoveryContinuation(continuation)
+            let continuationId = self.setServiceDiscoveryContinuation(continuation)
             peripheral.discoverServices([Self.serviceUUID])
 
             // Timeout for service discovery
             DispatchQueue.global().asyncAfter(deadline: .now() + Self.discoveryTimeoutSeconds) { [weak self] in
-                self?.takeServiceDiscoveryContinuation()?.resume(throwing: TrezorBLEError.serviceNotFound)
+                self?.takeServiceDiscoveryContinuation(id: continuationId)?.resume(throwing: TrezorBLEError.serviceNotFound)
             }
         }
 
@@ -401,12 +454,13 @@ class TrezorBLEManager: NSObject {
 
         // Discover characteristics
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.setServiceDiscoveryContinuation(continuation)
+            let continuationId = self.setServiceDiscoveryContinuation(continuation)
             peripheral.discoverCharacteristics([Self.writeCharUUID, Self.notifyCharUUID], for: service)
 
             // Timeout for characteristic discovery
             DispatchQueue.global().asyncAfter(deadline: .now() + Self.discoveryTimeoutSeconds) { [weak self] in
-                self?.takeServiceDiscoveryContinuation()?.resume(throwing: TrezorBLEError.characteristicNotFound("discovery timeout"))
+                self?.takeServiceDiscoveryContinuation(id: continuationId)?
+                    .resume(throwing: TrezorBLEError.characteristicNotFound("discovery timeout"))
             }
         }
 
@@ -437,6 +491,10 @@ class TrezorBLEManager: NSObject {
 
         debugLog("Disconnecting: \(path)")
 
+        // Mark this as a deliberate teardown so the resulting didDisconnect callback
+        // does not surface as a spontaneous (out-of-range) drop.
+        expectedDisconnectPaths.insert(path)
+
         if let notifyChar = notifyCharacteristic {
             peripheral.setNotifyValue(false, for: notifyChar)
         }
@@ -447,7 +505,11 @@ class TrezorBLEManager: NSObject {
         connectedPath = nil
         writeCharacteristic = nil
         notifyCharacteristic = nil
-        readQueue.clear()
+        readQueue.fail()
+    }
+
+    private var isPathConnected: Bool {
+        connectedPath != nil && connectedPeripheral?.state == .connected
     }
 
     // MARK: - Read/Write Operations
@@ -461,14 +523,25 @@ class TrezorBLEManager: NSObject {
             throw TrezorBLEError.notConnected
         }
 
-        // Block waiting for notification data
-        guard let data = readQueue.poll(timeout: Self.readTimeoutSeconds) else {
-            debugLog("readChunk: TIMEOUT")
-            throw TrezorBLEError.readTimeout
+        let deadline = Date().addingTimeInterval(Self.readTimeoutSeconds)
+        while Date() < deadline {
+            if path != connectedPath || !isPathConnected {
+                debugLog("readChunk: disconnected while waiting")
+                throw TrezorBLEError.notConnected
+            }
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 {
+                break
+            }
+            let pollInterval = min(remaining, 0.05)
+            if let data = readQueue.poll(timeout: pollInterval) {
+                debugLog("readChunk: \(data.count) bytes")
+                return data
+            }
         }
 
-        debugLog("readChunk: \(data.count) bytes")
-        return data
+        debugLog("readChunk: TIMEOUT")
+        throw TrezorBLEError.readTimeout
     }
 
     /// Write a chunk to the device with retry logic.
@@ -502,13 +575,13 @@ class TrezorBLEManager: NSObject {
         for attempt in 1 ... Self.writeMaxAttempts {
             do {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    self.setWriteContinuation(continuation)
+                    let continuationId = self.setWriteContinuation(continuation)
 
                     peripheral.writeValue(data, for: writeChar, type: .withResponse)
 
                     // Set up timeout
                     DispatchQueue.global().asyncAfter(deadline: .now() + Self.writeTimeoutSeconds) { [weak self] in
-                        self?.takeWriteContinuation()?.resume(throwing: TrezorBLEError.writeTimeout)
+                        self?.takeWriteContinuation(id: continuationId)?.resume(throwing: TrezorBLEError.writeTimeout)
                     }
                 }
 
@@ -548,6 +621,25 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
         if central.state != .poweredOn && isScanning {
             Task { @MainActor in
                 self.isScanning = false
+            }
+        }
+
+        guard central.state != .poweredOn else { return }
+
+        let disconnectError = TrezorBLEError.connectionFailed
+        failPendingContinuations(with: disconnectError)
+
+        // Bluetooth turned off / unauthorized invalidates any live connection. iOS does
+        // not guarantee a per-peripheral didDisconnect on power-off, so treat it as a
+        // spontaneous drop here: clear internal state and surface the disconnect.
+        if let path = connectedPath {
+            connectedPeripheral = nil
+            connectedPath = nil
+            writeCharacteristic = nil
+            notifyCharacteristic = nil
+            readQueue.fail()
+            if expectedDisconnectPaths.remove(path) == nil {
+                externalDisconnectPublisher.send(path)
             }
         }
     }
@@ -592,23 +684,35 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
         takeConnectContinuation()?.resume(throwing: error ?? TrezorBLEError.connectionFailed)
     }
 
-    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+    func centralManager(
+        _ central: CBCentralManager,
+        didDisconnectPeripheral peripheral: CBPeripheral,
+        error: Error?
+    ) {
         debugLog("didDisconnect: \(peripheral.identifier)\(error.map { " error: \($0.localizedDescription)" } ?? "")")
 
         let disconnectError = error ?? TrezorBLEError.connectionFailed
 
         // Resume any pending continuations so they fail-fast instead of hanging
-        takeConnectContinuation()?.resume(throwing: disconnectError)
-        takeServiceDiscoveryContinuation()?.resume(throwing: disconnectError)
-        takeNotificationContinuation()?.resume(throwing: disconnectError)
-        takeWriteContinuation()?.resume(throwing: disconnectError)
+        failPendingContinuations(with: disconnectError)
+
+        let path = "ble:\(peripheral.identifier.uuidString)"
+        // Consume any deliberate-disconnect marker even when disconnect(path:) already
+        // cleared connection state, so it can't be mistaken for a future real drop.
+        let wasExpected = expectedDisconnectPaths.remove(path) != nil
 
         if connectedPeripheral?.identifier == peripheral.identifier {
             connectedPeripheral = nil
             connectedPath = nil
             writeCharacteristic = nil
             notifyCharacteristic = nil
-            readQueue.clear()
+            readQueue.fail()
+
+            // Surface a spontaneous drop (out of range) so the session can be cleared.
+            // A deliberate disconnect(path:) is suppressed via expectedDisconnectPaths.
+            if !wasExpected {
+                externalDisconnectPublisher.send(path)
+            }
         }
     }
 }
@@ -731,6 +835,7 @@ enum TrezorBLEError: LocalizedError {
 private class BlockingQueue<T> {
     private var queue: [T] = []
     private let lock = NSCondition()
+    private var failed = false
 
     func offer(_ item: T) {
         lock.lock()
@@ -745,10 +850,14 @@ private class BlockingQueue<T> {
 
         let deadline = Date().addingTimeInterval(timeout)
 
-        while queue.isEmpty {
+        while queue.isEmpty, !failed {
             if !lock.wait(until: deadline) {
-                return nil // Timeout
+                return nil
             }
+        }
+
+        if failed || queue.isEmpty {
+            return nil
         }
 
         return queue.removeFirst()
@@ -757,6 +866,14 @@ private class BlockingQueue<T> {
     func clear() {
         lock.lock()
         queue.removeAll()
+        failed = false
+        lock.unlock()
+    }
+
+    func fail() {
+        lock.lock()
+        failed = true
+        lock.broadcast()
         lock.unlock()
     }
 }

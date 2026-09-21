@@ -2,9 +2,27 @@ import BitkitCore
 import Combine
 import Foundation
 
+/// Which wallet to open when the device asks for a passphrase.
+///
+/// - `standard`: no passphrase — the default wallet.
+/// - `passphraseHost`: a hidden wallet, passphrase typed on the phone.
+/// - `passphraseDevice`: a hidden wallet, passphrase typed on the Trezor.
+enum TrezorWalletMode {
+    case standard
+    case passphraseHost
+    case passphraseDevice
+}
+
 /// Implementation of TrezorUiCallback protocol for PIN and passphrase handling.
-/// Blocks the Rust calling thread until the user responds via the UI,
-/// following the same semaphore pattern as TrezorTransport.getPairingCode().
+///
+/// PIN entry still blocks the Rust calling thread until the user responds via the
+/// UI (the semaphore pattern shared with TrezorTransport.getPairingCode()).
+///
+/// Passphrase handling follows the bitkit-android model: the user selects a wallet
+/// mode up front (Standard / hidden-on-phone / hidden-on-device) and that selection
+/// is bound to the THP session at connect time via `currentSelection()`. The device
+/// callback `onPassphraseRequest` is answered silently from the stored mode — this is
+/// what non-THP (legacy) devices use when they re-request the passphrase mid-operation.
 final class TrezorUiHandler: TrezorUiCallback {
     static let shared = TrezorUiHandler()
 
@@ -17,24 +35,19 @@ final class TrezorUiHandler: TrezorUiCallback {
     private let pinLock = NSLock()
     private let pinSemaphore = DispatchSemaphore(value: 0)
 
-    // MARK: - Passphrase Handling
-
-    /// Publisher to notify UI when passphrase entry is needed.
-    /// Bool parameter: true if passphrase should be entered on the device itself.
-    let needsPassphrasePublisher = PassthroughSubject<Bool, Never>()
-
-    private var submittedPassphrase: String = ""
-    private var didCancelPassphrase = false
-    private let passphraseLock = NSLock()
-    private let passphraseSemaphore = DispatchSemaphore(value: 0)
-
-    /// Tracks whether a passphrase request is actively blocking,
-    /// to prevent stale semaphore signals from dismissConfirmOnDevice().
-    private var isAwaitingPassphrase = false
-    private let awaitingLock = NSLock()
-
-    /// Timeout for PIN/passphrase entry (2 minutes)
+    /// Timeout for PIN entry (2 minutes)
     private static let timeoutSeconds: TimeInterval = 120
+
+    // MARK: - Wallet Mode / Passphrase Selection
+
+    private let modeLock = NSLock()
+    private var walletMode: TrezorWalletMode = .standard
+
+    /// Host passphrase captured when `.passphraseHost` is selected. Mirrors the value
+    /// bound to the THP session so legacy (non-THP) devices — which re-request the
+    /// passphrase mid-operation via `onPassphraseRequest` — can be answered from the
+    /// value the user already entered up front. Nil when not in host-passphrase mode.
+    private var hostPassphrase: String?
 
     private init() {}
 
@@ -43,6 +56,44 @@ final class TrezorUiHandler: TrezorUiCallback {
     private func debugLog(_ message: String) {
         Logger.debug(message, context: "TrezorUiHandler")
         TrezorDebugLog.shared.log("[UI] \(message)")
+    }
+
+    // MARK: - Wallet Mode API
+
+    /// Set which wallet to open. The caller is responsible for resetting the device
+    /// session (disconnect/reconnect) so the new mode takes effect — the Trezor caches
+    /// the passphrase for the lifetime of a session.
+    ///
+    /// `hostPassphrase` is only meaningful for `.passphraseHost` — it is the passphrase
+    /// the user entered on the phone up front.
+    func setWalletMode(_ mode: TrezorWalletMode, hostPassphrase: String = "") {
+        modeLock.lock()
+        walletMode = mode
+        self.hostPassphrase = mode == .passphraseHost ? hostPassphrase : nil
+        modeLock.unlock()
+        debugLog("Wallet mode set to \(mode)")
+    }
+
+    /// The wallet the current mode/passphrase selects, for binding to a THP session when
+    /// `connect` runs. Mirrors `onPassphraseRequest` so THP (bound at session creation)
+    /// and legacy devices (answered mid-operation) stay in lockstep from one source of
+    /// truth. Reconnects derive their wallet from here, so it reflects the selection until
+    /// the next `setWalletMode` or disconnect.
+    func currentSelection() -> WalletSelection {
+        modeLock.lock()
+        defer { modeLock.unlock() }
+
+        switch walletMode {
+        case .standard:
+            return .standard
+        case .passphraseDevice:
+            return .onDevice
+        case .passphraseHost:
+            if let cached = hostPassphrase, !cached.isEmpty {
+                return .hidden(passphrase: cached)
+            }
+            return .standard
+        }
     }
 
     // MARK: - TrezorUiCallback Implementation
@@ -77,55 +128,37 @@ final class TrezorUiHandler: TrezorUiCallback {
     }
 
     func onPassphraseRequest(onDevice: Bool) -> PassphraseResponse {
-        debugLog("onPassphraseRequest: onDevice=\(onDevice), waiting for user input...")
-
-        passphraseLock.lock()
-        submittedPassphrase = ""
-        didCancelPassphrase = false
-        passphraseLock.unlock()
-
-        awaitingLock.lock()
-        isAwaitingPassphrase = true
-        awaitingLock.unlock()
-
-        // Notify UI
-        DispatchQueue.main.async {
-            self.needsPassphrasePublisher.send(onDevice)
-        }
-
-        // Block and wait for user response
-        let timeout = DispatchTime.now() + Self.timeoutSeconds
-        let result = passphraseSemaphore.wait(timeout: timeout)
-
-        awaitingLock.lock()
-        isAwaitingPassphrase = false
-        awaitingLock.unlock()
-
-        if result == .timedOut {
-            debugLog("onPassphraseRequest: timed out")
-            return .cancel
-        }
-
+        // Device-mandated on-device entry always wins, regardless of mode.
         if onDevice {
-            debugLog("onPassphraseRequest(onDevice): acknowledged")
+            debugLog("onPassphraseRequest: on-device (device-mandated), deferring to Trezor")
             return .onDevice
         }
 
-        passphraseLock.lock()
-        let passphrase = submittedPassphrase
-        let wasCancelled = didCancelPassphrase
-        passphraseLock.unlock()
+        modeLock.lock()
+        let mode = walletMode
+        let cached = hostPassphrase
+        modeLock.unlock()
 
-        if wasCancelled {
-            debugLog("onPassphraseRequest: cancelled")
-            return .cancel
+        switch mode {
+        case .standard:
+            debugLog("onPassphraseRequest: standard wallet")
+            return .standard
+        case .passphraseDevice:
+            debugLog("onPassphraseRequest: passphrase wallet (on-device entry), deferring to Trezor")
+            return .onDevice
+        case .passphraseHost:
+            // Answer from the passphrase entered up front (the same value bound to the
+            // THP session). Empty/absent == the standard wallet.
+            if let cached, !cached.isEmpty {
+                debugLog("onPassphraseRequest: host passphrase wallet, answering with pre-entered passphrase")
+                return .hidden(value: cached)
+            }
+            debugLog("onPassphraseRequest: host passphrase empty, answering with standard")
+            return .standard
         }
-
-        debugLog("onPassphraseRequest: \(passphrase.isEmpty ? "standard wallet" : "received")")
-        return passphrase.isEmpty ? .standard : .hidden(value: passphrase)
     }
 
-    // MARK: - UI Submit/Cancel Methods
+    // MARK: - PIN Submit/Cancel Methods
 
     /// Called by ViewModel when user submits PIN
     func submitPin(_ pin: String) {
@@ -143,37 +176,5 @@ final class TrezorUiHandler: TrezorUiCallback {
         submittedPin = ""
         pinLock.unlock()
         pinSemaphore.signal()
-    }
-
-    /// Called by ViewModel when user submits passphrase
-    func submitPassphrase(_ passphrase: String) {
-        debugLog("submitPassphrase")
-        passphraseLock.lock()
-        submittedPassphrase = passphrase
-        passphraseLock.unlock()
-        passphraseSemaphore.signal()
-    }
-
-    /// Called by ViewModel when user cancels passphrase entry
-    func cancelPassphrase() {
-        debugLog("cancelPassphrase")
-        passphraseLock.lock()
-        submittedPassphrase = ""
-        didCancelPassphrase = true
-        passphraseLock.unlock()
-        passphraseSemaphore.signal()
-    }
-
-    /// Called by ViewModel when user acknowledges on-device passphrase entry.
-    /// Only signals if a passphrase request is actually pending.
-    func acknowledgeOnDevicePassphrase() {
-        awaitingLock.lock()
-        let awaiting = isAwaitingPassphrase
-        awaitingLock.unlock()
-
-        guard awaiting else { return }
-
-        debugLog("acknowledgeOnDevicePassphrase")
-        passphraseSemaphore.signal()
     }
 }

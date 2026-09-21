@@ -44,4 +44,12 @@ enum PubkyPublicKeyFormat {
 
         return "\(value.prefix(12))..."
     }
+
+    static func displayTruncated(_ input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawKey = trimmed.lowercased().hasPrefix(prefix) ? String(trimmed.dropFirst(prefix.count)) : trimmed
+        guard rawKey.count > 10 else { return rawKey }
+
+        return "\(rawKey.prefix(4))...\(rawKey.suffix(4))"
+    }
 }

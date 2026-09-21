@@ -3,6 +3,7 @@ import SwiftUI
 struct ActivityIndicator: View {
     let size: CGFloat
     let theme: Theme
+    let tint: Color?
 
     enum Theme {
         case light
@@ -12,13 +13,14 @@ struct ActivityIndicator: View {
     @State private var isRotating = false
     @State private var opacity: Double = 0
 
-    init(size: CGFloat = 32, theme: Theme = .light) {
+    init(size: CGFloat = 32, theme: Theme = .light, tint: Color? = nil) {
         self.size = size
         self.theme = theme
+        self.tint = tint
     }
 
     var body: some View {
-        let color = theme == .light ? Color.white : Color.black
+        let color = tint ?? (theme == .light ? Color.white : Color.black)
 
         ZStack {
             Circle()

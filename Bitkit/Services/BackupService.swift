@@ -200,22 +200,42 @@ class BackupService {
                 UserDefaults.standard.set(encodedData, forKey: "savedWidgets")
             }
 
+            var pendingPaykitSdkBackupState: String?
+            var didRestoreWalletBackup = false
+            // The server still holds the pre-migration envelope, so without a rewrite every future
+            // restore would re-run the legacy migration. Set only once core has persisted the
+            // migrated rows, so a mid-restore failure can never replace a good backup with empty
+            // state.
+            var categoriesNeedingRewrite: Set<BackupCategory> = []
+
             try await performRestore(category: .wallet) { dataBytes in
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
-                await PrivatePaykitService.shared.restoreBackup(payload.privatePaykitContactLinks)
-                await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+                try await WatchOnlyAccountManager.shared.restore(
+                    payload.watchOnlyAccounts,
+                    allocationState: payload.watchOnlyAccountAllocationState
+                )
+                pendingPaykitSdkBackupState = payload.paykitSdkBackupState
+                didRestoreWalletBackup = true
 
                 Logger.debug("Restored \(payload.transfers.count) transfers", context: "BackupService")
             }
 
             try await performRestore(category: .activity) { dataBytes in
-                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: dataBytes)
+                let migration = BackupFieldMigration.apply(dataBytes, fieldMigrations: [
+                    "activities": migrateBackupActivitiesJson,
+                    "activityTags": migrateBackupActivityTagsJson,
+                ])
+                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: migration.data)
 
                 try await CoreService.shared.activity.upsertList(payload.activities)
                 try await CoreService.shared.activity.upsertTags(payload.activityTags)
                 try await CoreService.shared.activity.upsertClosedChannelList(payload.closedChannels)
+
+                if migration.changed {
+                    categoriesNeedingRewrite.insert(.activity)
+                }
 
                 Logger.debug(
                     "Restored \(payload.activities.count) activities, \(payload.activityTags.count) activity tags, \(payload.closedChannels.count) closed channels",
@@ -224,22 +244,47 @@ class BackupService {
             }
 
             try await performRestore(category: .metadata) { dataBytes in
-                let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: dataBytes)
+                let migration = BackupFieldMigration.apply(dataBytes, fieldMigrations: [
+                    "tagMetadata": migrateBackupPreActivityMetadataJson,
+                ])
+                let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: migration.data)
 
                 try await CoreService.shared.activity.upsertPreActivityMetadata(payload.tagMetadata)
 
-                await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
+                if migration.changed {
+                    categoriesNeedingRewrite.insert(.metadata)
+                }
+
+                try await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
                 do {
                     try await PubkyProfileManager.restoreSessionBackupState(payload.pubkySession)
                 } catch {
                     Logger.warn("Failed to restore pubky session backup state: \(error)", context: "BackupService")
                 }
+                ContactsManager.restoreContactProfileOverrides(payload.pubkyContactProfileOverrides)
+
+                // App-owned, so it takes no part in the core field migration above and never sets
+                // needsRewrite. Restored names wait as pending ones until each wallet is paired again.
+                TrezorKnownDeviceStorage.restoreNames(payload.hwWalletNames ?? [:])
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
 
-                Logger.debug("Restored caches, \(payload.tagMetadata.count) pre-activity metadata", context: "BackupService")
+                Logger.debug(
+                    "Restored caches, \(payload.tagMetadata.count) pre-activity metadata, "
+                        + "\(payload.hwWalletNames?.count ?? 0) hardware wallet names",
+                    context: "BackupService"
+                )
+            }
+
+            if didRestoreWalletBackup {
+                do {
+                    try await PrivatePaykitService.shared.restoreBackup(pendingPaykitSdkBackupState)
+                    await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+                } catch {
+                    Logger.warn("Failed to restore Paykit SDK backup state: \(error)", context: "BackupService")
+                }
             }
 
             try await performRestore(category: .blocktank) { dataBytes in
@@ -259,6 +304,14 @@ class BackupService {
 
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
+
+            // Runs while `isRestoring` is still true, which is safe only because `triggerBackup` is
+            // the one upload entry point that does not consult `shouldSkipBackup()` — adding a guard
+            // there would silently strand legacy envelopes on the server. Do not clear the flag here
+            // to sidestep that: it belongs to the caller (`AppScene.restoreFromMostRecentBackup`
+            // wraps this in its own set/defer pair), so clearing it early would reopen that
+            // suppression window and let the restore's own change traffic schedule uploads.
+            await rewriteMigratedBackups(categoriesNeedingRewrite)
         } catch {
             Logger.warn("Full restore error: \(error)", context: "BackupService")
         }
@@ -341,6 +394,22 @@ class BackupService {
             }
             .store(in: &cancellables)
 
+        PaykitSdkService.walletBackupDataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .wallet)
+            }
+            .store(in: &cancellables)
+
+        WatchOnlyAccountStore.walletBackupDataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .wallet)
+            }
+            .store(in: &cancellables)
+
         // ACTIVITIES
         CoreService.shared.activity.activitiesChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
@@ -352,6 +421,16 @@ class BackupService {
 
         // METADATA (from ActivityService)
         CoreService.shared.activity.metadataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: &cancellables)
+
+        // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
+        // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
+        TrezorKnownDeviceStorage.namesChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -394,7 +473,7 @@ class BackupService {
             }
             .store(in: &cancellables)
 
-        Logger.debug("Started 9 data store listeners", context: "BackupService")
+        Logger.debug("Started data store listeners", context: "BackupService")
     }
 
     private func startPeriodicBackupFailureCheck() {
@@ -674,29 +753,55 @@ class BackupService {
         case .wallet:
             let transfers = try TransferStorage.shared.getAll()
             let privatePaykitHighestReservedReceiveIndexByAddressType = await PrivatePaykitAddressReservationStore.shared.backupSnapshot()
-            let privatePaykitContactLinks = await PrivatePaykitService.shared.backupSnapshot()
+            let paykitSdkBackupState = try await PrivatePaykitService.shared.backupSnapshot()
+            let watchOnlyAccountSnapshot = try WatchOnlyAccountStore.backupSnapshot()
             let payload = WalletBackupV1(
                 version: 1,
                 createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 transfers: transfers,
                 privatePaykitHighestReservedReceiveIndexByAddressType: privatePaykitHighestReservedReceiveIndexByAddressType,
-                privatePaykitContactLinks: privatePaykitContactLinks
+                paykitSdkBackupState: paykitSdkBackupState,
+                watchOnlyAccounts: watchOnlyAccountSnapshot.accounts,
+                watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState
             )
             return try JSONEncoder().encode(payload)
 
         case .metadata:
             let currentTime = UInt64(Date().timeIntervalSince1970 * 1000)
-            let cache = await SettingsViewModel.shared.getAppCacheData()
+            let cache = try await SettingsViewModel.shared.getAppCacheData()
             let pubkySession = try PubkyProfileManager.snapshotSessionBackupState()
+            let pubkyContactProfileOverrides = ContactsManager.backupContactProfileOverrides()
 
-            let preActivityMetadata = try await CoreService.shared.activity.getAllPreActivityMetadata()
+            // Neither read may fall back to an empty list: this envelope is the only copy of the
+            // tags, so uploading a partial payload would replace the stored ones. Throwing here
+            // leaves the previous upload intact until a retry succeeds.
+            let hardwareTagMetadata = try await CoreService.shared.activity.getHardwareTagsAsPreActivityMetadata()
+            let storedPreActivityMetadata = try await CoreService.shared.activity.getAllPreActivityMetadata()
+
+            // Hardware-derived records first: Core swallows attach failures, so a stored row can
+            // outlive the activity it was meant for and hold tags the user has since edited. Live
+            // tag state wins for those keys; stored records the derived set does not cover — a
+            // restore whose device has not reconnected yet — are untouched.
+            //
+            // Deliberately the opposite of bitkit-android's `BackupRepo.getMetadataBackupDataBytes`,
+            // which concatenates stored first and so keeps the stale row. The two only differ inside
+            // that attach-failure window, and preserving what the user currently sees is the safer
+            // side to land on.
+            let preActivityMetadata = HwActivityTagBackup.deduplicated(hardwareTagMetadata + storedPreActivityMetadata)
+
+            // A UserDefaults read that cannot fail, so unlike the tags above there is no partial-read
+            // case to guard against. Nil rather than an empty map when nothing is named, so an
+            // envelope this app writes stays byte-comparable with one bitkit-android writes.
+            let hwWalletNames = TrezorKnownDeviceStorage.backupSnapshot()
 
             let payload = MetadataBackupV1(
                 version: 1,
                 createdAt: currentTime,
                 tagMetadata: preActivityMetadata,
                 cache: cache,
-                pubkySession: pubkySession
+                pubkySession: pubkySession,
+                pubkyContactProfileOverrides: pubkyContactProfileOverrides,
+                hwWalletNames: hwWalletNames.isEmpty ? nil : hwWalletNames
             )
             return try JSONEncoder().encode(payload)
 
@@ -739,6 +844,22 @@ class BackupService {
         }
     }
 
+    /// Re-upload the envelopes whose Core-owned fields the restore had to migrate, so later restores
+    /// read current wallet-scoped entries instead of re-running the legacy path forever. Uploads
+    /// from the rows Core just persisted, so this can only ever publish state Core accepted.
+    private func rewriteMigratedBackups(_ categories: Set<BackupCategory>) async {
+        guard !categories.isEmpty else { return }
+
+        Logger.info(
+            "Rewriting migrated backups for: '\(categories.map(\.rawValue).sorted().joined(separator: ", "))'",
+            context: "BackupService"
+        )
+
+        for category in categories {
+            await triggerBackup(category: category)
+        }
+    }
+
     private func performRestore(category: BackupCategory, restoreAction: (Data) async throws -> Void) async throws {
         do {
             let item = try await vssBackupClient.getObject(key: category.rawValue)
@@ -750,7 +871,9 @@ class BackupService {
                 Logger.warn("Restore null for: '\(category.rawValue)'", context: "BackupService")
             }
         } catch {
-            Logger.debug("Restore error for: '\(category.rawValue)'", context: "BackupService")
+            // Only a total VSS failure surfaces otherwise, so without the error every category
+            // fails silently. The benign "nothing backed up yet" case takes the branch above.
+            Logger.warn("Restore error for: '\(category.rawValue)': \(error)", context: "BackupService")
         }
 
         let currentTime = UInt64(Date().timeIntervalSince1970)

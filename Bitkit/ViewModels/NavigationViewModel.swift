@@ -2,9 +2,14 @@ import BitkitCore
 import LDKNode
 import SwiftUI
 
+struct ReportIssuePrefill: Hashable {
+    let message: String
+}
+
 enum Route: Hashable {
     case savingsWallet
     case spendingWallet
+    case hardwareWallet(walletId: String)
     case activityList
     case activityDetail(Activity)
     case activityExplorer(Activity)
@@ -12,8 +17,11 @@ enum Route: Hashable {
     case contacts
     case contactsIntro
     case contactDetail(publicKey: String)
+    case contactSaved(publicKey: String)
     case contactActivity(publicKey: String)
-    case assignActivityContact(activityId: String)
+    /// `walletId` is required: an activity id is only unique within its wallet, so a defaulted
+    /// scope would silently address the normal wallet for a hardware activity.
+    case assignActivityContact(activityId: String, walletId: String)
     case contactImportOverview
     case contactImportSelect
     case addContact(publicKey: String)
@@ -24,12 +32,21 @@ enum Route: Hashable {
     case createProfile
     case editProfile
     case payContacts
+    case subscriptions(showPayments: Bool)
+    case paymentRequestDetail(PaykitPaymentRequest.ID)
+    case subscriptionDetail(PaykitSubscription.ID)
     case transferIntro
     case fundingOptions
     case spendingIntro
+    case spendingIntroHw(walletId: String)
     case spendingAmount
+    case spendingAmountHw(walletId: String)
+    case spendingHwSign(walletId: String)
+    case spendingHwSigned
     case spendingConfirm(order: IBtOrder)
-    case spendingAdvanced(order: IBtOrder)
+    /// `walletId` names the hardware wallet funding the transfer, so the shared advanced screen
+    /// prices the capacity against the device account rather than this wallet's savings.
+    case spendingAdvanced(order: IBtOrder, walletId: String? = nil)
     case transferLearnMore(order: IBtOrder)
     case settingUp
     case fundingAdvanced
@@ -55,7 +72,7 @@ enum Route: Hashable {
     case widgetsIntro
 
     // Support
-    case reportIssue
+    case reportIssue(ReportIssuePrefill? = nil)
     case appStatus
 
     // Settings
@@ -74,7 +91,7 @@ enum Route: Hashable {
     case quickpayIntro
     case notifications
     case notificationsIntro
-    case paymentPreference
+    case hardwareWalletsSettings
 
     // Security
     case dataBackups
@@ -91,6 +108,7 @@ enum Route: Hashable {
     case electrumSettings
     case rgsSettings
     case addressViewer
+    case watchOnlyAccounts
     case devSettings
 
     // Dev settings
@@ -100,6 +118,8 @@ enum Route: Hashable {
     case probingTool
     case legacyRnRecovery
     case orders
+    case swaps
+    case swapDetail(id: String)
     case logs
     case trezor
 }
