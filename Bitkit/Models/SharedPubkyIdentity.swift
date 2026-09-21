@@ -92,6 +92,7 @@ struct SharedPubkyIdentityOption: Identifiable {
 
 enum SharedPubkyIdentityError: LocalizedError, Equatable {
     case unavailable
+    case temporarilyUnavailable
     case missingEntitlement
     case invalidRecord
     case invalidPublicKey
@@ -104,6 +105,8 @@ enum SharedPubkyIdentityError: LocalizedError, Equatable {
         switch self {
         case .unavailable:
             return "Shared Pubky identities are unavailable"
+        case .temporarilyUnavailable:
+            return "Shared Pubky identities are temporarily unavailable"
         case .missingEntitlement:
             return "Shared Pubky Keychain access is not configured"
         case .invalidRecord:

@@ -290,11 +290,34 @@ enum PubkyService {
     }
 
     static func saveContact(publicKey: String, label: String?, receiverPaths: [String]? = nil) async throws -> Paykit.ContactRecord {
-        try await PaykitSdkService.shared.saveContact(publicKey: publicKey, label: label, receiverPaths: receiverPaths)
+        try await performContactWrite(
+            revalidateSource: {
+                try await PubkyProfileManager.revalidateSharedIdentitySourceBeforeContactWrite()
+            },
+            write: {
+                try await PaykitSdkService.shared.saveContact(publicKey: publicKey, label: label, receiverPaths: receiverPaths)
+            }
+        )
+    }
+
+    nonisolated static func performContactWrite<T>(
+        revalidateSource: () async throws -> Void,
+        write: () async throws -> T
+    ) async throws -> T {
+        try await revalidateSource()
+        try Task.checkCancellation()
+        return try await write()
     }
 
     static func removeContact(publicKey: String) async throws -> Paykit.ContactRecord? {
-        try await PaykitSdkService.shared.removeContact(publicKey: publicKey)
+        try await performContactWrite(
+            revalidateSource: {
+                try await PubkyProfileManager.revalidateSharedIdentitySourceBeforeContactWrite()
+            },
+            write: {
+                try await PaykitSdkService.shared.removeContact(publicKey: publicKey)
+            }
+        )
     }
 
     static func resolveContactProfile(publicKey: String, allowPubkyProfileFallback: Bool) async throws -> Paykit.ContactProfileResolution? {

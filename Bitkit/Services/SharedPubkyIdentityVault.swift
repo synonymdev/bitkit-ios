@@ -263,14 +263,24 @@ enum SharedPubkyIdentityVault {
         return value
     }
 
-    private static func check(_ status: OSStatus) throws {
-        guard status != noErr else { return }
-        if status == errSecMissingEntitlement {
-            throw SharedPubkyIdentityError.missingEntitlement
+    static func error(for status: OSStatus) -> SharedPubkyIdentityError? {
+        switch status {
+        case noErr:
+            return nil
+        case errSecInteractionNotAllowed, errSecNotAvailable:
+            return .temporarilyUnavailable
+        case errSecMissingEntitlement:
+            return .missingEntitlement
+        default:
+            return .unavailable
         }
+    }
+
+    private static func check(_ status: OSStatus) throws {
+        guard let error = error(for: status) else { return }
 
         Logger.warn("Shared Pubky Keychain operation failed with status \(status)", context: "SharedPubkyIdentityVault")
-        throw SharedPubkyIdentityError.unavailable
+        throw error
     }
 
     private static func deleteOwnedAccount(_ itemAccount: String) throws {

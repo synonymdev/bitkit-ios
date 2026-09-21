@@ -156,6 +156,11 @@ class PubkyProfileManager: ObservableObject {
             }
         }
 
+        await applySessionInitializationResult(result)
+        isInitialized = true
+    }
+
+    private func applySessionInitializationResult(_ result: SessionInitializationResult) async {
         switch result {
         case .noSession:
             clearAuthenticatedState()
@@ -170,8 +175,6 @@ class PubkyProfileManager: ObservableObject {
             clearAuthenticatedState()
             sessionRestorationFailed = true
         }
-
-        isInitialized = true
     }
 
     // MARK: - Key Derivation & Identity Creation
@@ -557,6 +560,14 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
+    static func revalidateSharedIdentitySourceBeforeContactWrite() throws {
+        try validateSharedIdentitySource(
+            reference: SharedPubkyIdentityReferenceStore.load(),
+            isSourceAvailable: isRingAvailable(),
+            loadSharedCredential: { try SharedPubkyIdentityVault.loadCredential(reference: $0) }
+        )
+    }
+
     func deleteProfile() async throws {
         try await Self.withIdentityLifecycleLock {
             try await self.deleteProfileLocked()
@@ -775,7 +786,11 @@ class PubkyProfileManager: ObservableObject {
         do {
             reference = try SharedPubkyIdentityReferenceStore.load()
         } catch {
-            await disconnectUnavailableSharedIdentityLocked()
+            if Self.shouldDisconnectSharedIdentity(after: error) {
+                await disconnectUnavailableSharedIdentityLocked()
+            } else {
+                Logger.warn("Deferring shared Pubky reference validation: \(error)", context: "PubkyProfileManager")
+            }
             return
         }
 
@@ -795,9 +810,51 @@ class PubkyProfileManager: ObservableObject {
             _ = try await Task.detached {
                 try SharedPubkyIdentityVault.loadCredential(reference: reference)
             }.value
+
+            if let result = try await Self.retrySharedSessionRestorationIfNeeded(
+                currentPublicKey: publicKey,
+                restore: {
+                    try await Task.detached {
+                        try await Self.initializePersistedSession()
+                    }.value
+                }
+            ) {
+                initializationErrorMessage = nil
+                sessionRestorationFailed = false
+                await applySessionInitializationResult(result)
+                isInitialized = true
+            }
         } catch {
-            Logger.warn("Shared Pubky source became unavailable: \(error)", context: "PubkyProfileManager")
-            await disconnectUnavailableSharedIdentityLocked()
+            if Self.shouldDisconnectSharedIdentity(after: error) {
+                Logger.warn("Shared Pubky source is no longer valid: \(error)", context: "PubkyProfileManager")
+                await disconnectUnavailableSharedIdentityLocked()
+            } else {
+                Logger.warn("Deferring shared Pubky source validation: \(error)", context: "PubkyProfileManager")
+            }
+        }
+    }
+
+    nonisolated static func retrySharedSessionRestorationIfNeeded(
+        currentPublicKey: String?,
+        restore: () async throws -> SessionInitializationResult
+    ) async throws -> SessionInitializationResult? {
+        guard currentPublicKey == nil else {
+            return nil
+        }
+        return try await restore()
+    }
+
+    nonisolated static func shouldDisconnectSharedIdentity(after error: Error) -> Bool {
+        guard let error = error as? SharedPubkyIdentityError else {
+            return false
+        }
+
+        switch error {
+        case .invalidRecord, .invalidPublicKey, .secretDoesNotMatchPublicKey,
+             .sourceUnavailable, .sourceIdentityMissing, .provenanceConflict:
+            return true
+        case .unavailable, .temporarilyUnavailable, .missingEntitlement:
+            return false
         }
     }
 
@@ -808,7 +865,11 @@ class PubkyProfileManager: ObservableObject {
             }
             return reference.sourceApp != .ring || !Self.isRingAvailable()
         } catch {
-            return true
+            let isDefinitivelyUnavailable = Self.shouldDisconnectSharedIdentity(after: error)
+            if !isDefinitivelyUnavailable {
+                Logger.warn("Deferring shared Pubky source availability check: \(error)", context: "PubkyProfileManager")
+            }
+            return isDefinitivelyUnavailable
         }
     }
 
@@ -841,6 +902,8 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func reconcileBitkitOwnedIdentityIfNeededLocked(publicKey: String) async {
+        // Mirroring intentionally ignores the Paykit UI flag: existing profiles must become
+        // discoverable to Pubky Ring after an upgrade even when Bitkit's Paykit UI is hidden.
         guard (try? SharedPubkyIdentityReferenceStore.load()) == nil,
               let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
               !secretKey.isEmpty,
@@ -1188,7 +1251,9 @@ class PubkyProfileManager: ObservableObject {
                 return true
             } catch {
                 Logger.warn("Failed to refresh source-owned Pubky session: \(error)", context: "PubkyProfileManager")
-                await disconnectUnavailableSharedIdentityLocked()
+                if Self.shouldDisconnectSharedIdentity(after: error) {
+                    await disconnectUnavailableSharedIdentityLocked()
+                }
                 return false
             }
         }
@@ -1499,7 +1564,9 @@ class PubkyProfileManager: ObservableObject {
                 )
             } catch {
                 Logger.warn("Shared Pubky session source is unavailable: \(error)", context: "PubkyProfileManager")
-                try? await clearSharedIdentitySession()
+                if shouldDisconnectSharedIdentity(after: error) {
+                    try? await clearSharedIdentitySession()
+                }
                 return .restorationFailed
             }
         }

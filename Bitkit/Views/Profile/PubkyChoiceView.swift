@@ -58,15 +58,22 @@ struct PubkyChoiceView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
 
-            BodyMText(t("profile__choice_description"), kerning: 0)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+            BodyMText(
+                t(pubkyProfile.sharedRingIdentities.isEmpty
+                    ? "profile__choice_description"
+                    : "profile__choice_description_existing"),
+                kerning: 0
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var optionCards: some View {
         VStack(spacing: 8) {
-            createCard
+            if pubkyProfile.sharedRingIdentities.isEmpty {
+                createCard
+            }
 
             ForEach(pubkyProfile.sharedRingIdentities) { identity in
                 sharedIdentityCard(identity)
@@ -76,6 +83,8 @@ struct PubkyChoiceView: View {
                pubkyProfile.sharedRingIdentities.isEmpty
             {
                 discoveryLoadingCard
+            } else if !pubkyProfile.isSharedIdentityDiscoveryAvailable {
+                discoveryErrorCard
             }
         }
     }
@@ -158,6 +167,21 @@ struct PubkyChoiceView: View {
         .background(Color.gray6)
         .cornerRadius(16)
         .accessibilityIdentifier("PubkyChoiceSharedLoading")
+    }
+
+    private var discoveryErrorCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BodyMText(t("profile__ring_discovery_error"), textColor: .white64)
+                .fixedSize(horizontal: false, vertical: true)
+
+            CustomButton(title: t("common__retry"), variant: .secondary) {
+                await pubkyProfile.refreshSharedRingIdentities()
+            }
+        }
+        .padding(16)
+        .background(Color.gray6)
+        .cornerRadius(16)
+        .accessibilityIdentifier("PubkyChoiceSharedError")
     }
 
     private var cardIcon: some View {

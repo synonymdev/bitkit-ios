@@ -211,6 +211,103 @@ final class SharedPubkyIdentityTests: XCTestCase {
         ))
     }
 
+    func testLockedSharedKeychainStatusesAreRetryable() {
+        XCTAssertEqual(
+            SharedPubkyIdentityVault.error(for: errSecInteractionNotAllowed),
+            .temporarilyUnavailable
+        )
+        XCTAssertEqual(
+            SharedPubkyIdentityVault.error(for: errSecNotAvailable),
+            .temporarilyUnavailable
+        )
+        XCTAssertFalse(PubkyProfileManager.shouldDisconnectSharedIdentity(after: SharedPubkyIdentityError.temporarilyUnavailable))
+        XCTAssertFalse(PubkyProfileManager.shouldDisconnectSharedIdentity(after: SharedPubkyIdentityError.unavailable))
+        XCTAssertTrue(PubkyProfileManager.shouldDisconnectSharedIdentity(after: SharedPubkyIdentityError.sourceIdentityMissing))
+        XCTAssertTrue(PubkyProfileManager.shouldDisconnectSharedIdentity(after: SharedPubkyIdentityError.invalidRecord))
+    }
+
+    func testValidatedSharedIdentityRetriesColdLaunchRestorationOnForeground() async throws {
+        var didRestore = false
+
+        let result = try await PubkyProfileManager.retrySharedSessionRestorationIfNeeded(
+            currentPublicKey: nil,
+            restore: {
+                didRestore = true
+                return .restored(publicKey: "pubky-restored")
+            }
+        )
+
+        XCTAssertTrue(didRestore)
+        XCTAssertEqual(result, .restored(publicKey: "pubky-restored"))
+    }
+
+    func testValidatedActiveSharedIdentityDoesNotRestoreAgain() async throws {
+        let result = try await PubkyProfileManager.retrySharedSessionRestorationIfNeeded(
+            currentPublicKey: "pubky-active",
+            restore: {
+                XCTFail("An active shared identity must not be restored again")
+                return .restorationFailed
+            }
+        )
+
+        XCTAssertNil(result)
+    }
+
+    func testContactWriteRevalidatesBorrowedSourceImmediatelyBeforeWriting() async throws {
+        var events: [String] = []
+
+        let value = try await PubkyService.performContactWrite(
+            revalidateSource: { events.append("revalidate") },
+            write: {
+                events.append("write")
+                return 42
+            }
+        )
+
+        XCTAssertEqual(value, 42)
+        XCTAssertEqual(events, ["revalidate", "write"])
+    }
+
+    func testContactWriteStopsWhenBorrowedSourceWasRevoked() async {
+        var didWrite = false
+
+        do {
+            _ = try await PubkyService.performContactWrite(
+                revalidateSource: { throw SharedPubkyIdentityError.sourceIdentityMissing },
+                write: {
+                    didWrite = true
+                    return 42
+                }
+            )
+            XCTFail("Expected source revalidation to abort the contact write")
+        } catch {
+            XCTAssertEqual(error as? SharedPubkyIdentityError, .sourceIdentityMissing)
+            XCTAssertTrue(PubkyProfileManager.shouldDisconnectSharedIdentity(after: error))
+        }
+
+        XCTAssertFalse(didWrite)
+    }
+
+    func testContactWriteStopsAndPreservesBorrowedIdentityOnTransientSourceFailure() async {
+        var didWrite = false
+
+        do {
+            _ = try await PubkyService.performContactWrite(
+                revalidateSource: { throw SharedPubkyIdentityError.temporarilyUnavailable },
+                write: {
+                    didWrite = true
+                    return 42
+                }
+            )
+            XCTFail("Expected transient source failure to abort the contact write")
+        } catch {
+            XCTAssertEqual(error as? SharedPubkyIdentityError, .temporarilyUnavailable)
+            XCTAssertFalse(PubkyProfileManager.shouldDisconnectSharedIdentity(after: error))
+        }
+
+        XCTAssertFalse(didWrite)
+    }
+
     func testCredentialValidationRejectsClaimedKeyMismatch() throws {
         let (_, bare, secret) = try identityFixture()
         let reference = try SharedPubkyIdentityRefV1(sourceApp: .ring, pubky: bare)
