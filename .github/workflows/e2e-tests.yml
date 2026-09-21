@@ -157,17 +157,39 @@ jobs:
     name: e2e-tests-local - ${{ matrix.shard.name }}
 
     steps:
-      - name: Show selected E2E branch
+      - name: Resolve E2E tests ref
+        id: e2e-ref
         env:
-          E2E_BRANCH: ${{ needs.e2e-branch.outputs.branch }}
-        run: echo $E2E_BRANCH
+          SELECTED: ${{ needs.e2e-branch.outputs.branch }}
+          E2E_BRANCH_INPUT: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
+        run: |
+          set -euo pipefail
+          TEST_REPO="synonymdev/bitkit-e2e-tests"
+          SELECTED="${SELECTED:-}"
+
+          if [ -z "$SELECTED" ] || [ "$SELECTED" = "main" ]; then
+            REF="main"
+          elif git ls-remote --exit-code "https://github.com/${TEST_REPO}.git" "refs/heads/${SELECTED}" >/dev/null 2>&1; then
+            REF="$SELECTED"
+          elif [ -n "${E2E_BRANCH_INPUT}" ] && [ "${E2E_BRANCH_INPUT}" != "main" ] && [ "${E2E_BRANCH_INPUT}" != "default-feature-branch" ]; then
+            echo "::error title=Missing e2e_branch::Branch '${SELECTED}' was requested via e2e_branch='${E2E_BRANCH_INPUT}' but no longer exists in ${TEST_REPO}."
+            exit 1
+          else
+            echo "::warning title=Missing E2E branch::Determined branch '${SELECTED}' no longer exists in ${TEST_REPO}; falling back to main."
+            REF="main"
+          fi
+
+          echo "Selected E2E branch: ${SELECTED:-<empty>}"
+          echo "e2e_branch input: ${E2E_BRANCH_INPUT}"
+          echo "Effective E2E tests ref: ${REF}"
+          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
 
       - name: Clone E2E tests
         uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
           path: bitkit-e2e-tests
-          ref: ${{ needs.e2e-branch.outputs.branch }}
+          ref: ${{ steps.e2e-ref.outputs.ref }}
 
       - name: Download iOS app
         uses: actions/download-artifact@v8
