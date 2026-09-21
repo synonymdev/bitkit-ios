@@ -71,13 +71,26 @@ class WalletViewModel: ObservableObject {
     }
 
     private(set) var isPaykitMaintenanceAllowed = false
+    private var pendingChannelUsableRefresh = false
 
     private var isPaykitMaintenanceEnabled: Bool {
         isPaykitUIActive && isPaykitMaintenanceAllowed
     }
 
     func setPaykitMaintenanceAllowed(_ isAllowed: Bool) {
+        let wasAllowed = isPaykitMaintenanceAllowed
         isPaykitMaintenanceAllowed = isAllowed
+        guard isAllowed, !wasAllowed else { return }
+
+        let hasUsableChannels = channels?.contains(where: \.isUsable) == true
+        if Self.shouldRefreshPaykitAfterChannelChange(
+            allowPaykitMaintenance: true,
+            hadUsableChannels: hasUsableChannels,
+            hasUsableChannels: hasUsableChannels,
+            pendingRefresh: &pendingChannelUsableRefresh
+        ) {
+            schedulePaykitChannelUsabilityRefresh()
+        }
     }
 
     private let lightningService: LightningService
@@ -1144,23 +1157,36 @@ class WalletViewModel: ObservableObject {
         if Self.shouldRefreshPaykitAfterChannelChange(
             allowPaykitMaintenance: allowPaykitMaintenance,
             hadUsableChannels: hadUsableChannels,
-            hasUsableChannels: hasUsableChannels
+            hasUsableChannels: hasUsableChannels,
+            pendingRefresh: &pendingChannelUsableRefresh
         ) {
-            Task { [weak self] in
-                await self?.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
-                    reason: "channel-usable refresh",
-                    forceRefreshLightning: true
-                )
-            }
+            schedulePaykitChannelUsabilityRefresh()
+        }
+    }
+
+    private func schedulePaykitChannelUsabilityRefresh() {
+        Task { [weak self] in
+            await self?.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
+                reason: "channel-usable refresh",
+                forceRefreshLightning: true
+            )
         }
     }
 
     static func shouldRefreshPaykitAfterChannelChange(
         allowPaykitMaintenance: Bool,
         hadUsableChannels: Bool,
-        hasUsableChannels: Bool
+        hasUsableChannels: Bool,
+        pendingRefresh: inout Bool
     ) -> Bool {
-        allowPaykitMaintenance && hasUsableChannels && !hadUsableChannels
+        guard hasUsableChannels else { return false }
+        guard allowPaykitMaintenance else {
+            pendingRefresh = pendingRefresh || !hadUsableChannels
+            return false
+        }
+        let shouldRefresh = pendingRefresh || !hadUsableChannels
+        pendingRefresh = false
+        return shouldRefresh
     }
 
     /// Sync balance details only

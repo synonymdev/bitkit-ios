@@ -4,20 +4,33 @@ import XCTest
 @MainActor
 final class WalletViewModelReceiveTests: XCTestCase {
     func testChannelUsabilityRefreshHonorsPaykitMaintenancePermission() {
+        var pendingRefresh = false
         XCTAssertTrue(WalletViewModel.shouldRefreshPaykitAfterChannelChange(
             allowPaykitMaintenance: true,
             hadUsableChannels: false,
-            hasUsableChannels: true
+            hasUsableChannels: true,
+            pendingRefresh: &pendingRefresh
         ))
+        XCTAssertFalse(pendingRefresh)
         XCTAssertFalse(WalletViewModel.shouldRefreshPaykitAfterChannelChange(
             allowPaykitMaintenance: false,
             hadUsableChannels: false,
-            hasUsableChannels: true
+            hasUsableChannels: true,
+            pendingRefresh: &pendingRefresh
         ))
+        XCTAssertTrue(pendingRefresh)
+        XCTAssertTrue(WalletViewModel.shouldRefreshPaykitAfterChannelChange(
+            allowPaykitMaintenance: true,
+            hadUsableChannels: true,
+            hasUsableChannels: true,
+            pendingRefresh: &pendingRefresh
+        ))
+        XCTAssertFalse(pendingRefresh)
     }
 
     func testEventDrivenPaykitMaintenanceRemainsSuspendedAfterFailedValidation() {
         let wallet = WalletViewModel()
+        var pendingRefresh = false
 
         XCTAssertFalse(wallet.isPaykitMaintenanceAllowed)
         wallet.setPaykitMaintenanceAllowed(false)
@@ -26,8 +39,10 @@ final class WalletViewModelReceiveTests: XCTestCase {
         XCTAssertFalse(WalletViewModel.shouldRefreshPaykitAfterChannelChange(
             allowPaykitMaintenance: wallet.isPaykitMaintenanceAllowed,
             hadUsableChannels: false,
-            hasUsableChannels: true
+            hasUsableChannels: true,
+            pendingRefresh: &pendingRefresh
         ))
+        XCTAssertTrue(pendingRefresh)
     }
 
     func testReceiveLightningInvoiceRequiresReadyChannel() {
