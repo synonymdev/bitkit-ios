@@ -1675,22 +1675,19 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testFailedRefreshKeepsPreviouslyLoadedRequests() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
-        let initialRefreshSucceeded = await manager.refresh()
-        XCTAssertTrue(initialRefreshSucceeded)
+        await manager.refresh()
         await sdk.setRecords([])
         await sdk.setReceiveError(.receive)
 
-        let failedRefreshSucceeded = await manager.refresh()
-        XCTAssertFalse(failedRefreshSucceeded)
+        await manager.refresh()
 
         XCTAssertEqual(manager.pendingRequests.count, 1)
         await sdk.setReceiveError(nil)
-        let recoveredRefreshSucceeded = await manager.refresh()
-        XCTAssertTrue(recoveredRefreshSucceeded)
+        await manager.refresh()
         XCTAssertTrue(manager.pendingRequests.isEmpty)
     }
 
-    func testPeerIntakeFailureReportsUnsuccessfulRefreshWithoutLosingRequests() async throws {
+    func testPeerIntakeFailureDoesNotDropReceivedRequests() async throws {
         let record = try paymentRequestRecord()
         let sdk = PaymentRequestSdkMock(records: [record])
         await sdk.setReceiveReports([
@@ -1703,9 +1700,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         ])
         let manager = paymentRequestManager(sdk: sdk)
 
-        let succeeded = await manager.refresh()
+        await manager.refresh()
 
-        XCTAssertFalse(succeeded)
         XCTAssertEqual(manager.pendingRequests.count, 1)
     }
 
