@@ -138,6 +138,11 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 This table is the authority for what the journey environment provides: a step it covers belongs in a
 journey, and a step it does not is a manual test in the PR body naming the missing capability.
 
+It changes when the environment gains or loses a capability, not when a journey is added, so adding
+a journey does not touch this file. `ls journeys/` is the suite list and each suite's README is its
+own documentation; nothing here restates them. A listing kept here would have to be edited by every
+journey PR, which is what made this file conflict on every merge.
+
 | Capability | Provided by |
 | --- | --- |
 | On-chain funds and blocks on regtest | `../bitkit-android/lsp` deposit and mine, borrowed from the sibling Android checkout until #694 lands an iOS copy — [Backend preconditions](#backend-preconditions) |
