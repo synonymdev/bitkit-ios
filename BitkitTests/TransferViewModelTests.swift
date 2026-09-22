@@ -3,9 +3,24 @@ import BitkitCore
 import XCTest
 
 final class TransferViewModelTests: XCTestCase {
+    /// The convenience initializer builds a real `TransferService`; an isolated suite keeps these
+    /// tests off the host app's own transfer store, and `guardAppDefaults` keeps it that way (#733).
+    private var transferDefaults: UserDefaults!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        transferDefaults = try makeIsolatedDefaults()
+        guardAppDefaults("transfers")
+    }
+
+    @MainActor
+    private func makeViewModel() -> TransferViewModel {
+        TransferViewModel(transferDefaults: transferDefaults)
+    }
+
     @MainActor
     func testDisplayOrderPrefersUiStateOrder() {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let baseOrder = makeOrder(id: "base", clientBalanceSat: 100_000, lspBalanceSat: 50000)
         let updatedOrder = makeOrder(id: "updated", clientBalanceSat: 150_000, lspBalanceSat: 75000)
 
@@ -23,7 +38,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testSpendingLimitsCapsAtLspMaxClientBalanceWhenOnchainExceedsIt() async throws {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         var feeCallBalances: [UInt64] = []
         // The liquidity calc reports no receiving room (maxLspBalance = 0) because the client
         // balance saturates the channel — the regression this guards against.
@@ -52,7 +67,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testSpendingLimitsUsesFullBalanceWhenLspInfoUnavailable() async throws {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         var feeCallBalances: [UInt64] = []
         let values = TransferValues(
             defaultLspBalance: Self.lspBalance,
@@ -78,7 +93,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testSpendingLimitsIsZeroWhenLiquidityReportsZeroClientBalance() async throws {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let values = TransferValues(
             defaultLspBalance: Self.lspBalance,
             minLspBalance: Self.lspBalance,
@@ -104,7 +119,7 @@ final class TransferViewModelTests: XCTestCase {
     /// came to 265,727 against 265,726 available.
     @MainActor
     func testSpendingMaxIsAffordableWhenTheServiceFeeRisesWithTheClientBalance() async throws {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let available: UInt64 = 265_726
         let quotes: [UInt64: UInt64] = [available: 4165, 261_561: 4128]
         var feeCalls: [UInt64] = []
@@ -132,7 +147,7 @@ final class TransferViewModelTests: XCTestCase {
     /// is dearer than the first and no ordering assumption holds. Capping alone would not fix this.
     @MainActor
     func testSpendingMaxIsAffordableWhenTheServiceFeeFallsWithTheClientBalance() async throws {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let available: UInt64 = 266_478
         let quotes: [UInt64: UInt64] = [available: 1798, 264_680: 1800, 264_678: 1801, 264_677: 1801]
         var feeCalls: [UInt64] = []
@@ -157,7 +172,7 @@ final class TransferViewModelTests: XCTestCase {
     /// an earlier balance would verify an order that is never created.
     @MainActor
     func testSpendingMaxRequotePricesTheSplitTheOrderWillUse() async throws {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let available: UInt64 = 266_478
         let maxChannel: UInt64 = 1_403_872
         let quotes: [UInt64: UInt64] = [available: 1798, 264_680: 1800, 264_678: 1801, 264_677: 1801]
@@ -189,7 +204,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testSpendingMaxKeepsTheLastCandidateWhenTheRequoteFails() async throws {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let available: UInt64 = 266_478
         let quotes: [UInt64: UInt64] = [available: 1798, 264_680: 1800]
 
@@ -209,7 +224,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testSpendingMaxFallsBackWhenTheRoundsAreExhausted() async throws {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let available: UInt64 = 266_478
         // The fee rises as fast as the balance steps down, so no candidate ever becomes affordable.
         let quotes: [UInt64: UInt64] = [available: 1800, 264_678: 2000, 264_478: 2200, 264_278: 2400]
@@ -234,7 +249,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testAdvancedCapacityKeepsTheLspMaxWhenTheBudgetCoversIt() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         var quoteCount = 0
 
         let settled = await viewModel.settleAdvancedLspBalance(
@@ -254,7 +269,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testAdvancedCapacitySettlesBelowTheLspMaxWhenTheFeeOutgrowsTheBudget() async throws {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         var quotedCapacities: [UInt64] = []
 
         let resolved = await viewModel.settleAdvancedLspBalance(
@@ -277,7 +292,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testAdvancedCapacityIsNilWhenEvenTheMinimumIsUnaffordable() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
 
         let settled = await viewModel.settleAdvancedLspBalance(
             clientBalance: Self.advancedClientBalance,
@@ -293,7 +308,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testAdvancedCapacityAdvertisesTheLspMaxWhenTheQuoteIsUnavailable() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
 
         let settled = await viewModel.settleAdvancedLspBalance(
             clientBalance: Self.advancedClientBalance,
@@ -308,7 +323,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testAdvancedCapacityStopsAtTheLastAffordableCapacityWhenARequoteFails() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
 
         let settled = await viewModel.settleAdvancedLspBalance(
             clientBalance: Self.advancedClientBalance,
@@ -331,7 +346,7 @@ final class TransferViewModelTests: XCTestCase {
     /// ceiling instead of being advertised. Whatever comes back must still be affordable.
     @MainActor
     func testAdvancedCapacityNeverAdvertisesAnOverBudgetCandidate() async throws {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         // Steep to 200k, then near-flat — the linear guess between the two ends underestimates the fee.
         let fee: (UInt64) -> UInt64 = { 1000 + min($0, 200_000) / 20 + $0.saturatingSub(200_000) / 1000 }
         var quotedCapacities: [UInt64] = []
@@ -356,7 +371,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testUpdateAdvancedTransferValuesSettlesTheMaxAndClearsTheFlag() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let values = TransferValues(
             defaultLspBalance: 1_500_000,
             minLspBalance: 50000,
@@ -379,7 +394,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testUpdateAdvancedTransferValuesLeavesAnAffordableMaxUntouched() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let values = TransferValues(
             defaultLspBalance: 100_000,
             minLspBalance: 50000,
@@ -403,7 +418,7 @@ final class TransferViewModelTests: XCTestCase {
     /// first entry, where `transferValues` is still zeroed.
     @MainActor
     func testUpdateAdvancedTransferValuesHoldsTheFlagWhileTheBudgetIsRead() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let values = TransferValues(
             defaultLspBalance: 1_500_000,
             minLspBalance: 50000,
@@ -433,7 +448,7 @@ final class TransferViewModelTests: XCTestCase {
     /// No range to settle means no reason to pay for the budget round trip.
     @MainActor
     func testUpdateAdvancedTransferValuesSkipsTheBudgetReadWithoutARange() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
         let values = TransferValues(
             defaultLspBalance: 50000,
             minLspBalance: 50000,
@@ -460,7 +475,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testCanFundOrderRejectsAnAmountOverTheBudget() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
 
         let canFund = await viewModel.canFundOrder(
             clientBalance: 260_000,
@@ -474,7 +489,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testCanFundOrderAcceptsAnAmountThatFitsTheBudget() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
 
         let canFund = await viewModel.canFundOrder(
             clientBalance: 260_000,
@@ -488,7 +503,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testCanFundOrderDoesNotBlockWhenTheBudgetIsUnknown() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
 
         let canFund = await viewModel.canFundOrder(
             clientBalance: 260_000,
@@ -503,7 +518,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testCanFundOrderDoesNotBlockWhenTheQuoteFails() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
 
         let canFund = await viewModel.canFundOrder(
             clientBalance: 260_000,
@@ -518,7 +533,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testCanFundAdvancedOrderRejectsACapacityOverTheBudget() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
 
         let canFund = await viewModel.canFundAdvancedOrder(
             clientBalance: 260_000,
@@ -532,7 +547,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testCanFundAdvancedOrderDoesNotBlockWhenTheBudgetIsUnknownOrUnquoted() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
 
         let unsizedBudget = await viewModel.canFundAdvancedOrder(
             clientBalance: 260_000,
@@ -553,7 +568,7 @@ final class TransferViewModelTests: XCTestCase {
 
     @MainActor
     func testHwFundingBudgetIsNilWithoutDeviceCapabilities() async {
-        let viewModel = TransferViewModel()
+        let viewModel = makeViewModel()
 
         // No hardware capabilities injected, so the funding guards degrade to non-blocking.
         let budget = await viewModel.hwFundingBudget(walletId: "wallet-1")
