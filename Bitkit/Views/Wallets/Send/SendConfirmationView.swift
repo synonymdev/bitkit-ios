@@ -347,7 +347,7 @@ struct SendConfirmationView: View {
                     NumberPadActionButton(
                         text: hardwareWalletName ?? t("wallet__savings__title"),
                         imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
-                        color: .brandAccent,
+                        color: hwSend.isActive ? .blueAccent : .brandAccent,
                         variant: canSwitchFundingSource ? .primary : .secondary,
                         disabled: !canSwitchFundingSource || isHardwarePreparationLoading,
                         isLoading: hwSend.isFundingSourceLoading
