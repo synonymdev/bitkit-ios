@@ -34,7 +34,7 @@ struct SendConfirmationView: View {
 
     var accentColor: Color {
         if hwSend.isActive {
-            return .blueAccent
+            return .brandAccent
         }
         return app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent
     }
@@ -347,7 +347,7 @@ struct SendConfirmationView: View {
                     NumberPadActionButton(
                         text: hardwareWalletName ?? t("wallet__savings__title"),
                         imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
-                        color: hwSend.isActive ? .blueAccent : .brandAccent,
+                        color: .brandAccent,
                         variant: canSwitchFundingSource ? .primary : .secondary,
                         disabled: !canSwitchFundingSource || isHardwarePreparationLoading,
                         isLoading: hwSend.isFundingSourceLoading
