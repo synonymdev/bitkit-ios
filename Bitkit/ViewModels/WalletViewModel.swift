@@ -603,7 +603,7 @@ class WalletViewModel: ObservableObject {
         address: String,
         sats: UInt64,
         isMaxAmount: Bool = false,
-        beforeBroadcastAttempt: () async throws -> Void = {}
+        beforeBroadcastAttempt: @escaping () async throws -> Void = {}
     ) async throws -> Txid {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
@@ -615,13 +615,13 @@ class WalletViewModel: ObservableObject {
             Logger.warn("No UTXO selected, using default selection algorithm.")
         }
 
-        try await beforeBroadcastAttempt()
         let txid = try await lightningService.send(
             address: address,
             sats: sats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
             utxosToSpend: selectedUtxos,
-            isMaxAmount: isMaxAmount
+            isMaxAmount: isMaxAmount,
+            beforeBroadcastAttempt: beforeBroadcastAttempt
         )
 
         Task {

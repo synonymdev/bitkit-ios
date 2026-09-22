@@ -1,4 +1,5 @@
 @testable import Bitkit
+import Foundation
 import LDKNode
 import XCTest
 
@@ -137,6 +138,53 @@ final class OnchainSendResultTests: XCTestCase {
             )
         }
         XCTAssertNil(payment.invocation)
+    }
+
+    func testExistingPendingBroadcastSkipsBeforeBroadcastAttempt() async {
+        let pending = PendingBroadcastInfo(txid: "pending-txid", lineage: ["pending-txid"])
+        let payment = FakeOnchainPayment(pendingResult: { [pending] }) { "unexpected-txid" }
+        let beforeBroadcastAttemptCalled = ThreadSafeFlag()
+
+        do {
+            _ = try await LightningService.performOnchainSend(
+                onchainPayment: payment,
+                address: "recipient",
+                sats: 1000,
+                feeRate: feeRate,
+                utxosToSpend: nil,
+                isMaxAmount: false,
+                beforeBroadcastAttempt: { beforeBroadcastAttemptCalled.set() }
+            )
+            XCTFail("Expected the pending broadcast to prevent a new attempt")
+        } catch {
+            XCTAssertEqual(
+                pendingOnchainBroadcastContext(for: error),
+                PendingOnchainBroadcastErrorContext(txid: "pending-txid", source: .existingPayment)
+            )
+        }
+
+        XCTAssertFalse(beforeBroadcastAttemptCalled.value)
+        XCTAssertNil(payment.invocation)
+    }
+
+    func testBeforeBroadcastAttemptRunsBeforeTransactionCreation() async throws {
+        let beforeBroadcastAttemptCalled = ThreadSafeFlag()
+        let payment = FakeOnchainPayment {
+            XCTAssertTrue(beforeBroadcastAttemptCalled.value)
+            return "accepted-txid"
+        }
+
+        let txid = try await LightningService.performOnchainSend(
+            onchainPayment: payment,
+            address: "recipient",
+            sats: 1000,
+            feeRate: feeRate,
+            utxosToSpend: nil,
+            isMaxAmount: false,
+            beforeBroadcastAttempt: { beforeBroadcastAttemptCalled.set() }
+        )
+
+        XCTAssertEqual(txid, "accepted-txid")
     }
 
     func testPendingBroadcastQueryFailurePreventsFreshSpend() {
@@ -360,6 +408,23 @@ private final class FakeOnchainPayment: OnchainPayment {
 
 private enum QueryError: Error {
     case failed
+}
+
+private final class ThreadSafeFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue = false
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    func set() {
+        lock.lock()
+        storedValue = true
+        lock.unlock()
+    }
 }
 
 private final class SerializingFakeOnchainPayment: OnchainPayment {
