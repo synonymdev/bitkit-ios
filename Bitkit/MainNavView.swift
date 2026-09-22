@@ -42,6 +42,7 @@ struct MainNavView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var notificationManager: PushNotificationManager
     @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject private var scannerManager: ScannerManager
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
@@ -60,6 +61,12 @@ struct MainNavView: View {
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    private var isContactDeepLinkReady: Bool {
+        guard isPaykitUIActive else { return true }
+        guard pubkyProfile.isInitialized || pubkyProfile.initializationErrorMessage != nil else { return false }
+        return pubkyProfile.publicKey == nil || contactsManager.hasLoaded || contactsManager.loadErrorMessage != nil
     }
 
     private var pendingProfileSetupResumeState: PendingProfileSetupResumeState {
@@ -378,7 +385,7 @@ struct MainNavView: View {
                 notificationManager.unregister()
             }
         }
-        .task(id: [canHandleDeepLinks, wallet.nodeLifecycleState == .running]) {
+        .task(id: [canHandleDeepLinks, wallet.nodeLifecycleState == .running, isContactDeepLinkReady]) {
             guard canHandleDeepLinks else { return }
             await handlePendingDeepLink()
         }
@@ -766,7 +773,8 @@ struct MainNavView: View {
     private func handlePendingDeepLink() async {
         await app.routePendingDeepLinkIfReady(
             canHandleDeepLinks,
-            nodeIsRunning: wallet.nodeLifecycleState == .running
+            nodeIsRunning: wallet.nodeLifecycleState == .running,
+            pubkyContactsAreReady: isContactDeepLinkReady
         ) { url in
             await handleDeepLink(url)
         }
@@ -813,6 +821,26 @@ struct MainNavView: View {
         }
 
         do {
+            if PubkyContactLink.matches(url) {
+                guard isPaykitUIActive, pubkyProfile.initializationErrorMessage == nil,
+                      pubkyProfile.publicKey == nil || contactsManager.hasLoaded,
+                      let publicKey = PubkyContactLink.publicKey(from: url)
+                else { throw ContactsManagerError.invalidPublicKey }
+
+                scannerManager.configure(
+                    app: app,
+                    contactsManager: contactsManager,
+                    currency: currency,
+                    settings: settings,
+                    navigation: navigation,
+                    pubkyProfile: pubkyProfile,
+                    sheets: sheets,
+                    wallet: wallet,
+                    hwWalletManager: hwWalletManager
+                )
+                await scannerManager.handleScan(publicKey, context: .main)
+                return
+            }
             try await app.handleScannedData(
                 url.absoluteString,
                 alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
