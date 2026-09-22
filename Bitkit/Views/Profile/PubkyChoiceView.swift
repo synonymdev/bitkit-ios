@@ -5,6 +5,7 @@ struct PubkyChoiceView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var contactsManager: ContactsManager
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var ringPubkys: [String] = []
     @State private var profiles: [String: PubkyProfile] = [:]
@@ -48,10 +49,10 @@ struct PubkyChoiceView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
-        .task {
-            ringPubkys = SharedPubkyKeychain.listRingIdentities()
-            didLoad = true
-            await loadProfiles()
+        .task { await loadIdentities() }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task { await loadIdentities() }
         }
     }
 
@@ -134,18 +135,20 @@ struct PubkyChoiceView: View {
         }
     }
 
-    private func loadProfiles() async {
+    private func loadIdentities() async {
+        ringPubkys = SharedPubkyKeychain.listRingIdentities()
+        didLoad = true
+        profiles = profiles.filter { ringPubkys.contains($0.key) }
+
         let manager = pubkyProfile
-        profiles = await withTaskGroup(of: (String, PubkyProfile?).self) { group in
-            for pubky in ringPubkys {
+        await withTaskGroup(of: (String, PubkyProfile?).self) { group in
+            for pubky in ringPubkys where profiles[pubky] == nil {
                 group.addTask { await (pubky, manager.fetchRemoteProfile(publicKey: pubky)) }
             }
 
-            var loaded: [String: PubkyProfile] = [:]
             for await (pubky, profile) in group {
-                loaded[pubky] = profile
+                profiles[pubky] = profile
             }
-            return loaded
         }
     }
 
