@@ -9,6 +9,14 @@ func canRoutePubkyContactLink(
     !isPaykitUIActive || (isPubkyInitialized && (!hasPubkyIdentity || hasLoadedContacts))
 }
 
+func pubkyContactPublicKeyForRouting(from url: URL, isPaykitUIActive: Bool) throws -> String? {
+    guard isPaykitUIActive else { return nil }
+    guard let publicKey = PubkyContactLink.publicKey(from: url) else {
+        throw ContactsManagerError.invalidPublicKey
+    }
+    return publicKey
+}
+
 enum PendingProfileSetupResumeState {
     case inactive
     case waiting
@@ -397,12 +405,16 @@ struct MainNavView: View {
                 notificationManager.unregister()
             }
         }
-        .task(id: [canHandleDeepLinks, wallet.nodeLifecycleState == .running, isContactDeepLinkReady]) {
+        .task(id: [canHandleDeepLinks, wallet.nodeLifecycleState == .running]) {
             guard canHandleDeepLinks else { return }
             await handlePendingDeepLink()
         }
         .onChange(of: app.pendingDeepLinkURL) { _, url in
             guard canHandleDeepLinks, url != nil else { return }
+            Task { await handlePendingDeepLink() }
+        }
+        .onChange(of: isContactDeepLinkReady) { _, isReady in
+            guard canHandleDeepLinks, isReady else { return }
             Task { await handlePendingDeepLink() }
         }
         .alert(
@@ -834,9 +846,9 @@ struct MainNavView: View {
 
         do {
             if PubkyContactLink.matches(url) {
-                guard isPaykitUIActive, pubkyProfile.initializationErrorMessage == nil,
-                      pubkyProfile.publicKey == nil || contactsManager.hasLoaded,
-                      let publicKey = PubkyContactLink.publicKey(from: url)
+                guard let publicKey = try pubkyContactPublicKeyForRouting(from: url, isPaykitUIActive: isPaykitUIActive) else { return }
+                guard pubkyProfile.initializationErrorMessage == nil,
+                      pubkyProfile.publicKey == nil || contactsManager.hasLoaded
                 else { throw ContactsManagerError.invalidPublicKey }
 
                 scannerManager.configure(

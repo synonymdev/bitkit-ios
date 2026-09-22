@@ -32,6 +32,11 @@ final class PubkyContactLinkTests: XCTestCase {
         }
     }
 
+    func testDisabledPaykitIgnoresContactLinks() throws {
+        let url = try XCTUnwrap(URL(string: "bitkit://contact?pubky=\(key)"))
+        XCTAssertNil(try pubkyContactPublicKeyForRouting(from: url, isPaykitUIActive: false))
+    }
+
     @MainActor
     func testMalformedContactLinkDoesNotWaitForPubkyReadiness() async throws {
         let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
