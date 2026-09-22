@@ -317,7 +317,7 @@ struct AppScene: View {
                 config in AppUpdateSheet(config: config)
             }
             .task(priority: .userInitiated, setupTask)
-            .task(id: scenePhase) { await pollIncomingPaykitPaymentRequests() }
+            .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
             .task(id: initialPaykitSyncGeneration) { await pollIncomingPaykitPaymentRequestsDuringInitialSync() }
             .task { await handlePendingPaykitSubscriptionNotification() }
             .onChange(of: currency.hasStaleData) { _, newValue in handleCurrencyStaleData(newValue) }
@@ -1033,9 +1033,9 @@ struct AppScene: View {
     }
 
     private func pollIncomingPaykitPaymentRequests() async {
-        guard scenePhase == .active else { return }
+        guard scenePhase == .active, network.isConnected else { return }
 
-        if network.isConnected { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
+        await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
         var schedule = PaykitPaymentRequestPollingSchedule()
         while !Task.isCancelled {
             do {
