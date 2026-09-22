@@ -1,22 +1,185 @@
-import CodeScanner
+import AVFoundation
 import PhotosUI
 import SwiftUI
+import Vision
 
 // MARK: - Scanner Camera Component
 
-private struct ScannerCamera: View {
+private struct ScannerCamera: UIViewControllerRepresentable {
     let isTorchOn: Bool
-    let onScan: (String) async -> Void
+    let onScan: (QRCodePayload) async -> Void
 
-    var body: some View {
-        CodeScannerView(codeTypes: [.qr], shouldVibrateOnSuccess: false, isTorchOn: isTorchOn) { response in
-            if case let .success(result) = response {
-                Task {
-                    await onScan(result.string)
-                }
-            } else if case let .failure(error) = response {
-                Logger.error(error, context: "CodeScanner")
+    func makeUIViewController(context _: Context) -> QRCodeScannerViewController {
+        QRCodeScannerViewController { payload in
+            Task {
+                await onScan(payload)
             }
+        }
+    }
+
+    func updateUIViewController(_ controller: QRCodeScannerViewController, context _: Context) {
+        controller.setTorch(isOn: isTorchOn)
+    }
+}
+
+private final class QRCodeScannerViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate {
+    private let captureSession = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "to.bitkit.qr-scanner.session")
+    private let videoQueue = DispatchQueue(label: "to.bitkit.qr-scanner.video")
+    private let onScan: (QRCodePayload) -> Void
+    private var captureDevice: AVCaptureDevice?
+    private var isTorchRequested = false
+    private var framesWithoutQRCode = 0
+    private var isProcessingFrame = false
+    private var lastPayloadData: Data?
+    private var lastPayloadString: String?
+    private lazy var previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
+
+    init(onScan: @escaping (QRCodePayload) -> Void) {
+        self.onScan = onScan
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        previewLayer.videoGravity = .resizeAspectFill
+        view.layer.addSublayer(previewLayer)
+        configureCaptureSession()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer.frame = view.bounds
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        sessionQueue.async { [weak self] in
+            guard let self, !captureSession.isRunning else { return }
+            captureSession.startRunning()
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        sessionQueue.async { [weak self] in
+            guard let self, captureSession.isRunning else { return }
+            captureSession.stopRunning()
+        }
+    }
+
+    func setTorch(isOn: Bool) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            isTorchRequested = isOn
+            applyTorchState()
+        }
+    }
+
+    private func applyTorchState() {
+        guard let captureDevice, captureDevice.hasTorch else { return }
+
+        do {
+            try captureDevice.lockForConfiguration()
+            captureDevice.torchMode = isTorchRequested ? .on : .off
+            captureDevice.unlockForConfiguration()
+        } catch {
+            Logger.error(error, context: "QR scanner torch")
+        }
+    }
+
+    private func configureCaptureSession() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+
+            captureSession.beginConfiguration()
+            defer { captureSession.commitConfiguration() }
+            captureSession.sessionPreset = .high
+
+            guard let device = AVCaptureDevice.default(
+                .builtInWideAngleCamera,
+                for: .video,
+                position: .back
+            ) else {
+                Logger.error("Failed to find QR scanner camera")
+                return
+            }
+
+            do {
+                let input = try AVCaptureDeviceInput(device: device)
+                guard captureSession.canAddInput(input) else {
+                    Logger.error("Failed to add QR scanner camera input")
+                    return
+                }
+                captureSession.addInput(input)
+                captureDevice = device
+                applyTorchState()
+            } catch {
+                Logger.error(error, context: "QR scanner camera input")
+                return
+            }
+
+            let output = AVCaptureVideoDataOutput()
+            output.alwaysDiscardsLateVideoFrames = true
+            output.setSampleBufferDelegate(self, queue: videoQueue)
+            guard captureSession.canAddOutput(output) else {
+                Logger.error("Failed to add QR scanner video output")
+                return
+            }
+            captureSession.addOutput(output)
+        }
+    }
+
+    func captureOutput(
+        _: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from _: AVCaptureConnection
+    ) {
+        guard !isProcessingFrame else { return }
+        isProcessingFrame = true
+        defer { isProcessingFrame = false }
+
+        let request = VNDetectBarcodesRequest()
+        request.symbologies = [.qr]
+
+        do {
+            let handler = VNImageRequestHandler(
+                cmSampleBuffer: sampleBuffer,
+                orientation: .right,
+                options: [:]
+            )
+            try handler.perform([request])
+        } catch {
+            Logger.error(error, context: "QR scanner frame detection")
+            return
+        }
+
+        guard let observation = request.results?.first else {
+            framesWithoutQRCode += 1
+            if framesWithoutQRCode >= 10 {
+                lastPayloadData = nil
+                lastPayloadString = nil
+            }
+            return
+        }
+
+        framesWithoutQRCode = 0
+        let payload = QRCodePayload(
+            string: observation.payloadStringValue,
+            data: observation.payloadData
+        )
+        guard payload.data != lastPayloadData || payload.string != lastPayloadString else { return }
+
+        lastPayloadData = payload.data
+        lastPayloadString = payload.string
+        DispatchQueue.main.async { [onScan] in
+            onScan(payload)
         }
     }
 }
@@ -65,7 +228,7 @@ private struct ScannerCornerButtons: View {
 struct Scanner: View {
     @Environment(CameraManager.self) private var cameraManager
 
-    let onScan: (String) async -> Void
+    let onScan: (QRCodePayload) async -> Void
     let onImageSelection: (PhotosPickerItem?) async -> Void
 
     @State private var isTorchOn = false
@@ -73,12 +236,16 @@ struct Scanner: View {
     var body: some View {
         ZStack {
             if cameraManager.hasPermission {
-                ScannerCamera(
-                    isTorchOn: isTorchOn,
-                    onScan: { uri in
-                        await onScan(uri)
-                    }
-                )
+                #if targetEnvironment(simulator)
+                    Color.black
+                #else
+                    ScannerCamera(
+                        isTorchOn: isTorchOn,
+                        onScan: { payload in
+                            await onScan(payload)
+                        }
+                    )
+                #endif
 
                 ScannerCornerButtons(
                     isTorchOn: $isTorchOn,

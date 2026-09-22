@@ -6,17 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
-        "revision" : "890502f241e12305325cdd0f5e46b2752b9aedf4",
-        "version" : "0.5.14"
-      }
-    },
-    {
-      "identity" : "codescanner",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/twostraws/CodeScanner",
-      "state" : {
-        "revision" : "5e886430238944c7200fc9e10dbf2d9550dba865",
-        "version" : "2.5.2"
+        "revision" : "b53fa54a16f04940943072bb6e08dc2650302f93",
+        "version" : "0.5.18"
       }
     },
     {
