@@ -162,7 +162,7 @@ class AppViewModel: ObservableObject {
         handler: (URL) async -> Void
     ) async {
         guard isReady, let url = pendingDeepLinkURL else { return }
-        if PubkyContactLink.matches(url), !pubkyContactsAreReady {
+        if PubkyContactLink.publicKey(from: url) != nil, !pubkyContactsAreReady {
             return
         }
         if Self.requiresLightningNode(url), !nodeIsRunning {

@@ -1,5 +1,14 @@
 import SwiftUI
 
+func canRoutePubkyContactLink(
+    isPaykitUIActive: Bool,
+    isPubkyInitialized: Bool,
+    hasPubkyIdentity: Bool,
+    hasLoadedContacts: Bool
+) -> Bool {
+    !isPaykitUIActive || (isPubkyInitialized && (!hasPubkyIdentity || hasLoadedContacts))
+}
+
 enum PendingProfileSetupResumeState {
     case inactive
     case waiting
@@ -64,9 +73,12 @@ struct MainNavView: View {
     }
 
     private var isContactDeepLinkReady: Bool {
-        guard isPaykitUIActive else { return true }
-        guard pubkyProfile.isInitialized || pubkyProfile.initializationErrorMessage != nil else { return false }
-        return pubkyProfile.publicKey == nil || contactsManager.hasLoaded || contactsManager.loadErrorMessage != nil
+        canRoutePubkyContactLink(
+            isPaykitUIActive: isPaykitUIActive,
+            isPubkyInitialized: pubkyProfile.isInitialized,
+            hasPubkyIdentity: pubkyProfile.publicKey != nil,
+            hasLoadedContacts: contactsManager.hasLoaded
+        )
     }
 
     private var pendingProfileSetupResumeState: PendingProfileSetupResumeState {

@@ -33,6 +33,59 @@ final class PubkyContactLinkTests: XCTestCase {
     }
 
     @MainActor
+    func testMalformedContactLinkDoesNotWaitForPubkyReadiness() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        let url = try XCTUnwrap(URL(string: "bitkit://contact?pubky=invalid"))
+        app.retainDeepLink(url)
+        var handled = false
+        await app.routePendingDeepLinkIfReady(true, pubkyContactsAreReady: false) { routedURL in
+            handled = true
+            XCTAssertNil(PubkyContactLink.publicKey(from: routedURL))
+        }
+        XCTAssertTrue(handled)
+        XCTAssertNil(app.pendingDeepLinkURL)
+    }
+
+    @MainActor
+    func testContactLinkSurvivesStartupAndContactLoadingErrorsUntilRecovery() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        let profile = PubkyProfileManager()
+        let contacts = ContactsManager()
+        let url = try XCTUnwrap(URL(string: "bitkit://contact?pubky=\(key)"))
+        app.retainDeepLink(url)
+
+        func routePendingLink() async {
+            await app.routePendingDeepLinkIfReady(
+                true,
+                pubkyContactsAreReady: canRoutePubkyContactLink(
+                    isPaykitUIActive: true,
+                    isPubkyInitialized: profile.isInitialized,
+                    hasPubkyIdentity: profile.publicKey != nil,
+                    hasLoadedContacts: contacts.hasLoaded
+                )
+            ) { routedURL in
+                XCTAssertEqual(routedURL, url)
+            }
+        }
+
+        profile.initializationErrorMessage = "Network unavailable"
+        await routePendingLink()
+        XCTAssertEqual(app.pendingDeepLinkURL, url)
+
+        profile.initializationErrorMessage = nil
+        profile.isInitialized = true
+        profile.publicKey = key
+        contacts.loadErrorMessage = "Storage unavailable"
+        await routePendingLink()
+        XCTAssertEqual(app.pendingDeepLinkURL, url)
+
+        contacts.loadErrorMessage = nil
+        contacts.hasLoaded = true
+        await routePendingLink()
+        XCTAssertNil(app.pendingDeepLinkURL)
+    }
+
+    @MainActor
     func testContactLinkWaitsForUnlockAndContactsButNotLightningNodeAndUsesScannerRouting() async throws {
         let previous = UserDefaults.standard.object(forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
