@@ -1675,12 +1675,37 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testFailedRefreshKeepsPreviouslyLoadedRequests() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
-        await manager.refresh()
+        let initialRefreshSucceeded = await manager.refresh()
+        XCTAssertTrue(initialRefreshSucceeded)
         await sdk.setRecords([])
         await sdk.setReceiveError(.receive)
 
-        await manager.refresh()
+        let failedRefreshSucceeded = await manager.refresh()
+        XCTAssertFalse(failedRefreshSucceeded)
 
+        XCTAssertEqual(manager.pendingRequests.count, 1)
+        await sdk.setReceiveError(nil)
+        let recoveredRefreshSucceeded = await manager.refresh()
+        XCTAssertTrue(recoveredRefreshSucceeded)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testPeerIntakeFailureReportsUnsuccessfulRefreshWithoutLosingRequests() async throws {
+        let record = try paymentRequestRecord()
+        let sdk = PaymentRequestSdkMock(records: [record])
+        await sdk.setReceiveReports([
+            PrivateStreamCounterpartyIntakeReport(
+                counterparty: record.counterparty,
+                counterpartyReceiverPath: record.counterpartyReceiverPath,
+                report: nil,
+                error: PaymentRequestIntakeError(noPointer: .init())
+            ),
+        ])
+        let manager = paymentRequestManager(sdk: sdk)
+
+        let succeeded = await manager.refresh()
+
+        XCTAssertFalse(succeeded)
         XCTAssertEqual(manager.pendingRequests.count, 1)
     }
 
@@ -3292,6 +3317,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
     private var isProcessPaused = false
     private var processContinuation: CheckedContinuation<Void, Never>?
     private var receiveError: PaymentRequestSdkMockError?
+    private var receiveReports: [PrivateStreamCounterpartyIntakeReport] = []
     private var acceptedRequests: [PaymentRequestInvocation] = []
     private var rejectedRequests: [PaymentRequestInvocation] = []
     private var acceptFailuresAfterRemoval = 0
@@ -3336,7 +3362,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         if let receiveError {
             throw receiveError
         }
-        return []
+        return receiveReports
     }
 
     func paymentRequests() async -> [PaymentRequestRecord] {
@@ -3619,6 +3645,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         receiveError = error
     }
 
+    func setReceiveReports(_ reports: [PrivateStreamCounterpartyIntakeReport]) {
+        receiveReports = reports
+    }
+
     func snapshot() -> PaymentRequestSdkSnapshot {
         PaymentRequestSdkSnapshot(
             uploadCount: uploadCount,
@@ -3787,6 +3817,12 @@ private actor PaykitSubscriptionNotificationCenterMock: PaykitSubscriptionNotifi
     func resumePendingRequests() {
         pendingRequestsContinuation?.resume()
         pendingRequestsContinuation = nil
+    }
+}
+
+private final class PaymentRequestIntakeError: PrivateOperationError, @unchecked Sendable {
+    override func redactedContext() -> String {
+        "transport failure"
     }
 }
 

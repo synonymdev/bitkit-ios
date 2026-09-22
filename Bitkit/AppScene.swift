@@ -152,7 +152,7 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
 }
 
 struct PaykitPaymentRequestPollingSchedule {
-    private static let refreshIntervals: [Duration] = [.seconds(5), .seconds(10), .seconds(15), .seconds(30)]
+    private static let refreshIntervals: [Duration] = [.seconds(10), .seconds(30), .seconds(60), .seconds(120)]
     private static let maintenanceIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
     private var refreshIntervalIndex = 0
     private var maintenanceIntervalIndex = 0
@@ -170,8 +170,8 @@ struct PaykitPaymentRequestPollingSchedule {
         return true
     }
 
-    mutating func recordRefresh(requestsChanged: Bool) {
-        refreshIntervalIndex = requestsChanged ? 0 : min(refreshIntervalIndex + 1, Self.refreshIntervals.count - 1)
+    mutating func recordRefresh(succeeded: Bool) {
+        refreshIntervalIndex = succeeded ? 0 : min(refreshIntervalIndex + 1, Self.refreshIntervals.count - 1)
     }
 }
 
@@ -994,15 +994,14 @@ struct AppScene: View {
         if refreshMaintenance {
             await PaykitPaymentProofService.shared.reconcile()
         }
-        let previousRequests = paykitPaymentRequestManager.pendingRequests
-        await paykitPaymentRequestManager.refresh()
+        let succeeded = await paykitPaymentRequestManager.refresh()
         if presentItems {
             await presentNextIncomingPaykitItem()
         }
         if refreshMaintenance {
             await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
-        return paykitPaymentRequestManager.pendingRequests != previousRequests
+        return succeeded
     }
 
     private func associateResolvedPaykitOnchainPayment(_ resolution: PaykitOnchainPaymentResolution) async {
@@ -1045,15 +1044,19 @@ struct AppScene: View {
                 return
             }
             let refreshMaintenance = schedule.takeMaintenanceIfDue()
+            guard network.isConnected else {
+                schedule.recordRefresh(succeeded: false)
+                continue
+            }
             if refreshMaintenance {
-                if network.isConnected { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
+                await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
                 await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
                     wallet: wallet,
                     reason: "payment request polling"
                 )
             }
-            let requestsChanged = await refreshIncomingPaykitPaymentRequests(refreshMaintenance: refreshMaintenance)
-            schedule.recordRefresh(requestsChanged: requestsChanged)
+            let succeeded = await refreshIncomingPaykitPaymentRequests(refreshMaintenance: refreshMaintenance)
+            schedule.recordRefresh(succeeded: succeeded)
         }
     }
 
