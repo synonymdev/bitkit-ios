@@ -151,18 +151,26 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
     }
 }
 
+enum PaykitPaymentRequestPollingRound: Equatable {
+    case skip
+    case refreshInbox
+    case refreshInboxAndMaintenance
+}
+
 struct PaykitPaymentRequestPollingSchedule {
     let nextDelay: Duration = .seconds(10)
     private static let maintenanceIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
     private var maintenanceIntervalIndex = 0
     private var maintenanceDelay = Self.maintenanceIntervals[0]
 
-    mutating func takeMaintenanceIfDue() -> Bool {
+    mutating func takeRound(isConnected: Bool) -> PaykitPaymentRequestPollingRound {
+        guard isConnected else { return .skip }
+
         maintenanceDelay -= nextDelay
-        guard maintenanceDelay <= .zero else { return false }
+        guard maintenanceDelay <= .zero else { return .refreshInbox }
         maintenanceIntervalIndex = min(maintenanceIntervalIndex + 1, Self.maintenanceIntervals.count - 1)
         maintenanceDelay = Self.maintenanceIntervals[maintenanceIntervalIndex]
-        return true
+        return .refreshInboxAndMaintenance
     }
 }
 
@@ -1032,8 +1040,15 @@ struct AppScene: View {
             } catch {
                 return
             }
-            let refreshMaintenance = schedule.takeMaintenanceIfDue()
-            guard network.isConnected else { continue }
+            let refreshMaintenance: Bool
+            switch schedule.takeRound(isConnected: network.isConnected) {
+            case .skip:
+                continue
+            case .refreshInbox:
+                refreshMaintenance = false
+            case .refreshInboxAndMaintenance:
+                refreshMaintenance = true
+            }
             if refreshMaintenance {
                 await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
                 await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
@@ -1358,7 +1373,9 @@ struct AppScene: View {
             // to display balances (MoneyText returns "0" if rates are nil)
             Task {
                 await currency.refresh()
-                if scenePhase == .active { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
+                if scenePhase == .active {
+                    await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
+                }
                 if PaykitFeatureFlags.isUIEnabled {
                     let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
                     await PrivatePaykitService.shared.startInitialLinkBurst(
