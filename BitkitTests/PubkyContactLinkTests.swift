@@ -65,7 +65,6 @@ final class PubkyContactLinkTests: XCTestCase {
                 pubkyContactsAreReady: canRoutePubkyContactLink(
                     isPaykitUIActive: true,
                     isPubkyInitialized: profile.isInitialized,
-                    hasPubkyIdentity: profile.publicKey != nil,
                     hasLoadedContacts: contacts.hasLoaded
                 )
             ) { routedURL in
@@ -85,6 +84,34 @@ final class PubkyContactLinkTests: XCTestCase {
         XCTAssertEqual(app.pendingDeepLinkURL, url)
 
         contacts.loadErrorMessage = nil
+        contacts.hasLoaded = true
+        await routePendingLink()
+        XCTAssertNil(app.pendingDeepLinkURL)
+    }
+
+    @MainActor
+    func testContactLinkWaitsForSavedContactsWithoutPubkyIdentity() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        let profile = PubkyProfileManager()
+        let contacts = ContactsManager()
+        let url = try XCTUnwrap(URL(string: "bitkit://contact?pubky=\(key)"))
+        app.retainDeepLink(url)
+        profile.isInitialized = true
+
+        func routePendingLink() async {
+            await app.routePendingDeepLinkIfReady(
+                true,
+                pubkyContactsAreReady: canRoutePubkyContactLink(
+                    isPaykitUIActive: true,
+                    isPubkyInitialized: profile.isInitialized,
+                    hasLoadedContacts: contacts.hasLoaded
+                )
+            ) { _ in }
+        }
+
+        await routePendingLink()
+        XCTAssertEqual(app.pendingDeepLinkURL, url)
+
         contacts.hasLoaded = true
         await routePendingLink()
         XCTAssertNil(app.pendingDeepLinkURL)

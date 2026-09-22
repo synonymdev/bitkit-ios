@@ -3,10 +3,9 @@ import SwiftUI
 func canRoutePubkyContactLink(
     isPaykitUIActive: Bool,
     isPubkyInitialized: Bool,
-    hasPubkyIdentity: Bool,
     hasLoadedContacts: Bool
 ) -> Bool {
-    !isPaykitUIActive || (isPubkyInitialized && (!hasPubkyIdentity || hasLoadedContacts))
+    !isPaykitUIActive || (isPubkyInitialized && hasLoadedContacts)
 }
 
 func pubkyContactPublicKeyForRouting(from url: URL, isPaykitUIActive: Bool) throws -> String? {
@@ -84,9 +83,12 @@ struct MainNavView: View {
         canRoutePubkyContactLink(
             isPaykitUIActive: isPaykitUIActive,
             isPubkyInitialized: pubkyProfile.isInitialized,
-            hasPubkyIdentity: pubkyProfile.publicKey != nil,
             hasLoadedContacts: contactsManager.hasLoaded
         )
+    }
+
+    private var canPrepareContactDeepLink: Bool {
+        !isPaykitUIActive || pubkyProfile.isInitialized
     }
 
     private var pendingProfileSetupResumeState: PendingProfileSetupResumeState {
@@ -411,6 +413,10 @@ struct MainNavView: View {
         }
         .onChange(of: app.pendingDeepLinkURL) { _, url in
             guard canHandleDeepLinks, url != nil else { return }
+            Task { await handlePendingDeepLink() }
+        }
+        .onChange(of: canPrepareContactDeepLink) { _, canPrepare in
+            guard canHandleDeepLinks, canPrepare else { return }
             Task { await handlePendingDeepLink() }
         }
         .onChange(of: isContactDeepLinkReady) { _, isReady in
@@ -795,12 +801,30 @@ struct MainNavView: View {
     }
 
     private func handlePendingDeepLink() async {
+        await loadContactsForPendingDeepLinkIfNeeded()
         await app.routePendingDeepLinkIfReady(
             canHandleDeepLinks,
             nodeIsRunning: wallet.nodeLifecycleState == .running,
             pubkyContactsAreReady: isContactDeepLinkReady
         ) { url in
             await handleDeepLink(url)
+        }
+    }
+
+    private func loadContactsForPendingDeepLinkIfNeeded() async {
+        guard isPaykitUIActive,
+              pubkyProfile.isInitialized,
+              pubkyProfile.publicKey == nil,
+              !contactsManager.hasLoaded,
+              !contactsManager.isLoading,
+              let url = app.pendingDeepLinkURL,
+              let publicKey = PubkyContactLink.publicKey(from: url)
+        else { return }
+
+        do {
+            try await contactsManager.loadContacts(for: publicKey)
+        } catch {
+            Logger.warn("Failed to load contacts before routing contact link: \(error)", context: "MainNavView")
         }
     }
 
@@ -848,7 +872,7 @@ struct MainNavView: View {
             if PubkyContactLink.matches(url) {
                 guard let publicKey = try pubkyContactPublicKeyForRouting(from: url, isPaykitUIActive: isPaykitUIActive) else { return }
                 guard pubkyProfile.initializationErrorMessage == nil,
-                      pubkyProfile.publicKey == nil || contactsManager.hasLoaded
+                      contactsManager.hasLoaded
                 else { throw ContactsManagerError.invalidPublicKey }
 
                 scannerManager.configure(
