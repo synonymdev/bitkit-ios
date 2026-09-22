@@ -6,7 +6,6 @@ import Paykit
 
 enum PubkyServiceError: LocalizedError {
     case invalidAuthUrl
-    case ringNotInstalled
     case sessionNotActive
     case authFailed(String)
     case profileNotFound
@@ -15,8 +14,6 @@ enum PubkyServiceError: LocalizedError {
         switch self {
         case .invalidAuthUrl:
             return "Failed to generate auth URL"
-        case .ringNotInstalled:
-            return "Pubky Ring is not installed"
         case .sessionNotActive:
             return "No active Pubky session"
         case let .authFailed(reason):
@@ -59,30 +56,8 @@ enum PubkyService {
         return result.publicKey
     }
 
-    static func importExternalSession(secret: String) async throws -> String {
-        let result = try await PaykitSdkService.shared.importSession(secret: secret, includeLocalSecret: false)
-        return result.publicKey
-    }
-
     static func currentPublicKey() async -> String? {
         try? await PaykitSdkService.shared.currentPublicKey()
-    }
-
-    // MARK: - Auth Flow
-
-    /// Step 1: Generate the pubkyauth:// URL to open in Pubky Ring.
-    static func startAuth() async throws -> String {
-        try await PaykitSdkService.shared.startAuth()
-    }
-
-    /// Step 2: Long-poll until Ring approves. Returns the raw session secret.
-    static func completeAuth() async throws -> String {
-        try await PaykitSdkService.shared.completeAuth()
-    }
-
-    /// Cancel an in-progress auth relay poll started by `startAuth`.
-    static func cancelAuth() async throws {
-        await PaykitSdkService.shared.cancelAuth()
     }
 
     // MARK: - Auth Approval (Bitkit as authenticator)
@@ -350,8 +325,6 @@ actor PaykitSdkService {
     private var republishPublicKey: String?
     private var nextIdentityRepublishAt = Date.distantPast
     private var sdk: PaykitSdk?
-    private var activeAuthRequest: Paykit.PubkyAuthRequest?
-    private var activeAuthRequestID: UUID?
 
     init(
         bootstrapFactory: @escaping BootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
@@ -456,10 +429,10 @@ actor PaykitSdkService {
         }
     }
 
-    func importSession(secret: String, includeLocalSecret: Bool = true) async throws -> PubkySessionBootstrapResult {
+    func importSession(secret: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
-            let localSecret = includeLocalSecret ? try sessionProvider.loadLocalSecretKey() : nil
+            let localSecret = try sessionProvider.loadLocalSecretKey()
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().importSession(
                 sessionSecret: secret,
@@ -467,7 +440,7 @@ actor PaykitSdkService {
                 receiverNoiseSecretKey: receiverNoiseSecretKey,
                 requiredCapabilities: Self.requiredCapabilities()
             )
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: includeLocalSecret)
+            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
             markWalletBackupDataChanged()
             return result
         }
@@ -484,7 +457,7 @@ actor PaykitSdkService {
                 signupCode: signupCode,
                 requiredCapabilities: Self.requiredCapabilities()
             )
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
+            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
             markWalletBackupDataChanged()
             return result
         }
@@ -510,7 +483,7 @@ actor PaykitSdkService {
         try await operationLock.withLock {
             let previousPublicKey = await currentSdkStatePublicKey()
             do {
-                try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
+                try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
             } catch {
                 try? sessionProvider.clearSessionAccess()
                 try? Keychain.delete(key: .paykitSdkState)
@@ -531,135 +504,10 @@ actor PaykitSdkService {
                 receiverNoiseSecretKey: receiverNoiseSecretKey,
                 requiredCapabilities: Self.requiredCapabilities()
             )
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
+            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
             markWalletBackupDataChanged()
             return result
         }
-    }
-
-    func startAuth() async throws -> String {
-        try await operationLock.withLock {
-            let request = try await bootstrap().startSignInAuth(capabilities: Self.requiredCapabilities())
-            let requestID = UUID()
-            activeAuthRequest = request
-            activeAuthRequestID = requestID
-            return try await request.authorizationUrl()
-        }
-    }
-
-    func completeAuth() async throws -> String {
-        guard let request = activeAuthRequest else {
-            throw PubkyServiceError.invalidAuthUrl
-        }
-        guard let requestID = activeAuthRequestID else {
-            throw PubkyServiceError.invalidAuthUrl
-        }
-
-        let result: PubkySessionBootstrapResult
-        do {
-            result = try await request.complete(
-                localSecretKey: nil,
-                receiverNoiseSecretKey: sessionProvider.loadOrDeriveReceiverNoiseSecretKey(),
-                requiredCapabilities: Self.requiredCapabilities()
-            )
-        } catch {
-            clearActiveAuthRequest(ifCurrent: requestID)
-            throw error
-        }
-
-        return try await operationLock.withLock {
-            guard activeAuthRequestID == requestID, activeAuthRequest != nil else {
-                throw CancellationError()
-            }
-            defer {
-                clearActiveAuthRequest(ifCurrent: requestID)
-            }
-
-            let previousPublicKey = await currentSdkStatePublicKey()
-            let sessionSecret = try await Self.completeAuthActivation(
-                sessionSecret: result.sessionAccess.exportSessionSecret(),
-                activate: {
-                    try await self.activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: false)
-                },
-                discardSessionAccess: { sessionSecret in
-                    await Task.detached {
-                        await self.discardCompletedAuthSessionLocked(sessionSecret: sessionSecret)
-                    }.value
-                }
-            )
-            markWalletBackupDataChanged()
-            return sessionSecret
-        }
-    }
-
-    func discardCompletedAuthSession(sessionSecret: String) async {
-        await operationLock.withLock {
-            await discardCompletedAuthSessionLocked(sessionSecret: sessionSecret)
-        }
-    }
-
-    private func discardCompletedAuthSessionLocked(sessionSecret: String) async {
-        let didMatchSession = await Self.discardAuthSession(
-            sessionSecret: sessionSecret,
-            storedSessionSecret: { try Keychain.loadString(key: .paykitSession) },
-            revoke: { _ = try await self.handle().signOut() },
-            forget: {
-                do {
-                    _ = try await self.handle().forgetSessionAccess()
-                } catch {
-                    try self.sessionProvider.clearSessionAccess()
-                    throw error
-                }
-            }
-        )
-        if didMatchSession {
-            resetRuntime()
-            markWalletBackupDataChanged()
-        }
-    }
-
-    static func completeAuthActivation(
-        sessionSecret: String,
-        activate: () async throws -> Void,
-        discardSessionAccess: (String) async -> Void
-    ) async throws -> String {
-        do {
-            try await activate()
-            return sessionSecret
-        } catch {
-            await discardSessionAccess(sessionSecret)
-            throw error
-        }
-    }
-
-    static func discardAuthSession(
-        sessionSecret: String,
-        storedSessionSecret: () throws -> String?,
-        revoke: () async throws -> Void,
-        forget: () async throws -> Void
-    ) async -> Bool {
-        do {
-            guard try storedSessionSecret() == sessionSecret else { return false }
-        } catch {
-            Logger.warn("Failed to identify abandoned Pubky session: \(error)", context: "PaykitSdkService")
-            return false
-        }
-        do {
-            try await revoke()
-        } catch {
-            Logger.warn("Failed to revoke abandoned Pubky session: \(error)", context: "PaykitSdkService")
-            do {
-                try await forget()
-            } catch {
-                Logger.warn("Failed to forget abandoned Pubky session: \(error)", context: "PaykitSdkService")
-            }
-        }
-        return true
-    }
-
-    func cancelAuth() {
-        activeAuthRequest = nil
-        activeAuthRequestID = nil
     }
 
     func approveAuth(authUrl: String, expectedCapabilities: String, approvedClientID: String, secretKeyHex: String) async throws {
@@ -1060,8 +908,6 @@ actor PaykitSdkService {
     func forgetSessionAccess() async throws {
         defer { resetRuntime() }
         try await withStateRevisionTracking { sdk in
-            activeAuthRequest = nil
-            activeAuthRequestID = nil
             _ = try await sdk.forgetSessionAccess()
         }
     }
@@ -1074,8 +920,6 @@ actor PaykitSdkService {
 
     private func clearStateLocked() {
         try? Keychain.delete(key: .paykitSdkState)
-        activeAuthRequest = nil
-        activeAuthRequestID = nil
         resetRuntime()
         markWalletBackupDataChanged()
     }
@@ -1154,20 +998,14 @@ actor PaykitSdkService {
         sdk = nil
     }
 
-    private func clearActiveAuthRequest(ifCurrent requestID: UUID) {
-        guard activeAuthRequestID == requestID else { return }
-        activeAuthRequest = nil
-        activeAuthRequestID = nil
-    }
-
-    private func persistSessionAccess(_ access: PubkySessionAccess, shouldStoreLocalSecret: Bool) throws {
+    private func persistSessionAccess(_ access: PubkySessionAccess) throws {
         guard let sessionData = access.exportSessionSecret().data(using: .utf8) else {
             throw KeychainError.failedToSave
         }
         try Keychain.upsert(key: .paykitSession, data: sessionData)
         try sessionProvider.persistReceiverNoiseSecretKey(access.exportReceiverNoiseSecretKey())
 
-        guard shouldStoreLocalSecret, AdoptedPubkyReference.current == nil, let localSecret = access.exportLocalSecretKey() else {
+        guard AdoptedPubkyReference.current == nil, let localSecret = access.exportLocalSecretKey() else {
             try? Keychain.delete(key: .pubkySecretKey)
             return
         }
@@ -1180,10 +1018,9 @@ actor PaykitSdkService {
 
     private func activateBootstrapResult(
         _ result: PubkySessionBootstrapResult,
-        previousPublicKey: String?,
-        shouldStoreLocalSecret: Bool
+        previousPublicKey: String?
     ) async throws {
-        try persistSessionAccess(result.sessionAccess, shouldStoreLocalSecret: shouldStoreLocalSecret)
+        try persistSessionAccess(result.sessionAccess)
         sessionProvider.setLiveSessionAccess(result.sessionAccess)
         if !Self.publicKeysMatch(previousPublicKey, result.publicKey) {
             try? Keychain.delete(key: .paykitSdkState)

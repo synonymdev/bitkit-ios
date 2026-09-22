@@ -781,37 +781,6 @@ struct MainNavView: View {
             return
         }
 
-        if let callback = PubkyRingAuthCallback.parse(url: url) {
-            guard isPaykitUIActive else {
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title"),
-                    description: t("other__qr_error_text")
-                )
-                return
-            }
-
-            let handlingResult = await pubkyProfile.handleAuthCallback(callback)
-
-            switch handlingResult {
-            case let .trustedError(message):
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title"),
-                    description: message ?? t("other__qr_error_text")
-                )
-            case .untrustedError:
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title")
-                )
-            case .handled, .ignored:
-                break
-            }
-
-            return
-        }
-
         do {
             try await app.handleScannedData(
                 url.absoluteString,

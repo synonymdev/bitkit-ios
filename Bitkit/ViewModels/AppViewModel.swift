@@ -168,9 +168,6 @@ class AppViewModel: ObservableObject {
         if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
             return false
         }
-        if PubkyRingAuthCallback.parse(url: url) != nil {
-            return false
-        }
         if url.scheme?.lowercased() == "bitkit",
            url.host?.lowercased() == "pubky-auth",
            url.path == "/setup"
@@ -981,12 +978,6 @@ extension AppViewModel {
         guard hasSession else {
             sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity is missing")
             toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
-            return
-        }
-
-        guard PubkyProfileManager.activeSecretKeyHex() != nil else {
-            sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity requires Ring")
-            toast(type: .info, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
             return
         }
 
