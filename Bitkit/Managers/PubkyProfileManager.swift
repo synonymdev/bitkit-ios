@@ -153,6 +153,7 @@ class PubkyProfileManager: ObservableObject {
     @Published var isInitialized = false
     @Published var initializationErrorMessage: String?
     @Published var sessionRestorationFailed = false
+    @Published var adoptedSourceLost = false
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
     @Published private(set) var isProfileSetupPending: Bool
@@ -202,7 +203,19 @@ class PubkyProfileManager: ObservableObject {
             sessionRestorationFailed = true
         }
 
+        await checkAdoptedSource()
         isInitialized = true
+    }
+
+    /// Drops the adopted identity when its owner app has provably removed the shared record.
+    func checkAdoptedSource() async {
+        guard let adopted = AdoptedPubkyReference.current,
+              SharedPubkyKeychain.isDefinitelyMissing(sourceApp: adopted.sourceApp, pubky: adopted.pubky)
+        else { return }
+
+        clearAuthenticatedState()
+        await Self.clearLocalState()
+        adoptedSourceLost = true
     }
 
     // MARK: - Key Derivation & Identity Creation
@@ -948,8 +961,10 @@ class PubkyProfileManager: ObservableObject {
             let loadedProfile = try await Task.detached {
                 try await Self.resolveRemoteProfile(publicKey: pk)
             }.value
-            profile = loadedProfile
-            cacheProfileMetadata(loadedProfile)
+            if publicKey == pk {
+                profile = loadedProfile
+                cacheProfileMetadata(loadedProfile)
+            }
         } catch {
             Logger.error("Failed to load profile: \(error)", context: "PubkyProfileManager")
         }
