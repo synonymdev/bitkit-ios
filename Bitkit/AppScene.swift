@@ -772,6 +772,7 @@ struct AppScene: View {
 
         if hasNativeKeychain || hasOrphanedRNKeychain {
             Logger.warn("Orphaned keychain detected, wiping", context: "AppScene")
+            SharedPubkyKeychain.removeAllOwn()
             try? Keychain.wipeEntireKeychain()
 
             if hasOrphanedRNKeychain {

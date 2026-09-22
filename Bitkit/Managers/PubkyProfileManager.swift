@@ -186,6 +186,8 @@ class PubkyProfileManager: ObservableObject {
             return
         }
 
+        Self.publishOwnSharedRecord()
+
         switch result {
         case .noSession:
             clearAuthenticatedState()
@@ -334,6 +336,23 @@ class PubkyProfileManager: ObservableObject {
             },
             discardSessionAccess: { await self.discardAbandonedSession() }
         )
+
+        Self.publishOwnSharedRecord()
+    }
+
+    /// Publishes Bitkit's own pubky into the shared keychain group so Pubky Ring can offer it. Best effort.
+    nonisolated static func publishOwnSharedRecord() {
+        Task.detached {
+            do {
+                guard let secretKeyHex = try Keychain.loadString(key: .pubkySecretKey), !secretKeyHex.isEmpty else {
+                    return
+                }
+                let pubky = try SharedPubkyKeychain.derivedPubky(fromSecretKeyHex: secretKeyHex)
+                SharedPubkyKeychain.publishOwn(pubky: pubky, secretKeyHex: secretKeyHex)
+            } catch {
+                Logger.warn("Failed to publish the shared pubky record: \(error)", context: "PubkyProfileManager")
+            }
+        }
     }
 
     static func completeIdentityCreation(
@@ -916,6 +935,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private static func clearLocalAppState() async {
+        SharedPubkyKeychain.removeAllOwn()
         await PrivatePaykitService.shared.closeAndClear()
         await PrivatePaykitAddressReservationStore.shared.clearContactAssignments()
         await PubkyImageCache.shared.clear()
