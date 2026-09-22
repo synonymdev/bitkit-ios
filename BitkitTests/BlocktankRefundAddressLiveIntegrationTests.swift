@@ -14,6 +14,15 @@ final class BlocktankRefundAddressLiveIntegrationTests: XCTestCase {
         // `resetToDefaults()` in both hooks writes ~30 real keys, and `clear()` drops the user's own
         // refund address. The keychain wipe and LDK storage are namespaced under test; these are not.
         snapshotAppDefaultsDomain()
+        // A running node persists address-search indexes as transactions arrive. Teardown blocks run
+        // last-in, first-out, so stopping it here lands before the restore above; `tearDown()` runs
+        // after both and would stop it too late.
+        addTeardownBlock { [lightning] in
+            let isRunning = await MainActor.run { lightning.status?.isRunning == true }
+            if isRunning {
+                try? await lightning.stop()
+            }
+        }
         try Bitkit.Keychain.wipeEntireKeychain()
         Bitkit.SettingsViewModel.shared.resetToDefaults()
         Bitkit.BlocktankRefundAddressStore().clear()

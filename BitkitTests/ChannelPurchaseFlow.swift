@@ -9,6 +9,16 @@ final class PaymentFlowTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        // `StartupHandler.createNewWallet` resets `selectedAddressType` and `addressTypesToMonitor` for a
+        // new wallet, and the running node persists address-search indexes. Teardown blocks run
+        // last-in, first-out, so the node stop registered below runs before this restore.
+        snapshotAppDefaultsDomain()
+        addTeardownBlock { [lightning] in
+            let isRunning = await MainActor.run { lightning.status?.isRunning == true }
+            if isRunning {
+                try? await lightning.stop()
+            }
+        }
         Logger.test("Starting payment flow test setup", context: "PaymentFlowTests")
 
         // Wipe the keychain before starting tests
