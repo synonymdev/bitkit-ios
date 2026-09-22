@@ -1007,6 +1007,7 @@ actor PaykitSdkService {
 
         guard AdoptedPubkyReference.current == nil, let localSecret = access.exportLocalSecretKey() else {
             try? Keychain.delete(key: .pubkySecretKey)
+            SharedPubkyKeychain.removeAllOwn()
             return
         }
 

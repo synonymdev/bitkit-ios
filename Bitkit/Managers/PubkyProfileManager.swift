@@ -927,6 +927,7 @@ class PubkyProfileManager: ObservableObject {
             // No kind, or one this version no longer restores: the backup carries no usable pubky credentials.
             try? deleteKeychainValue(.paykitSession)
             try? deleteKeychainValue(.pubkySecretKey)
+            SharedPubkyKeychain.removeAllOwn()
         case .localSeed:
             let secretKeyHex = try deriveLocalSecretKeyFromWalletSeed(loadKeychainString: loadKeychainString)
             try persistKeychainString(.pubkySecretKey, secretKeyHex)
