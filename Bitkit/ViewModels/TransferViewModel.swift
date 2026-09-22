@@ -3,9 +3,16 @@ import LDKNode
 import SwiftUI
 
 struct TransferUiState {
+    var clientBalanceSat: UInt64 = 0
+    var lspBalanceSat: UInt64 = 0
+    var feeSat: UInt64 = 0
+    var isAdvanced = false
+    var isConfirming = false
     var order: IBtOrder?
-    var defaultOrder: IBtOrder?
-    var isAdvanced: Bool = false
+
+    var lspFeeSat: UInt64 {
+        feeSat.saturatingSub(clientBalanceSat)
+    }
 }
 
 struct TransferValues {
@@ -20,9 +27,9 @@ struct HwSpendingState: Equatable {
     var isLoading = false
     var isSigning = false
     var hasPendingBroadcast = false
-    /// The hidden wallet needs its passphrase before the device can sign for it.
     var isPassphraseRequired = false
     var isVerifyingPassphrase = false
+    var isCreatingOrder = false
     var miningFeeSats: UInt64 = 0
     var maxAllowedToSend: UInt64 = 0
     var balanceAfterFee: UInt64 = 0
@@ -119,7 +126,10 @@ protocol HwTransferConnecting: Sendable {
 
 @MainActor
 class TransferViewModel: ObservableObject {
+    private static let orderReuseMargin: TimeInterval = 60
+
     @Published var uiState = TransferUiState()
+    private var fundedOrderId: String?
     @Published var lightningSetupStep: Int = 0
     @Published var transferValues = TransferValues()
 
@@ -158,6 +168,7 @@ class TransferViewModel: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var hwSignTask: Task<Void, Never>?
     private var hwPassphraseTask: Task<Void, Never>?
+    private var hwOrderCreationToken: UUID?
     private var pendingHwFundingBroadcast: PendingHwFundingBroadcast?
     private var activeHwTransferWalletId: String?
 
@@ -302,25 +313,60 @@ class TransferViewModel: ObservableObject {
         }
     }
 
+    var isSpendingBusy: Bool {
+        uiState.isConfirming || hwSpending.isSigning || hwSpending.isCreatingOrder
+    }
+
+    func onEstimateReady(clientBalance: UInt64, lspBalance: UInt64, feeSat: UInt64, isAdvanced: Bool = false) {
+        guard !isSpendingBusy else { return }
+        clearPendingHwFundingBroadcast()
+        uiState.order = nil
+        hwSpending.miningFeeSats = 0
+        uiState.clientBalanceSat = clientBalance
+        uiState.lspBalanceSat = lspBalance
+        uiState.feeSat = feeSat
+        uiState.isAdvanced = isAdvanced
+    }
+
     func onOrderCreated(order: IBtOrder) {
-        clearPendingHwFundingBroadcast()
-        hwSpending.miningFeeSats = 0
         uiState.order = order
-        uiState.isAdvanced = false
-        uiState.defaultOrder = nil
     }
 
-    func onAdvancedOrderCreated(order: IBtOrder) {
-        clearPendingHwFundingBroadcast()
-        hwSpending.miningFeeSats = 0
-        let defaultOrder = uiState.order
-        uiState.order = order
-        uiState.defaultOrder = defaultOrder
-        uiState.isAdvanced = true
+    func orderForConfirmation(
+        createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder,
+        isCurrent: () -> Bool = { true }
+    ) async throws -> IBtOrder? {
+        guard isCurrent() else { return nil }
+        if let order = uiState.order {
+            if pendingHwFundingBroadcast?.orderId == order.id {
+                return order
+            }
+            if isReusableSpendingOrder(order) {
+                return orderForDisplayedFee(order)
+            }
+        }
+        uiState.order = nil
+        let order = try await createOrder(uiState.clientBalanceSat, uiState.lspBalanceSat)
+        guard isCurrent() else { return nil }
+        return orderForDisplayedFee(order)
     }
 
-    func displayOrder(for order: IBtOrder) -> IBtOrder {
-        uiState.order ?? order
+    private func isReusableSpendingOrder(_ order: IBtOrder, now: Date = Date()) -> Bool {
+        guard order.state2 == .created, order.id != fundedOrderId else { return false }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let expiresAt = formatter.date(from: order.orderExpiresAt) ?? ISO8601DateFormatter().date(from: order.orderExpiresAt)
+        else { return false }
+        return expiresAt > now.addingTimeInterval(Self.orderReuseMargin)
+    }
+
+    private func orderForDisplayedFee(_ order: IBtOrder) -> IBtOrder? {
+        uiState.order = order
+        guard order.feeSat <= uiState.feeSat else {
+            uiState.feeSat = order.feeSat
+            return nil
+        }
+        return order
     }
 
     func payOrder(
@@ -383,9 +429,6 @@ class TransferViewModel: ObservableObject {
         )
     }
 
-    /// Records a paid order and starts watching it, after the funding tx was broadcast (local LDK
-    /// send or hardware-signed). For the hardware path, also creates the pending on-chain activity
-    /// (the tx is broadcast externally, so LDK's own activity sync won't surface it).
     private func fundPaidOrder(
         order: IBtOrder,
         txId: String,
@@ -396,6 +439,7 @@ class TransferViewModel: ObservableObject {
         preTransferOnchainSats: UInt64? = nil,
         activityWalletId: String = WalletScope.default
     ) async {
+        fundedOrderId = order.id
         do {
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
@@ -408,7 +452,6 @@ class TransferViewModel: ObservableObject {
             Logger.info("Created transfer tracking record: \(transferId)", context: "TransferViewModel")
         } catch {
             Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
-            // Don't throw - we still want to continue with the order
         }
 
         if createTransferActivity {
@@ -426,16 +469,15 @@ class TransferViewModel: ObservableObject {
         watchOrder(orderId: order.id)
     }
 
-    /// Starts watching an order from app restart (when no UI state is set)
     func startWatchingOrderFromRestart(_ order: IBtOrder) async {
         Logger.info("Starting to watch order from restart: \(order.id)")
 
-        // Set the order in UI state so the watching logic works
         uiState.order = order
+        uiState.clientBalanceSat = order.clientBalanceSat
+        uiState.lspBalanceSat = order.lspBalanceSat
+        uiState.feeSat = order.feeSat
         uiState.isAdvanced = false
-        uiState.defaultOrder = nil
 
-        // Start watching the order
         watchOrder(orderId: order.id)
     }
 
@@ -543,16 +585,15 @@ class TransferViewModel: ObservableObject {
         return currentStep
     }
 
-    func onDefaultClick() {
-        clearPendingHwFundingBroadcast()
-        hwSpending.miningFeeSats = 0
-        let defaultOrder = uiState.defaultOrder
-        uiState.order = defaultOrder
-        uiState.defaultOrder = nil
-        uiState.isAdvanced = false
+    func onDefaultClick(
+        lspBalance: UInt64,
+        estimateFundingAmount: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> UInt64
+    ) async throws {
+        guard !isSpendingBusy else { return }
+        let clientBalance = uiState.clientBalanceSat
+        let feeSat = try await estimateFundingAmount(clientBalance, lspBalance)
+        onEstimateReady(clientBalance: clientBalance, lspBalance: lspBalance, feeSat: feeSat)
     }
-
-    // MARK: - Hardware Wallet Transfer
 
     /// Compute the available/MAX/quarter limits for a hardware-wallet transfer: the signer resolves
     /// the device's native-segwit balance minus an on-chain fee reserve, then the shared
@@ -595,24 +636,52 @@ class TransferViewModel: ObservableObject {
         hwSpending.isLoading = false
     }
 
-    /// Best-effort offline mining-fee estimate for the Sign screen (`fingerprint: nil` compose).
-    func updateHwFundingFeeEstimate(order: IBtOrder, walletId: String) async {
+    func updateHwFundingFeeEstimate(walletId: String) async {
         guard let hwSigner else { return }
         guard !hwSpending.hasPendingBroadcast else { return }
-        guard let address = order.payment?.onchain?.address, !address.isEmpty else { return }
         do {
+            let address: String = if let orderAddress = uiState.order?.payment?.onchain?.address {
+                orderAddress
+            } else {
+                try await hwSigner.addressProvider()
+            }
             hwSpending.miningFeeSats = try await hwSigner.estimateOfflineFundingMiningFee(
                 walletId: walletId,
                 address: address,
-                sats: order.feeSat
+                sats: uiState.feeSat
             )
         } catch {
             Logger.debug("Skipped offline hardware funding fee estimate for '\(walletId)'", context: "TransferViewModel")
         }
     }
 
-    /// Pay for the order by composing and signing the funding send on the Trezor (via the signer),
-    /// then record and watch it. Coordination only — the device orchestration lives in `HwFundingSigner`.
+    func onTransferToSpendingHwConfirm(
+        walletId: String,
+        createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder
+    ) async {
+        guard !isSpendingBusy else { return }
+        let token = UUID()
+        hwOrderCreationToken = token
+        hwSpending.isCreatingOrder = true
+        defer {
+            if hwOrderCreationToken == token {
+                hwOrderCreationToken = nil
+                hwSpending.isCreatingOrder = false
+            }
+        }
+
+        do {
+            guard let order = try await orderForConfirmation(
+                createOrder: createOrder,
+                isCurrent: { self.hwOrderCreationToken == token }
+            ) else { return }
+            guard hwOrderCreationToken == token else { return }
+            onTransferToSpendingHwConfirm(order: order, walletId: walletId)
+        } catch {
+            hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
+        }
+    }
+
     func onTransferToSpendingHwConfirm(order: IBtOrder, walletId: String) {
         guard !hwSpending.isSigning else { return }
         guard let hwSigner else {
@@ -754,6 +823,8 @@ class TransferViewModel: ObservableObject {
         // signed transaction waiting to be broadcast, so they are dropped before the guard below —
         // otherwise leaving mid-verify would leave the reopen running and the prompt set to reappear.
         onHwPassphraseDismiss()
+        hwOrderCreationToken = nil
+        hwSpending.isCreatingOrder = false
 
         guard pendingHwFundingBroadcast == nil else { return }
         let walletId = activeHwTransferWalletId
