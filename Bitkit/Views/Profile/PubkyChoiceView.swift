@@ -11,8 +11,23 @@ struct PubkyChoiceView: View {
     @State private var isWaitingForRing = false
     @State private var isLoadingAfterAuth = false
     @State private var showRingNotInstalledDialog = false
+    @State private var ringPubkys: [String] = []
+    @State private var profiles: [String: PubkyProfile] = [:]
+    @State private var didLoad = false
 
     private let pubkyRingAppStoreUrl = "https://apps.apple.com/app/pubky-ring/id6739356756"
+
+    private var hasRingIdentities: Bool {
+        !ringPubkys.isEmpty
+    }
+
+    static func descriptionKey(hasRingIdentities: Bool) -> String {
+        hasRingIdentities ? "profile__choice_description_ring" : "profile__choice_description"
+    }
+
+    static func showsCreateCard(hasRingIdentities: Bool) -> Bool {
+        !hasRingIdentities
+    }
 
     var body: some View {
         ZStack {
@@ -39,6 +54,11 @@ struct PubkyChoiceView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
+        .task {
+            ringPubkys = SharedPubkyKeychain.listRingIdentities()
+            didLoad = true
+            await loadProfiles()
+        }
         .task(id: isWaitingForRing) {
             guard isWaitingForRing else { return }
             await waitForApproval()
@@ -80,7 +100,9 @@ struct PubkyChoiceView: View {
 
             BodyMText(isLoadingAfterAuth
                 ? t("profile__ring_loading")
-                : isWaitingForRing ? t("profile__ring_waiting") : t("profile__choice_description"))
+                : isWaitingForRing
+                ? t("profile__ring_waiting")
+                : t(Self.descriptionKey(hasRingIdentities: hasRingIdentities)))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -90,73 +112,54 @@ struct PubkyChoiceView: View {
 
     private var optionCards: some View {
         VStack(spacing: 8) {
-            choiceCard(
-                icon: "user-plus",
-                title: t("profile__choice_create"),
-                accessibilityId: "PubkyChoiceCreate"
-            ) {
-                navigation.navigate(.createProfile)
-            }
-            .disabled(isAuthenticating || isWaitingForRing || isLoadingAfterAuth)
-
-            if isWaitingForRing || isLoadingAfterAuth {
-                ringWaitingCard
-            } else {
-                choiceCard(
-                    systemIcon: "key.fill",
-                    title: t("profile__choice_import"),
-                    isLoading: isAuthenticating,
-                    accessibilityId: "PubkyChoiceImport"
-                ) {
-                    await startRingAuth()
+            if didLoad {
+                if Self.showsCreateCard(hasRingIdentities: hasRingIdentities) {
+                    PubkyChoiceRow(
+                        icon: "user-plus",
+                        caption: t("profile__choice_create_caption"),
+                        title: t("profile__choice_create"),
+                        accessibilityId: "PubkyChoiceCreate"
+                    ) {
+                        navigation.navigate(.createProfile)
+                    }
+                } else {
+                    ForEach(ringPubkys, id: \.self) { pubky in
+                        ringRow(pubky)
+                    }
                 }
-                .disabled(isAuthenticating)
             }
         }
     }
 
-    private func choiceCard(
-        icon: String? = nil,
-        systemIcon: String? = nil,
-        title: String,
-        isLoading: Bool = false,
-        accessibilityId: String,
-        action: @escaping () async -> Void
-    ) -> some View {
-        Button {
-            Task { await action() }
-        } label: {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(Color.black)
-                        .frame(width: 40, height: 40)
+    private func ringRow(_ pubky: String) -> some View {
+        let truncatedKey = PubkyPublicKeyFormat.displayTruncated(pubky)
+        let profile = profiles[pubky]
+        let name = profile?.name ?? ""
+        let title = name.isEmpty ? truncatedKey : name
 
-                    if isLoading {
-                        ActivityIndicator(size: 20)
-                    } else if let icon {
-                        Image(icon)
-                            .resizable()
-                            .scaledToFit()
-                            .foregroundColor(.pubkyGreen)
-                            .frame(width: 20, height: 20)
-                    } else if let systemIcon {
-                        Image(systemName: systemIcon)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.pubkyGreen)
-                    }
-                }
+        return PubkyChoiceRow(
+            systemIcon: "key.fill",
+            caption: truncatedKey,
+            title: title,
+            avatarName: title,
+            avatarImageUrl: profile?.imageUrl,
+            accessibilityId: "PubkyChoiceRing_\(pubky)"
+        ) {}
+    }
 
-                BodyMSBText(title, textColor: .white)
-
-                Spacer()
+    private func loadProfiles() async {
+        let manager = pubkyProfile
+        profiles = await withTaskGroup(of: (String, PubkyProfile?).self) { group in
+            for pubky in ringPubkys {
+                group.addTask { await (pubky, manager.fetchRemoteProfile(publicKey: pubky)) }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-            .background(Color.gray6)
-            .cornerRadius(16)
+
+            var loaded: [String: PubkyProfile] = [:]
+            for await (pubky, profile) in group {
+                loaded[pubky] = profile
+            }
+            return loaded
         }
-        .accessibilityIdentifier(accessibilityId)
     }
 
     // MARK: - Ring Auth
