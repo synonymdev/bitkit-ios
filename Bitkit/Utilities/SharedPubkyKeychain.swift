@@ -118,3 +118,24 @@ enum SharedPubkyKeychain {
         }
     }
 }
+
+/// The pubky Bitkit adopted from another app. Only the reference is stored; the secret stays in its owner's store.
+enum AdoptedPubkyReference {
+    private static let sourceAppKey = "adoptedPubkySourceApp"
+    private static let pubkyKey = "adoptedPubkyPubky"
+
+    static var current: (sourceApp: String, pubky: String)? {
+        get {
+            guard let sourceApp = UserDefaults.standard.string(forKey: sourceAppKey),
+                  let pubky = UserDefaults.standard.string(forKey: pubkyKey)
+            else {
+                return nil
+            }
+            return (sourceApp, pubky)
+        }
+        set {
+            UserDefaults.standard.set(newValue?.sourceApp, forKey: sourceAppKey)
+            UserDefaults.standard.set(newValue?.pubky, forKey: pubkyKey)
+        }
+    }
+}

@@ -14,6 +14,7 @@ struct PubkyChoiceView: View {
     @State private var ringPubkys: [String] = []
     @State private var profiles: [String: PubkyProfile] = [:]
     @State private var didLoad = false
+    @State private var isAdopting = false
 
     private let pubkyRingAppStoreUrl = "https://apps.apple.com/app/pubky-ring/id6739356756"
 
@@ -144,7 +145,26 @@ struct PubkyChoiceView: View {
             avatarName: title,
             avatarImageUrl: profile?.imageUrl,
             accessibilityId: "PubkyChoiceRing_\(pubky)"
-        ) {}
+        ) {
+            Task { await adopt(pubky) }
+        }
+        .disabled(isAdopting)
+    }
+
+    private func adopt(_ pubky: String) async {
+        isAdopting = true
+        defer { isAdopting = false }
+
+        do {
+            guard let adopted = try await pubkyProfile.adoptRingIdentity(pubky: pubky) else {
+                navigation.navigate(.createProfile)
+                return
+            }
+
+            await navigateAfterAuth(publicKey: adopted.publicKey)
+        } catch {
+            app.toast(type: .error, title: t("profile__adopt_error_title"), description: error.localizedDescription)
+        }
     }
 
     private func loadProfiles() async {

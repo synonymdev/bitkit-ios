@@ -1196,6 +1196,7 @@
 "profile__choice_create" = "Create profile with Bitkit";
 "profile__choice_create_caption" = "New pubky";
 "profile__choice_import" = "Import with Pubky Ring";
+"profile__adopt_error_title" = "Could Not Use Pubky";
 "profile__deriving_keys" = "Deriving your keys…";
 "profile__create_nav_title" = "Create Profile";
 "profile__restore_nav_title" = "Restore Profile";

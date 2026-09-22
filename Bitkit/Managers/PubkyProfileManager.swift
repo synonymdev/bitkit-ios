@@ -218,6 +218,17 @@ class PubkyProfileManager: ObservableObject {
         }.value
     }
 
+    /// The public key of the identity in use: the adopted pubky when one exists, otherwise the wallet-derived one.
+    func activePublicKey() async throws -> String {
+        if let adopted = AdoptedPubkyReference.current,
+           let publicKey = PubkyPublicKeyFormat.normalized(adopted.pubky)
+        {
+            return publicKey
+        }
+
+        return try await deriveKeys().0
+    }
+
     /// Fetch a signup code and homeserver public key from Homegate's IP verification endpoint.
     struct HomegateResponse: Decodable {
         let signupCode: String
@@ -274,10 +285,10 @@ class PubkyProfileManager: ObservableObject {
         existingImageUrl: String? = nil,
         avatarImage: UIImage? = nil,
         loadStoredSecretKey: () async throws -> String? = {
-            try await Task.detached { try Keychain.loadString(key: .pubkySecretKey) }.value
+            await Task.detached { PubkyProfileManager.activeSecretKeyHex() }.value
         }
     ) async throws {
-        if isProfileSetupPending, let publicKey {
+        if let publicKey, isProfileSetupPending || AdoptedPubkyReference.current != nil {
             try await createProfile(
                 publicKey: publicKey,
                 name: name,
@@ -302,20 +313,8 @@ class PubkyProfileManager: ObservableObject {
             signUp: {
                 let (publicKey, secretKeyHex) = try await self.deriveKeys()
                 _ = try await Task.detached {
-                    let signupDetails: (homeserverPubky: String, signupCode: String?)
-                    if let homeserverPubky = Env.e2eHomeserverPubky {
-                        signupDetails = (homeserverPubky, nil)
-                    } else {
-                        let homegate = try await Self.fetchHomegateSignupCode()
-                        signupDetails = (homegate.homeserverPubky, homegate.signupCode)
-                    }
-
                     do {
-                        return try await PubkyService.signUp(
-                            secretKeyHex: secretKeyHex,
-                            homeserverZ32: signupDetails.homeserverPubky,
-                            signupCode: signupDetails.signupCode
-                        )
+                        return try await Self.signUpToHomeserver(secretKeyHex: secretKeyHex)
                     } catch {
                         Logger.info("signUp failed (likely already registered), trying signIn: \(error)", context: "PubkyProfileManager")
                         return try await PubkyService.signIn(secretKeyHex: secretKeyHex)
@@ -353,6 +352,60 @@ class PubkyProfileManager: ObservableObject {
                 Logger.warn("Failed to publish the shared pubky record: \(error)", context: "PubkyProfileManager")
             }
         }
+    }
+
+    private nonisolated static func signUpToHomeserver(secretKeyHex: String) async throws -> String {
+        let signupDetails: (homeserverPubky: String, signupCode: String?)
+        if let homeserverPubky = Env.e2eHomeserverPubky {
+            signupDetails = (homeserverPubky, nil)
+        } else {
+            let homegate = try await fetchHomegateSignupCode()
+            signupDetails = (homegate.homeserverPubky, homegate.signupCode)
+        }
+
+        return try await PubkyService.signUp(
+            secretKeyHex: secretKeyHex,
+            homeserverZ32: signupDetails.homeserverPubky,
+            signupCode: signupDetails.signupCode
+        )
+    }
+
+    /// Signs in with a pubky owned by Pubky Ring. The secret is read just-in-time and never persisted here.
+    func adoptRingIdentity(pubky: String) async throws -> PubkyProfile? {
+        let sourceApp = SharedPubkyKeychain.ringSourceApp
+        guard let secretKeyHex = SharedPubkyKeychain.loadSecret(sourceApp: sourceApp, pubky: pubky) else {
+            throw PubkyServiceError.authFailed("Pubky Ring key unavailable")
+        }
+
+        AdoptedPubkyReference.current = (sourceApp, pubky)
+        let adoptedPublicKey: String
+        do {
+            adoptedPublicKey = try await Task.detached {
+                do {
+                    _ = try await PubkyService.signIn(secretKeyHex: secretKeyHex)
+                } catch {
+                    Logger.info("Sign-in with the Pubky Ring key failed, signing up: \(error)", context: "PubkyProfileManager")
+                    _ = try await Self.signUpToHomeserver(secretKeyHex: secretKeyHex)
+                }
+                return try Self.publicKeyFromSecretKey(secretKeyHex)
+            }.value
+        } catch {
+            await discardAbandonedSession()
+            AdoptedPubkyReference.current = nil
+            throw error
+        }
+
+        publicKey = adoptedPublicKey
+        authState = .authenticated
+        Self.notifyAppStateBackupChanged()
+
+        let adoptedProfile = await fetchRemoteProfile(publicKey: adoptedPublicKey)
+        setProfileSetupPending(adoptedProfile == nil)
+        if let adoptedProfile {
+            profile = adoptedProfile
+            cacheProfileMetadata(adoptedProfile)
+        }
+        return adoptedProfile
     }
 
     static func completeIdentityCreation(
@@ -936,6 +989,7 @@ class PubkyProfileManager: ObservableObject {
 
     private static func clearLocalAppState() async {
         SharedPubkyKeychain.removeAllOwn()
+        AdoptedPubkyReference.current = nil
         await PrivatePaykitService.shared.closeAndClear()
         await PrivatePaykitAddressReservationStore.shared.clearContactAssignments()
         await PubkyImageCache.shared.clear()
@@ -1142,10 +1196,28 @@ class PubkyProfileManager: ObservableObject {
         return false
     }
 
+    /// The secret key to sign with: Bitkit's own if it has one, otherwise the adopted app's, read just-in-time.
+    nonisolated static func activeSecretKeyHex(
+        loadKeychainString: (KeychainEntryType) throws -> String? = {
+            try Keychain.loadString(key: $0)
+        },
+        adopted: (sourceApp: String, pubky: String)? = AdoptedPubkyReference.current,
+        loadSharedSecret: (String, String) -> String? = SharedPubkyKeychain.loadSecret
+    ) -> String? {
+        if let secretKeyHex = try? loadKeychainString(.pubkySecretKey), !secretKeyHex.isEmpty {
+            return secretKeyHex
+        }
+
+        guard let adopted else {
+            return nil
+        }
+
+        return loadSharedSecret(adopted.sourceApp, adopted.pubky)
+    }
+
     nonisolated static func hasLocalSecretKey(for publicKey: String?) -> Bool {
         guard let publicKey,
-              let secretKeyHex = try? Keychain.loadString(key: .pubkySecretKey),
-              !secretKeyHex.isEmpty,
+              let secretKeyHex = activeSecretKeyHex(),
               let rawPublicKey = try? PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
         else {
             return false
@@ -1158,8 +1230,14 @@ class PubkyProfileManager: ObservableObject {
     nonisolated static func snapshotSessionBackupState(
         loadKeychainString: (KeychainEntryType) throws -> String? = {
             try Keychain.loadString(key: $0)
-        }
+        },
+        adopted: (sourceApp: String, pubky: String)? = AdoptedPubkyReference.current
     ) throws -> PubkySessionBackupV1? {
+        // A foreign key stays with its owner, so an adopted identity has nothing to back up.
+        guard adopted == nil else {
+            return nil
+        }
+
         if let secretKeyHex = try loadKeychainString(.pubkySecretKey),
            !secretKeyHex.isEmpty
         {
@@ -1239,7 +1317,7 @@ class PubkyProfileManager: ObservableObject {
         try await PubkyService.initialize()
 
         let savedSecret = try Keychain.loadString(key: .paykitSession)
-        let secretKeyHex = try Keychain.loadString(key: .pubkySecretKey)
+        let secretKeyHex = activeSecretKeyHex()
         return await resolveSessionInitialization(
             savedSessionSecret: savedSecret,
             storedSecretKeyHex: secretKeyHex,
@@ -1332,10 +1410,8 @@ class PubkyProfileManager: ObservableObject {
             return false
         }
 
-        guard let secretKeyHex = try? loadKeychainString(.pubkySecretKey),
-              !secretKeyHex.isEmpty
-        else {
-            Logger.warn("Cannot refresh pubky session without a local secret key", context: "PubkyProfileManager")
+        guard let secretKeyHex = activeSecretKeyHex(loadKeychainString: loadKeychainString) else {
+            Logger.warn("Cannot refresh pubky session without a secret key", context: "PubkyProfileManager")
             return false
         }
 

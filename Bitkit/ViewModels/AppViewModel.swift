@@ -984,9 +984,7 @@ extension AppViewModel {
             return
         }
 
-        guard let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
-              !secretKey.isEmpty
-        else {
+        guard PubkyProfileManager.activeSecretKeyHex() != nil else {
             sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity requires Ring")
             toast(type: .info, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
             return

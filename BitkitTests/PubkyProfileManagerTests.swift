@@ -760,6 +760,61 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertNil(snapshot)
     }
 
+    func testSnapshotSessionBackupStateReturnsNilForAnAdoptedIdentity() throws {
+        let store = makeKeychainStore(paykitSession: "session-secret")
+
+        let snapshot = try PubkyProfileManager.snapshotSessionBackupState(
+            loadKeychainString: { store[$0.storageKey] },
+            adopted: ("app.pubkyring", "ring-pubky")
+        )
+
+        XCTAssertNil(snapshot)
+    }
+
+    // MARK: - Active secret key
+
+    func testActiveSecretKeyHexPrefersTheLocalSecret() {
+        let store = makeKeychainStore(pubkySecretKey: "local-secret")
+
+        let secretKeyHex = PubkyProfileManager.activeSecretKeyHex(
+            loadKeychainString: { store[$0.storageKey] },
+            adopted: ("app.pubkyring", "ring-pubky"),
+            loadSharedSecret: { _, _ in
+                XCTFail("The local secret key must win over an adopted one")
+                return "ring-secret"
+            }
+        )
+
+        XCTAssertEqual(secretKeyHex, "local-secret")
+    }
+
+    func testActiveSecretKeyHexFallsBackToTheAdoptedSecret() {
+        let secretKeyHex = PubkyProfileManager.activeSecretKeyHex(
+            loadKeychainString: { _ in nil },
+            adopted: ("app.pubkyring", "ring-pubky"),
+            loadSharedSecret: { sourceApp, pubky in
+                XCTAssertEqual(sourceApp, "app.pubkyring")
+                XCTAssertEqual(pubky, "ring-pubky")
+                return "ring-secret"
+            }
+        )
+
+        XCTAssertEqual(secretKeyHex, "ring-secret")
+    }
+
+    func testActiveSecretKeyHexReturnsNilWithoutAnySecret() {
+        let secretKeyHex = PubkyProfileManager.activeSecretKeyHex(
+            loadKeychainString: { _ in nil },
+            adopted: nil,
+            loadSharedSecret: { _, _ in
+                XCTFail("No adopted reference exists to load a secret for")
+                return "ring-secret"
+            }
+        )
+
+        XCTAssertNil(secretKeyHex)
+    }
+
     func testResolveSessionInitializationRestoresSavedSessionWithoutReSigningIn() async {
         let result = await PubkyProfileManager.resolveSessionInitialization(
             savedSessionSecret: "saved-session",

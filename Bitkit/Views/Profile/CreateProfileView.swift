@@ -175,7 +175,7 @@ struct CreateProfileView: View {
         defer { isLoading = false }
 
         do {
-            let (publicKey, _) = try await pubkyProfile.deriveKeys()
+            let publicKey = try await pubkyProfile.activePublicKey()
             derivedPublicKey = publicKey
 
             // Restore existing profile if one is found on the network

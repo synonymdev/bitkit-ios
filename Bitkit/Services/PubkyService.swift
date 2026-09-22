@@ -1167,7 +1167,7 @@ actor PaykitSdkService {
         try Keychain.upsert(key: .paykitSession, data: sessionData)
         try sessionProvider.persistReceiverNoiseSecretKey(access.exportReceiverNoiseSecretKey())
 
-        guard shouldStoreLocalSecret, let localSecret = access.exportLocalSecretKey() else {
+        guard shouldStoreLocalSecret, AdoptedPubkyReference.current == nil, let localSecret = access.exportLocalSecretKey() else {
             try? Keychain.delete(key: .pubkySecretKey)
             return
         }
@@ -1455,7 +1455,7 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
     }
 
     func loadLocalSecretKey() throws -> PubkyLocalSecretKey? {
-        guard let secretKeyHex = try Keychain.loadString(key: .pubkySecretKey), !secretKeyHex.isEmpty else {
+        guard let secretKeyHex = PubkyProfileManager.activeSecretKeyHex() else {
             return nil
         }
 
