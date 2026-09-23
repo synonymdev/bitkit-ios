@@ -87,7 +87,9 @@ class Crypto {
             return try AES.GCM.open(sealedBox, using: key)
         } catch {
             if let ce = error as? CryptoKit.CryptoKitError {
-                Logger.warn(ce)
+                #if !BITKIT_NOTIFICATION_EXTENSION
+                    Logger.warn(ce)
+                #endif
                 throw CryptoError.decryptionFailed
             } else {
                 throw error

@@ -9,9 +9,7 @@
 /* Begin PBXBuildFile section */
 		182817C12F59A7F10055A441 /* Paykit in Frameworks */ = {isa = PBXBuildFile; productRef = 182817C02F59A7F10055A441 /* Paykit */; };
 		18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65DFF2EB964B500252335 /* VssRustClientFfi */; };
-		18D65E022EB964BD00252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65E012EB964BD00252335 /* VssRustClientFfi */; };
 		3D76260F4C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */; };
-		3D7626104C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */; };
 		4A319B512E8F24F2002B9AC9 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A319B502E8F24F2002B9AC9 /* WidgetKit.framework */; };
 		4A319B532E8F24F2002B9AC9 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A319B522E8F24F2002B9AC9 /* SwiftUI.framework */; };
 		4A319B622E8F24F4002B9AC9 /* BitkitWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4A319B4F2E8F24F2002B9AC9 /* BitkitWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -19,9 +17,7 @@
 		4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 4AAB08C92E1FE77600BA63DF /* Lottie */; };
 		961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 9613018B2C5022D700878183 /* LDKNode */; };
-		968FE1402DFB016B0053CD7F /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 968FE13F2DFB016B0053CD7F /* LDKNode */; };
 		96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA0392DE8BBA1009932BF /* BitkitCore */; };
-		96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA03B2DE8BBAB009932BF /* BitkitCore */; };
 		96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A32C942FD1000E8BC2 /* secp256k1 */; };
 		96E493A62C94317D000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A52C94317D000E8BC2 /* secp256k1 */; };
 		96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A72C943184000E8BC2 /* secp256k1 */; };
@@ -195,30 +191,9 @@
 		96A44F3F2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Constants/Env.swift,
 				Extensions/HexBytes.swift,
-				"Extensions/LDKNode+AddressType.swift",
-				Extensions/PaymentDetails.swift,
-				"Extensions/PaymentFailureReason+UserMessage.swift",
 				Models/BlocktankNotificationType.swift,
-				Models/LnPeer.swift,
-				Models/PubkyPublicKeyFormat.swift,
-				Models/Toast.swift,
-				Services/CoreService.swift,
-				Services/GeoService.swift,
-				Services/HwActivityTagBackup.swift,
-				Services/HwSnapshotMerge.swift,
-				Services/LightningService.swift,
-				Services/ServiceQueue.swift,
-				Services/VssStoreIdProvider.swift,
-				Services/WatchOnlyAccountService.swift,
 				Utilities/Crypto.swift,
-				Utilities/Errors.swift,
-				Utilities/Keychain.swift,
-				Utilities/LightningAmountConversion.swift,
-				Utilities/LocalizeHelpers.swift,
-				Utilities/Logger.swift,
-				Utilities/StateLocker.swift,
 			);
 			target = 961058DB2C355B5500E1F1D8 /* BitkitNotification */;
 		};
@@ -226,6 +201,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				NotificationService.swift,
+				NotificationSupport.swift,
 			);
 			target = 961058DB2C355B5500E1F1D8 /* BitkitNotification */;
 		};
@@ -253,11 +229,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3D7626104C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */,
-				968FE1402DFB016B0053CD7F /* LDKNode in Frameworks */,
-				96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */,
 				96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */,
-				18D65E022EB964BD00252335 /* VssRustClientFfi in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -370,9 +342,6 @@
 			name = BitkitNotification;
 			packageProductDependencies = (
 				96E493A72C943184000E8BC2 /* secp256k1 */,
-				96DEA03B2DE8BBAB009932BF /* BitkitCore */,
-				968FE13F2DFB016B0053CD7F /* LDKNode */,
-				18D65E012EB964BD00252335 /* VssRustClientFfi */,
 			);
 			productName = BitkitNotification;
 			productReference = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */;
@@ -764,10 +733,6 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2.5.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					CoreBluetooth,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.notification;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -797,10 +762,6 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2.5.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					CoreBluetooth,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.notification;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

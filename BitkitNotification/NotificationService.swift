@@ -27,7 +27,7 @@ class NotificationService: UNNotificationServiceExtension {
         self.contentHandler = contentHandler
         bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
 
-        guard !StateLocker.isLocked(.lightning) else {
+        guard !NotificationLock.isLocked() else {
             os_log("🔔 LDK-node process already locked, app likely in foreground", log: logger, type: .error)
             return
         }
@@ -75,10 +75,7 @@ class NotificationService: UNNotificationServiceExtension {
             throw NSError(domain: "NotificationService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to decode cipher"])
         }
 
-        guard let privateKey = try Keychain.load(key: .pushNotificationPrivateKey) else {
-            os_log("🔔 Failed to decrypt payload: missing pushNotificationPrivateKey", log: logger, type: .error)
-            throw NSError(domain: "NotificationService", code: 4, userInfo: [NSLocalizedDescriptionKey: "Missing pushNotificationPrivateKey"])
-        }
+        let privateKey = try NotificationKeychain.loadPrivateKey()
 
         let password = try Crypto.generateSharedSecret(privateKey: privateKey, nodePubkey: publicKey, derivationName: "bitkit-notifications")
         let decrypted = try Crypto.decrypt(.init(cipher: ciphertext, iv: iv.hexaData, tag: tag.hexaData), secretKey: password)
