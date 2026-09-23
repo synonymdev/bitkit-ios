@@ -151,27 +151,26 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
     }
 }
 
+enum PaykitPaymentRequestPollingRound: Equatable {
+    case skip
+    case refreshInbox
+    case refreshInboxAndMaintenance
+}
+
 struct PaykitPaymentRequestPollingSchedule {
-    private static let refreshIntervals: [Duration] = [.seconds(5), .seconds(10), .seconds(15), .seconds(30)]
+    let nextDelay: Duration = .seconds(10)
     private static let maintenanceIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
-    private var refreshIntervalIndex = 0
     private var maintenanceIntervalIndex = 0
     private var maintenanceDelay = Self.maintenanceIntervals[0]
 
-    var nextDelay: Duration {
-        Self.refreshIntervals[refreshIntervalIndex]
-    }
+    mutating func takeRound(isConnected: Bool) -> PaykitPaymentRequestPollingRound {
+        guard isConnected else { return .skip }
 
-    mutating func takeMaintenanceIfDue() -> Bool {
         maintenanceDelay -= nextDelay
-        guard maintenanceDelay <= .zero else { return false }
+        guard maintenanceDelay <= .zero else { return .refreshInbox }
         maintenanceIntervalIndex = min(maintenanceIntervalIndex + 1, Self.maintenanceIntervals.count - 1)
         maintenanceDelay = Self.maintenanceIntervals[maintenanceIntervalIndex]
-        return true
-    }
-
-    mutating func recordRefresh(requestsChanged: Bool) {
-        refreshIntervalIndex = requestsChanged ? 0 : min(refreshIntervalIndex + 1, Self.refreshIntervals.count - 1)
+        return .refreshInboxAndMaintenance
     }
 }
 
@@ -270,8 +269,7 @@ struct AppScene: View {
                 return UInt64(TransactionSpeed.fast.getFeeRate(from: rates))
             },
             hwAddressProvider: {
-                let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
-                return try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
+                try await LightningService.shared.addressInfoForType(.nativeSegwit, atIndex: 0).address
             },
             onBalanceRefresh: { await walletVm.updateBalanceState() }
         ))
@@ -317,7 +315,7 @@ struct AppScene: View {
                 config in AppUpdateSheet(config: config)
             }
             .task(priority: .userInitiated, setupTask)
-            .task(id: scenePhase) { await pollIncomingPaykitPaymentRequests() }
+            .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
             .task(id: initialPaykitSyncGeneration) { await pollIncomingPaykitPaymentRequestsDuringInitialSync() }
             .task { await handlePendingPaykitSubscriptionNotification() }
             .onChange(of: currency.hasStaleData) { _, newValue in handleCurrencyStaleData(newValue) }
@@ -992,20 +990,18 @@ struct AppScene: View {
         }
     }
 
-    @discardableResult
-    private func refreshIncomingPaykitPaymentRequests(presentItems: Bool = true, refreshMaintenance: Bool = true) async -> Bool {
+    private func refreshIncomingPaykitPaymentRequests(presentItems: Bool = true, refreshMaintenance: Bool = true) async {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
               pubkyProfile.authState == .authenticated
         else {
             paykitPaymentRequestManager.clearEligibleTargets()
-            return false
+            return
         }
 
         if refreshMaintenance {
             await PaykitPaymentProofService.shared.reconcile()
         }
-        let previousRequests = paykitPaymentRequestManager.pendingRequests
         await paykitPaymentRequestManager.refresh()
         if presentItems {
             await presentNextIncomingPaykitItem()
@@ -1013,7 +1009,6 @@ struct AppScene: View {
         if refreshMaintenance {
             await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
-        return paykitPaymentRequestManager.pendingRequests != previousRequests
     }
 
     private func associateResolvedPaykitOnchainPayment(_ resolution: PaykitOnchainPaymentResolution) async {
@@ -1045,9 +1040,9 @@ struct AppScene: View {
     }
 
     private func pollIncomingPaykitPaymentRequests() async {
-        guard scenePhase == .active else { return }
+        guard scenePhase == .active, network.isConnected else { return }
 
-        if network.isConnected { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
+        await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
         var schedule = PaykitPaymentRequestPollingSchedule()
         while !Task.isCancelled {
             do {
@@ -1055,16 +1050,23 @@ struct AppScene: View {
             } catch {
                 return
             }
-            let refreshMaintenance = schedule.takeMaintenanceIfDue()
+            let refreshMaintenance: Bool
+            switch schedule.takeRound(isConnected: network.isConnected) {
+            case .skip:
+                continue
+            case .refreshInbox:
+                refreshMaintenance = false
+            case .refreshInboxAndMaintenance:
+                refreshMaintenance = true
+            }
             if refreshMaintenance {
-                if network.isConnected { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
+                await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
                 await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
                     wallet: wallet,
                     reason: "payment request polling"
                 )
             }
-            let requestsChanged = await refreshIncomingPaykitPaymentRequests(refreshMaintenance: refreshMaintenance)
-            schedule.recordRefresh(requestsChanged: requestsChanged)
+            await refreshIncomingPaykitPaymentRequests(refreshMaintenance: refreshMaintenance)
         }
     }
 
@@ -1381,7 +1383,9 @@ struct AppScene: View {
             // to display balances (MoneyText returns "0" if rates are nil)
             Task {
                 await currency.refresh()
-                if scenePhase == .active { await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey) }
+                if scenePhase == .active {
+                    await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
+                }
                 if PaykitFeatureFlags.isUIEnabled {
                     let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
                     await PrivatePaykitService.shared.startInitialLinkBurst(

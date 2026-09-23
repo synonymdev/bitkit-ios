@@ -424,6 +424,8 @@
 "onboarding__create_new_wallet" = "Create New Wallet";
 "onboarding__restore_header" = "<accent>Restore</accent>\nyour wallet";
 "onboarding__restore_phrase" = "Please type in your recovery phrase from any (paper) backup.";
+"onboarding__restore_scan_seedqr" = "Scan SeedQR";
+"onboarding__restore_seedqr_error" = "This QR code does not contain a valid 12-word SeedQR.";
 "onboarding__restore_red_explain" = "If a word is shown in <accent>red</accent>, it means that it was not found in the recovery phrase dictionary. Check for spelling errors.";
 "onboarding__restore_inv_checksum" = "The checksum for the recovery phrase appears to be incorrect. Please double check your recovery phrase.";
 "onboarding__restore_suggestions" = "SUGGESTIONS";

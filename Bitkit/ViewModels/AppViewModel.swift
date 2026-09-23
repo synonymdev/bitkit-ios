@@ -155,8 +155,16 @@ class AppViewModel: ObservableObject {
         pendingDeepLinkURL = url
     }
 
-    func routePendingDeepLinkIfReady(_ isReady: Bool, nodeIsRunning: Bool = false, handler: (URL) async -> Void) async {
+    func routePendingDeepLinkIfReady(
+        _ isReady: Bool,
+        nodeIsRunning: Bool = false,
+        pubkyContactsAreReady: Bool = true,
+        handler: (URL) async -> Void
+    ) async {
         guard isReady, let url = pendingDeepLinkURL else { return }
+        if PubkyContactLink.publicKey(from: url) != nil, !pubkyContactsAreReady {
+            return
+        }
         if Self.requiresLightningNode(url), !nodeIsRunning {
             return
         }
@@ -166,6 +174,9 @@ class AppViewModel: ObservableObject {
 
     private static func requiresLightningNode(_ url: URL) -> Bool {
         if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            return false
+        }
+        if PubkyContactLink.matches(url) {
             return false
         }
         if url.scheme?.lowercased() == "bitkit",
