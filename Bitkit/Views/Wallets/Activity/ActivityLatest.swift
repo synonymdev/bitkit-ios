@@ -41,14 +41,12 @@ struct ActivityLatest: View {
         return BlockTimeHelpers.getDurationForBlocks(blocksRemaining)
     }
 
-    /// Three or four vertical slots (by screen size) shared by: hardware wallets row, transfer banner,
-    /// widgets onboarding and activity items; only the item count shrinks so the total stays within the cap.
+    /// Three or four vertical slots (by screen size) shared by: hardware wallet rows (two wallets per row),
+    /// transfer banner, widgets onboarding and activity items; only the item count shrinks so the total stays within the cap.
     private var maxActivityItemsOnHome: Int {
         let slotCapacity = UIScreen.main.isSmall ? ActivityDisplayConstants.maxHomeActivityItems - 1 : ActivityDisplayConstants.maxHomeActivityItems
         var nonItemSlots = 0
-        if !hwWalletManager.wallets.isEmpty {
-            nonItemSlots += 1
-        }
+        nonItemSlots += (hwWalletManager.wallets.count + 1) / 2
         if shouldShowBanner {
             nonItemSlots += 1
         }
