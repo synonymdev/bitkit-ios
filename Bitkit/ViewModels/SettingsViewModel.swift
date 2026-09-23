@@ -458,14 +458,22 @@ class SettingsViewModel: NSObject, ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: Self.pendingRestoreAddressTypePruneKey) }
     }
 
-    private static let pendingRestoreActivitySeenKey = "pendingRestoreActivitySeen"
+    private static let pendingRestoreActivitySeenSinceKey = "pendingRestoreActivitySeenSince"
 
-    /// After a seed restore, suppress on-chain "Received" sheets for replayed historical txs until the
-    /// first post-restore on-chain sync completes, then mark them seen. Set when user taps Get Started;
-    /// cleared in AppViewModel's syncCompleted(.onchainWallet) handler.
+    /// When a seed restore began, or 0 when no restore is being suppressed.
+    ///
+    /// Set as the restore starts, before the node is started, so the replayed historical txs cannot
+    /// slip a "Received" sheet through ahead of the flag. Doubles as the cutoff for the sweep that
+    /// marks those txs seen, so a payment arriving mid-restore is not swept up with them. Cleared in
+    /// AppViewModel's syncCompleted(.onchainWallet) handler once that sweep succeeds. #588
+    var pendingRestoreActivitySeenSince: UInt64 {
+        get { UInt64(UserDefaults.standard.double(forKey: Self.pendingRestoreActivitySeenSinceKey)) }
+        set { UserDefaults.standard.set(Double(newValue), forKey: Self.pendingRestoreActivitySeenSinceKey) }
+    }
+
+    /// Whether replayed restore activity is still being suppressed.
     var pendingRestoreActivitySeen: Bool {
-        get { UserDefaults.standard.bool(forKey: Self.pendingRestoreActivitySeenKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.pendingRestoreActivitySeenKey) }
+        pendingRestoreActivitySeenSince > 0
     }
 
     /// After restore, disables monitoring for address types with zero balance.

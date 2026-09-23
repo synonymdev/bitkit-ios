@@ -210,9 +210,14 @@ class ActivityService {
     }
 
     /// Marks every unseen activity across all wallets as seen, each under its own wallet id.
-    /// Returns `false` when the pass did not complete, so callers can keep any suppression they hold. #588
+    ///
+    /// `startedBefore` limits the pass to activity that already existed at that time. The restore
+    /// sweep passes the moment the restore began, so a payment that genuinely arrives while the
+    /// restore is still running keeps its unseen state and still notifies the user. #588
+    ///
+    /// Returns `false` when the pass did not complete, so callers can keep any suppression they hold.
     @discardableResult
-    func markAllUnseenActivitiesAsSeen() async -> Bool {
+    func markAllUnseenActivitiesAsSeen(startedBefore cutoff: UInt64? = nil) async -> Bool {
         let timestamp = UInt64(Date().timeIntervalSince1970)
 
         do {
@@ -223,16 +228,23 @@ class ActivityService {
                 let id: String
                 let walletId: String
                 let isSeen: Bool
+                let createdAt: UInt64
 
                 switch activity {
                 case let .onchain(onchain):
                     id = onchain.id
                     walletId = onchain.walletId
                     isSeen = onchain.seenAt != nil
+                    createdAt = onchain.timestamp
                 case let .lightning(lightning):
                     id = lightning.id
                     walletId = lightning.walletId
                     isSeen = lightning.seenAt != nil
+                    createdAt = lightning.timestamp
+                }
+
+                if let cutoff, createdAt > cutoff {
+                    continue
                 }
 
                 if !isSeen {

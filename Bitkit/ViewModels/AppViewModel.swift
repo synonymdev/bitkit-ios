@@ -1206,11 +1206,14 @@ extension AppViewModel {
     /// for good if the pass fails, so a historical tx can pop a "Received" sheet. #588
     @MainActor
     func completePendingRestoreActivitySeen(
-        markAllSeen: () async -> Bool = { await CoreService.shared.activity.markAllUnseenActivitiesAsSeen() }
+        markAllSeen: (UInt64) async -> Bool = { cutoff in
+            await CoreService.shared.activity.markAllUnseenActivitiesAsSeen(startedBefore: cutoff)
+        }
     ) async {
-        guard SettingsViewModel.shared.pendingRestoreActivitySeen else { return }
-        guard await markAllSeen() else { return }
-        SettingsViewModel.shared.pendingRestoreActivitySeen = false
+        let restoreStartedAt = SettingsViewModel.shared.pendingRestoreActivitySeenSince
+        guard restoreStartedAt > 0 else { return }
+        guard await markAllSeen(restoreStartedAt) else { return }
+        SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
     }
 
     /// Shows the "received" sheet for an incoming on-chain tx, unless it was already shown.

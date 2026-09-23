@@ -38,9 +38,9 @@ struct WalletRestoreSuccess: View {
 
                 let settings = SettingsViewModel.shared
 
-                // Suppress "Received" sheets for historical txs replayed during the post-restore sync.
-                // Cleared on the first post-restore on-chain syncCompleted, which marks them seen. #588
-                settings.pendingRestoreActivitySeen = true
+                // Note: the "Received" sheet suppression for replayed historical txs is armed when the
+                // restore starts, in RestoreWalletView, not here - by this tap the node has already
+                // been syncing for a while. #588
 
                 // Skip pruning if backup had explicit monitored address types
                 if !settings.restoredMonitoredTypesFromBackup {

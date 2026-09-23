@@ -257,6 +257,11 @@ struct RestoreWalletView: View {
             // Prevent settings changes from triggering backups before the actual restore runs
             BackupService.shared.setRestoring(true)
 
+            // Suppress "Received" sheets for the historical txs the restore replays. Set here, before
+            // the node is started, because startup sync begins as soon as the wallet exists - setting
+            // it on the Get Started tap left a window where replayed txs could still pop a sheet. #588
+            SettingsViewModel.shared.pendingRestoreActivitySeenSince = UInt64(Date().timeIntervalSince1970)
+
             // When restoring a wallet, monitor all address types to catch any existing funds
             SettingsViewModel.shared.monitorAllAddressTypes()
 
