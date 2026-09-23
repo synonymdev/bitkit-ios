@@ -122,7 +122,8 @@ struct AddContactView: View {
                         truncatedKey: profile.truncatedPublicKey,
                         name: profile.name,
                         bio: profile.bio,
-                        imageUrl: profile.imageUrl
+                        imageUrl: profile.imageUrl,
+                        showDivider: false
                     )
                     .padding(.top, 24)
                 }

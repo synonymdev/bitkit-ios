@@ -133,7 +133,7 @@ struct ContactDetailView: View {
             }
             .accessibilityIdentifier("ContactActivity")
 
-            GradientCircleButton(icon: "copy", accessibilityLabel: t("common__copy")) {
+            GradientCircleButton(icon: "copy", iconSize: 18, accessibilityLabel: t("common__copy")) {
                 UIPasteboard.general.string = publicKey
                 app.toast(type: .success, title: t("common__copied"))
             }

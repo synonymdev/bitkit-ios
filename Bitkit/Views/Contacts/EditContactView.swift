@@ -31,6 +31,7 @@ struct EditContactView: View {
                 tags: $tags,
                 publicKey: publicKey,
                 publicKeyLabel: t("profile__create_pubky_label"),
+                bioLabel: t("contacts__edit_notes_label"),
                 bioPlaceholder: t("contacts__edit_bio_placeholder"),
                 isSaving: isSaving,
                 footerNote: t("contacts__edit_public_note"),

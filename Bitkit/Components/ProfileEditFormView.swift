@@ -13,6 +13,7 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     let publicKey: String
     let publicKeyLabel: String
+    var bioLabel: String = t("profile__create_bio_label")
     let bioPlaceholder: String
     let isSaving: Bool
     let footerNote: String?
@@ -112,7 +113,7 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     private var bioSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("profile__create_bio_label"), textColor: .white64)
+            CaptionMText(bioLabel, textColor: .white64)
 
             TextField(
                 bioPlaceholder,

@@ -1132,6 +1132,7 @@
 "contacts__delete_label" = "Delete Contact";
 "contacts__saved_title" = "Contact Saved";
 "contacts__edit_title" = "Edit Contact";
+"contacts__edit_notes_label" = "NOTES";
 "contacts__edit_bio_placeholder" = "Short note about this contact.";
 "contacts__edit_public_note" = "Please note contact information is stored in public files. Changes you make to a contact in Bitkit will not update their profile.";
 "contacts__edit_saved" = "Contact updated";
