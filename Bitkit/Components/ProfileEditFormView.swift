@@ -27,72 +27,56 @@ struct ProfileEditFormView<Avatar: View>: View {
     @State private var showAddTagSheet = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                avatar()
-                    .padding(.top, 24)
-                    .padding(.bottom, 16)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(spacing: 0) {
+                    VStack(spacing: 32) {
+                        avatar()
 
-                SwiftUI.TextField(
-                    t("profile__create_name_placeholder"),
-                    text: $name
-                )
-                .font(Fonts.black(size: 44))
-                .kerning(-1)
-                .textCase(.uppercase)
-                .multilineTextAlignment(.center)
-                .foregroundColor(.textPrimary)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
-                .accessibilityIdentifier("ProfileEditName")
+                        ProfileNameField(name: $name, accessibilityId: "ProfileEditName")
 
-                CustomDivider()
-                    .padding(.bottom, 16)
+                        CustomDivider()
 
-                pubkyKeySection
-                    .padding(.bottom, 24)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    bioSection
-                        .padding(.bottom, 16)
-
-                    linksSection
-                        .padding(.bottom, 16)
-
-                    if !links.isEmpty {
-                        CustomDivider(color: .white16)
-                            .padding(.bottom, 16)
+                        pubkyKeySection
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 32)
 
-                    tagsSection
-                        .padding(.bottom, 24)
+                    VStack(alignment: .leading, spacing: 16) {
+                        CustomDivider()
 
-                    if let footerNote {
-                        CustomDivider(color: .white16)
-                            .padding(.bottom, 16)
+                        bioSection
 
-                        footnoteSection(footerNote)
-                            .padding(.bottom, 24)
+                        CustomDivider()
+
+                        linksSection
+
+                        CustomDivider()
+
+                        tagsSection
+
+                        if let footerNote {
+                            CustomDivider()
+
+                            footnoteSection(footerNote)
+                        }
+
+                        if let deleteLabel, let onDelete {
+                            CustomDivider()
+
+                            deleteSection(label: deleteLabel, action: onDelete)
+                        }
                     }
-
-                    if let deleteLabel, let onDelete {
-                        CustomDivider(color: .white16)
-                            .padding(.bottom, 16)
-
-                        deleteSection(label: deleteLabel, action: onDelete)
-                            .padding(.bottom, 24)
-                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.bottom, ScreenLayout.floatingFooterClearance + 16)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .onTapGesture {
-            dismissKeyboard()
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+            .scrollDismissesKeyboard(.interactively)
+            .onTapGesture {
+                dismissKeyboard()
+            }
+
             footerBar
         }
         .sheet(isPresented: $showAddLinkSheet, onDismiss: dismissKeyboard) {
@@ -113,13 +97,10 @@ struct ProfileEditFormView<Avatar: View>: View {
         VStack(spacing: 8) {
             CaptionMText(publicKeyLabel, textColor: .white64)
 
-            BodySText(
-                publicKey,
-                textColor: .white
-            )
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .center)
+            BodyMSBText(publicKey, textColor: .white)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -132,8 +113,6 @@ struct ProfileEditFormView<Avatar: View>: View {
             TextField(
                 bioPlaceholder,
                 text: $bio,
-                backgroundColor: .gray6,
-                font: .custom(Fonts.regular, size: 17),
                 axis: .vertical,
                 testIdentifier: "ProfileEditBio"
             )
@@ -143,7 +122,7 @@ struct ProfileEditFormView<Avatar: View>: View {
     // MARK: - Links Section
 
     private var linksSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 16) {
             ForEach(links.indices, id: \.self) { index in
                 linkRow(index: index)
             }
@@ -164,7 +143,7 @@ struct ProfileEditFormView<Avatar: View>: View {
     private func linkRow(index: Int) -> some View {
         let link = links[index]
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             CaptionMText(link.label, textColor: .white64)
 
             HStack {
@@ -172,7 +151,7 @@ struct ProfileEditFormView<Avatar: View>: View {
                     if link.url.isEmpty {
                         SwiftUI.Text(t("profile__add_link_url_placeholder"))
                             .foregroundColor(.white32)
-                            .font(.custom(Fonts.regular, size: 17))
+                            .font(.custom(Fonts.semiBold, size: 15))
                     }
 
                     SwiftUI.TextField(
@@ -182,7 +161,7 @@ struct ProfileEditFormView<Avatar: View>: View {
                             set: { links[index].url = $0 }
                         )
                     )
-                    .font(.custom(Fonts.regular, size: 17))
+                    .font(.custom(Fonts.semiBold, size: 15))
                     .foregroundColor(.textPrimary)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -198,18 +177,13 @@ struct ProfileEditFormView<Avatar: View>: View {
                         .resizable()
                         .scaledToFit()
                         .foregroundColor(.white50)
-                        .frame(width: 18, height: 18)
+                        .frame(width: 16, height: 16)
                 }
                 .accessibilityIdentifier("ProfileEditLinkRemove_\(index)")
                 .accessibilityLabel(t("common__delete"))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.gray6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.white10, lineWidth: 1)
-            )
+            .padding(16)
+            .background(Color.white10)
             .cornerRadius(8)
         }
     }
@@ -222,27 +196,13 @@ struct ProfileEditFormView<Avatar: View>: View {
 
             switch deleteActionStyle {
             case .buttonWithIcon:
-                Button(action: action) {
-                    HStack(spacing: 8) {
-                        Image("trash")
-                            .resizable()
-                            .scaledToFit()
-                            .foregroundColor(.redAccent)
-                            .frame(width: 16, height: 16)
-
-                        BodySSBText(label, textColor: .redAccent)
-                    }
-                    .padding(.horizontal, 16)
-                    .frame(height: 40)
-                    .background(Color.gray6)
-                    .clipShape(Capsule())
-                    .overlay {
-                        Capsule()
-                            .stroke(Color.white10, lineWidth: 1)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(label)
+                IconActionButton(
+                    icon: "trash",
+                    title: label,
+                    tint: .brandAccent,
+                    accessibilityId: "ProfileEditDelete",
+                    action: action
+                )
             case .textOnly:
                 Button(action: action) {
                     HStack {
@@ -293,23 +253,28 @@ struct ProfileEditFormView<Avatar: View>: View {
     }
 
     private var footerBar: some View {
-        BottomActionBar {
-            HStack(spacing: 16) {
-                CustomButton(title: t("common__cancel"), variant: .secondary) {
-                    onCancel()
-                }
-                .accessibilityIdentifier("ProfileEditCancel")
-
-                CustomButton(
-                    title: t("common__save"),
-                    isLoading: isSaving
-                ) {
-                    await onSave()
-                }
-                .accessibilityIdentifier("ProfileEditSave")
-                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        HStack(spacing: 16) {
+            CustomButton(title: t("common__cancel"), variant: .secondary) {
+                onCancel()
             }
+            .accessibilityIdentifier("ProfileEditCancel")
+
+            CustomButton(
+                title: t("common__save"),
+                isLoading: isSaving
+            ) {
+                await onSave()
+            }
+            .accessibilityIdentifier("ProfileEditSave")
+            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 16)
+        .background(
+            LinearGradient(colors: [.customBlack.opacity(0), .customBlack], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea(edges: .bottom)
+        )
     }
 
     private func dismissKeyboard() {

@@ -110,14 +110,14 @@ struct EditProfileView: View {
             PubkyImage(uri: imageUrl, size: 96)
         } else {
             Circle()
-                .fill(Color.gray5)
+                .fill(Color.gray6)
                 .frame(width: 96, height: 96)
                 .overlay {
-                    Image("user-square")
+                    Image("picture")
                         .resizable()
                         .scaledToFit()
                         .foregroundColor(.white32)
-                        .frame(width: 48, height: 48)
+                        .frame(width: 32, height: 32)
                 }
         }
     }

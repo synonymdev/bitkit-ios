@@ -5,6 +5,7 @@ struct IconActionButton: View {
     let icon: String
     let isSystemIcon: Bool
     let title: String
+    let tint: Color
     let accessibilityId: String
     let action: () -> Void
 
@@ -12,12 +13,14 @@ struct IconActionButton: View {
         icon: String,
         isSystemIcon: Bool = false,
         title: String,
+        tint: Color = .white,
         accessibilityId: String,
         action: @escaping () -> Void
     ) {
         self.icon = icon
         self.isSystemIcon = isSystemIcon
         self.title = title
+        self.tint = tint
         self.accessibilityId = accessibilityId
         self.action = action
     }
@@ -28,16 +31,16 @@ struct IconActionButton: View {
                 if isSystemIcon {
                     Image(systemName: icon)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
+                        .foregroundColor(tint)
                 } else {
                     Image(icon)
                         .resizable()
                         .scaledToFit()
-                        .foregroundColor(.white)
+                        .foregroundColor(tint)
                         .frame(width: 14, height: 14)
                 }
 
-                BodySSBText(title)
+                BodySSBText(title, textColor: tint)
                     .lineLimit(1)
             }
             .padding(.horizontal, 16)
