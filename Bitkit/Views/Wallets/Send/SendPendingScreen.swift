@@ -1,4 +1,5 @@
 import BitkitCore
+import LDKNode
 import SwiftUI
 
 struct HourglassLoadingView: View {
@@ -20,6 +21,142 @@ struct HourglassLoadingView: View {
                     rotation = 16
                 }
             }
+    }
+}
+
+struct OnchainBroadcastPendingScreen: View {
+    let txid: Txid
+    let amountSats: UInt64?
+    let onAccepted: (Txid) async -> Void
+    let onAbandoned: () async -> Void
+
+    @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+
+    @State private var isResolving = false
+    @State private var hasResolved = false
+    @State private var activeTxid: Txid
+
+    init(
+        txid: Txid,
+        amountSats: UInt64?,
+        onAccepted: @escaping (Txid) async -> Void,
+        onAbandoned: @escaping () async -> Void
+    ) {
+        self.txid = txid
+        self.amountSats = amountSats
+        self.onAccepted = onAccepted
+        self.onAbandoned = onAbandoned
+        _activeTxid = State(initialValue: txid)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SheetHeader(title: t("wallet__send_pending"), showBackButton: false)
+                .accessibilityIdentifier("OnchainBroadcastPending")
+
+            if let amountSats {
+                MoneyStack(sats: Int(amountSats), showSymbol: true)
+                    .padding(.bottom, 32)
+            }
+
+            BodyMText(t("wallet__send_pending_note"))
+                .accessibilityIdentifier("OnchainBroadcastPendingMessage")
+
+            Spacer()
+
+            HourglassLoadingView()
+
+            Spacer()
+
+            HStack(spacing: 16) {
+                CustomButton(title: t("common__close"), variant: .secondary, isDisabled: isResolving) {
+                    sheets.hideSheet()
+                }
+                .accessibilityIdentifier("OnchainBroadcastPendingClose")
+
+                CustomButton(title: t("common__retry"), isLoading: isResolving) {
+                    Task { await rebroadcast() }
+                }
+                .accessibilityIdentifier("OnchainBroadcastPendingRetry")
+            }
+        }
+        .navigationBarHidden(true)
+        .allowSwipeBack(false)
+        .padding(.horizontal, 16)
+        .sheetBackground()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+            await reconcile()
+        }
+    }
+
+    @MainActor
+    private func reconcile() async {
+        guard !isResolving, !hasResolved else { return }
+        isResolving = true
+        defer { isResolving = false }
+
+        do {
+            try await wallet.sync()
+        } catch {
+            Logger.warn("On-chain pending reconciliation sync failed: \(error)", context: "OnchainBroadcastPendingScreen")
+        }
+
+        do {
+            try await applyBroadcastOutcome()
+        } catch {
+            Logger.warn("Failed to reconcile on-chain broadcast outcome: \(error)", context: "OnchainBroadcastPendingScreen")
+        }
+    }
+
+    @MainActor
+    private func rebroadcast() async {
+        guard !isResolving, !hasResolved else { return }
+        isResolving = true
+        defer { isResolving = false }
+
+        do {
+            let acceptedTxid = try await wallet.rebroadcastOnchainTransaction(txid: activeTxid)
+            await accept(acceptedTxid)
+        } catch {
+            do {
+                try await applyBroadcastOutcome()
+            } catch {
+                Logger.warn("Failed to reconcile on-chain rebroadcast error: \(error)", context: "OnchainBroadcastPendingScreen")
+            }
+            guard !hasResolved else { return }
+            app.toast(error)
+        }
+    }
+
+    @MainActor
+    private func applyBroadcastOutcome() async throws {
+        guard let outcome = try await wallet.onchainBroadcastOutcome(txid: txid) else { return }
+
+        switch outcome.status {
+        case .pending:
+            activeTxid = outcome.txid
+        case .accepted:
+            await accept(outcome.txid)
+        case .abandoned:
+            await abandon()
+        }
+    }
+
+    @MainActor
+    private func accept(_ acceptedTxid: Txid) async {
+        guard !hasResolved else { return }
+        hasResolved = true
+        await onAccepted(acceptedTxid)
+    }
+
+    @MainActor
+    private func abandon() async {
+        guard !hasResolved else { return }
+        hasResolved = true
+        await onAbandoned()
     }
 }
 

@@ -29,8 +29,24 @@ struct SendConfirmationView: View {
     @State private var pendingWarnings: [WarningType] = []
     @State private var warningContinuation: CheckedContinuation<Bool, Error>?
     @State private var swipeProgress: CGFloat = 0
+    @State private var pendingOnchainBroadcast: PendingOnchainBroadcast?
     @State private var hasStartedAutomaticPayment = false
     @State private var requiresPaymentConfirmation = false
+
+    private struct OnchainSendCompletion {
+        let address: String
+        let amountSats: UInt64
+        let feeSats: UInt64
+        let feeRate: UInt32
+        let contactPublicKey: String?
+        let incomingPaymentRequest: PaykitPaymentRequest?
+        let paymentEndpointIdentifier: String?
+    }
+
+    private struct PendingOnchainBroadcast {
+        let txid: Txid
+        let completion: OnchainSendCompletion?
+    }
 
     var accentColor: Color {
         if hwSend.isActive {
@@ -160,10 +176,23 @@ struct SendConfirmationView: View {
     }
 
     var body: some View {
-        ZStack {
-            confirmationContent
-            if shouldAutomaticallyPay {
-                InitialSubscriptionPaymentProgress()
+        if let pendingOnchainBroadcast {
+            OnchainBroadcastPendingScreen(
+                txid: pendingOnchainBroadcast.txid,
+                amountSats: pendingOnchainBroadcast.completion?.amountSats,
+                onAccepted: { acceptedTxid in
+                    await resolvePendingOnchainBroadcast(pendingOnchainBroadcast, acceptedTxid: acceptedTxid)
+                },
+                onAbandoned: {
+                    await resolveAbandonedOnchainBroadcast(pendingOnchainBroadcast)
+                }
+            )
+        } else {
+            ZStack {
+                confirmationContent
+                if shouldAutomaticallyPay {
+                    InitialSubscriptionPaymentProgress()
+                }
             }
         }
     }
@@ -785,47 +814,79 @@ struct SendConfirmationView: View {
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
-                let txid = try await wallet.send(
+                let completion = OnchainSendCompletion(
                     address: invoice.address,
-                    sats: amount,
-                    isMaxAmount: useMaxAmount
-                ) {
-                    if let incomingPaymentRequest {
-                        try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
-                            incomingPaymentRequest,
-                            address: invoice.address
-                        )
-                        onchainPaymentStarted = true
-                    }
-                }
-                shouldCancelPaymentProof = false
-                if let incomingPaymentRequest, let preparedPaymentProof {
-                    await PaykitPaymentProofService.shared.completeOnchainPayment(
-                        incomingPaymentRequest,
-                        txid: txid,
-                        paymentEndpointIdentifier: preparedPaymentProof.endpointIdentifier
-                    )
-                }
-
-                // Create pre-activity metadata for tags and activity address
-                await createPreActivityMetadata(paymentId: txid, address: invoice.address, txId: txid, feeRate: wallet.selectedFeeRateSatsPerVByte)
-
-                // Create sent onchain activity immediately so it appears before LDK event (which can be delayed)
-                await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
-                    txid: txid,
-                    address: invoice.address,
-                    amount: amount,
-                    fee: UInt64(transactionFee),
+                    amountSats: amount,
+                    feeSats: UInt64(transactionFee),
                     feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1,
-                    contact: contactPublicKey
+                    contactPublicKey: contactPublicKey,
+                    incomingPaymentRequest: incomingPaymentRequest,
+                    paymentEndpointIdentifier: preparedPaymentProof?.endpointIdentifier
                 )
 
-                // Set the amount for the success screen
-                wallet.sendAmountSats = amount
+                do {
+                    let txid = try await wallet.send(
+                        address: invoice.address,
+                        sats: amount,
+                        isMaxAmount: useMaxAmount
+                    ) {
+                        if let incomingPaymentRequest {
+                            try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
+                                incomingPaymentRequest,
+                                address: invoice.address
+                            )
+                            onchainPaymentStarted = true
+                        }
+                    }
+                    shouldCancelPaymentProof = false
+                    onchainPaymentStarted = false
+                    await completeOnchainSend(txid: txid, completion: completion, createMetadata: true)
+                } catch {
+                    guard let pendingContext = pendingOnchainBroadcastContext(for: error) else { throw error }
 
-                Logger.info("Onchain send result txid: \(txid)")
+                    if pendingContext.source == .currentPayment {
+                        shouldCancelPaymentProof = false
+                        onchainPaymentStarted = false
+                        wallet.sendAmountSats = amount
+                        await createPreActivityMetadata(
+                            paymentId: pendingContext.txid,
+                            address: invoice.address,
+                            txId: pendingContext.txid,
+                            feeRate: completion.feeRate
+                        )
+                        if let contactPublicKey {
+                            app.addPendingContactPaymentContext(pendingContext.txid, contactPublicKey: contactPublicKey)
+                        }
+                        if let incomingPaymentRequest {
+                            do {
+                                try await PaykitPaymentProofService.shared.associateOnchainPayment(
+                                    incomingPaymentRequest,
+                                    txid: pendingContext.txid
+                                )
+                            } catch {
+                                Logger.warn("Failed to persist pending on-chain payment proof: \(error)", context: "SendConfirmationView")
+                            }
+                        }
+                        pendingOnchainBroadcast = PendingOnchainBroadcast(txid: pendingContext.txid, completion: completion)
+                    } else {
+                        if let incomingPaymentRequest {
+                            if onchainPaymentStarted {
+                                await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest)
+                                onchainPaymentStarted = false
+                            } else if shouldCancelPaymentProof {
+                                await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
+                            }
+                        }
+                        shouldCancelPaymentProof = false
+                        pendingOnchainBroadcast = PendingOnchainBroadcast(txid: pendingContext.txid, completion: nil)
+                    }
 
-                navigationPath.append(.success(paymentId: txid))
+                    Logger.warn(
+                        "On-chain broadcast pending reconciliation: \(pendingContext.txid)",
+                        context: "SendConfirmationView"
+                    )
+                    return
+                }
             } else {
                 throw NSError(
                     domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"]
@@ -838,7 +899,7 @@ struct SendConfirmationView: View {
             return
         } catch {
             if onchainPaymentStarted, let incomingPaymentRequest {
-                if PaykitPaymentProofService.isDefiniteOnchainPreBroadcastFailure(error) {
+                if PaykitPaymentProofService.isDefiniteOnchainFailure(error) {
                     await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest)
                     onchainPaymentStarted = false
                 } else {
@@ -871,6 +932,119 @@ struct SendConfirmationView: View {
                 contactPaymentContext: contactPaymentContext
             )))
         }
+    }
+
+    @MainActor
+    private func resolvePendingOnchainBroadcast(_ pending: PendingOnchainBroadcast, acceptedTxid: Txid) async {
+        guard pendingOnchainBroadcast?.txid == pending.txid else { return }
+
+        if let completion = pending.completion {
+            await completeOnchainSend(
+                txid: acceptedTxid,
+                completion: completion,
+                createMetadata: acceptedTxid != pending.txid,
+                associatedTxid: pending.txid
+            )
+        } else {
+            pendingOnchainBroadcast = nil
+            swipeProgress = 0
+        }
+    }
+
+    @MainActor
+    private func resolveAbandonedOnchainBroadcast(_ pending: PendingOnchainBroadcast) async {
+        guard pendingOnchainBroadcast?.txid == pending.txid else { return }
+
+        if let completion = pending.completion {
+            let contactPaymentContext = app.contactPaymentContext
+            try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: pending.txid)
+            app.consumeContactPaymentContext(forPendingPaymentHash: pending.txid)
+            pendingOnchainBroadcast = nil
+            navigationPath.append(.failure(SendFailureContext(
+                error: AbandonedOnchainBroadcastError(),
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: nil,
+                contactPaymentContext: contactPaymentContext
+            )))
+
+            if let incomingPaymentRequest = completion.incomingPaymentRequest {
+                await PaykitPaymentProofService.shared.abandonOnchainPayment(
+                    incomingPaymentRequest,
+                    txid: pending.txid
+                )
+            } else {
+                do {
+                    try await wallet.acknowledgeOnchainBroadcastOutcome(txid: pending.txid)
+                } catch {
+                    Logger.warn("Failed to acknowledge abandoned on-chain broadcast: \(error)", context: "SendConfirmationView")
+                }
+            }
+        } else {
+            pendingOnchainBroadcast = nil
+            swipeProgress = 0
+        }
+    }
+
+    @MainActor
+    private func completeOnchainSend(
+        txid: Txid,
+        completion: OnchainSendCompletion,
+        createMetadata: Bool,
+        associatedTxid: Txid? = nil
+    ) async {
+        let outcomeTxid = associatedTxid ?? txid
+        var outcomeHandledByPaykit = false
+        if let incomingPaymentRequest = completion.incomingPaymentRequest,
+           let paymentEndpointIdentifier = completion.paymentEndpointIdentifier
+        {
+            outcomeHandledByPaykit = true
+            await PaykitPaymentProofService.shared.completeOnchainPayment(
+                incomingPaymentRequest,
+                txid: txid,
+                paymentEndpointIdentifier: paymentEndpointIdentifier,
+                associatedTxid: outcomeTxid
+            )
+        }
+
+        if createMetadata {
+            await createPreActivityMetadata(
+                paymentId: txid,
+                address: completion.address,
+                txId: txid,
+                feeRate: completion.feeRate
+            )
+            if let associatedTxid, associatedTxid != txid {
+                try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: associatedTxid)
+            }
+        }
+
+        await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
+            txid: txid,
+            address: completion.address,
+            amount: completion.amountSats,
+            fee: completion.feeSats,
+            feeRate: completion.feeRate,
+            contact: completion.contactPublicKey
+        )
+
+        if let associatedTxid, associatedTxid != txid {
+            app.consumeContactPaymentContext(forPendingPaymentHash: associatedTxid)
+        }
+
+        wallet.sendAmountSats = completion.amountSats
+        pendingOnchainBroadcast = nil
+
+        if !outcomeHandledByPaykit {
+            do {
+                try await wallet.acknowledgeOnchainBroadcastOutcome(txid: outcomeTxid)
+            } catch {
+                Logger.warn("Failed to acknowledge accepted on-chain broadcast: \(error)", context: "SendConfirmationView")
+            }
+        }
+
+        Logger.info("Onchain send result txid: \(txid)")
+        navigationPath.append(.success(paymentId: txid))
     }
 
     private func paymentProofPreparation() throws -> (endpointIdentifier: String, kind: PaykitPaymentProofKind) {
