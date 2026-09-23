@@ -1406,6 +1406,7 @@ extension LightningService {
                         } catch {
                             Logger.error("Failed to handle payment received for \(hash): \(error)", context: "LightningService")
                         }
+                        await PushNotificationManager.shared.notifyPaymentReceived(paymentHash: paymentHash)
                     }
                 case let .paymentClaimable(paymentId, paymentHash, claimableAmountMsat, _, _):
                     Logger.info(

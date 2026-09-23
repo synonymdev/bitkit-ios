@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UserNotifications
 
 enum PushNotificationError: Error {
     case deviceTokenNotAvailable
@@ -7,6 +8,7 @@ enum PushNotificationError: Error {
 
 final class PushNotificationManager: ObservableObject {
     static let shared = PushNotificationManager()
+    static let paymentReceivedNotificationAction = "lightning_payment_received"
     @Published var deviceToken: String? = nil
     @Published var authorizationStatus: UNAuthorizationStatus = .notDetermined
 
@@ -95,6 +97,29 @@ final class PushNotificationManager: ObservableObject {
 
     func handleNotification(_ userInfo: [AnyHashable: Any]) {
         Logger.debug("📩 Notification received: \(userInfo)")
+    }
+
+    @MainActor
+    func notifyPaymentReceived(paymentHash: String) async {
+        guard SettingsViewModel.shared.enableNotifications, UIApplication.shared.applicationState == .background else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = t("settings__notifications__settings__preview__title")
+        content.body = t("settings__notifications__settings__preview__text")
+        content.sound = .default
+        content.userInfo = ["bitkit_action": Self.paymentReceivedNotificationAction]
+
+        let request = UNNotificationRequest(
+            identifier: "lightning-payment-received-\(paymentHash)",
+            content: content,
+            trigger: nil
+        )
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+            Logger.info("Scheduled received payment notification for '\(paymentHash)'", context: "PushNotificationManager")
+        } catch {
+            Logger.error("Failed to schedule received payment notification for '\(paymentHash)': \(error)", context: "PushNotificationManager")
+        }
     }
 
     func sendTestNotification() async throws {

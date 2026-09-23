@@ -261,6 +261,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) {
         let userInfo = notification.request.content.userInfo
 
+        if userInfo["bitkit_action"] as? String == PushNotificationManager.paymentReceivedNotificationAction {
+            completionHandler([])
+            return
+        }
+
         Logger.debug("🔔 AppDelegate: willPresent notification called")
         Logger.debug("🔔 AppDelegate: UserInfo: \(userInfo)")
         Logger.debug("🔔 AppDelegate: Notification content: \(notification.request.content)")
