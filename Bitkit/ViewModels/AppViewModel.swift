@@ -1198,6 +1198,21 @@ extension AppViewModel {
 // MARK: LDK Node Events
 
 extension AppViewModel {
+    /// Lifts the post-restore received-sheet suppression, once the activities the first post-restore
+    /// on-chain sync replayed have actually been marked seen.
+    ///
+    /// The flag must outlive the marking pass: clearing it up front reopens
+    /// `presentReceivedSheetForOnchainTransaction` while the pass is still running, and leaves it open
+    /// for good if the pass fails, so a historical tx can pop a "Received" sheet. #588
+    @MainActor
+    func completePendingRestoreActivitySeen(
+        markAllSeen: () async -> Bool = { await CoreService.shared.activity.markAllUnseenActivitiesAsSeen() }
+    ) async {
+        guard SettingsViewModel.shared.pendingRestoreActivitySeen else { return }
+        guard await markAllSeen() else { return }
+        SettingsViewModel.shared.pendingRestoreActivitySeen = false
+    }
+
     /// Shows the "received" sheet for an incoming on-chain tx, unless it was already shown.
     /// Used by both the received (mempool) and confirmed (straight-to-confirmed) LDK events so a
     /// tx that skips the mempool still notifies the user. See issue #455.
@@ -1458,10 +1473,9 @@ extension AppViewModel {
 
             // After a seed restore, the first on-chain sync has now discovered the historical txs.
             // Mark them seen so they don't pop a "Received" sheet, and lift the restore suppression. #588
-            if SettingsViewModel.shared.pendingRestoreActivitySeen, syncType == .onchainWallet {
-                SettingsViewModel.shared.pendingRestoreActivitySeen = false
+            if syncType == .onchainWallet {
                 Task { @MainActor in
-                    await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
+                    await self.completePendingRestoreActivitySeen()
                 }
             }
 

@@ -210,7 +210,9 @@ class ActivityService {
     }
 
     /// Marks every unseen activity across all wallets as seen, each under its own wallet id.
-    func markAllUnseenActivitiesAsSeen() async {
+    /// Returns `false` when the pass did not complete, so callers can keep any suppression they hold. #588
+    @discardableResult
+    func markAllUnseenActivitiesAsSeen() async -> Bool {
         let timestamp = UInt64(Date().timeIntervalSince1970)
 
         do {
@@ -244,8 +246,11 @@ class ActivityService {
             if didMarkAny {
                 activitiesChangedSubject.send()
             }
+
+            return true
         } catch {
             Logger.error("Failed to mark all activities as seen: \(error)", context: "ActivityService")
+            return false
         }
     }
 
