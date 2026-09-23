@@ -19,22 +19,148 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testDisplayOrderPrefersUiStateOrder() {
-        let viewModel = makeViewModel()
-        let baseOrder = makeOrder(id: "base", clientBalanceSat: 100_000, lspBalanceSat: 50000)
-        let updatedOrder = makeOrder(id: "updated", clientBalanceSat: 150_000, lspBalanceSat: 75000)
+    func testEstimatesChangeBalancesWithoutCreatingAnOrder() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        XCTAssertNil(vm.uiState.order)
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 150_000, feeSat: 102_000, isAdvanced: true)
+        XCTAssertTrue(vm.uiState.isAdvanced)
+        XCTAssertNil(vm.uiState.order)
 
-        let fallback = viewModel.displayOrder(for: baseOrder)
-        XCTAssertEqual(fallback.id, baseOrder.id)
-        XCTAssertEqual(fallback.clientBalanceSat, baseOrder.clientBalanceSat)
-
-        viewModel.uiState.order = updatedOrder
-        let result = viewModel.displayOrder(for: baseOrder)
-        XCTAssertEqual(result.id, updatedOrder.id)
-        XCTAssertEqual(result.clientBalanceSat, updatedOrder.clientBalanceSat)
+        try await vm.onDefaultClick(lspBalance: 50000) { client, lsp in
+            XCTAssertEqual(client, 100_000)
+            XCTAssertEqual(lsp, 50000)
+            return 101_500
+        }
+        XCTAssertEqual(vm.uiState.lspBalanceSat, 50000)
+        XCTAssertEqual(vm.uiState.feeSat, 101_500)
+        XCTAssertFalse(vm.uiState.isAdvanced)
+        XCTAssertNil(vm.uiState.order)
     }
 
-    // MARK: - calculateSpendingLimits (Transfer → Spending max)
+    @MainActor
+    func testConfirmationReusesTheOrderUntilANewQuoteStarts() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        var calls = 0
+        let create: (UInt64, UInt64) async throws -> IBtOrder = { client, lsp in
+            calls += 1
+            return self.makeOrder(id: "order-\(calls)", clientBalanceSat: client, lspBalanceSat: lsp, feeSat: client + 1000)
+        }
+        let firstValue = try await vm.orderForConfirmation(createOrder: create)
+        let first = try XCTUnwrap(firstValue)
+        let retryValue = try await vm.orderForConfirmation(createOrder: create)
+        let retry = try XCTUnwrap(retryValue)
+        XCTAssertEqual(first.id, retry.id)
+        XCTAssertEqual(calls, 1)
+
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        XCTAssertNil(vm.uiState.order)
+        let refreshedValue = try await vm.orderForConfirmation(createOrder: create)
+        let refreshed = try XCTUnwrap(refreshedValue)
+        XCTAssertNotEqual(refreshed.id, first.id)
+        XCTAssertEqual(calls, 2)
+    }
+
+    @MainActor
+    func testConfirmationRequiresAnotherSwipeWhenTheCreatedOrderCostsMore() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let createdOrder = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 102_000)
+        var calls = 0
+
+        let first = try await vm.orderForConfirmation { _, _ in
+            calls += 1
+            return createdOrder
+        }
+
+        XCTAssertNil(first)
+        XCTAssertEqual(vm.uiState.order?.id, createdOrder.id)
+        XCTAssertEqual(vm.uiState.feeSat, createdOrder.feeSat)
+
+        let confirmed = try await vm.orderForConfirmation { _, _ in
+            calls += 1
+            return createdOrder
+        }
+
+        XCTAssertEqual(confirmed?.id, createdOrder.id)
+        XCTAssertEqual(calls, 1)
+    }
+
+    @MainActor
+    func testConfirmationReplacesAnExpiredRetainedOrder() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        vm.onOrderCreated(
+            order: makeOrder(
+                id: "expired",
+                clientBalanceSat: 100_000,
+                lspBalanceSat: 50000,
+                feeSat: 101_000,
+                expiresAt: "2000-01-01T00:00:00Z"
+            )
+        )
+        let replacement = makeOrder(id: "replacement", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 101_000)
+        var calls = 0
+
+        let confirmed = try await vm.orderForConfirmation { _, _ in
+            calls += 1
+            return replacement
+        }
+
+        XCTAssertEqual(confirmed?.id, replacement.id)
+        XCTAssertEqual(vm.uiState.order?.id, replacement.id)
+        XCTAssertEqual(calls, 1)
+    }
+
+    @MainActor
+    func testConfirmationReusesAnUnexpiredOrderWithFractionalSeconds() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let retained = makeOrder(
+            id: "retained",
+            clientBalanceSat: 100_000,
+            lspBalanceSat: 50000,
+            feeSat: 101_000,
+            expiresAt: "2099-01-01T00:00:00.175Z"
+        )
+        vm.onOrderCreated(order: retained)
+        var calls = 0
+
+        let confirmed = try await vm.orderForConfirmation { _, _ in
+            calls += 1
+            return self.makeOrder(id: "replacement", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 101_000)
+        }
+
+        XCTAssertEqual(confirmed?.id, retained.id)
+        XCTAssertEqual(calls, 0)
+    }
+
+    @MainActor
+    func testConfirmationBlocksReplacingTheTransfer() {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        vm.uiState.isConfirming = true
+        vm.onEstimateReady(clientBalance: 200_000, lspBalance: 150_000, feeSat: 202_000)
+        XCTAssertEqual(vm.uiState.clientBalanceSat, 100_000)
+        XCTAssertEqual(vm.uiState.lspBalanceSat, 50000)
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
+    }
+
+    @MainActor
+    func testFailedCreationPreservesTheEstimate() async {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        struct CreateFailed: Error {}
+        do {
+            _ = try await vm.orderForConfirmation { _, _ in throw CreateFailed() }
+            XCTFail("Expected creation to fail")
+        } catch {
+            XCTAssertTrue(error is CreateFailed)
+        }
+        XCTAssertNil(vm.uiState.order)
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
+    }
 
     @MainActor
     func testSpendingLimitsCapsAtLspMaxClientBalanceWhenOnchainExceedsIt() async throws {
@@ -600,14 +726,20 @@ final class TransferViewModelTests: XCTestCase {
     private static let lspBalance: UInt64 = 252_368
     private static let networkFee: UInt64 = 2112
     private static let serviceFee: UInt64 = 286
-    private static let lspFee: UInt64 = 2398 // networkFee + serviceFee
+    private static let lspFee: UInt64 = 2398
 
-    private func makeOrder(id: String, clientBalanceSat: UInt64, lspBalanceSat: UInt64) -> IBtOrder {
+    private func makeOrder(
+        id: String,
+        clientBalanceSat: UInt64,
+        lspBalanceSat: UInt64,
+        feeSat: UInt64 = 1000,
+        expiresAt: String = "2099-01-01T00:00:00Z"
+    ) -> IBtOrder {
         IBtOrder(
             id: id,
             state: .created,
             state2: .created,
-            feeSat: 1000,
+            feeSat: feeSat,
             networkFeeSat: 2483,
             serviceFeeSat: 1520,
             lspBalanceSat: lspBalanceSat,
@@ -617,7 +749,7 @@ final class TransferViewModelTests: XCTestCase {
             clientNodeId: "node123",
             channelExpiryWeeks: 52,
             channelExpiresAt: "2025-03-14T10:30:00Z",
-            orderExpiresAt: "2024-03-21T15:45:00Z",
+            orderExpiresAt: expiresAt,
             channel: nil,
             lspNode: .init(alias: "", pubkey: "", connectionStrings: [], readonly: nil),
             lnurl: nil,

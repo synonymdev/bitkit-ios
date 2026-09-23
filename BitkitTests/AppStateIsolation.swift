@@ -1,3 +1,5 @@
+@testable import Bitkit
+import BitkitCore
 import Foundation
 import XCTest
 
@@ -13,6 +15,10 @@ import XCTest
 ///    the app's domain at all.
 /// 2. `snapshotAppDefaults(_:)` when it does not, so the keys are put back afterwards.
 /// 3. `guardAppDefaults(_:)` on suites that should write nothing, to keep it that way.
+///
+/// All three register their work with `addTeardownBlock`, which XCTest runs **before** `tearDown()`.
+/// So a `tearDown` that also clears the same key wins, and silently defeats the restore — if a suite
+/// has one, delete it and let the restore be the cleanup.
 extension XCTestCase {
     /// A `UserDefaults` suite unique to this test, emptied before it runs and removed afterwards.
     func makeIsolatedDefaults(_ label: String = #function, file: StaticString = #filePath, line: UInt = #line) throws -> UserDefaults {
@@ -23,9 +29,27 @@ extension XCTestCase {
         return defaults
     }
 
+    /// Restores the app's entire persistent domain when the test ends. For suites that call
+    /// `SettingsViewModel.resetToDefaults()`, which writes ~30 real keys in one go — including
+    /// `pinEnabled`, `useBiometrics` and `requirePinForPayments` — or that otherwise touch more keys
+    /// than are worth enumerating. Restoring the whole domain also removes keys the test added.
+    func snapshotAppDefaultsDomain(file: StaticString = #filePath, line: UInt = #line) {
+        guard let domain = Bundle.main.bundleIdentifier else {
+            XCTFail("No bundle identifier to snapshot", file: file, line: line)
+            return
+        }
+        let defaults = UserDefaults.standard
+        let snapshot = defaults.persistentDomain(forName: domain) ?? [:]
+        addTeardownBlock { defaults.setPersistentDomain(snapshot, forName: domain) }
+    }
+
     /// Restores `keys` in `UserDefaults.standard` when the test ends, removing any that are absent
     /// now. Use when the code under test has no seam for injected defaults.
     func snapshotAppDefaults(_ keys: String...) {
+        snapshotAppDefaults(keys)
+    }
+
+    func snapshotAppDefaults(_ keys: [String]) {
         let defaults = UserDefaults.standard
         let snapshot = keys.map { (key: $0, value: defaults.object(forKey: $0)) }
         addTeardownBlock {
@@ -37,6 +61,51 @@ extension XCTestCase {
                 }
             }
         }
+    }
+
+    /// Restores `keys` in the shared `group.bitkit` suite when the test ends. Constructing a
+    /// `CurrencyViewModel` syncs the display currency into that suite from its initializer, so any
+    /// suite that builds one writes state the widget extension reads.
+    func snapshotAppGroupDefaults(_ keys: String...) {
+        guard let defaults = UserDefaults(suiteName: "group.bitkit") else { return }
+        let snapshot = keys.map { (key: $0, value: defaults.object(forKey: $0)) }
+        addTeardownBlock {
+            for entry in snapshot {
+                if let value = entry.value {
+                    defaults.set(value, forKey: entry.key)
+                } else {
+                    defaults.removeObject(forKey: entry.key)
+                }
+            }
+        }
+    }
+
+    /// Waits for work already queued on the core service queue to finish.
+    ///
+    /// `CoreService.init` calls `initDb` against the app's real storage twice — once synchronously and
+    /// once queued — and `initDb` is last-one-wins. Touching `CoreService.shared` and then calling
+    /// `initDb` against a temp directory is therefore not enough on its own: the queued call can land
+    /// afterwards and point the globals back at the app's database. The queue is serial, so enqueueing
+    /// a no-op and awaiting it drains whatever was queued ahead of it.
+    func drainCoreServiceQueue() async {
+        // Both copies: `ServiceQueue` is compiled into the test target as well as the app, so each has
+        // its own `coreQueue`. `CoreService.shared` reached through `Bitkit.` queues onto the app
+        // module's, which the test target's drain would not wait on.
+        _ = try? await ServiceQueue.background(.core) { true }
+        _ = try? await Bitkit.ServiceQueue.background(.core) { true }
+    }
+
+    /// Points bitkit-core's global connections back at the app's own storage, for a suite that moved
+    /// them to a temp directory. Call it before unlinking that directory: the connections stay open on
+    /// the old path, and a later write through core then fails with `attempt to write a readonly
+    /// database`. The app's storage is namespaced under test, so this is a safe target.
+    ///
+    /// `init_db` also rebuilds the Blocktank client with bitkit-core's default URL, which is mainnet
+    /// (`api1.blocktank.to`). Without restoring `Env.blocktankClientServer`, every later suite's
+    /// regtest faucet call 404s.
+    func repointCoreToAppStorage() async {
+        _ = try? initDb(basePath: Env.bitkitCoreStorage(walletIndex: 0).path)
+        try? await updateBlocktankUrl(newUrl: Env.blocktankClientServer)
     }
 
     /// Skips the test unless `BITKIT_DESTRUCTIVE_TESTS=1` is set. For the handful of suites that
@@ -77,5 +146,19 @@ extension XCTestCase {
                 )
             }
         }
+    }
+}
+
+/// A `CurrencyService` that never reaches the network.
+///
+/// `CurrencyViewModel` starts polling from its initializer, and `refresh()` writes `cached_fx_rates`
+/// and mirrors the display currency into the shared app group — but only on success. Failing the
+/// fetch keeps both writes from ever happening, which a snapshot cannot do on its own: the refresh
+/// is unstructured and can complete after the restore has already run.
+final class OfflineCurrencyService: CurrencyService {
+    struct Offline: Error {}
+
+    override func fetchLatestRates() async throws -> [FxRate] {
+        throw Offline()
     }
 }

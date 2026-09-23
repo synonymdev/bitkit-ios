@@ -5,14 +5,18 @@ import XCTest
 
 final class PubkyImageCacheTests: XCTestCase {
     func testClearRemovesCachedImageFromMemoryAndDisk() async throws {
-        let cache = PubkyImageCache.shared
+        // `.shared` writes to the real ~/Library/Caches/pubky-images, so clearing it here threw away
+        // the user's downloaded avatars. Every other test in this file already injects a directory.
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = PubkyImageCache(diskDirectory: directory)
         let uri = "pubky://test-user/pub/bitkit.to/blobs/avatar.jpg"
         let image = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1)).image { context in
             context.cgContext.setFillColor(UIColor.red.cgColor)
             context.cgContext.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
         }
         let imageData = try XCTUnwrap(image.pngData())
-        let diskPath = pubkyImageDiskPath(for: uri)
+        let diskPath = pubkyImageDiskPath(for: uri, directory: directory)
 
         await cache.clear()
         cache.store(image, data: imageData, for: uri)

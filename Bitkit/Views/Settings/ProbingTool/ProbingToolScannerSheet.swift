@@ -11,7 +11,8 @@ struct ProbingToolScannerSheet: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Scanner(
-                    onScan: { uri in
+                    onScan: { payload in
+                        guard let uri = payload.string else { return }
                         await MainActor.run {
                             invoice = uri.trimmingCharacters(in: .whitespacesAndNewlines)
                             onScanned()
