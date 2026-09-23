@@ -6,8 +6,6 @@ struct ProfileView: View {
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     @State private var showSignOutConfirmation = false
-    @State private var showAddTagSheet = false
-    @State private var isUpdatingTags = false
     @State private var isSigningOut = false
 
     var body: some View {
@@ -72,22 +70,11 @@ struct ProfileView: View {
 
                 CustomDivider()
 
-                VStack(alignment: .leading, spacing: 0) {
-                    if !profile.links.isEmpty {
-                        profileLinks(profile)
-                    }
-
-                    profileTags(profile)
-                        .padding(.top, 16)
+                if !profile.links.isEmpty {
+                    profileLinks(profile)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 16)
-        }
-        .sheet(isPresented: $showAddTagSheet) {
-            AddProfileTagSheet { tag in
-                addTag(tag, to: profile)
-            }
         }
     }
 
@@ -150,58 +137,6 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(profile.links.enumerated()), id: \.element.id) { index, link in
                 ProfileLinkRow(label: link.label, value: link.url, linkIndex: index)
-            }
-        }
-    }
-
-    // MARK: - Tags
-
-    private func profileTags(_ profile: PubkyProfile) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("profile__create_tags_label"), textColor: .white64)
-                .accessibilityIdentifier("ProfileViewTagsHeader")
-
-            WrappingHStack(spacing: 8) {
-                ForEach(profile.tags, id: \.self) { tag in
-                    Tag(tag, icon: .close, onDelete: {
-                        updateTags(profile.tags.filter { $0 != tag }, profile: profile)
-                    })
-                }
-
-                IconActionButton(
-                    icon: "tag",
-                    title: t("profile__create_add_tag"),
-                    accessibilityId: "ProfileAddTag"
-                ) {
-                    showAddTagSheet = true
-                }
-            }
-            .disabled(isUpdatingTags)
-        }
-    }
-
-    private func addTag(_ tag: String, to profile: PubkyProfile) {
-        guard !profile.tags.contains(tag) else { return }
-        updateTags(profile.tags + [tag], profile: profile)
-    }
-
-    private func updateTags(_ tags: [String], profile: PubkyProfile) {
-        guard !isUpdatingTags else { return }
-        isUpdatingTags = true
-
-        Task {
-            defer { isUpdatingTags = false }
-
-            do {
-                try await pubkyProfile.saveProfile(
-                    name: profile.name,
-                    bio: profile.bio,
-                    links: profile.links,
-                    tags: tags
-                )
-            } catch {
-                Logger.error("Failed to update profile tags: \(error)", context: "ProfileView")
-                app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
             }
         }
     }
