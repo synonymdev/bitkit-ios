@@ -239,11 +239,11 @@ Do not share with individual emails and never use `type: anyone` (public).
 
 Store the doc URL and sharing status (`shared with Synonym` | `created, domain share pending` | `not created`) for the summary.
 
-### 6c. Draft #bitkit-native Slack Announcement
+### 6c. Prepare #bitkit-native Slack Draft (local only)
 
-Prepare a footer-free Slack announcement for Jacobo / the team in `#bitkit-native` (`C07BJ7DNPCG`). **Never call `slack_send_message`** — it always appends `Sent using Cursor`. Use `slack_send_message_draft` only, and the user must send each draft **from the Slack app** (sending from the Cursor-side draft widget also adds the footer).
+Prepare a footer-free Slack announcement for Jacobo / the team in `#bitkit-native` (`C07BJ7DNPCG`). **Do not post to Slack in this step** — write the local file only. Posting happens after TestFlight (see **Post Slack** after step 7). **Default:** wait until both RCs are ready, then one complete parent+reply. **Rare:** single-platform hotfix — post for this platform only (see 7b). **Never** create a Slack draft or channel message that contains `TODO`.
 
-**Write the local draft** to `.ai/slack-release-{newVersionName}.md` (create `.ai/` if needed). Format: Slack MCP markdown (`- ` lists, `[text](url)` links, `<@UID>` mentions). Fill this platform from the current release; fill the sibling platform if its release branch / PR / tag / Google Doc already exists, otherwise leave `TODO` and print that the file can be updated after the sibling cut.
+**Write the local draft** to `.ai/slack-release-{newVersionName}.md` (create `.ai/` if needed). Format: Slack MCP markdown (`- ` lists, `[text](url)` links, `<@UID>` mentions). Fill this platform from the current release; fill the sibling from its release branch / PR / tag / Google Doc / GH APK when known. Incomplete sibling fields may stay as `TODO` **in this local file only**.
 
 Template (iOS is this platform; Android is the sibling):
 
@@ -253,6 +253,7 @@ Template (iOS is this platform; Android is the sibling):
 Format: Slack MCP markdown (`- ` lists, `[text](url)` links, `<@UID>` mentions).
 Post via `slack_send_message_draft` only (never `slack_send_message`).
 Send each draft from the Slack app, not the Cursor widget.
+Do not post until both RCs are ready (no TODO in the Reply body).
 
 ## Thread parent
 
@@ -262,13 +263,13 @@ Release `{newVersionName}` :thread:
 
 Release candidates:
 - iOS {newVersionName} ({newBuildNumber}) - available in TestFlight ([github.com/synonymdev/bitkit-ios/releases](https://github.com/synonymdev/bitkit-ios/releases))
-- Android {newVersionName} ({Android build or TODO}) - available on [github.com/synonymdev/bitkit-android/releases](https://github.com/synonymdev/bitkit-android/releases)
+- Android {newVersionName} ({Android build}) - available on [github.com/synonymdev/bitkit-android/releases](https://github.com/synonymdev/bitkit-android/releases)
 
 cc: <@U04NN8MV2GY> <@U03DQKN95BK>
 cc: <@U031TCP84D8> <@U06UXSF134N> for design review
 
 Proposed Store Release notes:
-- Android: [v{newVersionName} Android]({Android Google Doc URL or TODO})
+- Android: [v{newVersionName} Android]({Android Google Doc URL})
 - iOS: [v{newVersionName} iOS]({iOS Google Doc URL from 6b})
 
 cc: <@U07D3A8RSPN>
@@ -278,7 +279,7 @@ Please find GH release notes for both platforms for detailed changes:
 - [github.com/synonymdev/bitkit-ios/releases](https://github.com/synonymdev/bitkit-ios/releases)
 
 Version bump PRs (release branches, merged into master after the store release):
-- Android: [{Android PR URL label or TODO}]({Android PR URL or TODO})
+- Android: [{Android PR URL label}]({Android PR URL})
 - iOS: [{iOS PR URL label}]({iOS PR URL from step 4})
 
 These builds will be used for testing following the [testing framework](https://docs.google.com/spreadsheets/d/10_DufEPwKUCExkXF-jTY7njE0mh5ZspwhRw42NBBd-o).
@@ -292,24 +293,7 @@ These builds will be used for testing following the [testing framework](https://
 - U07D3A8RSPN Jacobo
 ```
 
-Print the path to the local draft.
-
-**Post as Slack drafts (two-step; one attached draft per channel at a time):**
-
-1. Create the **parent** draft in `#bitkit-native` (`channel_id`: `C07BJ7DNPCG`) with body exactly: `Release \`{newVersionName}\` :thread:`
-2. Tell the user: send that draft **from the Slack app** (not the Cursor widget), then confirm when done — or just proceed to poll.
-3. Poll with `slack_read_channel` on `C07BJ7DNPCG` every **5 seconds** until a message appears whose text is `Release \`{newVersionName}\` :thread:` and that does **not** include `Sent using`. Cap at ~2 minutes. If not found after the cap: print `⚠ Parent not posted in time — send the parent+reply manually from .ai/slack-release-{newVersionName}.md` and continue the release (do not keep polling).
-4. Create the **reply** draft with `thread_ts` set to that parent's message `ts`, body = the `## Reply` section from `.ai/slack-release-{newVersionName}.md` (markdown body only, no headings).
-5. Tell the user: open the new thread in `#bitkit-native` and send the reply draft **from Slack**.
-
-**When the sibling already started the thread:** if the parent `Release \`{newVersionName}\` :thread:` is already in the channel, skip steps 1–3 and use that parent's `ts`. Then inspect the thread with `slack_read_thread`:
-- No reply yet → create the reply draft as in steps 4–5 from this run's filled `## Reply` section.
-- Reply exists and already has this platform's finalized build, Google Doc URL, and version-bump PR (no `TODO` for iOS) → skip Slack posting; print that the sibling reply is complete.
-- Reply exists but still has `TODO` (or missing) values for this platform → do **not** skip. Draft a **follow-up** in the same thread via `slack_send_message_draft` (`thread_ts` = parent) with this platform's now-known build, store-notes doc, and version-bump PR only. Update `.ai/slack-release-{newVersionName}.md` to match. Tell the user to send that follow-up from the Slack app.
-
-**Fallbacks (never block the release):** Slack MCP unavailable → print `⚠ Slack draft not created — post manually from .ai/slack-release-{newVersionName}.md` and continue.
-
-Store the local draft path for the summary.
+Print the path to the local draft. Store it for the summary. Slack posting is deferred until after TestFlight.
 
 ### 7. Build & Upload to TestFlight (optional)
 
@@ -387,6 +371,33 @@ TestFlight compliance (set in App Store Connect after build processes):
 - Distribute in France: "Yes"
 ```
 
+### 7b. Post Slack (both RCs, or rare single-platform hotfix)
+
+If the user skipped TestFlight above, ask whether build `{newBuildNumber}` is already processing/available on TestFlight before treating iOS as ready. If not on TestFlight yet, treat as not ready (same ask as sibling-not-ready below).
+
+**Both ready** (default) means all of the following (no `TODO` left in the Reply body):
+- iOS: build `{newBuildNumber}` is on TestFlight (or uploading/processing after step 7), version-bump PR URL known, store-notes Google Doc URL known.
+- Android: `v{newVersionName}` GH draft has the APK, versionCode known, version-bump PR URL known, store-notes Google Doc URL known when the Android doc was created.
+
+Refresh `.ai/slack-release-{newVersionName}.md` with finalized values.
+
+**If the sibling is not ready yet** (or this platform is not on TestFlight yet): ask the user:
+1. `Wait for sibling` (default) — print `⏸ Slack not posted — waiting until Android {newVersionName} APK is on the GH draft release (and its doc/PR are known). Local draft: .ai/slack-release-{newVersionName}.md`. Do not call Slack. Continue the release.
+2. `Single-platform hotfix` (rare) — rewrite the Reply to **iOS-only**: drop Android RC / doc / PR lines (do not leave `TODO`); open with a clear iOS-only/hotfix cue in the first line of the reply (e.g. `iOS-only hotfix:`). Then post per the steps below. Only offer this when this iOS build is (or will be) on TestFlight.
+3. `Skip Slack` — print a manual reminder and continue.
+
+**If a complete reply for this version already exists** in `#bitkit-native` (parent `Release \`{newVersionName}\` :thread:` with a reply that has no `TODO`): skip Slack; print that the announcement is already posted.
+
+**If ready to post** (both platforms filled, or user chose single-platform hotfix) **and no complete reply exists yet:** post as Slack drafts (two-step; one attached draft per channel at a time). **Never call `slack_send_message`** — it always appends `Sent using Cursor`. Use `slack_send_message_draft` only; the user must send each draft **from the Slack app** (Cursor widget also adds the footer).
+
+1. If parent `Release \`{newVersionName}\` :thread:` is already in the channel, reuse its `ts` and skip to step 4. Otherwise create the **parent** draft in `#bitkit-native` (`channel_id`: `C07BJ7DNPCG`) with body exactly: `Release \`{newVersionName}\` :thread:`
+2. Tell the user: send that draft **from the Slack app** (not the Cursor widget), then confirm when done — or proceed to poll.
+3. Poll with `slack_read_channel` on `C07BJ7DNPCG` every **5 seconds** until a message appears whose text is `Release \`{newVersionName}\` :thread:` and that does **not** include `Sent using`. Cap at ~2 minutes. If not found after the cap: ask the user whether the parent was posted (`Yes, continue` / `Skip Slack and continue`). On Yes, locate the parent once more; on Skip, print a manual-post reminder and continue the release (do not keep polling).
+4. Create the **reply** draft with `thread_ts` set to that parent's message `ts`, body = the `## Reply` section from `.ai/slack-release-{newVersionName}.md` (markdown body only, no headings). The body must contain **no** `TODO`.
+5. Tell the user: open the thread in `#bitkit-native` and send the reply draft **from Slack**.
+
+**Fallbacks (never block the release):** Slack MCP unavailable → print `⚠ Slack draft not created — post manually from .ai/slack-release-{newVersionName}.md when ready` and continue.
+
 ### 8. Return to Master (CLI build only)
 
 If the user chose the CLI build path (build is done), return to master:
@@ -409,10 +420,11 @@ Draft release: {release URL}
 
 Store release notes: .ai/release-notes-{newVersionName}.md
 Release notes doc: {Google Doc URL or "(not created)"} ({sharing status from 6b})
-Slack draft: .ai/slack-release-{newVersionName}.md (#bitkit-native parent+reply drafts)
+Slack draft: .ai/slack-release-{newVersionName}.md ({posted parent+reply | deferred — waiting for sibling RC | single-platform hotfix posted | already posted | skipped})
 
 Next steps:
-- Send the #bitkit-native Slack drafts from the Slack app (if not already; include any follow-up that filled sibling TODOs)
+- If Slack was deferred: post once the sibling RC is ready, or choose single-platform hotfix if this cut ships alone (no TODOs in the reply)
+- Send any #bitkit-native Slack drafts from the Slack app (if not already)
 - Share the release notes doc with Jacobo for review (if domain share is still pending, apply it first)
 - Build and upload to TestFlight (if not done above)
 - Set TestFlight compliance after build processes
