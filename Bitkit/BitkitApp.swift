@@ -132,6 +132,72 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         Logger.error("🔔 AppDelegate: didFailToRegisterForRemoteNotificationsWithError: \(error)")
     }
 
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        guard let probeId = userInfo["bitkit_wake_probe"] as? String else {
+            completionHandler(.noData)
+            return
+        }
+
+        Task { @MainActor in
+            let receivedAt = Date()
+            let initialNodeRunning = LightningService.shared.status?.isRunning
+            let appState = switch application.applicationState {
+            case .active: "active"
+            case .inactive: "inactive"
+            case .background: "background"
+            @unknown default: "unknown"
+            }
+
+            var result: [String: Any] = [
+                "probeId": probeId,
+                "receivedAt": ISO8601DateFormatter().string(from: receivedAt),
+                "appState": appState,
+                "initialNodeRunning": initialNodeRunning.map { $0 as Any } ?? NSNull(),
+            ]
+            guard recordWakeProbe(result) else {
+                completionHandler(.failed)
+                return
+            }
+
+            var nodeRunning = initialNodeRunning
+            for _ in 0 ..< 20 where nodeRunning != true {
+                try? await Task.sleep(for: .seconds(1))
+                nodeRunning = LightningService.shared.status?.isRunning
+            }
+
+            result["finishedAt"] = ISO8601DateFormatter().string(from: Date())
+            result["finalNodeRunning"] = nodeRunning.map { $0 as Any } ?? NSNull()
+            guard recordWakeProbe(result) else {
+                completionHandler(.failed)
+                return
+            }
+
+            Logger.info("Recorded background wake probe '\(probeId)' with node running '\(nodeRunning == true)'", context: "AppDelegate")
+            completionHandler(.newData)
+        }
+    }
+
+    private func recordWakeProbe(_ result: [String: Any]) -> Bool {
+        guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              let data = try? JSONSerialization.data(withJSONObject: result)
+        else { return false }
+
+        do {
+            try data.write(to: documents.appendingPathComponent("background-wake-probe.json"), options: .atomic)
+            if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.bitkit") {
+                try? data.write(to: container.appendingPathComponent("background-wake-probe.json"), options: .atomic)
+            }
+            return true
+        } catch {
+            Logger.error(error, context: "AppDelegate")
+            return false
+        }
+    }
+
     /// Foreground notification presentation
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,

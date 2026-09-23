@@ -1,42 +1,46 @@
-# Push Notification Test Server
+# Bitkit iOS push tests
 
-A simple Node.js server for testing push notifications with the Bitkit iOS app.
+`send-wake-probe.mjs` sends directly to APNs using Node.js built-ins. It does not
+need `npm install` and never reads the stale `DEVICE_TOKEN` or `APP_BUNDLE_ID`
+values from an existing `.env` file.
 
-## Setup
+Create `test-push-server/.env` with the Apple APNs signing key settings:
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-2. **Configure environment:**
-   Create a `.env` file in the project root with your custom values:
-   ```bash
-   # Apple Push Notification Service Configuration
-   APN_KEY_ID=your_key_id_here
-   APN_TEAM_ID=your_team_id_here
-   APN_KEY_FILE=./path/to/your/AuthKey.p8
-   APN_PRODUCTION=false
-
-   # App Configuration
-   APP_BUNDLE_ID=your.app.bundle.id
-
-   # Test Device Token (replace with your actual device token)
-   DEVICE_TOKEN=your_device_token_here
-   ```
-
-3. **Add your APN key file:**
-   - Place your `.p8` key file in the project directory
-   - Update `APN_KEY_FILE` in your `.env` file to point to it
-
-## Usage
-
-```bash
-node index.js
+```text
+APN_KEY_ID=your-key-id
+APN_TEAM_ID=your-team-id
+APN_KEY_FILE=./AuthKey.p8
+APN_PRODUCTION=false
 ```
 
-## Troubleshooting
+The key path is relative to this directory. Keep the `.p8` file and `.env`
+private; both are gitignored. A Debug build signed for development needs
+`APN_PRODUCTION=false`. The app topic defaults to `to.bitkit`; override it
+with `BITKIT_APN_TOPIC` only if the installed app has a different bundle ID.
 
-- **"APN key file not found"**: Ensure your `.p8` key file exists and the path is correct
-- **"No device token configured"**: Set `DEVICE_TOKEN` in your `.env` file
-- **Push notification fails**: Check that your device token is valid and your APN credentials are correct
+From this directory, set the current iPhone token in your shell and send a
+silent background push:
+
+```sh
+export BITKIT_DEVICE_TOKEN=<current-64-character-token>
+node --env-file=.env send-wake-probe.mjs wake
+```
+
+The experimental app records the callback and observed node state in its
+`Documents/background-wake-probe.json` file, and also tries to copy it to the
+`group.bitkit` app group. A successful APNs HTTP response means Apple accepted
+the push; it does **not** prove the phone received it or ran the callback.
+Background pushes may be delayed or dropped.
+
+For the two-push diagnostic, send an unconditional visible fallback after a
+15-second delay:
+
+```sh
+node --env-file=.env send-wake-probe.mjs pair
+```
+
+Set `WAKE_FALLBACK_DELAY_MS` to change the delay (0–60000 ms). The fallback is
+deliberately unconditional: this test does not know whether a payment settled,
+so it must not be used as a production notification policy. `alert` sends only
+the visible fallback. Avoid repeated silent pushes in a short period; iOS may
+throttle or coalesce them. APNs may also reorder the two pushes in `pair` mode.
