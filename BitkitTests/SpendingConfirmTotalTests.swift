@@ -39,6 +39,30 @@ final class SpendingConfirmTotalTests: XCTestCase {
         )
     }
 
+    func testNormalPath_SaturatesOnOverflow() {
+        XCTAssertEqual(
+            SpendingConfirmTotal.leavingAmount(
+                orderFeeSat: UInt64.max,
+                networkFeeSat: 1,
+                shouldUseSendAll: false,
+                maxSendable: nil
+            ),
+            UInt64.max
+        )
+    }
+
+    func testSendAllPath_SaturatesOnOverflow() {
+        XCTAssertEqual(
+            SpendingConfirmTotal.leavingAmount(
+                orderFeeSat: 1,
+                networkFeeSat: 1,
+                shouldUseSendAll: true,
+                maxSendable: UInt64.max
+            ),
+            UInt64.max
+        )
+    }
+
     func testSendAllPath_WithoutMaxSendable_FallsBackToOrderPlusFee() {
         XCTAssertEqual(
             SpendingConfirmTotal.leavingAmount(

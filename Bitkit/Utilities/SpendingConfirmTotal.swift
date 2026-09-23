@@ -11,8 +11,8 @@ enum SpendingConfirmTotal {
         maxSendable: UInt64?
     ) -> UInt64 {
         if shouldUseSendAll, let maxSendable {
-            return maxSendable + networkFeeSat
+            return maxSendable.saturatingAdd(networkFeeSat)
         }
-        return orderFeeSat + networkFeeSat
+        return orderFeeSat.saturatingAdd(networkFeeSat)
     }
 }
