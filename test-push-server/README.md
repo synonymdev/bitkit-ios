@@ -28,9 +28,13 @@ node --env-file=.env send-wake-probe.mjs wake
 
 The experimental app records the callback and observed node state in its
 `Documents/background-wake-probe.json` file, and also tries to copy it to the
-`group.bitkit` app group. A successful APNs HTTP response means Apple accepted
-the push; it does **not** prove the phone received it or ran the callback.
-Background pushes may be delayed or dropped.
+`group.bitkit` app group. It refreshes LDK's peer state, attempts to reconnect
+peers, and keeps the callback open for up to about 23 seconds while checking
+whether the count of settled inbound payments increases. These counts are
+diagnostic only; they are not tied to a specific invoice and must not be used
+as a production payment acknowledgement. A successful APNs HTTP response means
+Apple accepted the push; it does **not** prove the phone received it or ran the
+callback. Background pushes may be delayed or dropped.
 
 For the two-push diagnostic, send an unconditional visible fallback after a
 15-second delay:

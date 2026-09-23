@@ -169,8 +169,40 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 nodeRunning = LightningService.shared.status?.isRunning
             }
 
-            result["finishedAt"] = ISO8601DateFormatter().string(from: Date())
             result["finalNodeRunning"] = nodeRunning.map { $0 as Any } ?? NSNull()
+            if nodeRunning == true {
+                await LightningService.shared.refreshCache()
+                result["connectedPeersBeforeReconnect"] = LightningService.shared.peers?.filter(\.isConnected).count ?? 0
+                guard recordWakeProbe(result) else {
+                    completionHandler(.failed)
+                    return
+                }
+
+                await LightningService.shared.reconnectPeers()
+                await LightningService.shared.refreshCache()
+                result["connectedPeersAfterReconnect"] = LightningService.shared.peers?.filter(\.isConnected).count ?? 0
+                let initialSettledPayments = await LightningService.shared.listPayments()?.filter {
+                    $0.direction == .inbound && $0.status == .succeeded
+                }.count ?? 0
+                result["settledInboundPaymentsBeforeWait"] = initialSettledPayments
+                guard recordWakeProbe(result) else {
+                    completionHandler(.failed)
+                    return
+                }
+
+                // Leave time for the completion handler before iOS's roughly 30-second background limit.
+                while Date().timeIntervalSince(receivedAt) < 23 {
+                    try? await Task.sleep(for: .seconds(2))
+                    let settledPayments = await LightningService.shared.listPayments()?.filter {
+                        $0.direction == .inbound && $0.status == .succeeded
+                    }.count ?? initialSettledPayments
+                    result["settledInboundPaymentsAfterWait"] = settledPayments
+                    if settledPayments > initialSettledPayments {
+                        break
+                    }
+                }
+            }
+            result["finishedAt"] = ISO8601DateFormatter().string(from: Date())
             guard recordWakeProbe(result) else {
                 completionHandler(.failed)
                 return
