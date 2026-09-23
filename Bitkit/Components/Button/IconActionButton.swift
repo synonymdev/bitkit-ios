@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// A pill-shaped button with an icon and label, used for "Add Link", "Add Tag" actions.
+/// A small pill button with an optional icon, used for "Add Link", "Add Tag" and suggestion pills.
 struct IconActionButton: View {
-    let icon: String
+    let icon: String?
     let isSystemIcon: Bool
     let title: String
     let tint: Color
@@ -10,7 +10,7 @@ struct IconActionButton: View {
     let action: () -> Void
 
     init(
-        icon: String,
+        icon: String? = nil,
         isSystemIcon: Bool = false,
         title: String,
         tint: Color = .white,
@@ -28,38 +28,36 @@ struct IconActionButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                if isSystemIcon {
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(tint)
-                } else {
-                    Image(icon)
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundColor(tint)
-                        .frame(width: 14, height: 14)
+                if let icon {
+                    iconImage(icon)
+                        .frame(width: 16, height: 16)
                 }
 
-                BodySSBText(title, textColor: tint)
+                CaptionBText(title, textColor: tint)
                     .lineLimit(1)
             }
             .padding(.horizontal, 16)
             .frame(height: 40)
-            .background(
-                LinearGradient(
-                    colors: [Color(hex: 0x2A2A2A), Color(hex: 0x1C1C1C)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 64)
-                    .stroke(Color.white10, lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.32), radius: 2, x: 0, y: 2)
+            .background(ButtonGradient())
             .cornerRadius(64)
+            .shadow(color: .white10, radius: 0, x: 0, y: -1)
+            .shadow(color: .black.opacity(0.32), radius: 2, x: 0, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(accessibilityId)
+    }
+
+    @ViewBuilder
+    private func iconImage(_ icon: String) -> some View {
+        if isSystemIcon {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(tint)
+        } else {
+            Image(icon)
+                .resizable()
+                .scaledToFit()
+                .foregroundColor(tint)
+        }
     }
 }

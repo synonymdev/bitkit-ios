@@ -58,12 +58,12 @@ struct ProfileView: View {
                     nameAccessibilityIdentifier: "ProfileViewName",
                     notesAccessibilityIdentifier: "ProfileViewNotes"
                 )
-                .padding(.top, 24)
-                .padding(.bottom, 24)
+                .padding(.top, 32)
+                .padding(.bottom, 16)
 
                 profileQRCode(profile)
                     .frame(width: 279)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 16)
 
                 profileActions
                     .padding(.bottom, 24)
@@ -85,7 +85,7 @@ struct ProfileView: View {
             }
             .accessibilityIdentifier("ProfileEdit")
 
-            GradientCircleButton(icon: "copy", accessibilityLabel: t("common__copy")) {
+            GradientCircleButton(icon: "copy", iconSize: 18, accessibilityLabel: t("common__copy")) {
                 if let pk = pubkyProfile.publicKey {
                     UIPasteboard.general.string = pk
                     app.toast(type: .success, title: t("common__copied"), accessibilityIdentifier: "ProfilePubkyCopiedToast")

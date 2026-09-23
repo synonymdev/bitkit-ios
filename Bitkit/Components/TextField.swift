@@ -31,7 +31,7 @@ struct TextField: View {
     }
 
     var body: some View {
-        ZStack(alignment: .leading) {
+        ZStack(alignment: .topLeading) {
             if text.isEmpty {
                 Text(placeholder)
                     .foregroundColor(.secondary)

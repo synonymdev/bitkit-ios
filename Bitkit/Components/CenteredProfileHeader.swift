@@ -13,12 +13,10 @@ struct CenteredProfileHeader: View {
     var notesAccessibilityIdentifier: String?
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 16) {
             CaptionMText(truncatedKey, textColor: .white64)
-                .padding(.bottom, 16)
 
             avatarView
-                .padding(.bottom, 16)
 
             Text(name.uppercased())
                 .font(Fonts.black(size: 44))
@@ -27,7 +25,6 @@ struct CenteredProfileHeader: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom, showBio && !bio.isEmpty ? 8 : 0)
                 .accessibilityIdentifierIfPresent(nameAccessibilityIdentifier)
 
             if showBio, !bio.isEmpty {
@@ -35,7 +32,7 @@ struct CenteredProfileHeader: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 16)
+                    .padding(.horizontal, 16)
                     .accessibilityIdentifierIfPresent(notesAccessibilityIdentifier)
             }
 

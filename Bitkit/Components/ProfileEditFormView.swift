@@ -23,6 +23,8 @@ struct ProfileEditFormView<Avatar: View>: View {
     let onDelete: (() -> Void)?
     @ViewBuilder let avatar: () -> Avatar
 
+    @Environment(KeyboardManager.self) private var keyboard
+
     @State private var showAddLinkSheet = false
     @State private var showAddTagSheet = false
 
@@ -77,7 +79,9 @@ struct ProfileEditFormView<Avatar: View>: View {
                 dismissKeyboard()
             }
 
-            footerBar
+            if !keyboard.isPresented {
+                footerBar
+            }
         }
         .sheet(isPresented: $showAddLinkSheet, onDismiss: dismissKeyboard) {
             AddLinkSheet { label, url in
@@ -116,6 +120,7 @@ struct ProfileEditFormView<Avatar: View>: View {
                 axis: .vertical,
                 testIdentifier: "ProfileEditBio"
             )
+            .lineLimit(3, reservesSpace: true)
         }
     }
 
@@ -229,9 +234,9 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     private var tagsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !tags.isEmpty {
-                CaptionMText(t("profile__create_tags_label"), textColor: .white64)
+            CaptionMText(t("profile__create_tags_label"), textColor: .white64)
 
+            if !tags.isEmpty {
                 WrappingHStack(spacing: 8) {
                     ForEach(tags, id: \.self) { tag in
                         Tag(tag, icon: .close, onDelete: {

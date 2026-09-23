@@ -227,6 +227,7 @@ struct EditProfileView: View {
             .environmentObject(NavigationViewModel())
             .environmentObject(PubkyProfileManager())
             .environmentObject(ContactsManager())
+            .environment(KeyboardManager())
     }
     .preferredColorScheme(.dark)
 }

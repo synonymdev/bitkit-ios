@@ -5,6 +5,7 @@ import SwiftUI
 struct ProfileNameField: View {
     @Binding var name: String
     let accessibilityId: String
+    var focusesWhenEmpty = false
 
     @FocusState private var isFocused: Bool
 
@@ -34,5 +35,10 @@ struct ProfileNameField: View {
                 }
             }
             .accessibilityIdentifier(accessibilityId)
+            .task {
+                if focusesWhenEmpty, name.isEmpty {
+                    isFocused = true
+                }
+            }
     }
 }

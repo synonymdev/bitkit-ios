@@ -30,6 +30,7 @@ struct CreateProfileView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .bottomSafeAreaPadding()
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .task {
@@ -107,7 +108,7 @@ struct CreateProfileView: View {
     // MARK: - Name Input
 
     private var nameInput: some View {
-        ProfileNameField(name: $username, accessibilityId: "CreateProfileUsername")
+        ProfileNameField(name: $username, accessibilityId: "CreateProfileUsername", focusesWhenEmpty: true)
     }
 
     // MARK: - Pubky Key Section

@@ -182,6 +182,7 @@ struct EditContactView: View {
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
+            .environment(KeyboardManager())
             .environmentObject(PubkyProfileManager())
     }
     .preferredColorScheme(.dark)
