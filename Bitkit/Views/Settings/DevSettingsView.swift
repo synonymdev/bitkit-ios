@@ -7,6 +7,7 @@ struct DevSettingsView: View {
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
     @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
+    @AppStorage(DemoClock.offsetDaysKey) private var demoClockOffsetDays = 0
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
@@ -102,6 +103,10 @@ struct DevSettingsView: View {
                             ),
                             testIdentifier: "PaykitUiToggle"
                         )
+
+                        if DemoClock.isAvailable {
+                            demoClockOffsetMenu
+                        }
                     }
 
                     Button {
@@ -216,6 +221,28 @@ struct DevSettingsView: View {
         } message: {
             Text("Paykit features are experimental and may not work reliably.")
         }
+    }
+
+    private var demoClockOffsetMenu: some View {
+        Menu {
+            ForEach(DemoClock.offsetDaysPresets, id: \.self) { days in
+                Button(Self.demoClockOffsetLabel(days)) {
+                    demoClockOffsetDays = days
+                }
+                .accessibilityIdentifier("DemoClockOffset-\(days)")
+            }
+        } label: {
+            SettingsRow(
+                title: "Demo clock offset (days)",
+                rightText: Self.demoClockOffsetLabel(DemoClock.clampedOffsetDays(demoClockOffsetDays)),
+                rightIcon: nil
+            )
+        }
+        .accessibilityIdentifier("DemoClockOffset")
+    }
+
+    private static func demoClockOffsetLabel(_ days: Int) -> String {
+        days == 0 ? "Off" : "\(days)"
     }
 
     @MainActor

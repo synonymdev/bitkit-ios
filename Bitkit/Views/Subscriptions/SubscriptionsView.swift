@@ -37,7 +37,7 @@ struct SubscriptionsView: View {
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     @State private var selectedTab = Tab.overview
-    @State private var now = Date()
+    @State private var now = DemoClock.subscriptionNow()
     private let showPayments: Bool
 
     init(showPayments: Bool = false) {
@@ -103,7 +103,7 @@ struct SubscriptionsView: View {
             } catch {
                 return
             }
-            now = Date()
+            now = DemoClock.subscriptionNow()
         }
     }
 
@@ -367,7 +367,7 @@ struct SubscriptionDetailView: View {
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     let id: PaykitSubscription.ID
-    @State private var now = Date()
+    @State private var now = DemoClock.subscriptionNow()
 
     private var subscription: PaykitSubscription? {
         paymentRequests.subscriptions.first { $0.id == id }
@@ -421,7 +421,7 @@ struct SubscriptionDetailView: View {
             } catch {
                 return
             }
-            now = Date()
+            now = DemoClock.subscriptionNow()
         }
     }
 
@@ -549,7 +549,7 @@ struct SubscriptionSheet: View {
 
     @State private var route: SubscriptionSheetItem.Route
     @State private var previousRoute: SubscriptionSheetItem.Route?
-    @State private var now = Date()
+    @State private var now = DemoClock.subscriptionNow()
     @State private var isAccepting = false
     @State private var creationDraft = PaykitSubscriptionDraft.empty
     @State private var selectedCreationTarget: PaykitPaymentRequestTarget?
@@ -601,13 +601,13 @@ struct SubscriptionSheet: View {
         }
         .task {
             if case let .review(subscription) = route {
-                now = Date()
+                now = DemoClock.subscriptionNow()
                 paymentRequests.markSubscriptionProposalPresented(subscription)
             }
         }
         .onChange(of: route) { _, route in
             guard case let .review(subscription) = route else { return }
-            now = Date()
+            now = DemoClock.subscriptionNow()
             paymentRequests.markSubscriptionProposalPresented(subscription)
         }
         .onChange(of: paymentRequests.subscriptions) {
@@ -615,7 +615,7 @@ struct SubscriptionSheet: View {
                   !paymentRequests.isProcessingSubscription,
                   case let .review(subscription) = route,
                   !paymentRequests.subscriptions.contains(where: {
-                      $0.id == subscription.id && $0.isProposalVisible(at: Date())
+                      $0.id == subscription.id && $0.isProposalVisible(at: DemoClock.subscriptionNow())
                   })
             else { return }
             sheets.hideSheetIfActive(.subscription, reason: "Subscription proposal is no longer available")
@@ -623,11 +623,11 @@ struct SubscriptionSheet: View {
         .task(id: reviewTransitionDate) {
             guard let reviewTransitionDate else { return }
             do {
-                try await Task.sleep(for: .seconds(max(0, reviewTransitionDate.timeIntervalSinceNow)))
+                try await Task.sleep(for: .seconds(max(0, reviewTransitionDate.timeIntervalSince(DemoClock.subscriptionNow()))))
             } catch {
                 return
             }
-            now = Date()
+            now = DemoClock.subscriptionNow()
         }
         .interactiveDismissDisabled(isAccepting || paymentRequests.isCreatingRequest)
     }
