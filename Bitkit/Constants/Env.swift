@@ -329,6 +329,7 @@ enum Env {
         .cjitPaymentArrived,
         .wakeToTimeout,
     ]
+    static let silentIncomingHtlcFeature = "blocktank.silentIncomingHtlc"
 
     static var vssStoreIdPrefix: String {
         "bitkit_v1_\(networkName)"

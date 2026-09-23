@@ -77,6 +77,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool
     {
+        recordLaunchProbe(launchOptions: launchOptions)
         UNUserNotificationCenter.current().delegate = self
 
         // Check notification authorization status at launch and re-register with APN if granted
@@ -89,6 +90,22 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         return true
+    }
+
+    private func recordLaunchProbe(launchOptions: [UIApplication.LaunchOptionsKey: Any]?) {
+        guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+
+        let result: [String: Any] = [
+            "launchedAt": ISO8601DateFormatter().string(from: Date()),
+            "processId": ProcessInfo.processInfo.processIdentifier,
+            "remoteNotificationLaunchOption": launchOptions?[.remoteNotification] != nil,
+        ]
+        do {
+            let data = try JSONSerialization.data(withJSONObject: result)
+            try data.write(to: documents.appendingPathComponent("background-wake-launch.json"), options: .atomic)
+        } catch {
+            Logger.error(error, context: "AppDelegate")
+        }
     }
 
     // MARK: - Scene Configuration
@@ -137,7 +154,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        guard let probeId = userInfo["bitkit_wake_probe"] as? String else {
+        let isPaymentWake = userInfo["bitkit_wake_payment"] as? Int == 1
+        guard let probeId = (userInfo["bitkit_wake_probe"] as? String) ?? (isPaymentWake ? UUID().uuidString : nil) else {
             completionHandler(.noData)
             return
         }
@@ -154,7 +172,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
             var result: [String: Any] = [
                 "probeId": probeId,
+                "trigger": isPaymentWake ? "payment" : "probe",
                 "receivedAt": ISO8601DateFormatter().string(from: receivedAt),
+                "processId": ProcessInfo.processInfo.processIdentifier,
                 "appState": appState,
                 "initialNodeRunning": initialNodeRunning.map { $0 as Any } ?? NSNull(),
             ]
@@ -169,6 +189,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 nodeRunning = LightningService.shared.status?.isRunning
             }
 
+            var paymentObserved = false
             result["finalNodeRunning"] = nodeRunning.map { $0 as Any } ?? NSNull()
             if nodeRunning == true {
                 await LightningService.shared.refreshCache()
@@ -198,18 +219,20 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                     }.count ?? initialSettledPayments
                     result["settledInboundPaymentsAfterWait"] = settledPayments
                     if settledPayments > initialSettledPayments {
+                        paymentObserved = true
                         break
                     }
                 }
             }
+            result["paymentObserved"] = paymentObserved
             result["finishedAt"] = ISO8601DateFormatter().string(from: Date())
             guard recordWakeProbe(result) else {
                 completionHandler(.failed)
                 return
             }
 
-            Logger.info("Recorded background wake probe '\(probeId)' with node running '\(nodeRunning == true)'", context: "AppDelegate")
-            completionHandler(.newData)
+            Logger.info("Handled background wake '\(probeId)' with node running '\(nodeRunning == true)'", context: "AppDelegate")
+            completionHandler(paymentObserved ? .newData : .noData)
         }
     }
 

@@ -74,7 +74,7 @@ final class PushNotificationManager: ObservableObject {
         let result = try await CoreService.shared.blocktank.registerDeviceForNotifications(
             deviceToken: deviceToken,
             publicKey: keypair.publicKey.hex,
-            features: Env.pushNotificationFeatures.map(\.feature),
+            features: Env.pushNotificationFeatures.map(\.feature) + [Env.silentIncomingHtlcFeature],
             nodeId: nodeId,
             isoTimestamp: isoTimestamp,
             signature: signature
