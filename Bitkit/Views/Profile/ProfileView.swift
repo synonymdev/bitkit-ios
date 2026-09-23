@@ -68,8 +68,6 @@ struct ProfileView: View {
                 profileActions
                     .padding(.bottom, 24)
 
-                CustomDivider()
-
                 if !profile.links.isEmpty {
                     profileLinks(profile)
                 }
