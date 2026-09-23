@@ -4,6 +4,17 @@ import XCTest
 final class PubkyContactLinkTests: XCTestCase {
     private let key = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
+    @MainActor
+    private final class RecoveringContactsManager: ContactsManager {
+        private(set) var loadAttempts = 0
+
+        override func loadContacts(for publicKey: String) async throws {
+            loadAttempts += 1
+            loadErrorMessage = nil
+            hasLoaded = true
+        }
+    }
+
     func testAcceptsRawPrefixedAndEncodedKeys() throws {
         for value in [String(key.dropFirst(5)), key, key.uppercased(), key.replacingOccurrences(of: "pubky", with: "%70ubky")] {
             let url = try XCTUnwrap(URL(string: "bitkit://contact?pubky=\(value)"))
@@ -115,6 +126,74 @@ final class PubkyContactLinkTests: XCTestCase {
         contacts.hasLoaded = true
         await routePendingLink()
         XCTAssertNil(app.pendingDeepLinkURL)
+    }
+
+    @MainActor
+    func testContactPreloadRetriesAfterInFlightLoadFails() async throws {
+        let contacts = RecoveringContactsManager()
+        contacts.isLoading = true
+
+        let loadTask = Task {
+            try await contacts.loadContactsIfNeeded(for: key)
+        }
+
+        await Task.yield()
+        XCTAssertEqual(contacts.loadAttempts, 0)
+
+        contacts.loadErrorMessage = "Initial load failed"
+        contacts.isLoading = false
+
+        try await loadTask.value
+        XCTAssertEqual(contacts.loadAttempts, 1)
+        XCTAssertTrue(contacts.hasLoaded)
+        XCTAssertNil(contacts.loadErrorMessage)
+    }
+
+    @MainActor
+    func testContactPreloadStopsWaitingWhenTaskIsCancelled() async {
+        let contacts = RecoveringContactsManager()
+        contacts.isLoading = true
+
+        let loadTask = Task {
+            try await contacts.loadContactsIfNeeded(for: key)
+        }
+
+        await Task.yield()
+        loadTask.cancel()
+
+        do {
+            try await loadTask.value
+            XCTFail("Expected contact preload to stop after cancellation")
+        } catch is CancellationError {
+            XCTAssertEqual(contacts.loadAttempts, 0)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    @MainActor
+    func testCancelledContactPreparationDoesNotRoutePendingLink() async {
+        var finishPreparation: CheckedContinuation<Void, Never>?
+        var didRoute = false
+
+        let handlingTask = Task {
+            await prepareAndRoutePendingDeepLink {
+                await withCheckedContinuation { continuation in
+                    finishPreparation = continuation
+                }
+            } routing: {
+                didRoute = true
+            }
+        }
+
+        while finishPreparation == nil {
+            await Task.yield()
+        }
+        handlingTask.cancel()
+        finishPreparation?.resume()
+        await handlingTask.value
+
+        XCTAssertFalse(didRoute)
     }
 
     @MainActor

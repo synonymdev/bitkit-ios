@@ -16,6 +16,16 @@ func pubkyContactPublicKeyForRouting(from url: URL, isPaykitUIActive: Bool) thro
     return publicKey
 }
 
+@MainActor
+func prepareAndRoutePendingDeepLink(
+    preparation: () async -> Void,
+    routing: () async -> Void
+) async {
+    await preparation()
+    guard !Task.isCancelled else { return }
+    await routing()
+}
+
 enum PendingProfileSetupResumeState {
     case inactive
     case waiting
@@ -71,6 +81,7 @@ struct MainNavView: View {
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
     @State private var didResumePendingPubkyProfileSetup = false
+    @State private var isPreparingPendingContactDeepLink = false
     init(canHandleDeepLinks: Bool = true) {
         self.canHandleDeepLinks = canHandleDeepLinks
     }
@@ -407,13 +418,21 @@ struct MainNavView: View {
                 notificationManager.unregister()
             }
         }
-        .task(id: [canHandleDeepLinks, wallet.nodeLifecycleState == .running]) {
+        .task(id: canHandleDeepLinks) {
             guard canHandleDeepLinks else { return }
             await handlePendingDeepLink()
         }
         .onChange(of: app.pendingDeepLinkURL) { _, url in
             guard canHandleDeepLinks, url != nil else { return }
             Task { await handlePendingDeepLink() }
+        }
+        .task(id: wallet.nodeLifecycleState == .running) {
+            guard canHandleDeepLinks,
+                  wallet.nodeLifecycleState == .running,
+                  let url = app.pendingDeepLinkURL,
+                  !PubkyContactLink.matches(url)
+            else { return }
+            await handlePendingDeepLink()
         }
         .onChange(of: canPrepareContactDeepLink) { _, canPrepare in
             guard canHandleDeepLinks, canPrepare else { return }
@@ -801,28 +820,36 @@ struct MainNavView: View {
     }
 
     private func handlePendingDeepLink() async {
-        await loadContactsForPendingDeepLinkIfNeeded()
-        await app.routePendingDeepLinkIfReady(
-            canHandleDeepLinks,
-            nodeIsRunning: wallet.nodeLifecycleState == .running,
-            pubkyContactsAreReady: isContactDeepLinkReady
-        ) { url in
-            await handleDeepLink(url)
+        await prepareAndRoutePendingDeepLink {
+            await loadContactsForPendingDeepLinkIfNeeded()
+        } routing: {
+            await app.routePendingDeepLinkIfReady(
+                canHandleDeepLinks,
+                nodeIsRunning: wallet.nodeLifecycleState == .running,
+                pubkyContactsAreReady: isContactDeepLinkReady
+            ) { url in
+                await handleDeepLink(url)
+            }
         }
     }
 
     private func loadContactsForPendingDeepLinkIfNeeded() async {
         guard isPaykitUIActive,
               pubkyProfile.isInitialized,
-              pubkyProfile.publicKey == nil,
               !contactsManager.hasLoaded,
-              !contactsManager.isLoading,
+              !isPreparingPendingContactDeepLink,
               let url = app.pendingDeepLinkURL,
-              let publicKey = PubkyContactLink.publicKey(from: url)
+              let contactPublicKey = PubkyContactLink.publicKey(from: url)
         else { return }
 
+        let contactsOwnerPublicKey = pubkyProfile.publicKey ?? contactPublicKey
+        isPreparingPendingContactDeepLink = true
+        defer { isPreparingPendingContactDeepLink = false }
+
         do {
-            try await contactsManager.loadContacts(for: publicKey)
+            try await contactsManager.loadContactsIfNeeded(for: contactsOwnerPublicKey)
+        } catch is CancellationError {
+            return
         } catch {
             Logger.warn("Failed to load contacts before routing contact link: \(error)", context: "MainNavView")
         }
