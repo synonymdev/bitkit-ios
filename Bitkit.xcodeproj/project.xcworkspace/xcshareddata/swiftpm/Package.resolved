@@ -29,15 +29,6 @@
       }
     },
     {
-      "identity" : "paykit-rs",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/pubky/paykit-rs",
-      "state" : {
-        "revision" : "4613beee25d1680ed8bc849446498e9bfb2cdb16",
-        "version" : "0.1.0-rc55"
-      }
-    },
-    {
       "identity" : "swift-secp256k1",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/21-DOT-DEV/swift-secp256k1",

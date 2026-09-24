@@ -700,6 +700,7 @@ struct SendConfirmationView: View {
         var preparedPaymentProof: (endpointIdentifier: String, kind: PaykitPaymentProofKind)?
         var onchainPaymentStarted = false
         var lightningPaymentSubmitted = false
+        var manualAllowanceAttemptId: String?
 
         do {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
@@ -725,6 +726,13 @@ struct SendConfirmationView: View {
                 return
             }
 
+            if let incomingPaymentRequest, let preparedPaymentProof {
+                manualAllowanceAttemptId = try await PaykitAllowanceExecutor.shared.beginManualPayment(
+                    incomingPaymentRequest,
+                    paymentEndpointIdentifier: preparedPaymentProof.endpointIdentifier
+                )
+            }
+
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 // Set the amount for other screens
@@ -737,6 +745,9 @@ struct SendConfirmationView: View {
                         incomingPaymentRequest,
                         paymentHash: paymentHash
                     )
+                }
+                if let manualAllowanceAttemptId {
+                    await PaykitAllowanceExecutor.shared.manualLightningPaymentSent(attemptId: manualAllowanceAttemptId, paymentHash: paymentHash)
                 }
                 createdMetadataPaymentId = paymentHash
                 await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
@@ -799,6 +810,13 @@ struct SendConfirmationView: View {
                     }
                 }
                 shouldCancelPaymentProof = false
+                if let manualAllowanceAttemptId {
+                    await PaykitAllowanceExecutor.shared.finishManualPayment(
+                        attemptId: manualAllowanceAttemptId,
+                        outcome: .succeeded,
+                        transactionId: txid
+                    )
+                }
                 if let incomingPaymentRequest, let preparedPaymentProof {
                     await PaykitPaymentProofService.shared.completeOnchainPayment(
                         incomingPaymentRequest,
@@ -832,6 +850,9 @@ struct SendConfirmationView: View {
                 )
             }
         } catch is CancellationError {
+            if let manualAllowanceAttemptId, !lightningPaymentSubmitted, !onchainPaymentStarted {
+                await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .failed)
+            }
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
@@ -853,6 +874,12 @@ struct SendConfirmationView: View {
                     ))
                     return
                 }
+            }
+            if let manualAllowanceAttemptId {
+                await PaykitAllowanceExecutor.shared.finishManualPayment(
+                    attemptId: manualAllowanceAttemptId,
+                    outcome: lightningPaymentSubmitted || onchainPaymentStarted ? .unknown : .failed
+                )
             }
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
