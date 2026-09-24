@@ -7,7 +7,8 @@ import Security
 /// deletes only those, always per account and never service-wide. Foreign records are read-only, and a
 /// secret is loaded just-in-time for the one account being used, never enumerated.
 enum SharedPubkyKeychain {
-    static let service = "pubky.shared.v1"
+    /// Under test, records live under their own service so a suite never touches the records Pubky Ring reads.
+    static let service = Env.isUnitTest ? "unit-tests.pubky.shared.v1" : "pubky.shared.v1"
     static let ringSourceApp = "app.pubkyring"
     static let ownSourceApp = "to.bitkit"
 

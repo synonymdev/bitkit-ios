@@ -913,6 +913,9 @@ class PubkyProfileManager: ObservableObject {
         deleteKeychainValue: (KeychainEntryType) throws -> Void = {
             try Keychain.delete(key: $0)
         },
+        removeOwnSharedRecords: () -> Void = {
+            SharedPubkyKeychain.removeAllOwn()
+        },
         forgetSessionAccess: @escaping () async throws -> Void = {
             try await PubkyService.forgetSessionAccess()
         },
@@ -931,7 +934,7 @@ class PubkyProfileManager: ObservableObject {
             // No kind, or one this version no longer restores: the backup carries no usable pubky credentials.
             try? deleteKeychainValue(.paykitSession)
             try? deleteKeychainValue(.pubkySecretKey)
-            SharedPubkyKeychain.removeAllOwn()
+            removeOwnSharedRecords()
         case .localSeed:
             let secretKeyHex = try deriveLocalSecretKeyFromWalletSeed(loadKeychainString: loadKeychainString)
             try persistKeychainString(.pubkySecretKey, secretKeyHex)
