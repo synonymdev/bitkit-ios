@@ -646,6 +646,7 @@ class PubkyProfileManager: ObservableObject {
             try await PubkyService.forgetSessionAccess()
         } catch {
             Logger.warn("Failed to forget local Pubky session access: \(error)", context: "PubkyProfileManager")
+            try? PubkySessionAccessTeardown.clear { try Keychain.delete(key: $0) }
         }
         await clearLocalAppState()
     }
