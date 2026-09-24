@@ -158,7 +158,7 @@ struct SubscriptionsView: View {
                 }
                 .accessibilityIdentifier("SubscriptionCreate")
             } else if selectedTab == .allowances {
-                CustomButton(title: t("subscriptions__allowance_add"), variant: .secondary) {
+                CustomButton(title: t("subscriptions__allowance_add")) {
                     sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .allowanceContact))
                 }
                 .accessibilityIdentifier("AllowanceAdd")
