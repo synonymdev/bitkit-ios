@@ -446,6 +446,7 @@ actor PaykitAllowanceExecutor {
 
         let attempts = await automaticAttempts()
         guard PaykitAllowanceCapacity.fits(amountSats: request.amountSats, allowance: allowance, attempts: attempts, now: now()) else {
+            Logger.info("Allowance monthly limit reached; the request stays on the manual flow", context: "PaykitAllowance")
             notifyLimitReached(request, identity: identity)
             return .manual
         }
@@ -661,6 +662,7 @@ actor PaykitAllowanceExecutor {
                 return nil
             }
             setStage(.submitted, attemptId: prepared.attemptId, identity: identity)
+            Logger.info("Reported a manual payment to the allowance ledger", context: "PaykitAllowance")
             return prepared.attemptId
         } catch let error as PaykitAllowanceManualPaymentError {
             throw error

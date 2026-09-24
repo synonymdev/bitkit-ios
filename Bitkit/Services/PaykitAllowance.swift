@@ -139,6 +139,19 @@ struct PaykitAllowance: Identifiable, Hashable {
     }
 }
 
+extension Paykit.AllowanceLifecycleState {
+    var rawDescription: String {
+        switch self {
+        case .proposed: "proposed"
+        case .accepted: "accepted"
+        case .rejected: "rejected"
+        case .ended: "ended"
+        case .conflicted: "conflicted"
+        case .unknown: "unknown"
+        }
+    }
+}
+
 extension PaykitAllowance.Role {
     init?(_ role: Paykit.AllowanceLocalRole) {
         switch role {
