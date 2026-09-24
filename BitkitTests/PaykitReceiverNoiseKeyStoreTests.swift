@@ -97,6 +97,34 @@ final class PaykitReceiverNoiseKeyStoreTests: XCTestCase {
         }
     }
 
+    func testCachedKeyDoesNotBypassKeychainReadFailure() throws {
+        enum LoadError: Error {
+            case inaccessible
+        }
+
+        let derivedBytes = Data(repeating: 1, count: 32)
+        var shouldFailLoad = false
+        var upsertCount = 0
+        let store = PaykitReceiverNoiseKeyStore(
+            loadBytes: {
+                if shouldFailLoad {
+                    throw LoadError.inaccessible
+                }
+                return derivedBytes
+            },
+            upsertBytes: { _ in upsertCount += 1 },
+            deriveBytes: { derivedBytes }
+        )
+        _ = try store.loadOrDerive()
+
+        shouldFailLoad = true
+
+        XCTAssertThrowsError(try store.loadOrDerive()) { error in
+            XCTAssertTrue(error is LoadError)
+        }
+        XCTAssertEqual(upsertCount, 0)
+    }
+
     func testRejectsInvalidPersistedReceiverNoiseKey() {
         let store = PaykitReceiverNoiseKeyStore(
             loadBytes: { Data(repeating: 0, count: 31) },
