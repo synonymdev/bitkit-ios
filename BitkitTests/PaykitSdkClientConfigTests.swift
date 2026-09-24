@@ -8,6 +8,38 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s" +
         "&cid=paykit.test&cpk=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
 
+    func testIdentityReadFailurePreservesSavedStateAndSession() async throws {
+        let savedState = try Keychain.load(key: .paykitSdkState)
+        let savedSession = try Keychain.load(key: .paykitSession)
+        defer {
+            for (key, data) in [(KeychainEntryType.paykitSdkState, savedState), (.paykitSession, savedSession)] {
+                if let data { try? Keychain.upsert(key: key, data: data) }
+                else { try? Keychain.delete(key: key) }
+            }
+        }
+        let state = Data("saved contacts and identity".utf8)
+        let session = Data("saved grant".utf8)
+        for failure in [
+            PaykitError.Identity(code: "identity_error", context: "restore Pubky grant session from platform provider"),
+            PaykitError.Storage(code: "storage_error", context: "unavailable"),
+        ] {
+            try Keychain.upsert(key: .paykitSdkState, data: state)
+            try Keychain.upsert(key: .paykitSession, data: session)
+            let sdk = IdentityReadFailureSdk(noPointer: .init())
+            sdk.failure = failure
+            let service = PaykitSdkService(sdkFactory: { sdk })
+
+            do {
+                _ = try await service.signIn(secretKeyHex: "unused")
+                XCTFail("An unreadable stored identity must stop activation")
+            } catch {
+                XCTAssertEqual(String(describing: error), String(describing: failure))
+            }
+            XCTAssertEqual(try Keychain.load(key: .paykitSdkState), state)
+            XCTAssertEqual(try Keychain.load(key: .paykitSession), session)
+        }
+    }
+
     func testClientIDUsesBitkitOwnedDomain() {
         let expectedClientID = Env.network == .bitcoin ? "bitkit.to" : "staging.bitkit.to"
 
@@ -163,5 +195,13 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         } catch {
             XCTAssertTrue(error is CancellationError)
         }
+    }
+}
+
+private final class IdentityReadFailureSdk: PaykitSdk, @unchecked Sendable {
+    var failure: Error = PubkyServiceError.sessionNotActive
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        throw failure
     }
 }

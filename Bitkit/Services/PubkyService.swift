@@ -349,14 +349,19 @@ actor PaykitSdkService {
     private var isRepublishingIdentity = false
     private var republishPublicKey: String?
     private var nextIdentityRepublishAt = Date.distantPast
+    private var lastIdentityRepublishAt = Date.distantPast
     private var sdk: PaykitSdk?
     private var activeAuthRequest: Paykit.PubkyAuthRequest?
     private var activeAuthRequestID: UUID?
 
+    private let sdkFactory: (() throws -> PaykitSdk)?
+
     init(
+        sdkFactory: (() throws -> PaykitSdk)? = nil,
         bootstrapFactory: @escaping BootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
     ) {
         self.bootstrapFactory = bootstrapFactory
+        self.sdkFactory = sdkFactory
     }
 
     func initialize() async throws {
@@ -419,10 +424,11 @@ actor PaykitSdkService {
                 try Paykit.pubkyPublicKeyFromSecret(localSecretKey: $0)
             }
             guard let identity = identity.flatMap(PubkyPublicKeyFormat.normalized),
-                  identity != republishPublicKey || now >= nextIdentityRepublishAt
+                  identity != republishPublicKey || now < lastIdentityRepublishAt || now >= nextIdentityRepublishAt
             else { return }
 
             republishPublicKey = identity
+            lastIdentityRepublishAt = now
             nextIdentityRepublishAt = now.addingTimeInterval(60)
             if try await bootstrap().republishIdentity(publicKey: identity) {
                 nextIdentityRepublishAt = now.addingTimeInterval(30 * 60)
@@ -458,7 +464,7 @@ actor PaykitSdkService {
 
     func importSession(secret: String, includeLocalSecret: Bool = true) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             let localSecret = includeLocalSecret ? try sessionProvider.loadLocalSecretKey() : nil
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().importSession(
@@ -475,7 +481,7 @@ actor PaykitSdkService {
 
     func signUp(secretKeyHex: String, homeserverPublicKey: String, signupCode: String?) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().signUp(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
@@ -508,7 +514,7 @@ actor PaykitSdkService {
 
     func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             do {
                 try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
             } catch {
@@ -524,7 +530,7 @@ actor PaykitSdkService {
 
     func signIn(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().signIn(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
@@ -575,7 +581,7 @@ actor PaykitSdkService {
                 clearActiveAuthRequest(ifCurrent: requestID)
             }
 
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             let sessionSecret = try await Self.completeAuthActivation(
                 sessionSecret: result.sessionAccess.exportSessionSecret(),
                 activate: {
@@ -1105,7 +1111,7 @@ actor PaykitSdkService {
             return sdk
         }
 
-        let created = try PaykitSdk.withPaymentAdapterAndPubkyClientConfig(
+        let created = try sdkFactory?() ?? PaykitSdk.withPaymentAdapterAndPubkyClientConfig(
             stateStore: stateStore,
             sessionProvider: sessionProvider,
             paymentAdapter: paymentAdapter,
@@ -1215,14 +1221,11 @@ actor PaykitSdkService {
         )
     }
 
-    private func currentSdkStatePublicKey() async -> String? {
-        do {
-            return try await handle().identityStatus()?.publicKey
-        } catch {
-            try? Keychain.delete(key: .paykitSdkState)
-            resetRuntime()
-            return nil
-        }
+    private func currentSdkStatePublicKey() async throws -> String? {
+        // Read the persisted owner without restoring the grant we are about to replace.
+        sessionProvider.suspendStoredSessionAccess()
+        defer { sessionProvider.resumeStoredSessionAccess() }
+        return try await handle().identityStatus()?.publicKey
     }
 
     private nonisolated static func publicKeysMatch(_ lhs: String?, _ rhs: String) -> Bool {

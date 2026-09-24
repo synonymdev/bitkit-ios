@@ -1428,6 +1428,50 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(period.endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z")))
     }
 
+    func testTravelAndDaylightSavingChangesPreserveUTCBillingReminders() async throws {
+        let original = NSTimeZone.default
+        defer { NSTimeZone.default = original }
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-03-13T09:00:00Z"))
+        let expected = try [
+            XCTUnwrap(ISO8601DateFormatter().date(from: "2027-03-14T08:00:00Z")),
+            XCTUnwrap(ISO8601DateFormatter().date(from: "2027-03-15T08:00:00Z")),
+        ]
+        for zone in ["America/New_York", "Pacific/Kiritimati", "Pacific/Pago_Pago"] {
+            NSTimeZone.default = try XCTUnwrap(TimeZone(identifier: zone))
+            let recurrence = PaymentRequestRecurrence(
+                every: 1, unit: "day", startsAt: "2027-03-13T08:00:00Z",
+                anchor: "2027-03-13T08:00:00Z", endsAt: "2027-03-16T08:00:00Z"
+            )
+            let subscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+                state: .activeRecurring, recurrence: recurrence
+            )))
+            let periods = subscription.recurrence.upcomingPeriods(after: now, limit: 2)
+            XCTAssertEqual(periods.map(\.startsAt), expected, zone)
+            let center = PaykitSubscriptionNotificationCenterMock()
+            let scheduler = PaykitSubscriptionNotificationScheduler(center: center)
+            let identifier = PaykitSubscriptionNotificationIdentifier.identifier(
+                identity: "pubky_test", subscription: subscription, period: periods[0]
+            )
+            try await center.add(UNNotificationRequest(
+                identifier: identifier, content: UNMutableNotificationContent(),
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 60, repeats: false)
+            ))
+
+            for clock in [now, now.addingTimeInterval(-3600)] {
+                await scheduler.synchronize(
+                    [subscription], acceptedAt: [subscription.id: now], pendingRequestIds: [],
+                    payerIdentity: "pubky_test", notificationsEnabled: true, now: clock
+                )
+                let requests = await center.pendingNotificationRequests()
+                let request = try XCTUnwrap(requests.first { $0.identifier == identifier })
+                let trigger = try XCTUnwrap(request.trigger as? UNCalendarNotificationTrigger)
+                XCTAssertEqual(trigger.dateComponents.timeZone?.secondsFromGMT(), 0)
+                XCTAssertEqual(trigger.dateComponents.date, expected[0], zone)
+                XCTAssertFalse(trigger.repeats)
+            }
+        }
+    }
+
     func testRecurrenceReturnsConsecutiveUpcomingPeriods() throws {
         let recurrence = PaymentRequestRecurrence(
             every: 1,
@@ -1838,6 +1882,21 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         manager.deferPresentation(request)
         clock.advance(by: 2)
         XCTAssertEqual(manager.requestsForPresentation(), [request])
+    }
+
+    func testPresentationRetryUsesElapsedTimeAcrossWallClockChanges() async throws {
+        for shift in [TimeInterval(-30 * 86400), TimeInterval(30 * 86400)] {
+            let clock = PaymentRequestTestClock(Date())
+            let manager = try paymentRequestManager(sdk: PaymentRequestSdkMock(records: [paymentRequestRecord()]), clock: clock)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.requestsForPresentation().first)
+            manager.deferPresentation(request)
+
+            clock.shiftWallClock(by: shift)
+            XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+            clock.advance(by: 2)
+            XCTAssertEqual(manager.requestsForPresentation(), [request])
+        }
     }
 
     func testDeferredRequestUsesIncreasingPresentationBackoff() async throws {
@@ -3153,6 +3212,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             inFlightPaymentRequestIds: { _ in inFlightPaymentRequestIds },
             protectedRequestIdsForSubscriptionCancellation: { _, _ in protectedRequestIdsForSubscriptionCancellation },
             now: now,
+            retryNow: { clock.retryNow() },
             isAvailable: { true },
             logWarning: { _ in }
         )
@@ -3708,6 +3768,7 @@ private enum PaymentRequestSdkMockError: Error, Equatable {
 private final class PaymentRequestTestClock: @unchecked Sendable {
     private let lock = NSLock()
     private var date: Date
+    private var retryInstant = ContinuousClock.now
     private var invocations = 0
 
     init(_ date: Date) {
@@ -3731,6 +3792,19 @@ private final class PaymentRequestTestClock: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         date = date.addingTimeInterval(interval)
+        retryInstant = retryInstant.advanced(by: .seconds(interval))
+    }
+
+    func shiftWallClock(by interval: TimeInterval) {
+        lock.lock()
+        defer { lock.unlock() }
+        date = date.addingTimeInterval(interval)
+    }
+
+    func retryNow() -> ContinuousClock.Instant {
+        lock.lock()
+        defer { lock.unlock() }
+        return retryInstant
     }
 }
 

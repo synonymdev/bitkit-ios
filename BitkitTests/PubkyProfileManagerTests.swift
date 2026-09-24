@@ -5,6 +5,32 @@ import XCTest
 
 final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
+    func testFailedRestorationPreservesCachedProfile() async {
+        let keys = ["pubky_profile_name", "pubky_profile_image_uri"]
+        let defaults = UserDefaults.standard
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defer {
+            for (key, value) in zip(keys, saved) {
+                defaults.set(value, forKey: key)
+            }
+        }
+        defaults.set("Existing profile", forKey: keys[0])
+        defaults.set("pubky://existing/avatar", forKey: keys[1])
+        let manager = PubkyProfileManager()
+
+        await manager.initialize { .restorationFailed }
+
+        XCTAssertTrue(manager.isInitialized)
+        XCTAssertTrue(manager.sessionRestorationFailed)
+        XCTAssertEqual(manager.authState, .idle)
+        XCTAssertNil(manager.publicKey)
+        XCTAssertEqual(manager.cachedName, "Existing profile")
+        XCTAssertEqual(manager.cachedImageUri, "pubky://existing/avatar")
+        XCTAssertEqual(defaults.string(forKey: keys[0]), manager.cachedName)
+        XCTAssertEqual(defaults.string(forKey: keys[1]), manager.cachedImageUri)
+    }
+
+    @MainActor
     func testIdentityRestorationPreservesCredentialsForRetry() async throws {
         for failedStep in ["load", "signIn", "profile"] {
             for failure in [PubkyServiceError.authFailed("offline") as Error, CancellationError()] {
@@ -775,9 +801,6 @@ final class PubkyProfileManagerTests: XCTestCase {
             publicKeyFromSecretKey: { _ in
                 XCTFail("Public key should not be derived after successful saved-session import")
                 return "pubky_unused"
-            },
-            deleteSessionSecret: {
-                XCTFail("Session should not be deleted after successful import")
             }
         )
 
@@ -799,18 +822,13 @@ final class PubkyProfileManagerTests: XCTestCase {
             publicKeyFromSecretKey: { secretKey in
                 XCTAssertEqual(secretKey, "local-secret")
                 return "pubky_test"
-            },
-            deleteSessionSecret: {
-                XCTFail("Session should not be deleted after successful re-sign-in")
             }
         )
 
         XCTAssertEqual(result, .restored(publicKey: "pubky_test"))
     }
 
-    func testResolveSessionInitializationDeletesSavedSessionWhenReSignInFails() async {
-        var deletedSavedSession = false
-
+    func testResolveSessionInitializationReportsFailedRestorationWhenReSignInFails() async {
         let result = await PubkyProfileManager.resolveSessionInitialization(
             savedSessionSecret: "stale-session",
             storedSecretKeyHex: "local-secret",
@@ -823,13 +841,10 @@ final class PubkyProfileManagerTests: XCTestCase {
             publicKeyFromSecretKey: { _ in
                 XCTFail("No public key should be derived when re-sign-in fails")
                 return "pubky_unused"
-            }, deleteSessionSecret: {
-                deletedSavedSession = true
             }
         )
 
         XCTAssertEqual(result, .restorationFailed)
-        XCTAssertTrue(deletedSavedSession)
     }
 
     func testResolveSessionInitializationReturnsNoSessionWhenNoCredentialsExist() async {
@@ -847,8 +862,6 @@ final class PubkyProfileManagerTests: XCTestCase {
             publicKeyFromSecretKey: { _ in
                 XCTFail("No public key should be derived without credentials")
                 return "pubky_unused"
-            }, deleteSessionSecret: {
-                XCTFail("No saved session exists to delete")
             }
         )
 

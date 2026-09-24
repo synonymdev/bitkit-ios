@@ -169,7 +169,11 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Initialization & Session Restoration
 
     /// Initializes Paykit and restores any persisted session.
-    func initialize() async {
+    func initialize(
+        initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult = {
+            try await PubkyProfileManager.initializePersistedSession()
+        }
+    ) async {
         isInitialized = false
         initializationErrorMessage = nil
         sessionRestorationFailed = false
@@ -177,7 +181,7 @@ class PubkyProfileManager: ObservableObject {
         let result: SessionInitializationResult
         do {
             result = try await Task.detached {
-                try await Self.initializePersistedSession()
+                try await initializeSession()
             }.value
         } catch {
             Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
@@ -196,7 +200,7 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
             Task { await loadProfile() }
         case .restorationFailed:
-            clearAuthenticatedState()
+            clearAuthenticatedState(clearCachedProfile: false)
             sessionRestorationFailed = true
         }
 
@@ -1087,11 +1091,11 @@ class PubkyProfileManager: ObservableObject {
         UserDefaults.standard.set(pending, forKey: Self.profileSetupPendingKey)
     }
 
-    private func clearAuthenticatedState() {
+    private func clearAuthenticatedState(clearCachedProfile: Bool = true) {
         publicKey = nil
         profile = nil
         authState = .idle
-        clearCachedProfileMetadata()
+        if clearCachedProfile { clearCachedProfileMetadata() }
     }
 
     private func activeSessionSecret() throws -> String {
@@ -1224,10 +1228,7 @@ class PubkyProfileManager: ObservableObject {
             savedSessionSecret: savedSecret,
             storedSecretKeyHex: secretKeyHex,
             importSession: { try await PubkyService.importSession(secret: $0) },
-            signInWithSecretKey: { try await PubkyService.signIn(secretKeyHex: $0) },
-            deleteSessionSecret: {
-                try? Keychain.delete(key: .paykitSession)
-            }
+            signInWithSecretKey: { try await PubkyService.signIn(secretKeyHex: $0) }
         )
     }
 
@@ -1337,8 +1338,7 @@ class PubkyProfileManager: ObservableObject {
         signInWithSecretKey: (String) async throws -> String,
         publicKeyFromSecretKey: (String) throws -> String = {
             try PubkyProfileManager.publicKeyFromSecretKey($0)
-        },
-        deleteSessionSecret: () -> Void
+        }
     ) async -> SessionInitializationResult {
         if let savedSessionSecret,
            !savedSessionSecret.isEmpty
@@ -1371,8 +1371,7 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Re-signed in and restored session for \(publicKey)", context: "PubkyProfileManager")
             return .restored(publicKey: publicKey)
         } catch {
-            Logger.error("Re-sign-in failed, clearing session: \(error)", context: "PubkyProfileManager")
-            deleteSessionSecret()
+            Logger.warn("Re-sign-in failed, keeping saved session for retry: \(error)", context: "PubkyProfileManager")
             return .restorationFailed
         }
     }
