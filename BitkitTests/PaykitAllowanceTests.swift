@@ -174,26 +174,22 @@ final class PaykitAllowanceTests: XCTestCase {
             isLive: true
         )
 
-        XCTExpectFailure(
-            "PaykitAllowanceTime.monthlyWindow steps one month from an already clamped date instead of counting from the original anchor"
-        ) {
-            for vector in vectors {
-                let window = PaykitAllowanceTime.monthlyWindow(anchor: anchor, containing: Fixtures.utc(vector.date))
-                XCTAssertEqual(window.start, Fixtures.utc(vector.start), "start for \(vector.date)")
-                XCTAssertEqual(window.end, Fixtures.utc(vector.end), "end for \(vector.date)")
-            }
-            XCTAssertEqual(beforeMarchAnchor.start, Fixtures.utc("2025-12-31T00:00:00Z"), "start before a March 31 anchor")
-            XCTAssertEqual(beforeMarchAnchor.end, Fixtures.utc("2026-01-31T00:00:00Z"), "end before a March 31 anchor")
-            XCTAssertFalse(
-                PaykitAllowanceCapacity.fits(
-                    amountSats: 1000,
-                    allowance: allowance,
-                    attempts: [lateMarchAttempt],
-                    now: Fixtures.utc("2026-03-30T12:30:00Z")
-                ),
-                "A March 29 attempt at the cap must count on March 30"
-            )
+        for vector in vectors {
+            let window = PaykitAllowanceTime.monthlyWindow(anchor: anchor, containing: Fixtures.utc(vector.date))
+            XCTAssertEqual(window.start, Fixtures.utc(vector.start), "start for \(vector.date)")
+            XCTAssertEqual(window.end, Fixtures.utc(vector.end), "end for \(vector.date)")
         }
+        XCTAssertEqual(beforeMarchAnchor.start, Fixtures.utc("2025-12-31T00:00:00Z"), "start before a March 31 anchor")
+        XCTAssertEqual(beforeMarchAnchor.end, Fixtures.utc("2026-01-31T00:00:00Z"), "end before a March 31 anchor")
+        XCTAssertFalse(
+            PaykitAllowanceCapacity.fits(
+                amountSats: 1000,
+                allowance: allowance,
+                attempts: [lateMarchAttempt],
+                now: Fixtures.utc("2026-03-30T12:30:00Z")
+            ),
+            "A March 29 attempt at the cap must count on March 30"
+        )
     }
 
     // MARK: Capacity

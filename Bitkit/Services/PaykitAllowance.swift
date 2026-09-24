@@ -230,19 +230,18 @@ enum PaykitAllowanceTime {
     static func monthlyWindow(anchor: Date, containing date: Date) -> (start: Date, end: Date) {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
-        var start = anchor
-        if date < anchor {
-            while start > date, let previous = calendar.date(byAdding: .month, value: -1, to: start) {
-                start = previous
-            }
+        let boundary: (Int) -> Date = { calendar.date(byAdding: .month, value: $0, to: anchor) ?? anchor }
+        let anchorMonth = calendar.dateComponents([.year, .month], from: anchor)
+        let dateMonth = calendar.dateComponents([.year, .month], from: date)
+        // Every boundary counts from the original anchor, so a clamped February never shortens later months.
+        var index = ((dateMonth.year ?? 0) - (anchorMonth.year ?? 0)) * 12 + (dateMonth.month ?? 0) - (anchorMonth.month ?? 0)
+        while boundary(index) > date {
+            index -= 1
         }
-        var index = 0
-        while let next = calendar.date(byAdding: .month, value: index + 1, to: anchor), next <= date {
+        while boundary(index + 1) <= date {
             index += 1
-            start = next
         }
-        let end = calendar.date(byAdding: .month, value: 1, to: start) ?? start
-        return (start, end)
+        return (boundary(index), boundary(index + 1))
     }
 }
 
