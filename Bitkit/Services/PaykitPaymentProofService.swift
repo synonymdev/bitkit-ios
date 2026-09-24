@@ -482,7 +482,7 @@ actor PaykitPaymentProofService {
 
     func reconcile() async {
         do {
-            let pendingProofs = try await loadProofs()
+            var pendingProofs = try await loadProofs()
             guard !pendingProofs.isEmpty else { return }
             guard let identityStatus = try await sdk.identityStatus(),
                   identityStatus.liveSessionAvailable,
@@ -490,6 +490,7 @@ actor PaykitPaymentProofService {
                   let identity = PubkyPublicKeyFormat.normalized(publicKey)
             else { return }
 
+            pendingProofs = await removingSettledUnsupportedWalletProofs(from: pendingProofs, identity: identity)
             let identityProofs = pendingProofs.filter {
                 PubkyPublicKeyFormat.matches($0.identity, identity)
             }
@@ -528,6 +529,68 @@ actor PaykitPaymentProofService {
             }
         } catch {
             logWarning("Failed to reconcile pending Paykit payment proofs: \(error)")
+        }
+    }
+
+    private func removingSettledUnsupportedWalletProofs(
+        from pendingProofs: [PendingPaykitPaymentProof],
+        identity: String
+    ) async -> [PendingPaykitPaymentProof] {
+        let candidates = pendingProofs.filter {
+            $0.hasUnsupportedOnchainWallet && PubkyPublicKeyFormat.matches($0.identity, identity)
+        }
+        guard !candidates.isEmpty else { return pendingProofs }
+
+        do {
+            let records = try await sdk.paymentRequests()
+            guard let identityStatus = try await sdk.identityStatus(),
+                  identityStatus.liveSessionAvailable,
+                  PubkyPublicKeyFormat.matches(identityStatus.publicKey, identity)
+            else { return pendingProofs }
+
+            let currentProofs = try await loadProofs()
+            let remainingProofs = currentProofs.filter { proof in
+                !candidates.contains(proof) || !Self.hasSubmittedRemoteProof(matching: proof, in: records)
+            }
+            guard remainingProofs != currentProofs else { return currentProofs }
+            try await persist(remainingProofs)
+            return remainingProofs
+        } catch {
+            logWarning("Failed to reconcile Paykit payment proofs for another wallet: \(error)")
+            return await (try? loadProofs()) ?? pendingProofs
+        }
+    }
+
+    private static func hasSubmittedRemoteProof(
+        matching pendingProof: PendingPaykitPaymentProof,
+        in records: [Paykit.PaymentRequestRecord]
+    ) -> Bool {
+        records.contains { record in
+            guard record.localRole == .payer,
+                  record.paymentRequestId == pendingProof.requestId.paymentRequestId,
+                  PubkyPublicKeyFormat.matches(record.counterparty, pendingProof.requestId.counterparty),
+                  record.counterpartyReceiverPath == pendingProof.requestId.counterpartyReceiverPath,
+                  pendingProof.billingPeriod != nil || record.state == .proofSubmitted
+            else { return false }
+
+            return record.paymentProofs.contains { remoteProof in
+                let billingPeriodMatches = if let billingPeriod = pendingProof.billingPeriod {
+                    remoteProof.billingPeriod.flatMap(PaykitBillingPeriod.init) == billingPeriod
+                } else {
+                    remoteProof.billingPeriod == nil
+                }
+                guard billingPeriodMatches,
+                      remoteProof.paymentEndpointIdentifier == pendingProof.paymentEndpointIdentifier,
+                      let values = proofValues(remoteProof.proof.exportText()),
+                      values["type"] == PaykitPaymentProofKind.onchain.rawValue,
+                      let transactionId = values["data"],
+                      isHex(transactionId, byteCount: 32)
+                else { return false }
+
+                return [pendingProof.paymentIdentifier, pendingProof.proofData]
+                    .compactMap { $0 }
+                    .allSatisfy { $0.caseInsensitiveCompare(transactionId) == .orderedSame }
+            }
         }
     }
 

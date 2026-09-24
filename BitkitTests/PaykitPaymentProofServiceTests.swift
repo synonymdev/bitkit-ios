@@ -549,6 +549,182 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(inFlightRequestIds, [request.id])
     }
 
+    func testForeignWalletOnchainProofClearsAfterMatchingRemoteSettlement() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let requestRecord = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: requestRecord, now: Date()))
+        let transactionId = String(repeating: "ab", count: 32)
+        let remoteProof = try paymentProofRecord(endpoint: endpoint, kind: .onchain, data: transactionId)
+        let settledRecord = try paymentRequestRecord(
+            endpoints: [endpoint],
+            paymentProofs: [remoteProof],
+            state: .proofSubmitted
+        )
+        let proof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: request.id,
+            paymentEndpointIdentifier: endpoint,
+            kind: .onchain,
+            paymentStarted: true,
+            paymentIdentifier: nil,
+            proofData: nil,
+            onchainAddress: onchainAddress,
+            onchainAmountSats: request.amountSats,
+            onchainWalletId: "trezor:android",
+            onchainMatchingTransactionIdsBeforeAttempt: []
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [settledRecord])
+        let service = paymentProofService(sdk: sdk, store: store, onchainLookupFails: true)
+
+        await service.reconcile()
+
+        let storedProofs = await store.snapshot()
+        let inFlightRequestIds = await service.inFlightRequestIds(identity: identity)
+        let submissionCount = await sdk.submissionCount()
+        XCTAssertTrue(storedProofs.isEmpty)
+        XCTAssertTrue(inFlightRequestIds.isEmpty)
+        XCTAssertEqual(submissionCount, 0)
+    }
+
+    func testForeignWalletCompletedProofRequiresMatchingRemoteTransaction() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let requestRecord = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: requestRecord, now: Date()))
+        let localTransactionId = String(repeating: "ab", count: 32)
+        let remoteProof = try paymentProofRecord(
+            endpoint: endpoint,
+            kind: .onchain,
+            data: String(repeating: "cd", count: 32)
+        )
+        let settledRecord = try paymentRequestRecord(
+            endpoints: [endpoint],
+            paymentProofs: [remoteProof],
+            state: .proofSubmitted
+        )
+        let proof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: request.id,
+            paymentEndpointIdentifier: endpoint,
+            kind: .onchain,
+            paymentStarted: true,
+            paymentIdentifier: localTransactionId,
+            proofData: localTransactionId,
+            onchainWalletId: "trezor:android"
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let service = paymentProofService(
+            sdk: PaymentProofSdkMock(identity: identity, records: [settledRecord]),
+            store: store
+        )
+
+        await service.reconcile()
+
+        let storedProofs = await store.snapshot()
+        XCTAssertEqual(storedProofs, [proof])
+    }
+
+    func testForeignWalletRecurringProofRequiresExactRemoteBillingPeriod() async throws {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00.123456789Z",
+            anchor: "2027-01-01T08:00:00.123456789Z",
+            endsAt: nil
+        )
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let exactPeriod = BillingPeriod(
+            startsAt: "2027-01-01T08:00:00.123456789Z",
+            endsAt: "2027-02-01T08:00:00.123456789Z"
+        )
+        let remoteProof = try paymentProofRecord(
+            endpoint: endpoint,
+            kind: .onchain,
+            data: String(repeating: "ab", count: 32),
+            billingPeriod: exactPeriod
+        )
+        let record = try paymentRequestRecord(
+            endpoints: [endpoint],
+            paymentProofs: [remoteProof],
+            state: .activeRecurring,
+            recurrence: recurrence
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let request = try XCTUnwrap(subscription.requests(through: date, acceptedAt: date).first)
+        let proof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: request.id,
+            paymentEndpointIdentifier: endpoint,
+            kind: .onchain,
+            billingPeriod: request.billingPeriod,
+            paymentStarted: true,
+            paymentIdentifier: nil,
+            proofData: nil,
+            onchainWalletId: "trezor:android"
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
+
+        await service.reconcile()
+
+        let storedProofs = await store.snapshot()
+        XCTAssertTrue(storedProofs.isEmpty)
+    }
+
+    func testConcurrentForeignWalletReplacementSurvivesRemoteSettlementCleanup() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let requestRecord = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: requestRecord, now: Date()))
+        let remoteProof = try paymentProofRecord(
+            endpoint: endpoint,
+            kind: .onchain,
+            data: String(repeating: "ab", count: 32)
+        )
+        let settledRecord = try paymentRequestRecord(
+            endpoints: [endpoint],
+            paymentProofs: [remoteProof],
+            state: .proofSubmitted
+        )
+        let originalProof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: request.id,
+            paymentEndpointIdentifier: endpoint,
+            kind: .onchain,
+            paymentStarted: true,
+            paymentIdentifier: nil,
+            proofData: nil,
+            onchainWalletId: "trezor:android"
+        )
+        let replacementProof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: request.id,
+            paymentEndpointIdentifier: endpoint,
+            kind: .onchain,
+            paymentStarted: true,
+            paymentIdentifier: nil,
+            proofData: nil,
+            onchainWalletId: "trezor:replacement"
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([originalProof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [settledRecord])
+        await sdk.suspendPaymentRequestFetch()
+        let service = paymentProofService(sdk: sdk, store: store)
+
+        let reconciliation = Task { await service.reconcile() }
+        await sdk.waitForPaymentRequestFetchStart()
+        await store.seed([replacementProof])
+        await sdk.resumePaymentRequestFetch()
+        await reconciliation.value
+
+        let storedProofs = await store.snapshot()
+        XCTAssertEqual(storedProofs, [replacementProof])
+    }
+
     func testForeignWalletCompletedProofIsRetainedWithoutSubmission() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
@@ -1175,6 +1351,10 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var shouldSuspendSubmission = false
     private var submissionContinuation: CheckedContinuation<Void, Never>?
     private var submissionStartContinuations: [CheckedContinuation<Void, Never>] = []
+    private var shouldSuspendPaymentRequestFetch = false
+    private var paymentRequestFetchStarted = false
+    private var paymentRequestFetchContinuation: CheckedContinuation<Void, Never>?
+    private var paymentRequestFetchStartContinuations: [CheckedContinuation<Void, Never>] = []
 
     init(identity: String, records: [PaymentRequestRecord]) {
         self.identity = identity
@@ -1191,8 +1371,33 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
         isIdentityAvailable = isAvailable
     }
 
-    func paymentRequests() -> [PaymentRequestRecord] {
-        records
+    func paymentRequests() async -> [PaymentRequestRecord] {
+        paymentRequestFetchStarted = true
+        paymentRequestFetchStartContinuations.forEach { $0.resume() }
+        paymentRequestFetchStartContinuations.removeAll()
+        if shouldSuspendPaymentRequestFetch {
+            await withCheckedContinuation { continuation in
+                paymentRequestFetchContinuation = continuation
+            }
+        }
+        return records
+    }
+
+    func suspendPaymentRequestFetch() {
+        shouldSuspendPaymentRequestFetch = true
+    }
+
+    func waitForPaymentRequestFetchStart() async {
+        guard !paymentRequestFetchStarted else { return }
+        await withCheckedContinuation { continuation in
+            paymentRequestFetchStartContinuations.append(continuation)
+        }
+    }
+
+    func resumePaymentRequestFetch() {
+        shouldSuspendPaymentRequestFetch = false
+        paymentRequestFetchContinuation?.resume()
+        paymentRequestFetchContinuation = nil
     }
 
     func processPendingPrivateMessages() -> [OutboundPrivateCounterpartySendReport] {
