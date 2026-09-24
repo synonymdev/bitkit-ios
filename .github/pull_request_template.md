@@ -22,7 +22,7 @@
 
 #### Journeys
 
-<!-- One line per journey this PR adds or updates: `new` or `updated`, the bare journey file name in backticks, then what it proves — `- [ ] new `send-amount-over-balance.xml` — error shows before the 15 s timeout`; prefix the shortest disambiguating folder only when two journeys share a name. Two empty values: `N/A — no user-visible behaviour change.`, or `N/A — not drivable; see Manual Tests.` when every flow touched needs a capability the Capabilities table in `journeys/README.md` does not list. Leave the boxes unchecked; the reviewer ticks a line after driving it. -->
+<!-- One line per journey this PR adds or updates: `new`, `updated`, or `temporary`, the bare journey file name in backticks, then what it proves — `- [ ] new `send-amount-over-balance.xml` — error shows before the 15 s timeout`; prefix the shortest disambiguating folder only when two journeys share a name. `temporary` is only for a journey that needs a code change or data that will not exist on master; put that journey, and any required `.diff`, in a collapsed `<details>` block under the line. A reproduction that stays valid after the fix is committed and listed `new` or `updated`. Two empty values: `N/A — no user-visible behaviour change.`, or `N/A — not drivable; see Manual Tests.` when every flow touched needs a capability the Capabilities table in `journeys/README.md` does not list. Leave the boxes unchecked; the reviewer ticks a line after driving it. A `temporary` line stays unchecked: the reviewer applies the block locally. -->
 
 #### Manual Tests
 

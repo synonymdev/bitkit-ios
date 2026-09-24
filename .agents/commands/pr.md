@@ -43,6 +43,7 @@ If no base branch argument provided, detect the repo's default branch:
 - Run `git log $base..HEAD --oneline` for commit messages
 - Run `git diff $base...HEAD --stat` for understanding scope of changes
 - List the journeys the branch adds or updates: `git diff --name-only --diff-filter=d $base...HEAD -- journeys | grep '\.xml$'`
+- A temporary journey is not in that diff. Include one only when the user supplies a reproduction that needs a code change or data that will not exist on master.
 
 ### 4. Extract Linked Issues
 Scan commits for issue references:
@@ -139,7 +140,9 @@ When the user provides custom instructions after `--`:
   #### Manual Tests
   #### Automated Checks
   ```
-- Under `#### Journeys`, list every journey the branch adds or updates (Step 3), one per line as an unchecked checkbox (`- [ ] `), then `new` or `updated`, then the bare journey file name in backticks, then a dash and what the journey proves.
+- Under `#### Journeys`, list every journey the branch adds or updates (Step 3), one per line as an unchecked checkbox (`- [ ] `), then `new`, `updated`, or `temporary`, then the bare journey file name in backticks, then a dash and what the journey proves.
+- `temporary` is only for a journey that needs a code change or data that will not exist on master, so committing it would leave a dead file. A bug-fix reproduction that stays valid after the fix is committed and listed `new` or `updated`, not `temporary`.
+- Put a `temporary` journey in a collapsed `<details>` block directly under its line, as synonymdev/bitkit-android#1310 did, with the journey XML inside. A setup that needs a code change carries that change as a `.diff` in the same block. Nothing in this command applies the diff or runs the journey; a reviewer does that locally.
 - Reference journeys by bare file name only, never the full path. Only when two listed journeys share the same name, prefix the shortest leading path segment(s) that disambiguate them, the same rule as test files.
 - A PR with a user-visible change adds or updates the journey that proves it, and any journey whose route the diff changes; list them all. Reviewers drive the listed journeys on a device.
 - `#### Journeys` takes one of two empty values: `N/A — no user-visible behaviour change.` when the diff changes nothing a user can see, and `N/A — not drivable; see Manual Tests.` when it does but every flow it touches needs a capability the Capabilities table in `journeys/README.md` does not list. The second value requires a matching step under `#### Manual Tests`.
@@ -179,18 +182,39 @@ Example:
 ```
 
 Concrete style target:
-```md
+````md
 ### QA Notes
 #### Journeys
 - [ ] new `send-amount-over-balance.xml` — error shows before the 15 s timeout
 - [ ] updated `lightning-transfer-detail.xml` — Connection opens Channel Detail
+- [ ] temporary `repro-before-fix.xml` — needs a delay that must not land on master
+
+<details><summary>repro-before-fix.xml</summary>
+
+```xml
+<journey name="Repro Before Fix">
+  <description>Reproduction that only applies with the local delay patch.</description>
+</journey>
+```
+
+```diff
+diff --git a/Bitkit/Services/Example.swift b/Bitkit/Services/Example.swift
+--- a/Bitkit/Services/Example.swift
++++ b/Bitkit/Services/Example.swift
+@@ -1,3 +1,3 @@
+-        try await work()
++        try await Task.sleep(for: .seconds(2)); try await work()
+```
+
+</details>
+
 #### Manual Tests
 - [ ] Pair a Trezor over BLE → Home shows the hardware wallet card — BLE pairing not in Capabilities
 #### Automated Checks
 - added `TransferViewModelTests.swift` — rejects amounts over the spending balance
 - updated `SendFlowTests.swift` — fixed-amount invoice skips the Amount screen
 - removed `OldFlowTests.swift` — flow no longer exists
-```
+````
 
 **Preview Section (conditional):**
 Only include if the PR template (`.github/pull_request_template.md`) contains a `### Preview` heading:
