@@ -1219,6 +1219,22 @@ extension AppViewModel {
     /// Shows the "received" sheet for an incoming on-chain tx, unless it was already shown.
     /// Used by both the received (mempool) and confirmed (straight-to-confirmed) LDK events so a
     /// tx that skips the mempool still notifies the user. See issue #455.
+    /// Max distance between a confirmed-only tx's block time and the device clock for it to count as a new
+    /// receive. A full wallet scan, as after a migration or when an address type starts being monitored,
+    /// replays confirmed events for old txs, and those stay silent. Absolute because block timestamps and
+    /// device clocks can each run ahead of the other. Matches `MAX_CONFIRMED_ONLY_AGE` on Android.
+    static let maxConfirmedOnlyReceiveAge: TimeInterval = 60 * 60
+
+    static func shouldPresentConfirmedOnlyReceive(
+        confirmationTime: UInt64,
+        now: Date = Date(),
+        isMigrating: Bool = MigrationsService.shared.isShowingMigrationLoading || MigrationsService.shared.needsPostMigrationSync
+    ) -> Bool {
+        guard !isMigrating else { return false }
+        let age = abs(now.timeIntervalSince1970 - TimeInterval(confirmationTime))
+        return age <= maxConfirmedOnlyReceiveAge
+    }
+
     private func presentReceivedSheetForOnchainTransaction(txid: String, amountSats: Int64) {
         guard amountSats > 0 else { return }
 
@@ -1398,10 +1414,14 @@ extension AppViewModel {
         case let .onchainTransactionReceived(txid, details):
             // Show notification for incoming transactions seen in the mempool
             presentReceivedSheetForOnchainTransaction(txid: txid, amountSats: details.amountSats)
-        case let .onchainTransactionConfirmed(txid, _, blockHeight, _, details):
+        case let .onchainTransactionConfirmed(txid, _, blockHeight, confirmationTime, details):
             Logger.info("Transaction confirmed: \(txid) at block \(blockHeight)")
             // Also notify when a tx goes straight to confirmed without a prior received event
-            presentReceivedSheetForOnchainTransaction(txid: txid, amountSats: details.amountSats)
+            if Self.shouldPresentConfirmedOnlyReceive(confirmationTime: confirmationTime) {
+                presentReceivedSheetForOnchainTransaction(txid: txid, amountSats: details.amountSats)
+            } else {
+                Logger.debug("Skipping received sheet for confirmed-only tx \(txid) confirmed at \(confirmationTime)")
+            }
         case let .onchainTransactionReplaced(txid, conflicts):
             Logger.info("Transaction replaced: \(txid) by \(conflicts.count) conflict(s)")
             Task {
