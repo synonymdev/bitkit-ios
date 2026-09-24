@@ -311,6 +311,8 @@ actor PaykitAllowanceExecutor {
     /// submitted ones are settled from the node. Nothing is paid again.
     func recover(identity: String) async {
         do {
+            // No ledger means nothing was ever admitted. Creating one here would also end the rc55 storage layout.
+            guard try await sdk.allowanceAccountingState() != nil else { return }
             let state = try await ensureReconciled(identity: identity)
             for attempt in state.history.occurrences.flatMap(\.attempts) {
                 switch attempt.status {
