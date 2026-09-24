@@ -86,6 +86,7 @@ authenticated Pubky identities, saved as each other's contacts and linked on rec
 - Dismiss action: `PaymentRequestDismiss-<payment-request-id>`.
 - Payment confirmation: `PaymentRequestConfirm`.
 - Confirmation summary: `PaymentRequestFrom`, `PaymentRequestFor`.
+- Confirmation invoice note: `PaymentRequestInvoiceNote`.
 - Confirmation details: `SendConfirmToggleDetails`.
 - Saved-contact recipient: `ReviewContactRecipient`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
