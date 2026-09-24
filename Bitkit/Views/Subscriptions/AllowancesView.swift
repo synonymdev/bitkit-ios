@@ -193,7 +193,7 @@ struct AllowanceMoney: View {
             return AllowanceAmountText.formatted(usd)
         }
         guard let sats else { return "—" }
-        return AllowanceAmountText.fiatValue(sats: sats, currency: currency)
+        return AllowanceAmountText.limitValue(sats: sats, currency: currency)
     }
 
     @ViewBuilder
@@ -234,13 +234,25 @@ enum AllowanceAmountText {
         "$" + fiatValue(sats: sats, currency: currency)
     }
 
+    /// A limit set in whole dollars on the other wallet, shown back from its BTC terms at today's rate: rounded to the
+    /// dollar so a small rate move does not turn $5 into $4.99.
+    @MainActor
+    static func limitValue(sats: UInt64, currency: CurrencyViewModel) -> String {
+        guard let converted = currency.convert(sats: sats, to: "USD") else { return "—" }
+        guard converted.value >= 1 else { return formatted(converted.value) }
+        var rounded = Decimal()
+        var value = converted.value
+        NSDecimalRound(&rounded, &value, 0, .plain)
+        return formatted(rounded)
+    }
+
     @MainActor
     static func perPayment(_ entry: PaykitAllowanceEntry, currency: CurrencyViewModel) -> String? {
         if let usd = entry.limits?.perPaymentUsd {
             return t("subscriptions__allowance_per_payment_short", variables: ["amount": short(usd)])
         }
         guard let sats = entry.perPaymentMaxSats else { return nil }
-        return t("subscriptions__allowance_per_payment_short", variables: ["amount": fiat(sats: sats, currency: currency)])
+        return t("subscriptions__allowance_per_payment_short", variables: ["amount": "$" + limitValue(sats: sats, currency: currency)])
     }
 }
 
@@ -269,7 +281,7 @@ private struct AllowanceLimitsGrid: View {
     private func cell(title: String, usd: Decimal?, sats: UInt64?, identifier: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(title.localizedUppercase, textColor: .white64)
-            BodySSBText(t("subscriptions__allowance_up_to", variables: ["amount": usd.map { "$" + AllowanceAmountText.formatted($0) } ?? sats.map { AllowanceAmountText.fiat(sats: $0, currency: currency) } ?? "—"]))
+            BodySSBText(t("subscriptions__allowance_up_to", variables: ["amount": usd.map { "$" + AllowanceAmountText.formatted($0) } ?? sats.map { "$" + AllowanceAmountText.limitValue(sats: $0, currency: currency) } ?? "—"]))
                 .accessibilityIdentifier(identifier)
             if let sats {
                 CaptionText("₿ " + sats.formattedWithSpaces, textColor: .white64)
@@ -423,7 +435,7 @@ struct SetAllowanceView: View {
                 .padding(.bottom, 16)
             }
 
-            CustomButton(title: t("subscriptions__allowance_save"), variant: .secondary, isLoading: allowances.isWorking) {
+            CustomButton(title: t("subscriptions__allowance_save"), isLoading: allowances.isWorking) {
                 await save()
             }
             .accessibilityIdentifier("AllowanceSave")
@@ -499,18 +511,23 @@ struct AllowanceStepSlider: View {
             }
             .frame(height: knobSize)
 
-            HStack(spacing: 0) {
-                ForEach(stops.indices, id: \.self) { index in
-                    Button {
-                        select(index)
-                    } label: {
-                        CaptionMText(AllowanceAmountText.short(stops[index]), textColor: .textPrimary)
-                            .frame(maxWidth: .infinity, alignment: alignment(for: index))
+            GeometryReader { geometry in
+                ZStack(alignment: .topLeading) {
+                    ForEach(stops.indices, id: \.self) { index in
+                        Button {
+                            select(index)
+                        } label: {
+                            CaptionMText(AllowanceAmountText.short(stops[index]), textColor: .textPrimary)
+                                .frame(width: labelWidth, alignment: alignment(for: index))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: labelOffset(for: index, width: geometry.size.width))
+                        .accessibilityIdentifier("\(identifier)Stop-\(index)")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("\(identifier)Stop-\(index)")
                 }
             }
+            .frame(height: 18)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(identifier)
@@ -539,6 +556,14 @@ struct AllowanceStepSlider: View {
     private func nearestIndex(to x: CGFloat, width: CGFloat) -> Int {
         guard stops.count > 1, width > 0 else { return 0 }
         return Int((x / width * CGFloat(stops.count - 1)).rounded())
+    }
+
+    private let labelWidth: CGFloat = 56
+
+    private func labelOffset(for index: Int, width: CGFloat) -> CGFloat {
+        if index == 0 { return 0 }
+        if index == stops.count - 1 { return width - labelWidth }
+        return position(for: index, width: width) - labelWidth / 2
     }
 
     private func alignment(for index: Int) -> Alignment {
@@ -610,6 +635,9 @@ struct AllowanceReviewView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("AllowanceReview")
         .task {
+            // Another sheet's dismissal can close this one right after it opens; only a sheet the user saw counts.
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
             await allowances.markProposalPresented(entry)
         }
     }

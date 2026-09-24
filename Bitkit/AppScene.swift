@@ -1314,7 +1314,7 @@ struct AppScene: View {
 
     private func handlePaykitAllowanceEvent(_ event: PaykitAllowanceEvent) {
         switch event {
-        case let .paidAutomatically(counterparty, amountSats):
+        case let .paidAutomatically(counterparty, amountSats, paymentId):
             let title = t("subscriptions__allowance_executed_title")
             let description = t(
                 "subscriptions__allowance_executed_description",
@@ -1325,7 +1325,11 @@ struct AppScene: View {
             })
             Task {
                 await paykitAllowanceManager.refresh()
-                try? await activity.syncLdkNodePayments()
+                do {
+                    try await activity.setContact(counterparty, forPaymentId: paymentId)
+                } catch {
+                    Logger.warn("Failed to set contact for an automatic allowance payment: \(error)", context: "AppScene")
+                }
             }
         case let .limitReached(counterparty, amountSats):
             let title = t("subscriptions__allowance_limit_title")

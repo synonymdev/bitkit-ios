@@ -183,7 +183,7 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
 }
 
 enum PaykitAllowanceEvent: Equatable {
-    case paidAutomatically(counterparty: String, amountSats: UInt64)
+    case paidAutomatically(counterparty: String, amountSats: UInt64, paymentId: String)
     case limitReached(counterparty: String, amountSats: UInt64)
     case ledgerChanged
 }
@@ -586,7 +586,7 @@ actor PaykitAllowanceExecutor {
         }
         await payer.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: payment.endpoint.methodId.rawValue)
         try await record(attemptId: attemptId, outcome: .succeeded, identity: identity)
-        Self.eventSubject.send(.paidAutomatically(counterparty: request.counterparty, amountSats: request.amountSats))
+        Self.eventSubject.send(.paidAutomatically(counterparty: request.counterparty, amountSats: request.amountSats, paymentId: txid))
         return .completed
     }
 
@@ -601,7 +601,9 @@ actor PaykitAllowanceExecutor {
             do {
                 try await record(attemptId: entry.attemptId, outcome: succeeded ? .succeeded : .failed, identity: identity)
                 if succeeded, entry.isAutomatic {
-                    Self.eventSubject.send(.paidAutomatically(counterparty: entry.requestId.counterparty, amountSats: entry.amountSats))
+                    Self.eventSubject.send(
+                        .paidAutomatically(counterparty: entry.requestId.counterparty, amountSats: entry.amountSats, paymentId: paymentHash.lowercased())
+                    )
                 }
             } catch {
                 Logger.warn("Failed to record an allowance payment outcome: \(error)", context: "PaykitAllowance")
