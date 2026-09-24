@@ -1192,6 +1192,7 @@ actor PaykitSdkService {
         try persistSessionAccess(result.sessionAccess, shouldStoreLocalSecret: shouldStoreLocalSecret)
         sessionProvider.setLiveSessionAccess(result.sessionAccess)
         if !Self.publicKeysMatch(previousPublicKey, result.publicKey) {
+            if previousPublicKey != nil { await PubkyProfileManager.clearCachedIdentityMetadata() }
             try? Keychain.delete(key: .paykitSdkState)
         }
         resetRuntime()

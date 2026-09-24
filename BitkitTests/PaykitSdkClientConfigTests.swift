@@ -40,6 +40,82 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testIdentityActivationSeparatesCacheAndPreservesSameOwnerOrLegacyBackup() async throws {
+        let defaults = UserDefaults.standard
+        let metadataKeys = ["pubky_profile_name", "pubky_profile_image_uri"]
+        let savedMetadata = metadataKeys.map { defaults.object(forKey: $0) }
+        let savedOverrides = ContactsManager.backupContactProfileOverrides()
+        let credentialKeys: [KeychainEntryType] = [
+            .paykitSdkState, .paykitSession, .pubkySecretKey, .paykitReceiverNoiseSecretKey,
+            .bip39Mnemonic(index: 0), .bip39Passphrase(index: 0),
+        ]
+        let savedCredentials = try credentialKeys.map { try Keychain.load(key: $0) }
+        defer {
+            for (key, value) in zip(metadataKeys, savedMetadata) {
+                defaults.set(value, forKey: key)
+            }
+            ContactsManager.restoreContactProfileOverrides(savedOverrides)
+            for (key, data) in zip(credentialKeys, savedCredentials) {
+                if let data { try? Keychain.upsert(key: key, data: data) }
+                else { try? Keychain.delete(key: key) }
+            }
+        }
+        let mnemonic = Array(repeating: "abandon", count: 11).joined(separator: " ") + " about"
+        try Keychain.upsert(key: .bip39Mnemonic(index: 0), data: Data(mnemonic.utf8))
+        try Keychain.delete(key: .bip39Passphrase(index: 0))
+        let noiseBytes = try PaykitReceiverNoiseKeyDerivation.deriveFromWalletSeed(
+            mnemonic: mnemonic, passphrase: nil, network: Env.networkName, receiverPath: PaykitReceiverPath.wallet
+        )
+        try Keychain.upsert(key: .paykitReceiverNoiseSecretKey, data: noiseBytes)
+        let originalKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let differentKey = "5" + String(originalKey.dropFirst())
+        let overrides = [originalKey: PubkyProfileData(name: "Private label", bio: "", image: nil, links: [], tags: [])]
+        for previousKey in [originalKey, "pubky\(originalKey)", differentKey, nil] {
+            for restoreOnStartup in [false, true] {
+                defaults.set("Original profile", forKey: metadataKeys[0])
+                defaults.set("pubky://original/avatar", forKey: metadataKeys[1])
+                ContactsManager.restoreContactProfileOverrides(overrides)
+                let manager = UnavailableProfileManager()
+                await manager.initialize { .restorationFailed }
+                let sdk = CacheActivationSdk(noPointer: .init())
+                sdk.previousKey = previousKey
+                let service = PaykitSdkService(sdkFactory: { sdk }) { _, _ in CacheActivationBootstrap(noPointer: .init()) }
+                let session = CacheActivationSession(noPointer: .init())
+                session.noiseBytes = noiseBytes
+                let result = PubkySessionBootstrapResult(sessionAccess: session, publicKey: "pubky\(originalKey)")
+
+                if restoreOnStartup {
+                    try await service.activateRegisteredIdentity(result)
+                    await manager.initialize { .restored(publicKey: "pubky\(originalKey)") }
+                } else {
+                    manager.setActiveAuthAttemptIDForTesting(UUID())
+                    try await manager.completeAuthenticationForTesting(
+                        completeAuth: {
+                            try await service.activateRegisteredIdentity(result)
+                            return "new-session"
+                        },
+                        currentPublicKey: { "pubky\(originalKey)" },
+                        discardSessionAccess: { _ in XCTFail("Activation must succeed") }
+                    )
+                }
+
+                XCTAssertEqual(manager.publicKey, "pubky\(originalKey)")
+                if previousKey == differentKey {
+                    XCTAssertNil(manager.displayName)
+                    XCTAssertNil(manager.displayImageUri)
+                    XCTAssertNil(defaults.string(forKey: metadataKeys[0]))
+                    XCTAssertNil(defaults.string(forKey: metadataKeys[1]))
+                    XCTAssertNil(ContactsManager.backupContactProfileOverrides())
+                } else {
+                    XCTAssertEqual(manager.displayName, "Original profile")
+                    XCTAssertEqual(manager.displayImageUri, "pubky://original/avatar")
+                    XCTAssertEqual(ContactsManager.backupContactProfileOverrides(), overrides)
+                }
+            }
+        }
+    }
+
     func testClientIDUsesBitkitOwnedDomain() {
         let expectedClientID = Env.network == .bitcoin ? "bitkit.to" : "staging.bitkit.to"
 
@@ -203,5 +279,54 @@ private final class IdentityReadFailureSdk: PaykitSdk, @unchecked Sendable {
 
     override func identityStatus() async throws -> IdentityStatus? {
         throw failure
+    }
+}
+
+@MainActor
+private final class UnavailableProfileManager: PubkyProfileManager {
+    override func loadProfile() async {}
+}
+
+private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
+    var previousKey: String?
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        IdentityStatus(publicKey: previousKey, liveSessionAvailable: false)
+    }
+
+    override func initialize() async throws -> InitializationReport {
+        InitializationReport(identity: IdentityStatus(publicKey: previousKey, liveSessionAvailable: false))
+    }
+}
+
+private final class CacheActivationBootstrap: PubkySessionBootstrap, @unchecked Sendable {
+    override func republishIdentity(publicKey _: String) async throws -> Bool {
+        true
+    }
+}
+
+private final class CacheActivationSession: PubkySessionAccess, @unchecked Sendable {
+    var noiseBytes = Data()
+
+    override func exportSessionSecret() -> String {
+        "new-session"
+    }
+
+    override func exportLocalSecretKey() -> PubkyLocalSecretKey? {
+        nil
+    }
+
+    override func exportReceiverNoiseSecretKey() -> ReceiverNoiseSecretKey {
+        let key = CacheActivationNoiseKey(noPointer: .init())
+        key.bytes = noiseBytes
+        return key
+    }
+}
+
+private final class CacheActivationNoiseKey: ReceiverNoiseSecretKey, @unchecked Sendable {
+    var bytes = Data()
+
+    override func exportBytes() -> Data {
+        bytes
     }
 }

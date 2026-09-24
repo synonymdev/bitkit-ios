@@ -195,6 +195,7 @@ class PubkyProfileManager: ObservableObject {
             clearAuthenticatedState()
             Logger.debug("No saved paykit session found", context: "PubkyProfileManager")
         case let .restored(pk):
+            reloadCachedProfileMetadata()
             publicKey = pk
             authState = .authenticated
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
@@ -444,6 +445,7 @@ class PubkyProfileManager: ObservableObject {
         try await activateIdentity(registeredSession)
 
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        reloadCachedProfileMetadata()
         self.publicKey = publicKey
         authState = .authenticated
         setProfileSetupPending(true)
@@ -718,6 +720,7 @@ class PubkyProfileManager: ObservableObject {
             Self.notifyAppStateBackupChanged()
 
             activeAuthAttemptID = nil
+            reloadCachedProfileMetadata()
             publicKey = pk
             authState = .completingAuthentication
             Logger.info("Pubky auth completed for \(pk)", context: "PubkyProfileManager")
@@ -1077,6 +1080,18 @@ class PubkyProfileManager: ObservableObject {
         cachedImageUri = profile.imageUrl
         UserDefaults.standard.set(profile.name, forKey: Self.cachedNameKey)
         UserDefaults.standard.set(profile.imageUrl, forKey: Self.cachedImageUriKey)
+    }
+
+    static func clearCachedIdentityMetadata() {
+        UserDefaults.standard.removeObject(forKey: cachedNameKey)
+        UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
+        ContactsManager.restoreContactProfileOverrides(nil)
+    }
+
+    private func reloadCachedProfileMetadata() {
+        profile = nil
+        cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
+        cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
     }
 
     private func clearCachedProfileMetadata() {
