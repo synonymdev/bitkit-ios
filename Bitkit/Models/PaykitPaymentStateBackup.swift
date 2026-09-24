@@ -45,15 +45,7 @@ struct PaykitPaymentStateBackup: Codable {
         func restored() throws -> PaykitSubscriptionState {
             var acceptedAt: [PaykitSubscription.ID: Date] = [:]
             for acceptance in acceptances {
-                let date = try parseTimestamp(acceptance.acceptedAt)
-                let restoredInstant = PaykitPreciseInstant(date: date)
-                guard let instant = PaykitPreciseInstant(timestamp: acceptance.acceptedAt),
-                      restoredInstant.seconds == instant.seconds,
-                      restoredInstant.nanoseconds == instant.nanoseconds
-                else {
-                    throw invalidBackup("Subscription acceptance timestamp cannot be restored without losing precision")
-                }
-                acceptedAt[acceptance.id] = date
+                acceptedAt[acceptance.id] = try parseTimestamp(acceptance.acceptedAt)
             }
             return PaykitSubscriptionState(
                 acceptedAt: acceptedAt,
@@ -92,14 +84,11 @@ struct PaykitPaymentStateBackup: Codable {
             billingPeriod = proof.billingPeriod.map { Period(startsAt: $0.sdkValue.startsAt, endsAt: $0.sdkValue.endsAt) }
             onchainAddress = proof.onchainAddress
             onchainAmountSats = proof.onchainAmountSats
-            onchainWalletId = nil
+            onchainWalletId = proof.onchainWalletId
             onchainMatchingTransactionIdsBeforeAttempt = proof.onchainMatchingTransactionIdsBeforeAttempt ?? []
         }
 
         func restored() throws -> PendingPaykitPaymentProof {
-            guard onchainWalletId == nil || onchainWalletId == WalletScope.default else {
-                throw invalidBackup("Pending Paykit proof belongs to an unsupported wallet")
-            }
             let period = try billingPeriod.map { value in
                 guard let period = PaykitBillingPeriod(sdkPeriod: BillingPeriod(startsAt: value.startsAt, endsAt: value.endsAt)) else {
                     throw invalidBackup("Invalid Paykit billing period")
@@ -117,6 +106,7 @@ struct PaykitPaymentStateBackup: Codable {
                 proofData: proofData,
                 onchainAddress: onchainAddress,
                 onchainAmountSats: onchainAmountSats,
+                onchainWalletId: onchainWalletId,
                 onchainMatchingTransactionIdsBeforeAttempt: onchainMatchingTransactionIdsBeforeAttempt
             )
         }

@@ -36,6 +36,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             proofData: "transaction-id",
             onchainAddress: "test-address",
             onchainAmountSats: 1000,
+            onchainWalletId: "trezor:android",
             onchainMatchingTransactionIdsBeforeAttempt: ["previous-transaction"]
         )
         let backup = PaykitPaymentStateBackup(
@@ -46,12 +47,13 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         let decoded = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: data)
         XCTAssertEqual(decoded.pendingProofs.first?.requestId.billingPeriodStartsAt, "2026-09-24T10:00:00.100Z")
         try PaykitSubscriptionStateStore().restoreBackup(decoded.subscriptions)
-        let restoredProofs = try decoded.pendingProofs.map { try $0.restored() }
-        try await PaykitPaymentProofStore().save(restoredProofs)
+        try await PaykitPaymentProofService.shared.restoreBackup(decoded.pendingProofs)
 
         XCTAssertEqual(try PaykitSubscriptionStateStore().load(identity: identity), subscriptions)
         let loaded = try await PaykitPaymentProofStore().load()
         XCTAssertEqual(loaded, [proof])
+        let restoredBackup = try await PaykitPaymentProofService.shared.backupSnapshot()
+        XCTAssertEqual(restoredBackup.first?.onchainWalletId, "trezor:android")
     }
 
     func testUnreadablePaymentStateIsPreserved() async throws {
@@ -108,15 +110,25 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
 
     func testDecodeAndroidPaymentState() throws {
         let data = Data(#"""
-        {"subscriptions":{"alice":{"acceptances":[{"id":{"paymentRequestId":"request","counterparty":"bob","counterpartyReceiverPath":"bitkit/server"},"acceptedAt":"2026-09-24T10:00:00.125Z"}],"presentedProposalIds":[]}},"pendingProofs":[{"identity":"alice","requestId":{"paymentRequestId":"request","counterparty":"bob","counterpartyReceiverPath":"bitkit/server","billingPeriodStartsAt":"2026-09-24T10:00:00.100Z"},"paymentEndpointIdentifier":"bitcoin-onchain","kind":"bitcoin-onchain-txid","paymentStarted":true,"billingPeriod":{"startsAt":"2026-09-24T10:00:00.100Z","endsAt":"2026-09-25T10:00:00.100Z"},"onchainMatchingTransactionIdsBeforeAttempt":[]}]}
+        {"subscriptions":{"alice":{"acceptances":[{"id":{"paymentRequestId":"request","counterparty":"bob","counterpartyReceiverPath":"bitkit/server"},"acceptedAt":"2026-09-24T10:00:00.123Z"}],"presentedProposalIds":[]}},"pendingProofs":[{"identity":"alice","requestId":{"paymentRequestId":"request","counterparty":"bob","counterpartyReceiverPath":"bitkit/server","billingPeriodStartsAt":"2026-09-24T10:00:00.100Z"},"paymentEndpointIdentifier":"bitcoin-onchain","kind":"bitcoin-onchain-txid","paymentStarted":true,"billingPeriod":{"startsAt":"2026-09-24T10:00:00.100Z","endsAt":"2026-09-25T10:00:00.100Z"},"onchainWalletId":"trezor:android","onchainMatchingTransactionIdsBeforeAttempt":[]}]}
         """#.utf8)
         let backup = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: data)
-        XCTAssertEqual(try backup.subscriptions["alice"]?.restored().acceptedAt.count, 1)
+        let restoredAcceptedAt = try XCTUnwrap(backup.subscriptions["alice"]?.restored().acceptedAt.values.first)
+        let expectedAcceptedAt = try XCTUnwrap(PaykitPreciseInstant(timestamp: "2026-09-24T10:00:00.123Z")?.date)
+        XCTAssertEqual(restoredAcceptedAt.timeIntervalSince1970, expectedAcceptedAt.timeIntervalSince1970, accuracy: 0.000_001)
         let proof = try XCTUnwrap(backup.pendingProofs.first).restored()
         XCTAssertTrue(proof.paymentStarted)
         XCTAssertEqual(proof.requestId.billingPeriodStartsAt, proof.billingPeriod?.startsAt)
-        let imprecise = Data(String(decoding: data, as: UTF8.self).replacingOccurrences(of: ".125Z", with: ".100Z").utf8)
-        let impreciseBackup = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: imprecise)
-        XCTAssertThrowsError(try impreciseBackup.subscriptions["alice"]?.restored())
+        XCTAssertEqual(proof.onchainWalletId, "trezor:android")
+        XCTAssertEqual(PaykitPaymentStateBackup.Proof(proof).onchainWalletId, "trezor:android")
+
+        let millisecondData = Data(String(decoding: data, as: UTF8.self).replacingOccurrences(of: ".123Z", with: ".100Z").utf8)
+        let millisecondBackup = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: millisecondData)
+        XCTAssertEqual(try millisecondBackup.subscriptions["alice"]?.restored().acceptedAt.count, 1)
+
+        let malformedData = Data(String(decoding: data, as: UTF8.self)
+            .replacingOccurrences(of: "2026-09-24T10:00:00.123Z", with: "not-a-timestamp").utf8)
+        let malformedBackup = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: malformedData)
+        XCTAssertThrowsError(try malformedBackup.subscriptions["alice"]?.restored())
     }
 }

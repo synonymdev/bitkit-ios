@@ -500,6 +500,168 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(storedProof.onchainMatchingTransactionIdsBeforeAttempt, [oldTransactionId])
     }
 
+    func testForeignWalletOnchainProofStaysInertAndBlocksDuplicatePayment() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let proof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: request.id,
+            paymentEndpointIdentifier: endpoint,
+            kind: .onchain,
+            paymentStarted: true,
+            paymentIdentifier: nil,
+            proofData: nil,
+            onchainAddress: onchainAddress,
+            onchainAmountSats: request.amountSats,
+            onchainWalletId: "trezor:android",
+            onchainMatchingTransactionIdsBeforeAttempt: []
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(
+            sdk: sdk,
+            store: store,
+            onchainTxids: [String(repeating: "ab", count: 32)]
+        )
+
+        await service.reconcile()
+        await service.completeOnchainPayment(
+            request,
+            txid: String(repeating: "cd", count: 32),
+            paymentEndpointIdentifier: endpoint
+        )
+        await service.failOnchainPayment(request)
+
+        do {
+            try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+            XCTFail("A foreign-wallet proof must keep duplicate-payment protection")
+        } catch let error as PaykitPaymentRequestError {
+            XCTAssertEqual(error, .operationInProgress)
+        }
+
+        let submissionCount = await sdk.submissionCount()
+        let storedProofs = await store.snapshot()
+        let inFlightRequestIds = await service.inFlightRequestIds(identity: identity)
+        XCTAssertEqual(submissionCount, 0)
+        XCTAssertEqual(storedProofs, [proof])
+        XCTAssertEqual(inFlightRequestIds, [request.id])
+    }
+
+    func testForeignWalletCompletedProofIsRetainedWithoutSubmission() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let txid = String(repeating: "ab", count: 32)
+        let proof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: request.id,
+            paymentEndpointIdentifier: endpoint,
+            kind: .onchain,
+            paymentStarted: true,
+            paymentIdentifier: txid,
+            proofData: txid,
+            onchainAddress: onchainAddress,
+            onchainAmountSats: request.amountSats,
+            onchainWalletId: "trezor:android",
+            onchainMatchingTransactionIdsBeforeAttempt: []
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+
+        await service.reconcile()
+
+        let submissionCount = await sdk.submissionCount()
+        let storedProofs = await store.snapshot()
+        let completedProofKinds = await service.completedRequestProofKindsAwaitingSubmission(identity: identity)
+        XCTAssertEqual(submissionCount, 0)
+        XCTAssertEqual(storedProofs, [proof])
+        XCTAssertEqual(completedProofKinds, [request.id: .onchain])
+    }
+
+    func testForeignWalletUnstartedProofSurvivesCancellationCleanup() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = try XCTUnwrap(subscription.paymentDueOnAcceptance(at: now))
+        let proof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: request.id,
+            paymentEndpointIdentifier: endpoint,
+            kind: .onchain,
+            billingPeriod: request.billingPeriod,
+            paymentStarted: false,
+            paymentIdentifier: nil,
+            proofData: nil,
+            onchainWalletId: "trezor:android"
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let service = paymentProofService(
+            sdk: PaymentProofSdkMock(identity: identity, records: [record]),
+            store: store
+        )
+
+        await service.cancelPreparation(request)
+        let protectedRequestIds = try await service.protectedRequestIdsForSubscriptionCancellation(
+            identity: identity,
+            subscriptionId: subscription.id
+        )
+
+        let storedProofs = await store.snapshot()
+        XCTAssertTrue(protectedRequestIds.isEmpty)
+        XCTAssertEqual(storedProofs, [proof])
+    }
+
+    func testLocalSubmissionCleanupRetainsForeignWalletProofForSameRequest() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let foreignProof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: request.id,
+            paymentEndpointIdentifier: endpoint,
+            kind: .onchain,
+            paymentStarted: false,
+            paymentIdentifier: nil,
+            proofData: nil,
+            onchainWalletId: "trezor:android"
+        )
+        let foreignProofRetained = expectation(description: "Foreign-wallet proof retained after local submission")
+        let store = PaymentProofMemoryStore { proofs in
+            if proofs == [foreignProof] {
+                foreignProofRetained.fulfill()
+            }
+        }
+        await store.seed([foreignProof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+
+        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.markOnchainPaymentStarted(request, address: onchainAddress)
+        await service.completeOnchainPayment(
+            request,
+            txid: String(repeating: "ab", count: 32),
+            paymentEndpointIdentifier: endpoint
+        )
+        await sdk.waitForSubmissionStart()
+        await fulfillment(of: [foreignProofRetained], timeout: 1)
+
+        let storedProofs = await store.snapshot()
+        XCTAssertEqual(storedProofs, [foreignProof])
+    }
+
     func testReconcileContinuesAfterOnchainLookupFailure() async throws {
         let onchainEndpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let lightningEndpoint = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
