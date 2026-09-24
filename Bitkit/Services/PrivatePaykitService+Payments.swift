@@ -294,6 +294,11 @@ extension PrivatePaykitService {
             amount: PaymentAmountContext(value: request.amountValue, asset: PaykitIssuerInterop.bitcoinAsset),
             afterPrivatePaymentListVersion: consumedVersion
         )
+        if prepared.resolution.state == .recoveryPending || prepared.resolution.status == .waitingForUpdatedPaymentList {
+            // The last list was already paid from; a new one arrives once the payee sees that payment settle.
+            schedulePrivatePaymentRecovery(for: publicKey, receiverPath: request.counterpartyReceiverPath)
+            throw PaykitAllowanceError.paymentListPending
+        }
         guard let paymentListVersion = prepared.resolution.privatePaymentListVersion else { return nil }
 
         let eligible = Set(eligibleIdentifiers).intersection(request.acceptedPaymentEndpointIdentifiers)

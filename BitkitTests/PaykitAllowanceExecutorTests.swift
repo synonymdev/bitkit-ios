@@ -84,6 +84,68 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(isHandling)
     }
 
+    func testRequestWaitsWithoutAcceptanceWhileThePayeesPaymentListIsPending() async throws {
+        let harness = AllowanceHarness()
+        await harness.payer.setResolveError(PaykitAllowanceError.paymentListPending)
+
+        let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .deferred)
+        let log = harness.log.entries
+        XCTAssertTrue(log.contains("resolve"))
+        XCTAssertFalse(log.contains("acceptPaymentRequestAutomatically"))
+        XCTAssertFalse(log.contains("markPaymentManualOnly"))
+    }
+
+    @MainActor
+    func testManagerKeepsCoveredRequestsOffTheSendSheetUntilLightningIsReady() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        var ready = false
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            canPayNow: { ready }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+
+        let handledWhileReconnecting = await manager.processIncomingRequests([request])
+
+        XCTAssertFalse(handledWhileReconnecting)
+        XCTAssertFalse(harness.log.entries.contains("evaluateAllowanceCandidates"))
+        let waiting = await manager.isAutomaticallyHandling(request)
+        XCTAssertTrue(waiting)
+
+        ready = true
+        let handled = await manager.processIncomingRequests([request])
+
+        XCTAssertTrue(handled)
+        XCTAssertTrue(harness.log.entries.contains("payLightning"))
+    }
+
+    @MainActor
+    func testManagerKeepsADeferredRequestOffTheSendSheet() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        await harness.payer.setResolveError(PaykitAllowanceError.paymentListPending)
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            canPayNow: { true }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+
+        let handled = await manager.processIncomingRequests([request])
+
+        XCTAssertFalse(handled)
+        let waiting = await manager.isAutomaticallyHandling(request)
+        XCTAssertTrue(waiting)
+    }
+
     func testBlockedCandidateStaysManualWithoutAcceptance() async throws {
         let harness = AllowanceHarness()
         await harness.sdk.setCandidates([
@@ -621,6 +683,7 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
 
     private let log: AllowanceCallLog
     private let payment: PrivatePaykitAllowancePayment?
+    private var resolveError: Error?
     private(set) var callCount = 0
     private(set) var preparedProofs: [PreparedProof] = []
     private(set) var associatedPaymentHashes: [String] = []
@@ -636,8 +699,13 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         log.append(name)
     }
 
+    func setResolveError(_ error: Error?) {
+        resolveError = error
+    }
+
     func resolve(_ request: PaykitPaymentRequest, eligibleIdentifiers: [String]) async throws -> PrivatePaykitAllowancePayment? {
         called("resolve")
+        if let resolveError { throw resolveError }
         return payment
     }
 
