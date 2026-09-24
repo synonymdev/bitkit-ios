@@ -51,6 +51,7 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var isProcessingRequests = false
+    @ObservationIgnored private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
 
     init(
         sdk: any PaykitAllowanceSdkHandling = PaykitSdkService.shared,
@@ -129,13 +130,27 @@ final class PaykitAllowanceManager {
         entry.allowances.reduce(0) { $0 + (autoPaidSatsByAllowanceId[$1.allowanceId] ?? 0) }
     }
 
-    /// Whether an incoming request is covered by an active Allowance this wallet granted.
+    /// Whether an incoming request is covered by an active Allowance this wallet granted. A request created before the
+    /// Allowance was accepted stays manual: it may already have been shown to the user for a decision.
     func coversRequest(_ request: PaykitPaymentRequest) -> Bool {
-        allowances.contains {
-            $0.isAllower && $0.status(at: now()) == .active &&
-                PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty) &&
-                $0.counterpartyReceiverPath == request.counterpartyReceiverPath
+        allowances.contains { allowance in
+            guard allowance.isAllower, allowance.status(at: now()) == .active,
+                  PubkyPublicKeyFormat.matches(allowance.counterparty, request.counterparty),
+                  allowance.counterpartyReceiverPath == request.counterpartyReceiverPath
+            else { return false }
+            guard let acceptedAt = allowance.lastEventAt, let createdAt = request.createdAt else { return true }
+            return createdAt >= acceptedAt.addingTimeInterval(-Self.acceptanceClockTolerance)
         }
+    }
+
+    private var allowancesSignature: Int {
+        var hasher = Hasher()
+        for allowance in allowances {
+            hasher.combine(allowance.allowanceId)
+            hasher.combine(allowance.lifecycleState.rawDescription)
+        }
+        hasher.combine(autoPaidSatsByAllowanceId.values.reduce(0, +))
+        return hasher.finalize()
     }
 
     // MARK: Lifecycle
@@ -265,7 +280,10 @@ final class PaykitAllowanceManager {
     /// caller refreshes before presenting the rest for manual payment.
     func processIncomingRequests(_ requests: [PaykitPaymentRequest]) async -> Bool {
         guard let identity, !isProcessingRequests else { return false }
-        let covered = requests.filter { $0.requiresAcceptance && coversRequest($0) }
+        let signature = allowancesSignature
+        let covered = requests.filter {
+            $0.requiresAcceptance && coversRequest($0) && manualRequestIds[$0.id] != signature
+        }
         guard !covered.isEmpty else { return false }
 
         isProcessingRequests = true
@@ -273,8 +291,13 @@ final class PaykitAllowanceManager {
         var handledAny = false
         for request in covered {
             let result = await executor.autoPay(request, allowances: allowances, identity: identity)
-            if result == .started || result == .completed {
+            switch result {
+            case .started, .completed:
                 handledAny = true
+            case .manual:
+                manualRequestIds[request.id] = signature
+            case .notCovered:
+                break
             }
         }
         if handledAny {
@@ -286,6 +309,8 @@ final class PaykitAllowanceManager {
     func isAutomaticallyHandling(_ request: PaykitPaymentRequest) async -> Bool {
         await executor.isHandling(request.id)
     }
+
+    static let acceptanceClockTolerance: TimeInterval = 30
 
     static let allowedPaymentEndpointIdentifiers: [String] = PaykitIssuerInterop.supportedEndpointIdentifiers(
         PublicPaykitService.MethodId.publishableMethodIds.map(\.rawValue),
