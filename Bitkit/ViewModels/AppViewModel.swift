@@ -991,6 +991,11 @@ extension AppViewModel {
             toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
             return
         }
+        guard PubkyProfileManager.activeSecretKeyHex() != nil else {
+            sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity requires Ring")
+            toast(type: .warning, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
+            return
+        }
 
         sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(request: request))
     }
