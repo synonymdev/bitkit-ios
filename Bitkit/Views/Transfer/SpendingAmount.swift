@@ -172,10 +172,10 @@ struct SpendingAmount: View {
     }
 
     private func onContinue() async {
+        guard !transfer.isSpendingBusy else { return }
         isLoading = true
         defer { isLoading = false }
 
-        // Wait for node to be running if it's not already
         if wallet.nodeLifecycleState != .running {
             let isReady = await wallet.waitForNodeToRun(timeoutSeconds: 30.0)
             guard isReady else {
@@ -210,17 +210,16 @@ struct SpendingAmount: View {
 
             let values = transfer.calculateTransferValues(clientBalanceSat: amountSats, blocktankInfo: blocktank.info)
             let lspBalance = max(values.defaultLspBalance, values.minLspBalance)
-            let order = try await blocktank.createOrder(clientBalance: amountSats, lspBalance: lspBalance)
+            let feeSat = try await blocktank.estimateFundingAmount(clientBalance: amountSats, lspBalance: lspBalance)
 
-            transfer.onOrderCreated(order: order)
-            navigation.navigate(.spendingConfirm(order: order))
+            transfer.onEstimateReady(clientBalance: amountSats, lspBalance: lspBalance, feeSat: feeSat)
+            navigation.navigate(.spendingConfirm)
         } catch {
             let appError = AppError(error: error)
             app.toast(type: .error, title: appError.message, description: appError.debugMessage)
         }
     }
 
-    /// Sizes the limits, and re-checks them before the order is placed.
     private func fundingBudget() async -> UInt64? {
         do {
             let address: String

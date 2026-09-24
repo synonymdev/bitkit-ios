@@ -147,13 +147,14 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [payment-requests](payment-requests) | 2 | Linked issuer interoperability plus the ported Android resolution-failure journey |
 | [pubky-marketplace](pubky-marketplace) | 1 | Adapted — two-wallet Paykit marketplace payment on regtest; integration fixture required |
 | [pubky-auth](pubky-auth) | 1 | Bitkit-specific OS handoff into watch-only consent; local Pubky identity required |
+| [deeplinks](deeplinks) | 1 | Pubky contact handoff; existing wallet, Pubky identity, saved contact and PIN required |
 | [subscriptions](subscriptions) | 4 | Create, review, cancel/delete and the Payments tab; two linked Bitkit instances required. Discover is excluded — it is unimplemented on iOS |
 
 ## Not ported
 
-**`deeplinks` (2 journeys).** The Android journeys exercise `bitkit://screen/...` routing with a
+**`deeplinks/screen-deeplink.xml` and `sheet-deeplink.xml`.** These Android journeys exercise `bitkit://screen/...` routing with a
 dev-mode gate and a cold-start replay. iOS registers the `bitkit` URL scheme (`Bitkit/Info.plist`)
-and retains external URLs in `AppScene`, but `MainNavView` only routes web URLs, Pubky auth requests and callbacks,
+and retains external URLs in `AppScene`, but `MainNavView` only routes web URLs, Pubky contacts, auth requests and callbacks,
 and payment URIs — there is no screen or sheet deeplink router, and no dev-mode gate to test. These
 journeys are blocked on the feature existing, not on the harness.
 

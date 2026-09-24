@@ -286,6 +286,7 @@ private extension SamRockSetupRequestTests {
     }
 
     func prepareWalletKeychain() throws {
+        snapshotAppDefaults("selectedAddressType")
         try? Keychain.delete(key: .bip39Mnemonic(index: Self.testWalletIndex))
         try? Keychain.delete(key: .bip39Passphrase(index: Self.testWalletIndex))
         try Keychain.saveString(key: .bip39Mnemonic(index: Self.testWalletIndex), str: Self.testMnemonic)

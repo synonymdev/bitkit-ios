@@ -38,12 +38,10 @@ final class BlocktankRefundAddressProviderTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // `clear()` here and in tearDown, `restoreAppCacheData`, `resetToDefaults()` and the corrupt
+        // cache fixture all write UserDefaults.standard — the host app's own preferences.
+        snapshotAppDefaultsDomain()
         BlocktankRefundAddressStore().clear()
-    }
-
-    override func tearDown() {
-        BlocktankRefundAddressStore().clear()
-        super.tearDown()
     }
 
     private func makeProvider(

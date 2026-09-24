@@ -34,7 +34,7 @@ struct SendConfirmationView: View {
 
     var accentColor: Color {
         if hwSend.isActive {
-            return .blueAccent
+            return .brandAccent
         }
         return app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent
     }
