@@ -251,6 +251,15 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
+    private nonisolated static func isUnpublishedIdentity(publicKey: String) async -> Bool {
+        do {
+            return try await !PubkyService.hasIdentityRecord(publicKey: publicKey)
+        } catch {
+            Logger.warn("Failed to check the Pubky Ring key's identity record: \(error)", context: "PubkyProfileManager")
+            return false
+        }
+    }
+
     private nonisolated static func signUpToHomeserver(secretKeyHex: String) async throws -> String {
         let signupDetails: (homeserverPubky: String, signupCode: String?)
         if let homeserverPubky = Env.e2eHomeserverPubky {
@@ -284,7 +293,7 @@ class PubkyProfileManager: ObservableObject {
                 } catch {
                     Logger.warn("Sign-in with the Pubky Ring key failed: \(error)", context: "PubkyProfileManager")
                     // Signup rewrites the homeserver record, so only a Ring key that was never published signs up.
-                    guard await (try? PubkyService.hasIdentityRecord(publicKey: publicKey)) == false else { throw error }
+                    guard await Self.isUnpublishedIdentity(publicKey: publicKey) else { throw error }
                     _ = try await Self.signUpToHomeserver(secretKeyHex: secretKeyHex)
                 }
                 return publicKey
