@@ -362,6 +362,7 @@ actor PaykitSdkService {
     func initialize() async throws {
         Task { await republishIdentityIfNeeded() }
         try await operationLock.withLock {
+            await resolveLegacyStateLayoutIfNeeded()
             var sdk = try handle()
             do {
                 _ = try await sdk.initialize()
@@ -1227,6 +1228,42 @@ actor PaykitSdkService {
         try Paykit.requiredSessionCapabilities(config: config())
     }
 
+    /// A state blob saved before Bitkit recorded layouts may come from an rc55 build. The SDK itself tells which layout
+    /// decodes: a throwaway instance reads each candidate from memory, and the store records the one that works.
+    private func resolveLegacyStateLayoutIfNeeded() async {
+        guard let legacy = stateStore.unmarkedBlob() else { return }
+        var decodable: [(layout: PaykitSdkStateLayout, hasIdentity: Bool)] = []
+        for layout in [PaykitSdkStateLayout.allowances, .rc55] {
+            do {
+                let probe = try PaykitSdk(
+                    stateStore: PaykitSdkProbeStateStore(bytes: layout.sdkBytes(fromStored: legacy.bytes)),
+                    sessionProvider: PaykitSdkProbeSessionProvider(),
+                    config: Self.config()
+                )
+                _ = try await probe.allowanceAccountingState()
+                let hasIdentity = await (try? probe.identityStatus())??.publicKey != nil
+                decodable.append((layout, hasIdentity))
+            } catch {
+                continue
+            }
+        }
+        // Postcard ignores trailing bytes, so a wrong layout can occasionally parse; the one that still holds the
+        // wallet's identity wins.
+        guard let chosen = decodable.first(where: \.hasIdentity) ?? decodable.first else {
+            Logger.error("Stored Paykit state matches no known layout", context: "PaykitSdkService")
+            return
+        }
+        do {
+            try stateStore.markLayout(chosen.layout, expectedRevision: legacy.revision)
+            Logger.info(
+                "Resolved the stored Paykit state layout as \(chosen.layout.rawValue) (\(decodable.count) candidate(s) decoded)",
+                context: "PaykitSdkService"
+            )
+        } catch {
+            Logger.warn("Failed to record the Paykit state layout: \(error)", context: "PaykitSdkService")
+        }
+    }
+
     private func handle() throws -> PaykitSdk {
         if let sdk {
             return sdk
@@ -1476,6 +1513,45 @@ extension PublicPaykitService.Endpoint {
     }
 }
 
+/// Paykit #161 added `allowance_accounting` as the first field of the SDK state without bumping the state blob version,
+/// so the two layouts differ by one Option tag right after the version byte. Bitkit keeps the rc55 layout on disk while
+/// accounting is empty, so an rc55 build can still read the wallet, and records the layout it wrote in the revision.
+enum PaykitSdkStateLayout: String {
+    case rc55
+    case allowances = "alw"
+
+    private static let versionByte: UInt8 = 0x01
+    private static let noneTag: UInt8 = 0x00
+
+    static func stored(fromSdk bytes: Data) -> (bytes: Data, layout: PaykitSdkStateLayout) {
+        let start = bytes.startIndex
+        guard bytes.count >= 2, bytes[start] == versionByte, bytes[start + 1] == noneTag else {
+            return (bytes, .allowances)
+        }
+        var stored = bytes
+        stored.remove(at: start + 1)
+        return (stored, .rc55)
+    }
+
+    func sdkBytes(fromStored bytes: Data) -> Data {
+        guard self == .rc55, let first = bytes.first, first == Self.versionByte else { return bytes }
+        var sdkBytes = bytes
+        sdkBytes.insert(Self.noneTag, at: sdkBytes.startIndex + 1)
+        return sdkBytes
+    }
+
+    static func split(revision: String) -> (base: String, layout: PaykitSdkStateLayout?) {
+        guard let dot = revision.lastIndex(of: "."),
+              let layout = PaykitSdkStateLayout(rawValue: String(revision[revision.index(after: dot)...]))
+        else { return (revision, nil) }
+        return (String(revision[..<dot]), layout)
+    }
+
+    func revision(_ base: String) -> String {
+        "\(base).\(rawValue)"
+    }
+}
+
 private final class PaykitSdkStateBlobStore: SdkStateBlobStore, @unchecked Sendable {
     private let lock = NSLock()
 
@@ -1489,7 +1565,10 @@ private final class PaykitSdkStateBlobStore: SdkStateBlobStore, @unchecked Senda
             return nil
         }
 
-        return try decodeSdkStateBlobSnapshot(bytes: data)
+        let snapshot = try decodeSdkStateBlobSnapshot(bytes: data)
+        let layout = PaykitSdkStateLayout.split(revision: snapshot.revision).layout ?? .allowances
+        let bytes = layout.sdkBytes(fromStored: snapshot.blob.exportBytes())
+        return SdkStateBlobSnapshot(blob: SdkStateBlob(bytes: bytes), revision: snapshot.revision)
     }
 
     func saveStateBlobAtomically(blob: SdkStateBlob, expectedRevision: String?) throws -> String {
@@ -1502,12 +1581,65 @@ private final class PaykitSdkStateBlobStore: SdkStateBlobStore, @unchecked Senda
             throw PaykitError.Storage(code: "revision_conflict", context: "SDK state revision changed")
         }
 
-        let nextRevision = UUID().uuidString
-        let snapshot = SdkStateBlobSnapshot(blob: blob, revision: nextRevision)
+        let stored = PaykitSdkStateLayout.stored(fromSdk: blob.exportBytes())
+        let nextRevision = stored.layout.revision(UUID().uuidString)
+        let snapshot = SdkStateBlobSnapshot(blob: SdkStateBlob(bytes: stored.bytes), revision: nextRevision)
         let encoded = try encodeSdkStateBlobSnapshot(snapshot: snapshot)
         try Keychain.upsert(key: .paykitSdkState, data: encoded)
         return nextRevision
     }
+
+    func unmarkedBlob() -> (bytes: Data, revision: String)? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let data = try? Keychain.load(key: .paykitSdkState),
+              let snapshot = try? decodeSdkStateBlobSnapshot(bytes: data),
+              PaykitSdkStateLayout.split(revision: snapshot.revision).layout == nil
+        else { return nil }
+        return (snapshot.blob.exportBytes(), snapshot.revision)
+    }
+
+    func markLayout(_ layout: PaykitSdkStateLayout, expectedRevision: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let data = try Keychain.load(key: .paykitSdkState) else { return }
+        let snapshot = try decodeSdkStateBlobSnapshot(bytes: data)
+        guard snapshot.revision == expectedRevision else {
+            throw PaykitError.Storage(code: "revision_conflict", context: "SDK state revision changed")
+        }
+        let marked = SdkStateBlobSnapshot(blob: snapshot.blob, revision: layout.revision(snapshot.revision))
+        try Keychain.upsert(key: .paykitSdkState, data: encodeSdkStateBlobSnapshot(snapshot: marked))
+    }
+}
+
+private final class PaykitSdkProbeStateStore: SdkStateBlobStore, @unchecked Sendable {
+    private let bytes: Data
+
+    init(bytes: Data) {
+        self.bytes = bytes
+    }
+
+    func loadStateBlob() throws -> SdkStateBlobSnapshot? {
+        SdkStateBlobSnapshot(blob: SdkStateBlob(bytes: bytes), revision: "probe")
+    }
+
+    func saveStateBlobAtomically(blob _: SdkStateBlob, expectedRevision _: String?) throws -> String {
+        throw PaykitError.Storage(code: "read_only", context: "Paykit state layout probe is read-only")
+    }
+}
+
+private final class PaykitSdkProbeSessionProvider: SdkPubkySessionProvider, @unchecked Sendable {
+    func loadSessionAccess() throws -> PubkySessionAccess? {
+        nil
+    }
+
+    func publicStorageAvailable() throws -> Bool {
+        false
+    }
+
+    func clearSessionAccess() throws {}
 }
 
 private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendable {
