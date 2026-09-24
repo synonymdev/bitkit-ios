@@ -477,7 +477,7 @@ struct AppScene: View {
                 if lost {
                     pubkyProfile.adoptedSourceLost = false
                     app.toast(type: .error, title: t("profile__source_lost_title"), description: t("profile__source_lost_description"))
-                    if navigation.currentRoute == .profile || navigation.currentRoute == .editProfile {
+                    if navigation.path.contains(where: \.isPubkyIdentityRoute) {
                         navigation.path = [.pubkyChoice]
                     }
                 }
