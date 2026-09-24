@@ -10,7 +10,12 @@ enum SharedPubkyKeychain {
     /// Under test, records live under their own service so a suite never touches the records Pubky Ring reads.
     static let service = Env.isUnitTest ? "unit-tests.pubky.shared.v1" : "pubky.shared.v1"
     static let ringSourceApp = "app.pubkyring"
-    static let ownSourceApp = "to.bitkit"
+    /// Bitkit Android's applicationId for the network, so a test build never touches the mainnet record.
+    static let ownSourceApp: String = switch Env.network {
+    case .bitcoin: "to.bitkit"
+    case .testnet, .signet: "to.bitkit.tnet"
+    case .regtest: "to.bitkit.dev"
+    }
 
     private static let pubkyPrefix = "pubky"
 
