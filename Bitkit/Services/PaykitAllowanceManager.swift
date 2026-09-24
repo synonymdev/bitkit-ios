@@ -28,11 +28,12 @@ struct PaykitAllowanceEntry: Identifiable, Hashable {
 enum PaykitAllowanceError: LocalizedError {
     case contactNotLinked
     case unavailable
+    case paymentListPending
 
     var errorDescription: String? {
         switch self {
         case .contactNotLinked: t("subscriptions__allowance_error_not_linked")
-        case .unavailable: t("subscriptions__allowance_error_unavailable")
+        case .unavailable, .paymentListPending: t("subscriptions__allowance_error_unavailable")
         }
     }
 }
@@ -49,18 +50,31 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private let sdk: any PaykitAllowanceSdkHandling
     @ObservationIgnored private let executor: PaykitAllowanceExecutor
     @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let canPayNow: @MainActor () -> Bool
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var isProcessingRequests = false
     @ObservationIgnored private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
+    /// Covered requests waiting to be paid automatically: kept off the Send sheet until paid or found manual.
+    @ObservationIgnored private var waitingRequestIds: Set<PaykitPaymentRequest.ID> = []
 
     init(
         sdk: any PaykitAllowanceSdkHandling = PaykitSdkService.shared,
         executor: PaykitAllowanceExecutor = .shared,
-        now: @escaping () -> Date = { Date() }
+        now: @escaping () -> Date = { Date() },
+        canPayNow: @escaping @MainActor () -> Bool = PaykitAllowanceManager.lightningReady
     ) {
         self.sdk = sdk
         self.executor = executor
         self.now = now
+        self.canPayNow = canPayNow
+    }
+
+    /// A node that just started lists its channels before they reconnect, and a payment sent then finds no route.
+    static func lightningReady() -> Bool {
+        guard LightningService.shared.status?.isRunning == true,
+              let channels = LightningService.shared.channels
+        else { return false }
+        return channels.isEmpty || channels.contains(where: \.isUsable)
     }
 
     var entries: [PaykitAllowanceEntry] {
@@ -91,6 +105,8 @@ final class PaykitAllowanceManager {
         self.identity = identity
         await executor.activate(identity: identity)
         if identityChanged {
+            manualRequestIds = [:]
+            waitingRequestIds = []
             await executor.recover(identity: identity)
         }
         await refresh()
@@ -103,6 +119,8 @@ final class PaykitAllowanceManager {
         localState = PaykitAllowanceLocalState()
         autoPaidRequestIds = []
         autoPaidSatsByAllowanceId = [:]
+        manualRequestIds = [:]
+        waitingRequestIds = []
     }
 
     func refresh() async {
@@ -285,6 +303,10 @@ final class PaykitAllowanceManager {
             $0.requiresAcceptance && coversRequest($0) && manualRequestIds[$0.id] != signature
         }
         guard !covered.isEmpty else { return false }
+        guard canPayNow() else {
+            waitingRequestIds.formUnion(covered.map(\.id))
+            return false
+        }
 
         isProcessingRequests = true
         defer { isProcessingRequests = false }
@@ -294,10 +316,14 @@ final class PaykitAllowanceManager {
             switch result {
             case .started, .completed:
                 handledAny = true
+                waitingRequestIds.remove(request.id)
             case .manual:
                 manualRequestIds[request.id] = signature
+                waitingRequestIds.remove(request.id)
+            case .deferred:
+                waitingRequestIds.insert(request.id)
             case .notCovered:
-                break
+                waitingRequestIds.remove(request.id)
             }
         }
         if handledAny {
@@ -307,7 +333,8 @@ final class PaykitAllowanceManager {
     }
 
     func isAutomaticallyHandling(_ request: PaykitPaymentRequest) async -> Bool {
-        await executor.isHandling(request.id)
+        if waitingRequestIds.contains(request.id), coversRequest(request) { return true }
+        return await executor.isHandling(request.id)
     }
 
     static let acceptanceClockTolerance: TimeInterval = 30

@@ -196,6 +196,8 @@ enum PaykitAllowanceAutoPayResult: Equatable {
     /// The payment was handed to the node; the outcome arrives through the payment events.
     case started
     case completed
+    /// The payee has not published a payment list newer than the one last paid; the next refresh tries again.
+    case deferred
 }
 
 enum PaykitAllowanceManualPaymentError: LocalizedError {
@@ -453,7 +455,14 @@ actor PaykitAllowanceExecutor {
             return .manual
         }
 
-        guard let payment = try await payer.resolve(request, eligibleIdentifiers: candidate.eligiblePaymentEndpointIdentifiers) else {
+        let resolvedPayment: PrivatePaykitAllowancePayment?
+        do {
+            resolvedPayment = try await payer.resolve(request, eligibleIdentifiers: candidate.eligiblePaymentEndpointIdentifiers)
+        } catch PaykitAllowanceError.paymentListPending {
+            Logger.info("Deferred an incoming request until the payee publishes a new payment list", context: "PaykitAllowance")
+            return .deferred
+        }
+        guard let payment = resolvedPayment else {
             Logger.info("No payable private endpoint for an allowance payment; leaving it manual", context: "PaykitAllowance")
             return .manual
         }
