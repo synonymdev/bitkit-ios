@@ -169,6 +169,15 @@ class BackupService {
         await backupTask.value
     }
 
+    func hasPendingWalletRestore() -> Bool {
+        do {
+            return try Keychain.load(key: .paykitPendingBackupRestore) != nil
+        } catch {
+            Logger.error("Failed to read pending wallet restore state: \(error)", context: "BackupService")
+            return true
+        }
+    }
+
     /// Performs full restore from latest backup
     func performFullRestoreFromLatestBackup() async throws {
         stateQueue.sync {
@@ -189,7 +198,8 @@ class BackupService {
 
         do {
             // Block replacement backups even if downloading the wallet backup fails.
-            if try Keychain.load(key: .paykitPendingBackupRestore) == nil {
+            let pendingWalletBackup = try Keychain.load(key: .paykitPendingBackupRestore)
+            if pendingWalletBackup == nil {
                 try Keychain.upsert(key: .paykitPendingBackupRestore, data: Data())
             }
             try await performRestore(category: .settings) { dataBytes in
@@ -212,7 +222,8 @@ class BackupService {
             // state.
             var categoriesNeedingRewrite: Set<BackupCategory> = []
 
-            try await performRestore(category: .wallet) { dataBytes in
+            let retainedWalletBackup = pendingWalletBackup.flatMap { $0.isEmpty ? nil : $0 }
+            try await performRestore(category: .wallet, retainedData: retainedWalletBackup) { dataBytes in
                 try Keychain.upsert(key: .paykitPendingBackupRestore, data: dataBytes)
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 if let paymentState = payload.paykitPaymentState {
@@ -274,7 +285,11 @@ class BackupService {
 
                 try await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
-                try await PubkyProfileManager.restoreSessionBackupState(payload.pubkySession)
+                do {
+                    try await PubkyProfileManager.restoreSessionBackupState(payload.pubkySession)
+                } catch {
+                    Logger.warn("Failed to restore pubky session backup state: \(error)", context: "BackupService")
+                }
                 ContactsManager.restoreContactProfileOverrides(payload.pubkyContactProfileOverrides)
 
                 // App-owned, so it takes no part in the core field migration above and never sets
@@ -294,8 +309,6 @@ class BackupService {
             if didRestoreWalletBackup {
                 try await PrivatePaykitService.shared.restoreBackup(pendingPaykitSdkBackupState)
                 await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
-                try Keychain.delete(key: .paykitPendingBackupRestore)
-                markRestoreComplete(category: .wallet)
             }
 
             try await performRestore(category: .blocktank) { dataBytes in
@@ -311,8 +324,6 @@ class BackupService {
                 Logger.debug("Restored \(payload.orders.count) orders, \(payload.cjitEntries.count) CJITs", context: "BackupService")
             }
 
-            Logger.info("Full restore success", context: "BackupService")
-
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
 
@@ -323,6 +334,13 @@ class BackupService {
             // wraps this in its own set/defer pair), so clearing it early would reopen that
             // suppression window and let the restore's own change traffic schedule uploads.
             await rewriteMigratedBackups(categoriesNeedingRewrite)
+
+            if didRestoreWalletBackup {
+                try Keychain.delete(key: .paykitPendingBackupRestore)
+                markRestoreComplete(category: .wallet)
+            }
+
+            Logger.info("Full restore success", context: "BackupService")
         } catch {
             Logger.warn("Full restore error: \(error)", context: "BackupService")
             throw error
@@ -888,12 +906,20 @@ class BackupService {
         }
     }
 
-    private func performRestore(category: BackupCategory, restoreAction: (Data) async throws -> Void) async throws {
+    private func performRestore(
+        category: BackupCategory,
+        retainedData: Data? = nil,
+        restoreAction: (Data) async throws -> Void
+    ) async throws {
         do {
-            let item = try await vssBackupClient.getObject(key: category.rawValue)
+            let dataBytes = if let retainedData {
+                retainedData
+            } else {
+                try await vssBackupClient.getObject(key: category.rawValue)?.value
+            }
 
-            if let item {
-                try await restoreAction(item.value)
+            if let dataBytes {
+                try await restoreAction(dataBytes)
                 Logger.info("Restore success for: '\(category.rawValue)'", context: "BackupService")
             } else {
                 Logger.warn("Restore null for: '\(category.rawValue)'", context: "BackupService")
@@ -905,7 +931,9 @@ class BackupService {
             throw error
         }
 
-        if category == .wallet, try Keychain.load(key: .paykitPendingBackupRestore) != nil { return }
+        if category == .wallet, try Keychain.load(key: .paykitPendingBackupRestore) != nil {
+            return
+        }
         markRestoreComplete(category: category)
     }
 

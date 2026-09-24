@@ -174,6 +174,16 @@ struct PaykitPaymentRequestPollingSchedule {
     }
 }
 
+enum WalletBackupRestoreGate {
+    static func blocksWalletStart(
+        isRestoreRunning: Bool,
+        hasPendingRestore: Bool,
+        isRestoreCompletionStart: Bool
+    ) -> Bool {
+        hasPendingRestore || isRestoreRunning && !isRestoreCompletionStart
+    }
+}
+
 struct AppScene: View {
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
 
@@ -215,6 +225,7 @@ struct AppScene: View {
     @State private var removeSplash = false
     @State private var walletIsInitializing: Bool? = nil
     @State private var walletInitShouldFinish = false
+    @State private var isWalletBackupRestoreRunning = false
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
 
@@ -688,16 +699,14 @@ struct AppScene: View {
             app?.handleLdkNodeEvent(lightningEvent)
         }
 
-        Task {
-            if wallet.isRestoringWallet {
-                await restoreFromMostRecentBackup()
+        let shouldRestoreWalletBackup = wallet.isRestoringWallet || BackupService.shared.hasPendingWalletRestore()
+        if shouldRestoreWalletBackup {
+            walletIsInitializing = true
+        }
 
-                await MainActor.run {
-                    widgets.loadSavedWidgets()
-                    widgets.objectWillChange.send()
-                }
-                await pubkyProfile.initialize()
-                await startWallet()
+        Task {
+            if shouldRestoreWalletBackup {
+                await restoreWalletBackupAndStart()
                 return
             }
 
@@ -710,7 +719,17 @@ struct AppScene: View {
         }
     }
 
-    private func startWallet() async {
+    private func startWallet(completingBackupRestore: Bool = false) async {
+        let hasPendingRestore = BackupService.shared.hasPendingWalletRestore()
+        guard !WalletBackupRestoreGate.blocksWalletStart(
+            isRestoreRunning: isWalletBackupRestoreRunning,
+            hasPendingRestore: hasPendingRestore,
+            isRestoreCompletionStart: completingBackupRestore
+        ) else {
+            Logger.warn("Wallet start deferred until backup restoration completes", context: "AppScene")
+            return
+        }
+
         // Check network before attempting to start - LDK hangs when VSS is unreachable
         guard network.isConnected else {
             Logger.warn("Network offline, skipping wallet start", context: "AppScene")
@@ -851,13 +870,42 @@ struct AppScene: View {
         }
     }
 
-    private func restoreFromMostRecentBackup() async {
+    private func restoreWalletBackupAndStart() async {
+        guard !isWalletBackupRestoreRunning else { return }
+        isWalletBackupRestoreRunning = true
+        walletIsInitializing = true
+        defer { isWalletBackupRestoreRunning = false }
+
+        let didRestore: Bool = if BackupService.shared.hasPendingWalletRestore() {
+            await restoreVssBackup()
+        } else {
+            await restoreFromMostRecentBackup()
+        }
+        guard didRestore else { return }
+
+        widgets.loadSavedWidgets()
+        widgets.objectWillChange.send()
+        await pubkyProfile.initialize()
+        await startWallet(completingBackupRestore: true)
+    }
+
+    private func retryPendingWalletRestoreIfNeeded() -> Bool {
+        if isWalletBackupRestoreRunning {
+            return true
+        }
+        guard BackupService.shared.hasPendingWalletRestore() else { return false }
+
+        Task { await restoreWalletBackupAndStart() }
+        return true
+    }
+
+    private func restoreFromMostRecentBackup() async -> Bool {
         BackupService.shared.setRestoring(true)
         defer { BackupService.shared.setRestoring(false) }
 
         guard let mnemonicData = try? Keychain.load(key: .bip39Mnemonic(index: 0)),
               let mnemonic = String(data: mnemonicData, encoding: .utf8)
-        else { return }
+        else { return false }
 
         let passphrase: String? = {
             guard let data = try? Keychain.load(key: .bip39Passphrase(index: 0)) else { return nil }
@@ -882,21 +930,24 @@ struct AppScene: View {
         if shouldRestoreRN {
             do {
                 try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+                return true
             } catch {
                 Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
                 // Fall back to VSS
-                do {
-                    try await BackupService.shared.performFullRestoreFromLatestBackup()
-                } catch {
-                    app.toast(error)
-                }
+                return await restoreVssBackup()
             }
-        } else {
-            do {
-                try await BackupService.shared.performFullRestoreFromLatestBackup()
-            } catch {
-                app.toast(error)
-            }
+        }
+
+        return await restoreVssBackup()
+    }
+
+    private func restoreVssBackup() async -> Bool {
+        do {
+            try await BackupService.shared.performFullRestoreFromLatestBackup()
+            return true
+        } catch {
+            app.toast(error)
+            return false
         }
     }
 
@@ -952,6 +1003,9 @@ struct AppScene: View {
                 Task { await trezorManager.autoReconnect() }
             }
             if wallet.walletExists == true {
+                if retryPendingWalletRestoreIfNeeded() {
+                    return
+                }
                 Task {
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
@@ -1047,6 +1101,9 @@ struct AppScene: View {
             } catch {
                 return
             }
+            guard !isWalletBackupRestoreRunning,
+                  !BackupService.shared.hasPendingWalletRestore()
+            else { continue }
             let refreshMaintenance: Bool
             switch schedule.takeRound(isConnected: network.isConnected) {
             case .skip:
@@ -1375,6 +1432,10 @@ struct AppScene: View {
 
         if isConnected {
             guard wallet.walletExists == true else { return }
+
+            if retryPendingWalletRestoreIfNeeded() {
+                return
+            }
 
             // Refresh currency rates when network is restored - critical for UI
             // to display balances (MoneyText returns "0" if rates are nil)

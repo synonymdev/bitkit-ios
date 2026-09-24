@@ -9,6 +9,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     override func tearDownWithError() throws {
         try Keychain.delete(key: .paykitSubscriptionState)
         try Keychain.delete(key: .paykitPendingPaymentProofs)
+        try Keychain.delete(key: .paykitPendingBackupRestore)
     }
 
     func testPaymentStateBackupRoundTrip() async throws {
@@ -74,6 +75,35 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         defer { observation.cancel() }
         try PaykitSubscriptionStateStore().save(PaykitSubscriptionState(), identity: identity)
         XCTAssertEqual(changes, 1)
+    }
+
+    func testPendingWalletRestoreMarkerIsDetectedBeforeAndAfterPayloadDownload() throws {
+        try Keychain.delete(key: .paykitPendingBackupRestore)
+        XCTAssertFalse(BackupService.shared.hasPendingWalletRestore())
+
+        try Keychain.upsert(key: .paykitPendingBackupRestore, data: Data())
+        XCTAssertTrue(BackupService.shared.hasPendingWalletRestore())
+
+        try Keychain.upsert(key: .paykitPendingBackupRestore, data: Data("wallet-backup".utf8))
+        XCTAssertTrue(BackupService.shared.hasPendingWalletRestore())
+    }
+
+    func testWalletBackupRestoreGateBlocksStartUntilRestoreCompletion() {
+        XCTAssertTrue(WalletBackupRestoreGate.blocksWalletStart(
+            isRestoreRunning: true,
+            hasPendingRestore: false,
+            isRestoreCompletionStart: false
+        ))
+        XCTAssertFalse(WalletBackupRestoreGate.blocksWalletStart(
+            isRestoreRunning: true,
+            hasPendingRestore: false,
+            isRestoreCompletionStart: true
+        ))
+        XCTAssertTrue(WalletBackupRestoreGate.blocksWalletStart(
+            isRestoreRunning: true,
+            hasPendingRestore: true,
+            isRestoreCompletionStart: true
+        ))
     }
 
     func testDecodeAndroidPaymentState() throws {
