@@ -393,6 +393,7 @@ class PubkyProfileManager: ObservableObject {
             },
             activateIdentity: { try await PubkyService.activateRegisteredIdentity($0) }
         )
+        Self.publishOwnSharedRecord()
     }
 
     private func completeSignupAuthentication(
