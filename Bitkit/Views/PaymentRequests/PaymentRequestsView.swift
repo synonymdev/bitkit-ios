@@ -312,6 +312,7 @@ struct PaymentRequestsView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @Environment(PaykitAllowanceManager.self) private var allowances
 
     var body: some View {
         Group {
@@ -462,7 +463,9 @@ struct PaymentRequestsView: View {
 
     private func historyDate(for request: PaykitPaymentRequest) -> String {
         guard let createdAt = request.createdAt else { return status(for: request) }
-        return Self.dateFormatter.string(from: createdAt)
+        let date = Self.dateFormatter.string(from: createdAt)
+        guard allowances.autoPaidRequestIds.contains(request.id) else { return date }
+        return date + " · " + t("subscriptions__allowance_auto_paid")
     }
 
     private static let dateFormatter: DateFormatter = {

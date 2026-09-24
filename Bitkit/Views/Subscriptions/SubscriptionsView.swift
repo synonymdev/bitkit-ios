@@ -12,6 +12,10 @@ struct SubscriptionSheetItem: SheetItem {
         case details(PaykitSubscription)
         case cancel(PaykitSubscription)
         case payment(SendRoute)
+        case allowanceContact
+        case allowanceSet(PubkyContact)
+        case allowanceReview(PaykitAllowanceEntry)
+        case allowanceDetail(PaykitAllowanceEntry)
     }
 
     let route: Route
@@ -22,11 +26,13 @@ struct SubscriptionSheetItem: SheetItem {
 struct SubscriptionsView: View {
     private enum Tab: String, CustomStringConvertible {
         case overview
+        case allowances
         case payments
 
         var description: String {
             switch self {
             case .overview: t("subscriptions__overview")
+            case .allowances: t("subscriptions__allowances")
             case .payments: t("subscriptions__payments")
             }
         }
@@ -73,6 +79,8 @@ struct SubscriptionsView: View {
                     Group {
                         if selectedTab == .payments {
                             PaymentRequestsView()
+                        } else if selectedTab == .allowances {
+                            AllowancesTab()
                         } else if !hasVisibleSubscriptions {
                             emptyState
                         } else {
@@ -118,6 +126,7 @@ struct SubscriptionsView: View {
                 selectedTab: $selectedTab,
                 tabItems: [
                     TabItem(.overview),
+                    TabItem(.allowances),
                     TabItem(.payments, badge: paymentRequests.pendingRequests.count),
                 ],
                 inactiveColor: .white.opacity(0.5)
@@ -148,6 +157,11 @@ struct SubscriptionsView: View {
                     sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .create))
                 }
                 .accessibilityIdentifier("SubscriptionCreate")
+            } else if selectedTab == .allowances {
+                CustomButton(title: t("subscriptions__allowance_add"), variant: .secondary) {
+                    sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .allowanceContact))
+                }
+                .accessibilityIdentifier("AllowanceAdd")
             } else {
                 PaymentRequestsFooterButton()
             }
@@ -597,6 +611,18 @@ struct SubscriptionSheet: View {
                 cancel(subscription)
             case let .payment(sendRoute):
                 SendSheet(config: SendSheetItem(initialRoute: sendRoute), isEmbedded: true)
+            case .allowanceContact:
+                AllowanceContactView { route = .allowanceSet($0) }
+            case let .allowanceSet(contact):
+                SetAllowanceView(
+                    contact: contact,
+                    onBack: { route = .allowanceContact },
+                    onSaved: { sheets.hideSheet(reason: "Allowance proposed") }
+                )
+            case let .allowanceReview(entry):
+                AllowanceReviewView(entry: entry)
+            case let .allowanceDetail(entry):
+                AllowanceDetailView(entry: entry)
             }
         }
         .task {

@@ -209,6 +209,7 @@ struct AppScene: View {
     @State private var hwWalletManager: HwWalletManager
     @State private var calculatorInputManager = CalculatorInputManager()
     @State private var paykitPaymentRequestManager = PaykitPaymentRequestManager()
+    @State private var paykitAllowanceManager = PaykitAllowanceManager()
     @State private var initialPaykitSyncGeneration = 0
 
     @State private var hideSplash = false
@@ -380,6 +381,7 @@ struct AppScene: View {
             .environment(hwWalletManager)
             .environment(calculatorInputManager)
             .environment(paykitPaymentRequestManager)
+            .environment(paykitAllowanceManager)
     }
 
     private var appEventContent: some View {
@@ -388,6 +390,7 @@ struct AppScene: View {
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
                     Task {
+                        await paykitAllowanceManager.activate(identity: pk)
                         try? await contactsManager.loadContacts(for: pk)
                         await refreshPrivateOnlyPaykitReceiverMarker()
                         await refreshIncomingPaykitPaymentRequests(presentItems: false)
@@ -402,6 +405,7 @@ struct AppScene: View {
                 } else if authState == .idle {
                     contactsManager.reset()
                     paykitPaymentRequestManager.clear()
+                    paykitAllowanceManager.deactivate()
                 }
             }
             .onReceive(contactsManager.$contacts) { contacts in
@@ -426,6 +430,9 @@ struct AppScene: View {
             }
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
                 Task { await refreshIncomingPaykitPaymentRequests() }
+            }
+            .onReceive(PaykitAllowanceExecutor.eventPublisher.receive(on: DispatchQueue.main)) { event in
+                handlePaykitAllowanceEvent(event)
             }
             .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
                 Task { await associateResolvedPaykitOnchainPayment(resolution) }
@@ -992,6 +999,10 @@ struct AppScene: View {
             await PaykitPaymentProofService.shared.reconcile()
         }
         await paykitPaymentRequestManager.refresh()
+        await paykitAllowanceManager.refresh()
+        if await paykitAllowanceManager.processIncomingRequests(paykitPaymentRequestManager.pendingRequests) {
+            await paykitPaymentRequestManager.refresh()
+        }
         if presentItems {
             await presentNextIncomingPaykitItem()
         }
@@ -1085,6 +1096,7 @@ struct AppScene: View {
             guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet, app.contactPaymentContext == nil else { return }
             for request in requests {
                 guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                if await paykitAllowanceManager.isAutomaticallyHandling(request) { continue }
                 do {
                     let result = try await PrivatePaykitService.shared.beginPaymentRequest(request)
                     guard paykitPaymentRequestManager.isCurrentPresentation(request),
@@ -1300,6 +1312,40 @@ struct AppScene: View {
         await presentNextIncomingPaykitPaymentRequest()
     }
 
+    private func handlePaykitAllowanceEvent(_ event: PaykitAllowanceEvent) {
+        switch event {
+        case let .paidAutomatically(counterparty, amountSats):
+            let title = t("subscriptions__allowance_executed_title")
+            let description = t(
+                "subscriptions__allowance_executed_description",
+                variables: ["amount": AllowanceAmountText.fiat(sats: amountSats, currency: currency), "name": contactName(counterparty)]
+            )
+            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+                app.toast(type: .lightning, title: title, description: description, accessibilityIdentifier: "AllowancePaidToast")
+            })
+            Task {
+                await paykitAllowanceManager.refresh()
+                try? await activity.syncLdkNodePayments()
+            }
+        case let .limitReached(counterparty, amountSats):
+            let title = t("subscriptions__allowance_limit_title")
+            let description = t(
+                "subscriptions__allowance_limit_description",
+                variables: ["amount": AllowanceAmountText.fiat(sats: amountSats, currency: currency), "name": contactName(counterparty)]
+            )
+            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+                app.toast(type: .warning, title: title, description: description, accessibilityIdentifier: "AllowanceLimitToast")
+            })
+        case .ledgerChanged:
+            Task { await paykitAllowanceManager.refresh() }
+        }
+    }
+
+    private func contactName(_ publicKey: String) -> String {
+        contactsManager.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }?.displayName
+            ?? PubkyPublicKeyFormat.displayTruncated(publicKey)
+    }
+
     private func presentNextIncomingPaykitItem() async {
         guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet else { return }
         if PaykitSubscriptionNotificationTargetStore.load() != nil {
@@ -1311,6 +1357,10 @@ struct AppScene: View {
         }
         if let subscription = paykitPaymentRequestManager.subscriptionProposalForPresentation() {
             sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .review(subscription)))
+            return
+        }
+        if let allowance = paykitAllowanceManager.proposalForPresentation() {
+            sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .allowanceReview(allowance)))
             return
         }
         await presentNextIncomingPaykitPaymentRequest()

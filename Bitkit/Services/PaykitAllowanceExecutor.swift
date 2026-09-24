@@ -224,6 +224,7 @@ actor PaykitAllowanceExecutor {
     private let lightningLookup: any PaykitLightningPaymentProofLookingUp
     private let now: @Sendable () -> Date
     private var inFlightRequestIds = Set<PaykitPaymentRequest.ID>()
+    private(set) var activeIdentity: String?
 
     init(
         sdk: any PaykitAllowanceSdkHandling = PaykitSdkService.shared,
@@ -237,6 +238,10 @@ actor PaykitAllowanceExecutor {
         self.payer = payer
         self.lightningLookup = lightningLookup
         self.now = now
+    }
+
+    func activate(identity: String?) {
+        activeIdentity = identity
     }
 
     // MARK: Local state
@@ -586,8 +591,8 @@ actor PaykitAllowanceExecutor {
     }
 
     /// Called from the node's payment events for every outbound Lightning payment; only journaled ones are Allowance work.
-    func lightningPaymentSettled(paymentHash: String, succeeded: Bool, identity: String?) async {
-        guard let identity else { return }
+    func lightningPaymentSettled(paymentHash: String, succeeded: Bool) async {
+        guard let identity = activeIdentity else { return }
         let entries = localState(identity: identity).journal.filter {
             $0.paymentHash?.caseInsensitiveCompare(paymentHash) == .orderedSame &&
                 [.sending, .sent, .unknown, .submitted].contains($0.stage)
@@ -608,8 +613,8 @@ actor PaykitAllowanceExecutor {
 
     /// Reports a user-approved payment of an incoming request to the shared ledger before it leaves the wallet.
     /// Throws `alreadyRecorded` when another live attempt exists for the request, so the same request is never paid twice.
-    func beginManualPayment(_ request: PaykitPaymentRequest, paymentEndpointIdentifier: String, identity: String) async throws -> String? {
-        guard request.billingPeriod == nil, request.direction == .incoming else { return nil }
+    func beginManualPayment(_ request: PaykitPaymentRequest, paymentEndpointIdentifier: String) async throws -> String? {
+        guard let identity = activeIdentity, request.billingPeriod == nil, request.direction == .incoming else { return nil }
         do {
             try await ensureReconciled(identity: identity)
             let scope = Paykit.PaymentRequestScope(
@@ -663,7 +668,8 @@ actor PaykitAllowanceExecutor {
         }
     }
 
-    func manualLightningPaymentSent(attemptId: String, paymentHash: String, identity: String) {
+    func manualLightningPaymentSent(attemptId: String, paymentHash: String) {
+        guard let identity = activeIdentity else { return }
         updateLocalState(identity: identity) { state in
             guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }) else { return }
             state.journal[index].paymentHash = paymentHash.lowercased()
@@ -671,7 +677,8 @@ actor PaykitAllowanceExecutor {
         }
     }
 
-    func finishManualPayment(attemptId: String, outcome: Paykit.PaymentOutcome, transactionId: String? = nil, identity: String) async {
+    func finishManualPayment(attemptId: String, outcome: Paykit.PaymentOutcome, transactionId: String? = nil) async {
+        guard let identity = activeIdentity else { return }
         if let transactionId {
             updateLocalState(identity: identity) { state in
                 guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }) else { return }
