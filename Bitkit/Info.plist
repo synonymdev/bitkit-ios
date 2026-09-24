@@ -35,10 +35,6 @@
 	<string>$(TREZOR_BRIDGE_URL)</string>
 	<key>TREZOR_ELECTRUM_URL</key>
 	<string>$(TREZOR_ELECTRUM_URL)</string>
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>pubkyring</string>
-	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

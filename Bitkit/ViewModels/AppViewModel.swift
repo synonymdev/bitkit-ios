@@ -176,9 +176,6 @@ class AppViewModel: ObservableObject {
         if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
             return false
         }
-        if PubkyRingAuthCallback.parse(url: url) != nil {
-            return false
-        }
         if PubkyContactLink.matches(url) {
             return false
         }
@@ -994,12 +991,9 @@ extension AppViewModel {
             toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
             return
         }
-
-        guard let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
-              !secretKey.isEmpty
-        else {
+        guard PubkyProfileManager.activeSecretKeyHex() != nil else {
             sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity requires Ring")
-            toast(type: .info, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
+            toast(type: .warning, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
             return
         }
 

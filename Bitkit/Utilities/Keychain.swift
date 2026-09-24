@@ -240,6 +240,7 @@ class Keychain {
             kSecReturnAttributes as String: kCFBooleanTrue!,
             kSecReturnRef as String: kCFBooleanTrue!,
             kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
         ]
 
         var result: AnyObject?

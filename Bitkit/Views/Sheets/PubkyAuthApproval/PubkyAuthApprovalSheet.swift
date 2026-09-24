@@ -443,9 +443,7 @@ struct PubkyAuthApprovalSheet: View {
                 return
             }
 
-            guard let secretKey = try Keychain.loadString(key: .pubkySecretKey),
-                  !secretKey.isEmpty
-            else {
+            guard let secretKey = PubkyProfileManager.activeSecretKeyHex() else {
                 app.toast(type: .error, title: t("pubky_auth__no_identity"))
                 state = .authorize
                 return
