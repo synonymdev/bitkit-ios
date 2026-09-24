@@ -3,11 +3,17 @@ import BitkitCore
 import XCTest
 
 final class ActivityTests: XCTestCase {
-    let testDbPath = NSTemporaryDirectory()
+    /// Unique per run: `NSTemporaryDirectory()` is shared with every other suite that calls
+    /// `initDb`, and `init_db` creates blocktank.db alongside activity.db, which none of them
+    /// cleaned up.
+    let testDbPath = FileManager.default.temporaryDirectory
+        .appendingPathComponent("ActivityTests-\(UUID().uuidString)", isDirectory: true).path
     let service = CoreService.shared.activity
 
     override func setUp() async throws {
         try await super.setUp()
+        await drainCoreServiceQueue()
+        try FileManager.default.createDirectory(atPath: testDbPath, withIntermediateDirectories: true)
         // Initialize the database before each test
         _ = try initDb(basePath: testDbPath)
         try await Task.sleep(nanoseconds: 1_000_000_000)
@@ -16,13 +22,8 @@ final class ActivityTests: XCTestCase {
     override func tearDown() async throws {
         try await super.tearDown()
 
-        // Clean up the test database directory
-        let fileManager = FileManager.default
-        let dbPath = (testDbPath as NSString).appendingPathComponent("activity.db")
-
-        if fileManager.fileExists(atPath: dbPath) {
-            try fileManager.removeItem(atPath: dbPath)
-        }
+        await repointCoreToAppStorage()
+        try? FileManager.default.removeItem(atPath: testDbPath)
     }
 
     func testInsertAndRetrieveLightningActivity() async throws {
