@@ -80,12 +80,12 @@ struct ProfileView: View {
 
     private var profileActions: some View {
         HStack(spacing: 16) {
-            GradientCircleButton(icon: "pencil", accessibilityLabel: t("profile__edit")) {
+            GradientCircleButton(icon: "pencil-regular", accessibilityLabel: t("profile__edit")) {
                 navigation.navigate(.editProfile)
             }
             .accessibilityIdentifier("ProfileEdit")
 
-            GradientCircleButton(icon: "copy", iconSize: 18, accessibilityLabel: t("common__copy")) {
+            GradientCircleButton(icon: "copy-simple", accessibilityLabel: t("common__copy")) {
                 if let pk = pubkyProfile.publicKey {
                     UIPasteboard.general.string = pk
                     app.toast(type: .success, title: t("common__copied"), accessibilityIdentifier: "ProfilePubkyCopiedToast")
@@ -93,7 +93,7 @@ struct ProfileView: View {
             }
             .accessibilityIdentifier("ProfileCopy")
 
-            GradientCircleButton(icon: "share", accessibilityLabel: t("common__share")) {
+            GradientCircleButton(icon: "share-regular", accessibilityLabel: t("common__share")) {
                 shareProfile()
             }
             .accessibilityIdentifier("ProfileShare")
