@@ -556,7 +556,9 @@ struct SendConfirmationView: View {
                 }
             }
 
-            if oneOffPaymentRequestNote == nil, let description = app.scannedLightningInvoice?.description, !description.isEmpty {
+            if let description = app.scannedLightningInvoice?.description, !description.isEmpty,
+               description.trimmingCharacters(in: .whitespacesAndNewlines) != oneOffPaymentRequestNote
+            {
                 SendSectionView(t("wallet__note")) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         BodySSBText(description)
