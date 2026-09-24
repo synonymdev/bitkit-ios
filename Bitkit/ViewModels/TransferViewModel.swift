@@ -26,6 +26,8 @@ struct TransferValues {
 struct HwSpendingState: Equatable {
     var isLoading = false
     var isSigning = false
+    /// Reaching the device before anything is on it to sign, which may be abandoned.
+    var isConnectingDevice = false
     var hasPendingBroadcast = false
     var isPassphraseRequired = false
     var isVerifyingPassphrase = false
@@ -315,6 +317,12 @@ class TransferViewModel: ObservableObject {
 
     var isSpendingBusy: Bool {
         uiState.isConfirming || hwSpending.isSigning || hwSpending.isCreatingOrder
+    }
+
+    /// Whether the hardware sign screen may be left. Reaching the device (a Jade may wait minutes for
+    /// its PIN) can be abandoned, and leaving cancels it; once the device is asked to sign it cannot.
+    var canLeaveHwSign: Bool {
+        !isSpendingBusy || hwSpending.isConnectingDevice
     }
 
     func onEstimateReady(clientBalance: UInt64, lspBalance: UInt64, feeSat: UInt64, isAdvanced: Bool = false) {
@@ -711,6 +719,7 @@ class TransferViewModel: ObservableObject {
             guard let self else { return }
             defer {
                 self.hwSpending.isSigning = false
+                self.hwSpending.isConnectingDevice = false
                 self.hwSignTask = nil
             }
 
@@ -726,6 +735,8 @@ class TransferViewModel: ObservableObject {
                         address: address
                     ) { [weak self] funding in
                         self?.hwSpending.miningFeeSats = funding.miningFeeSats
+                    } onConnectingDevice: { [weak self] isConnecting in
+                        self?.hwSpending.isConnectingDevice = isConnecting
                     }
                     pendingHwFundingBroadcast = PendingHwFundingBroadcast(
                         orderId: order.id,
@@ -831,6 +842,7 @@ class TransferViewModel: ObservableObject {
         hwSignTask?.cancel()
         hwSignTask = nil
         hwSpending.isSigning = false
+        hwSpending.isConnectingDevice = false
         activeHwTransferWalletId = nil
         if let walletId, let hwConnecting {
             Task {

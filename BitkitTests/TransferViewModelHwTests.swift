@@ -511,6 +511,58 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertEqual(connecting.staleDisconnects, ["trezor:wallet"], "cancelling during sign must tear down the stale session")
     }
 
+    func testTheSignScreenCanBeLeftOnlyWhileTheDeviceIsBeingReached() async {
+        let funding = MockHwFunding()
+        funding.signDelay = 1.0
+        let connecting = MockHwConnecting()
+        let gate = AsyncGate()
+        connecting.connectGate = gate
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+        XCTAssertTrue(vm.canLeaveHwSign)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "jade:wallet")
+        while !vm.hwSpending.isConnectingDevice {
+            await Task.yield()
+        }
+        XCTAssertTrue(vm.isSpendingBusy)
+        XCTAssertTrue(vm.canLeaveHwSign, "a device waiting for its PIN must not trap the user")
+
+        gate.open()
+        while funding.signCalls == 0 {
+            await Task.yield()
+        }
+        XCTAssertFalse(vm.hwSpending.isConnectingDevice)
+        XCTAssertFalse(vm.canLeaveHwSign, "the device has been asked to sign")
+
+        vm.cancelHwSigning()
+        await awaitSigningComplete(vm)
+        XCTAssertTrue(vm.canLeaveHwSign)
+    }
+
+    func testLeavingWhileTheDeviceIsBeingReachedReleasesIt() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let gate = AsyncGate()
+        connecting.connectGate = gate
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "jade:wallet")
+        while !vm.hwSpending.isConnectingDevice {
+            await Task.yield()
+        }
+        vm.cancelHwSigning()
+        for _ in 0 ..< 50 where connecting.staleDisconnects.isEmpty {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        gate.open()
+        await awaitSigningComplete(vm)
+
+        XCTAssertFalse(vm.hwSpending.isConnectingDevice)
+        XCTAssertEqual(connecting.staleDisconnects, ["jade:wallet"])
+        XCTAssertEqual(funding.signCalls, 0, "an abandoned connect never reaches signing")
+        XCTAssertEqual(vm.hwSignedEvent, 0)
+    }
+
     func testDeviceBusyMapsToDeviceBusyError() async {
         let funding = MockHwFunding()
         let connecting = MockHwConnecting()

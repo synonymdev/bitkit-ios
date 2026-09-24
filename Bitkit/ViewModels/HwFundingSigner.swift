@@ -66,11 +66,13 @@ struct HwFundingSigner {
     }
 
     /// Reconnects, composes and signs the funding transaction without broadcasting it.
+    /// `onConnectingDevice` brackets every reconnect, as in `prepareSignedPayment`.
     func prepareSignedFunding(
         order: IBtOrder,
         walletId: String,
         address: String,
-        onComposed: (HwFundingTransaction) -> Void = { _ in }
+        onComposed: (HwFundingTransaction) -> Void = { _ in },
+        onConnectingDevice: (Bool) -> Void = { _ in }
     ) async throws -> HwFundingSignedTx {
         let satsPerVByte = await resolvedSatsPerVByte()
         return try await prepareSignedPayment(
@@ -78,7 +80,8 @@ struct HwFundingSigner {
             address: address,
             sats: order.feeSat,
             satsPerVByte: satsPerVByte,
-            onComposed: onComposed
+            onComposed: onComposed,
+            onConnectingDevice: onConnectingDevice
         )
     }
 

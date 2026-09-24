@@ -24,7 +24,7 @@ struct SpendingHwSign: View {
     private func content() -> some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("lightning__transfer__nav_title"))
-                .disabled(transfer.isSpendingBusy)
+                .disabled(!transfer.canLeaveHwSign)
                 .padding(.bottom, 16)
 
             ZStack(alignment: .top) {
