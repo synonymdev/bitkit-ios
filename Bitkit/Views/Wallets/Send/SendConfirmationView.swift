@@ -204,6 +204,11 @@ struct SendConfirmationView: View {
                     lightningView(invoice)
                 }
             } else {
+                if let request = app.contactPaymentContext?.incomingPaymentRequest, request.billingPeriod == nil {
+                    paymentRequestSummary(request)
+                        .padding(.bottom, 32)
+                }
+
                 Image("coin-stack-4")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -689,6 +694,41 @@ struct SendConfirmationView: View {
         }
         .padding(.vertical, 2)
         .accessibilityIdentifier("ReviewContactRecipient")
+    }
+
+    private func paymentRequestSummary(_ request: PaykitPaymentRequest) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            SendSectionView(t("wallet__send_from")) {
+                paymentRequestSummaryValue(
+                    contactPaymentContact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(request.counterparty),
+                    icon: "user",
+                    accessibilityIdentifier: "PaymentRequestFrom"
+                )
+            }
+
+            if let note = request.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
+                SendSectionView(t("wallet__payment_request_for")) {
+                    paymentRequestSummaryValue(note, icon: "note", accessibilityIdentifier: "PaymentRequestFor")
+                }
+            } else {
+                Spacer()
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func paymentRequestSummaryValue(_ text: String, icon: String, accessibilityIdentifier: String) -> some View {
+        HStack(spacing: 4) {
+            Image(icon)
+                .resizable()
+                .scaledToFit()
+                .foregroundColor(accentColor)
+                .frame(width: 16, height: 16)
+
+            BodySSBText(text)
+                .lineLimit(1)
+                .accessibilityIdentifier(accessibilityIdentifier)
+        }
     }
 
     private func performPayment(isAutomatic: Bool) async throws {
