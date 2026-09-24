@@ -19,12 +19,19 @@ This app integrates with:
 - **Electrum/Esplora** for blockchain data
 - **Blocktank** for Lightning channel services
 
+## Prerequisites
+
+- The **`xcodebuildmcp` CLI and its simulator UI automation** are required, not recommended: they are
+  how an agent drives a running simulator, so without them the journeys under `journeys/` cannot run
+  and a PR's QA contract cannot be checked. Install the CLI as in the Agent CLI section below.
+
 ## Build & Development Commands
 
 ### Agent CLI (XcodeBuildMCP)
 
-Agents should prefer the `xcodebuildmcp` CLI over raw `xcodebuild`, `xcrun`, and `simctl`. It wraps the
-same toolchain, parses build output, and adds simulator UI automation (AXe is bundled — no separate install).
+Agents drive the simulator with the `xcodebuildmcp` CLI rather than raw `xcodebuild`, `xcrun`, and
+`simctl`. It wraps the same toolchain, parses build output, and adds simulator UI automation (AXe is
+bundled — no separate install).
 
 ```bash
 # Install
@@ -156,9 +163,9 @@ xcodebuildmcp simulator test
 
 Separately from the test suites, `journeys/` holds XML walkthroughs of app behaviour that an agent
 evaluates by driving a running simulator — number pad caps, notification permission, widget flows,
-hardware wallet pairing and transfers. They are developer assistance rather than a test layer:
-nothing runs them in CI and they gate nothing. Read `journeys/README.md` before running or writing
-one, and see the Journeys section under Code Style & Conventions.
+hardware wallet pairing and transfers. Nothing in `.github/workflows` runs them; reviewers drive the
+ones a PR lists. Read `journeys/README.md` before running or writing one, and see the Journeys
+section under Code Style & Conventions.
 
 ## Architecture
 
@@ -377,9 +384,11 @@ Ensure accessibility modifiers and labels are added to custom components.
   `<description>` and the suite README — never assert Android behaviour iOS does not have.
 - SKIP a journey only when the iOS feature does not exist, and record it under "Not ported" in
   `journeys/README.md` with what is missing.
-- Journeys are developer-assistance specs, not a QA gate. Nothing runs them in CI and no runner is
-  wired up for them; `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests` and never reads
-  `journeys/`. An agent runs one on request.
+- Journeys are **the QA contract for a PR**. A PR with a user-visible change adds or updates the
+  journeys that prove it and any journey whose route it changes, and lists them under `#### Journeys`
+  in the PR body. Reviewers drive the listed journeys on a device; nothing in `.github/workflows`
+  reads `journeys/`. Write a manual test only for a step that needs a capability the Capabilities
+  table in [`journeys/README.md`](journeys/README.md) does not list.
 - A journey that disagrees with the app is most likely stale rather than evidence of a bug. Say what
   you found and update the journey; escalate only once you have separately confirmed the app is wrong.
 

@@ -6,10 +6,11 @@ import XCTest
 final class RNMigrationAddressTypeTests: XCTestCase {
     private let migrations = MigrationsService.shared
 
-    override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: "selectedAddressType")
-        UserDefaults.standard.removeObject(forKey: "addressTypesToMonitor")
-        super.tearDown()
+    override func setUp() {
+        super.setUp()
+        // `applyRNAddressTypeSettings` writes these for real; tearDown used to delete them outright
+        // rather than put back whatever the user had.
+        snapshotAppDefaults("selectedAddressType", "addressTypesToMonitor")
     }
 
     // MARK: - Helper Methods

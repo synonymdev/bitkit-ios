@@ -1,6 +1,5 @@
 import PhotosUI
 import SwiftUI
-import Vision
 
 enum ScannerContext {
     case addContact
@@ -20,6 +19,7 @@ class ScannerManager: ObservableObject {
     private var sheets: SheetViewModel?
     private var wallet: WalletViewModel?
     private weak var hwWalletManager: HwWalletManager?
+    private var isHandlingScan = false
 
     func configure(
         app: AppViewModel,
@@ -44,6 +44,14 @@ class ScannerManager: ObservableObject {
     }
 
     func handleScan(_ uri: String, context: ScannerContext) async {
+        guard !isHandlingScan else { return }
+        isHandlingScan = true
+        defer { isHandlingScan = false }
+
+        await processScan(uri, context: context)
+    }
+
+    private func processScan(_ uri: String, context: ScannerContext) async {
         let uri = uri.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !uri.isEmpty else { return }
 
@@ -55,10 +63,18 @@ class ScannerManager: ObservableObject {
         case .main:
             await handleMainScan(uri)
         case .send:
-            await handleSendScan(uri) { _ in }
+            await processSendScan(uri) { _ in }
         case .electrum:
             await handleElectrumScan(uri)
         }
+    }
+
+    func handleScan(_ payload: QRCodePayload, context: ScannerContext) async {
+        guard let uri = payload.string else {
+            showUnsupportedQRCodeError()
+            return
+        }
+        await handleScan(uri, context: context)
     }
 
     private func handleAddContactScan(_ input: String) {
@@ -134,6 +150,18 @@ class ScannerManager: ObservableObject {
         scope: ScanHandlingScope = .unrestricted,
         completion: @escaping (SendRoute?) -> Void
     ) async {
+        guard !isHandlingScan else { return }
+        isHandlingScan = true
+        defer { isHandlingScan = false }
+
+        await processSendScan(uri, scope: scope, completion: completion)
+    }
+
+    private func processSendScan(
+        _ uri: String,
+        scope: ScanHandlingScope = .unrestricted,
+        completion: @escaping (SendRoute?) -> Void
+    ) async {
         guard let app, let currency, let settings else {
             completion(nil)
             return
@@ -183,6 +211,19 @@ class ScannerManager: ObservableObject {
             )
             completion(nil)
         }
+    }
+
+    func handleSendScan(
+        _ payload: QRCodePayload,
+        scope: ScanHandlingScope = .unrestricted,
+        completion: @escaping (SendRoute?) -> Void
+    ) async {
+        guard let uri = payload.string else {
+            showUnsupportedQRCodeError()
+            completion(nil)
+            return
+        }
+        await handleSendScan(uri, scope: scope, completion: completion)
     }
 
     private func shouldOpenPaymentFlow(for uri: String) -> Bool {
@@ -243,93 +284,40 @@ class ScannerManager: ObservableObject {
         guard let app, let item else { return }
 
         do {
-            guard let data = try await item.loadTransferable(type: Data.self),
-                  let image = UIImage(data: data)
-            else {
-                app.toast(
-                    type: .error,
-                    title: t("common__error"),
-                    description: t("other__qr_error_load_image")
-                )
-                return
+            let payload = try await QRCodeImageDecoder.decode(item)
+            if context == .send {
+                await handleSendScan(payload, scope: scope, completion: completion)
+            } else {
+                await handleScan(payload, context: context)
             }
-
-            guard let cgImage = image.cgImage else {
-                app.toast(
-                    type: .error,
-                    title: t("common__error"),
-                    description: t("other__qr_error_process_image")
-                )
-                return
-            }
-
-            let request = VNDetectBarcodesRequest { [weak self] request, error in
-                if let error {
-                    Logger.error(error, context: "QR detection failed")
-                    DispatchQueue.main.async {
-                        app.toast(
-                            type: .error,
-                            title: t("other__qr_error_detection_title"),
-                            description: t("other__qr_error_detection_description")
-                        )
-                    }
-                    return
-                }
-
-                guard let results = request.results as? [VNBarcodeObservation] else {
-                    Logger.error("No barcode results found")
-                    DispatchQueue.main.async {
-                        app.toast(
-                            type: .error,
-                            title: t("other__qr_error_no_qr_title"),
-                            description: t("other__qr_error_no_qr_description")
-                        )
-                    }
-                    return
-                }
-
-                let qrResults = results.filter { $0.symbology == .qr }
-
-                guard let firstResult = qrResults.first,
-                      let payload = firstResult.payloadStringValue
-                else {
-                    DispatchQueue.main.async {
-                        app.toast(
-                            type: .error,
-                            title: t("other__qr_error_no_qr_title"),
-                            description: t("other__qr_error_no_qr_description")
-                        )
-                    }
-                    return
-                }
-
-                DispatchQueue.main.async {
-                    if context == .send {
-                        Task {
-                            await self?.handleSendScan(payload, scope: scope, completion: completion)
-                        }
-                    } else {
-                        Task {
-                            await self?.handleScan(payload, context: context)
-                        }
-                    }
-                }
-            }
-
-            #if targetEnvironment(simulator) && compiler(>=5.7)
-                request.revision = VNDetectBarcodesRequestRevision3
-            #endif
-
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            try handler.perform([request])
+        } catch QRCodeImageDecoderError.invalidImage {
+            app.toast(
+                type: .error,
+                title: t("common__error"),
+                description: t("other__qr_error_load_image")
+            )
+        } catch QRCodeImageDecoderError.noQRCode {
+            app.toast(
+                type: .error,
+                title: t("other__qr_error_no_qr_title"),
+                description: t("other__qr_error_no_qr_description")
+            )
         } catch {
             Logger.error(error, context: "Failed to process image")
             app.toast(
                 type: .error,
-                title: t("common__error"),
-                description: t("other__qr_error_generic_description")
+                title: t("other__qr_error_detection_title"),
+                description: t("other__qr_error_detection_description")
             )
         }
+    }
+
+    private func showUnsupportedQRCodeError() {
+        app?.toast(
+            type: .error,
+            title: t("other__qr_error_header"),
+            description: t("other__qr_error_text")
+        )
     }
 
     func handleManualEntry(

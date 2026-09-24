@@ -6,17 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
-        "revision" : "9724efdf13fa141819b52d6337de60a4228831a6",
-        "version" : "0.5.17"
-      }
-    },
-    {
-      "identity" : "codescanner",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/twostraws/CodeScanner",
-      "state" : {
-        "revision" : "5e886430238944c7200fc9e10dbf2d9550dba865",
-        "version" : "2.5.2"
+        "revision" : "b53fa54a16f04940943072bb6e08dc2650302f93",
+        "version" : "0.5.18"
       }
     },
     {
@@ -60,7 +51,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/vss-rust-client-ffi",
       "state" : {
-        "revision" : "d7cbc6237a83e50a55b3c93b8837b6f18134065c",
+        "revision" : "3476fa45be919244310c4f65945e8d2bc1b8ee15",
         "version" : "0.5.23"
       }
     }
