@@ -143,6 +143,7 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [widgets](widgets) | 2 | Widgets intro and add-widget flow |
 | [notification-permission](notification-permission) | 4 | Background-setup toggles |
 | [cjit-notifications](cjit-notifications) | 3 | Adapted — iOS notification copy differs from Android |
+| [onchain-receive](onchain-receive) | 2 | Received sheet for mempool-first and confirmed-only deposits; the background-notification journey is not ported |
 | [hardware-wallet](hardware-wallet) | 16 | Trezor over Bridge; see `Docs/AI_DEVICE_TESTS.md` |
 | [payment-requests](payment-requests) | 2 | Linked issuer interoperability plus the ported Android resolution-failure journey |
 | [pubky-marketplace](pubky-marketplace) | 1 | Adapted — two-wallet Paykit marketplace payment on regtest; integration fixture required |
@@ -150,6 +151,10 @@ Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*
 | [subscriptions](subscriptions) | 4 | Create, review, cancel/delete and the Payments tab; two linked Bitkit instances required. Discover is excluded — it is unimplemented on iOS |
 
 ## Not ported
+
+**`onchain-receive/confirmed-only-background-notification.xml`.** It covers the notification Android's
+`LightningNodeService` foreground service posts for a background onchain receive. iOS has no
+foreground node service, and its notification extension handles only Blocktank pushes.
 
 **`deeplinks` (2 journeys).** The Android journeys exercise `bitkit://screen/...` routing with a
 dev-mode gate and a cold-start replay. iOS registers the `bitkit` URL scheme (`Bitkit/Info.plist`)
