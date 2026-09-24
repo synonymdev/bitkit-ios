@@ -192,10 +192,10 @@ struct CreateProfileView: View {
         }
     }
 
-    /// With a session the homeserver is known, so a failed lookup is not treated as "no profile":
-    /// saving then could replace an existing profile with an empty one.
+    /// With a session or a stored key the pubky has signed up before, so a failed lookup is not treated as
+    /// "no profile": saving then could replace an existing profile with an empty one.
     private func remoteProfile(publicKey: String) async -> PubkyProfile? {
-        guard pubkyProfile.publicKey != nil else {
+        guard pubkyProfile.publicKey != nil || PubkyProfileManager.hasLocalSecretKey(for: publicKey) else {
             return await pubkyProfile.fetchRemoteProfile(publicKey: publicKey)
         }
 
