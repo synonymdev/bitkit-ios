@@ -79,4 +79,22 @@ final class AuthCheckBiometricPolicyTests: XCTestCase {
         XCTAssertFalse(AuthCheckBiometricPolicy.shouldCancel(scenePhase: .inactive))
         XCTAssertFalse(AuthCheckBiometricPolicy.shouldCancel(scenePhase: .active))
     }
+
+    func testStartsAuthenticationAfterCompletedAttemptAndReopeningLockedScreen() {
+        var hasAutomaticallyAttempted = true
+
+        if AuthCheckBiometricPolicy.shouldCancel(scenePhase: .background) {
+            hasAutomaticallyAttempted = false
+        }
+
+        XCTAssertTrue(
+            AuthCheckBiometricPolicy.shouldStart(
+                scenePhase: .active,
+                isEnabled: true,
+                hasActiveAttempt: false,
+                attemptKind: .automatic,
+                hasAutomaticallyAttempted: hasAutomaticallyAttempted
+            )
+        )
+    }
 }
