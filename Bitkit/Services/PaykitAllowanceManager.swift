@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Paykit
+import UserNotifications
 
 /// One grant as the user sees it. Bitkit proposes the same terms on each of a contact's links (their wallet, and
 /// their Paykit Server folder for Locks and Shop requests), so one row can stand for several SDK Allowances.
@@ -87,6 +88,7 @@ final class PaykitAllowanceManager {
         }
         let identityChanged = self.identity != identity
         self.identity = identity
+        await executor.activate(identity: identity)
         if identityChanged {
             await executor.recover(identity: identity)
         }
@@ -95,6 +97,7 @@ final class PaykitAllowanceManager {
 
     func deactivate() {
         identity = nil
+        Task { await executor.activate(identity: nil) }
         allowances = []
         localState = PaykitAllowanceLocalState()
         autoPaidRequestIds = []
@@ -295,6 +298,31 @@ final class PaykitAllowanceManager {
             if lhs == PaykitReceiverPath.wallet { return true }
             if rhs == PaykitReceiverPath.wallet { return false }
             return lhs < rhs
+        }
+    }
+}
+
+/// Allowance outcomes reach the user as a notification banner when notifications are allowed, or as a toast.
+enum PaykitAllowanceNotifier {
+    @MainActor
+    static func post(title: String, body: String, fallback: @escaping @MainActor () -> Void) {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+            guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+                fallback()
+                return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+            content.userInfo = ["bitkit_action": "paykit_allowance"]
+            do {
+                try await center.add(UNNotificationRequest(identifier: "paykit-allowance-\(UUID().uuidString)", content: content, trigger: nil))
+            } catch {
+                fallback()
+            }
         }
     }
 }

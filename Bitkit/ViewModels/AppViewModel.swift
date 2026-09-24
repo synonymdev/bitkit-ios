@@ -1429,6 +1429,7 @@ extension AppViewModel {
                     paymentHash: paymentHash,
                     preimage: paymentPreimage
                 )
+                await PaykitAllowanceExecutor.shared.lightningPaymentSettled(paymentHash: paymentHash, succeeded: true)
             }
             let outcome = QuickPayPaymentCoordinator.shared.complete(
                 paymentId: paymentId,
@@ -1462,7 +1463,10 @@ extension AppViewModel {
             )
             let hash = paymentHash ?? outcome.invoicePaymentHash ?? paymentId
             if let paymentHash = paymentHash ?? paymentId {
-                Task { await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash) }
+                Task {
+                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                    await PaykitAllowanceExecutor.shared.lightningPaymentSettled(paymentHash: paymentHash, succeeded: false)
+                }
             }
             let awaitingSheet = hash.map { pendingPaymentHashes.contains($0) } ?? false
             if let hash, awaitingSheet {
