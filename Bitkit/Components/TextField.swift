@@ -38,15 +38,24 @@ struct TextField: View {
                     .font(font)
             }
 
-            SwiftUI.TextField("", text: $text, axis: axis)
-                .accentColor(.brandAccent)
-                .font(font)
-                .submitLabel(submitLabel)
-                .accessibilityIdentifierIfPresent(testIdentifier)
+            if axis == .vertical {
+                // A submit label turns Return into submit, so multi-line fields skip it to keep line breaks
+                inputField
+            } else {
+                inputField
+                    .submitLabel(submitLabel)
+            }
         }
         .padding(contentPadding)
         .background(backgroundColor)
         .cornerRadius(8)
+    }
+
+    private var inputField: some View {
+        SwiftUI.TextField("", text: $text, axis: axis)
+            .accentColor(.brandAccent)
+            .font(font)
+            .accessibilityIdentifierIfPresent(testIdentifier)
     }
 }
 

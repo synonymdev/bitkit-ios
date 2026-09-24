@@ -62,15 +62,11 @@ struct ProfileView: View {
                 .padding(.bottom, 16)
 
                 profileQRCode(profile)
-                    .frame(width: 279)
+                    .padding(.horizontal, 32)
                     .padding(.bottom, 16)
 
                 profileActions
                     .padding(.bottom, 24)
-
-                if !profile.links.isEmpty {
-                    profileLinks(profile)
-                }
             }
             .padding(.horizontal, 16)
         }
@@ -127,16 +123,6 @@ struct ProfileView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(t("common__copy"))
         .accessibilityIdentifier("ProfileQRCode")
-    }
-
-    // MARK: - Links / Metadata
-
-    private func profileLinks(_ profile: PubkyProfile) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(profile.links.enumerated()), id: \.element.id) { index, link in
-                ProfileLinkRow(label: link.label, value: link.url, linkIndex: index)
-            }
-        }
     }
 
     // MARK: - Loading / Empty States
