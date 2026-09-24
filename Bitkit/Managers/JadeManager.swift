@@ -334,6 +334,9 @@ final class JadeManager {
         if version.jadeState.isUnlocked {
             let xpubs = try await exportAccounts()
             try requireCurrent(epoch)
+            if let expected {
+                try rejectUnpairedWallet(expected: expected, fetchedXpubs: xpubs)
+            }
             return addOrUpdateKnownDevice(device, version: version, fetchedXpubs: xpubs)
         }
         let entryId = JadeDeviceIdentity.deviceId(efuseMac: version.efuseMac) ?? device.path
@@ -354,6 +357,15 @@ final class JadeManager {
         if expectedMac != version.efuseMac {
             throw AppError(message: "Reconnect Hardware Device", debugMessage: "A different Jade is connected")
         }
+    }
+
+    /// Refuses a reconnect that finds a wallet this Jade was never paired with, as after a restore
+    /// with another seed. Its efuse MAC never changes, so storing it would add a wallet with no
+    /// pairing step and leave the old one looking usable; adding that wallet stays an explicit pairing.
+    private func rejectUnpairedWallet(expected: HwKnownDevice, fetchedXpubs: [String: String]) throws {
+        let paired = HwKnownDeviceMatching.previous(in: allKnownDevices(), deviceId: expected.id, fetchedXpubs: fetchedXpubs)
+        guard paired == nil else { return }
+        throw AppError(message: "Reconnect Hardware Device", debugMessage: "The Jade holds a wallet it was not paired with")
     }
 
     private func unlockConnected() async throws -> JadeVersionInfo {

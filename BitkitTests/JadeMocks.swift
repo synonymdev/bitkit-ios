@@ -194,7 +194,7 @@ enum JadeFixtures {
         )
     }
 
-    static func accountExport() -> JadeAccountExport {
+    static func accountExport(xpub: String = xpub) -> JadeAccountExport {
         JadeAccountExport(
             masterFingerprint: "deadbeef",
             accountIndex: 0,

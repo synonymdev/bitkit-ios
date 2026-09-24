@@ -205,6 +205,51 @@ final class JadeManagerTests: XCTestCase {
         XCTAssertFalse(sut.isUnlocking)
     }
 
+    func testReconnectingAJadeRestoredWithAnotherSeedAddsNoWallet() async throws {
+        store.devices = [JadeFixtures.knownEntry()]
+        service.stubs.scanned = [JadeFixtures.device()]
+        service.stubs.exportHandler = { _ in JadeFixtures.accountExport(xpub: "zpubOtherSeed") }
+        let sut = makeManager()
+
+        do {
+            try await sut.connectKnownDevice(deviceId: JadeFixtures.deviceId)
+            XCTFail("a wallet the Jade was never paired with must be rejected")
+        } catch {}
+
+        XCTAssertTrue(store.saves.isEmpty)
+        XCTAssertEqual(store.devices.map(\.walletId), [JadeFixtures.walletId])
+        XCTAssertGreaterThanOrEqual(log.count("service.disconnect"), 1)
+        XCTAssertNil(sut.connected)
+    }
+
+    func testReconnectingAJadeHoldingAnotherPairedWalletLandsOnThatWallet() async throws {
+        var otherWallet = JadeFixtures.knownEntry()
+        otherWallet.xpubs = ["nativeSegwit": "zpubOtherSeed"]
+        otherWallet.walletId = "jade:other-wallet"
+        store.devices = [JadeFixtures.knownEntry(), otherWallet]
+        service.stubs.scanned = [JadeFixtures.device()]
+        service.stubs.exportHandler = { _ in JadeFixtures.accountExport(xpub: "zpubOtherSeed") }
+        let sut = makeManager()
+
+        let connected = try await sut.connectKnownDevice(deviceId: JadeFixtures.deviceId)
+
+        XCTAssertEqual(connected.walletId, "jade:other-wallet")
+        XCTAssertEqual(Set(store.devices.map(\.walletId)), [JadeFixtures.walletId, "jade:other-wallet"])
+    }
+
+    func testPairingAJadeRestoredWithAnotherSeedAddsItsWallet() async throws {
+        store.devices = [JadeFixtures.knownEntry()]
+        service.stubs.scanned = [JadeFixtures.device()]
+        service.stubs.exportHandler = { _ in JadeFixtures.accountExport(xpub: "zpubOtherSeed") }
+        let sut = makeManager()
+        _ = try await sut.scan()
+
+        let connected = try await sut.connect(path: JadeFixtures.blePath)
+
+        XCTAssertNotEqual(connected.walletId, JadeFixtures.walletId)
+        XCTAssertEqual(store.devices.count, 2)
+    }
+
     func testCancellingAPendingConnectionClosesTheLinkThenCancelsThenDisconnects() async {
         store.devices = [JadeFixtures.knownEntry()]
         let sut = makeManager()
