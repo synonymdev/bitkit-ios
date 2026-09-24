@@ -32,16 +32,16 @@ struct PubkyChoiceView: View {
                 NavigationBar(title: t("profile__nav_title"))
                     .padding(.horizontal, 16)
 
-                VStack(alignment: .leading, spacing: 0) {
-                    titleSection
-                        .padding(.top, 24)
-                        .padding(.bottom, 24)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        titleSection
+                            .padding(.top, 24)
+                            .padding(.bottom, 24)
 
-                    optionCards
+                        optionCards
+                    }
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 16)
-
-                Spacer()
             }
         }
         .clipped()
