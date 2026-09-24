@@ -27,7 +27,6 @@ enum AuthCheckBiometricPolicy {
 
 private struct AuthCheckBiometricAttempt {
     let context: LAContext
-    let kind: AuthCheckBiometricAttemptKind
 }
 
 struct AuthCheck: View {
@@ -50,10 +49,6 @@ struct AuthCheck: View {
 
     private var biometryTypeName: String {
         BiometricAuth.biometryTypeName
-    }
-
-    private var isBiometricAvailable: Bool {
-        BiometricAuth.isAvailable
     }
 
     private func handlePinChange(_ pin: String) {
@@ -117,6 +112,10 @@ struct AuthCheck: View {
 
         // Check if biometric authentication is available
         guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+            if attemptKind == .automatic {
+                hasAutomaticallyAttemptedBiometrics = false
+            }
+            shouldShowBiometricRetry = true
             Logger.error("Biometric authentication not available: \(error?.localizedDescription ?? "Unknown error")", context: "AuthCheck")
             return
         }
@@ -124,7 +123,7 @@ struct AuthCheck: View {
         // Request biometric authentication
         let reason = t("security__bio_confirm", variables: ["biometricsName": biometryTypeName])
         context.localizedCancelTitle = t("security__use_pin")
-        biometricAttempt = AuthCheckBiometricAttempt(context: context, kind: attemptKind)
+        biometricAttempt = AuthCheckBiometricAttempt(context: context)
 
         context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, authenticationError in
             DispatchQueue.main.async {
@@ -157,9 +156,6 @@ struct AuthCheck: View {
     private func cancelBiometricAuthentication() {
         let attempt = biometricAttempt
         biometricAttempt = nil
-        if attempt?.kind == .automatic {
-            hasAutomaticallyAttemptedBiometrics = false
-        }
         attempt?.context.invalidate()
     }
 
@@ -196,7 +192,7 @@ struct AuthCheck: View {
             BodyMSBText(t("security__pin_enter"))
 
             VStack(alignment: .center, spacing: 12) {
-                if settings.useBiometrics && isBiometricAvailable && shouldShowBiometricRetry {
+                if settings.useBiometrics && shouldShowBiometricRetry {
                     CustomButton(
                         title: t("security__pin_use_biometrics", variables: ["biometricsName": biometryTypeName]),
                         size: .small,
@@ -230,6 +226,7 @@ struct AuthCheck: View {
             if newPhase == .active {
                 handleBiometricAuthentication(attemptKind: .automatic)
             } else if AuthCheckBiometricPolicy.shouldCancel(scenePhase: newPhase) {
+                hasAutomaticallyAttemptedBiometrics = false
                 cancelBiometricAuthentication()
             }
         }
