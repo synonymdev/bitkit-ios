@@ -13,6 +13,16 @@ final class ProfileLinkRowTests: XCTestCase {
         XCTAssertEqual(ProfileLinkRow.destination(for: "tel:+15551234")?.absoluteString, "tel:+15551234")
     }
 
+    func testSchemeCaseIsIgnored() {
+        XCTAssertEqual(ProfileLinkRow.destination(for: "Https://example.com")?.absoluteString, "Https://example.com")
+    }
+
+    func testBarePhoneNumberOpensDialer() {
+        XCTAssertEqual(ProfileLinkRow.destination(for: "+15551234")?.absoluteString, "tel:+15551234")
+        XCTAssertEqual(ProfileLinkRow.destination(for: "+1 (555) 123-4567")?.absoluteString, "tel:+15551234567")
+        XCTAssertNil(ProfileLinkRow.destination(for: "2024"))
+    }
+
     func testEmailOpensMail() {
         XCTAssertEqual(ProfileLinkRow.destination(for: "satoshin@gmx.com")?.absoluteString, "mailto:satoshin@gmx.com")
     }

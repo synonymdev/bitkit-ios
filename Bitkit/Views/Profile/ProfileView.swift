@@ -208,7 +208,13 @@ struct ProfileLinkRow: View {
     /// Link values are free text, so only values that look like a web address, email or phone number open.
     static func destination(for value: String) -> URL? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !trimmed.contains(" ") else { return nil }
+        guard !trimmed.isEmpty else { return nil }
+
+        if let phoneURL = phoneDestination(for: trimmed) {
+            return phoneURL
+        }
+
+        guard !trimmed.contains(" ") else { return nil }
 
         if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(),
            ["http", "https", "mailto", "tel"].contains(scheme)
@@ -225,6 +231,16 @@ struct ProfileLinkRow: View {
         }
 
         return nil
+    }
+
+    private static let phoneCharacters = CharacterSet(charactersIn: "+0123456789 -().")
+
+    private static func phoneDestination(for value: String) -> URL? {
+        guard value.unicodeScalars.allSatisfy(phoneCharacters.contains) else { return nil }
+        let digits = value.filter(\.isNumber)
+        guard digits.count >= 7 else { return nil }
+        let number = value.hasPrefix("+") ? "+\(digits)" : digits
+        return URL(string: "tel:\(number)")
     }
 
     var body: some View {
