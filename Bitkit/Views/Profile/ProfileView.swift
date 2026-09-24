@@ -98,14 +98,21 @@ struct ProfileView: View {
 
     // MARK: - QR Code
 
+    private func copyPublicKey(_ publicKey: String) {
+        UIPasteboard.general.string = publicKey
+        app.toast(type: .success, title: t("common__copied"))
+    }
+
     private func profileQRCode(_ profile: PubkyProfile) -> some View {
         Button {
-            UIPasteboard.general.string = profile.publicKey
-            app.toast(type: .success, title: t("common__copied"))
+            copyPublicKey(profile.publicKey)
         } label: {
             VStack(spacing: 12) {
                 ZStack {
-                    QR(content: profile.publicKey)
+                    // QR attaches its own tap gesture, which swallows the button tap unless it gets the action too
+                    QR(content: profile.publicKey) {
+                        copyPublicKey(profile.publicKey)
+                    }
 
                     if let imageUrl = profile.imageUrl {
                         ZStack {
