@@ -199,26 +199,65 @@ struct ProfileView: View {
 // MARK: - Profile Link Row
 
 struct ProfileLinkRow: View {
+    @Environment(\.openURL) private var openURL
+
     let label: String
     let value: String
     let linkIndex: Int
 
+    /// Link values are free text, so only values that look like a web address, email or phone number open.
+    static func destination(for value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains(" ") else { return nil }
+
+        if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(),
+           ["http", "https", "mailto", "tel"].contains(scheme)
+        {
+            return url
+        }
+
+        if trimmed.contains("@"), trimmed.contains(".") {
+            return URL(string: "mailto:\(trimmed)")
+        }
+
+        if trimmed.contains("."), let url = URL(string: "https://\(trimmed)"), url.host?.contains(".") == true {
+            return url
+        }
+
+        return nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                CaptionMText(label, textColor: .white64)
-                    .accessibilityIdentifier("ProfileLinkLabel_\(linkIndex)")
-
-                BodySSBText(value, textColor: .white)
-                    .accessibilityIdentifier("ProfileLinkValue_\(linkIndex)")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if let destination = Self.destination(for: value) {
+                Button {
+                    openURL(destination)
+                } label: {
+                    rowContent
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isLink)
+            } else {
+                rowContent
             }
-            .padding(.vertical, 16)
-            .accessibilityElement(children: .contain)
 
             CustomDivider()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var rowContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(label, textColor: .white64)
+                .accessibilityIdentifier("ProfileLinkLabel_\(linkIndex)")
+
+            BodySSBText(value, textColor: .white)
+                .accessibilityIdentifier("ProfileLinkValue_\(linkIndex)")
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 16)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
     }
 }
 

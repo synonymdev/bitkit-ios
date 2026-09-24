@@ -31,31 +31,22 @@ struct TextField: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack(alignment: .leading) {
             if text.isEmpty {
                 Text(placeholder)
                     .foregroundColor(.secondary)
                     .font(font)
             }
 
-            if axis == .vertical {
-                // A submit label turns Return into submit, so multi-line fields skip it to keep line breaks
-                inputField
-            } else {
-                inputField
-                    .submitLabel(submitLabel)
-            }
+            SwiftUI.TextField("", text: $text, axis: axis)
+                .accentColor(.brandAccent)
+                .font(font)
+                .submitLabel(submitLabel)
+                .accessibilityIdentifierIfPresent(testIdentifier)
         }
         .padding(contentPadding)
         .background(backgroundColor)
         .cornerRadius(8)
-    }
-
-    private var inputField: some View {
-        SwiftUI.TextField("", text: $text, axis: axis)
-            .accentColor(.brandAccent)
-            .font(font)
-            .accessibilityIdentifierIfPresent(testIdentifier)
     }
 }
 

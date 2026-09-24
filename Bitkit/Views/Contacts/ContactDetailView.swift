@@ -183,15 +183,17 @@ struct ContactDetailView: View {
             CaptionMText(t("profile__create_tags_label"), textColor: .white64)
                 .accessibilityIdentifier("ContactViewTagsHeader")
 
-            WrappingHStack(spacing: 8) {
-                ForEach(profile.tags, id: \.self) { tag in
-                    Tag(tag, icon: .close, onDelete: {
-                        removeTag(tag)
-                    })
+            if !profile.tags.isEmpty {
+                WrappingHStack(spacing: 8) {
+                    ForEach(profile.tags, id: \.self) { tag in
+                        Tag(tag, icon: .close, onDelete: {
+                            removeTag(tag)
+                        })
+                    }
                 }
-
-                addTagButton
             }
+
+            addTagButton
         }
     }
 

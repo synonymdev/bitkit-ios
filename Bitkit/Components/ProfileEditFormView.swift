@@ -27,6 +27,7 @@ struct ProfileEditFormView<Avatar: View>: View {
     @Environment(KeyboardManager.self) private var keyboard
 
     @State private var showAddLinkSheet = false
+    @FocusState private var isBioFocused: Bool
     @State private var showAddTagSheet = false
 
     var body: some View {
@@ -74,11 +75,16 @@ struct ProfileEditFormView<Avatar: View>: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, ScreenLayout.floatingFooterClearance + 16)
+                .background {
+                    // On the background rather than the ScrollView, so taps on multi-line fields don't resign them
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            dismissKeyboard()
+                        }
+                }
             }
             .scrollDismissesKeyboard(.interactively)
-            .onTapGesture {
-                dismissKeyboard()
-            }
 
             if !keyboard.isPresented {
                 footerBar
@@ -115,13 +121,16 @@ struct ProfileEditFormView<Avatar: View>: View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(bioLabel, textColor: .white64)
 
-            TextField(
-                bioPlaceholder,
+            NoteTextEditor(
                 text: $bio,
-                axis: .vertical,
-                testIdentifier: "ProfileEditBio"
+                placeholder: bioPlaceholder,
+                testIdentifier: "ProfileEditBio",
+                isFocused: $isBioFocused,
+                minHeight: 60,
+                maxHeight: 120,
+                backgroundColor: .white10,
+                allowsLineBreaks: true
             )
-            .lineLimit(3, reservesSpace: true)
         }
     }
 
