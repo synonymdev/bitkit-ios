@@ -918,6 +918,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             paymentReference: PaymentReference(text: "invoice-123"),
             billingPeriod: billingPeriod,
             paymentEndpointIdentifier: endpoint,
+            allowanceId: nil,
             proof: PrivateJsonObject(text: "{\"data\":\"\(data)\",\"type\":\"\(kind.rawValue)\"}"),
             recordedAt: "2027-01-15T08:01:00Z"
         )
@@ -1071,6 +1072,7 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
             paymentReference: paymentReference,
             billingPeriod: proof.billingPeriod,
             paymentEndpointIdentifier: proof.paymentEndpointIdentifier,
+            allowanceId: proof.allowanceId,
             proof: proof.proof,
             recordedAt: "2027-01-15T08:01:00Z"
         ))

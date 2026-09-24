@@ -3323,6 +3323,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             paymentReference: PaymentReference(text: "invoice-123"),
             billingPeriod: billingPeriod,
             paymentEndpointIdentifier: endpoint,
+            allowanceId: nil,
             proof: PrivateJsonObject(text: "{\"data\":\"proof\",\"type\":\"\(kind.rawValue)\"}"),
             recordedAt: "2027-01-15T08:01:00Z"
         )
