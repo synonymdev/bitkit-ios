@@ -278,13 +278,16 @@ class PubkyProfileManager: ObservableObject {
         let adoptedPublicKey: String
         do {
             adoptedPublicKey = try await Task.detached {
+                let publicKey = try Self.publicKeyFromSecretKey(secretKeyHex)
                 do {
                     _ = try await PubkyService.signIn(secretKeyHex: secretKeyHex)
                 } catch {
-                    Logger.info("Sign-in with the Pubky Ring key failed, signing up: \(error)", context: "PubkyProfileManager")
+                    Logger.warn("Sign-in with the Pubky Ring key failed: \(error)", context: "PubkyProfileManager")
+                    // Signup rewrites the homeserver record, so only a Ring key that was never published signs up.
+                    guard await (try? PubkyService.hasIdentityRecord(publicKey: publicKey)) == false else { throw error }
                     _ = try await Self.signUpToHomeserver(secretKeyHex: secretKeyHex)
                 }
-                return try Self.publicKeyFromSecretKey(secretKeyHex)
+                return publicKey
             }.value
         } catch {
             await discardAbandonedSession()

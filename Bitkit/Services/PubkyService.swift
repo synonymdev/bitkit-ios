@@ -48,6 +48,10 @@ enum PubkyService {
         await PaykitSdkService.shared.republishIdentityIfNeeded(publicKey: publicKey)
     }
 
+    static func hasIdentityRecord(publicKey: String) async throws -> Bool {
+        try await PaykitSdkService.shared.hasIdentityRecord(publicKey: publicKey)
+    }
+
     // MARK: - Session Management
 
     /// Import a session secret into paykit and return the public key.
@@ -380,6 +384,11 @@ actor PaykitSdkService {
             continuation.finish()
         }
         for await _ in stream {}
+    }
+
+    /// Rebroadcasts the identity record when one exists. Returns false only when the network reports none.
+    func hasIdentityRecord(publicKey: String) async throws -> Bool {
+        try await bootstrap().republishIdentity(publicKey: publicKey)
     }
 
     private func republishIdentity(publicKey: String?, now: Date) async {
