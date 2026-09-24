@@ -214,6 +214,10 @@ struct ProfileLinkRow: View {
             return phoneURL
         }
 
+        if trimmed.lowercased().hasPrefix("tel:") {
+            return phoneDestination(for: String(trimmed.dropFirst(4)))
+        }
+
         guard !trimmed.contains(" ") else { return nil }
 
         if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(),

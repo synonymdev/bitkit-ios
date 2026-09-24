@@ -23,6 +23,11 @@ final class ProfileLinkRowTests: XCTestCase {
         XCTAssertNil(ProfileLinkRow.destination(for: "2024"))
     }
 
+    func testFormattedTelLinkOpensDialer() {
+        XCTAssertEqual(ProfileLinkRow.destination(for: "tel:+1 555 123 4567")?.absoluteString, "tel:+15551234567")
+        XCTAssertEqual(ProfileLinkRow.destination(for: "TEL:+1 (555) 123-4567")?.absoluteString, "tel:+15551234567")
+    }
+
     func testEmailOpensMail() {
         XCTAssertEqual(ProfileLinkRow.destination(for: "satoshin@gmx.com")?.absoluteString, "mailto:satoshin@gmx.com")
     }
