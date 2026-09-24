@@ -850,7 +850,14 @@ class PubkyProfileManager: ObservableObject {
         Self.hasLocalSecretKey(for: publicKey)
     }
 
-    nonisolated static func hasStoredIdentity() throws -> Bool {
+    nonisolated static func hasStoredIdentity(
+        adopted: (sourceApp: String, pubky: String)? = AdoptedPubkyReference.current
+    ) throws -> Bool {
+        // The next launch signs in again with an adopted Ring key, so its reference counts as an identity.
+        if adopted != nil {
+            return true
+        }
+
         for key in [KeychainEntryType.paykitSession, .pubkySecretKey] {
             if let value = try Keychain.loadString(key: key), !value.isEmpty {
                 return true

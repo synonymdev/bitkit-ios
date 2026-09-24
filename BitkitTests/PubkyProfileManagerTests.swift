@@ -552,6 +552,10 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertNil(snapshot)
     }
 
+    func testHasStoredIdentityCountsAnAdoptedReference() throws {
+        XCTAssertTrue(try PubkyProfileManager.hasStoredIdentity(adopted: ("app.pubkyring", "ring-pubky")))
+    }
+
     // MARK: - Active secret key
 
     func testActiveSecretKeyHexPrefersTheLocalSecret() {
