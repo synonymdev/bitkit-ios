@@ -114,7 +114,7 @@ struct ContactDetailView: View {
 
     private var contactActions: some View {
         HStack(spacing: 16) {
-            GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send")) {
+            GradientCircleButton(icon: "coins-regular", accessibilityLabel: t("wallet__send")) {
                 if canRequestPayment {
                     sheets.showSheet(
                         .receive,
@@ -128,24 +128,24 @@ struct ContactDetailView: View {
             }
             .accessibilityIdentifier("ContactPay")
 
-            GradientCircleButton(icon: "activity", accessibilityLabel: t("wallet__activity")) {
+            GradientCircleButton(icon: "activity-regular", accessibilityLabel: t("wallet__activity")) {
                 navigation.navigate(.contactActivity(publicKey: publicKey))
             }
             .accessibilityIdentifier("ContactActivity")
 
-            GradientCircleButton(icon: "copy", iconSize: 18, accessibilityLabel: t("common__copy")) {
+            GradientCircleButton(icon: "copy-simple", accessibilityLabel: t("common__copy")) {
                 UIPasteboard.general.string = publicKey
                 app.toast(type: .success, title: t("common__copied"))
             }
             .accessibilityIdentifier("ContactCopy")
 
-            GradientCircleButton(icon: "share", accessibilityLabel: t("common__share")) {
+            GradientCircleButton(icon: "share-regular", accessibilityLabel: t("common__share")) {
                 shareContact()
             }
             .accessibilityIdentifier("ContactShare")
 
             GradientCircleButton(
-                icon: showsDeleteAction ? "trash" : "pencil",
+                icon: showsDeleteAction ? "trash-regular" : "pencil-regular",
                 accessibilityLabel: t(showsDeleteAction ? "common__delete" : "common__edit")
             ) {
                 if showsDeleteAction {

@@ -4,15 +4,12 @@ import SwiftUI
 struct GradientCircleButton: View {
     let icon: String?
     let systemIcon: String?
-    let iconSize: CGFloat
     let accessibilityLabel: String
     let action: () -> Void
 
-    /// `iconSize` compensates for assets exported without the standard icon padding.
-    init(icon: String, iconSize: CGFloat = 24, accessibilityLabel: String, action: @escaping () -> Void) {
+    init(icon: String, accessibilityLabel: String, action: @escaping () -> Void) {
         self.icon = icon
         systemIcon = nil
-        self.iconSize = iconSize
         self.accessibilityLabel = accessibilityLabel
         self.action = action
     }
@@ -20,7 +17,6 @@ struct GradientCircleButton: View {
     init(systemIcon: String, accessibilityLabel: String, action: @escaping () -> Void) {
         icon = nil
         self.systemIcon = systemIcon
-        iconSize = 24
         self.accessibilityLabel = accessibilityLabel
         self.action = action
     }
@@ -43,7 +39,7 @@ struct GradientCircleButton: View {
                         .resizable()
                         .scaledToFit()
                         .foregroundColor(.textPrimary)
-                        .frame(width: iconSize, height: iconSize)
+                        .frame(width: 24, height: 24)
                 } else if let systemIcon {
                     Image(systemName: systemIcon)
                         .font(.system(size: 18, weight: .medium))
