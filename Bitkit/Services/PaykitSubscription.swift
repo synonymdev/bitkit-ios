@@ -1,8 +1,9 @@
+import Combine
 import Foundation
 import Paykit
 import UserNotifications
 
-private struct PaykitPreciseInstant: Comparable, Hashable {
+struct PaykitPreciseInstant: Comparable, Hashable {
     let seconds: Int64
     let nanoseconds: Int
     let timestamp: String
@@ -611,6 +612,11 @@ protocol PaykitSubscriptionStateStoring {
 }
 
 struct PaykitSubscriptionStateStore: PaykitSubscriptionStateStoring {
+    private static let backupChanged = PassthroughSubject<Void, Never>()
+    static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
+        backupChanged.eraseToAnyPublisher()
+    }
+
     private struct State: Codable {
         var subscriptionsByIdentity: [String: PaykitSubscriptionState]
     }
@@ -632,6 +638,18 @@ struct PaykitSubscriptionStateStore: PaykitSubscriptionStateStoring {
         }
         state.subscriptionsByIdentity[normalizedIdentity] = subscriptionState
         try Keychain.upsert(key: .paykitSubscriptionState, data: JSONEncoder().encode(state))
+        Self.backupChanged.send()
+    }
+
+    func backupSnapshot() throws -> [String: PaykitPaymentStateBackup.Subscription] {
+        guard let data = try Keychain.load(key: .paykitSubscriptionState) else { return [:] }
+        return try JSONDecoder().decode(State.self, from: data).subscriptionsByIdentity.mapValues(PaykitPaymentStateBackup.Subscription.init)
+    }
+
+    func restoreBackup(_ subscriptions: [String: PaykitPaymentStateBackup.Subscription]) throws {
+        let state = try State(subscriptionsByIdentity: subscriptions.mapValues { try $0.restored() })
+        try Keychain.upsert(key: .paykitSubscriptionState, data: JSONEncoder().encode(state))
+        Self.backupChanged.send()
     }
 }
 

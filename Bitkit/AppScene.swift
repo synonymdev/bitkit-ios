@@ -885,10 +885,18 @@ struct AppScene: View {
             } catch {
                 Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
                 // Fall back to VSS
-                await BackupService.shared.performFullRestoreFromLatestBackup()
+                do {
+                    try await BackupService.shared.performFullRestoreFromLatestBackup()
+                } catch {
+                    app.toast(error)
+                }
             }
         } else {
-            await BackupService.shared.performFullRestoreFromLatestBackup()
+            do {
+                try await BackupService.shared.performFullRestoreFromLatestBackup()
+            } catch {
+                app.toast(error)
+            }
         }
     }
 

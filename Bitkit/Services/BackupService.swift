@@ -170,7 +170,7 @@ class BackupService {
     }
 
     /// Performs full restore from latest backup
-    func performFullRestoreFromLatestBackup() async {
+    func performFullRestoreFromLatestBackup() async throws {
         stateQueue.sync {
             isRestoring = true
         }
@@ -188,6 +188,10 @@ class BackupService {
         Logger.debug("Full restore starting", context: "BackupService")
 
         do {
+            // Block replacement backups even if downloading the wallet backup fails.
+            if try Keychain.load(key: .paykitPendingBackupRestore) == nil {
+                try Keychain.upsert(key: .paykitPendingBackupRestore, data: Data())
+            }
             try await performRestore(category: .settings) { dataBytes in
                 let payload = try SettingsBackupV1.decode(from: dataBytes)
                 await SettingsViewModel.shared.restoreSettingsDictionary(payload.settings)
@@ -209,7 +213,12 @@ class BackupService {
             var categoriesNeedingRewrite: Set<BackupCategory> = []
 
             try await performRestore(category: .wallet) { dataBytes in
+                try Keychain.upsert(key: .paykitPendingBackupRestore, data: dataBytes)
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
+                if let paymentState = payload.paykitPaymentState {
+                    try PaykitSubscriptionStateStore().restoreBackup(paymentState.subscriptions)
+                    try await PaykitPaymentProofService.shared.restoreBackup(paymentState.pendingProofs)
+                }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
                 try await WatchOnlyAccountManager.shared.restore(
@@ -220,6 +229,14 @@ class BackupService {
                 didRestoreWalletBackup = true
 
                 Logger.debug("Restored \(payload.transfers.count) transfers", context: "BackupService")
+            }
+
+            if !didRestoreWalletBackup {
+                guard try Keychain.load(key: .paykitPendingBackupRestore)?.isEmpty == true else {
+                    throw NSError(domain: "BackupService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Wallet backup restore is incomplete"])
+                }
+                try Keychain.delete(key: .paykitPendingBackupRestore)
+                markRestoreComplete(category: .wallet)
             }
 
             try await performRestore(category: .activity) { dataBytes in
@@ -257,11 +274,7 @@ class BackupService {
 
                 try await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
-                do {
-                    try await PubkyProfileManager.restoreSessionBackupState(payload.pubkySession)
-                } catch {
-                    Logger.warn("Failed to restore pubky session backup state: \(error)", context: "BackupService")
-                }
+                try await PubkyProfileManager.restoreSessionBackupState(payload.pubkySession)
                 ContactsManager.restoreContactProfileOverrides(payload.pubkyContactProfileOverrides)
 
                 // App-owned, so it takes no part in the core field migration above and never sets
@@ -279,12 +292,10 @@ class BackupService {
             }
 
             if didRestoreWalletBackup {
-                do {
-                    try await PrivatePaykitService.shared.restoreBackup(pendingPaykitSdkBackupState)
-                    await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
-                } catch {
-                    Logger.warn("Failed to restore Paykit SDK backup state: \(error)", context: "BackupService")
-                }
+                try await PrivatePaykitService.shared.restoreBackup(pendingPaykitSdkBackupState)
+                await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+                try Keychain.delete(key: .paykitPendingBackupRestore)
+                markRestoreComplete(category: .wallet)
             }
 
             try await performRestore(category: .blocktank) { dataBytes in
@@ -314,6 +325,7 @@ class BackupService {
             await rewriteMigratedBackups(categoriesNeedingRewrite)
         } catch {
             Logger.warn("Full restore error: \(error)", context: "BackupService")
+            throw error
         }
     }
 
@@ -395,6 +407,15 @@ class BackupService {
             .store(in: &cancellables)
 
         PaykitSdkService.walletBackupDataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .wallet)
+            }
+            .store(in: &cancellables)
+
+        PaykitSubscriptionStateStore.walletBackupDataChangedPublisher
+            .merge(with: PaykitPaymentProofService.proofStateChangedPublisher)
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -751,18 +772,25 @@ class BackupService {
             return encoded
 
         case .wallet:
+            guard try Keychain.load(key: .paykitPendingBackupRestore) == nil else {
+                throw NSError(domain: "BackupService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Wallet backup restore is incomplete"])
+            }
             let transfers = try TransferStorage.shared.getAll()
             let privatePaykitHighestReservedReceiveIndexByAddressType = await PrivatePaykitAddressReservationStore.shared.backupSnapshot()
             let paykitSdkBackupState = try await PrivatePaykitService.shared.backupSnapshot()
             let watchOnlyAccountSnapshot = try WatchOnlyAccountStore.backupSnapshot()
-            let payload = WalletBackupV1(
+            let payload = try await WalletBackupV1(
                 version: 1,
                 createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 transfers: transfers,
                 privatePaykitHighestReservedReceiveIndexByAddressType: privatePaykitHighestReservedReceiveIndexByAddressType,
                 paykitSdkBackupState: paykitSdkBackupState,
                 watchOnlyAccounts: watchOnlyAccountSnapshot.accounts,
-                watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState
+                watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState,
+                paykitPaymentState: PaykitPaymentStateBackup(
+                    subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
+                    pendingProofs: PaykitPaymentProofService.shared.backupSnapshot()
+                )
             )
             return try JSONEncoder().encode(payload)
 
@@ -874,8 +902,14 @@ class BackupService {
             // Only a total VSS failure surfaces otherwise, so without the error every category
             // fails silently. The benign "nothing backed up yet" case takes the branch above.
             Logger.warn("Restore error for: '\(category.rawValue)': \(error)", context: "BackupService")
+            throw error
         }
 
+        if category == .wallet, try Keychain.load(key: .paykitPendingBackupRestore) != nil { return }
+        markRestoreComplete(category: category)
+    }
+
+    private func markRestoreComplete(category: BackupCategory) {
         let currentTime = UInt64(Date().timeIntervalSince1970)
         updateBackupStatus(category: category) { _ in
             BackupItemStatus(

@@ -72,13 +72,7 @@ struct PaykitPaymentProofStore: PaykitPaymentProofStoring {
 
     func load() async throws -> [PendingPaykitPaymentProof] {
         guard let data = try Keychain.load(key: .paykitPendingPaymentProofs) else { return [] }
-        do {
-            return try JSONDecoder().decode(State.self, from: data).proofs
-        } catch {
-            Logger.warn("Discarding invalid pending Paykit payment proof state: \(error)", context: "PaykitPaymentProof")
-            try? Keychain.delete(key: .paykitPendingPaymentProofs)
-            return []
-        }
+        return try JSONDecoder().decode(State.self, from: data).proofs
     }
 
     func save(_ proofs: [PendingPaykitPaymentProof]) async throws {
@@ -195,6 +189,14 @@ actor PaykitPaymentProofService {
     private let logInfo: @Sendable (String) -> Void
     private let logWarning: @Sendable (String) -> Void
 
+    func backupSnapshot() async throws -> [PaykitPaymentStateBackup.Proof] {
+        try await store.load().map(PaykitPaymentStateBackup.Proof.init)
+    }
+
+    func restoreBackup(_ proofs: [PaykitPaymentStateBackup.Proof]) async throws {
+        try await persist(proofs.map { try $0.restored() })
+    }
+
     init(
         sdk: any PaykitPaymentProofSdkHandling = PaykitSdkService.shared,
         store: any PaykitPaymentProofStoring = PaykitPaymentProofStore(),
@@ -291,7 +293,6 @@ actor PaykitPaymentProofService {
         pendingProofs[index].paymentStarted = true
         pendingProofs[index].paymentIdentifier = paymentHash.lowercased()
         try await persist(pendingProofs)
-        Self.proofStateChangedSubject.send()
     }
 
     func markOnchainPaymentStarted(_ request: PaykitPaymentRequest, address: String) async throws {
@@ -316,7 +317,6 @@ actor PaykitPaymentProofService {
         pendingProofs[index].onchainAmountSats = request.amountSats
         pendingProofs[index].onchainMatchingTransactionIdsBeforeAttempt = existingTransactionIds
         try await persist(pendingProofs)
-        Self.proofStateChangedSubject.send()
     }
 
     func completeLightningPayment(paymentHash: String, preimage: String?) async {
@@ -559,7 +559,6 @@ actor PaykitPaymentProofService {
         }
         if remainingProofs != proofs {
             try await persist(remainingProofs)
-            Self.proofStateChangedSubject.send()
         }
         return protectedRequestIds
     }
@@ -632,6 +631,7 @@ actor PaykitPaymentProofService {
 
     private func persist(_ proofs: [PendingPaykitPaymentProof]) async throws {
         try await store.save(proofs)
+        Self.proofStateChangedSubject.send()
     }
 
     private func persistAndSubmit(
@@ -703,7 +703,6 @@ actor PaykitPaymentProofService {
             }
             guard remainingProofs != pendingProofs else { return }
             try await persist(remainingProofs)
-            Self.proofStateChangedSubject.send()
         } catch {
             logWarning("Failed to clear a pending Paykit payment proof: \(error)")
         }
@@ -715,7 +714,6 @@ actor PaykitPaymentProofService {
             let remainingProofs = pendingProofs.filter { !shouldRemove($0) }
             guard remainingProofs != pendingProofs else { return }
             try await persist(remainingProofs)
-            Self.proofStateChangedSubject.send()
         } catch {
             logWarning("Failed to clear a pending Paykit payment proof: \(error)")
         }

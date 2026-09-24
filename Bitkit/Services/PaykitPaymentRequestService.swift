@@ -1095,7 +1095,6 @@ final class PaykitPaymentRequestManager {
         if activeIdentity != nil {
             clear()
         }
-        activeIdentity = normalizedIdentity
         do {
             presentedRequestIds = try presentationStore.load(identity: normalizedIdentity)
             persistedPresentedRequestIds = presentedRequestIds
@@ -1116,7 +1115,10 @@ final class PaykitPaymentRequestManager {
             dismissedSubscriptionPaymentIds = []
             persistedSubscriptionState = PaykitSubscriptionState()
             logWarning("Failed to restore Paykit subscription state: \(error)")
+            activeIdentity = nil
+            return
         }
+        activeIdentity = normalizedIdentity
     }
 
     func refreshEligibleTargets(savedPublicKeys: [String]) async {
