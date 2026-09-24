@@ -1217,6 +1217,7 @@
 "profile__session_expired_description" = "Your profile session has expired. Please reconnect to restore your profile.";
 "profile__edit_nav_title" = "Edit Profile";
 "profile__edit_saved" = "Profile updated";
+"profile__pubky_copied" = "pubky copied to clipboard";
 "profile__edit_delete_section" = "DELETE";
 "profile__edit_public_note" = "Please note profile information is stored in public files.";
 "profile__delete_title" = "Delete Profile?";

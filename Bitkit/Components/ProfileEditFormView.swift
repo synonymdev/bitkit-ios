@@ -6,6 +6,7 @@ struct ProfileEditFormView<Avatar: View>: View {
         case textOnly
     }
 
+    let navigationTitle: String
     @Binding var name: String
     @Binding var bio: String
     @Binding var links: [ProfileLinkInput]
@@ -32,59 +33,16 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            ScrollView {
-                VStack(spacing: 0) {
-                    VStack(spacing: 32) {
-                        avatar()
-
-                        ProfileNameField(name: $name, accessibilityId: "ProfileEditName")
-
-                        CustomDivider()
-
-                        pubkyKeySection
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 32)
-
-                    VStack(alignment: .leading, spacing: 16) {
-                        CustomDivider()
-
-                        bioSection
-
-                        CustomDivider()
-
-                        linksSection
-
-                        CustomDivider()
-
-                        tagsSection
-
-                        if let footerNote {
-                            CustomDivider()
-
-                            footnoteSection(footerNote)
-                        }
-
-                        if let deleteLabel, let onDelete {
-                            CustomDivider()
-
-                            deleteSection(label: deleteLabel, action: onDelete)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, ScreenLayout.floatingFooterClearance + 16)
-                .background {
-                    // On the background rather than the ScrollView, so taps on multi-line fields don't resign them
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            dismissKeyboard()
-                        }
-                }
-            }
-            .scrollDismissesKeyboard(.interactively)
+            InsetHeaderScrollView(
+                header: {
+                    NavigationBar(title: navigationTitle)
+                        .padding(.horizontal, 16)
+                },
+                content: {
+                    formContent
+                },
+                scrollModifier: DismissKeyboardOnScroll()
+            )
 
             if !keyboard.isPresented {
                 footerBar
@@ -99,6 +57,59 @@ struct ProfileEditFormView<Avatar: View>: View {
             AddProfileTagSheet { tag in
                 tags.append(tag)
             }
+        }
+    }
+
+    private var formContent: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 32) {
+                avatar()
+
+                ProfileNameField(name: $name, accessibilityId: "ProfileEditName")
+
+                CustomDivider()
+
+                pubkyKeySection
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 32)
+
+            VStack(alignment: .leading, spacing: 16) {
+                CustomDivider()
+
+                bioSection
+
+                CustomDivider()
+
+                linksSection
+
+                CustomDivider()
+
+                tagsSection
+
+                if let footerNote {
+                    CustomDivider()
+
+                    footnoteSection(footerNote)
+                }
+
+                if let deleteLabel, let onDelete {
+                    CustomDivider()
+
+                    deleteSection(label: deleteLabel, action: onDelete)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, ScreenLayout.floatingFooterClearance + 16)
+        .background {
+            // On the background rather than the ScrollView, so taps on multi-line fields don't resign them
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    dismissKeyboard()
+                }
         }
     }
 
@@ -294,5 +305,11 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     private func dismissKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+private struct DismissKeyboardOnScroll: ViewModifier {
+    func body(content: Content) -> some View {
+        content.scrollDismissesKeyboard(.interactively)
     }
 }

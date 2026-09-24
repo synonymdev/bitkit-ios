@@ -6,24 +6,38 @@ struct ProfileView: View {
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     @State private var showSignOutConfirmation = false
+    @State private var showAddTagSheet = false
+    @State private var isUpdatingTags = false
     @State private var isSigningOut = false
+    @State private var copiedPublicKey: String?
+    @State private var hideCopiedPopupTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(spacing: 0) {
-            NavigationBar(
-                title: t("profile__nav_title")
-            )
-            .padding(.horizontal, 16)
-
-            if pubkyProfile.isLoadingProfile && pubkyProfile.profile == nil {
-                loadingContent
-            } else if let profile = pubkyProfile.profile {
+        Group {
+            if let profile = pubkyProfile.profile {
                 profileContent(profile)
             } else {
-                emptyContent
+                VStack(spacing: 0) {
+                    navigationBar
+
+                    if pubkyProfile.isLoadingProfile {
+                        loadingContent
+                    } else {
+                        emptyContent
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            if let copiedPublicKey {
+                ClipboardCopyPopup(title: t("profile__pubky_copied"), value: copiedPublicKey)
+                    .accessibilityIdentifier("ProfilePubkyCopiedToast")
+                    .onTapGesture { hideCopiedPopup() }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: copiedPublicKey)
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
@@ -46,8 +60,13 @@ struct ProfileView: View {
 
     // MARK: - Profile Content
 
+    private var navigationBar: some View {
+        NavigationBar(title: t("profile__nav_title"))
+            .padding(.horizontal, 16)
+    }
+
     private func profileContent(_ profile: PubkyProfile) -> some View {
-        ScrollView {
+        InsetHeaderScrollView(header: { navigationBar }) {
             VStack(spacing: 0) {
                 CenteredProfileHeader(
                     truncatedKey: profile.truncatedPublicKey,
@@ -58,7 +77,7 @@ struct ProfileView: View {
                     nameAccessibilityIdentifier: "ProfileViewName",
                     notesAccessibilityIdentifier: "ProfileViewNotes"
                 )
-                .padding(.top, 32)
+                .padding(.top, 16)
                 .padding(.bottom, 16)
 
                 profileQRCode(profile)
@@ -66,9 +85,27 @@ struct ProfileView: View {
                     .padding(.bottom, 16)
 
                 profileActions
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 16)
+
+                CustomDivider()
+
+                VStack(alignment: .leading, spacing: 0) {
+                    if !profile.links.isEmpty {
+                        profileLinks(profile)
+                    }
+
+                    profileTags(profile)
+                        .padding(.top, 16)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 16)
             }
             .padding(.horizontal, 16)
+        }
+        .sheet(isPresented: $showAddTagSheet) {
+            AddProfileTagSheet { tag in
+                addTag(tag, to: profile)
+            }
         }
     }
 
@@ -83,8 +120,7 @@ struct ProfileView: View {
 
             GradientCircleButton(icon: "copy-simple", accessibilityLabel: t("common__copy")) {
                 if let pk = pubkyProfile.publicKey {
-                    UIPasteboard.general.string = pk
-                    app.toast(type: .success, title: t("common__copied"), accessibilityIdentifier: "ProfilePubkyCopiedToast")
+                    copyPublicKey(pk)
                 }
             }
             .accessibilityIdentifier("ProfileCopy")
@@ -100,7 +136,20 @@ struct ProfileView: View {
 
     private func copyPublicKey(_ publicKey: String) {
         UIPasteboard.general.string = publicKey
-        app.toast(type: .success, title: t("common__copied"))
+        Haptics.notify(.success)
+        copiedPublicKey = publicKey
+
+        hideCopiedPopupTask?.cancel()
+        hideCopiedPopupTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            copiedPublicKey = nil
+        }
+    }
+
+    private func hideCopiedPopup() {
+        hideCopiedPopupTask?.cancel()
+        copiedPublicKey = nil
     }
 
     private func profileQRCode(_ profile: PubkyProfile) -> some View {
@@ -130,6 +179,70 @@ struct ProfileView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(t("common__copy"))
         .accessibilityIdentifier("ProfileQRCode")
+    }
+
+    // MARK: - Links
+
+    private func profileLinks(_ profile: PubkyProfile) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(profile.links.enumerated()), id: \.element.id) { index, link in
+                ProfileLinkRow(label: link.label, value: link.url, linkIndex: index)
+            }
+        }
+    }
+
+    // MARK: - Tags
+
+    private func profileTags(_ profile: PubkyProfile) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("profile__create_tags_label"), textColor: .white64)
+                .accessibilityIdentifier("ProfileViewTagsHeader")
+
+            if !profile.tags.isEmpty {
+                WrappingHStack(spacing: 8) {
+                    ForEach(profile.tags, id: \.self) { tag in
+                        Tag(tag, icon: .close, onDelete: {
+                            updateTags(profile.tags.filter { $0 != tag }, profile: profile)
+                        })
+                    }
+                }
+            }
+
+            IconActionButton(
+                icon: "tag",
+                title: t("profile__create_add_tag"),
+                accessibilityId: "ProfileAddTag"
+            ) {
+                showAddTagSheet = true
+            }
+        }
+        .disabled(isUpdatingTags)
+    }
+
+    private func addTag(_ tag: String, to profile: PubkyProfile) {
+        guard !profile.tags.contains(tag) else { return }
+        updateTags(profile.tags + [tag], profile: profile)
+    }
+
+    private func updateTags(_ tags: [String], profile: PubkyProfile) {
+        guard !isUpdatingTags else { return }
+        isUpdatingTags = true
+
+        Task {
+            defer { isUpdatingTags = false }
+
+            do {
+                try await pubkyProfile.saveProfile(
+                    name: profile.name,
+                    bio: profile.bio,
+                    links: profile.links,
+                    tags: tags
+                )
+            } catch {
+                Logger.error("Failed to update profile tags: \(error)", context: "ProfileView")
+                app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
+            }
+        }
     }
 
     // MARK: - Loading / Empty States
