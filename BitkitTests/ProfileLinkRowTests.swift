@@ -17,10 +17,21 @@ final class ProfileLinkRowTests: XCTestCase {
         XCTAssertEqual(ProfileLinkRow.destination(for: "Https://example.com")?.absoluteString, "Https://example.com")
     }
 
-    func testBarePhoneNumberOpensDialer() {
+    func testInternationalPhoneNumberOpensDialer() {
         XCTAssertEqual(ProfileLinkRow.destination(for: "+15551234")?.absoluteString, "tel:+15551234")
         XCTAssertEqual(ProfileLinkRow.destination(for: "+1 (555) 123-4567")?.absoluteString, "tel:+15551234567")
+    }
+
+    func testLocalNumberOpensDialerUnderPhoneLabel() {
+        XCTAssertEqual(ProfileLinkRow.destination(for: "555 123 4567", label: "Phone")?.absoluteString, "tel:5551234567")
+        XCTAssertNil(ProfileLinkRow.destination(for: "555 123 4567", label: "Notes"))
+    }
+
+    func testNumericTextStaysPlain() {
         XCTAssertNil(ProfileLinkRow.destination(for: "2024"))
+        XCTAssertNil(ProfileLinkRow.destination(for: "192.168.1.100"))
+        XCTAssertNil(ProfileLinkRow.destination(for: "2024-01-01"))
+        XCTAssertNil(ProfileLinkRow.destination(for: "2024.01.01"))
     }
 
     func testFormattedTelLinkOpensDialer() {

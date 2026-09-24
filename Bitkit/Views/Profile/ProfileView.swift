@@ -206,11 +206,13 @@ struct ProfileLinkRow: View {
     let linkIndex: Int
 
     /// Link values are free text, so only values that look like a web address, email or phone number open.
-    static func destination(for value: String) -> URL? {
+    /// A bare number counts as a phone number only in international format or under a phone label,
+    /// so dates, IP addresses and other numeric text stay plain.
+    static func destination(for value: String, label: String = "") -> URL? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        if let phoneURL = phoneDestination(for: trimmed) {
+        if trimmed.hasPrefix("+") || isPhoneLabel(label), let phoneURL = phoneDestination(for: trimmed) {
             return phoneURL
         }
 
@@ -230,11 +232,19 @@ struct ProfileLinkRow: View {
             return URL(string: "mailto:\(trimmed)")
         }
 
-        if trimmed.contains("."), let url = URL(string: "https://\(trimmed)"), url.host?.contains(".") == true {
+        if let url = URL(string: "https://\(trimmed)"), let host = url.host, host.contains("."),
+           let topLevelDomain = host.split(separator: ".").last, topLevelDomain.contains(where: \.isLetter)
+        {
             return url
         }
 
         return nil
+    }
+
+    private static let phoneLabels: Set<String> = ["phone", "tel", "telephone", "mobile", "cell"]
+
+    private static func isPhoneLabel(_ label: String) -> Bool {
+        phoneLabels.contains(label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 
     private static let phoneCharacters = CharacterSet(charactersIn: "+0123456789 -().")
@@ -249,7 +259,7 @@ struct ProfileLinkRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let destination = Self.destination(for: value) {
+            if let destination = Self.destination(for: value, label: label) {
                 Button {
                     openURL(destination)
                 } label: {
