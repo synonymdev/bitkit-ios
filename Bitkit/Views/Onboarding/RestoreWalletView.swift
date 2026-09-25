@@ -277,6 +277,7 @@ struct RestoreWalletView: View {
             // the node is started, because startup sync begins as soon as the wallet exists - setting
             // it on the Get Started tap left a window where replayed txs could still pop a sheet. #588
             SettingsViewModel.shared.pendingRestoreActivitySeenSince = UInt64(Date().timeIntervalSince1970)
+            SettingsViewModel.shared.restoreSyncedBlockHeight = 0
 
             // When restoring a wallet, monitor all address types to catch any existing funds
             SettingsViewModel.shared.monitorAllAddressTypes()
@@ -284,6 +285,9 @@ struct RestoreWalletView: View {
             _ = try StartupHandler.restoreWallet(mnemonic: bip39Mnemonic, bip39Passphrase: bip39Passphrase)
             try wallet.setWalletExistsState()
         } catch {
+            // The node never started, so no sync will lift the hold. Left in place it would silence
+            // every later on-chain receive, across retries and relaunches. #588
+            SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
             BackupService.shared.setRestoring(false)
             app.toast(error)
         }

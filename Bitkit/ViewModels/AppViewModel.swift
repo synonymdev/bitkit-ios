@@ -144,6 +144,14 @@ class AppViewModel: ObservableObject {
     /// is presented at most once and avoid a double-notification race. See issue #455.
     private var receivedSheetInFlightTxids: Set<String> = []
 
+    /// On-chain receives that arrived while the restore sweep ran, in arrival order, to present once
+    /// the hold lifts. Whatever the first restore sync emitted is dropped instead: it cannot tell a
+    /// payment arriving mid-scan from an unconfirmed one the scan replays. #588
+    private(set) var restoreHeldReceives: [RestoreHeldReceive] = []
+
+    /// Whether the post-restore sweep is running, so a later sync cannot start a second one.
+    private var isCompletingRestoreHold = false
+
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
     @Published var sendSheetPendingResolution: SendSheetPendingResolution?
@@ -1208,6 +1216,15 @@ extension AppViewModel {
 
 // MARK: LDK Node Events
 
+/// An on-chain receive held by the restore hold. `blockHeight` and `confirmationTime` are nil for a
+/// mempool receive.
+struct RestoreHeldReceive: Equatable {
+    let txid: String
+    let amountSats: Int64
+    let blockHeight: UInt32?
+    let confirmationTime: UInt64?
+}
+
 extension AppViewModel {
     /// Lifts the post-restore received-sheet suppression, once the activities the first post-restore
     /// on-chain sync replayed have actually been marked seen.
@@ -1215,16 +1232,70 @@ extension AppViewModel {
     /// The flag must outlive the marking pass: clearing it up front reopens
     /// `presentReceivedSheetForOnchainTransaction` while the pass is still running, and leaves it open
     /// for good if the pass fails, so a historical tx can pop a "Received" sheet. #588
+    ///
+    /// Records `syncedBlockHeight` as the restore's chain tip, so confirmations the restore already
+    /// scanned stay silent after the hold too, then presents the receives held during the sweep.
+    /// Call `beginCompletingPendingRestoreActivitySeen` first, synchronously in the event handler.
     @MainActor
     func completePendingRestoreActivitySeen(
+        syncedBlockHeight: UInt32,
         markAllSeen: (UInt64) async -> Bool = { cutoff in
             await CoreService.shared.activity.markAllUnseenActivitiesAsSeen(startedBefore: cutoff)
-        }
+        },
+        presentReceive: ((String, Int64) -> Void)? = nil
     ) async {
+        defer { isCompletingRestoreHold = false }
         let restoreStartedAt = SettingsViewModel.shared.pendingRestoreActivitySeenSince
         guard restoreStartedAt > 0 else { return }
         guard await markAllSeen(restoreStartedAt) else { return }
+        SettingsViewModel.shared.restoreSyncedBlockHeight = syncedBlockHeight
         SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
+
+        let held = restoreHeldReceives
+        restoreHeldReceives.removeAll()
+        let present = presentReceive ?? { [weak self] txid, amountSats in
+            self?.presentReceivedSheetForOnchainTransaction(txid: txid, amountSats: amountSats)
+        }
+        for receive in held {
+            if let blockHeight = receive.blockHeight, let confirmationTime = receive.confirmationTime {
+                guard Self.shouldPresentConfirmedOnlyReceive(
+                    confirmationTime: confirmationTime,
+                    blockHeight: blockHeight,
+                    restoreSyncedBlockHeight: syncedBlockHeight
+                ) else { continue }
+            }
+            present(receive.txid, receive.amountSats)
+        }
+    }
+
+    /// Starts lifting the restore hold on an on-chain `syncCompleted`, returning whether the caller
+    /// should run `completePendingRestoreActivitySeen`. Runs synchronously in the event handler: the
+    /// receives held so far came from the restore scan itself and are dropped as history, and only
+    /// one sweep runs, so a later sync cannot raise the recorded restore tip. #588
+    func beginCompletingPendingRestoreActivitySeen() -> Bool {
+        guard SettingsViewModel.shared.pendingRestoreActivitySeen, !isCompletingRestoreHold else { return false }
+        restoreHeldReceives.removeAll()
+        isCompletingRestoreHold = true
+        return true
+    }
+
+    /// Holds an on-chain receive while the restore hold is up, returning whether it was held.
+    /// `blockHeight` and `confirmationTime` are set for a confirmed event, nil for a mempool one.
+    @discardableResult
+    func holdReceiveDuringRestore(
+        txid: String,
+        amountSats: Int64,
+        blockHeight: UInt32? = nil,
+        confirmationTime: UInt64? = nil
+    ) -> Bool {
+        guard SettingsViewModel.shared.pendingRestoreActivitySeen else { return false }
+        guard amountSats > 0 else { return true }
+        if !restoreHeldReceives.contains(where: { $0.txid == txid }) {
+            restoreHeldReceives.append(
+                RestoreHeldReceive(txid: txid, amountSats: amountSats, blockHeight: blockHeight, confirmationTime: confirmationTime)
+            )
+        }
+        return true
     }
 
     /// Shows the "received" sheet for an incoming on-chain tx, unless it was already shown.
@@ -1236,23 +1307,24 @@ extension AppViewModel {
     /// device clocks can each run ahead of the other. Matches `MAX_CONFIRMED_ONLY_AGE` on Android.
     static let maxConfirmedOnlyReceiveAge: TimeInterval = 60 * 60
 
+    /// Whether a confirmed event is a new receive. Also skips any block at or below the tip the latest
+    /// seed restore scanned, since a later rescan replays those with block times that can still fall
+    /// inside the window. #588
     static func shouldPresentConfirmedOnlyReceive(
         confirmationTime: UInt64,
+        blockHeight: UInt32,
         now: Date = Date(),
-        isMigrating: Bool = MigrationsService.shared.isShowingMigrationLoading || MigrationsService.shared.needsPostMigrationSync
+        isMigrating: Bool = MigrationsService.shared.isShowingMigrationLoading || MigrationsService.shared.needsPostMigrationSync,
+        restoreSyncedBlockHeight: UInt32? = nil
     ) -> Bool {
         guard !isMigrating else { return false }
+        guard blockHeight > (restoreSyncedBlockHeight ?? SettingsViewModel.shared.restoreSyncedBlockHeight) else { return false }
         let age = abs(now.timeIntervalSince1970 - TimeInterval(confirmationTime))
         return age <= maxConfirmedOnlyReceiveAge
     }
 
     private func presentReceivedSheetForOnchainTransaction(txid: String, amountSats: Int64) {
         guard amountSats > 0 else { return }
-
-        // During a restore replay, LDK re-fires confirmed events for historical (already-received) txs.
-        // Suppress the sheet for the whole restore window; the first post-restore on-chain sync marks
-        // those activities seen and clears this flag, after which genuinely-new receives notify again. #588
-        guard !SettingsViewModel.shared.pendingRestoreActivitySeen else { return }
 
         // Reserve the txid synchronously on the MainActor (no await between check and insert) so the
         // received and confirmed events for the same tx can't both pass the seen-check and present the
@@ -1423,15 +1495,25 @@ extension AppViewModel {
         // MARK: New Onchain Transaction Events
 
         case let .onchainTransactionReceived(txid, details):
-            // Show notification for incoming transactions seen in the mempool
-            presentReceivedSheetForOnchainTransaction(txid: txid, amountSats: details.amountSats)
+            // Show notification for incoming transactions seen in the mempool, once any restore hold lifts
+            if !holdReceiveDuringRestore(txid: txid, amountSats: details.amountSats) {
+                presentReceivedSheetForOnchainTransaction(txid: txid, amountSats: details.amountSats)
+            }
         case let .onchainTransactionConfirmed(txid, _, blockHeight, confirmationTime, details):
             Logger.info("Transaction confirmed: \(txid) at block \(blockHeight)")
             // Also notify when a tx goes straight to confirmed without a prior received event
-            if Self.shouldPresentConfirmedOnlyReceive(confirmationTime: confirmationTime) {
+            if holdReceiveDuringRestore(
+                txid: txid,
+                amountSats: details.amountSats,
+                blockHeight: blockHeight,
+                confirmationTime: confirmationTime
+            ) {
+                break
+            }
+            if Self.shouldPresentConfirmedOnlyReceive(confirmationTime: confirmationTime, blockHeight: blockHeight) {
                 presentReceivedSheetForOnchainTransaction(txid: txid, amountSats: details.amountSats)
             } else {
-                Logger.debug("Skipping received sheet for confirmed-only tx \(txid) confirmed at \(confirmationTime)")
+                Logger.debug("Skipping received sheet for confirmed-only tx \(txid) confirmed at \(confirmationTime), height \(blockHeight)")
             }
         case let .onchainTransactionReplaced(txid, conflicts):
             Logger.info("Transaction replaced: \(txid) by \(conflicts.count) conflict(s)")
@@ -1507,9 +1589,9 @@ extension AppViewModel {
 
             // After a seed restore, the first on-chain sync has now discovered the historical txs.
             // Mark them seen so they don't pop a "Received" sheet, and lift the restore suppression. #588
-            if syncType == .onchainWallet {
+            if syncType == .onchainWallet, beginCompletingPendingRestoreActivitySeen() {
                 Task { @MainActor in
-                    await self.completePendingRestoreActivitySeen()
+                    await self.completePendingRestoreActivitySeen(syncedBlockHeight: syncedBlockHeight)
                 }
             }
 

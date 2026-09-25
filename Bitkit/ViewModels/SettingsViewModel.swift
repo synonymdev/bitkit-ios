@@ -476,6 +476,18 @@ class SettingsViewModel: NSObject, ObservableObject {
         pendingRestoreActivitySeenSince > 0
     }
 
+    private static let restoreSyncedBlockHeightKey = "restoreSyncedBlockHeight"
+
+    /// Chain tip of the first on-chain sync after the latest seed restore, or 0 when none completed.
+    ///
+    /// Everything confirmed at or below it was already on chain when the restore scanned the wallet, so
+    /// it outlives the restore hold: a later rescan replays confirmations for those txs, and they must
+    /// stay silent however long after the hold their events are handled. #588
+    var restoreSyncedBlockHeight: UInt32 {
+        get { UInt32(clamping: UserDefaults.standard.integer(forKey: Self.restoreSyncedBlockHeightKey)) }
+        set { UserDefaults.standard.set(Int(newValue), forKey: Self.restoreSyncedBlockHeightKey) }
+    }
+
     /// After restore, disables monitoring for address types with zero balance.
     /// Keeps nativeSegwit as primary and monitored; only types with funds stay monitored.
     func pruneEmptyAddressTypesAfterRestore() async {
