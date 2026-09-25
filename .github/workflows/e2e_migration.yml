@@ -7,6 +7,14 @@ on:
         description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
         required: false
         default: "default-feature-branch"
+      previous_native_version:
+        description: "Archived native release tag (empty uses the pinned baseline)"
+        required: false
+        default: ""
+      extended_rn:
+        description: "Also run RN 1.1.6 passphrase and legacy-address cases"
+        type: boolean
+        default: false
       post_to_slack:
         description: "Post E2E migration summary to Slack (#bitkit-staging-nightly)"
         type: boolean
@@ -137,46 +145,62 @@ jobs:
           selected: ${{ needs.e2e-branch.outputs.branch }}
           e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
-  prepare-wallets:
+  migration-plan:
     if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-')))
+    needs: [e2e-branch]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      all: ${{ steps.plan.outputs.all }}
+      rn: ${{ steps.plan.outputs.rn }}
+      native: ${{ steps.plan.outputs.native }}
+    steps:
+      - name: Resolve E2E tests ref
+        id: e2e-ref
+        uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
+        with:
+          selected: ${{ needs.e2e-branch.outputs.branch }}
+          e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
+      - name: Checkout E2E tests
+        uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ steps.e2e-ref.outputs.ref }}
+      - name: Resolve migration cases and baseline
+        id: plan
+        run: python3 scripts/migration-matrix.py ios
+        env:
+          PREVIOUS_NATIVE_VERSION: ${{ inputs.previous_native_version }}
+          EXTENDED_RN: ${{ inputs.extended_rn || false }}
+
+  prepare-wallets:
+    needs: [e2e-branch, resolve-e2e-ref, migration-plan]
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@main
-    needs: [e2e-branch, resolve-e2e-ref]
     strategy:
       fail-fast: false
       matrix:
-        rn_version:
-          - v1.1.6
-        scenario:
-          - { name: migration_1-restore, setup_type: standard }
-          - { name: migration_2-migration, setup_type: standard }
-          - { name: migration_3-with-passphrase, setup_type: passphrase }
-          - { name: migration_4-with-sweep, setup_type: sweep }
+        scenario: ${{ fromJSON(needs.migration-plan.outputs.rn) }}
     with:
       e2e_branch: ${{ needs.resolve-e2e-ref.outputs.ref }}
-      rn_version: ${{ matrix.rn_version }}
+      e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
+      rn_version: v1.1.6
       setup_type: ${{ matrix.scenario.setup_type }}
       scenario_name: ${{ matrix.scenario.name }}
 
-  e2e-tests:
+  rn-tests:
     if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-')))
     runs-on: macos-latest
-    needs: [build, e2e-branch, prepare-wallets]
+    needs: [build, e2e-branch, migration-plan, prepare-wallets]
 
     strategy:
       fail-fast: false
       matrix:
-        rn_version:
-          - v1.1.6
-        scenario:
-          - { name: migration_1-restore, setup_type: standard, grep: "@migration_1" }
-          - { name: migration_2-migration, setup_type: standard, grep: "@migration_2" }
-          - { name: migration_3-with-passphrase, setup_type: passphrase, grep: "@migration_3" }
-          - { name: migration_4-with-sweep, setup_type: sweep, grep: "@migration_4" }
+        scenario: ${{ fromJSON(needs.migration-plan.outputs.rn) }}
 
-    name: e2e-tests - ${{ matrix.rn_version }} - ${{ matrix.scenario.name }}
-
+    name: ios RN - ${{ matrix.scenario.version }} - ${{ matrix.scenario.name }}
     env:
       BACKEND: regtest
+      MIGRATION_EXTENDED: ${{ inputs.extended_rn || false }}
 
     steps:
       - name: Resolve E2E tests ref
@@ -202,36 +226,15 @@ jobs:
       - name: Download migration env
         uses: actions/download-artifact@v8
         with:
-          name: migration-env_${{ matrix.rn_version }}_${{ matrix.scenario.name }}
+          name: migration-env_${{ matrix.scenario.version }}_${{ matrix.scenario.name }}_${{ github.run_attempt }}
           path: bitkit-e2e-tests/artifacts
 
-      - name: Export migration env
+      # Restore uses the Android-prepared seed directly in the native target.
+      # Its source provenance is in the matching migration-setup-logs artifact.
+      - name: Download migration source
+        if: matrix.scenario.name != 'rn_restore'
         working-directory: bitkit-e2e-tests
-        run: |
-          set -euo pipefail
-          env_file="artifacts/migration_setup_${{ matrix.scenario.setup_type }}.env"
-          echo "=== Env file contents ==="
-          cat "$env_file"
-          echo "========================="
-          cat "$env_file" >> "$GITHUB_ENV"
-
-      - name: Download RN app for migration
-        run: |
-          mkdir -p bitkit-e2e-tests/aut
-          curl -L -o bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip \
-            https://github.com/synonymdev/bitkit-e2e-tests/releases/download/migration-rn-regtest/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip
-          unzip -o bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip -d bitkit-e2e-tests/aut
-          
-          # Rename the versioned RN app to the expected default name
-          # (Bitkit.app / bitkit.app is the native app - don't touch it)
-          if [ -d "bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app" ]; then
-            mv "bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app" \
-               "bitkit-e2e-tests/aut/bitkit_rn_regtest_ios.app"
-            echo "Renamed bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app to bitkit_rn_regtest_ios.app"
-          fi
-
-      - name: List app directory contents
-        run: ls -la bitkit-e2e-tests/aut
+        run: python3 scripts/download-migration-app.py ios '${{ matrix.scenario.source }}' '${{ matrix.scenario.version }}'
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -260,19 +263,19 @@ jobs:
         run: |
           echo "Erasing simulator..."
           xcrun simctl erase "${{ env.SIMULATOR_NAME }}" || true
-          
+
           echo "Booting simulator..."
           xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
-          
+
           echo "Waiting for boot status..."
           xcrun simctl bootstatus "${{ env.SIMULATOR_NAME }}" -b
-          
+
           echo "Opening Simulator app to ensure UI is ready..."
           open -a Simulator
-          
+
           echo "Waiting for simulator to fully initialize..."
           sleep 30
-          
+
           echo "Verifying simulator state..."
           xcrun simctl list devices booted
 
@@ -283,7 +286,7 @@ jobs:
           npx appium --log-timestamp --log-no-colors > appium.log 2>&1 &
           APPIUM_PID=$!
           echo "APPIUM_PID=$APPIUM_PID" >> $GITHUB_ENV
-          
+
           echo "Waiting for Appium server to be ready..."
           for i in {1..30}; do
             if curl -s http://127.0.0.1:4723/status > /dev/null 2>&1; then
@@ -293,8 +296,175 @@ jobs:
             echo "Waiting for Appium... ($i/30)"
             sleep 2
           done
-          
-          curl -s http://127.0.0.1:4723/status || echo "Warning: Appium status check failed"
+
+          curl --fail --silent --show-error http://127.0.0.1:4723/status > /dev/null
+
+      - name: Load independent wallet for attempt 1
+        working-directory: bitkit-e2e-tests
+        run: cat 'artifacts/wallet-attempt-1/migration_setup_${{ matrix.scenario.setup_type }}.env' >> "$GITHUB_ENV"
+
+      - name: Run E2E Tests 1 (${{ matrix.scenario.name }})
+        continue-on-error: true
+        id: test1
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.scenario.grep }}'
+        env:
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
+          RECORD_VIDEO: true
+          ATTEMPT: 1
+
+      - name: Load independent wallet for attempt 2
+        if: steps.test1.outcome != 'success'
+        working-directory: bitkit-e2e-tests
+        run: cat 'artifacts/wallet-attempt-2/migration_setup_${{ matrix.scenario.setup_type }}.env' >> "$GITHUB_ENV"
+
+      - name: Run E2E Tests 2 (${{ matrix.scenario.name }})
+        continue-on-error: true
+        if: steps.test1.outcome != 'success'
+        id: test2
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.scenario.grep }}"
+        env:
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
+          RECORD_VIDEO: true
+          ATTEMPT: 2
+
+      - name: Load independent wallet for attempt 3
+        if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
+        working-directory: bitkit-e2e-tests
+        run: cat 'artifacts/wallet-attempt-3/migration_setup_${{ matrix.scenario.setup_type }}.env' >> "$GITHUB_ENV"
+
+      - name: Run E2E Tests 3 (${{ matrix.scenario.name }})
+        if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
+        id: test3
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.scenario.grep }}"
+        env:
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
+          RECORD_VIDEO: true
+          ATTEMPT: 3
+
+      - name: Copy Appium logs to artifacts
+        if: always()
+        working-directory: bitkit-e2e-tests
+        run: |
+          mkdir -p artifacts
+          cp appium.log artifacts/ || true
+
+      - name: Upload E2E Artifacts (${{ matrix.scenario.name }})
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-artifacts_${{ matrix.scenario.name }}_${{ matrix.scenario.version }}_${{ github.run_number }}_${{ github.run_attempt }}
+          path: |
+            bitkit-e2e-tests/artifacts/
+            !bitkit-e2e-tests/artifacts/**/*.env
+
+  native-tests:
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-')))
+    runs-on: macos-latest
+    needs: [build, e2e-branch, migration-plan]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJSON(needs.migration-plan.outputs.native) }}
+
+    name: ios native - ${{ matrix.scenario.version }} - ${{ matrix.scenario.name }}
+    env:
+      BACKEND: regtest
+      MIGRATION_EXTENDED: ${{ inputs.extended_rn || false }}
+
+    steps:
+      - name: Resolve E2E tests ref
+        id: e2e-ref
+        uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
+        with:
+          selected: ${{ needs.e2e-branch.outputs.branch }}
+          e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
+
+      - name: Clone E2E tests
+        uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          path: bitkit-e2e-tests
+          ref: ${{ steps.e2e-ref.outputs.ref }}
+
+      - name: Download iOS app
+        uses: actions/download-artifact@v8
+        with:
+          name: bitkit-e2e-ios_${{ github.run_number }}
+          path: bitkit-e2e-tests/aut
+
+      - name: Download migration source
+        working-directory: bitkit-e2e-tests
+        run: python3 scripts/download-migration-app.py ios '${{ matrix.scenario.source }}' '${{ matrix.scenario.version }}'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Cache npm cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        working-directory: bitkit-e2e-tests
+        run: npm ci
+
+      - name: Install ffmpeg
+        run: |
+          echo "Installing ffmpeg..."
+          brew install ffmpeg || brew upgrade ffmpeg || true
+          echo "ffmpeg version: $(ffmpeg -version | head -1)"
+
+      - name: Boot Simulator
+        run: |
+          echo "Erasing simulator..."
+          xcrun simctl erase "${{ env.SIMULATOR_NAME }}" || true
+
+          echo "Booting simulator..."
+          xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
+
+          echo "Waiting for boot status..."
+          xcrun simctl bootstatus "${{ env.SIMULATOR_NAME }}" -b
+
+          echo "Opening Simulator app to ensure UI is ready..."
+          open -a Simulator
+
+          echo "Waiting for simulator to fully initialize..."
+          sleep 30
+
+          echo "Verifying simulator state..."
+          xcrun simctl list devices booted
+
+      - name: Start Appium Server
+        working-directory: bitkit-e2e-tests
+        run: |
+          echo "Starting Appium server..."
+          npx appium --log-timestamp --log-no-colors > appium.log 2>&1 &
+          APPIUM_PID=$!
+          echo "APPIUM_PID=$APPIUM_PID" >> $GITHUB_ENV
+
+          echo "Waiting for Appium server to be ready..."
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:4723/status > /dev/null 2>&1; then
+              echo "Appium server is ready!"
+              break
+            fi
+            echo "Waiting for Appium... ($i/30)"
+            sleep 2
+          done
+
+          curl --fail --silent --show-error http://127.0.0.1:4723/status > /dev/null
 
       - name: Run E2E Tests 1 (${{ matrix.scenario.name }})
         continue-on-error: true
@@ -338,11 +508,30 @@ jobs:
           cp appium.log artifacts/ || true
 
       - name: Upload E2E Artifacts (${{ matrix.scenario.name }})
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-artifacts_${{ matrix.scenario.name }}_${{ matrix.rn_version }}_${{ github.run_number }}
-          path: bitkit-e2e-tests/artifacts/
+          name: e2e-artifacts_${{ matrix.scenario.name }}_${{ matrix.scenario.version }}_${{ github.run_number }}_${{ github.run_attempt }}
+          path: |
+            bitkit-e2e-tests/artifacts/
+            !bitkit-e2e-tests/artifacts/**/*.env
+
+  migration-result:
+    if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-'))))
+    needs: [build, e2e-branch, resolve-e2e-ref, migration-plan, prepare-wallets, rn-tests, native-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all migration jobs to succeed
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, sys
+          failed = {name: job['result'] for name, job in json.loads(os.environ['JOB_RESULTS']).items() if job['result'] != 'success'}
+          if failed:
+              print(f'Migration failed or required jobs did not run: {failed}')
+              sys.exit(1)
+          PYTHON
 
   slack-report:
     if: >-
@@ -350,7 +539,7 @@ jobs:
       (github.event_name == 'schedule' ||
        (github.event_name == 'workflow_dispatch' && inputs.post_to_slack == true))
     runs-on: ubuntu-latest
-    needs: [build, e2e-branch, prepare-wallets, e2e-tests]
+    needs: [build, e2e-branch, resolve-e2e-ref, migration-plan, prepare-wallets, rn-tests, native-tests, migration-result]
     steps:
       - name: Resolve E2E tests ref
         id: e2e-ref
@@ -370,11 +559,11 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_STAGING }}
           PLATFORM: ios
-          MIGRATION_RESULT: ${{ needs.build.result == 'success' && needs.e2e-branch.result == 'success' && needs.prepare-wallets.result == 'success' && needs.e2e-tests.result == 'success' && 'success' || 'failure' }}
+          MIGRATION_RESULT: ${{ needs.migration-result.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           E2E_BRANCH_RESULT: ${{ needs.e2e-branch.result }}
           PREPARE_WALLETS_RESULT: ${{ needs.prepare-wallets.result }}
-          E2E_TESTS_RESULT: ${{ needs.e2e-tests.result }}
+          E2E_TESTS_RESULT: ${{ needs.rn-tests.result == 'success' && needs.native-tests.result == 'success' && 'success' || 'failure' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           E2E_TESTS_REF: ${{ steps.e2e-ref.outputs.ref }}
