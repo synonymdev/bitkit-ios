@@ -160,6 +160,17 @@ class LightningService {
 
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
+        #if OFFLINE_RECEIVE_LOCAL_LDK
+            if let offlineReceiveConfiguration = OfflineReceiveSettings.nodeConfiguration() {
+                builder.setOfflineReceiveConfig(config: Self.offlineReceiveConfig(offlineReceiveConfiguration))
+                Logger.info(
+                    "Offline receive enabled with settlement node \(offlineReceiveConfiguration.settlementNodeId) " +
+                        "and \(offlineReceiveConfiguration.witnessNodeIds.count) witnesses",
+                    context: "OfflineReceive"
+                )
+            }
+        #endif
+
         guard !lnurlAuthServerUrl.isEmpty else {
             throw CustomServiceError.vssAuthRequired
         }
@@ -1135,6 +1146,40 @@ extension LightningService {
     var hasNode: Bool {
         node != nil
     }
+
+    #if OFFLINE_RECEIVE_LOCAL_LDK
+        func offlineReceivePayment() throws -> OfflineReceivePayment {
+            guard let node else { throw AppError(serviceError: .nodeNotSetup) }
+            return node.offlineReceive()
+        }
+
+        func offlineReceiveNodeId() throws -> String {
+            guard let node else { throw AppError(serviceError: .nodeNotSetup) }
+            return node.nodeId()
+        }
+
+        static func offlineReceiveConfig(_ configuration: OfflineReceiveNodeConfiguration) -> OfflineReceiveConfig {
+            OfflineReceiveConfig(
+                settlementNodeId: configuration.settlementNodeId,
+                witnesses: configuration.witnessNodeIds.map {
+                    OfflineReceiveWitnessConfig(
+                        nodeId: $0,
+                        retentionBlocks: configuration.witnessRetentionBlocks,
+                        minimumReceipts: configuration.witnessMinimumReceipts
+                    )
+                },
+                invoiceExpirySeconds: configuration.invoiceExpirySeconds,
+                invoiceSafetyMarginSeconds: configuration.invoiceSafetyMarginSeconds,
+                settlementDeadlineBlocks: configuration.settlementDeadlineBlocks,
+                deadlineSafetyMarginBlocks: configuration.deadlineSafetyMarginBlocks,
+                claimMarginBlocks: configuration.claimMarginBlocks,
+                voucherExpiryBlocks: configuration.voucherExpiryBlocks,
+                feeBaseMsat: configuration.feeBaseMsat,
+                feeProportionalMillionths: configuration.feeProportionalMillionths,
+                pollIntervalSecs: configuration.pollIntervalSecs
+            )
+        }
+    #endif
 
     /// Use cached values to avoid blocking LDK calls on main thread
     @MainActor var balances: BalanceDetails? {

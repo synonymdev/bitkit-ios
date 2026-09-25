@@ -21,11 +21,31 @@ struct ReceiveEdit: View {
     @State private var amountViewModel = AmountInputViewModel()
     @State private var note = ""
     @State private var isPreparingReceive = false
+    @State private var hasLoadedInvoice = false
     @State private var isAmountInputFocused: Bool = false
     @FocusState private var isNoteEditorFocused: Bool
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
+    }
+
+    private var offlineEligibility: OfflineReceiveEligibility {
+        wallet.offlineReceiveEligibility(
+            amountSats: hasLoadedInvoice ? amountSats : wallet.invoiceAmountSats,
+            supportsLightning: !onchainOnly && liquiditySource != .savings
+        )
+    }
+
+    private var canReceiveOffline: Bool {
+        wallet.offlineReceive.canSelect(for: offlineEligibility)
+    }
+
+    private var canRetryOffline: Bool {
+        !onchainOnly && liquiditySource != .savings && wallet.offlineReceive.hasPreparationAttempt(amountSats: amountSats, description: note)
+    }
+
+    private var receiveOfflineBinding: Binding<Bool> {
+        Binding(get: { wallet.offlineReceive.isSelected }, set: { wallet.offlineReceive.setSelected($0) })
     }
 
     private var liquiditySource: ReceiveLiquiditySource {
@@ -94,9 +114,28 @@ struct ReceiveEdit: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
+                    if !isNoteEditorFocused, canReceiveOffline || canRetryOffline {
+                        CheckboxRow(
+                            title: t("wallet__receive_offline"),
+                            subtitle: t("wallet__receive_offline_description"),
+                            subtitleUrl: nil,
+                            isChecked: receiveOfflineBinding
+                        )
+                        .padding(.top, 16)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(t("wallet__receive_offline"))
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAddTraits(wallet.offlineReceive.isSelected ? .isSelected : [])
+                        .accessibilityAction {
+                            wallet.offlineReceive.setSelected(!wallet.offlineReceive.isSelected)
+                        }
+                        .accessibilityIdentifier("ReceiveOffline")
+                    }
+
                     Spacer()
 
                     if !onchainOnly,
+                       !wallet.offlineReceive.isSelected,
                        PaykitFeatureFlags.isUIAvailable,
                        isPaykitUIEnabled,
                        !paymentRequests.eligibleTargets.isEmpty
@@ -152,10 +191,20 @@ struct ReceiveEdit: View {
                 .accessibilityIdentifier("ReceiveNumberPad")
             }
         }
+        .disabled(isPreparingReceive)
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
+        .task(id: offlineEligibility) {
+            await wallet.offlineReceive.updateEligibility(offlineEligibility)
+        }
+        .onChange(of: note) { _, _ in
+            if !canReceiveOffline, !canRetryOffline {
+                wallet.offlineReceive.setSelected(false)
+            }
+        }
         .task {
+            guard !hasLoadedInvoice else { return }
             // Initialize with existing values from wallet model
             if wallet.invoiceAmountSats > 0 {
                 amountViewModel.updateFromSats(wallet.invoiceAmountSats, currency: currency)
@@ -163,11 +212,16 @@ struct ReceiveEdit: View {
             if !wallet.invoiceNote.isEmpty {
                 note = wallet.invoiceNote
             }
+            hasLoadedInvoice = true
         }
     }
 
     private func onShowQR() async {
         guard !isPreparingReceive else {
+            return
+        }
+        guard !wallet.offlineReceive.isSelected || canReceiveOffline || canRetryOffline else {
+            app.toast(OfflineReceiveError.unavailable)
             return
         }
 
@@ -176,6 +230,7 @@ struct ReceiveEdit: View {
 
         wallet.invoiceAmountSats = amountSats
         wallet.invoiceNote = note
+        wallet.invoiceReceiveOffline = wallet.offlineReceive.isSelected
 
         await Self.finishEditing(
             onchainOnly: onchainOnly,
@@ -228,6 +283,12 @@ struct ReceiveEdit: View {
         // Wait until node is running if it's in starting state
         if await wallet.waitForNodeToRun() {
             do {
+                if wallet.invoiceReceiveOffline {
+                    try await wallet.refreshBip21(forceRefreshBolt11: true)
+                    finishWithQr()
+                    return
+                }
+
                 var maxCjitAmountSats: UInt64?
                 if needsCjitLimitsForAdditionalLiquidity() {
                     try? await blocktank.refreshMinCjitSats()
@@ -248,6 +309,10 @@ struct ReceiveEdit: View {
                     finishWithRoute(.cjitGeoBlocked)
                 }
             } catch {
+                if wallet.invoiceReceiveOffline {
+                    app.toast(error)
+                    return
+                }
                 if error.isCjitNodeCapacityExceeded {
                     showNodeCapacityExceededToast()
                     return

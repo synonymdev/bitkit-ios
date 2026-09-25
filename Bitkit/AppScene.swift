@@ -246,7 +246,8 @@ struct AppScene: View {
         let walletVm = WalletViewModel(
             transferService: transferService,
             sheetViewModel: sheetViewModel,
-            feeEstimatesManager: feeEstimatesManager
+            feeEstimatesManager: feeEstimatesManager,
+            offlineReceiveProvider: OfflineReceiveProviderSelection.provider()
         )
         _wallet = StateObject(wrappedValue: walletVm)
         _currency = StateObject(wrappedValue: CurrencyViewModel())

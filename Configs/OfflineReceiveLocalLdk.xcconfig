@@ -1,0 +1,4 @@
+// Compiles the LDK Node offline receive adapter. Use only together with a local ldk-node
+// package override that provides the offline receive API (see Docs/OfflineReceive.md).
+// The committed dependency pin stays at the released ldk-node version; CI never sets this.
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) OFFLINE_RECEIVE_LOCAL_LDK
