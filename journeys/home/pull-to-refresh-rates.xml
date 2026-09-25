@@ -1,0 +1,20 @@
+<journey name="pull to refresh rates">
+  <description>
+    Pulling to refresh on Home also refreshes exchange rates, independently of the wallet and
+    activity refresh. Precondition: onboarded dev wallet on Home (id "HomeScrollView" visible) and
+    network access to the rates backend. Rates also refresh on app start and every two minutes of
+    polling (`Env.fxRateRefreshInterval`), so pull at least 20s after the last "Currency rates
+    refreshed successfully" line and well before the next polling tick, or the log check passes for
+    the wrong reason. The success line and any error toast are not in `snapshot-ui`; read the app log
+    and take a screenshot. Unlike Android, this journey does not assert a separate widget refresh;
+    issue #344 only adds an exchange-rate refresh to the iOS Home pull.
+  </description>
+  <actions>
+    <action>Resolve the app group logs for the simulator under test: UDID=&lt;the simulator this journey is running on&gt;; GROUP=$(xcrun simctl get_app_container "$UDID" to.bitkit groups | awk '{print $2}'); ls -t "$GROUP/logs"</action>
+    <action>Resolve the app group again, run `grep "Currency rates refreshed" "$GROUP"/logs/*.log`, and note the time of the last line</action>
+    <action>Verify the home screen (id "HomeScrollView") is visible</action>
+    <action>Run `xcodebuildmcp simulator snapshot-ui`, note the elementRef for "HomeScrollView", then run `xcodebuildmcp ui-automation swipe --within-element-ref &lt;ref&gt; --direction down --distance 0.7` and note the UTC time</action>
+    <action>Verify the newest log (list the logs again) gains a "Currency rates refreshed successfully" line within 10s of the pull</action>
+    <action>Verify no "Currency rates refresh failed" line was added for the pull</action>
+  </actions>
+</journey>

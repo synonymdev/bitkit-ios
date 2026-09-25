@@ -75,6 +75,7 @@ class CurrencyViewModel: ObservableObject {
             error = nil
             hasStaleData = false
             syncDisplayCurrencyToAppGroup()
+            Logger.debug("Currency rates refreshed successfully")
         } catch {
             self.error = error
             Logger.error(error, context: "Currency rates refresh failed")
