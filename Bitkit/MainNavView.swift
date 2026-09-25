@@ -357,11 +357,11 @@ struct MainNavView: View {
                 // Update permissions in case user changed them in OS settings
                 notificationManager.updateNotificationPermission()
                 cameraManager.refreshPermission()
-
-                guard settings.readClipboard else { return }
-
-                handleClipboard()
             }
+        }
+        .onChange(of: scenePhase, initial: true) { _, newPhase in
+            guard newPhase == .active else { return }
+            handleClipboardIfEnabled()
         }
         .onChange(of: notificationManager.authorizationStatus) { _, newStatus in
             // Handle notification permission changes
@@ -755,7 +755,9 @@ struct MainNavView: View {
             }
     }
 
-    private func handleClipboard() {
+    private func handleClipboardIfEnabled() {
+        guard settings.readClipboard else { return }
+
         Task { @MainActor in
             guard let uri = UIPasteboard.general.string else {
                 return
