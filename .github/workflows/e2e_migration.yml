@@ -175,9 +175,7 @@ jobs:
 
   prepare-wallets:
     needs: [e2e-branch, resolve-e2e-ref, migration-plan]
-    # Keep this on the companion E2E branch until its reusable workflow lands on main.
-    # GitHub does not allow expressions in a reusable-workflow `uses` reference.
-    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@test/migration-baseline
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@main
     strategy:
       fail-fast: false
       matrix:
