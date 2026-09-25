@@ -20,30 +20,24 @@ struct EditProfileView: View {
 
     var body: some View {
         ZStack {
-            VStack(spacing: 0) {
-                NavigationBar(
-                    title: t("profile__edit_nav_title")
-                )
-                .padding(.horizontal, 16)
-
-                ProfileEditFormView(
-                    name: $username,
-                    bio: $bio,
-                    links: $links,
-                    tags: $tags,
-                    publicKey: pubkyProfile.publicKey ?? "...",
-                    publicKeyLabel: t("profile__create_pubky_display_label"),
-                    bioPlaceholder: t("profile__create_bio_placeholder"),
-                    isSaving: isSaving,
-                    footerNote: t("profile__edit_public_note"),
-                    deleteLabel: t("profile__delete_label"),
-                    deleteActionStyle: .buttonWithIcon,
-                    onSave: { await saveProfile() },
-                    onCancel: { navigation.navigateBack() },
-                    onDelete: { showDeleteConfirmation = true }
-                ) {
-                    avatarPicker
-                }
+            ProfileEditFormView(
+                navigationTitle: t("profile__edit_nav_title"),
+                name: $username,
+                bio: $bio,
+                links: $links,
+                tags: $tags,
+                publicKey: pubkyProfile.publicKey ?? "...",
+                publicKeyLabel: t("profile__create_pubky_display_label"),
+                bioPlaceholder: t("profile__create_bio_placeholder"),
+                isSaving: isSaving,
+                footerNote: t("profile__edit_public_note"),
+                deleteLabel: t("profile__delete_label"),
+                deleteActionStyle: .buttonWithIcon,
+                onSave: { await saveProfile() },
+                onCancel: { navigation.navigateBack() },
+                onDelete: { showDeleteConfirmation = true }
+            ) {
+                avatarPicker
             }
 
             if isDeleting {
@@ -110,14 +104,14 @@ struct EditProfileView: View {
             PubkyImage(uri: imageUrl, size: 96)
         } else {
             Circle()
-                .fill(Color.gray5)
+                .fill(Color.gray6)
                 .frame(width: 96, height: 96)
                 .overlay {
-                    Image("user-square")
+                    Image("picture")
                         .resizable()
                         .scaledToFit()
                         .foregroundColor(.white32)
-                        .frame(width: 48, height: 48)
+                        .frame(width: 32, height: 32)
                 }
         }
     }
@@ -227,6 +221,7 @@ struct EditProfileView: View {
             .environmentObject(NavigationViewModel())
             .environmentObject(PubkyProfileManager())
             .environmentObject(ContactsManager())
+            .environment(KeyboardManager())
     }
     .preferredColorScheme(.dark)
 }

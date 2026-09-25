@@ -1132,6 +1132,7 @@
 "contacts__delete_label" = "Delete Contact";
 "contacts__saved_title" = "Contact Saved";
 "contacts__edit_title" = "Edit Contact";
+"contacts__edit_notes_label" = "NOTES";
 "contacts__edit_bio_placeholder" = "Short note about this contact.";
 "contacts__edit_public_note" = "Please note contact information is stored in public files. Changes you make to a contact in Bitkit will not update their profile.";
 "contacts__edit_saved" = "Contact updated";
@@ -1192,9 +1193,9 @@
 "profile__sign_out_description" = "This will disconnect your Pubky profile from Bitkit. You can reconnect at any time.";
 "profile__ring_waiting" = "Waiting for authorization from Pubky Ring…";
 "profile__ring_loading" = "Loading your profile…";
-"profile__choice_title" = "Join the\n<accent>pubky web</accent>";
-"profile__choice_description" = "Create a new pubky and profile in Bitkit, or import an existing profile with Pubky Ring.";
-"profile__choice_create" = "Create profile with Bitkit";
+"profile__choice_title" = "Enter the\n<accent>freedom web</accent>";
+"profile__choice_description" = "Create a new pubky and profile in Bitkit.";
+"profile__choice_create" = "Create profile";
 "profile__choice_import" = "Import with Pubky Ring";
 "profile__deriving_keys" = "Deriving your keys…";
 "profile__create_nav_title" = "Create Profile";
@@ -1216,6 +1217,7 @@
 "profile__session_expired_description" = "Your profile session has expired. Please reconnect to restore your profile.";
 "profile__edit_nav_title" = "Edit Profile";
 "profile__edit_saved" = "Profile updated";
+"profile__pubky_copied" = "pubky copied to clipboard";
 "profile__edit_delete_section" = "DELETE";
 "profile__edit_public_note" = "Please note profile information is stored in public files.";
 "profile__delete_title" = "Delete Profile?";

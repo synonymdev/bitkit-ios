@@ -20,6 +20,14 @@ extension String {
         return value
     }
 
+    /// Uppercases the first letter of each word and leaves the rest as typed, so "satoshi nakamoto" reads
+    /// "Satoshi Nakamoto" while "McDonald" keeps its inner capital.
+    var capitalizingFirstLetterOfEachWord: String {
+        split(separator: " ", omittingEmptySubsequences: false)
+            .map { word in word.prefix(1).uppercased() + word.dropFirst() }
+            .joined(separator: " ")
+    }
+
     enum EllipsisStyle {
         /// Ellipsis in the middle: "ab...de"
         case middle

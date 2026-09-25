@@ -26,7 +26,7 @@ struct HomeScreen: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack {
                         HomeWalletView()
-                            .frame(height: geometry.size.height)
+                            .frame(height: geometry.size.height, alignment: .top)
                             .id(0)
 
                         if settings.showWidgets {
