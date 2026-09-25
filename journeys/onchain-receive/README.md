@@ -16,7 +16,10 @@ keeps silent. After a seed restore, `RestoreWalletView` sets `pendingRestoreActi
 the node starts, which holds every onchain received sheet until the first onchain sync completes;
 that sync marks the activities that existed before the restore began as seen and clears the flag, so
 the transactions it discovered stay silent when they later confirm while new deposits notify again.
-Neither case can be driven on a funded device; both are covered by `ConfirmedOnlyReceiveGuardTests`,
+That sync also records its chain tip in `restoreSyncedBlockHeight`, and confirmed-only receives at or
+below it stay silent, so a replayed or late-handled confirmation of a pre-restore tx never shows a
+sheet (Android #1342). The restore journey needs a throwaway simulator, since it uninstalls the app
+and restores a public test seed; the rest is covered by `ConfirmedOnlyReceiveGuardTests`,
 `RestoreActivitySeenSuppressionTests` and `MarkAllUnseenActivitiesCutoffTests`.
 
 ## Adapted from Android
