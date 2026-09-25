@@ -190,10 +190,12 @@ class BackupService {
     }
 
     func setAppActive(_ isActive: Bool) {
-        let currentTime = UInt64(Date().timeIntervalSince1970)
         stateQueue.sync {
-            backupFailureNotificationGate.setActive(isActive, at: currentTime)
+            backupFailureNotificationGate.setActive(isActive)
         }
+
+        guard isActive else { return }
+        checkForFailedBackups()
     }
 
     func startObservingBackups() {
@@ -306,6 +308,7 @@ class BackupService {
                 Logger.warn("Wallet backup deferred after three changing snapshots", context: "BackupService")
             } else {
                 Logger.error("Backup failed for: '\(category.rawValue)': \(error)", context: "BackupService")
+                checkForFailedBackups()
             }
         }
         _ = try? await ServiceQueue.background(.backup) { self.runningBackupTasks.removeValue(forKey: category) }
@@ -723,25 +726,31 @@ class BackupService {
 
     private func checkForFailedBackups() {
         let currentTime = UInt64(Date().timeIntervalSince1970)
-
-        let hasFailedBackups = BackupCategory.allCases.contains { category in
-            let status = getBackupStatus(category: category)
-            return status.isRequired && currentTime >= status.required &&
-                (currentTime - status.required) > Self.failedBackupCheckTime
-        }
-
-        if hasFailedBackups {
-            showBackupFailureNotification(currentTime: currentTime)
+        if hasFailedBackups(at: currentTime) {
+            showBackupFailureNotification()
         }
     }
 
-    private func showBackupFailureNotification(currentTime: UInt64) {
+    private func hasFailedBackups(at currentTime: UInt64) -> Bool {
+        BackupCategory.allCases.contains { category in
+            let status = getBackupStatus(category: category)
+            return BackupFailureNotificationGate.hasFailedBackup(
+                status,
+                at: currentTime,
+                failureAge: Self.failedBackupCheckTime
+            )
+        }
+    }
+
+    private func showBackupFailureNotification() {
         Task {
             try? await ServiceQueue.background(.backup) {
+                let currentTime = UInt64(Date().timeIntervalSince1970)
+                guard self.statusUpdateQueue.sync(execute: { self.hasFailedBackups(at: currentTime) }) else { return }
+
                 let shouldNotify = self.stateQueue.sync {
                     self.backupFailureNotificationGate.shouldNotify(
                         at: currentTime,
-                        minimumActiveDuration: UInt64(Self.backupFailureCheckInterval),
                         notificationInterval: Self.failedBackupNotificationInterval
                     )
                 }
@@ -1146,24 +1155,27 @@ actor WalletBackupWriter {
 }
 
 struct BackupFailureNotificationGate {
-    private var activeSince: UInt64?
+    private var isActive = false
     private var lastNotificationTime: UInt64?
 
-    mutating func setActive(_ isActive: Bool, at currentTime: UInt64) {
-        activeSince = isActive ? currentTime : nil
+    mutating func setActive(_ isActive: Bool) {
+        self.isActive = isActive
+    }
+
+    static func hasFailedBackup(
+        _ status: BackupItemStatus,
+        at currentTime: UInt64,
+        failureAge: UInt64
+    ) -> Bool {
+        status.isRequired && !status.running && currentTime >= status.required &&
+            currentTime - status.required > failureAge
     }
 
     mutating func shouldNotify(
         at currentTime: UInt64,
-        minimumActiveDuration: UInt64,
         notificationInterval: UInt64
     ) -> Bool {
-        guard let activeSince,
-              currentTime >= activeSince,
-              currentTime - activeSince >= minimumActiveDuration
-        else {
-            return false
-        }
+        guard isActive else { return false }
 
         if let lastNotificationTime {
             guard currentTime >= lastNotificationTime,

@@ -2,67 +2,85 @@
 import XCTest
 
 final class BackupFailureNotificationGateTests: XCTestCase {
+    func testRunningBackupIsNotReportedAsFailed() {
+        let status = BackupItemStatus(synced: 0, required: 100, running: true)
+
+        XCTAssertFalse(
+            BackupFailureNotificationGate.hasFailedBackup(
+                status,
+                at: 200,
+                failureAge: 50
+            )
+        )
+    }
+
+    func testRecoveredBackupIsNotReportedAsFailed() {
+        let status = BackupItemStatus(synced: 100, required: 100, running: false)
+
+        XCTAssertFalse(
+            BackupFailureNotificationGate.hasFailedBackup(
+                status,
+                at: 200,
+                failureAge: 50
+            )
+        )
+    }
+
+    func testOutstandingBackupPastThresholdIsReportedAsFailed() {
+        let status = BackupItemStatus(synced: 0, required: 100, running: false)
+
+        XCTAssertTrue(
+            BackupFailureNotificationGate.hasFailedBackup(
+                status,
+                at: 151,
+                failureAge: 50
+            )
+        )
+    }
+
     func testInactiveCheckDoesNotConsumeNotificationCooldown() {
         var gate = BackupFailureNotificationGate()
 
         XCTAssertFalse(
             gate.shouldNotify(
                 at: 1000,
-                minimumActiveDuration: 60,
                 notificationInterval: 600
             )
         )
 
-        gate.setActive(true, at: 1000)
+        gate.setActive(true)
 
         XCTAssertTrue(
             gate.shouldNotify(
-                at: 1060,
-                minimumActiveDuration: 60,
+                at: 1000,
                 notificationInterval: 600
             )
         )
     }
 
-    func testForegroundGracePeriodAllowsBackupRetryToSettle() {
+    func testReturningToForegroundDoesNotResetNotificationEligibility() {
         var gate = BackupFailureNotificationGate()
-        gate.setActive(true, at: 1000)
+        gate.setActive(true)
+
+        XCTAssertTrue(
+            gate.shouldNotify(
+                at: 1000,
+                notificationInterval: 600
+            )
+        )
+
+        gate.setActive(false)
+        gate.setActive(true)
 
         XCTAssertFalse(
             gate.shouldNotify(
-                at: 1059,
-                minimumActiveDuration: 60,
+                at: 1599,
                 notificationInterval: 600
             )
         )
         XCTAssertTrue(
             gate.shouldNotify(
-                at: 1060,
-                minimumActiveDuration: 60,
-                notificationInterval: 600
-            )
-        )
-    }
-
-    func testReturningToBackgroundRestartsForegroundGracePeriod() {
-        var gate = BackupFailureNotificationGate()
-        gate.setActive(true, at: 1000)
-        gate.setActive(false, at: 1010)
-
-        XCTAssertFalse(
-            gate.shouldNotify(
-                at: 2000,
-                minimumActiveDuration: 60,
-                notificationInterval: 600
-            )
-        )
-
-        gate.setActive(true, at: 2000)
-
-        XCTAssertFalse(
-            gate.shouldNotify(
-                at: 2059,
-                minimumActiveDuration: 60,
+                at: 1600,
                 notificationInterval: 600
             )
         )
@@ -70,26 +88,23 @@ final class BackupFailureNotificationGateTests: XCTestCase {
 
     func testNotificationCooldownPreventsRepeatedToasts() {
         var gate = BackupFailureNotificationGate()
-        gate.setActive(true, at: 1000)
+        gate.setActive(true)
 
         XCTAssertTrue(
             gate.shouldNotify(
-                at: 1060,
-                minimumActiveDuration: 60,
+                at: 1000,
                 notificationInterval: 600
             )
         )
         XCTAssertFalse(
             gate.shouldNotify(
-                at: 1659,
-                minimumActiveDuration: 60,
+                at: 1599,
                 notificationInterval: 600
             )
         )
         XCTAssertTrue(
             gate.shouldNotify(
-                at: 1660,
-                minimumActiveDuration: 60,
+                at: 1600,
                 notificationInterval: 600
             )
         )
