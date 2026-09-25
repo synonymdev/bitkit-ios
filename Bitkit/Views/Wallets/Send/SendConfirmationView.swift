@@ -195,7 +195,7 @@ struct SendConfirmationView: View {
             }
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 44)
+            .padding(.bottom, oneOffPaymentRequest == nil ? 44 : 24)
 
             if showDetails {
                 if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
@@ -204,6 +204,11 @@ struct SendConfirmationView: View {
                     lightningView(invoice)
                 }
             } else {
+                if let request = oneOffPaymentRequest {
+                    paymentRequestSummary(request)
+                        .padding(.bottom, 16)
+                }
+
                 Image("coin-stack-4")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -358,7 +363,7 @@ struct SendConfirmationView: View {
                 }
 
                 if let contact = contactPaymentContact {
-                    SendSectionView(t("wallet__send_to")) {
+                    SendSectionView(contactSectionTitle) {
                         contactRecipient(contact)
                     }
                 } else {
@@ -453,6 +458,10 @@ struct SendConfirmationView: View {
                     addButtonTestId: "TagsAddSend"
                 )
             }
+
+            if let note = oneOffPaymentRequestNote {
+                paymentRequestInvoiceNote(note)
+            }
         }
     }
 
@@ -475,7 +484,7 @@ struct SendConfirmationView: View {
                 Spacer(minLength: 16)
 
                 if let contact = contactPaymentContact {
-                    SendSectionView(t("wallet__send_to")) {
+                    SendSectionView(contactSectionTitle) {
                         contactRecipient(contact)
                     }
                 } else {
@@ -547,7 +556,9 @@ struct SendConfirmationView: View {
                 }
             }
 
-            if let description = app.scannedLightningInvoice?.description, !description.isEmpty {
+            if let description = app.scannedLightningInvoice?.description, !description.isEmpty,
+               description.trimmingCharacters(in: .whitespacesAndNewlines) != oneOffPaymentRequestNote
+            {
                 SendSectionView(t("wallet__note")) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         BodySSBText(description)
@@ -567,6 +578,10 @@ struct SendConfirmationView: View {
                             .accessibilityIdentifier("TagsAddSend")
                     }
                 }
+            }
+
+            if let note = oneOffPaymentRequestNote {
+                paymentRequestInvoiceNote(note)
             }
         }
     }
@@ -689,6 +704,78 @@ struct SendConfirmationView: View {
         }
         .padding(.vertical, 2)
         .accessibilityIdentifier("ReviewContactRecipient")
+    }
+
+    private var oneOffPaymentRequest: PaykitPaymentRequest? {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest, request.billingPeriod == nil else {
+            return nil
+        }
+
+        return request
+    }
+
+    private var contactSectionTitle: String {
+        oneOffPaymentRequest == nil ? t("wallet__send_to") : t("wallet__payment_request_contact")
+    }
+
+    private var oneOffPaymentRequestNote: String? {
+        guard let note = oneOffPaymentRequest?.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty else {
+            return nil
+        }
+
+        return note
+    }
+
+    private func paymentRequestSummary(_ request: PaykitPaymentRequest) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            SendSectionView(t("wallet__send_from")) {
+                paymentRequestSummaryValue(
+                    contactPaymentContact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(request.counterparty),
+                    icon: "user",
+                    accessibilityIdentifier: "PaymentRequestFrom"
+                )
+            }
+
+            if let note = oneOffPaymentRequestNote {
+                SendSectionView(t("wallet__payment_request_for")) {
+                    paymentRequestSummaryValue(note, icon: "note", accessibilityIdentifier: "PaymentRequestFor")
+                }
+            } else {
+                Spacer()
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func paymentRequestInvoiceNote(_ note: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CaptionMText(t("wallet__activity_invoice_note"))
+                .padding(.bottom, 8)
+
+            VStack(alignment: .leading, spacing: 0) {
+                ZigzagDivider()
+
+                TitleText(note, textColor: .primary)
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.white10)
+                    .accessibilityIdentifier("PaymentRequestInvoiceNote")
+            }
+        }
+    }
+
+    private func paymentRequestSummaryValue(_ text: String, icon: String, accessibilityIdentifier: String) -> some View {
+        HStack(spacing: 4) {
+            Image(icon)
+                .resizable()
+                .scaledToFit()
+                .foregroundColor(accentColor)
+                .frame(width: 16, height: 16)
+
+            BodySSBText(text)
+                .lineLimit(1)
+                .accessibilityIdentifier(accessibilityIdentifier)
+        }
     }
 
     private func performPayment(isAutomatic: Bool) async throws {

@@ -1541,6 +1541,7 @@
 "wallet__payment_request_waiting" = "Waiting for payment";
 "wallet__payment_request_waiting_for_recipient" = "Waiting for {name} to pay";
 "wallet__payment_request_note" = "Note";
+"wallet__payment_request_for" = "For";
 "wallet__payment_request_date" = "Date";
 "wallet__payment_request_time" = "Time";
 "wallet__payment_request_status_pending" = "Pending";
