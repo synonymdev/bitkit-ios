@@ -399,7 +399,12 @@ class TransferViewModel: ObservableObject {
             isMaxAmount: isMaxAmount
         )
 
-        let txTotalSats = order.feeSat + txFee
+        let txTotalSats = SpendingConfirmTotal.leavingAmount(
+            orderFeeSat: order.feeSat,
+            networkFeeSat: txFee,
+            shouldUseSendAll: isMaxAmount,
+            maxSendable: maxSendableAmount
+        )
 
         // Pre-activity metadata lets the LDK activity sync recognize this send as a transfer.
         let currentTime = UInt64(Date().timeIntervalSince1970)
