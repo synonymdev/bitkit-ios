@@ -81,7 +81,7 @@ struct TrezorDeviceRow: View {
 
 /// Row displaying a previously connected (known) Trezor device
 struct KnownDeviceRow: View {
-    let device: TrezorKnownDevice
+    let device: HwKnownDevice
     let isConnecting: Bool
     let onConnect: () -> Void
     let onForget: () -> Void

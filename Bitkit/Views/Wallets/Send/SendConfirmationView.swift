@@ -77,7 +77,7 @@ struct SendConfirmationView: View {
     private var hardwareWalletName: String? {
         guard let walletId = hwSend.walletId else { return nil }
         return hwWalletManager.wallets.first(where: { $0.id == walletId })?.name
-            ?? t("hardware__device_model_trezor")
+            ?? hwWalletManager.vendor(walletId: walletId).modelName
     }
 
     private var isHardwarePreparationLoading: Bool {

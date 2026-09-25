@@ -61,7 +61,7 @@ struct SendAmountView: View {
             t("wallet__savings__title")
         case let .hardware(walletId):
             hwWalletManager.wallets.first(where: { $0.id == walletId })?.name
-                ?? t("hardware__device_model_trezor")
+                ?? hwWalletManager.vendor(walletId: walletId).modelName
         }
     }
 

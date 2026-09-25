@@ -266,7 +266,7 @@ class BackupService {
 
                 // App-owned, so it takes no part in the core field migration above and never sets
                 // needsRewrite. Restored names wait as pending ones until each wallet is paired again.
-                TrezorKnownDeviceStorage.restoreNames(payload.hwWalletNames ?? [:])
+                HwKnownDeviceStorage.restoreNames(payload.hwWalletNames ?? [:])
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
@@ -430,7 +430,7 @@ class BackupService {
 
         // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
         // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
-        TrezorKnownDeviceStorage.namesChangedPublisher
+        HwKnownDeviceStorage.namesChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -792,7 +792,7 @@ class BackupService {
             // A UserDefaults read that cannot fail, so unlike the tags above there is no partial-read
             // case to guard against. Nil rather than an empty map when nothing is named, so an
             // envelope this app writes stays byte-comparable with one bitkit-android writes.
-            let hwWalletNames = TrezorKnownDeviceStorage.backupSnapshot()
+            let hwWalletNames = HwKnownDeviceStorage.backupSnapshot()
 
             let payload = MetadataBackupV1(
                 version: 1,
