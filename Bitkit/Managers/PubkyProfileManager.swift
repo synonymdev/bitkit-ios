@@ -207,7 +207,9 @@ class PubkyProfileManager: ObservableObject {
             try await PubkyProfileManager.initializePersistedSession()
         }
     ) async {
-        if let initializationTask { await initializationTask.value }
+        if let initializationTask {
+            await initializationTask.value
+        }
         guard publicKey == nil, authState == .idle, activeAuthAttemptID == nil, Self.sessionMutationCount == 0 else { return }
         do {
             guard try hasStoredIdentity() else { return }

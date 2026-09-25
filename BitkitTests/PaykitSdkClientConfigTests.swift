@@ -124,8 +124,11 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         let saved = try keys.map { try Keychain.load(key: $0) }
         defer {
             for (key, data) in zip(keys, saved) {
-                if let data { try? Keychain.upsert(key: key, data: data) }
-                else { try? Keychain.delete(key: key) }
+                if let data {
+                    try? Keychain.upsert(key: key, data: data)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
         let secret = String(repeating: "01", count: 32)
