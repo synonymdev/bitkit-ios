@@ -1,0 +1,25 @@
+<journey name="confirmed-only onchain receive shows the received sheet">
+  <description>
+    Covers issue #455 (Android #797). An onchain deposit the wallet first sees already confirmed, with
+    no prior mempool event, must show the received sheet once. ldk-node emits
+    onchainTransactionConfirmed without onchainTransactionReceived in that case.
+
+    Precondition: onboarded regtest wallet, node running, app in the foreground on the home screen.
+    The deposit and the mine must run in one shell command so the 10s wallet sync does not see the
+    transaction in the mempool first. If the log shows "Onchain transaction received" for the txid,
+    the run tested the mempool path instead; repeat with a new address.
+  </description>
+  <actions>
+    <action>Tap Receive (id "Receive") and verify the Receive sheet opens (id "ReceiveScreen")</action>
+    <action>Tap the "Savings" receive tab (id "Tab-savings"), tap "Show Details" (id "ShowDetails") and read the address from id "ReceiveOnchainAddress"</action>
+    <action>Swipe the Receive sheet down to return to the home screen</action>
+    <action>Run: LOG="$(ls -t "$(xcrun simctl get_app_container booted to.bitkit group.bitkit)"/logs/bitkit_*.log | head -1)"</action>
+    <action>Run in one command: ../bitkit-android/lsp POST /regtest/chain/deposit '{"address":"&lt;savings addr&gt;","amountSat":21797}' &amp;&amp; ../bitkit-android/lsp POST /regtest/chain/mine '{"count":1}'</action>
+    <action>Wait up to 30s for the next wallet sync</action>
+    <action>Run: grep &lt;txid&gt; "$LOG"</action>
+    <action>Verify the log shows an "Onchain transaction confirmed" line for the txid and no "Onchain transaction received" line for it</action>
+    <action>Verify the received sheet (id "ReceivedTransaction") is visible with the deposited amount (id "ReceivedTransaction-primary" or "ReceivedTransaction-secondary", depending on the primary display setting)</action>
+    <action>Tap the sheet button (id "ReceivedTransactionButton")</action>
+    <action>Wait 10s and verify the received sheet does not appear again</action>
+  </actions>
+</journey>
