@@ -836,6 +836,101 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.pendingRequests.isEmpty)
     }
 
+    func testDemoClockOffsetSurfacesNextSubscriptionPeriodAndKeepsOneTimeRequestsOnRealTime() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let oneMonthLater = now.addingTimeInterval(31 * 24 * 60 * 60)
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-15T08:00:00Z",
+            anchor: "2027-01-15T08:00:00Z",
+            endsAt: nil
+        )
+        let firstPeriod = BillingPeriod(startsAt: "2027-01-15T08:00:00Z", endsAt: "2027-02-15T08:00:00Z")
+        let records = try [
+            paymentRequestRecord(
+                id: "recurring",
+                state: .activeRecurring,
+                recurrence: recurrence,
+                acceptedEventId: "accepted",
+                paymentProofs: [paymentProofRecord(
+                    endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                    kind: .lightning,
+                    billingPeriod: firstPeriod
+                )]
+            ),
+            paymentRequestRecord(id: "one-time", expiresAt: "2027-01-22T08:00:00Z"),
+        ]
+
+        let realTimeManager = try paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: records),
+            clock: PaymentRequestTestClock(now)
+        )
+        await realTimeManager.refresh()
+        XCTAssertEqual(realTimeManager.pendingRequests.map(\.paymentRequestId), ["one-time"])
+
+        let demoManager = try paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: records),
+            clock: PaymentRequestTestClock(now),
+            subscriptionClock: PaymentRequestTestClock(oneMonthLater)
+        )
+        await demoManager.refresh()
+
+        let renewal = try XCTUnwrap(demoManager.pendingRequests.first { $0.paymentRequestId == "recurring" })
+        XCTAssertEqual(renewal.billingPeriod?.sdkValue, BillingPeriod(startsAt: "2027-02-15T08:00:00Z", endsAt: "2027-03-15T08:00:00Z"))
+        XCTAssertTrue(demoManager.pendingRequests.contains { $0.paymentRequestId == "one-time" })
+        let subscription = try XCTUnwrap(demoManager.subscriptions.first)
+        XCTAssertEqual(subscription.paidPeriods, [PaykitBillingPeriod(sdkPeriod: firstPeriod)])
+        XCTAssertTrue(subscription.isActive(at: oneMonthLater))
+    }
+
+    func testDemoClockOffsetAnchorsProposedSubscriptionInDemoTime() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let oneMonthLater = now.addingTimeInterval(31 * 24 * 60 * 60)
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: publicKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [publicKey: [PaykitReceiverPath.wallet]]
+        )
+        try await sdk.setProposalResult(paymentRequestRecord(
+            id: "creator-proposal",
+            counterparty: publicKey,
+            counterpartyReceiverPath: PaykitReceiverPath.wallet,
+            role: .payee
+        ))
+        let manager = paymentRequestManager(
+            sdk: sdk,
+            clock: PaymentRequestTestClock(now),
+            subscriptionClock: PaymentRequestTestClock(oneMonthLater)
+        )
+        await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+        let target = try XCTUnwrap(manager.eligibleTargets.first)
+        var draft = PaykitSubscriptionDraft(
+            amountSats: 2000,
+            name: "Tee Club",
+            description: "",
+            frequency: .month,
+            expiresAt: now.addingTimeInterval(7 * 24 * 60 * 60),
+            iconData: nil
+        )
+
+        do {
+            _ = try await manager.proposeSubscription(draft, to: target)
+            XCTFail("A proposal that expires before the demo clock must be refused")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestExpired)
+        }
+
+        draft.expiresAt = oneMonthLater.addingTimeInterval(7 * 24 * 60 * 60)
+        _ = try await manager.proposeSubscription(draft, to: target)
+
+        let snapshot = await sdk.snapshot()
+        let proposed = try XCTUnwrap(snapshot.proposedRequests.first)
+        XCTAssertEqual(proposed.recurrence?.startsAt, timestamp(oneMonthLater))
+        XCTAssertEqual(proposed.recurrence?.anchor, timestamp(oneMonthLater))
+    }
+
     func testSubscriptionPaymentCanBeReopenedForManualRetry() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let recurrence = PaymentRequestRecurrence(
@@ -3131,6 +3226,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     private func paymentRequestManager(
         sdk: PaymentRequestSdkMock,
         clock: PaymentRequestTestClock = PaymentRequestTestClock(Date()),
+        subscriptionClock: PaymentRequestTestClock? = nil,
         subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore = PaymentRequestSubscriptionStateMemoryStore(),
         subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler = PaykitSubscriptionNotificationScheduler(),
         isPrivatePaymentPublishingEnabled: Bool = true,
@@ -3139,10 +3235,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         protectedRequestIdsForSubscriptionCancellation: Set<PaykitPaymentRequest.ID> = []
     ) -> PaykitPaymentRequestManager {
         let now: @Sendable () -> Date = { clock.now() }
+        let subscriptionNow: (@Sendable () -> Date)? = subscriptionClock.map { subscriptionClock in { subscriptionClock.now() } }
         let manager = PaykitPaymentRequestManager(
             service: PaykitPaymentRequestService(
                 sdk: sdk,
                 now: now,
+                subscriptionNow: subscriptionNow,
                 isPrivatePaymentPublishingEnabled: { isPrivatePaymentPublishingEnabled },
                 logWarning: { _ in }
             ),
@@ -3153,6 +3251,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             inFlightPaymentRequestIds: { _ in inFlightPaymentRequestIds },
             protectedRequestIdsForSubscriptionCancellation: { _, _ in protectedRequestIdsForSubscriptionCancellation },
             now: now,
+            subscriptionNow: subscriptionNow,
             isAvailable: { true },
             logWarning: { _ in }
         )
