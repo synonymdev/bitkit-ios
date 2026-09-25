@@ -26,8 +26,8 @@
     <action>Run: xcrun simctl uninstall booted to.bitkit, install and launch the build and restore the same test vector the same way, tap "GetStartedButton" and dismiss any intro sheet</action>
     <action>Wait 60s on the home screen</action>
     <action>Verify the received sheet (id "ReceivedTransaction") never appeared and the home screen shows "TotalBalance-primary"</action>
-    <action>Run: grep "Skipping received sheet for confirmed-only tx" "$(ls -t "$(xcrun simctl get_app_container booted to.bitkit group.bitkit)"/logs/bitkit_*.log | head -1)"</action>
-    <action>Verify the log skipped the confirmed-only receive for the deposit's txid</action>
+    <action>Run: grep "Skipping received sheet.*&lt;txid&gt;" "$(ls -t "$(xcrun simctl get_app_container booted to.bitkit group.bitkit)"/logs/bitkit_*.log | head -1)"</action>
+    <action>Verify the log skipped the deposit's txid, either as a confirmed-only tx or "until the restore sweep finishes" — which one depends on whether its confirmation was handled before or after the restore hold lifted</action>
     <action>Read a new address as above and run in one command: ../bitkit-android/lsp POST /regtest/chain/deposit '{"address":"&lt;savings addr&gt;","amountSat":21343}' &amp;&amp; ../bitkit-android/lsp POST /regtest/chain/mine '{"count":1}'</action>
     <action>Verify within 30s the received sheet (id "ReceivedTransaction") shows 21 343 sats</action>
   </actions>

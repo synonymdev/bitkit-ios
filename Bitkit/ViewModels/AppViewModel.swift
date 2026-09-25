@@ -1290,6 +1290,7 @@ extension AppViewModel {
     ) -> Bool {
         guard SettingsViewModel.shared.pendingRestoreActivitySeen else { return false }
         guard amountSats > 0 else { return true }
+        Logger.debug("Skipping received sheet for tx \(txid) until the restore sweep finishes")
         if !restoreHeldReceives.contains(where: { $0.txid == txid }) {
             restoreHeldReceives.append(
                 RestoreHeldReceive(txid: txid, amountSats: amountSats, blockHeight: blockHeight, confirmationTime: confirmationTime)
