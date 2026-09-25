@@ -1,7 +1,36 @@
 import LocalAuthentication
 import SwiftUI
 
+enum AuthCheckBiometricAttemptKind: Equatable {
+    case automatic
+    case manual
+}
+
+enum AuthCheckBiometricPolicy {
+    static func shouldStart(
+        scenePhase: ScenePhase,
+        isEnabled: Bool,
+        hasActiveAttempt: Bool,
+        attemptKind: AuthCheckBiometricAttemptKind,
+        hasAutomaticallyAttempted: Bool
+    ) -> Bool {
+        scenePhase == .active &&
+            isEnabled &&
+            !hasActiveAttempt &&
+            (attemptKind == .manual || !hasAutomaticallyAttempted)
+    }
+
+    static func shouldCancel(scenePhase: ScenePhase) -> Bool {
+        scenePhase == .background
+    }
+}
+
+private struct AuthCheckBiometricAttempt {
+    let context: LAContext
+}
+
 struct AuthCheck: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
@@ -10,27 +39,16 @@ struct AuthCheck: View {
 
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
-    @State private var biometricFailedOnce = false
+    @State private var shouldShowBiometricRetry = false
     @State private var errorIdentifier: String?
+    @State private var biometricAttempt: AuthCheckBiometricAttempt?
+    @State private var hasAutomaticallyAttemptedBiometrics = false
 
     let onCancel: (() -> Void)?
     let onPinVerified: () -> Void
 
     private var biometryTypeName: String {
-        switch Env.biometryType {
-        case .touchID:
-            return t("security__bio_touch_id")
-        case .faceID:
-            return t("security__bio_face_id")
-        default:
-            return t("security__bio_face_id") // Default to Face ID
-        }
-    }
-
-    private var isBiometricAvailable: Bool {
-        let context = LAContext()
-        var error: NSError?
-        return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+        BiometricAuth.biometryTypeName
     }
 
     private func handlePinChange(_ pin: String) {
@@ -76,33 +94,69 @@ struct AuthCheck: View {
         errorIdentifier = pinAttemptOutcome.errorIdentifier
     }
 
-    private func handleBiometricAuthentication() {
+    private func handleBiometricAuthentication(attemptKind: AuthCheckBiometricAttemptKind = .manual) {
+        guard AuthCheckBiometricPolicy.shouldStart(
+            scenePhase: scenePhase,
+            isEnabled: settings.useBiometrics,
+            hasActiveAttempt: biometricAttempt != nil,
+            attemptKind: attemptKind,
+            hasAutomaticallyAttempted: hasAutomaticallyAttemptedBiometrics
+        ) else { return }
+
+        if attemptKind == .automatic {
+            hasAutomaticallyAttemptedBiometrics = true
+        }
+
         let context = LAContext()
         var error: NSError?
 
         // Check if biometric authentication is available
         guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+            if attemptKind == .automatic {
+                hasAutomaticallyAttemptedBiometrics = false
+            }
+            shouldShowBiometricRetry = true
             Logger.error("Biometric authentication not available: \(error?.localizedDescription ?? "Unknown error")", context: "AuthCheck")
             return
         }
 
         // Request biometric authentication
         let reason = t("security__bio_confirm", variables: ["biometricsName": biometryTypeName])
+        context.localizedCancelTitle = t("security__use_pin")
+        biometricAttempt = AuthCheckBiometricAttempt(context: context)
 
         context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, authenticationError in
             DispatchQueue.main.async {
+                guard biometricAttempt?.context === context else { return }
+                biometricAttempt = nil
+
                 if success {
                     Haptics.notify(.success)
                     onPinVerified()
                 } else {
-                    if let error = authenticationError {
-                        Logger.error("Biometric authentication failed: \(error.localizedDescription)", context: "AuthCheck")
-                    }
-                    Haptics.notify(.error)
-                    biometricFailedOnce = true
+                    handleBiometricFailure(authenticationError)
                 }
             }
         }
+    }
+
+    private func handleBiometricFailure(_ error: Error?) {
+        shouldShowBiometricRetry = true
+        guard let error else { return }
+
+        switch (error as NSError).code {
+        case LAError.userCancel.rawValue, LAError.userFallback.rawValue:
+            return
+        default:
+            Logger.error("Biometric authentication failed: \(error.localizedDescription)", context: "AuthCheck")
+            Haptics.notify(.error)
+        }
+    }
+
+    private func cancelBiometricAuthentication() {
+        let attempt = biometricAttempt
+        biometricAttempt = nil
+        attempt?.context.invalidate()
     }
 
     var body: some View {
@@ -137,11 +191,8 @@ struct AuthCheck: View {
 
             BodyMSBText(t("security__pin_enter"))
 
-            VStack(alignment: .center, spacing: 0) {
-                Spacer()
-
-                // Biometric button (if enabled and available, and failed once)
-                if settings.useBiometrics && isBiometricAvailable && biometricFailedOnce {
+            VStack(alignment: .center, spacing: 12) {
+                if settings.useBiometrics && shouldShowBiometricRetry {
                     CustomButton(
                         title: t("security__pin_use_biometrics", variables: ["biometricsName": biometryTypeName]),
                         size: .small,
@@ -163,7 +214,6 @@ struct AuthCheck: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 40)
             .padding(.top, 12)
 
             PinInput(pinInput: $pinInput) { pin in
@@ -172,12 +222,15 @@ struct AuthCheck: View {
             .padding(.top, 16)
         }
         .background(Color.black)
-        .onAppear {
-            // Automatically request biometric authentication if enabled and available
-            if settings.useBiometrics && isBiometricAvailable {
-                handleBiometricAuthentication()
+        .onChange(of: scenePhase, initial: true) { _, newPhase in
+            if newPhase == .active {
+                handleBiometricAuthentication(attemptKind: .automatic)
+            } else if AuthCheckBiometricPolicy.shouldCancel(scenePhase: newPhase) {
+                hasAutomaticallyAttemptedBiometrics = false
+                cancelBiometricAuthentication()
             }
         }
+        .onDisappear(perform: cancelBiometricAuthentication)
     }
 }
 
