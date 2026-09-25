@@ -16,7 +16,7 @@ class BackupService {
     private var isObserving = false
     private var isRestoring = false
     private var isWiping = false
-    private var lastNotificationTime: UInt64 = 0
+    private var backupFailureNotificationGate = BackupFailureNotificationGate()
 
     private let defaults = UserDefaults.standard
     private let backupStatusesKey = "backupStatuses"
@@ -73,6 +73,15 @@ class BackupService {
         stateQueue.sync {
             self.isWiping = isWiping
         }
+    }
+
+    func setAppActive(_ isActive: Bool) {
+        stateQueue.sync {
+            backupFailureNotificationGate.setActive(isActive)
+        }
+
+        guard isActive else { return }
+        checkForFailedBackups()
     }
 
     func startObservingBackups() {
@@ -160,6 +169,7 @@ class BackupService {
                     )
                 }
                 Logger.error("Backup failed for: '\(category.rawValue)': \(error)", context: "BackupService")
+                checkForFailedBackups()
             }
 
             _ = try? await ServiceQueue.background(.backup) { self.runningBackupTasks.removeValue(forKey: category) }
@@ -584,26 +594,35 @@ class BackupService {
 
     private func checkForFailedBackups() {
         let currentTime = UInt64(Date().timeIntervalSince1970)
-
-        let hasFailedBackups = BackupCategory.allCases.contains { category in
-            let status = getBackupStatus(category: category)
-            return status.isRequired &&
-                (currentTime - status.required) > Self.failedBackupCheckTime
-        }
-
-        if hasFailedBackups {
-            showBackupFailureNotification(currentTime: currentTime)
+        if hasFailedBackups(at: currentTime) {
+            showBackupFailureNotification()
         }
     }
 
-    private func showBackupFailureNotification(currentTime: UInt64) {
+    private func hasFailedBackups(at currentTime: UInt64) -> Bool {
+        BackupCategory.allCases.contains { category in
+            let status = getBackupStatus(category: category)
+            return BackupFailureNotificationGate.hasFailedBackup(
+                status,
+                at: currentTime,
+                failureAge: Self.failedBackupCheckTime
+            )
+        }
+    }
+
+    private func showBackupFailureNotification() {
         Task {
             try? await ServiceQueue.background(.backup) {
-                if currentTime - self.lastNotificationTime < Self.failedBackupNotificationInterval {
-                    return
-                }
+                let currentTime = UInt64(Date().timeIntervalSince1970)
+                guard self.statusUpdateQueue.sync(execute: { self.hasFailedBackups(at: currentTime) }) else { return }
 
-                self.lastNotificationTime = currentTime
+                let shouldNotify = self.stateQueue.sync {
+                    self.backupFailureNotificationGate.shouldNotify(
+                        at: currentTime,
+                        notificationInterval: Self.failedBackupNotificationInterval
+                    )
+                }
+                guard shouldNotify else { return }
 
                 let backupCheckIntervalMinutes = Int(Self.backupFailureCheckInterval / 60)
                 self.backupFailureSubject.send(backupCheckIntervalMinutes)
@@ -884,5 +903,41 @@ class BackupService {
                 running: false
             )
         }
+    }
+}
+
+struct BackupFailureNotificationGate {
+    private var isActive = false
+    private var lastNotificationTime: UInt64?
+
+    mutating func setActive(_ isActive: Bool) {
+        self.isActive = isActive
+    }
+
+    static func hasFailedBackup(
+        _ status: BackupItemStatus,
+        at currentTime: UInt64,
+        failureAge: UInt64
+    ) -> Bool {
+        status.isRequired && !status.running && currentTime >= status.required &&
+            currentTime - status.required > failureAge
+    }
+
+    mutating func shouldNotify(
+        at currentTime: UInt64,
+        notificationInterval: UInt64
+    ) -> Bool {
+        guard isActive else { return false }
+
+        if let lastNotificationTime {
+            guard currentTime >= lastNotificationTime,
+                  currentTime - lastNotificationTime >= notificationInterval
+            else {
+                return false
+            }
+        }
+
+        lastNotificationTime = currentTime
+        return true
     }
 }

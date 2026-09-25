@@ -930,6 +930,7 @@ struct AppScene: View {
 
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
         Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
+        BackupService.shared.setAppActive(newPhase == .active)
 
         if newPhase == .background {
             if settings.pinEnabled {
