@@ -33,6 +33,6 @@ Network fault injection is not provided by the journey capability table. Use a d
 2. Disable both Wi-Fi and mobile data on the test device, force-stop Bitkit, and reopen it. Wait for session restoration to fail. The cached name must remain, and the app must not advertise Pubky signup for this existing identity.
 3. Re-enable connectivity while leaving Bitkit open. Verify that the same identity and contact list recover without scanning Ring again, signing out, or restarting the app when the saved grant is still valid. For an expired or revoked grant, reauthorization remains required.
 4. Repeat the failed startup and restore connectivity while Bitkit is backgrounded. Return to the foreground from a profile/contact screen and verify the same recovery. Resume must work from any screen, not only Home.
-5. Start a Ring authorization while recovery is pending. Verify that automatic restoration does not replace that attempt. Explicit sign-out or wallet reset must not be undone by a pending restoration.
+5. Start a Ring authorization while recovery is pending. Use Back before approving, then retry or foreground the app. The abandoned relay poll must not block recovery. Start another authorization and verify that automatic restoration does not replace it. Explicit sign-out or wallet reset must not be undone by a pending restoration.
 
 Both platforms retry automatically on connectivity restoration and app resume. A valid saved session must recover without a new authorization; expired or revoked grants still require Ring.
