@@ -64,6 +64,16 @@ setup auth URL. Contact payments must then be enabled in General Settings, and t
 must save each other before Bitkit's `receivePrivateMessagesFromLinkedPeers()` poll can receive the
 request.
 
+## Periodic payout detection
+
+Use separate seller and buyer devices. Before creating the purchase, return the seller to Home,
+wait for any startup or foreground-triggered full-wallet sync to finish, and record its balance.
+Keep the seller app active and the device awake while completing the purchase on the buyer device.
+Do not background, restart, or manually refresh the seller before the payout appears. Capture
+seller lifecycle and sync logs from before purchase creation through payout detection, alongside
+the balance change and received activity for the fixture transaction. If the seller is resumed or
+restarted during that interval, the run does not prove periodic payout detection and must be repeated.
+
 ## Evidence contract
 
 Capture one timestamped evidence directory per run. Record the app commit, integration revision,

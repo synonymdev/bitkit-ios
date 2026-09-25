@@ -542,9 +542,9 @@ class LightningService {
                         accountIndex: accountIndex,
                         index: Self.watchOnlyAccountHighestPreRevealedAddressIndex
                     )
-                    if didAddAccount {
-                        try node.syncWallets()
-                    }
+                    // Registration and address revelation establish tracking locally. LDK's
+                    // periodic sync fetches history without making authorization depend on
+                    // the network availability of every wallet account.
                 } catch {
                     if didAddAccount {
                         do {
