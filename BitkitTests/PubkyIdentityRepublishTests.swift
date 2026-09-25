@@ -6,6 +6,20 @@ final class PubkyIdentityRepublishTests: XCTestCase {
     private let publicKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
     private let now = Date(timeIntervalSince1970: 1000)
 
+    func testClockRollbackRetriesPublicationAndResumesThrottling() async {
+        for published in [true, false] {
+            let bootstrap = RepublishBootstrap(noPointer: .init())
+            bootstrap.operation = { _ in published }
+            let service = PaykitSdkService { _, _ in bootstrap }
+
+            await service.republishIdentityIfNeeded(publicKey: publicKey, now: now.addingTimeInterval(30 * 86400))
+            await service.republishIdentityIfNeeded(publicKey: publicKey, now: now)
+            await service.republishIdentityIfNeeded(publicKey: publicKey, now: now.addingTimeInterval(1))
+
+            XCTAssertEqual(bootstrap.publicKeys.count, 2)
+        }
+    }
+
     func testSuccessfulPublicationIsThrottledAndReusesBootstrap() async {
         let bootstrap = RepublishBootstrap(noPointer: .init())
         var factories = 0

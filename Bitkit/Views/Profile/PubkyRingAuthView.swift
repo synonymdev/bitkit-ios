@@ -137,6 +137,11 @@ struct PubkyRingAuthView: View {
                 isLoadingAfterAuth: $isLoadingAfterAuth
             )
         }
+        .onDisappear {
+            guard isWaitingForRing, pubkyProfile.authState == .authenticating else { return }
+            isWaitingForRing = false
+            Task { await pubkyProfile.cancelAuthentication() }
+        }
         .alert(t("profile__ring_not_installed_title"), isPresented: $showRingNotInstalledDialog) {
             Button(t("profile__ring_download")) {
                 if let url = URL(string: pubkyRingAppStoreUrl) {

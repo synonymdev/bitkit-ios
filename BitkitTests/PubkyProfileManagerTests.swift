@@ -5,6 +5,191 @@ import XCTest
 
 final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
+    func testFailedRestorationPreservesCachedProfile() async {
+        let keys = ["pubky_profile_name", "pubky_profile_image_uri"]
+        let defaults = UserDefaults.standard
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defer {
+            for (key, value) in zip(keys, saved) {
+                defaults.set(value, forKey: key)
+            }
+        }
+        defaults.set("Existing profile", forKey: keys[0])
+        defaults.set("pubky://existing/avatar", forKey: keys[1])
+        let manager = RecoveryProfileManager()
+
+        await manager.initialize { .restorationFailed }
+
+        XCTAssertTrue(manager.isInitialized)
+        XCTAssertTrue(manager.sessionRestorationFailed)
+        XCTAssertEqual(manager.authState, .idle)
+        XCTAssertNil(manager.publicKey)
+        XCTAssertEqual(manager.cachedName, "Existing profile")
+        XCTAssertEqual(manager.cachedImageUri, "pubky://existing/avatar")
+        XCTAssertEqual(defaults.string(forKey: keys[0]), manager.cachedName)
+        XCTAssertEqual(defaults.string(forKey: keys[1]), manager.cachedImageUri)
+
+        manager.sessionRestorationFailed = false
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: "existing-identity") }
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+        XCTAssertEqual(manager.cachedName, "Existing profile")
+        XCTAssertEqual(manager.cachedImageUri, "pubky://existing/avatar")
+    }
+
+    @MainActor
+    func testRecoveryWaitsForStartupAndCoalescesConnectivityEvents() async {
+        let manager = RecoveryProfileManager()
+        let started = expectation(description: "startup started")
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let startup = Task {
+            await manager.initialize {
+                started.fulfill()
+                for await _ in stream {}
+                throw PubkyServiceError.authFailed("offline")
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        let restored = expectation(description: "one recovery")
+        restored.assertForOverFulfill = true
+        let retries = (0 ..< 2).map { _ in
+            Task {
+                await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                    restored.fulfill()
+                    return .restored(publicKey: "existing-identity")
+                }
+            }
+        }
+        continuation.finish()
+        await startup.value
+        for retry in retries {
+            await retry.value
+        }
+        await fulfillment(of: [restored], timeout: 2)
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+        XCTAssertEqual(manager.authState, .authenticated)
+        XCTAssertNil(manager.initializationErrorMessage)
+    }
+
+    @MainActor
+    func testAutomaticRecoveryKeepsUsableStateWhileRetryFails() async {
+        let manager = RecoveryProfileManager()
+        manager.isInitialized = true
+        let started = expectation(description: "recovery started")
+        let (retryStream, retryContinuation) = AsyncStream<Void>.makeStream()
+        let recovery = Task {
+            await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                started.fulfill()
+                for await _ in retryStream {}
+                throw PubkyServiceError.authFailed("offline")
+            }
+        }
+
+        await fulfillment(of: [started], timeout: 2)
+        XCTAssertTrue(manager.isInitialized)
+        XCTAssertNil(manager.initializationErrorMessage)
+        XCTAssertFalse(manager.sessionRestorationFailed)
+
+        retryContinuation.finish()
+        await recovery.value
+        XCTAssertTrue(manager.isInitialized)
+        XCTAssertNil(manager.initializationErrorMessage)
+        XCTAssertFalse(manager.sessionRestorationFailed)
+    }
+
+    @MainActor
+    func testAutomaticRecoveryDoesNotRepeatFailureNotificationAndClearsStaleErrorOnSuccess() async {
+        let manager = RecoveryProfileManager()
+        manager.isInitialized = true
+
+        for _ in 0 ..< 2 {
+            await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restorationFailed }
+            XCTAssertTrue(manager.isInitialized)
+            XCTAssertNil(manager.initializationErrorMessage)
+            XCTAssertFalse(manager.sessionRestorationFailed)
+        }
+
+        manager.isInitialized = false
+        manager.initializationErrorMessage = "offline"
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: "existing-identity") }
+        XCTAssertTrue(manager.isInitialized)
+        XCTAssertNil(manager.initializationErrorMessage)
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+    }
+
+    @MainActor
+    func testRecoverySkipsMissingUnreadableAndAuthorizingIdentities() async {
+        let manager = RecoveryProfileManager()
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { false }) {
+            XCTFail("No saved identity to restore")
+            return .noSession
+        }
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { throw PubkyServiceError.authFailed("keychain unavailable") }) {
+            XCTFail("Unreadable credentials must not be interpreted as an absent identity")
+            return .noSession
+        }
+        manager.setActiveAuthAttemptIDForTesting(UUID())
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+            XCTFail("Recovery must not interrupt Ring authorization")
+            return .noSession
+        }
+        XCTAssertNotNil(manager.activeAuthAttemptIDForTesting)
+    }
+
+    @MainActor
+    func testLateRecoveryDoesNotReplaceRingIdentity() async throws {
+        let manager = RecoveryProfileManager()
+        let started = expectation(description: "recovery started")
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let recovery = Task {
+            await manager.initialize {
+                started.fulfill()
+                for await _ in stream {}
+                return .restored(publicKey: "old-identity")
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        manager.setActiveAuthAttemptIDForTesting(UUID())
+        _ = try await manager.completeAuthenticationForTesting(
+            completeAuth: { "new-session" },
+            currentPublicKey: { "new-identity" },
+            discardSessionAccess: { _ in XCTFail("Successful authorization must be retained") }
+        )
+        continuation.finish()
+        await recovery.value
+        XCTAssertEqual(manager.publicKey, "new-identity")
+        XCTAssertEqual(manager.authState, .completingAuthentication)
+    }
+
+    @MainActor
+    func testBackupReplacementSuppressesRecoveryAndDiscardsLateResult() async throws {
+        let manager = RecoveryProfileManager()
+        let started = expectation(description: "recovery started")
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let recovery = Task {
+            await manager.initialize {
+                started.fulfill()
+                for await _ in stream {}
+                return .restored(publicKey: "old-identity")
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        try await PubkyProfileManager.restoreSessionBackupState(
+            nil,
+            deleteKeychainValue: { _ in },
+            forgetSessionAccess: {
+                continuation.finish()
+                await recovery.value
+                await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                    XCTFail("Recovery must not run while replacing credentials")
+                    return .restored(publicKey: "old-identity")
+                }
+            }
+        )
+        XCTAssertNil(manager.publicKey)
+        XCTAssertEqual(manager.authState, .idle)
+    }
+
+    @MainActor
     func testIdentityRestorationPreservesCredentialsForRetry() async throws {
         for failedStep in ["load", "signIn", "profile"] {
             for failure in [PubkyServiceError.authFailed("offline") as Error, CancellationError()] {
@@ -539,6 +724,100 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testCanceledAuthenticationDoesNotBlockRecoveryWhileRelayPollFinishes() async {
+        let manager = RecoveryProfileManager()
+        manager.setActiveAuthAttemptIDForTesting(UUID())
+        manager.authState = .authenticating
+        let pollStarted = expectation(description: "relay poll started")
+        let (pollStream, pollContinuation) = AsyncStream<Void>.makeStream()
+        let authentication = Task {
+            try await manager.completeAuthenticationForTesting(
+                completeAuthWithActivationBoundary: { _ in
+                    pollStarted.fulfill()
+                    for await _ in pollStream {}
+                    throw CancellationError()
+                },
+                currentPublicKey: { nil },
+                discardSessionAccess: { _ in XCTFail("No session was activated") }
+            )
+        }
+
+        await fulfillment(of: [pollStarted], timeout: 2)
+        manager.setActiveAuthAttemptIDForTesting(nil)
+        manager.authState = .idle
+
+        let recoveryCount = AsyncCallCounter()
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+            await recoveryCount.increment()
+            return .restored(publicKey: "existing-identity")
+        }
+        let completedRecoveryCount = await recoveryCount.value
+        XCTAssertEqual(completedRecoveryCount, 1)
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+
+        pollContinuation.finish()
+        do {
+            _ = try await authentication.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+    }
+
+    @MainActor
+    func testCanceledAuthenticationBlocksRecoveryUntilCompletedSessionIsDiscarded() async {
+        let manager = RecoveryProfileManager()
+        manager.setActiveAuthAttemptIDForTesting(UUID())
+        manager.authState = .authenticating
+        let cleanupStarted = expectation(description: "completed session cleanup started")
+        let (cleanupStream, cleanupContinuation) = AsyncStream<Void>.makeStream()
+        let authentication = Task {
+            try await manager.completeAuthenticationForTesting(
+                completeAuthWithActivationBoundary: { willActivate in
+                    try willActivate()
+                    manager.setActiveAuthAttemptIDForTesting(nil)
+                    manager.authState = .idle
+                    return "late-session"
+                },
+                currentPublicKey: { nil },
+                discardSessionAccess: { sessionSecret in
+                    XCTAssertEqual(sessionSecret, "late-session")
+                    cleanupStarted.fulfill()
+                    for await _ in cleanupStream {}
+                }
+            )
+        }
+
+        await fulfillment(of: [cleanupStarted], timeout: 2)
+        let recoveryCount = AsyncCallCounter()
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+            await recoveryCount.increment()
+            return .restored(publicKey: "existing-identity")
+        }
+        let recoveryCountBeforeCleanup = await recoveryCount.value
+        XCTAssertEqual(recoveryCountBeforeCleanup, 0)
+
+        cleanupContinuation.finish()
+        do {
+            _ = try await authentication.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+            await recoveryCount.increment()
+            return .restored(publicKey: "existing-identity")
+        }
+        let recoveryCountAfterCleanup = await recoveryCount.value
+        XCTAssertEqual(recoveryCountAfterCleanup, 1)
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+    }
+
+    @MainActor
     func testSupersededAuthenticationPreservesNewAttempt() async {
         let manager = PubkyProfileManager()
         manager.setActiveAuthAttemptIDForTesting(UUID())
@@ -775,9 +1054,6 @@ final class PubkyProfileManagerTests: XCTestCase {
             publicKeyFromSecretKey: { _ in
                 XCTFail("Public key should not be derived after successful saved-session import")
                 return "pubky_unused"
-            },
-            deleteSessionSecret: {
-                XCTFail("Session should not be deleted after successful import")
             }
         )
 
@@ -799,18 +1075,13 @@ final class PubkyProfileManagerTests: XCTestCase {
             publicKeyFromSecretKey: { secretKey in
                 XCTAssertEqual(secretKey, "local-secret")
                 return "pubky_test"
-            },
-            deleteSessionSecret: {
-                XCTFail("Session should not be deleted after successful re-sign-in")
             }
         )
 
         XCTAssertEqual(result, .restored(publicKey: "pubky_test"))
     }
 
-    func testResolveSessionInitializationDeletesSavedSessionWhenReSignInFails() async {
-        var deletedSavedSession = false
-
+    func testResolveSessionInitializationReportsFailedRestorationWhenReSignInFails() async {
         let result = await PubkyProfileManager.resolveSessionInitialization(
             savedSessionSecret: "stale-session",
             storedSecretKeyHex: "local-secret",
@@ -823,13 +1094,10 @@ final class PubkyProfileManagerTests: XCTestCase {
             publicKeyFromSecretKey: { _ in
                 XCTFail("No public key should be derived when re-sign-in fails")
                 return "pubky_unused"
-            }, deleteSessionSecret: {
-                deletedSavedSession = true
             }
         )
 
         XCTAssertEqual(result, .restorationFailed)
-        XCTAssertTrue(deletedSavedSession)
     }
 
     func testResolveSessionInitializationReturnsNoSessionWhenNoCredentialsExist() async {
@@ -847,8 +1115,6 @@ final class PubkyProfileManagerTests: XCTestCase {
             publicKeyFromSecretKey: { _ in
                 XCTFail("No public key should be derived without credentials")
                 return "pubky_unused"
-            }, deleteSessionSecret: {
-                XCTFail("No saved session exists to delete")
             }
         )
 
@@ -1215,4 +1481,17 @@ private func XCTAssertThrowsErrorAsync(
         _ = try await expression()
         XCTFail("Expected expression to throw", file: file, line: line)
     } catch {}
+}
+
+private actor AsyncCallCounter {
+    private(set) var value = 0
+
+    func increment() {
+        value += 1
+    }
+}
+
+@MainActor
+private final class RecoveryProfileManager: PubkyProfileManager {
+    override func loadProfile() async {}
 }

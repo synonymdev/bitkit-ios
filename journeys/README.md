@@ -155,6 +155,8 @@ journey PR, which is what made this file conflict on every merge.
 | LNURL pay, withdraw, channel and auth, and Lightning Addresses | the `bitkit-docker` `lnurl-server` on local regtest, reached by a simulator app built with `E2E_BUILD`, whose default `E2E_BACKEND=local` targets the host at `127.0.0.1`; it issues memo invoices, so a check that needs a description-hash invoice needs another endpoint |
 | Deep links handed to the app | `xcrun simctl openurl <device> "<uri>"`; only `bitkit://pubky-auth/setup`, `bitkit://contact?pubky=`, web URLs, Pubky callbacks and payment URIs route — there is no screen or sheet router — [pubky-auth](pubky-auth/README.md), [deeplinks](deeplinks), [Not ported](#not-ported) |
 
+Device-clock fault injection requires a separate manual run: [Paykit clock changes](paykit-clock-changes.md).
+
 ## Not ported
 
 **`deeplinks/screen-deeplink.xml` and `sheet-deeplink.xml`.** These Android journeys exercise `bitkit://screen/...` routing with a

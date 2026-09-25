@@ -716,7 +716,9 @@ actor PaykitSubscriptionNotificationScheduler {
                 subscription: subscription,
                 period: period
             )
-            guard !existingIdentifiers.contains(identifier) else { continue }
+            guard !pending.contains(where: {
+                $0.identifier == identifier && $0.trigger is UNCalendarNotificationTrigger
+            }) else { continue }
             let content = UNMutableNotificationContent()
             content.title = t("subscriptions__payment_due_title")
             content.body = t("subscriptions__payment_due_description")
@@ -729,8 +731,11 @@ actor PaykitSubscriptionNotificationScheduler {
                 "counterparty_receiver_path": subscription.counterpartyReceiverPath,
                 "billing_period_starts_at": PaykitSubscriptionTimestamp.string(from: period.startsAt),
             ]
-            let interval = max(1, period.startsAt.timeIntervalSince(now))
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+            let date = Date(timeIntervalSince1970: ceil(period.startsAt.timeIntervalSince1970))
+            let components = calendar.dateComponents([.calendar, .timeZone, .year, .month, .day, .hour, .minute, .second], from: date)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             let request = UNNotificationRequest(
                 identifier: identifier,
                 content: content,

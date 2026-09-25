@@ -945,9 +945,11 @@ struct AppScene: View {
             }
             if wallet.walletExists == true {
                 Task {
+                    async let sessionRecovery: Void = network.isConnected ? pubkyProfile.restoreSessionIfNeeded() : ()
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
                     try? await wallet.sync()
+                    await sessionRecovery
                     await retryPendingPaykitEndpointRemoval()
                     await wallet.refreshPublicPaykitEndpointsOnForeground()
                     if PaykitFeatureFlags.isUIEnabled {
@@ -1371,7 +1373,9 @@ struct AppScene: View {
             // Refresh currency rates when network is restored - critical for UI
             // to display balances (MoneyText returns "0" if rates are nil)
             Task {
+                async let sessionRecovery: Void = pubkyProfile.restoreSessionIfNeeded()
                 await currency.refresh()
+                await sessionRecovery
                 if scenePhase == .active {
                     await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
                 }

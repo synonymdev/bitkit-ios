@@ -119,7 +119,7 @@ struct Header: View {
                 return
             }
 
-            if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
+            if pubkyProfile.isAuthenticated {
                 navigation.navigate(.profile)
             } else if pubkyProfile.initializationErrorMessage != nil {
                 navigation.navigate(.profile)

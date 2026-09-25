@@ -146,6 +146,11 @@ class PubkyProfileManager: ObservableObject {
         case restorationFailed
     }
 
+    private enum SessionInitializationMode {
+        case userVisible
+        case automaticRecovery
+    }
+
     @Published var authState: PubkyAuthState = .idle
     @Published var profile: PubkyProfile?
     @Published var publicKey: String?
@@ -159,6 +164,18 @@ class PubkyProfileManager: ObservableObject {
 
     private var activeAuthAttemptID: UUID?
     private var isSignupInFlight = false
+    private var initializationTask: Task<Void, Never>?
+    private static var sessionRevision = UUID()
+    private static var sessionMutationCount = 0
+
+    private static func beginSessionMutation() {
+        sessionRevision = UUID()
+        sessionMutationCount += 1
+    }
+
+    private static func endSessionMutation() {
+        sessionMutationCount -= 1
+    }
 
     init() {
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
@@ -169,35 +186,102 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Initialization & Session Restoration
 
     /// Initializes Paykit and restores any persisted session.
-    func initialize() async {
-        isInitialized = false
-        initializationErrorMessage = nil
-        sessionRestorationFailed = false
+    func initialize(
+        initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult = {
+            try await PubkyProfileManager.initializePersistedSession()
+        }
+    ) async {
+        await initialize(mode: .userVisible, initializeSession: initializeSession)
+    }
+
+    private func initialize(
+        mode: SessionInitializationMode,
+        initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult
+    ) async {
+        if let initializationTask {
+            await initializationTask.value
+            return
+        }
+        guard Self.sessionMutationCount == 0, activeAuthAttemptID == nil else { return }
+        let task = Task {
+            defer { initializationTask = nil }
+            guard Self.sessionMutationCount == 0, activeAuthAttemptID == nil else { return }
+            await initializeSessionState(mode: mode, initializeSession: initializeSession)
+        }
+        initializationTask = task
+        await task.value
+    }
+
+    /// Retry saved credentials after startup or connectivity failures, without interrupting authorization.
+    func restoreSessionIfNeeded(
+        hasStoredIdentity: () throws -> Bool = { try PubkyProfileManager.hasStoredIdentity() },
+        initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult = {
+            try await PubkyProfileManager.initializePersistedSession()
+        }
+    ) async {
+        if let initializationTask {
+            await initializationTask.value
+        }
+        guard publicKey == nil, authState == .idle, activeAuthAttemptID == nil, Self.sessionMutationCount == 0 else { return }
+        do {
+            guard try hasStoredIdentity() else { return }
+            await initialize(mode: .automaticRecovery, initializeSession: initializeSession)
+        } catch {
+            Logger.warn("Unable to read saved Pubky identity for recovery: \(error)", context: "PubkyProfileManager")
+        }
+    }
+
+    private func initializeSessionState(
+        mode: SessionInitializationMode,
+        initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult
+    ) async {
+        let revision = Self.sessionRevision
+        if case .userVisible = mode {
+            isInitialized = false
+            initializationErrorMessage = nil
+            sessionRestorationFailed = false
+        }
 
         let result: SessionInitializationResult
         do {
             result = try await Task.detached {
-                try await Self.initializePersistedSession()
+                try await initializeSession()
             }.value
         } catch {
+            guard revision == Self.sessionRevision else {
+                isInitialized = true
+                return
+            }
             Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
             authState = .idle
-            initializationErrorMessage = error.localizedDescription
+            if case .userVisible = mode {
+                initializationErrorMessage = error.localizedDescription
+            }
             return
         }
 
+        guard revision == Self.sessionRevision else {
+            isInitialized = true
+            return
+        }
+        initializationErrorMessage = nil
         switch result {
         case .noSession:
             clearAuthenticatedState()
+            sessionRestorationFailed = false
             Logger.debug("No saved paykit session found", context: "PubkyProfileManager")
         case let .restored(pk):
+            reloadCachedProfileMetadata()
             publicKey = pk
             authState = .authenticated
+            sessionRestorationFailed = false
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
             Task { await loadProfile() }
         case .restorationFailed:
-            clearAuthenticatedState()
-            sessionRestorationFailed = true
+            clearAuthenticatedState(clearCachedProfile: false)
+            if case .userVisible = mode {
+                sessionRestorationFailed = true
+            }
         }
 
         isInitialized = true
@@ -275,6 +359,8 @@ class PubkyProfileManager: ObservableObject {
             try await Task.detached { try Keychain.loadString(key: .pubkySecretKey) }.value
         }
     ) async throws {
+        Self.beginSessionMutation()
+        defer { Self.endSessionMutation() }
         if isProfileSetupPending, let publicKey {
             try await createProfile(
                 publicKey: publicKey,
@@ -432,7 +518,11 @@ class PubkyProfileManager: ObservableObject {
     ) async throws {
         guard !isSignupInFlight else { throw PubkySignupError.inProgress }
         isSignupInFlight = true
-        defer { isSignupInFlight = false }
+        Self.beginSessionMutation()
+        defer {
+            isSignupInFlight = false
+            Self.endSessionMutation()
+        }
 
         setProfileSetupPending(false)
         let registeredSession = try await registerIdentity()
@@ -440,6 +530,7 @@ class PubkyProfileManager: ObservableObject {
         try await activateIdentity(registeredSession)
 
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        reloadCachedProfileMetadata()
         self.publicKey = publicKey
         authState = .authenticated
         setProfileSetupPending(true)
@@ -568,6 +659,8 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Auth Flow (Ring)
 
     func cancelAuthentication() async {
+        Self.beginSessionMutation()
+        defer { Self.endSessionMutation() }
         activeAuthAttemptID = nil
 
         do {
@@ -619,6 +712,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func startAuthentication() async throws {
+        Self.sessionRevision = UUID()
         let attemptID = UUID()
         activeAuthAttemptID = attemptID
         authState = .authenticating
@@ -674,7 +768,9 @@ class PubkyProfileManager: ObservableObject {
     @discardableResult
     func completeAuthentication() async throws -> String {
         try await completeAuthentication(
-            completeAuth: { try await PubkyService.completeAuth() },
+            completeAuth: { willActivate in
+                try await PubkyService.completeAuth(willActivate: willActivate)
+            },
             currentPublicKey: { await PubkyService.currentPublicKey() },
             discardSessionAccess: { sessionSecret in
                 await Task.detached {
@@ -686,7 +782,7 @@ class PubkyProfileManager: ObservableObject {
 
     @discardableResult
     private func completeAuthentication(
-        completeAuth: @escaping () async throws -> String,
+        completeAuth: @escaping (@escaping @MainActor @Sendable () throws -> Void) async throws -> String,
         currentPublicKey: @escaping () async -> String?,
         discardSessionAccess: @escaping (String) async -> Void
     ) async throws -> String {
@@ -694,9 +790,22 @@ class PubkyProfileManager: ObservableObject {
             throw CancellationError()
         }
         var completedSessionSecret: String?
+        var mutationBegun = false
+        defer {
+            if mutationBegun {
+                Self.endSessionMutation()
+            }
+        }
 
         do {
-            completedSessionSecret = try await completeAuth()
+            completedSessionSecret = try await completeAuth {
+                try Task.checkCancellation()
+                guard self.activeAuthAttemptID == attemptID else {
+                    throw CancellationError()
+                }
+                Self.beginSessionMutation()
+                mutationBegun = true
+            }
             try Task.checkCancellation()
             guard activeAuthAttemptID == attemptID else {
                 throw CancellationError()
@@ -714,6 +823,7 @@ class PubkyProfileManager: ObservableObject {
             Self.notifyAppStateBackupChanged()
 
             activeAuthAttemptID = nil
+            reloadCachedProfileMetadata()
             publicKey = pk
             authState = .completingAuthentication
             Logger.info("Pubky auth completed for \(pk)", context: "PubkyProfileManager")
@@ -848,7 +958,24 @@ class PubkyProfileManager: ObservableObject {
             discardSessionAccess: @escaping (String) async -> Void
         ) async throws -> String {
             try await completeAuthentication(
-                completeAuth: completeAuth,
+                completeAuth: { willActivate in
+                    try willActivate()
+                    return try await completeAuth()
+                },
+                currentPublicKey: currentPublicKey,
+                discardSessionAccess: discardSessionAccess
+            )
+        }
+
+        func completeAuthenticationForTesting(
+            completeAuthWithActivationBoundary: @escaping (
+                @escaping @MainActor @Sendable () throws -> Void
+            ) async throws -> String,
+            currentPublicKey: @escaping () async -> String?,
+            discardSessionAccess: @escaping (String) async -> Void
+        ) async throws -> String {
+            try await completeAuthentication(
+                completeAuth: completeAuthWithActivationBoundary,
                 currentPublicKey: currentPublicKey,
                 discardSessionAccess: discardSessionAccess
             )
@@ -907,6 +1034,8 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Sign Out
 
     static func clearLocalState() async {
+        beginSessionMutation()
+        defer { Self.endSessionMutation() }
         do {
             try await PubkyService.forgetSessionAccess()
         } catch {
@@ -995,6 +1124,8 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func signOut(cleanPrivatePaykitEndpoints: Bool) async throws {
+        Self.beginSessionMutation()
+        defer { Self.endSessionMutation() }
         let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
         let privateSharingEnabled = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
 
@@ -1075,6 +1206,18 @@ class PubkyProfileManager: ObservableObject {
         UserDefaults.standard.set(profile.imageUrl, forKey: Self.cachedImageUriKey)
     }
 
+    static func clearCachedIdentityMetadata() {
+        UserDefaults.standard.removeObject(forKey: cachedNameKey)
+        UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
+        ContactsManager.restoreContactProfileOverrides(nil)
+    }
+
+    private func reloadCachedProfileMetadata() {
+        profile = nil
+        cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
+        cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
+    }
+
     private func clearCachedProfileMetadata() {
         cachedName = nil
         cachedImageUri = nil
@@ -1087,11 +1230,11 @@ class PubkyProfileManager: ObservableObject {
         UserDefaults.standard.set(pending, forKey: Self.profileSetupPendingKey)
     }
 
-    private func clearAuthenticatedState() {
+    private func clearAuthenticatedState(clearCachedProfile: Bool = true) {
         publicKey = nil
         profile = nil
         authState = .idle
-        clearCachedProfileMetadata()
+        if clearCachedProfile { clearCachedProfileMetadata() }
     }
 
     private func activeSessionSecret() throws -> String {
@@ -1179,30 +1322,37 @@ class PubkyProfileManager: ObservableObject {
             try await PubkyService.importExternalSession(secret: $0)
         }
     ) async throws {
+        await beginSessionMutation()
         do {
-            try await forgetSessionAccess()
-        } catch {
-            Logger.warn("Failed to forget existing Pubky session before restore: \(error)", context: "PubkyProfileManager")
-        }
-
-        switch backup?.kind {
-        case .none:
-            // Backups without pubky state do not carry recoverable pubky credentials.
-            try? deleteKeychainValue(.paykitSession)
-            try? deleteKeychainValue(.pubkySecretKey)
-        case .localSeed:
-            let secretKeyHex = try deriveLocalSecretKeyFromWalletSeed(loadKeychainString: loadKeychainString)
-            try persistKeychainString(.pubkySecretKey, secretKeyHex)
-            try? deleteKeychainValue(.paykitSession)
-            _ = try await signInWithSecretKey(secretKeyHex)
-        case .externalSession:
-            guard let sessionSecret = backup?.sessionSecret,
-                  !sessionSecret.isEmpty
-            else {
-                throw PubkyServiceError.authFailed("Missing session secret in backup")
+            do {
+                try await forgetSessionAccess()
+            } catch {
+                Logger.warn("Failed to forget existing Pubky session before restore: \(error)", context: "PubkyProfileManager")
             }
-            _ = try await importExternalSession(sessionSecret)
+
+            switch backup?.kind {
+            case .none:
+                // Backups without pubky state do not carry recoverable pubky credentials.
+                try? deleteKeychainValue(.paykitSession)
+                try? deleteKeychainValue(.pubkySecretKey)
+            case .localSeed:
+                let secretKeyHex = try deriveLocalSecretKeyFromWalletSeed(loadKeychainString: loadKeychainString)
+                try persistKeychainString(.pubkySecretKey, secretKeyHex)
+                try? deleteKeychainValue(.paykitSession)
+                _ = try await signInWithSecretKey(secretKeyHex)
+            case .externalSession:
+                guard let sessionSecret = backup?.sessionSecret,
+                      !sessionSecret.isEmpty
+                else {
+                    throw PubkyServiceError.authFailed("Missing session secret in backup")
+                }
+                _ = try await importExternalSession(sessionSecret)
+            }
+        } catch {
+            await endSessionMutation()
+            throw error
         }
+        await endSessionMutation()
     }
 
     private func cancelPendingAuthSetup() async {
@@ -1216,19 +1366,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private nonisolated static func initializePersistedSession() async throws -> SessionInitializationResult {
-        try await PubkyService.initialize()
-
-        let savedSecret = try Keychain.loadString(key: .paykitSession)
-        let secretKeyHex = try Keychain.loadString(key: .pubkySecretKey)
-        return await resolveSessionInitialization(
-            savedSessionSecret: savedSecret,
-            storedSecretKeyHex: secretKeyHex,
-            importSession: { try await PubkyService.importSession(secret: $0) },
-            signInWithSecretKey: { try await PubkyService.signIn(secretKeyHex: $0) },
-            deleteSessionSecret: {
-                try? Keychain.delete(key: .paykitSession)
-            }
-        )
+        try await PaykitSdkService.shared.restorePersistedSession()
     }
 
     private nonisolated static func notifyAppStateBackupChanged() {
@@ -1337,8 +1475,7 @@ class PubkyProfileManager: ObservableObject {
         signInWithSecretKey: (String) async throws -> String,
         publicKeyFromSecretKey: (String) throws -> String = {
             try PubkyProfileManager.publicKeyFromSecretKey($0)
-        },
-        deleteSessionSecret: () -> Void
+        }
     ) async -> SessionInitializationResult {
         if let savedSessionSecret,
            !savedSessionSecret.isEmpty
@@ -1371,8 +1508,7 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Re-signed in and restored session for \(publicKey)", context: "PubkyProfileManager")
             return .restored(publicKey: publicKey)
         } catch {
-            Logger.error("Re-sign-in failed, clearing session: \(error)", context: "PubkyProfileManager")
-            deleteSessionSecret()
+            Logger.warn("Re-sign-in failed, keeping saved session for retry: \(error)", context: "PubkyProfileManager")
             return .restorationFailed
         }
     }
