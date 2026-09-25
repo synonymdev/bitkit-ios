@@ -1565,16 +1565,18 @@ final class PaykitReceiverNoiseKeyStore: @unchecked Sendable {
     }
 
     private func validatedKeyBytes() throws -> Data {
-        if let validatedBytes {
+        let storedBytes = try loadBytes()
+        if let validatedBytes, storedBytes == validatedBytes {
             return validatedBytes
         }
+        validatedBytes = nil
 
         let derivedBytes = try deriveBytes()
         guard derivedBytes.count == Self.keyLength else {
             throw invalidKeyError("Derived Paykit receiver Noise key is invalid")
         }
 
-        if let storedBytes = try loadBytes() {
+        if let storedBytes {
             guard storedBytes.count == Self.keyLength else {
                 throw invalidKeyError("Stored Paykit receiver Noise key is invalid")
             }
