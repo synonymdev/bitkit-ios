@@ -116,6 +116,61 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         }
     }
 
+    func testSessionRecoveryCannotReactivateCredentialsAfterForget() async throws {
+        let keys: [KeychainEntryType] = [
+            .paykitSdkState, .paykitSession, .pubkySecretKey, .paykitReceiverNoiseSecretKey,
+            .bip39Mnemonic(index: 0), .bip39Passphrase(index: 0),
+        ]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        defer {
+            for (key, data) in zip(keys, saved) {
+                if let data { try? Keychain.upsert(key: key, data: data) }
+                else { try? Keychain.delete(key: key) }
+            }
+        }
+        let secret = String(repeating: "01", count: 32)
+        let mnemonic = Array(repeating: "abandon", count: 11).joined(separator: " ") + " about"
+        try Keychain.upsert(key: .bip39Mnemonic(index: 0), data: Data(mnemonic.utf8))
+        try Keychain.delete(key: .bip39Passphrase(index: 0))
+        let noise = try PaykitReceiverNoiseKeyDerivation.deriveFromWalletSeed(
+            mnemonic: mnemonic, passphrase: nil, network: Env.networkName, receiverPath: PaykitReceiverPath.wallet
+        )
+        try Keychain.upsert(key: .paykitSession, data: Data("saved-session".utf8))
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+        try Keychain.upsert(key: .paykitReceiverNoiseSecretKey, data: noise)
+        let started = expectation(description: "import started")
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let bootstrap = RecoveryBootstrap(noPointer: .init())
+        bootstrap.importSessionOperation = {
+            started.fulfill()
+            for await _ in stream {}
+            throw PubkyServiceError.authFailed("expired session")
+        }
+        let session = CacheActivationSession(noPointer: .init())
+        session.noiseBytes = noise
+        bootstrap.result = try PubkySessionBootstrapResult(
+            sessionAccess: session, publicKey: PubkyProfileManager.publicKeyFromSecretKey(secret)
+        )
+        let sdk = RecoverySdk(noPointer: .init())
+        let forgotEarly = expectation(description: "forget cannot interleave with recovery")
+        forgotEarly.isInverted = true
+        sdk.onForget = { forgotEarly.fulfill() }
+        let service = PaykitSdkService(sdkFactory: { sdk }, bootstrapFactory: { _, _ in bootstrap })
+        let recovery = Task { try await service.restorePersistedSession() }
+        await fulfillment(of: [started], timeout: 2)
+        let forget = Task { try await service.forgetSessionAccess() }
+        await fulfillment(of: [forgotEarly], timeout: 0.1)
+        sdk.onForget = {}
+        continuation.finish()
+        let result = try await recovery.value
+        try await forget.value
+        XCTAssertEqual(result, .restored(publicKey: bootstrap.result.publicKey))
+        XCTAssertNil(try Keychain.load(key: .paykitSession))
+        XCTAssertNil(try Keychain.load(key: .pubkySecretKey))
+        let afterForget = try await service.restorePersistedSession()
+        XCTAssertEqual(afterForget, .noSession)
+    }
+
     func testClientIDUsesBitkitOwnedDomain() {
         let expectedClientID = Env.network == .bitcoin ? "bitkit.to" : "staging.bitkit.to"
 
@@ -328,5 +383,51 @@ private final class CacheActivationNoiseKey: ReceiverNoiseSecretKey, @unchecked 
 
     override func exportBytes() -> Data {
         bytes
+    }
+}
+
+private final class RecoverySdk: PaykitSdk, @unchecked Sendable {
+    var onForget: () -> Void = {}
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        IdentityStatus(publicKey: nil, liveSessionAvailable: false)
+    }
+
+    override func initialize() async throws -> InitializationReport {
+        InitializationReport(identity: IdentityStatus(publicKey: nil, liveSessionAvailable: false))
+    }
+
+    override func backupStateRevision() async throws -> String {
+        "unchanged"
+    }
+
+    override func forgetSessionAccess() async throws -> IdentityStatus {
+        onForget()
+        try Keychain.delete(key: .paykitSession)
+        try Keychain.delete(key: .pubkySecretKey)
+        return IdentityStatus(publicKey: nil, liveSessionAvailable: false)
+    }
+}
+
+private final class RecoveryBootstrap: PubkySessionBootstrap, @unchecked Sendable {
+    var importSessionOperation: () async throws -> Void = {}
+    var result: PubkySessionBootstrapResult!
+
+    override func importSession(
+        sessionSecret _: String, localSecretKey _: PubkyLocalSecretKey?,
+        receiverNoiseSecretKey _: ReceiverNoiseSecretKey, requiredCapabilities _: String
+    ) async throws -> PubkySessionBootstrapResult {
+        try await importSessionOperation()
+        return result
+    }
+
+    override func signIn(
+        localSecretKey _: PubkyLocalSecretKey, receiverNoiseSecretKey _: ReceiverNoiseSecretKey, requiredCapabilities _: String
+    ) async throws -> PubkySessionBootstrapResult {
+        result
+    }
+
+    override func republishIdentity(publicKey _: String) async throws -> Bool {
+        true
     }
 }

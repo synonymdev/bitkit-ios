@@ -367,25 +367,43 @@ actor PaykitSdkService {
     func initialize() async throws {
         Task { await republishIdentityIfNeeded() }
         try await operationLock.withLock {
-            var sdk = try handle()
+            try await initializeLocked()
+        }
+    }
+
+    private func initializeLocked() async throws {
+        var sdk = try handle()
+        do {
+            _ = try await sdk.initialize()
+        } catch {
+            guard try sessionProvider.canDeferStaleSession(error: error) else { throw error }
+
+            Logger.warn("Deferring stale Paykit session restoration until SDK setup completes", context: "PaykitSdkService")
+            sessionProvider.suspendStoredSessionAccess()
+            resetRuntime()
             do {
+                sdk = try handle()
                 _ = try await sdk.initialize()
             } catch {
-                guard try sessionProvider.canDeferStaleSession(error: error) else { throw error }
-
-                Logger.warn("Deferring stale Paykit session restoration until SDK setup completes", context: "PaykitSdkService")
-                sessionProvider.suspendStoredSessionAccess()
-                resetRuntime()
-                do {
-                    sdk = try handle()
-                    _ = try await sdk.initialize()
-                } catch {
-                    sessionProvider.resumeStoredSessionAccess()
-                    throw error
-                }
                 sessionProvider.resumeStoredSessionAccess()
+                throw error
             }
-            await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
+            sessionProvider.resumeStoredSessionAccess()
+        }
+        await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
+    }
+
+    /// Keep credential reads and fallback activation atomic with sign-out and identity changes.
+    func restorePersistedSession() async throws -> PubkyProfileManager.SessionInitializationResult {
+        Task { await republishIdentityIfNeeded() }
+        return try await operationLock.withLock {
+            try await initializeLocked()
+            return try await PubkyProfileManager.resolveSessionInitialization(
+                savedSessionSecret: Keychain.loadString(key: .paykitSession),
+                storedSecretKeyHex: Keychain.loadString(key: .pubkySecretKey),
+                importSession: { try await self.importSessionLocked(secret: $0).publicKey },
+                signInWithSecretKey: { try await self.signInLocked(secretKeyHex: $0).publicKey }
+            )
         }
     }
 
@@ -464,19 +482,23 @@ actor PaykitSdkService {
 
     func importSession(secret: String, includeLocalSecret: Bool = true) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = try await currentSdkStatePublicKey()
-            let localSecret = includeLocalSecret ? try sessionProvider.loadLocalSecretKey() : nil
-            let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
-            let result = try await bootstrap().importSession(
-                sessionSecret: secret,
-                localSecretKey: localSecret,
-                receiverNoiseSecretKey: receiverNoiseSecretKey,
-                requiredCapabilities: Self.requiredCapabilities()
-            )
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: includeLocalSecret)
-            markWalletBackupDataChanged()
-            return result
+            try await importSessionLocked(secret: secret, includeLocalSecret: includeLocalSecret)
         }
+    }
+
+    private func importSessionLocked(secret: String, includeLocalSecret: Bool = true) async throws -> PubkySessionBootstrapResult {
+        let previousPublicKey = try await currentSdkStatePublicKey()
+        let localSecret = includeLocalSecret ? try sessionProvider.loadLocalSecretKey() : nil
+        let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
+        let result = try await bootstrap().importSession(
+            sessionSecret: secret,
+            localSecretKey: localSecret,
+            receiverNoiseSecretKey: receiverNoiseSecretKey,
+            requiredCapabilities: Self.requiredCapabilities()
+        )
+        try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: includeLocalSecret)
+        markWalletBackupDataChanged()
+        return result
     }
 
     func signUp(secretKeyHex: String, homeserverPublicKey: String, signupCode: String?) async throws -> PubkySessionBootstrapResult {
@@ -530,17 +552,21 @@ actor PaykitSdkService {
 
     func signIn(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = try await currentSdkStatePublicKey()
-            let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
-            let result = try await bootstrap().signIn(
-                localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
-                receiverNoiseSecretKey: receiverNoiseSecretKey,
-                requiredCapabilities: Self.requiredCapabilities()
-            )
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
-            markWalletBackupDataChanged()
-            return result
+            try await signInLocked(secretKeyHex: secretKeyHex)
         }
+    }
+
+    private func signInLocked(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
+        let previousPublicKey = try await currentSdkStatePublicKey()
+        let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
+        let result = try await bootstrap().signIn(
+            localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
+            receiverNoiseSecretKey: receiverNoiseSecretKey,
+            requiredCapabilities: Self.requiredCapabilities()
+        )
+        try await activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: true)
+        markWalletBackupDataChanged()
+        return result
     }
 
     func startAuth() async throws -> String {
