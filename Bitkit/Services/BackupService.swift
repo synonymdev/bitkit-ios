@@ -114,7 +114,7 @@ class BackupService {
     private var isObserving = false
     private var isRestoring = false
     private var isWiping = false
-    private var lastNotificationTime: UInt64 = 0
+    private var backupFailureNotificationGate = BackupFailureNotificationGate()
 
     private let defaults: UserDefaults
     private let backupData: ((BackupCategory) async throws -> Data)?
@@ -186,6 +186,13 @@ class BackupService {
     func setWiping(_ isWiping: Bool) {
         stateQueue.sync {
             self.isWiping = isWiping
+        }
+    }
+
+    func setAppActive(_ isActive: Bool) {
+        let currentTime = UInt64(Date().timeIntervalSince1970)
+        stateQueue.sync {
+            backupFailureNotificationGate.setActive(isActive, at: currentTime)
         }
     }
 
@@ -719,8 +726,7 @@ class BackupService {
 
         let hasFailedBackups = BackupCategory.allCases.contains { category in
             let status = getBackupStatus(category: category)
-            return status.isRequired &&
-                currentTime > status.required &&
+            return status.isRequired && currentTime >= status.required &&
                 (currentTime - status.required) > Self.failedBackupCheckTime
         }
 
@@ -732,11 +738,14 @@ class BackupService {
     private func showBackupFailureNotification(currentTime: UInt64) {
         Task {
             try? await ServiceQueue.background(.backup) {
-                if currentTime - self.lastNotificationTime < Self.failedBackupNotificationInterval {
-                    return
+                let shouldNotify = self.stateQueue.sync {
+                    self.backupFailureNotificationGate.shouldNotify(
+                        at: currentTime,
+                        minimumActiveDuration: UInt64(Self.backupFailureCheckInterval),
+                        notificationInterval: Self.failedBackupNotificationInterval
+                    )
                 }
-
-                self.lastNotificationTime = currentTime
+                guard shouldNotify else { return }
 
                 let backupCheckIntervalMinutes = Int(Self.backupFailureCheckInterval / 60)
                 self.backupFailureSubject.send(backupCheckIntervalMinutes)
@@ -1133,5 +1142,38 @@ actor WalletBackupWriter {
         } onCancel: {
             task.cancel()
         }
+    }
+}
+
+struct BackupFailureNotificationGate {
+    private var activeSince: UInt64?
+    private var lastNotificationTime: UInt64?
+
+    mutating func setActive(_ isActive: Bool, at currentTime: UInt64) {
+        activeSince = isActive ? currentTime : nil
+    }
+
+    mutating func shouldNotify(
+        at currentTime: UInt64,
+        minimumActiveDuration: UInt64,
+        notificationInterval: UInt64
+    ) -> Bool {
+        guard let activeSince,
+              currentTime >= activeSince,
+              currentTime - activeSince >= minimumActiveDuration
+        else {
+            return false
+        }
+
+        if let lastNotificationTime {
+            guard currentTime >= lastNotificationTime,
+                  currentTime - lastNotificationTime >= notificationInterval
+            else {
+                return false
+            }
+        }
+
+        lastNotificationTime = currentTime
+        return true
     }
 }
