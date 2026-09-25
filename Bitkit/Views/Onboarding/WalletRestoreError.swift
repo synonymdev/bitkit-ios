@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct WalletRestoreError: View {
-    @EnvironmentObject var wallet: WalletViewModel
+    let onRetry: () async -> Void
 
     @State private var showDialog = false
 
@@ -25,22 +25,14 @@ struct WalletRestoreError: View {
 
             Spacer()
 
-            // TODO: implement retry logic and continue without backup
-
             CustomButton(title: t("common__try_again")) {
                 Haptics.play(.light)
                 Task {
-                    do {
-                        wallet.nodeLifecycleState = .initializing
-                        try await wallet.start()
-                        try wallet.setWalletExistsState()
-                    } catch {
-                        Logger.error("Failed to start wallet on retry")
-                        Haptics.notify(.error)
-                    }
+                    await onRetry()
                 }
             }
 
+            // TODO: implement continue without backup
             CustomButton(title: t("onboarding__restore_no_backup_button"), variant: .secondary, size: .large) {
                 Haptics.play(.light)
                 showDialog = true

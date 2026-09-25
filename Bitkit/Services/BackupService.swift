@@ -5,6 +5,12 @@ import VssRustClientFfi
 
 // MARK: - BackupService
 
+enum BackupRestoreFailurePolicy {
+    static func isFatal(_ category: BackupCategory) -> Bool {
+        category == .wallet
+    }
+}
+
 class BackupService {
     static let shared = BackupService()
 
@@ -928,7 +934,9 @@ class BackupService {
             // Only a total VSS failure surfaces otherwise, so without the error every category
             // fails silently. The benign "nothing backed up yet" case takes the branch above.
             Logger.warn("Restore error for: '\(category.rawValue)': \(error)", context: "BackupService")
-            throw error
+            if BackupRestoreFailurePolicy.isFatal(category) {
+                throw error
+            }
         }
 
         if category == .wallet, try Keychain.load(key: .paykitPendingBackupRestore) != nil {

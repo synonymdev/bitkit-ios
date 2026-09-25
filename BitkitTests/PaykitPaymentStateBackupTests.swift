@@ -121,6 +121,14 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         ))
     }
 
+    func testOnlyWalletRestoreFailuresAreFatal() {
+        XCTAssertTrue(BackupRestoreFailurePolicy.isFatal(.wallet))
+
+        for category in BackupCategory.allCases where category != .wallet {
+            XCTAssertFalse(BackupRestoreFailurePolicy.isFatal(category))
+        }
+    }
+
     func testAndroidPaymentStatePreservesPreciseAcceptanceBillingBoundaries() throws {
         let data = Data("""
         {"subscriptions":{"\(identity)":{"acceptances":[{"id":{"paymentRequestId":"millisecond","counterparty":"bob","counterpartyReceiverPath":"bitkit/server"},"acceptedAt":"2026-09-24T10:00:00.123Z"},{"id":{"paymentRequestId":"nanosecond","counterparty":"bob","counterpartyReceiverPath":"bitkit/server"},"acceptedAt":"2026-09-24T10:00:00.123456789Z"}],"presentedProposalIds":[]}},"pendingProofs":[{"identity":"\(identity)","requestId":{"paymentRequestId":"request","counterparty":"bob","counterpartyReceiverPath":"bitkit/server","billingPeriodStartsAt":"2026-09-24T10:00:00.100Z"},"paymentEndpointIdentifier":"bitcoin-onchain","kind":"bitcoin-onchain-txid","paymentStarted":true,"billingPeriod":{"startsAt":"2026-09-24T10:00:00.100Z","endsAt":"2026-09-25T10:00:00.100Z"},"onchainWalletId":"trezor:android","onchainMatchingTransactionIdsBeforeAttempt":[]}]}

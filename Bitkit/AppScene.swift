@@ -226,6 +226,7 @@ struct AppScene: View {
     @State private var walletIsInitializing: Bool? = nil
     @State private var walletInitShouldFinish = false
     @State private var isWalletBackupRestoreRunning = false
+    @State private var didWalletBackupRestoreFail = false
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
 
@@ -636,8 +637,13 @@ struct AppScene: View {
 
     @ViewBuilder
     private var initializingContent: some View {
-        if case .errorStarting = wallet.nodeLifecycleState {
-            WalletRestoreError()
+        if didWalletBackupRestoreFail {
+            WalletRestoreError {
+                didWalletBackupRestoreFail = false
+                await restoreWalletBackupAndStart()
+            }
+        } else if case .errorStarting = wallet.nodeLifecycleState {
+            WalletRestoreError(onRetry: retryWalletStart)
         } else {
             InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
                 Logger.debug("Wallet finished initializing but node state is \(wallet.nodeLifecycleState)")
@@ -874,6 +880,7 @@ struct AppScene: View {
         guard !isWalletBackupRestoreRunning else { return }
         isWalletBackupRestoreRunning = true
         walletIsInitializing = true
+        didWalletBackupRestoreFail = false
         defer { isWalletBackupRestoreRunning = false }
 
         let didRestore: Bool = if BackupService.shared.hasPendingWalletRestore() {
@@ -881,12 +888,26 @@ struct AppScene: View {
         } else {
             await restoreFromMostRecentBackup()
         }
-        guard didRestore else { return }
+        guard didRestore else {
+            didWalletBackupRestoreFail = true
+            return
+        }
 
         widgets.loadSavedWidgets()
         widgets.objectWillChange.send()
         await pubkyProfile.initialize()
         await startWallet(completingBackupRestore: true)
+    }
+
+    private func retryWalletStart() async {
+        do {
+            wallet.nodeLifecycleState = .initializing
+            try await wallet.start()
+            try wallet.setWalletExistsState()
+        } catch {
+            Logger.error("Failed to start wallet on retry", context: "AppScene")
+            Haptics.notify(.error)
+        }
     }
 
     private func retryPendingWalletRestoreIfNeeded() -> Bool {
