@@ -76,8 +76,10 @@ enum PubkyService {
     }
 
     /// Step 2: Long-poll until Ring approves. Returns the raw session secret.
-    static func completeAuth() async throws -> String {
-        try await PaykitSdkService.shared.completeAuth()
+    static func completeAuth(
+        willActivate: @escaping @MainActor @Sendable () throws -> Void
+    ) async throws -> String {
+        try await PaykitSdkService.shared.completeAuth(willActivate: willActivate)
     }
 
     /// Cancel an in-progress auth relay poll started by `startAuth`.
@@ -579,7 +581,9 @@ actor PaykitSdkService {
         }
     }
 
-    func completeAuth() async throws -> String {
+    func completeAuth(
+        willActivate: @escaping @MainActor @Sendable () throws -> Void
+    ) async throws -> String {
         guard let request = activeAuthRequest else {
             throw PubkyServiceError.invalidAuthUrl
         }
@@ -607,11 +611,24 @@ actor PaykitSdkService {
                 clearActiveAuthRequest(ifCurrent: requestID)
             }
 
+            try await willActivate()
+            try Task.checkCancellation()
+            guard activeAuthRequestID == requestID, activeAuthRequest != nil else {
+                throw CancellationError()
+            }
             let previousPublicKey = try await currentSdkStatePublicKey()
+            try Task.checkCancellation()
+            guard activeAuthRequestID == requestID, activeAuthRequest != nil else {
+                throw CancellationError()
+            }
             let sessionSecret = try await Self.completeAuthActivation(
                 sessionSecret: result.sessionAccess.exportSessionSecret(),
                 activate: {
                     try await self.activateBootstrapResult(result, previousPublicKey: previousPublicKey, shouldStoreLocalSecret: false)
+                    try Task.checkCancellation()
+                    guard self.activeAuthRequestID == requestID, self.activeAuthRequest != nil else {
+                        throw CancellationError()
+                    }
                 },
                 discardSessionAccess: { sessionSecret in
                     await Task.detached {

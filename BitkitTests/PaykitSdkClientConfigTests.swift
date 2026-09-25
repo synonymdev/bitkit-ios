@@ -41,6 +41,114 @@ final class PaykitSdkClientConfigTests: XCTestCase {
     }
 
     @MainActor
+    func testCanceledAuthActivationBlocksRecoveryUntilDiscardFinishes() async throws {
+        let keys: [KeychainEntryType] = [
+            .paykitSdkState, .paykitSession, .pubkySecretKey, .paykitReceiverNoiseSecretKey,
+            .bip39Mnemonic(index: 0), .bip39Passphrase(index: 0),
+        ]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        defer {
+            for (key, data) in zip(keys, saved) {
+                if let data {
+                    try? Keychain.upsert(key: key, data: data)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
+            }
+        }
+
+        let mnemonic = Array(repeating: "abandon", count: 11).joined(separator: " ") + " about"
+        try Keychain.upsert(key: .bip39Mnemonic(index: 0), data: Data(mnemonic.utf8))
+        try Keychain.delete(key: .bip39Passphrase(index: 0))
+        let noiseBytes = try PaykitReceiverNoiseKeyDerivation.deriveFromWalletSeed(
+            mnemonic: mnemonic, passphrase: nil, network: Env.networkName, receiverPath: PaykitReceiverPath.wallet
+        )
+        try Keychain.upsert(key: .paykitReceiverNoiseSecretKey, data: noiseBytes)
+        try? Keychain.delete(key: .paykitSdkState)
+        try? Keychain.delete(key: .paykitSession)
+        try? Keychain.delete(key: .pubkySecretKey)
+
+        let session = CacheActivationSession(noPointer: .init())
+        session.noiseBytes = noiseBytes
+        let authRequest = CanceledActivationAuthRequest(noPointer: .init())
+        authRequest.result = PubkySessionBootstrapResult(sessionAccess: session, publicKey: "pubky_test")
+        let bootstrap = CanceledActivationBootstrap(noPointer: .init())
+        bootstrap.request = authRequest
+        let sdk = CanceledActivationSdk(noPointer: .init())
+        let activationStarted = expectation(description: "activation started after credentials persisted")
+        let (activationStream, activationContinuation) = AsyncStream<Void>.makeStream()
+        sdk.initializeOperation = {
+            activationStarted.fulfill()
+            for await _ in activationStream {}
+        }
+        let discardStarted = expectation(description: "abandoned session discard started")
+        let (discardStream, discardContinuation) = AsyncStream<Void>.makeStream()
+        sdk.signOutOperation = {
+            discardStarted.fulfill()
+            for await _ in discardStream {}
+        }
+        let service = PaykitSdkService(sdkFactory: { sdk }, bootstrapFactory: { _, _ in bootstrap })
+        _ = try await service.startAuth()
+
+        let manager = UnavailableProfileManager()
+        manager.isInitialized = true
+        manager.setActiveAuthAttemptIDForTesting(UUID())
+        manager.authState = .authenticating
+        let authentication = Task {
+            try await manager.completeAuthenticationForTesting(
+                completeAuthWithActivationBoundary: { willActivate in
+                    try await service.completeAuth(willActivate: willActivate)
+                },
+                currentPublicKey: { try? await service.currentPublicKey() },
+                discardSessionAccess: { sessionSecret in
+                    await service.discardCompletedAuthSession(sessionSecret: sessionSecret)
+                }
+            )
+        }
+
+        await fulfillment(of: [activationStarted], timeout: 2)
+        XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "new-session")
+        manager.setActiveAuthAttemptIDForTesting(nil)
+        manager.authState = .idle
+        await service.cancelAuth()
+
+        let recoveryCount = TestAsyncCallCounter()
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+            await recoveryCount.increment()
+            return .restored(publicKey: "existing-identity")
+        }
+        let countDuringActivation = await recoveryCount.value
+        XCTAssertEqual(countDuringActivation, 0)
+
+        activationContinuation.finish()
+        await fulfillment(of: [discardStarted], timeout: 2)
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+            await recoveryCount.increment()
+            return .restored(publicKey: "existing-identity")
+        }
+        let countDuringDiscard = await recoveryCount.value
+        XCTAssertEqual(countDuringDiscard, 0)
+
+        discardContinuation.finish()
+        do {
+            _ = try await authentication.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+            await recoveryCount.increment()
+            return .restored(publicKey: "existing-identity")
+        }
+        let countAfterDiscard = await recoveryCount.value
+        XCTAssertEqual(countAfterDiscard, 1)
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+        XCTAssertNil(try Keychain.load(key: .paykitSession))
+    }
+
+    @MainActor
     func testIdentityActivationSeparatesCacheAndPreservesSameOwnerOrLegacyBackup() async throws {
         let defaults = UserDefaults.standard
         let metadataKeys = ["pubky_profile_name", "pubky_profile_image_uri"]
@@ -357,6 +465,54 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
     }
 }
 
+private final class CanceledActivationSdk: PaykitSdk, @unchecked Sendable {
+    var initializeOperation: () async -> Void = {}
+    var signOutOperation: () async -> Void = {}
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        IdentityStatus(publicKey: nil, liveSessionAvailable: false)
+    }
+
+    override func initialize() async throws -> InitializationReport {
+        await initializeOperation()
+        return InitializationReport(identity: IdentityStatus(publicKey: nil, liveSessionAvailable: false))
+    }
+
+    override func signOut() async throws -> IdentityStatus {
+        await signOutOperation()
+        try? Keychain.delete(key: .paykitSession)
+        return IdentityStatus(publicKey: nil, liveSessionAvailable: false)
+    }
+}
+
+private final class CanceledActivationBootstrap: PubkySessionBootstrap, @unchecked Sendable {
+    var request: Paykit.PubkyAuthRequest!
+
+    override func startSignInAuth(capabilities _: String) async throws -> Paykit.PubkyAuthRequest {
+        request
+    }
+
+    override func republishIdentity(publicKey _: String) async throws -> Bool {
+        true
+    }
+}
+
+private final class CanceledActivationAuthRequest: Paykit.PubkyAuthRequest, @unchecked Sendable {
+    var result: PubkySessionBootstrapResult!
+
+    override func authorizationUrl() async throws -> String {
+        "pubkyauth://test"
+    }
+
+    override func complete(
+        localSecretKey _: PubkyLocalSecretKey?,
+        receiverNoiseSecretKey _: ReceiverNoiseSecretKey,
+        requiredCapabilities _: String
+    ) async throws -> PubkySessionBootstrapResult {
+        result
+    }
+}
+
 private final class CacheActivationBootstrap: PubkySessionBootstrap, @unchecked Sendable {
     override func republishIdentity(publicKey _: String) async throws -> Bool {
         true
@@ -432,5 +588,13 @@ private final class RecoveryBootstrap: PubkySessionBootstrap, @unchecked Sendabl
 
     override func republishIdentity(publicKey _: String) async throws -> Bool {
         true
+    }
+}
+
+private actor TestAsyncCallCounter {
+    private(set) var value = 0
+
+    func increment() {
+        value += 1
     }
 }
