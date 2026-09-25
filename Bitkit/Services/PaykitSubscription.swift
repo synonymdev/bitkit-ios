@@ -3,7 +3,7 @@ import Foundation
 import Paykit
 import UserNotifications
 
-struct PaykitPreciseInstant: Comparable, Hashable {
+struct PaykitPreciseInstant: Codable, Comparable, Hashable, Sendable {
     let seconds: Int64
     let nanoseconds: Int
     let timestamp: String
@@ -51,6 +51,28 @@ struct PaykitPreciseInstant: Comparable, Hashable {
             from: Date(timeIntervalSince1970: TimeInterval(seconds)),
             fractionalSeconds: Self.fractionalSeconds(nanoseconds)
         )
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let timestamp = try? container.decode(String.self) {
+            guard let instant = Self(timestamp: timestamp) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Invalid Paykit timestamp"
+                )
+            }
+            self = instant
+            return
+        }
+
+        let date = try container.decode(Date.self)
+        self.init(date: date)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(timestamp)
     }
 
     static func < (lhs: PaykitPreciseInstant, rhs: PaykitPreciseInstant) -> Bool {
@@ -202,8 +224,8 @@ struct PaykitSubscriptionRecurrence: Hashable {
         endsAt = preciseEndsAt?.date
     }
 
-    func periods(through date: Date, acceptedAt: Date) -> [PaykitBillingPeriod] {
-        periods(through: PaykitPreciseInstant(date: date), acceptedAt: PaykitPreciseInstant(date: acceptedAt))
+    func periods(through date: Date, acceptedAt: PaykitPreciseInstant) -> [PaykitBillingPeriod] {
+        periods(through: PaykitPreciseInstant(date: date), acceptedAt: acceptedAt)
     }
 
     func contains(_ period: PaykitBillingPeriod) -> Bool {
@@ -558,7 +580,7 @@ struct PaykitSubscription: Identifiable, Hashable {
         payments = paymentsByPeriod.values.sorted { $0.billingPeriod.startsAt < $1.billingPeriod.startsAt }
     }
 
-    func requests(through date: Date, acceptedAt: Date) -> [PaykitPaymentRequest] {
+    func requests(through date: Date, acceptedAt: PaykitPreciseInstant) -> [PaykitPaymentRequest] {
         guard isPayer else { return [] }
         return recurrence.periods(through: date, acceptedAt: acceptedAt).map { period in
             let payment = payments.last { $0.billingPeriod == period }
@@ -573,7 +595,7 @@ struct PaykitSubscription: Identifiable, Hashable {
 
     func paymentDueOnAcceptance(at date: Date) -> PaykitPaymentRequest? {
         guard isPayer else { return nil }
-        guard let period = recurrence.periods(through: date, acceptedAt: date).first else { return nil }
+        guard let period = recurrence.periods(through: date, acceptedAt: PaykitPreciseInstant(date: date)).first else { return nil }
         return PaykitPaymentRequest(subscription: self, billingPeriod: period, lifecycleState: .activeRecurring)
     }
 
@@ -601,7 +623,7 @@ struct PaykitSubscription: Identifiable, Hashable {
 }
 
 struct PaykitSubscriptionState: Codable, Equatable {
-    var acceptedAt: [PaykitSubscription.ID: Date] = [:]
+    var acceptedAt: [PaykitSubscription.ID: PaykitPreciseInstant] = [:]
     var presentedProposalIds: Set<PaykitSubscription.ID> = []
     var dismissedPaymentIds: Set<PaykitPaymentRequest.ID> = []
 }
@@ -685,7 +707,7 @@ actor PaykitSubscriptionNotificationScheduler {
 
     func synchronize(
         _ subscriptions: [PaykitSubscription],
-        acceptedAt: [PaykitSubscription.ID: Date],
+        acceptedAt: [PaykitSubscription.ID: PaykitPreciseInstant],
         pendingRequestIds: Set<PaykitPaymentRequest.ID>,
         payerIdentity: String,
         notificationsEnabled: Bool,

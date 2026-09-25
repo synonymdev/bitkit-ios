@@ -38,12 +38,12 @@ struct PaykitPaymentStateBackup: Codable {
         let presentedProposalIds: Set<PaykitSubscription.ID>
 
         init(_ state: PaykitSubscriptionState) {
-            acceptances = state.acceptedAt.map { Acceptance(id: $0.key, acceptedAt: PaykitPreciseInstant(date: $0.value).timestamp) }
+            acceptances = state.acceptedAt.map { Acceptance(id: $0.key, acceptedAt: $0.value.timestamp) }
             presentedProposalIds = state.presentedProposalIds
         }
 
         func restored() throws -> PaykitSubscriptionState {
-            var acceptedAt: [PaykitSubscription.ID: Date] = [:]
+            var acceptedAt: [PaykitSubscription.ID: PaykitPreciseInstant] = [:]
             for acceptance in acceptances {
                 acceptedAt[acceptance.id] = try parseTimestamp(acceptance.acceptedAt)
             }
@@ -112,11 +112,11 @@ struct PaykitPaymentStateBackup: Codable {
         }
     }
 
-    private static func parseTimestamp(_ value: String) throws -> Date {
+    private static func parseTimestamp(_ value: String) throws -> PaykitPreciseInstant {
         guard let instant = PaykitPreciseInstant(timestamp: value) else {
             throw invalidBackup("Invalid Paykit timestamp")
         }
-        return instant.date
+        return instant
     }
 
     private static func invalidBackup(_ message: String) -> NSError {

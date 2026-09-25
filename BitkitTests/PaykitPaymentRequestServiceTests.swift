@@ -53,7 +53,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let subscription = try XCTUnwrap(PaykitSubscription(record: record))
         let acceptedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-24T12:00:00Z"))
         let through = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-26T12:00:00Z"))
-        let request = try XCTUnwrap(subscription.requests(through: through, acceptedAt: acceptedAt).first)
+        let request = try XCTUnwrap(
+            subscription.requests(through: through, acceptedAt: PaykitPreciseInstant(date: acceptedAt)).first
+        )
 
         XCTAssertEqual(PaykitSubscriptionNotificationTargetStore.load(), target)
         XCTAssertTrue(target.matches(identity: payerIdentity))
@@ -119,7 +121,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let synchronization = Task {
             await scheduler.synchronize(
                 [subscription],
-                acceptedAt: [subscription.id: now],
+                acceptedAt: [subscription.id: PaykitPreciseInstant(date: now)],
                 pendingRequestIds: [],
                 payerIdentity: "pubky\(String(repeating: "z", count: 52))",
                 notificationsEnabled: true,
@@ -163,7 +165,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         await scheduler.synchronize(
             [subscription],
-            acceptedAt: [subscription.id: now],
+            acceptedAt: [subscription.id: PaykitPreciseInstant(date: now)],
             pendingRequestIds: [request.id],
             payerIdentity: payerIdentity,
             notificationsEnabled: false,
@@ -550,7 +552,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 } else {
                     try subscription.requests(
                         through: XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-16T08:00:00Z")),
-                        acceptedAt: XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:01Z"))
+                        acceptedAt: PaykitPreciseInstant(
+                            date: XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:01Z"))
+                        )
                     )
                 }
                 XCTAssertEqual(requests.count, 2)
@@ -1023,7 +1027,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
         let record = try paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)
         let subscription = try XCTUnwrap(PaykitSubscription(record: record))
-        let request = try XCTUnwrap(subscription.requests(through: now, acceptedAt: now).first)
+        let request = try XCTUnwrap(subscription.requests(through: now, acceptedAt: PaykitPreciseInstant(date: now)).first)
         let manager = paymentRequestManager(
             sdk: PaymentRequestSdkMock(records: [record]),
             clock: PaymentRequestTestClock(now),
@@ -1403,7 +1407,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let acceptedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-31T08:00:00Z"))
         let through = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-03-15T08:00:00Z"))
 
-        let periods = schedule.periods(through: through, acceptedAt: acceptedAt)
+        let periods = schedule.periods(through: through, acceptedAt: PaykitPreciseInstant(date: acceptedAt))
 
         XCTAssertEqual(periods.count, 2)
         XCTAssertEqual(periods[0].endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-28T08:00:00Z")))
@@ -1422,7 +1426,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let acceptedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-01T08:00:00Z"))
         let through = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-10T08:00:00Z"))
 
-        let period = try XCTUnwrap(schedule.periods(through: through, acceptedAt: acceptedAt).first)
+        let period = try XCTUnwrap(
+            schedule.periods(through: through, acceptedAt: PaykitPreciseInstant(date: acceptedAt)).first
+        )
 
         XCTAssertEqual(period.startsAt, acceptedAt)
         XCTAssertEqual(period.endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z")))
@@ -1477,7 +1483,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let through = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-01T08:00:01Z"))
         let acceptedAt = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-01T08:00:00Z"))
 
-        let period = try XCTUnwrap(schedule.periods(through: through, acceptedAt: acceptedAt).first)
+        let period = try XCTUnwrap(
+            schedule.periods(through: through, acceptedAt: PaykitPreciseInstant(date: acceptedAt)).first
+        )
 
         XCTAssertEqual(period.sdkValue.startsAt, "2027-01-01T08:00:00.123100Z")
         XCTAssertEqual(period.sdkValue.endsAt, "2027-01-01T08:00:00.123900Z")
@@ -1522,7 +1530,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let schedule = try XCTUnwrap(PaykitSubscriptionRecurrence(recurrence))
         let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-01T08:00:00Z"))
 
-        XCTAssertTrue(schedule.periods(through: start, acceptedAt: start).isEmpty)
+        XCTAssertTrue(schedule.periods(through: start, acceptedAt: PaykitPreciseInstant(date: start)).isEmpty)
         XCTAssertFalse(schedule.canMaterializePeriods)
     }
 

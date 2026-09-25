@@ -44,7 +44,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
                 recurrence: recurrence
             )
             let subscription = try XCTUnwrap(PaykitSubscription(record: record))
-            let request = try XCTUnwrap(subscription.requests(through: through, acceptedAt: acceptedAt).first)
+            let request = try XCTUnwrap(
+                subscription.requests(through: through, acceptedAt: PaykitPreciseInstant(date: acceptedAt)).first
+            )
 
             XCTAssertEqual(request.lifecycleState, .proofSubmitted)
             XCTAssertEqual(request.paymentProofKind, proofKind)
@@ -653,7 +655,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         )
         let subscription = try XCTUnwrap(PaykitSubscription(record: record))
         let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
-        let request = try XCTUnwrap(subscription.requests(through: date, acceptedAt: date).first)
+        let request = try XCTUnwrap(subscription.requests(through: date, acceptedAt: PaykitPreciseInstant(date: date)).first)
         let proof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
@@ -960,7 +962,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let record = try paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)
         let subscription = try XCTUnwrap(PaykitSubscription(record: record))
         let acceptedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
-        let request = try XCTUnwrap(subscription.requests(through: acceptedAt, acceptedAt: acceptedAt).first)
+        let request = try XCTUnwrap(
+            subscription.requests(through: acceptedAt, acceptedAt: PaykitPreciseInstant(date: acceptedAt)).first
+        )
         let store = PaymentProofMemoryStore()
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
@@ -1000,7 +1004,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         )
         let subscription = try XCTUnwrap(PaykitSubscription(record: record))
         let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-15T08:00:00Z"))
-        let request = try XCTUnwrap(subscription.requests(through: date, acceptedAt: date).last)
+        let request = try XCTUnwrap(subscription.requests(through: date, acceptedAt: PaykitPreciseInstant(date: date)).last)
         let store = PaymentProofMemoryStore()
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
