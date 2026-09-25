@@ -136,7 +136,7 @@ struct Header: View {
                 profileAvatar
 
                 if let name = pubkyProfile.displayName {
-                    TitleText(name)
+                    TitleText(name.capitalizingFirstLetterOfEachWord)
                 } else {
                     TitleText(t("slashtags__your_name_capital"))
                 }
