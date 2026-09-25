@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Display-caps name input. `textCase` does not apply to typed `TextField` text, so the stored name keeps
-/// its original casing and an uppercased copy is drawn over the field while it is not being edited.
+/// Display-caps name input. The stored name keeps its original casing and an uppercased copy is drawn over
+/// the field while it is not being edited. `textCase` must stay off the `TextField`: it uppercases the existing
+/// text once editing starts and writes that back into the binding.
 struct ProfileNameField: View {
     @Binding var name: String
     let accessibilityId: String
@@ -17,7 +18,6 @@ struct ProfileNameField: View {
         SwiftUI.TextField(t("profile__create_name_placeholder"), text: $name)
             .font(Fonts.black(size: 44))
             .kerning(-1)
-            .textCase(.uppercase)
             .multilineTextAlignment(.center)
             .foregroundColor(showsUppercasedName ? .clear : .textPrimary)
             .autocorrectionDisabled()
