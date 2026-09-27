@@ -66,6 +66,16 @@ identifier. Keep the peer's payment list empty or unsupported long enough for al
 resolution attempts. Do not use a malformed request for the UI journey because parse-time rejection
 correctly prevents it from entering the presentation queue.
 
+## Request summary
+
+`request-summary.xml` is ported alongside Android's matching journey.
+
+### Setup
+
+Use a second Bitkit instance as the requester instead of the fixture issuer: both instances are
+authenticated Pubky identities, saved as each other's contacts and linked on receiver path
+`bitkit/wallet`, and the payer holds enough balance to pay 21,000 sats.
+
 ## Identifiers used
 
 - Pending-request bell: `PaymentRequestsBell`.
@@ -75,6 +85,8 @@ correctly prevents it from entering the presentation queue.
 - Pay action: `PaymentRequestPay-<payment-request-id>`.
 - Dismiss action: `PaymentRequestDismiss-<payment-request-id>`.
 - Payment confirmation: `PaymentRequestConfirm`.
+- Confirmation summary: `PaymentRequestFrom`, `PaymentRequestFor`.
+- Confirmation invoice note: `PaymentRequestInvoiceNote`.
 - Confirmation details: `SendConfirmToggleDetails`.
 - Saved-contact recipient: `ReviewContactRecipient`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.

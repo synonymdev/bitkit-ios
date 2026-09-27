@@ -31,6 +31,7 @@ struct CreateProfileView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .bottomSafeAreaPadding()
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .task {
@@ -43,21 +44,14 @@ struct CreateProfileView: View {
     @ViewBuilder
     private var formContent: some View {
         ScrollView {
-            VStack(spacing: 0) {
+            VStack(spacing: 32) {
                 avatarSection
-                    .padding(.top, 32)
-                    .padding(.bottom, 32)
-
                 nameInput
-                    .padding(.bottom, 16)
-
                 CustomDivider()
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 16)
-
                 pubkyKeySection
-                    .padding(.bottom, 24)
             }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 32)
         }
         .scrollDismissesKeyboard(.interactively)
         .onTapGesture {
@@ -100,12 +94,14 @@ struct CreateProfileView: View {
                 .clipShape(Circle())
         } else {
             Circle()
-                .fill(Color.gray5)
+                .fill(Color.gray6)
                 .frame(width: 96, height: 96)
                 .overlay {
-                    Image(systemName: "photo")
-                        .font(.system(size: 32, weight: .medium))
+                    Image("picture")
+                        .resizable()
+                        .scaledToFit()
                         .foregroundColor(.white32)
+                        .frame(width: 32, height: 32)
                 }
         }
     }
@@ -113,17 +109,7 @@ struct CreateProfileView: View {
     // MARK: - Name Input
 
     private var nameInput: some View {
-        SwiftUI.TextField(
-            t("profile__create_name_placeholder"),
-            text: $username
-        )
-        .font(Fonts.black(size: 44))
-        .kerning(-1)
-        .textCase(.uppercase)
-        .multilineTextAlignment(.center)
-        .foregroundColor(.textPrimary)
-        .padding(.horizontal, 32)
-        .accessibilityIdentifier("CreateProfileUsername")
+        ProfileNameField(name: $username, accessibilityId: "CreateProfileUsername", focusesWhenEmpty: true)
     }
 
     // MARK: - Pubky Key Section
@@ -139,7 +125,6 @@ struct CreateProfileView: View {
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 16)
         }
     }
 

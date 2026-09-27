@@ -1132,6 +1132,7 @@
 "contacts__delete_label" = "Delete Contact";
 "contacts__saved_title" = "Contact Saved";
 "contacts__edit_title" = "Edit Contact";
+"contacts__edit_notes_label" = "NOTES";
 "contacts__edit_bio_placeholder" = "Short note about this contact.";
 "contacts__edit_public_note" = "Please note contact information is stored in public files. Changes you make to a contact in Bitkit will not update their profile.";
 "contacts__edit_saved" = "Contact updated";
@@ -1186,7 +1187,7 @@
 "profile__choice_title" = "Enter the\n<accent>freedom web</accent>";
 "profile__choice_description" = "Create a new pubky and profile in Bitkit.";
 "profile__choice_description_ring" = "Use an existing pubky from Pubky Ring.";
-"profile__choice_create" = "Create profile with Bitkit";
+"profile__choice_create" = "Create profile";
 "profile__choice_create_caption" = "New pubky";
 "profile__adopt_error_title" = "Could Not Use Pubky";
 "profile__deriving_keys" = "Deriving your keys…";
@@ -1211,6 +1212,7 @@
 "profile__source_lost_description" = "The pubky you used from Pubky Ring is no longer available on this device.";
 "profile__edit_nav_title" = "Edit Profile";
 "profile__edit_saved" = "Profile updated";
+"profile__pubky_copied" = "pubky copied to clipboard";
 "profile__edit_delete_section" = "DELETE";
 "profile__edit_public_note" = "Please note profile information is stored in public files.";
 "profile__delete_title" = "Delete Profile?";
@@ -1534,6 +1536,7 @@
 "wallet__payment_request_waiting" = "Waiting for payment";
 "wallet__payment_request_waiting_for_recipient" = "Waiting for {name} to pay";
 "wallet__payment_request_note" = "Note";
+"wallet__payment_request_for" = "For";
 "wallet__payment_request_date" = "Date";
 "wallet__payment_request_time" = "Time";
 "wallet__payment_request_status_pending" = "Pending";

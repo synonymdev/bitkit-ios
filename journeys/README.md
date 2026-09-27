@@ -157,6 +157,10 @@ journey PR, which is what made this file conflict on every merge.
 
 ## Not ported
 
+**`onchain-receive/confirmed-only-background-notification.xml`.** It covers the notification Android's
+`LightningNodeService` foreground service posts for a background onchain receive. iOS has no
+foreground node service, and its notification extension handles only Blocktank pushes.
+
 **`deeplinks/screen-deeplink.xml` and `sheet-deeplink.xml`.** These Android journeys exercise `bitkit://screen/...` routing with a
 dev-mode gate and a cold-start replay. iOS registers the `bitkit` URL scheme (`Bitkit/Info.plist`)
 and retains external URLs in `AppScene`, but `MainNavView` only routes web URLs, Pubky contacts, auth requests and callbacks,

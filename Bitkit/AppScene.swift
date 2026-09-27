@@ -301,14 +301,14 @@ struct AppScene: View {
         mainContent
             .sheet(
                 item: $sheets.forgotPinSheetItem,
-                onDismiss: { sheets.hideSheet() }
+                onDismiss: { sheets.hideSheetIfActive(.forgotPin, reason: "Forgot PIN sheet dismissed") }
             ) {
                 config in ForgotPinSheet(config: config)
             }
             .sheet(
                 item: $sheets.appUpdateSheetItem,
                 onDismiss: {
-                    sheets.hideSheet()
+                    sheets.hideSheetIfActive(.appUpdate, reason: "App update sheet dismissed")
                     app.ignoreAppUpdate()
                 }
             ) {
