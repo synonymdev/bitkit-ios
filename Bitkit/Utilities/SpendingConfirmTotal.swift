@@ -22,3 +22,10 @@ struct SpendingConfirmAmounts: Equatable {
     let networkFeeSat: UInt64
     let totalSat: UInt64
 }
+
+enum SpendingFeeIncrease: Equatable {
+    case service(amountSat: UInt64)
+    case network(amountSat: UInt64)
+}
+
+struct SpendingFeesIncreasedError: Error {}

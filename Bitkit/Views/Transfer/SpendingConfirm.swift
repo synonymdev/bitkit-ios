@@ -173,10 +173,8 @@ struct SpendingConfirm: View {
         defer { transfer.uiState.isConfirming = false }
 
         do {
-            guard let order = try await transfer.orderForConfirmation(createOrder: { clientBalance, lspBalance in
+            let order = try await transfer.orderForSwipe { clientBalance, lspBalance in
                 try await blocktank.createOrder(clientBalance: clientBalance, lspBalance: lspBalance)
-            }) else {
-                throw AppError(message: t("other__try_again"), debugMessage: "Order fee changed after confirmation")
             }
             guard let address = order.payment?.onchain?.address else {
                 throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
@@ -192,8 +190,9 @@ struct SpendingConfirm: View {
                     maxSendable: maxSendableAmount
                 )
             )
-            guard transfer.isFundingDisplayed(order: order, displayed: displayed, rebuilt: rebuilt) else {
-                throw AppError(message: t("other__try_again"), debugMessage: "Funding changed after confirmation")
+            if let increase = transfer.feeIncrease(order: order, displayed: displayed, rebuilt: rebuilt) {
+                showFeesIncreasedToast(increase)
+                throw SpendingFeesIncreasedError()
             }
             guard let rate = satsPerVbyte else { return }
             try await transfer.payOrder(
@@ -212,9 +211,29 @@ struct SpendingConfirm: View {
                 hideSwipeButton = true
             }
         } catch {
-            app.toast(error)
+            if !(error is SpendingFeesIncreasedError) {
+                app.toast(error)
+            }
             throw error
         }
+    }
+
+    private func showFeesIncreasedToast(_ increase: SpendingFeeIncrease) {
+        let key: String
+        let amountSat: UInt64
+        switch increase {
+        case let .service(amount):
+            key = "lightning__spending_confirm__fees_increased_service"
+            amountSat = amount
+        case let .network(amount):
+            key = "lightning__spending_confirm__fees_increased_network"
+            amountSat = amount
+        }
+        app.toast(
+            type: .info,
+            title: t("lightning__spending_confirm__fees_increased_title"),
+            description: t(key, variables: ["amount": CurrencyFormatter.formatSats(amountSat)])
+        )
     }
 
     private func calculateTransactionFee(address: String, amountSats: UInt64, feeRate: UInt32? = nil) async throws {
