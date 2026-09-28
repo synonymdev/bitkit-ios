@@ -2807,6 +2807,125 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.eligibleTargets.isEmpty)
     }
 
+    func testEligibleTargetsKeepPreviousTargetWhenCapabilityLookupFails() async {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let target = PaykitPaymentRequestTarget(publicKey: savedKey, receiverPath: PaykitReceiverPath.wallet)
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [savedKey: [PaykitReceiverPath.wallet]]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+
+        await sdk.setReceiverPathLookupFailing(true, for: savedKey)
+        await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+
+        XCTAssertEqual(manager.eligibleTargets, [target])
+    }
+
+    func testEligibleTargetsSurviveLinkedPeerLookupFailure() async {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let target = PaykitPaymentRequestTarget(publicKey: savedKey, receiverPath: PaykitReceiverPath.wallet)
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [savedKey: [PaykitReceiverPath.wallet]]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+
+        await sdk.setLinkedPeersError(.linkedPeers)
+        await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+
+        XCTAssertEqual(manager.eligibleTargets, [target])
+    }
+
+    func testSingleEligibilityRefreshAddsNewlyEligibleContact() async {
+        let firstKey = "pubky\(String(repeating: "a", count: 52))"
+        let secondKey = "pubky\(String(repeating: "b", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: firstKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [firstKey: [PaykitReceiverPath.wallet]]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refreshEligibleTargets(savedPublicKeys: [firstKey, secondKey])
+        await sdk.configureRecipients(
+            peers: [
+                linkedPeer(counterparty: firstKey, path: PaykitReceiverPath.wallet, state: .linked),
+                linkedPeer(counterparty: secondKey, path: PaykitReceiverPath.server, state: .linked),
+            ],
+            receiverPathsByPublicKey: [
+                firstKey: [PaykitReceiverPath.wallet],
+                secondKey: [PaykitReceiverPath.server],
+            ]
+        )
+
+        let target = await manager.refreshEligibleTarget(publicKey: secondKey)
+
+        let expected = PaykitPaymentRequestTarget(publicKey: secondKey, receiverPath: PaykitReceiverPath.server)
+        XCTAssertEqual(target, expected)
+        XCTAssertEqual(
+            manager.eligibleTargets,
+            [PaykitPaymentRequestTarget(publicKey: firstKey, receiverPath: PaykitReceiverPath.wallet), expected]
+        )
+    }
+
+    func testSingleEligibilityRefreshRemovesContactThatIsNoLongerLinked() async {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [savedKey: [PaykitReceiverPath.wallet]]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+        await sdk.configureRecipients(peers: [], receiverPathsByPublicKey: [savedKey: [PaykitReceiverPath.wallet]])
+
+        let target = await manager.refreshEligibleTarget(publicKey: savedKey)
+
+        XCTAssertNil(target)
+        XCTAssertTrue(manager.eligibleTargets.isEmpty)
+    }
+
+    func testSingleEligibilityRefreshIgnoresUnsavedContact() async {
+        let unsavedKey = "pubky\(String(repeating: "b", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: unsavedKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [unsavedKey: [PaykitReceiverPath.wallet]]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+
+        let target = await manager.refreshEligibleTarget(publicKey: unsavedKey)
+
+        XCTAssertNil(target)
+        XCTAssertTrue(manager.eligibleTargets.isEmpty)
+    }
+
+    func testWaitingForEligibleTargetStopsAtTimeout() async throws {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [savedKey: [PaykitReceiverPath.wallet]]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        await sdk.setLinkedPeersError(.linkedPeers)
+        await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+        await sdk.setLinkedPeersError(nil)
+        await sdk.pauseNextLinkedPeers()
+
+        let target = await manager.eligibleTarget(publicKey: savedKey, waitingAtMost: .milliseconds(50))
+
+        XCTAssertNil(target)
+        try await waitUntil { await sdk.linkedPeersIsPaused() }
+        await sdk.resumeLinkedPeers()
+        let refreshed = await manager.startEligibleTargetRefresh(publicKey: savedKey).value
+        XCTAssertEqual(refreshed, PaykitPaymentRequestTarget(publicKey: savedKey, receiverPath: PaykitReceiverPath.wallet))
+    }
+
     func testOlderEligibilityRefreshCannotOverwriteNewerContacts() async throws {
         let firstKey = "pubky\(String(repeating: "a", count: 52))"
         let secondKey = "pubky\(String(repeating: "b", count: 52))"
@@ -3299,6 +3418,8 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
     private var peerRecords: [LinkedPeerRecord] = []
     private var receiverPathsByPublicKey: [String: [String]] = [:]
     private var liveSessionAvailable = true
+    private var linkedPeersError: PaymentRequestSdkMockError?
+    private var failingReceiverPathKeys: Set<String> = []
     private var proposalResult: PaymentRequestRecord?
     private var uploadCount = 0
     private var shouldPauseNextUpload = false
@@ -3376,7 +3497,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         IdentityStatus(publicKey: activeIdentity, liveSessionAvailable: liveSessionAvailable)
     }
 
-    func linkedPeers() async -> [LinkedPeerRecord] {
+    func linkedPeers() async throws -> [LinkedPeerRecord] {
+        if let linkedPeersError {
+            throw linkedPeersError
+        }
         if shouldPauseNextLinkedPeers {
             shouldPauseNextLinkedPeers = false
             isLinkedPeersPaused = true
@@ -3386,8 +3510,11 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         return peerRecords
     }
 
-    func paymentRequestReceiverPaths(publicKey: String) -> [String] {
-        receiverPathsByPublicKey[publicKey] ?? []
+    func paymentRequestReceiverPaths(publicKey: String) throws -> [String] {
+        if failingReceiverPathKeys.contains(publicKey) {
+            throw PaymentRequestSdkMockError.receive
+        }
+        return receiverPathsByPublicKey[publicKey] ?? []
     }
 
     func pauseNextUpload() {
@@ -3599,6 +3726,18 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         liveSessionAvailable = value
     }
 
+    func setLinkedPeersError(_ error: PaymentRequestSdkMockError?) {
+        linkedPeersError = error
+    }
+
+    func setReceiverPathLookupFailing(_ isFailing: Bool, for publicKey: String) {
+        if isFailing {
+            failingReceiverPathKeys.insert(publicKey)
+        } else {
+            failingReceiverPathKeys.remove(publicKey)
+        }
+    }
+
     func setActiveIdentity(_ identity: String) {
         activeIdentity = identity
     }
@@ -3699,6 +3838,7 @@ private struct PaymentRequestInvocation: Equatable {
 }
 
 private enum PaymentRequestSdkMockError: Error, Equatable {
+    case linkedPeers
     case preparation
     case process
     case receive

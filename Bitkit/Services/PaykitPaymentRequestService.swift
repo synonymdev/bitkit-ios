@@ -363,6 +363,11 @@ struct PaykitPaymentRequestTarget: Identifiable, Equatable, Hashable {
     }
 }
 
+struct PaykitPaymentRequestTargetDiscovery: Equatable {
+    let targets: [PaykitPaymentRequestTarget]
+    let isComplete: Bool
+}
+
 struct PaykitPaymentRequestDraft: Hashable {
     let amountSats: UInt64
     let note: String
@@ -566,11 +571,21 @@ struct PaykitPaymentRequestService {
     }
 
     func eligibleTargets(savedPublicKeys: [String], expectedIdentity: String) async throws -> [PaykitPaymentRequestTarget] {
-        guard isPrivatePaymentPublishingEnabled(), !Self.acceptedPaymentEndpointIdentifiers().isEmpty else { return [] }
+        try await discoverEligibleTargets(savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity).targets
+    }
+
+    /// Keeps a previously eligible target when its capability lookup fails, so a transient transport error does not hide it.
+    func discoverEligibleTargets(
+        savedPublicKeys: [String],
+        expectedIdentity: String,
+        previousTargets: [PaykitPaymentRequestTarget] = []
+    ) async throws -> PaykitPaymentRequestTargetDiscovery {
+        let unavailable = PaykitPaymentRequestTargetDiscovery(targets: [], isComplete: true)
+        guard isPrivatePaymentPublishingEnabled(), !Self.acceptedPaymentEndpointIdentifiers().isEmpty else { return unavailable }
         guard let identityStatus = try await sdk.identityStatus(),
               identityStatus.liveSessionAvailable,
               PubkyPublicKeyFormat.matches(identityStatus.publicKey, expectedIdentity)
-        else { return [] }
+        else { return unavailable }
         var seenSavedKeys = Set<String>()
         let savedKeys = savedPublicKeys.compactMap(PubkyPublicKeyFormat.normalized).filter {
             seenSavedKeys.insert($0).inserted
@@ -586,6 +601,7 @@ struct PaykitPaymentRequestService {
         }
 
         var targets: [PaykitPaymentRequestTarget] = []
+        var isComplete = true
         for publicKey in savedKeys {
             guard let linkedPaths = linkedPathsByPublicKey[publicKey] else { continue }
             let capablePaths: [String]
@@ -594,16 +610,25 @@ struct PaykitPaymentRequestService {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                isComplete = false
                 logWarning("Failed to inspect Paykit payment request support for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)")
+                if let previousTarget = previousTargets.first(where: {
+                    PubkyPublicKeyFormat.matches($0.publicKey, publicKey) && linkedPaths.contains($0.receiverPath)
+                }) {
+                    targets.append(previousTarget)
+                }
                 continue
             }
             guard let receiverPath = PaykitReceiverPath.supported.first(where: {
                 linkedPaths.contains($0) && capablePaths.contains($0)
-            }) else { continue }
+            }) else {
+                isComplete = false
+                continue
+            }
 
             targets.append(PaykitPaymentRequestTarget(publicKey: publicKey, receiverPath: receiverPath))
         }
-        return targets
+        return PaykitPaymentRequestTargetDiscovery(targets: targets, isComplete: isComplete)
     }
 
     func propose(
@@ -1032,6 +1057,7 @@ final class PaykitPaymentRequestManager {
     private var presentationRetryTask: Task<Void, Never>?
     private var refreshGeneration = 0
     private var eligibilityGeneration = 0
+    private var eligibleTargetRefreshTasks: [String: Task<PaykitPaymentRequestTarget?, Never>] = [:]
     private var stateGeneration = 0
     private var presentationGeneration = 0
     private var activePresentationGeneration: Int?
@@ -1130,23 +1156,102 @@ final class PaykitPaymentRequestManager {
         }
 
         do {
-            let targets = try await service.eligibleTargets(savedPublicKeys: savedPublicKeys, expectedIdentity: activeIdentity)
+            let discovery = try await service.discoverEligibleTargets(
+                savedPublicKeys: savedPublicKeys,
+                expectedIdentity: activeIdentity,
+                previousTargets: eligibleTargets
+            )
             guard generation == eligibilityGeneration,
                   currentStateGeneration == stateGeneration,
                   savedPublicKeys == self.savedPublicKeys,
                   isAvailable(),
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
             else { return }
-            eligibleTargets = targets
+            eligibleTargets = discovery.targets
         } catch is CancellationError {
             return
         } catch {
-            guard generation == eligibilityGeneration,
-                  currentStateGeneration == stateGeneration
-            else { return }
-            eligibleTargets = []
             logWarning("Failed to refresh Paykit payment request recipients: \(error)")
         }
+    }
+
+    func refreshEligibleTarget(publicKey: String) async -> PaykitPaymentRequestTarget? {
+        let currentStateGeneration = stateGeneration
+        guard isAvailable(),
+              let activeIdentity,
+              let savedPublicKey = savedPublicKeys.first(where: { PubkyPublicKeyFormat.matches($0, publicKey) })
+        else { return nil }
+
+        do {
+            let discovery = try await service.discoverEligibleTargets(
+                savedPublicKeys: [savedPublicKey],
+                expectedIdentity: activeIdentity,
+                previousTargets: eligibleTargets
+            )
+            guard currentStateGeneration == stateGeneration,
+                  isAvailable(),
+                  PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity),
+                  savedPublicKeys.contains(where: { PubkyPublicKeyFormat.matches($0, publicKey) })
+            else { return nil }
+            let target = discovery.targets.first
+            if target != nil || discovery.isComplete {
+                var targets = eligibleTargets.filter { !PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
+                if let target {
+                    targets.append(target)
+                }
+                eligibleTargets = targets
+            }
+        } catch is CancellationError {
+            return nil
+        } catch {
+            logWarning("Failed to refresh Paykit payment request recipient: \(error)")
+        }
+        return eligibleTarget(publicKey: publicKey)
+    }
+
+    func eligibleTarget(publicKey: String) -> PaykitPaymentRequestTarget? {
+        eligibleTargets.first { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
+    }
+
+    @discardableResult
+    func startEligibleTargetRefresh(publicKey: String) -> Task<PaykitPaymentRequestTarget?, Never> {
+        let key = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
+        if let task = eligibleTargetRefreshTasks[key] {
+            return task
+        }
+        let task = Task { [weak self] () -> PaykitPaymentRequestTarget? in
+            guard let self else { return nil }
+            defer { eligibleTargetRefreshTasks[key] = nil }
+            return await refreshEligibleTarget(publicKey: publicKey)
+        }
+        eligibleTargetRefreshTasks[key] = task
+        return task
+    }
+
+    /// Returns the known target at once, otherwise waits at most `timeout` for a refresh without blocking on a slow SDK call.
+    func eligibleTarget(publicKey: String, waitingAtMost timeout: Duration) async -> PaykitPaymentRequestTarget? {
+        if let target = eligibleTarget(publicKey: publicKey) {
+            return target
+        }
+
+        let refresh = startEligibleTargetRefresh(publicKey: publicKey)
+        let (stream, continuation) = AsyncStream<PaykitPaymentRequestTarget?>.makeStream(bufferingPolicy: .bufferingOldest(1))
+        let refreshWaiter = Task {
+            await continuation.yield(refresh.value)
+        }
+        let timeoutWaiter = Task {
+            try? await Task.sleep(for: timeout)
+            continuation.yield(nil)
+        }
+        defer {
+            refreshWaiter.cancel()
+            timeoutWaiter.cancel()
+            continuation.finish()
+        }
+        for await target in stream {
+            return target
+        }
+        return nil
     }
 
     func clearEligibleTargets() {
