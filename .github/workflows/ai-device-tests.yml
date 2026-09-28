@@ -24,6 +24,7 @@ env:
   TERM: xterm-256color
   FORCE_COLOR: 1
   GIT_LFS_SKIP_SMUDGE: "1"
+  BITKIT_DOCKER_REF: 191091e092863fd50b52ebebfc85ea3301ee72c1 # main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.suite }}
@@ -44,7 +45,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-docker
-          ref: main
+          ref: ${{ env.BITKIT_DOCKER_REF }}
           path: bitkit-docker
 
       - name: Install xcbeautify
@@ -153,7 +154,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-docker
-          ref: main
+          ref: ${{ env.BITKIT_DOCKER_REF }}
 
       - uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
         with:
@@ -164,7 +165,7 @@ jobs:
       - name: Start regtest and Trezor emulator
         run: |
           set -euo pipefail
-          echo "tailnet address: $(tailscale ip -4)"
+          echo "joined the tailnet as $(tailscale status --json | jq -r .Self.HostName) on $(tailscale ip -4)"
 
           # Naming the services: trezor-user-env-mac carries no `profiles` key,
           # so a bare `up -d` starts it too and it takes 21325 before the
@@ -338,7 +339,7 @@ jobs:
               || true)
             [ -n "$ip" ] && break
             if (( SECONDS >= deadline )); then
-              echo "::error::stack runner never joined the tailnet"
+              echo "::error::stack runner never joined the tailnet as trezor-stack-${{ github.run_id }}-${{ github.run_attempt }}"
               tailscale status || true
               exit 1
             fi
