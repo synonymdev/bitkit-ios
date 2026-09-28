@@ -99,26 +99,27 @@ final class AuthCheckBiometricPolicyTests: XCTestCase {
         )
     }
 
-    func testDoesNotOfferRetryWhenBiometricsRequireSystemConfiguration() {
+    func testDoesNotOfferRetryWhenBiometricsCannotRun() {
         for errorCode in [
             LAError.biometryNotAvailable.rawValue,
             LAError.biometryNotEnrolled.rawValue,
+            LAError.biometryLockout.rawValue,
             LAError.passcodeNotSet.rawValue,
         ] {
             XCTAssertFalse(
-                AuthCheckBiometricPolicy.shouldOfferRetry(afterAvailabilityErrorCode: errorCode)
+                AuthCheckBiometricPolicy.shouldOfferRetry(afterErrorCode: errorCode)
             )
         }
     }
 
-    func testOffersRetryForTemporaryOrUnknownAvailabilityFailure() {
+    func testOffersRetryForRecoverableOrUnknownFailure() {
         XCTAssertTrue(
             AuthCheckBiometricPolicy.shouldOfferRetry(
-                afterAvailabilityErrorCode: LAError.biometryLockout.rawValue
+                afterErrorCode: LAError.authenticationFailed.rawValue
             )
         )
         XCTAssertTrue(
-            AuthCheckBiometricPolicy.shouldOfferRetry(afterAvailabilityErrorCode: nil)
+            AuthCheckBiometricPolicy.shouldOfferRetry(afterErrorCode: nil)
         )
     }
 }
