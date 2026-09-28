@@ -23,6 +23,17 @@ enum AuthCheckBiometricPolicy {
     static func shouldCancel(scenePhase: ScenePhase) -> Bool {
         scenePhase == .background
     }
+
+    static func shouldOfferRetry(afterAvailabilityErrorCode errorCode: Int?) -> Bool {
+        switch errorCode {
+        case LAError.biometryNotAvailable.rawValue,
+             LAError.biometryNotEnrolled.rawValue,
+             LAError.passcodeNotSet.rawValue:
+            false
+        default:
+            true
+        }
+    }
 }
 
 private struct AuthCheckBiometricAttempt {
@@ -112,10 +123,9 @@ struct AuthCheck: View {
 
         // Check if biometric authentication is available
         guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
-            if attemptKind == .automatic {
-                hasAutomaticallyAttemptedBiometrics = false
-            }
-            shouldShowBiometricRetry = true
+            shouldShowBiometricRetry = AuthCheckBiometricPolicy.shouldOfferRetry(
+                afterAvailabilityErrorCode: error?.code
+            )
             Logger.error("Biometric authentication not available: \(error?.localizedDescription ?? "Unknown error")", context: "AuthCheck")
             return
         }
