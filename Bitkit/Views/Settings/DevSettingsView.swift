@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 struct DevSettingsView: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @AppStorage(ContactPaymentsService.confirmedPreferenceKey) private var hasConfirmedPublicPaykitEndpoints = false
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false

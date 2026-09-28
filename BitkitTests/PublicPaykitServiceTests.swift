@@ -214,6 +214,16 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertTrue(payable.isEmpty)
     }
 
+    func testPaykitUIIsEnabledWhenNoPreferenceIsStored() {
+        XCTAssertEqual(PaykitFeatureFlags.isUIEnabled, PaykitFeatureFlags.isUIAvailable)
+    }
+
+    func testPaykitUIStaysDisabledOnceTurnedOff() {
+        UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
+
+        XCTAssertFalse(PaykitFeatureFlags.isUIEnabled)
+    }
+
     func testBuildAvailabilityMarksPublicCleanupPendingForPublishedPublicState() throws {
         try withIsolatedDefaults { defaults in
             defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)

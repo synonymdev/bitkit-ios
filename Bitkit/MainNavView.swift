@@ -59,7 +59,7 @@ func resolvePendingProfileSetupResumeState(
 struct MainNavView: View {
     private let canHandleDeepLinks: Bool
 
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @EnvironmentObject private var app: AppViewModel
     @Environment(CameraManager.self) private var cameraManager

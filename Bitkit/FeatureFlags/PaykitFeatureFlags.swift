@@ -2,6 +2,7 @@ import Foundation
 
 enum PaykitFeatureFlags {
     static let uiEnabledKey = "paykitUiEnabled"
+    static let uiEnabledByDefault = true
 
     static var isUIAvailable: Bool {
         #if FEATURE_PAYKIT_UI_DISABLED
@@ -12,7 +13,7 @@ enum PaykitFeatureFlags {
     }
 
     static var isUIEnabled: Bool {
-        isUIAvailable && UserDefaults.standard.bool(forKey: uiEnabledKey)
+        isUIAvailable && (UserDefaults.standard.object(forKey: uiEnabledKey) as? Bool ?? uiEnabledByDefault)
     }
 
     static func enforceBuildAvailability(defaults: UserDefaults = .standard, isUIEnabled: Bool = Self.isUIEnabled) {

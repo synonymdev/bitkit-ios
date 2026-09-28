@@ -56,13 +56,12 @@ The full journey depends on the sibling work from the parent epic:
 - [#717](https://github.com/synonymdev/bitkit-ios/issues/717) prevents an Electrum-rejected broadcast
   from reaching `SendSuccess`.
 
-Before opening the fixture setup auth URL, enable Paykit UI on both wallets through Settings →
-Advanced → Dev Settings → Enable Paykit UI (`PaykitUiToggle`), confirm the warning, and verify
-activation (`PaykitUiEnabledToast`). Then use the header profile button and Create path to give each
-wallet a Bitkit-generated Pubky identity; an identity imported through Pubky Ring cannot approve the
-setup auth URL. Contact payments must then be enabled in General Settings, and the buyer and seller
-must save each other before Bitkit's `receivePrivateMessagesFromLinkedPeers()` poll can receive the
-request.
+Before opening the fixture setup auth URL, verify Paykit UI is on in both wallets through Settings →
+Advanced → Dev Settings → Enable Paykit UI (`PaykitUiToggle`); it is on by default. Then use the
+header profile button and Create path to give each wallet a Bitkit-generated Pubky identity; an
+identity imported through Pubky Ring cannot approve the setup auth URL. Contact payments must then
+be enabled in General Settings, and the buyer and seller must save each other before Bitkit's
+`receivePrivateMessagesFromLinkedPeers()` poll can receive the request.
 
 ## Evidence contract
 
