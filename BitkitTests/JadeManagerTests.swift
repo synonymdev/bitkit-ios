@@ -391,6 +391,48 @@ final class JadeManagerTests: XCTestCase {
         XCTAssertEqual(store.devices.map(\.walletId), [JadeFixtures.walletId])
     }
 
+    func testUnlockingASessionThatReconnectedLockedLandsOnAnotherPairedWallet() async throws {
+        var otherWallet = JadeFixtures.knownEntry(lastConnectedAt: Date(timeIntervalSince1970: -1))
+        otherWallet.xpubs = ["nativeSegwit": "zpubOtherSeed"]
+        otherWallet.walletId = "jade:other-wallet"
+        store.devices = [JadeFixtures.knownEntry(), otherWallet]
+        service.stubs.scanned = [JadeFixtures.device()]
+        service.stubs.connectResult = .success(JadeFixtures.version(.locked))
+        service.stubs.exportHandler = { _ in JadeFixtures.accountExport(xpub: "zpubOtherSeed") }
+        let sut = makeManager()
+        try await sut.autoReconnect()
+        XCTAssertEqual(sut.connected?.walletId, JadeFixtures.walletId)
+        service.stubs.isConnected = true
+
+        try await sut.ensureConnected(deviceId: JadeFixtures.deviceId)
+
+        XCTAssertEqual(sut.connected?.walletId, "jade:other-wallet", "the session holds the paired wallet the Jade opened")
+        XCTAssertEqual(sut.connected?.isLocked, false)
+        XCTAssertEqual(log.count("service.disconnect"), 0)
+        XCTAssertEqual(Set(store.devices.map(\.walletId)), [JadeFixtures.walletId, "jade:other-wallet"])
+    }
+
+    func testAJadeThatLockedAndReopenedAnotherPairedWalletIsNotAskedToVerify() async throws {
+        let sut = try await connectedManager()
+        var otherWallet = JadeFixtures.knownEntry()
+        otherWallet.xpubs = ["nativeSegwit": "zpubOtherSeed"]
+        otherWallet.walletId = "jade:other-wallet"
+        store.devices.append(otherWallet)
+        service.stubs.isConnected = true
+        service.stubs.verifyErrors = [JadeError.DeviceLocked]
+        service.stubs.exportHandler = { _ in JadeFixtures.accountExport(xpub: "zpubOtherSeed") }
+
+        do {
+            try await sut.verifyAddress(addressType: .nativeSegwit, derivationPath: "m/84'/1'/0'/0/0", expectedAddress: "bcrt1q")
+            XCTFail("a Jade reopened on another paired wallet must not verify the address of the one it left")
+        } catch {
+            XCTAssertTrue(error is HwWalletMismatchError, "error=\(error)")
+        }
+
+        XCTAssertEqual(service.calls.verifications.count, 1)
+        XCTAssertEqual(sut.connected?.walletId, "jade:other-wallet")
+    }
+
     func testAJadeThatLockedAndReopenedAnotherSeedIsNotAskedToVerify() async throws {
         let sut = try await connectedManager()
         service.stubs.isConnected = true

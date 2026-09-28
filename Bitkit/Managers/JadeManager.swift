@@ -371,7 +371,8 @@ final class JadeManager {
 
     /// A session reconnected while locked took its wallet on trust, since a locked Jade reports no
     /// accounts. Once unlocked it has to hold that wallet still: a Jade restored with another seed
-    /// would otherwise be asked to verify and sign for keys it no longer carries.
+    /// would otherwise be asked to verify and sign for keys it no longer carries. A Jade asking for a
+    /// passphrase can unlock into another wallet paired with it instead, which the session then holds.
     private func requireSessionWallet(_ session: ConnectedJadeDevice, epoch: UInt64) async throws {
         guard let walletId = session.walletId,
               let entry = allKnownDevices().first(where: { $0.id == session.id && $0.resolvedWalletId == walletId }),
@@ -380,9 +381,24 @@ final class JadeManager {
         let fetchedXpubs = try await exportAccounts()
         try requireCurrent(epoch)
         guard Set(entry.xpubs.values).isDisjoint(with: fetchedXpubs.values) else { return }
+        if let paired = HwKnownDeviceMatching.previous(in: allKnownDevices(), deviceId: session.id, fetchedXpubs: fetchedXpubs) {
+            adoptPairedWallet(paired, session: session)
+            return
+        }
         Logger.warn("The unlocked Jade no longer holds wallet '\(walletId)'", context: Self.logContext)
         await beginStaleSessionTeardown(deviceId: session.id, releasingAttempts: false)?.value
         throw HwWalletMismatchError()
+    }
+
+    private func adoptPairedWallet(_ paired: HwKnownDevice, session: ConnectedJadeDevice) {
+        let refreshed = refreshKnownDevice(paired, path: session.path)
+        Logger.info("The unlocked Jade opened its paired wallet '\(refreshed.resolvedWalletId ?? refreshed.id)'", context: Self.logContext)
+        connected = ConnectedJadeDevice(
+            id: session.id,
+            path: session.path,
+            versionInfo: connected?.versionInfo ?? session.versionInfo,
+            walletId: refreshed.resolvedWalletId
+        )
     }
 
     private func unlockConnected() async throws -> JadeVersionInfo {
@@ -725,7 +741,8 @@ final class JadeManager {
     }
 
     /// Retries once after unlocking when the device locked since the session was opened: a cached
-    /// unlocked state would otherwise report the Jade as busy until it is reconnected.
+    /// unlocked state would otherwise report the Jade as busy until it is reconnected. A Jade that
+    /// unlocked into another of its paired wallets is not asked to act for the one it left.
     private func retryingOnceIfLocked<T>(_ operation: () async throws -> T) async throws -> T {
         do {
             return try await operation()
@@ -734,6 +751,10 @@ final class JadeManager {
             Logger.info("The Jade locked since it connected; unlocking and retrying", context: Self.logContext)
             connected?.versionInfo.jadeState = .locked
             try await ensureConnected(deviceId: current.id)
+            if let walletId = current.walletId, connected?.walletId != walletId {
+                Logger.warn("The Jade unlocked into another wallet than '\(walletId)'", context: Self.logContext)
+                throw HwWalletMismatchError()
+            }
             return try await operation()
         }
     }
