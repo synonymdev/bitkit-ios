@@ -195,7 +195,19 @@ class BackupService {
         }
 
         guard isActive else { return }
-        checkForFailedBackups()
+        Task {
+            let isObserving = try? await ServiceQueue.background(.backup) {
+                self.isObserving
+            }
+            let shouldCheck = self.stateQueue.sync {
+                self.backupFailureNotificationGate.shouldCheckForFailedBackups(
+                    isObserving: isObserving == true
+                )
+            }
+
+            guard shouldCheck else { return }
+            self.checkForFailedBackups()
+        }
     }
 
     func startObservingBackups() {
@@ -1160,6 +1172,10 @@ struct BackupFailureNotificationGate {
 
     mutating func setActive(_ isActive: Bool) {
         self.isActive = isActive
+    }
+
+    func shouldCheckForFailedBackups(isObserving: Bool) -> Bool {
+        isActive && isObserving
     }
 
     static func hasFailedBackup(

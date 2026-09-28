@@ -38,6 +38,18 @@ final class BackupFailureNotificationGateTests: XCTestCase {
         )
     }
 
+    func testForegroundFailureCheckRequiresBackupObservation() {
+        var gate = BackupFailureNotificationGate()
+        gate.setActive(true)
+
+        XCTAssertFalse(gate.shouldCheckForFailedBackups(isObserving: false))
+        XCTAssertTrue(gate.shouldCheckForFailedBackups(isObserving: true))
+
+        gate.setActive(false)
+
+        XCTAssertFalse(gate.shouldCheckForFailedBackups(isObserving: true))
+    }
+
     func testInactiveCheckDoesNotConsumeNotificationCooldown() {
         var gate = BackupFailureNotificationGate()
 
