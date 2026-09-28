@@ -224,6 +224,23 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertFalse(PaykitFeatureFlags.isUIEnabled)
     }
 
+    func testPublishedStateIsEmptyForWalletThatNeverShared() throws {
+        try withIsolatedDefaults { defaults in
+            XCTAssertFalse(PaykitFeatureFlags.hasPublicPublishedState(defaults: defaults))
+            XCTAssertFalse(PaykitFeatureFlags.hasPrivatePublishedState(defaults: defaults))
+        }
+    }
+
+    func testPublishedStateReportsSharedEndpoints() throws {
+        try withIsolatedDefaults { defaults in
+            defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
+            defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+
+            XCTAssertTrue(PaykitFeatureFlags.hasPublicPublishedState(defaults: defaults))
+            XCTAssertTrue(PaykitFeatureFlags.hasPrivatePublishedState(defaults: defaults))
+        }
+    }
+
     func testBuildAvailabilityMarksPublicCleanupPendingForPublishedPublicState() throws {
         try withIsolatedDefaults { defaults in
             defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
