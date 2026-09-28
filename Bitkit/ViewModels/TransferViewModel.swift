@@ -334,6 +334,9 @@ class TransferViewModel: ObservableObject {
         isCurrent: () -> Bool = { true }
     ) async throws -> IBtOrder? {
         guard let order = try await currentOrder(createOrder: createOrder, isCurrent: isCurrent) else { return nil }
+        if pendingHwFundingBroadcast?.orderId == order.id {
+            return order
+        }
         return orderForDisplayedFee(order)
     }
 
