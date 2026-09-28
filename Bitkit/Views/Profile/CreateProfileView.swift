@@ -11,6 +11,7 @@ struct CreateProfileView: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var isRestoring = false
+    @State private var remoteLookupFailed = false
     @State private var existingProfile: PubkyProfile?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var avatarImage: UIImage?
@@ -30,6 +31,7 @@ struct CreateProfileView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .bottomSafeAreaPadding()
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .task {
@@ -42,21 +44,14 @@ struct CreateProfileView: View {
     @ViewBuilder
     private var formContent: some View {
         ScrollView {
-            VStack(spacing: 0) {
+            VStack(spacing: 32) {
                 avatarSection
-                    .padding(.top, 32)
-                    .padding(.bottom, 32)
-
                 nameInput
-                    .padding(.bottom, 16)
-
                 CustomDivider()
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 16)
-
                 pubkyKeySection
-                    .padding(.bottom, 24)
             }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 32)
         }
         .scrollDismissesKeyboard(.interactively)
         .onTapGesture {
@@ -99,12 +94,14 @@ struct CreateProfileView: View {
                 .clipShape(Circle())
         } else {
             Circle()
-                .fill(Color.gray5)
+                .fill(Color.gray6)
                 .frame(width: 96, height: 96)
                 .overlay {
-                    Image(systemName: "photo")
-                        .font(.system(size: 32, weight: .medium))
+                    Image("picture")
+                        .resizable()
+                        .scaledToFit()
                         .foregroundColor(.white32)
+                        .frame(width: 32, height: 32)
                 }
         }
     }
@@ -112,17 +109,7 @@ struct CreateProfileView: View {
     // MARK: - Name Input
 
     private var nameInput: some View {
-        SwiftUI.TextField(
-            t("profile__create_name_placeholder"),
-            text: $username
-        )
-        .font(Fonts.black(size: 44))
-        .kerning(-1)
-        .textCase(.uppercase)
-        .multilineTextAlignment(.center)
-        .foregroundColor(.textPrimary)
-        .padding(.horizontal, 32)
-        .accessibilityIdentifier("CreateProfileUsername")
+        ProfileNameField(name: $username, accessibilityId: "CreateProfileUsername", focusesWhenEmpty: true)
     }
 
     // MARK: - Pubky Key Section
@@ -138,7 +125,6 @@ struct CreateProfileView: View {
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 16)
         }
     }
 
@@ -175,11 +161,11 @@ struct CreateProfileView: View {
         defer { isLoading = false }
 
         do {
-            let (publicKey, _) = try await pubkyProfile.deriveKeys()
+            let publicKey = try await pubkyProfile.activePublicKey()
             derivedPublicKey = publicKey
 
             // Restore existing profile if one is found on the network
-            if let remote = await pubkyProfile.fetchRemoteProfile(publicKey: publicKey) {
+            if let remote = await remoteProfile(publicKey: publicKey) {
                 username = remote.name
                 existingProfile = remote
                 isRestoring = true
@@ -191,9 +177,36 @@ struct CreateProfileView: View {
         }
     }
 
+    /// With a session or a stored key the pubky has signed up before, so a failed lookup is not treated as
+    /// "no profile": saving then could replace an existing profile with an empty one.
+    private func remoteProfile(publicKey: String) async -> PubkyProfile? {
+        guard pubkyProfile.publicKey != nil || PubkyProfileManager.hasLocalSecretKey(for: publicKey) else {
+            return await pubkyProfile.fetchRemoteProfile(publicKey: publicKey)
+        }
+
+        do {
+            let profile = try await PubkyProfileManager.resolveRemoteProfile(publicKey: publicKey)
+            remoteLookupFailed = false
+            return profile
+        } catch PubkyServiceError.profileNotFound {
+            remoteLookupFailed = false
+            return nil
+        } catch {
+            Logger.warn("Failed to look up the existing profile: \(error)", context: "CreateProfileView")
+            remoteLookupFailed = true
+            app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
+            return nil
+        }
+    }
+
     // MARK: - Save Profile
 
     private func saveProfile() async {
+        guard !remoteLookupFailed else {
+            await loadInitialData()
+            return
+        }
+
         let trimmedName = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
 

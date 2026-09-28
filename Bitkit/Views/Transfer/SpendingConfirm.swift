@@ -26,7 +26,12 @@ struct SpendingConfirm: View {
     }
 
     var total: UInt64 {
-        transfer.uiState.feeSat + transactionFee
+        SpendingConfirmTotal.leavingAmount(
+            orderFeeSat: transfer.uiState.feeSat,
+            networkFeeSat: transactionFee,
+            shouldUseSendAll: shouldUseSendAll,
+            maxSendable: maxSendableAmount
+        )
     }
 
     var body: some View {

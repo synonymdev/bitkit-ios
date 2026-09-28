@@ -136,7 +136,7 @@ struct Header: View {
                 profileAvatar
 
                 if let name = pubkyProfile.displayName {
-                    TitleText(name)
+                    TitleText(name.capitalizingFirstLetterOfEachWord)
                 } else {
                     TitleText(t("slashtags__your_name_capital"))
                 }
@@ -153,21 +153,11 @@ struct Header: View {
         return true
     }
 
-    @ViewBuilder
     private var profileAvatar: some View {
-        if let imageUri = pubkyProfile.displayImageUri {
-            PubkyImage(uri: imageUri, size: 32)
-        } else {
-            Circle()
-                .fill(Color.gray4)
-                .frame(width: 32, height: 32)
-                .overlay {
-                    Image("user-square")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundColor(.white32)
-                        .frame(width: 16, height: 16)
-                }
-        }
+        PubkyContactAvatar(
+            name: pubkyProfile.displayName ?? t("slashtags__your_name_capital"),
+            imageUrl: pubkyProfile.displayImageUri,
+            size: 32
+        )
     }
 }

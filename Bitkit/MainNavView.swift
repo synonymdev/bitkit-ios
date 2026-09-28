@@ -134,7 +134,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.addTagSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.addTag, reason: "Add tag sheet dismissed")
             }
         ) {
             config in AddTagSheet(config: config)
@@ -142,7 +142,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.boostSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.boost, reason: "Boost sheet dismissed")
             }
         ) {
             config in BoostSheet(config: config)
@@ -150,7 +150,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.backupSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.backup, reason: "Backup sheet dismissed")
                 app.ignoreBackup()
             }
         ) {
@@ -159,7 +159,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.giftSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.gift, reason: "Gift sheet dismissed")
             }
         ) {
             config in GiftSheet(config: config)
@@ -167,7 +167,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.connectionClosedSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.connectionClosed, reason: "Connection closed sheet dismissed")
             }
         ) {
             config in ConnectionClosedSheet(config: config)
@@ -175,7 +175,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.highBalanceSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.highBalance, reason: "High balance sheet dismissed")
                 app.ignoreHighBalance()
             }
         ) {
@@ -184,7 +184,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.lnurlAuthSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.lnurlAuth, reason: "LNURL auth sheet dismissed")
             }
         ) {
             config in LnurlAuthSheet(config: config)
@@ -192,7 +192,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.pubkyAuthApprovalSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.pubkyAuthApproval, reason: "Pubky auth approval sheet dismissed")
             }
         ) {
             config in PubkyAuthApprovalSheet(config: config)
@@ -208,7 +208,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.notificationsSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.notifications, reason: "Notifications sheet dismissed")
                 app.hasSeenNotificationsIntro = true
             }
         ) {
@@ -233,7 +233,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.receiveSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.receive, reason: "Receive sheet dismissed")
             }
         ) {
             config in ReceiveSheet(config: config)
@@ -241,7 +241,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.receivedTxSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.receivedTx, reason: "Received transaction sheet dismissed")
             }
         ) {
             config in ReceivedTx(config: config)
@@ -265,7 +265,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.securitySheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.security, reason: "Security sheet dismissed")
             }
         ) {
             config in SecuritySheet(config: config)
@@ -273,7 +273,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.quickpaySheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.quickpay, reason: "Quickpay sheet dismissed")
                 app.hasSeenQuickpayIntro = true
             }
         ) {
@@ -290,7 +290,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.forceTransferSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.forceTransfer, reason: "Force transfer sheet dismissed")
             }
         ) {
             config in ForceTransferSheet(config: config)
@@ -298,7 +298,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.widgetsSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.widgets, reason: "Widgets sheet dismissed")
             }
         ) {
             config in WidgetsSheet(config: config)
@@ -306,7 +306,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.hardwareConnectSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.hardwareConnect, reason: "Hardware connect sheet dismissed")
             }
         ) {
             config in HardwareConnectSheet(config: config)
@@ -314,7 +314,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.hardwarePairingSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.hardwarePairing, reason: "Hardware pairing sheet dismissed")
             }
         ) {
             config in HardwarePairingSheet(config: config)
@@ -322,7 +322,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.renameHardwareWalletSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.renameHardwareWallet, reason: "Rename hardware wallet sheet dismissed")
             }
         ) {
             config in RenameHardwareWalletSheet(config: config)
@@ -357,11 +357,11 @@ struct MainNavView: View {
                 // Update permissions in case user changed them in OS settings
                 notificationManager.updateNotificationPermission()
                 cameraManager.refreshPermission()
-
-                guard settings.readClipboard else { return }
-
-                handleClipboard()
             }
+        }
+        .onChange(of: scenePhase, initial: true) { _, newPhase in
+            guard newPhase == .active else { return }
+            handleClipboardIfEnabled()
         }
         .onChange(of: notificationManager.authorizationStatus) { _, newStatus in
             // Handle notification permission changes
@@ -755,7 +755,9 @@ struct MainNavView: View {
             }
     }
 
-    private func handleClipboard() {
+    private func handleClipboardIfEnabled() {
+        guard settings.readClipboard else { return }
+
         Task { @MainActor in
             guard let uri = UIPasteboard.general.string else {
                 return
@@ -861,37 +863,6 @@ struct MainNavView: View {
         // Web URLs from widgets (e.g. news article tap) bypass payment handling
         if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
             await UIApplication.shared.open(url)
-            return
-        }
-
-        if let callback = PubkyRingAuthCallback.parse(url: url) {
-            guard isPaykitUIActive else {
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title"),
-                    description: t("other__qr_error_text")
-                )
-                return
-            }
-
-            let handlingResult = await pubkyProfile.handleAuthCallback(callback)
-
-            switch handlingResult {
-            case let .trustedError(message):
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title"),
-                    description: message ?? t("other__qr_error_text")
-                )
-            case .untrustedError:
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title")
-                )
-            case .handled, .ignored:
-                break
-            }
-
             return
         }
 

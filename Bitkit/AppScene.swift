@@ -303,14 +303,14 @@ struct AppScene: View {
         mainContent
             .sheet(
                 item: $sheets.forgotPinSheetItem,
-                onDismiss: { sheets.hideSheet() }
+                onDismiss: { sheets.hideSheetIfActive(.forgotPin, reason: "Forgot PIN sheet dismissed") }
             ) {
                 config in ForgotPinSheet(config: config)
             }
             .sheet(
                 item: $sheets.appUpdateSheetItem,
                 onDismiss: {
-                    sheets.hideSheet()
+                    sheets.hideSheetIfActive(.appUpdate, reason: "App update sheet dismissed")
                     app.ignoreAppUpdate()
                 }
             ) {
@@ -473,6 +473,15 @@ struct AppScene: View {
                 if failed {
                     pubkyProfile.sessionRestorationFailed = false
                     app.toast(type: .error, title: t("profile__session_expired_title"), description: t("profile__session_expired_description"))
+                }
+            }
+            .onChange(of: pubkyProfile.adoptedSourceLost) { _, lost in
+                if lost {
+                    pubkyProfile.adoptedSourceLost = false
+                    app.toast(type: .error, title: t("profile__source_lost_title"), description: t("profile__source_lost_description"))
+                    if navigation.path.contains(where: \.isPubkyIdentityRoute) {
+                        navigation.path = [.pubkyChoice]
+                    }
                 }
             }
             .onAppear {
@@ -785,6 +794,7 @@ struct AppScene: View {
 
         if hasNativeKeychain || hasOrphanedRNKeychain {
             Logger.warn("Orphaned keychain detected, wiping", context: "AppScene")
+            SharedPubkyKeychain.removeAllOwn()
             try? Keychain.wipeEntireKeychain()
 
             if hasOrphanedRNKeychain {
@@ -1018,6 +1028,7 @@ struct AppScene: View {
                     return
                 }
                 Task {
+                    if pubkyProfile.isInitialized { await pubkyProfile.checkAdoptedSource() }
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
                     try? await wallet.sync()
