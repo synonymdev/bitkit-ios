@@ -11,12 +11,10 @@ final class AddressTypeSettingsTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // `resetToDefaults()` writes ~30 real keys, including pinEnabled, useBiometrics and
+        // requirePinForPayments; the tests then write address-type keys directly.
+        snapshotAppDefaultsDomain()
         settings.resetToDefaults()
-    }
-
-    override func tearDown() {
-        settings.resetToDefaults()
-        super.tearDown()
     }
 
     // MARK: - SettingsBackupConfig (address type keys)

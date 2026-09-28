@@ -25,17 +25,29 @@ final class RNMigrationCleanupTests: XCTestCase {
         sandboxDocuments.appendingPathComponent("ldk")
     }
 
-    override func setUp() {
-        super.setUp()
+    /// `tearDown` runs even when `setUpWithError` skips, so it must not clean up a run that never
+    /// started — that is the destructive part.
+    private var didRunDestructiveSetUp = false
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // `cleanupRNTestData` deletes the real ~/Documents/mmkv and ~/Documents/ldk, and
+        // `cleanupRNKeychain` deletes RN keychain items by service with no access-group filter. On a
+        // device mid-migration from React-Native Bitkit that is the migration source, so unlike the
+        // native keychain this cannot be namespaced away — it has to be opted into.
+        try skipUnlessDestructiveTestsEnabled()
+        didRunDestructiveSetUp = true
         // Clean up any existing test data
         cleanupRNTestData()
         try? Keychain.wipeEntireKeychain()
     }
 
     override func tearDown() {
-        // Clean up after tests
-        cleanupRNTestData()
-        try? Keychain.wipeEntireKeychain()
+        if didRunDestructiveSetUp {
+            // Clean up after tests
+            cleanupRNTestData()
+            try? Keychain.wipeEntireKeychain()
+        }
         super.tearDown()
     }
 

@@ -16,7 +16,12 @@ enum InstallationMarker {
 
     /// App sandbox Documents directory (NOT app group) - gets deleted on uninstall
     private static var sandboxDocumentsUrl: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        // Tests delete the marker, and a missing marker makes the next real launch treat the keychain
+        // as orphaned and wipe it (`AppScene.handleOrphanedKeychain`). Give them their own directory so
+        // that only ever happens to a marker a test created. `Env.appStorageUrl` namespaces the app
+        // group the same way; this file is deliberately outside it, so it needs its own redirect.
+        return Env.isUnitTest ? documents.appendingPathComponent("unit-tests") : documents
     }
 
     static var markerPath: URL {
@@ -32,6 +37,7 @@ enum InstallationMarker {
     /// Should be called after handling any orphaned keychain detection
     static func create() throws {
         let data = UUID().uuidString.data(using: .utf8)!
+        try FileManager.default.createDirectory(at: sandboxDocumentsUrl, withIntermediateDirectories: true)
         try data.write(to: markerPath)
         Logger.info("Installation marker created", context: "InstallationMarker")
     }

@@ -32,11 +32,7 @@ struct GradientCircleButton: View {
                             endPoint: .bottom
                         )
                     )
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white10, lineWidth: 1)
-                            .padding(0.5)
-                    )
+                    .shadow(color: .white10, radius: 0, x: 0, y: -1)
 
                 if let icon {
                     Image(icon)

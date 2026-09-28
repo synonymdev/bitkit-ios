@@ -54,7 +54,7 @@ struct PubkySessionBackupV1: Codable, Equatable {
     let sessionSecret: String?
 }
 
-struct BlocktankRefundAddress: Codable, Equatable, Sendable {
+struct BlocktankRefundAddress: Codable, Equatable {
     let address: String
     let index: UInt32
 }

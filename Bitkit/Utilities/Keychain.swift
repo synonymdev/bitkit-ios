@@ -32,6 +32,19 @@ enum KeychainEntryType {
 }
 
 class Keychain {
+    private static let unitTestAccountPrefix = "unit-tests."
+
+    /// Under test, entries live under a prefixed account name so a suite cannot read, overwrite or
+    /// delete the wallet belonging to whoever is running it. `BitkitTests` is hosted in the app and
+    /// `Env.network` resolves to regtest for both, so tests and a Debug build otherwise share one
+    /// keychain access group. This mirrors what `Env.appStorageUrl` already does for file storage,
+    /// and only ever narrows what a process can see — the access group stays pinned either way.
+    /// Internal rather than private so tests that build their own `SecItem` queries can address the
+    /// same entry `save`/`load` use.
+    class func account(for key: KeychainEntryType) -> String {
+        Env.isUnitTest ? unitTestAccountPrefix + key.storageKey : key.storageKey
+    }
+
     class func save(key: KeychainEntryType, data: Data) throws {
         Logger.debug("Saving \(key.storageKey)", context: "Keychain")
 
@@ -39,7 +52,7 @@ class Keychain {
             kSecClass as String: kSecClassGenericPassword as String,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
             kSecAttrSynchronizable as String: false,
-            kSecAttrAccount as String: key.storageKey,
+            kSecAttrAccount as String: account(for: key),
             kSecValueData as String: data,
             kSecAttrAccessGroup as String: Env.keychainGroup,
         ] as [String: Any]
@@ -87,7 +100,7 @@ class Keychain {
 
         let query = [
             kSecClass as String: kSecClassGenericPassword as String,
-            kSecAttrAccount as String: key.storageKey,
+            kSecAttrAccount as String: account(for: key),
             kSecAttrAccessGroup as String: Env.keychainGroup,
         ] as [String: Any]
 
@@ -130,7 +143,7 @@ class Keychain {
     class func delete(key: KeychainEntryType) throws {
         let query = [
             kSecClass as String: kSecClassGenericPassword as String,
-            kSecAttrAccount as String: key.storageKey,
+            kSecAttrAccount as String: account(for: key),
             kSecAttrAccessGroup as String: Env.keychainGroup,
         ] as [String: Any]
 
@@ -158,7 +171,7 @@ class Keychain {
         if existingData != nil {
             let searchQuery: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
-                kSecAttrAccount as String: key.storageKey,
+                kSecAttrAccount as String: account(for: key),
                 kSecAttrAccessGroup as String: Env.keychainGroup,
             ]
             let updateAttributes: [String: Any] = [
@@ -188,7 +201,7 @@ class Keychain {
     class func load(key: KeychainEntryType) throws -> Data? {
         let query = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key.storageKey,
+            kSecAttrAccount as String: account(for: key),
             kSecReturnData as String: kCFBooleanTrue!,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecAttrAccessGroup as String: Env.keychainGroup,
@@ -250,6 +263,12 @@ class Keychain {
     class func wipeEntireKeychain() throws {
         let keys = getAllKeyChainStorageKeys()
         for key in keys {
+            // A test run must only ever clear its own namespaced entries. Deleting an un-prefixed
+            // account here is what destroys the wallet on the simulator the suite runs against.
+            if Env.isUnitTest, !key.hasPrefix(unitTestAccountPrefix) {
+                continue
+            }
+
             let query = [
                 kSecClass as String: kSecClassGenericPassword as String,
                 kSecAttrAccount as String: key,

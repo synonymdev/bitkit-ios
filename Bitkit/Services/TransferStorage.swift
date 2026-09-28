@@ -14,12 +14,8 @@ class TransferStorage {
         transfersChangedSubject.eraseToAnyPublisher()
     }
 
-    private init(suiteName: String? = nil) {
-        if let suiteName {
-            defaults = UserDefaults(suiteName: suiteName) ?? .standard
-        } else {
-            defaults = .standard
-        }
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
     }
 
     /// Insert a new transfer

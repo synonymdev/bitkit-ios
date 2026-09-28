@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-09-10
+
+### Added
+- Added receiver-specific Paykit contact support for Bitkit wallet and server integrations. #620
+- Bitkit now creates, names, backs up, and manages separate watch-only Bitcoin accounts and securely delivers signed setup claims to Paykit servers. #630
+- Incoming Paykit payment requests can now be reviewed and approved through the existing payment flow. #637
+- Improved Lightning send failures with clearer localized messages and a retry action that refreshes payment routing before trying again. #652
+- Passphrase-protected (hidden) Trezor wallets can now be paired from the connect flow, each appearing as its own watch-only balance with its own label, activity and removal, and asking for its passphrase again when a transfer needs signing. #662
+- Incoming Paykit payment requests now stay discoverable until handled, and connected contacts can send new private requests from the invoice flow. #676
+- The name you give a hardware wallet is now included in your backup and comes back when you pair the device again, and removing a hardware wallet asks first whether to keep its name and tags in your backup. #681
+- Payments made from incoming private payment requests now send a payment proof back to the requester. #683
+- Bitkit can now review, manage, and pay recurring payment requests from Paykit contacts, with on-chain fees shown before confirming the first payment and unresolved payments protected from accidental retries. #685
+- Added on-chain send support for paired Trezor wallets, including transaction approval on the device. #688
+- Added a Trezor Receive tab with fast watch-only addresses and on-device verification. #693
+
+### Changed
+- Hardware wallet transactions are now stored with the rest of your activity, so they keep their tags, contacts and transaction details, show inputs and outputs under Explore, disappear when a transaction is replaced, and a transfer to spending funded from a hardware wallet shows as a single transfer. #648
+
+### Fixed
+- Updated the Receive screen's QR and details toggle to match the intended design, so "Show Details" is now a tertiary button and "Show QR Code" a primary button with a QR icon. #635
+- Improved Pubky profiles, contacts, imports, and contact payments with unified payment settings and updated layouts. #636
+- Fixed profile deletion being blocked when private Paykit contact cleanup could not complete. #640
+- Fixed Paykit Server authorization, removed duplicate service names from permission summaries, and made private payment request connections establish promptly after contact discovery. #653
+- Fixed address type monitoring and primary address type changes getting permanently stuck after a temporary wallet sync timeout. #667
+- Tags you add to hardware wallet activity are now included in your backup, and older backups are upgraded automatically the first time you restore them. #674
+- Contact payments now isolate malformed receiver markers, validate request amounts and available capacity before payment, and retain cleanup of private details when switching to public-only sharing. #684
+- Transfers to spending now offer a maximum amount and receiving capacity your savings can actually cover the fees for, so transferring your full balance no longer fails with an insufficient funds error, and the hardware wallet transfer amount is held to that maximum instead of accepting any amount you type. #686
+- Swipe To Transfer now stays on the spinner after you confirm a transfer to spending. #690
+- Hardware-wallet send now clearly shows fee and funding-source preparation and prevents confirmation until the selected fee is ready. #708
+- Improved receive invoice routing so Lightning and additional spending capacity flows respect ready inbound liquidity and show clearer capacity errors. #711
+- A hardware-wallet payment that fails to broadcast now tells you the payment was not confirmed and lets you retry or leave, instead of locking the send screen. #729
+- Paid Blocktank channel orders now include a wallet-owned address for refunds if they expire before being claimed. #732
+
+### Security
+- QuickPay stays PIN-free under a configurable daily spend limit; once that limit is reached, payments open Confirm instead. #672
+- Added app-scoped Pubky authorization and secure sign-out, preserved contact payments during node startup, and fixed missing payment requests in history. #697
+
 ## [2.4.1] - 2026-08-21
 
 ### Security
@@ -107,7 +144,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix keyboard and UI issues in the calculator widget #513
 - Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 
-[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.1...HEAD
+[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.2...v2.4.0
 [2.3.2]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.1...v2.3.2

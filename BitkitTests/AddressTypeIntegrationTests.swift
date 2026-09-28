@@ -9,6 +9,24 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        // `resetToDefaults()` writes ~30 real keys. The keychain wipe and LDK storage are namespaced
+        // under test; the app's preferences are not, so snapshot the domain and restore it afterwards.
+        snapshotAppDefaultsDomain()
+        // A running node persists address-search indexes as transactions arrive. Teardown blocks run
+        // last-in, first-out, so stopping it here lands before the restore above; `tearDown()` runs
+        // after both and would stop it too late.
+        addTeardownBlock { [settings] in
+            let lightning = await MainActor.run { settings.lightningService }
+            let isRunning = await MainActor.run { lightning.status?.isRunning == true }
+            if isRunning {
+                try? await lightning.stop()
+            }
+        }
+        // Reset here rather than in tearDown. The domain restore only fixes disk, and
+        // `SettingsViewModel.shared`'s `@AppStorage` does not observe it — so without this the cached
+        // `selectedAddressType` carries between tests and `setMonitoring` returns early at its
+        // "same as selected" guard, before the balance check the test means to exercise.
+        await MainActor.run { settings.resetToDefaults() }
         Logger.test("Starting address type integration test setup", context: "AddressTypeIntegrationTests")
         try Keychain.wipeEntireKeychain()
     }
@@ -22,7 +40,6 @@ final class AddressTypeIntegrationTests: XCTestCase {
             try? await lightning.stop()
         }
         try? await lightning.wipeStorage(walletIndex: walletIndex)
-        await MainActor.run { settings.resetToDefaults() }
         try await super.tearDown()
     }
 

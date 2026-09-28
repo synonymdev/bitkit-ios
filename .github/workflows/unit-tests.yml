@@ -70,12 +70,12 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -enableCodeCoverage NO \
             -parallel-testing-enabled NO \
-            -skip-testing:BitkitTests/TxBumpingTests \
             -skip-testing:BitkitTests/UtxoSelectionTests \
             -skip-testing:BitkitTests/BlocktankTests \
             -skip-testing:BitkitTests/PaymentFlowTests \
             -skip-testing:BitkitTests/BlocktankRefundAddressLiveIntegrationTests \
             -skip-testing:BitkitTests/AddressTypeIntegrationTests \
+            -skip-testing:BitkitTests/RNMigrationCleanupTests \
             | xcbeautify --report junit
           echo "✅ Unit tests completed at $(date)"
 

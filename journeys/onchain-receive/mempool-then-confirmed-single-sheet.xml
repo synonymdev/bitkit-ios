@@ -1,0 +1,23 @@
+<journey name="mempool-first onchain receive shows one sheet after confirmation">
+  <description>
+    Covers issue #455 (Android #797). Confirmed events now reach the received sheet, so a deposit
+    seen in the mempool first must not show a second sheet when it confirms. AppViewModel dedupes on
+    the txid in-session and on the persisted seen state across launches.
+
+    Precondition: onboarded regtest wallet, node running, app in the foreground on the home screen.
+
+    Adapted: the Android original ends by checking no "Payment Received" notification is posted. iOS
+    posts no local notification for an onchain receive, so that step is dropped.
+  </description>
+  <actions>
+    <action>Tap Receive (id "Receive") and verify the Receive sheet opens (id "ReceiveScreen")</action>
+    <action>Tap the "Savings" receive tab (id "Tab-savings"), tap "Show Details" (id "ShowDetails") and read the address from id "ReceiveOnchainAddress"</action>
+    <action>Swipe the Receive sheet down to return to the home screen</action>
+    <action>Run: ../bitkit-android/lsp POST /regtest/chain/deposit '{"address":"&lt;savings addr&gt;","amountSat":14797}'</action>
+    <action>Wait up to 30s and verify the received sheet (id "ReceivedTransaction") is visible with the deposited amount</action>
+    <action>Tap the sheet button (id "ReceivedTransactionButton")</action>
+    <action>Run: ../bitkit-android/lsp POST /regtest/chain/mine '{"count":1}'</action>
+    <action>Run: grep &lt;txid&gt; "$(ls -t "$(xcrun simctl get_app_container booted to.bitkit group.bitkit)"/logs/bitkit_*.log | head -1)" and wait until an "Onchain transaction confirmed" line shows for the txid</action>
+    <action>Wait 30s after that event and verify the received sheet does not appear again</action>
+  </actions>
+</journey>

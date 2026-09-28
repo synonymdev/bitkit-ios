@@ -14,9 +14,9 @@
     <action>If the first-run Transfer To Spending intro is shown, tap "Get Started"</action>
     <action>Verify the transfer amount screen opens (id "HardwareTransferAmount"), titled "TRANSFER TO SPENDING", showing an AVAILABLE row (id "HardwareTransferAmountAvailable"), the 25% and MAX quick buttons, and a number pad</action>
     <action>Tap the "25%" quick button (id "HardwareTransferAmountQuarter") to set a valid amount below the available limit</action>
-    <action>Tap "Continue" (id "HardwareTransferAmountContinue") and wait for the Blocktank order to be created</action>
+    <action>Tap "Continue" (id "HardwareTransferAmountContinue") and wait for the fee estimate</action>
     <action>Verify the sign screen opens (id "HardwareTransferSign"), titled "SIGN WITH YOUR DEVICE", showing the NETWORK FEES, SERVICE FEES, TO SPENDING and TOTAL cells, the Learn More and Advanced buttons, and the Trezor illustration</action>
-    <action>Tap "Open Trezor Connect" (id "HardwareTransferOpenTrezorConnect")</action>
+    <action>Tap "Open Trezor Connect" (id "HardwareTransferOpenTrezorConnect") to create the Blocktank order. If its fee is higher than the estimate, verify the fee cells refresh and tap "Open Trezor Connect" again; otherwise signing starts immediately</action>
     <action>Approve the Recipient, Amount, Locktime, and Summary prompts on the Bridge emulator in order</action>
     <action>Verify the transaction signed screen appears (id "HardwareTransferSigned"), titled "TRANSACTION SIGNED", showing the same fee cells and the checkmark illustration</action>
     <action>Wait for the screen to auto-forward and verify the Processing Payment / setting-up progress screen appears</action>

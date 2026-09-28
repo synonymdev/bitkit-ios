@@ -6,12 +6,10 @@ import XCTest
 final class PublicPaykitServiceTests: XCTestCase {
     override func setUp() {
         super.setUp()
+        // `clearPaykitDefaults()` removes seven live keys, including the bolt11 the app published to
+        // the user's homeserver along with its payment hash and expiry.
+        snapshotAppDefaultsDomain()
         clearPaykitDefaults()
-    }
-
-    override func tearDown() {
-        clearPaykitDefaults()
-        super.tearDown()
     }
 
     func testParseEndpointReadsSpecPayloadObject() {

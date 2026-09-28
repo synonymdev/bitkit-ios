@@ -17,8 +17,8 @@ struct LabeledDetailCell: View {
                     .lineLimit(2)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
-        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .topLeading)
+        .padding(.bottom, 12)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color.white16).frame(height: 1)
         }

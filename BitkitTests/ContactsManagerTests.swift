@@ -6,12 +6,9 @@ import XCTest
 final class ContactsManagerTests: XCTestCase {
     override func setUp() {
         super.setUp()
+        // tearDown used to delete this outright, so a user who had enabled Paykit UI lost the setting.
+        snapshotAppDefaults(PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
-    }
-
-    override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
-        super.tearDown()
     }
 
     func testPubkyPublicKeyFormatNormalizesPrefixedAndUnprefixedKeys() {

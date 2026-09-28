@@ -66,6 +66,30 @@ final class InstallationMarkerTests: XCTestCase {
         XCTAssertFalse(InstallationMarker.markerPath.path.contains("group.bitkit"))
     }
 
+    func testMarkerPathIsIsolatedUnderTest() {
+        XCTAssertTrue(InstallationMarker.markerPath.pathComponents.contains("unit-tests"))
+    }
+
+    /// `delete()` under test must not reach the real marker: a missing marker makes the next launch
+    /// treat the keychain as orphaned and wipe it. Plant a stand-in only when no real marker exists and
+    /// remove only that stand-in — on a simulator with a real install, deleting it is the bug itself.
+    func testDeleteLeavesTheRealMarkerAlone() throws {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let realMarker = documents.appendingPathComponent(".bitkit_installed")
+        if !FileManager.default.fileExists(atPath: realMarker.path) {
+            try Data("probe".utf8).write(to: realMarker)
+            addTeardownBlock { try? FileManager.default.removeItem(at: realMarker) }
+        }
+
+        try InstallationMarker.create()
+        try InstallationMarker.delete()
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: realMarker.path),
+            "InstallationMarker.delete() removed the real marker"
+        )
+    }
+
     func testCreateMarkerIsIdempotent() throws {
         // Create the marker
         try InstallationMarker.create()

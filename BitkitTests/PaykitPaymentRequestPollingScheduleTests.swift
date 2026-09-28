@@ -2,38 +2,34 @@
 import XCTest
 
 final class PaykitPaymentRequestPollingScheduleTests: XCTestCase {
-    func testIdleInboxAndMaintenanceBackOffIndependently() {
+    func testInboxKeepsTenSecondChecksAndSlowerMaintenance() {
         var schedule = PaykitPaymentRequestPollingSchedule()
         var elapsed: Duration = .zero
         var maintenanceTimes: [Duration] = []
 
-        for delay in [5, 10, 15, 30, 30, 30, 30, 30, 30] {
-            XCTAssertEqual(schedule.nextDelay, .seconds(delay))
+        for _ in 0 ..< 21 {
+            XCTAssertEqual(schedule.nextDelay, .seconds(10))
             elapsed += schedule.nextDelay
-            if schedule.takeMaintenanceIfDue() { maintenanceTimes.append(elapsed) }
-            schedule.recordRefresh(requestsChanged: false)
+            switch schedule.takeRound(isConnected: true) {
+            case .skip:
+                XCTFail("Connected polling rounds should refresh the inbox")
+            case .refreshInbox:
+                break
+            case .refreshInboxAndMaintenance:
+                maintenanceTimes.append(elapsed)
+            }
         }
 
         XCTAssertEqual(maintenanceTimes, [.seconds(30), .seconds(90), .seconds(210)])
     }
 
-    func testRequestChangesResetInboxWithoutResettingMaintenance() {
+    func testOfflineRoundSkipsWorkWithoutAdvancingMaintenance() {
         var schedule = PaykitPaymentRequestPollingSchedule()
-        var elapsed: Duration = .zero
-        var maintenanceTimes: [Duration] = []
 
-        for _ in 0 ..< 4 {
-            elapsed += schedule.nextDelay
-            if schedule.takeMaintenanceIfDue() { maintenanceTimes.append(elapsed) }
-            schedule.recordRefresh(requestsChanged: elapsed == .seconds(60))
-        }
-        while elapsed < .seconds(210) {
-            XCTAssertEqual(schedule.nextDelay, .seconds(5))
-            elapsed += schedule.nextDelay
-            if schedule.takeMaintenanceIfDue() { maintenanceTimes.append(elapsed) }
-            schedule.recordRefresh(requestsChanged: true)
-        }
-
-        XCTAssertEqual(maintenanceTimes, [.seconds(30), .seconds(90), .seconds(210)])
+        XCTAssertEqual(schedule.takeRound(isConnected: false), .skip)
+        XCTAssertEqual(schedule.nextDelay, .seconds(10))
+        XCTAssertEqual(schedule.takeRound(isConnected: true), .refreshInbox)
+        XCTAssertEqual(schedule.takeRound(isConnected: true), .refreshInbox)
+        XCTAssertEqual(schedule.takeRound(isConnected: true), .refreshInboxAndMaintenance)
     }
 }
