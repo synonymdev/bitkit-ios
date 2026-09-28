@@ -112,7 +112,9 @@ struct HomeScreen: View {
         guard pullRefreshState.beginRefreshing() else { return }
         defer { pullRefreshState.endRefreshing() }
 
-        async let currencyRefresh: Void = currency.refresh()
+        async let currencyRefreshFeedback: Void = HomePullRefreshFeedback.wait {
+            await currency.refresh()
+        }
 
         if wallet.nodeLifecycleState == .running {
             do {
@@ -123,7 +125,7 @@ struct HomeScreen: View {
             }
         }
 
-        await currencyRefresh
+        await currencyRefreshFeedback
     }
 
     private func consumeRequestedHomePage() {
@@ -134,6 +136,37 @@ struct HomeScreen: View {
 }
 
 // MARK: - Pull-to-refresh
+
+enum HomePullRefreshFeedback {
+    static let timeout: Duration = .seconds(10)
+
+    @MainActor
+    static func wait(
+        timeout: Duration = HomePullRefreshFeedback.timeout,
+        refresh: @escaping () async -> Void,
+        sleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) async {
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        Task {
+            await refresh()
+            continuation.finish()
+        }
+        let timeoutTask = Task {
+            do {
+                try await sleep(timeout)
+                continuation.finish()
+            } catch {
+                continuation.finish()
+            }
+        }
+
+        defer {
+            timeoutTask.cancel()
+            continuation.finish()
+        }
+        for await _ in stream {}
+    }
+}
 
 @MainActor
 @Observable

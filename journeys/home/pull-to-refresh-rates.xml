@@ -14,7 +14,9 @@
     <action>Resolve the app group again, run `grep "Currency rates refreshed" "$GROUP"/logs/*.log`, and note the time of the last line</action>
     <action>Verify the home screen (id "HomeScrollView") is visible</action>
     <action>Run `xcodebuildmcp simulator snapshot-ui`, note the elementRef for "HomeScrollView", then run `xcodebuildmcp ui-automation swipe --within-element-ref &lt;ref&gt; --direction down --distance 0.7` and note the UTC time</action>
+    <action>Within about 1s of the pull, take a screenshot and verify a spinner is visible below the header with the wallet content shifted down</action>
     <action>Verify the newest log (list the logs again) gains a "Currency rates refreshed successfully" line within 10s of the pull</action>
+    <action>Take another screenshot and verify the spinner and extra space above the wallet content are gone</action>
     <action>Verify no "Currency rates refresh failed" line was added for the pull</action>
   </actions>
 </journey>
