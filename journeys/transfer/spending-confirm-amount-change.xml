@@ -11,7 +11,9 @@
     and pays at once. The higher-total path (the "Fees changed" toast) is covered by unit tests and a
     manual test, because spending the wallet's own UTXO outside the app is not a listed capability.
 
-    iOS differs from Android in one step: there is no app-log step.
+    iOS differs from Android in two steps: there is no app-log step, and closing the received sheet
+    re-sizes Spending Confirm, so the lower amounts can already be on screen before the swipe. The
+    swipe pays at once either way.
 
     Precondition: a freshly onboarded Debug build on the staging regtest backend (a plain Debug build,
     or an E2E_BUILD with E2E_BACKEND=network; the default E2E_BUILD targets the local backend, which
@@ -29,7 +31,7 @@
     <action>Run in one command: ../bitkit-android/lsp POST /regtest/chain/deposit '{"address":"&lt;savings addr&gt;","amountSat":500000}' &amp;&amp; ../bitkit-android/lsp POST /regtest/chain/mine '{"count":1}'</action>
     <action>Wait 30s for the wallet to sync the new UTXO</action>
     <action>If the received sheet (id "ReceivedTransaction") is visible, tap its button (id "ReceivedTransactionButton")</action>
-    <action>Verify the confirm screen still shows the amounts noted before the deposit</action>
+    <action>Verify the confirm screen is visible; if the received sheet was shown, "Network Fees" and "Total" may already show lower amounts than noted</action>
     <action>Swipe the "Swipe To Transfer" handle (id "GRAB") fully to the right</action>
     <action>Wait up to 90s for the setting up screen (id "LightningSettingUp")</action>
   </actions>
