@@ -621,10 +621,7 @@ struct PaykitPaymentRequestService {
             }
             guard let receiverPath = PaykitReceiverPath.supported.first(where: {
                 linkedPaths.contains($0) && capablePaths.contains($0)
-            }) else {
-                isComplete = false
-                continue
-            }
+            }) else { continue }
 
             targets.append(PaykitPaymentRequestTarget(publicKey: publicKey, receiverPath: receiverPath))
         }
@@ -1171,11 +1168,18 @@ final class PaykitPaymentRequestManager {
         } catch is CancellationError {
             return
         } catch {
+            guard generation == eligibilityGeneration,
+                  currentStateGeneration == stateGeneration
+            else { return }
+            eligibleTargets = eligibleTargets.filter { target in
+                savedPublicKeys.contains { PubkyPublicKeyFormat.matches($0, target.publicKey) }
+            }
             logWarning("Failed to refresh Paykit payment request recipients: \(error)")
         }
     }
 
     func refreshEligibleTarget(publicKey: String) async -> PaykitPaymentRequestTarget? {
+        let generation = eligibilityGeneration
         let currentStateGeneration = stateGeneration
         guard isAvailable(),
               let activeIdentity,
@@ -1193,8 +1197,11 @@ final class PaykitPaymentRequestManager {
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity),
                   savedPublicKeys.contains(where: { PubkyPublicKeyFormat.matches($0, publicKey) })
             else { return nil }
+            guard generation == eligibilityGeneration else { return eligibleTarget(publicKey: publicKey) }
             let target = discovery.targets.first
             if target != nil || discovery.isComplete {
+                // Invalidates a full refresh that started before this lookup, so its older result cannot overwrite this one.
+                eligibilityGeneration += 1
                 var targets = eligibleTargets.filter { !PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
                 if let target {
                     targets.append(target)
