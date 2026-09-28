@@ -565,14 +565,13 @@ struct PaykitPaymentRequestService {
         )
     }
 
-    func isAwaitingPayment(_ request: PaykitPaymentRequest) async throws -> Bool {
-        try await sdk.paymentRequests().contains {
+    func lifecycleState(of request: PaykitPaymentRequest) async throws -> Paykit.PaymentRequestLifecycleState? {
+        try await sdk.paymentRequests().first {
             $0.paymentRequestId == request.paymentRequestId &&
                 $0.counterparty == request.counterparty &&
                 $0.counterpartyReceiverPath == request.counterpartyReceiverPath &&
-                $0.localRole == .payer &&
-                $0.state == .accepted
-        }
+                $0.localRole == .payer
+        }?.state
     }
 
     func eligibleTargets(savedPublicKeys: [String], expectedIdentity: String) async throws -> [PaykitPaymentRequestTarget] {
@@ -1598,14 +1597,14 @@ final class PaykitPaymentRequestManager {
         // The accepted history entry may be one `perform` wrote locally, so it cannot tell an unpaid request
         // from one whose proof was already submitted and deleted. The SDK record is read after the proofs:
         // a proof is only deleted once the SDK has moved the record past `.accepted`.
-        let isAwaitingPayment: Bool
+        let sdkLifecycleState: Paykit.PaymentRequestLifecycleState?
         do {
-            isAwaitingPayment = try await service.isAwaitingPayment(acceptedRequest)
+            sdkLifecycleState = try await service.lifecycleState(of: acceptedRequest)
         } catch {
             logWarning("Failed to confirm Paykit payment request is unpaid: \(error)")
             return
         }
-        guard isAwaitingPayment,
+        guard sdkLifecycleState == .accepted,
               actionGeneration == stateGeneration,
               !pendingRequests.contains(where: { $0.id == request.id })
         else { return }
@@ -1616,22 +1615,29 @@ final class PaykitPaymentRequestManager {
 
     func paymentRequestForRetry(_ id: PaykitPaymentRequest.ID) async -> PaykitPaymentRequest? {
         approvedPaymentRequestIds.remove(id)
-        if let request = pendingRequests.first(where: { $0.id == id }) {
-            return request
+        let pendingRequest = pendingRequests.first(where: { $0.id == id })
+        if let pendingRequest, pendingRequest.billingPeriod != nil {
+            return pendingRequest
         }
-        guard let request = historyRequests.first(where: {
+        guard let request = pendingRequest ?? historyRequests.first(where: {
             $0.id == id && $0.direction == .incoming && $0.lifecycleState == .accepted
         }) else { return nil }
 
+        // A pending entry can outlive its payment until the next refresh, so a one-time request is only
+        // retried while the SDK still has it unpaid.
         let actionGeneration = stateGeneration
-        let isAwaitingPayment: Bool
+        let sdkLifecycleState: Paykit.PaymentRequestLifecycleState?
         do {
-            isAwaitingPayment = try await service.isAwaitingPayment(request)
+            sdkLifecycleState = try await service.lifecycleState(of: request)
         } catch {
             logWarning("Failed to confirm Paykit payment request is unpaid: \(error)")
             return nil
         }
-        guard isAwaitingPayment, actionGeneration == stateGeneration else { return nil }
+        let payableStates: [Paykit.PaymentRequestLifecycleState] = pendingRequest == nil ? [.accepted] : [.proposed, .accepted]
+        guard let sdkLifecycleState,
+              payableStates.contains(sdkLifecycleState),
+              actionGeneration == stateGeneration
+        else { return nil }
         if let pendingRequest = pendingRequests.first(where: { $0.id == id }) {
             return pendingRequest
         }
