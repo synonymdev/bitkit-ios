@@ -331,7 +331,7 @@ jobs:
           # be the address the Mac actually reaches it on.
           LND_EXTERNAL_IP=$(tailscale ip -4)
           export LND_EXTERNAL_IP
-          echo "tailnet address: $LND_EXTERNAL_IP"
+          echo "joined the tailnet as $(tailscale status --json | jq -r .Self.HostName) on $LND_EXTERNAL_IP"
 
           mkdir -p lnd && chmod 777 lnd
           docker compose pull
@@ -498,7 +498,7 @@ jobs:
               || true)
             [ -n "$ip" ] && break
             if (( SECONDS >= deadline )); then
-              echo "::error::stack runner never joined the tailnet"
+              echo "::error::stack runner never joined the tailnet as regtest-${{ github.run_id }}-${{ github.run_attempt }}"
               tailscale status || true
               exit 1
             fi
