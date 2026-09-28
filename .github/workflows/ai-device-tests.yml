@@ -142,7 +142,11 @@ jobs:
   trezor-stack:
     if: inputs.suite == 'trezor-emu-remote'
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    permissions:
+      contents: read
+      actions: read
+    # Must outlast the hold loop below, which must outlast trezor-emu-remote.
+    timeout-minutes: 200
 
     steps:
       - name: Checkout bitkit-docker
@@ -151,10 +155,10 @@ jobs:
           repository: synonymdev/bitkit-docker
           ref: main
 
-      - uses: tailscale/github-action@v3
+      - uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
-          hostname: trezor-stack-${{ github.run_id }}
+          hostname: trezor-stack-${{ github.run_id }}-${{ github.run_attempt }}
           args: --accept-dns=false
 
       - name: Start regtest and Trezor emulator
@@ -202,6 +206,16 @@ jobs:
               http://127.0.0.1:43782/
           }
 
+          deadline=$(( SECONDS + 300 ))
+          until rpc getwalletinfo '[]' | jq -e '.result' > /dev/null 2>&1; do
+            if (( SECONDS >= deadline )); then
+              echo "::error::timed out waiting for a loaded bitcoind wallet"
+              docker compose logs --no-color --tail=50
+              exit 1
+            fi
+            sleep 5
+          done
+
           address=$(rpc getnewaddress '[]' | jq -r '.result')
           rpc generatetoaddress "[101, \"$address\"]" > /dev/null
 
@@ -214,21 +228,32 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          deadline=$(( SECONDS + 9000 ))
+          deadline=$(( SECONDS + 11400 ))
+          finished=false
           while (( SECONDS < deadline )); do
-            pending=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
-              --paginate --jq '[.jobs[] | select(.name == "trezor-emu-remote") | select(.status != "completed")] | length' \
-              2>/dev/null || echo 1)
-            started=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
-              --paginate --jq '[.jobs[] | select(.name == "trezor-emu-remote")] | length' \
-              2>/dev/null || echo 0)
+            if ! jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100"); then
+              echo "::error::could not read this run's jobs from the API"
+              exit 1
+            fi
+            remote=$(jq '[.jobs[] | select(.name == "trezor-emu-remote")]' <<<"$jobs_json")
+            started=$(jq 'length' <<<"$remote")
+            pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$remote")
             echo "trezor-emu-remote: ${started} job(s), ${pending} still running"
             if [ "$started" -gt 0 ] && [ "$pending" -eq 0 ]; then
               echo "tests finished"
+              finished=true
               break
             fi
             sleep 30
           done
+
+          # Falling out of the loop stops the emulator and takes the stack down
+          # while the tests are still using it, leaving this job green and the
+          # tester failing on connection errors.
+          if [ "$finished" != true ]; then
+            echo "::error::stack expired while trezor-emu-remote was still running"
+            exit 1
+          fi
 
       - name: Collect stack diagnostics
         if: always()
@@ -293,10 +318,10 @@ jobs:
         run: |
           xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
 
-      - uses: tailscale/github-action@v3
+      - uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
-          hostname: trezor-tester-${{ github.run_id }}
+          hostname: trezor-tester-${{ github.run_id }}-${{ github.run_attempt }}
           # Peers are found via `tailscale status`, so MagicDNS is unused. Leaving
           # it on rewrites the resolver, and its macOS setup targets a network
           # service named "Ethernet" that hosted runners do not have.
@@ -308,7 +333,7 @@ jobs:
           deadline=$(( SECONDS + 1800 ))
           while :; do
             ip=$(tailscale status --json 2>/dev/null \
-              | jq -r --arg h "trezor-stack-${{ github.run_id }}" \
+              | jq -r --arg h "trezor-stack-${{ github.run_id }}-${{ github.run_attempt }}" \
                   'first(.Peer[]? | select(.HostName == $h) | .TailscaleIPs[0]) // empty' \
               || true)
             [ -n "$ip" ] && break
@@ -321,7 +346,7 @@ jobs:
           done
           echo "STACK_IP=$ip" >> "$GITHUB_ENV"
 
-          for port in 21325 9001 43782 60001 9002 6080; do
+          for port in 21325 9001 43782 60001; do
             until nc -z -w 5 "$ip" "$port" 2>/dev/null; do
               if (( SECONDS >= deadline )); then
                 echo "::error::$ip:$port never became reachable"
@@ -383,7 +408,7 @@ jobs:
           PY
 
           nohup python3 /tmp/forward-stack.py "$STACK_IP" \
-            21325 9001 43782 60001 9002 6080 > /tmp/forward-stack.log 2>&1 &
+            21325 9001 43782 60001 > /tmp/forward-stack.log 2>&1 &
 
           # End to end, not just a local accept: the relay listens before it has
           # dialled anything, so a port check against it passes either way.
