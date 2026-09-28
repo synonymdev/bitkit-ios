@@ -1,16 +1,17 @@
 <journey name="spending confirm amount change">
   <description>
-    Verifies that a transfer to spending pays only the amount Spending Confirm shows
-    (synonymdev/bitkit-ios#783). When the funding plan rebuilt at swipe differs from the screen,
-    the swipe pays nothing: the screen shows the new network fee and total, and the next swipe pays
-    them. A plan that still matches the screen pays on the first swipe, as the transfer E2E covers.
+    Verifies that a transfer to spending never pays more than the total Spending Confirm shows
+    (synonymdev/bitkit-ios#783). After the swipe creates the order, the funding is rebuilt for it. A
+    plan that costs the same or less than the screen pays on that swipe. A plan that costs more pays
+    nothing: the screen shows the new amounts, a "Fees increased" toast explains the increase, and the
+    next swipe pays them.
 
-    The amount changes through coin selection: Spending Confirm sizes the network fee for two inputs,
-    then a larger UTXO confirms before the swipe, so the plan rebuilt at swipe spends one input and
-    pays a lower network fee.
+    This journey covers the cheaper plan. Spending Confirm sizes the network fee for two inputs, then
+    a larger UTXO confirms before the swipe, so the plan rebuilt at swipe spends one input, costs less
+    and pays at once. The higher-total path (the "Fees increased" toast) is covered by unit tests and a
+    manual test, because spending the wallet's own UTXO outside the app is not a listed capability.
 
-    iOS differs from Android in two steps: the first swipe also shows a "Please try again." toast,
-    and there is no app-log step, so the toast and the changed amounts are the evidence.
+    iOS differs from Android in one step: there is no app-log step.
 
     Precondition: a freshly onboarded Debug build on the staging regtest backend (a plain Debug build,
     or an E2E_BUILD with E2E_BACKEND=network; the default E2E_BUILD targets the local backend, which
@@ -29,10 +30,6 @@
     <action>Wait 30s for the wallet to sync the new UTXO</action>
     <action>If the received sheet (id "ReceivedTransaction") is visible, tap its button (id "ReceivedTransactionButton")</action>
     <action>Verify the confirm screen still shows the amounts noted before the deposit</action>
-    <action>Swipe the "Swipe To Transfer" handle (id "GRAB") fully to the right</action>
-    <action>Verify an error toast reading "Please try again." appears, the confirm screen stays visible (id "SpendingConfirmMore") and the setting up screen (id "LightningSettingUp") does not appear</action>
-    <action>Verify "Network Fees" now shows a lower amount than noted, and "Total" is lower by the same difference</action>
-    <action>Note the new amounts under "Network Fees" and "Total"</action>
     <action>Swipe the "Swipe To Transfer" handle (id "GRAB") fully to the right</action>
     <action>Wait up to 90s for the setting up screen (id "LightningSettingUp")</action>
   </actions>
