@@ -18,14 +18,17 @@ extension PrivatePaykitService {
             return try await PublicPaykitService.beginPayment(to: publicKey)
         }
 
-        Task {
-            guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
-            _ = await refreshSavedContactEndpointsReturningError(
-                for: [normalizedKey],
-                wallet: wallet,
-                forceRefreshLightning: false,
-                requireImmediatePublication: false
-            )
+        if prePaymentPublicationKeys.insert(normalizedKey).inserted {
+            Task {
+                defer { prePaymentPublicationKeys.remove(normalizedKey) }
+                guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
+                _ = await refreshSavedContactEndpointsReturningError(
+                    for: [normalizedKey],
+                    wallet: wallet,
+                    forceRefreshLightning: false,
+                    requireImmediatePublication: false
+                )
+            }
         }
 
         var result = try await beginContactPayment(to: normalizedKey, receiverPath: PaykitReceiverPath.wallet)
