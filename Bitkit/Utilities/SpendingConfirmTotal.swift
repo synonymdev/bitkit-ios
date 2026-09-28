@@ -16,3 +16,9 @@ enum SpendingConfirmTotal {
         return orderFeeSat.saturatingAdd(networkFeeSat)
     }
 }
+
+/// The network fee and total the spending confirm screen shows.
+struct SpendingConfirmAmounts: Equatable {
+    let networkFeeSat: UInt64
+    let totalSat: UInt64
+}

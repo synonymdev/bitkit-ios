@@ -366,6 +366,16 @@ class TransferViewModel: ObservableObject {
         return order
     }
 
+    /// Whether the funding rebuilt for the order is what the confirm screen showed. On a mismatch the screen
+    /// moves to the order's fee and nothing is paid until the next swipe.
+    func isFundingDisplayed(order: IBtOrder, displayed: SpendingConfirmAmounts, rebuilt: SpendingConfirmAmounts) -> Bool {
+        guard order.feeSat == uiState.feeSat, displayed == rebuilt else {
+            uiState.feeSat = order.feeSat
+            return false
+        }
+        return true
+    }
+
     func payOrder(
         order: IBtOrder,
         speed: TransactionSpeed,

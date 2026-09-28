@@ -181,7 +181,20 @@ struct SpendingConfirm: View {
             guard let address = order.payment?.onchain?.address else {
                 throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
             }
+            let displayed = SpendingConfirmAmounts(networkFeeSat: transactionFee, totalSat: total)
             try await calculateTransactionFee(address: address, amountSats: order.feeSat, feeRate: confirmedFeeRate)
+            let rebuilt = SpendingConfirmAmounts(
+                networkFeeSat: transactionFee,
+                totalSat: SpendingConfirmTotal.leavingAmount(
+                    orderFeeSat: order.feeSat,
+                    networkFeeSat: transactionFee,
+                    shouldUseSendAll: shouldUseSendAll,
+                    maxSendable: maxSendableAmount
+                )
+            )
+            guard transfer.isFundingDisplayed(order: order, displayed: displayed, rebuilt: rebuilt) else {
+                throw AppError(message: t("other__try_again"), debugMessage: "Funding changed after confirmation")
+            }
             guard let rate = satsPerVbyte else { return }
             try await transfer.payOrder(
                 order: order,

@@ -88,6 +88,58 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testConfirmationRequiresAnotherSwipeWhenTheRebuiltFundingDiffers() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let createdOrder = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 101_000)
+        var calls = 0
+        let create: (UInt64, UInt64) async throws -> IBtOrder = { _, _ in
+            calls += 1
+            return createdOrder
+        }
+        let displayed = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
+        let rebuilt = SpendingConfirmAmounts(networkFeeSat: 700, totalSat: 101_700)
+
+        let firstOrder = try await vm.orderForConfirmation(createOrder: create)
+        let first = try XCTUnwrap(firstOrder)
+        XCTAssertFalse(vm.isFundingDisplayed(order: first, displayed: displayed, rebuilt: rebuilt))
+
+        let secondOrder = try await vm.orderForConfirmation(createOrder: create)
+        let second = try XCTUnwrap(secondOrder)
+        XCTAssertEqual(second.id, createdOrder.id)
+        XCTAssertEqual(calls, 1)
+        XCTAssertTrue(vm.isFundingDisplayed(order: second, displayed: rebuilt, rebuilt: rebuilt))
+    }
+
+    @MainActor
+    func testConfirmationRequiresAnotherSwipeWhenTheCreatedOrderCostsLess() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let createdOrder = makeOrder(id: "cheaper", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 100_500)
+        let orderValue = try await vm.orderForConfirmation { _, _ in createdOrder }
+        let order = try XCTUnwrap(orderValue)
+        let displayed = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
+        let rebuilt = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_000)
+
+        XCTAssertFalse(vm.isFundingDisplayed(order: order, displayed: displayed, rebuilt: rebuilt))
+        XCTAssertEqual(vm.uiState.feeSat, createdOrder.feeSat)
+        XCTAssertTrue(vm.isFundingDisplayed(order: order, displayed: rebuilt, rebuilt: rebuilt))
+    }
+
+    @MainActor
+    func testConfirmationPaysOnTheFirstSwipeWhenTheRebuiltFundingMatches() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let createdOrder = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 101_000)
+        let orderValue = try await vm.orderForConfirmation { _, _ in createdOrder }
+        let order = try XCTUnwrap(orderValue)
+        let amounts = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
+
+        XCTAssertTrue(vm.isFundingDisplayed(order: order, displayed: amounts, rebuilt: amounts))
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
+    }
+
+    @MainActor
     func testConfirmationReplacesAnExpiredRetainedOrder() async throws {
         let vm = makeViewModel()
         vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
