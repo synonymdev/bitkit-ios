@@ -1,4 +1,5 @@
 @testable import Bitkit
+import LocalAuthentication
 import SwiftUI
 import XCTest
 
@@ -95,6 +96,29 @@ final class AuthCheckBiometricPolicyTests: XCTestCase {
                 attemptKind: .automatic,
                 hasAutomaticallyAttempted: hasAutomaticallyAttempted
             )
+        )
+    }
+
+    func testDoesNotOfferRetryWhenBiometricsRequireSystemConfiguration() {
+        for errorCode in [
+            LAError.biometryNotAvailable.rawValue,
+            LAError.biometryNotEnrolled.rawValue,
+            LAError.passcodeNotSet.rawValue,
+        ] {
+            XCTAssertFalse(
+                AuthCheckBiometricPolicy.shouldOfferRetry(afterAvailabilityErrorCode: errorCode)
+            )
+        }
+    }
+
+    func testOffersRetryForTemporaryOrUnknownAvailabilityFailure() {
+        XCTAssertTrue(
+            AuthCheckBiometricPolicy.shouldOfferRetry(
+                afterAvailabilityErrorCode: LAError.biometryLockout.rawValue
+            )
+        )
+        XCTAssertTrue(
+            AuthCheckBiometricPolicy.shouldOfferRetry(afterAvailabilityErrorCode: nil)
         )
     }
 }
