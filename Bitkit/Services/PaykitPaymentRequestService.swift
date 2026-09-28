@@ -1013,6 +1013,7 @@ struct PaykitPaymentRequestPresentationStore: PaykitPaymentRequestPresentationSt
 final class PaykitPaymentRequestManager {
     private static let presentationRetryDelays = Array(repeating: TimeInterval(2), count: 14)
     private static let automaticPresentationRetryDelay = TimeInterval(120)
+    private static let recentEligibilityCheckInterval = TimeInterval(30)
 
     private(set) var pendingRequests: [PaykitPaymentRequest] = []
     private(set) var historyRequests: [PaykitPaymentRequest] = []
@@ -1057,6 +1058,7 @@ final class PaykitPaymentRequestManager {
     private var lastFullEligibilityWriteGeneration = 0
     /// The generation each single-contact refresh started at, so a full refresh that started earlier leaves that contact alone.
     private var singleEligibilityWriteGenerations: [String: Int] = [:]
+    private var eligibilityCheckDates: [String: Date] = [:]
     private var eligibleTargetRefreshTasks: [String: Task<PaykitPaymentRequestTarget?, Never>] = [:]
     private var stateGeneration = 0
     private var presentationGeneration = 0
@@ -1173,6 +1175,12 @@ final class PaykitPaymentRequestManager {
             }
             eligibleTargets = discovery.targets.filter { !isNewerSingleRefresh($0) } + eligibleTargets.filter(isNewerSingleRefresh)
             lastFullEligibilityWriteGeneration = generation
+            if discovery.isComplete {
+                let checkedAt = now()
+                for publicKey in savedPublicKeys {
+                    eligibilityCheckDates[Self.eligibilityKey(publicKey)] = checkedAt
+                }
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -1208,6 +1216,7 @@ final class PaykitPaymentRequestManager {
                   lastFullEligibilityWriteGeneration <= generation
             else { return eligibleTarget(publicKey: publicKey) }
             singleEligibilityWriteGenerations[Self.eligibilityKey(publicKey)] = generation
+            eligibilityCheckDates[Self.eligibilityKey(publicKey)] = now()
             var targets = eligibleTargets.filter { !PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
             if let target = discovery.targets.first {
                 targets.append(target)
@@ -1231,7 +1240,7 @@ final class PaykitPaymentRequestManager {
 
     @discardableResult
     func startEligibleTargetRefresh(publicKey: String) -> Task<PaykitPaymentRequestTarget?, Never> {
-        let key = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
+        let key = Self.eligibilityKey(publicKey)
         if let task = eligibleTargetRefreshTasks[key] {
             return task
         }
@@ -1245,9 +1254,17 @@ final class PaykitPaymentRequestManager {
     }
 
     /// Returns the known target at once, otherwise waits at most `timeout` for a refresh without blocking on a slow SDK call.
+    /// A contact checked in the last 30 seconds is not looked up again, because the lookup holds the SDK lock the payment needs next.
     func eligibleTarget(publicKey: String, waitingAtMost timeout: Duration) async -> PaykitPaymentRequestTarget? {
         if let target = eligibleTarget(publicKey: publicKey) {
             return target
+        }
+        let key = Self.eligibilityKey(publicKey)
+        if eligibleTargetRefreshTasks[key] == nil,
+           let checkedAt = eligibilityCheckDates[key],
+           now().timeIntervalSince(checkedAt) < Self.recentEligibilityCheckInterval
+        {
+            return nil
         }
 
         let refresh = startEligibleTargetRefresh(publicKey: publicKey)
@@ -1273,6 +1290,7 @@ final class PaykitPaymentRequestManager {
     func clearEligibleTargets() {
         eligibilityGeneration += 1
         singleEligibilityWriteGenerations = [:]
+        eligibilityCheckDates = [:]
         savedPublicKeys = []
         eligibleTargets = []
     }
@@ -1608,6 +1626,7 @@ final class PaykitPaymentRequestManager {
         invalidateRefresh()
         eligibilityGeneration += 1
         singleEligibilityWriteGenerations = [:]
+        eligibilityCheckDates = [:]
         expirationTask?.cancel()
         expirationTask = nil
         presentationRetryTask?.cancel()
