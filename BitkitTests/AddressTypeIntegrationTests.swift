@@ -9,6 +9,24 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        // `resetToDefaults()` writes ~30 real keys. The keychain wipe and LDK storage are namespaced
+        // under test; the app's preferences are not, so snapshot the domain and restore it afterwards.
+        snapshotAppDefaultsDomain()
+        // A running node persists address-search indexes as transactions arrive. Teardown blocks run
+        // last-in, first-out, so stopping it here lands before the restore above; `tearDown()` runs
+        // after both and would stop it too late.
+        addTeardownBlock { [settings] in
+            let lightning = await MainActor.run { settings.lightningService }
+            let isRunning = await MainActor.run { lightning.status?.isRunning == true }
+            if isRunning {
+                try? await lightning.stop()
+            }
+        }
+        // Reset here rather than in tearDown. The domain restore only fixes disk, and
+        // `SettingsViewModel.shared`'s `@AppStorage` does not observe it — so without this the cached
+        // `selectedAddressType` carries between tests and `setMonitoring` returns early at its
+        // "same as selected" guard, before the balance check the test means to exercise.
+        await MainActor.run { settings.resetToDefaults() }
         Logger.test("Starting address type integration test setup", context: "AddressTypeIntegrationTests")
         try Keychain.wipeEntireKeychain()
     }
@@ -22,7 +40,6 @@ final class AddressTypeIntegrationTests: XCTestCase {
             try? await lightning.stop()
         }
         try? await lightning.wipeStorage(walletIndex: walletIndex)
-        await MainActor.run { settings.resetToDefaults() }
         try await super.tearDown()
     }
 
@@ -87,7 +104,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
             return false
         }
 
-        if case .AddressTypeAlreadyMonitored = nodeError { return true }
+        if case .AddressTypeAlreadyMonitored = nodeError {
+            return true
+        }
         return false
     }
 
@@ -109,7 +128,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
             do {
                 try await syncWithRetry()
                 lastBalance = try await settings.lightningService.getBalanceForAddressType(addressType).totalSats
-                if lastBalance >= minimumSats { return lastBalance }
+                if lastBalance >= minimumSats {
+                    return lastBalance
+                }
                 Logger.test(
                     "Waiting for \(addressType.stringValue) balance: \(lastBalance)/\(minimumSats) sats",
                     context: "AddressTypeIntegrationTests"
@@ -139,7 +160,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
         line: UInt = #line
     ) async {
         for attempt in 1 ... attempts {
-            if await settings.setMonitoring(addressType, enabled: true, wallet: nil) { return }
+            if await settings.setMonitoring(addressType, enabled: true, wallet: nil) {
+                return
+            }
 
             Logger.test(
                 "Enabling \(addressType.stringValue) monitoring failed on attempt \(attempt)/\(attempts): \(addressTypeFailureCause)",
@@ -165,7 +188,9 @@ final class AddressTypeIntegrationTests: XCTestCase {
         line: UInt = #line
     ) async {
         for attempt in 1 ... attempts {
-            if await settings.updateAddressType(addressType, wallet: nil) { return }
+            if await settings.updateAddressType(addressType, wallet: nil) {
+                return
+            }
 
             Logger.test(
                 "Selecting \(addressType.stringValue) failed on attempt \(attempt)/\(attempts): \(addressTypeFailureCause)",

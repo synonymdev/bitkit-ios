@@ -13,9 +13,15 @@ struct SendOptionsView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
+    let hwSend: HwSendCoordinator
     @State private var selectedItem: PhotosPickerItem?
+
+    private var scanScope: ScanHandlingScope {
+        hwSend.isActive ? .onchainPayments : .unrestricted
+    }
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
@@ -29,16 +35,20 @@ struct SendOptionsView: View {
                 VStack(spacing: 8) {
                     Scanner(
                         onScan: { uri in
-                            await scanner.handleSendScan(uri) { route in
+                            await scanner.handleSendScan(uri, scope: scanScope) { route in
                                 if let route {
-                                    navigationPath.append(route)
+                                    handleRoute(route)
                                 }
                             }
                         },
                         onImageSelection: { item in
-                            await scanner.handleImageSelection(item, context: .send) { route in
+                            await scanner.handleImageSelection(
+                                item,
+                                context: .send,
+                                scope: scanScope
+                            ) { route in
                                 if let route {
-                                    navigationPath.append(route)
+                                    handleRoute(route)
                                 }
                             }
                         }
@@ -86,7 +96,8 @@ struct SendOptionsView: View {
                 navigation: navigation,
                 pubkyProfile: pubkyProfile,
                 sheets: sheets,
-                wallet: wallet
+                wallet: wallet,
+                hwWalletManager: hwWalletManager
             )
         }
     }
@@ -102,9 +113,9 @@ struct SendOptionsView: View {
         }
 
         Task {
-            await scanner.handleSendScan(uri) { route in
+            await scanner.handleSendScan(uri, scope: scanScope) { route in
                 if let route {
-                    navigationPath.append(route)
+                    handleRoute(route)
                 }
             }
         }
@@ -112,6 +123,10 @@ struct SendOptionsView: View {
 
     func handleContact() {
         navigationPath.append(isPaykitUIActive ? .contact : .comingSoon)
+    }
+
+    private func handleRoute(_ route: SendRoute) {
+        navigationPath.append(route)
     }
 }
 
@@ -121,7 +136,7 @@ struct SendOptionsView: View {
             isPresented: .constant(true),
             content: {
                 NavigationStack {
-                    SendOptionsView(navigationPath: .constant([]))
+                    SendOptionsView(navigationPath: .constant([]), hwSend: HwSendCoordinator())
                         .environmentObject(AppViewModel())
                         .environmentObject(ContactsManager())
                         .environmentObject(CurrencyViewModel())
@@ -131,6 +146,7 @@ struct SendOptionsView: View {
                         .environmentObject(SettingsViewModel.shared)
                         .environmentObject(SheetViewModel())
                         .environmentObject(WalletViewModel())
+                        .environment(HwWalletManager())
                 }
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }

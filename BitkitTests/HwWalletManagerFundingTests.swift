@@ -51,7 +51,12 @@ final class HwWalletManagerFundingTests: XCTestCase {
             balance: balance,
             txCount: 0,
             blockHeight: 100,
-            accountType: .nativeSegwit
+            accountType: .nativeSegwit,
+            nextUnusedExternalAddress: BitkitCore.AddressInfo(
+                address: "bcrt1qwatcher",
+                path: "m/84'/1'/0'/0/0",
+                transfers: 0
+            )
         )
     }
 

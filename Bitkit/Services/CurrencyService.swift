@@ -7,7 +7,10 @@ class CurrencyService {
     private let cache = UserDefaults.standard
     private let cacheKey = "cached_fx_rates"
 
-    private init() {}
+    /// Internal rather than private so tests can substitute a service that does not reach the
+    /// network. `CurrencyViewModel.refresh()` writes the rate cache and mirrors the display
+    /// currency into the app group on success, from a task that can outlive a test.
+    init() {}
 
     func fetchLatestRates() async throws -> [FxRate] {
         var lastError: Error?

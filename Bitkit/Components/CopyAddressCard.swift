@@ -14,6 +14,8 @@ struct CopyAddressPair {
 struct CopyAddressCard: View {
     let addresses: [CopyAddressPair]
     @Binding var navigationPath: [ReceiveRoute]
+    var editRoute: ReceiveRoute?
+    var accentColor: Color?
     @State private var showTooltipForIndex: Int? = nil
 
     var body: some View {
@@ -30,21 +32,24 @@ struct CopyAddressCard: View {
                             .lineLimit(2)
                             .truncationMode(.middle)
                             .padding(.bottom, 12)
+                            .accessibilityIdentifier(pair.type == .onchain ? "ReceiveOnchainAddress" : "ReceiveLightningAddress")
 
                         HStack(spacing: 8) {
-                            CustomButton(
-                                title: t("common__edit"),
-                                size: .small,
-                                icon: Image("pencil").foregroundColor(pair.type == .lightning ? .purpleAccent : .brandAccent),
-                                shouldExpand: true
-                            ) {
-                                navigationPath.append(.edit)
+                            if let editRoute {
+                                CustomButton(
+                                    title: t("common__edit"),
+                                    size: .small,
+                                    icon: Image("pencil").foregroundColor(buttonAccentColor(for: pair)),
+                                    shouldExpand: true
+                                ) {
+                                    navigationPath.append(editRoute)
+                                }
                             }
 
                             CustomButton(
                                 title: t("common__copy"),
                                 size: .small,
-                                icon: Image("copy").foregroundColor(pair.type == .lightning ? .purpleAccent : .brandAccent),
+                                icon: Image("copy").foregroundColor(buttonAccentColor(for: pair)),
                                 shouldExpand: true
                             ) {
                                 onCopy(address: pair.address, index: index)
@@ -57,7 +62,7 @@ struct CopyAddressCard: View {
                                 CustomButton(
                                     title: t("common__share"),
                                     size: .small,
-                                    icon: Image("share").foregroundColor(pair.type == .lightning ? .purpleAccent : .brandAccent),
+                                    icon: Image("share").foregroundColor(buttonAccentColor(for: pair)),
                                     shouldExpand: true
                                 )
                             }
@@ -86,6 +91,10 @@ struct CopyAddressCard: View {
         .background(Color.black)
         .cornerRadius(8)
         .aspectRatio(1, contentMode: .fit)
+    }
+
+    private func buttonAccentColor(for pair: CopyAddressPair) -> Color {
+        accentColor ?? (pair.type == .lightning ? .purpleAccent : .brandAccent)
     }
 
     private func onCopy(address: String, index: Int) {

@@ -37,7 +37,7 @@
 	<string>$(TREZOR_ELECTRUM_URL)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
-		<string>pubkyauth</string>
+		<string>pubkyring</string>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>

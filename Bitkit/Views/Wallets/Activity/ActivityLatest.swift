@@ -11,6 +11,7 @@ struct ActivityLatest: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
@@ -40,13 +41,18 @@ struct ActivityLatest: View {
         return BlockTimeHelpers.getDurationForBlocks(blocksRemaining)
     }
 
-    /// Three or four vertical slots (by screen size) shared by: transfer banner, widgets onboarding
-    /// and activity items; only the item count shrinks so the total stays within the cap.
+    /// Three or four vertical slots (by screen size) shared by: hardware wallet rows (two wallets per row),
+    /// transfer banner, widgets onboarding and activity items; only the item count shrinks so the total stays within the cap.
     private var maxActivityItemsOnHome: Int {
         let slotCapacity = UIScreen.main.isSmall ? ActivityDisplayConstants.maxHomeActivityItems - 1 : ActivityDisplayConstants.maxHomeActivityItems
         var nonItemSlots = 0
-        if shouldShowBanner { nonItemSlots += 1 }
-        if settings.showWidgets, !app.hasDismissedWidgetsOnboardingHint { nonItemSlots += 1 }
+        nonItemSlots += (hwWalletManager.wallets.count + 1) / 2
+        if shouldShowBanner {
+            nonItemSlots += 1
+        }
+        if settings.showWidgets, !app.hasDismissedWidgetsOnboardingHint {
+            nonItemSlots += 1
+        }
         return max(0, slotCapacity - nonItemSlots)
     }
 

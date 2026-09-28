@@ -78,7 +78,9 @@ public extension TransactionSpeed {
     }
 
     var isCustom: Bool {
-        if case .custom = self { return true }
+        if case .custom = self {
+            return true
+        }
         return false
     }
 
@@ -146,9 +148,15 @@ public extension TransactionSpeed {
     /// Tier derived from a fee rate and current estimates (fast/normal/slow/minimum). Use with fee localization keys or getFeeTierLocalized.
     static func feeTierKeyComponent(for feeRate: UInt64, feeEstimates: FeeRates?) -> String {
         guard let estimates = feeEstimates else { return "normal" }
-        if feeRate >= UInt64(estimates.fast) { return "fast" }
-        if feeRate >= UInt64(estimates.mid) { return "normal" }
-        if feeRate >= UInt64(estimates.slow) { return "slow" }
+        if feeRate >= UInt64(estimates.fast) {
+            return "fast"
+        }
+        if feeRate >= UInt64(estimates.mid) {
+            return "normal"
+        }
+        if feeRate >= UInt64(estimates.slow) {
+            return "slow"
+        }
         return "minimum"
     }
 

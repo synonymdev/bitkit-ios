@@ -3,9 +3,16 @@ import LDKNode
 import SwiftUI
 
 struct TransferUiState {
+    var clientBalanceSat: UInt64 = 0
+    var lspBalanceSat: UInt64 = 0
+    var feeSat: UInt64 = 0
+    var isAdvanced = false
+    var isConfirming = false
     var order: IBtOrder?
-    var defaultOrder: IBtOrder?
-    var isAdvanced: Bool = false
+
+    var lspFeeSat: UInt64 {
+        feeSat.saturatingSub(clientBalanceSat)
+    }
 }
 
 struct TransferValues {
@@ -20,9 +27,9 @@ struct HwSpendingState: Equatable {
     var isLoading = false
     var isSigning = false
     var hasPendingBroadcast = false
-    /// The hidden wallet needs its passphrase before the device can sign for it.
     var isPassphraseRequired = false
     var isVerifyingPassphrase = false
+    var isCreatingOrder = false
     var miningFeeSats: UInt64 = 0
     var maxAllowedToSend: UInt64 = 0
     var balanceAfterFee: UInt64 = 0
@@ -101,6 +108,7 @@ protocol HwTransferFunding: Sendable {
 protocol HwTransferConnecting: Sendable {
     func ensureConnected(walletId: String) async throws
     func disconnectStaleSession(walletId: String) async
+    func scheduleStaleSessionCleanup(walletId: String)
     /// Whether the wallet is reachable over a known Bluetooth device, so a reconnect failure can show
     /// the softer BLE "check that it is unlocked and try again" toast instead of the generic error.
     func isKnownBluetoothDevice(walletId: String) -> Bool
@@ -115,9 +123,14 @@ protocol HwTransferConnecting: Sendable {
 
 @MainActor
 class TransferViewModel: ObservableObject {
+    private static let orderReuseMargin: TimeInterval = 60
+
     @Published var uiState = TransferUiState()
+    private var fundedOrderId: String?
     @Published var lightningSetupStep: Int = 0
     @Published var transferValues = TransferValues()
+
+    @Published var isSettlingAdvancedCapacity = false
     @Published var selectedChannelIds: [String] = []
     @Published var channelsToClose: [ChannelDetails] = []
     @Published var transferUnavailable = false
@@ -152,6 +165,7 @@ class TransferViewModel: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var hwSignTask: Task<Void, Never>?
     private var hwPassphraseTask: Task<Void, Never>?
+    private var hwOrderCreationToken: UUID?
     private var pendingHwFundingBroadcast: PendingHwFundingBroadcast?
     private var activeHwTransferWalletId: String?
 
@@ -174,6 +188,7 @@ class TransferViewModel: ObservableObject {
     private let swapQuoteTimeout: TimeInterval = 15
     /// Minimum sats held back from a swap to cover Lightning routing fees.
     private static let minLnRoutingFeeReserveSats: UInt64 = 10
+    private static let maxAffordabilityRounds = 2
 
     init(
         coreService: CoreService = .shared,
@@ -209,14 +224,18 @@ class TransferViewModel: ObservableObject {
         }
     }
 
-    /// Convenience initializer for testing and previews
+    /// Convenience initializer for testing and previews. Leave `transferDefaults` nil to persist through
+    /// `TransferStorage.shared`, whose change notifications drive backups; tests pass an isolated suite
+    /// so mock transfers never reach the app's own store.
     convenience init(
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         currencyService: CurrencyService = .shared,
-        sheetViewModel: SheetViewModel = SheetViewModel()
+        sheetViewModel: SheetViewModel = SheetViewModel(),
+        transferDefaults: UserDefaults? = nil
     ) {
         let transferService = TransferService(
+            storage: transferDefaults.map { TransferStorage(defaults: $0) } ?? .shared,
             lightningService: lightningService,
             blocktankService: coreService.blocktank
         )
@@ -230,7 +249,10 @@ class TransferViewModel: ObservableObject {
     }
 
     /// Convenience initializer for hardware-wallet transfer tests. Builds the `TransferService`
-    /// inside the app module so callers don't construct cross-module service types.
+    /// inside the app module so callers don't construct cross-module service types — `transferDefaults`
+    /// is a `UserDefaults` for the same reason, since `TransferStorage` is compiled into both modules.
+    /// Leave it nil to persist through `TransferStorage.shared`; tests pass an isolated suite so mock
+    /// transfers never reach the app's own store.
     convenience init(
         hwFunding: HwTransferFunding?,
         hwConnecting: HwTransferConnecting?,
@@ -239,9 +261,11 @@ class TransferViewModel: ObservableObject {
         hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
-        sheetViewModel: SheetViewModel = SheetViewModel()
+        sheetViewModel: SheetViewModel = SheetViewModel(),
+        transferDefaults: UserDefaults? = nil
     ) {
         let transferService = TransferService(
+            storage: transferDefaults.map { TransferStorage(defaults: $0) } ?? .shared,
             lightningService: lightningService,
             blocktankService: coreService.blocktank
         )
@@ -286,25 +310,60 @@ class TransferViewModel: ObservableObject {
         }
     }
 
+    var isSpendingBusy: Bool {
+        uiState.isConfirming || hwSpending.isSigning || hwSpending.isCreatingOrder
+    }
+
+    func onEstimateReady(clientBalance: UInt64, lspBalance: UInt64, feeSat: UInt64, isAdvanced: Bool = false) {
+        guard !isSpendingBusy else { return }
+        clearPendingHwFundingBroadcast()
+        uiState.order = nil
+        hwSpending.miningFeeSats = 0
+        uiState.clientBalanceSat = clientBalance
+        uiState.lspBalanceSat = lspBalance
+        uiState.feeSat = feeSat
+        uiState.isAdvanced = isAdvanced
+    }
+
     func onOrderCreated(order: IBtOrder) {
-        clearPendingHwFundingBroadcast()
-        hwSpending.miningFeeSats = 0
         uiState.order = order
-        uiState.isAdvanced = false
-        uiState.defaultOrder = nil
     }
 
-    func onAdvancedOrderCreated(order: IBtOrder) {
-        clearPendingHwFundingBroadcast()
-        hwSpending.miningFeeSats = 0
-        let defaultOrder = uiState.order
-        uiState.order = order
-        uiState.defaultOrder = defaultOrder
-        uiState.isAdvanced = true
+    func orderForConfirmation(
+        createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder,
+        isCurrent: () -> Bool = { true }
+    ) async throws -> IBtOrder? {
+        guard isCurrent() else { return nil }
+        if let order = uiState.order {
+            if pendingHwFundingBroadcast?.orderId == order.id {
+                return order
+            }
+            if isReusableSpendingOrder(order) {
+                return orderForDisplayedFee(order)
+            }
+        }
+        uiState.order = nil
+        let order = try await createOrder(uiState.clientBalanceSat, uiState.lspBalanceSat)
+        guard isCurrent() else { return nil }
+        return orderForDisplayedFee(order)
     }
 
-    func displayOrder(for order: IBtOrder) -> IBtOrder {
-        uiState.order ?? order
+    private func isReusableSpendingOrder(_ order: IBtOrder, now: Date = Date()) -> Bool {
+        guard order.state2 == .created, order.id != fundedOrderId else { return false }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let expiresAt = formatter.date(from: order.orderExpiresAt) ?? ISO8601DateFormatter().date(from: order.orderExpiresAt)
+        else { return false }
+        return expiresAt > now.addingTimeInterval(Self.orderReuseMargin)
+    }
+
+    private func orderForDisplayedFee(_ order: IBtOrder) -> IBtOrder? {
+        uiState.order = order
+        guard order.feeSat <= uiState.feeSat else {
+            uiState.feeSat = order.feeSat
+            return nil
+        }
+        return order
     }
 
     func payOrder(
@@ -340,7 +399,12 @@ class TransferViewModel: ObservableObject {
             isMaxAmount: isMaxAmount
         )
 
-        let txTotalSats = order.feeSat + txFee
+        let txTotalSats = SpendingConfirmTotal.leavingAmount(
+            orderFeeSat: order.feeSat,
+            networkFeeSat: txFee,
+            shouldUseSendAll: isMaxAmount,
+            maxSendable: maxSendableAmount
+        )
 
         // Pre-activity metadata lets the LDK activity sync recognize this send as a transfer.
         let currentTime = UInt64(Date().timeIntervalSince1970)
@@ -367,9 +431,6 @@ class TransferViewModel: ObservableObject {
         )
     }
 
-    /// Records a paid order and starts watching it, after the funding tx was broadcast (local LDK
-    /// send or hardware-signed). For the hardware path, also creates the pending on-chain activity
-    /// (the tx is broadcast externally, so LDK's own activity sync won't surface it).
     private func fundPaidOrder(
         order: IBtOrder,
         txId: String,
@@ -380,6 +441,7 @@ class TransferViewModel: ObservableObject {
         preTransferOnchainSats: UInt64? = nil,
         activityWalletId: String = WalletScope.default
     ) async {
+        fundedOrderId = order.id
         do {
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
@@ -392,7 +454,6 @@ class TransferViewModel: ObservableObject {
             Logger.info("Created transfer tracking record: \(transferId)", context: "TransferViewModel")
         } catch {
             Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
-            // Don't throw - we still want to continue with the order
         }
 
         if createTransferActivity {
@@ -410,16 +471,15 @@ class TransferViewModel: ObservableObject {
         watchOrder(orderId: order.id)
     }
 
-    /// Starts watching an order from app restart (when no UI state is set)
     func startWatchingOrderFromRestart(_ order: IBtOrder) async {
         Logger.info("Starting to watch order from restart: \(order.id)")
 
-        // Set the order in UI state so the watching logic works
         uiState.order = order
+        uiState.clientBalanceSat = order.clientBalanceSat
+        uiState.lspBalanceSat = order.lspBalanceSat
+        uiState.feeSat = order.feeSat
         uiState.isAdvanced = false
-        uiState.defaultOrder = nil
 
-        // Start watching the order
         watchOrder(orderId: order.id)
     }
 
@@ -527,16 +587,15 @@ class TransferViewModel: ObservableObject {
         return currentStep
     }
 
-    func onDefaultClick() {
-        clearPendingHwFundingBroadcast()
-        hwSpending.miningFeeSats = 0
-        let defaultOrder = uiState.defaultOrder
-        uiState.order = defaultOrder
-        uiState.defaultOrder = nil
-        uiState.isAdvanced = false
+    func onDefaultClick(
+        lspBalance: UInt64,
+        estimateFundingAmount: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> UInt64
+    ) async throws {
+        guard !isSpendingBusy else { return }
+        let clientBalance = uiState.clientBalanceSat
+        let feeSat = try await estimateFundingAmount(clientBalance, lspBalance)
+        onEstimateReady(clientBalance: clientBalance, lspBalance: lspBalance, feeSat: feeSat)
     }
-
-    // MARK: - Hardware Wallet Transfer
 
     /// Compute the available/MAX/quarter limits for a hardware-wallet transfer: the signer resolves
     /// the device's native-segwit balance minus an on-chain fee reserve, then the shared
@@ -579,24 +638,52 @@ class TransferViewModel: ObservableObject {
         hwSpending.isLoading = false
     }
 
-    /// Best-effort offline mining-fee estimate for the Sign screen (`fingerprint: nil` compose).
-    func updateHwFundingFeeEstimate(order: IBtOrder, walletId: String) async {
+    func updateHwFundingFeeEstimate(walletId: String) async {
         guard let hwSigner else { return }
         guard !hwSpending.hasPendingBroadcast else { return }
-        guard let address = order.payment?.onchain?.address, !address.isEmpty else { return }
         do {
+            let address: String = if let orderAddress = uiState.order?.payment?.onchain?.address {
+                orderAddress
+            } else {
+                try await hwSigner.addressProvider()
+            }
             hwSpending.miningFeeSats = try await hwSigner.estimateOfflineFundingMiningFee(
                 walletId: walletId,
                 address: address,
-                sats: order.feeSat
+                sats: uiState.feeSat
             )
         } catch {
             Logger.debug("Skipped offline hardware funding fee estimate for '\(walletId)'", context: "TransferViewModel")
         }
     }
 
-    /// Pay for the order by composing and signing the funding send on the Trezor (via the signer),
-    /// then record and watch it. Coordination only — the device orchestration lives in `HwFundingSigner`.
+    func onTransferToSpendingHwConfirm(
+        walletId: String,
+        createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder
+    ) async {
+        guard !isSpendingBusy else { return }
+        let token = UUID()
+        hwOrderCreationToken = token
+        hwSpending.isCreatingOrder = true
+        defer {
+            if hwOrderCreationToken == token {
+                hwOrderCreationToken = nil
+                hwSpending.isCreatingOrder = false
+            }
+        }
+
+        do {
+            guard let order = try await orderForConfirmation(
+                createOrder: createOrder,
+                isCurrent: { self.hwOrderCreationToken == token }
+            ) else { return }
+            guard hwOrderCreationToken == token else { return }
+            onTransferToSpendingHwConfirm(order: order, walletId: walletId)
+        } catch {
+            hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
+        }
+    }
+
     func onTransferToSpendingHwConfirm(order: IBtOrder, walletId: String) {
         guard !hwSpending.isSigning else { return }
         guard let hwSigner else {
@@ -738,6 +825,8 @@ class TransferViewModel: ObservableObject {
         // signed transaction waiting to be broadcast, so they are dropped before the guard below —
         // otherwise leaving mid-verify would leave the reopen running and the prompt set to reappear.
         onHwPassphraseDismiss()
+        hwOrderCreationToken = nil
+        hwSpending.isCreatingOrder = false
 
         guard pendingHwFundingBroadcast == nil else { return }
         let walletId = activeHwTransferWalletId
@@ -851,8 +940,174 @@ class TransferViewModel: ObservableObject {
         )
     }
 
-    func updateTransferValues(clientBalanceSat: UInt64, blocktankInfo: IBtInfo?) {
-        transferValues = calculateTransferValues(clientBalanceSat: clientBalanceSat, blocktankInfo: blocktankInfo)
+    /// Liquidity options for the advanced screen, with the maximum receiving capacity settled on one
+    /// the budget can pay the order fee for.
+    ///
+    /// The LSP prices both sides of the channel, so a higher capacity costs more, and its advertised
+    /// maximum knows nothing of the client balance already committed.
+    func updateAdvancedTransferValues(
+        clientBalanceSat: UInt64,
+        budget: () async -> UInt64?,
+        transferValues: (_ clientBalanceSat: UInt64) -> TransferValues,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async {
+        isSettlingAdvancedCapacity = true
+        defer { isSettlingAdvancedCapacity = false }
+
+        // Publish the advertised options before the budget is read: until they land the screen has no
+        // cap at all, and reading the budget is itself a round trip.
+        var values = transferValues(clientBalanceSat)
+        self.transferValues = values
+
+        guard values.maxLspBalance > values.minLspBalance, let budget = await budget() else { return }
+
+        let settled = await settleAdvancedLspBalance(
+            clientBalance: clientBalanceSat,
+            budget: budget,
+            minLspBalance: values.minLspBalance,
+            maxLspBalance: values.maxLspBalance,
+            estimateOrderFee: estimateOrderFee
+        )
+
+        guard let settled, settled < values.maxLspBalance else { return }
+        Logger.info("Settled max capacity '\(values.maxLspBalance)' on affordable '\(settled)'", context: "TransferViewModel")
+        values.maxLspBalance = settled
+        // The Default button must not hand back a capacity the settled max just excluded.
+        values.defaultLspBalance = min(values.defaultLspBalance, settled)
+        self.transferValues = values
+    }
+
+    /// The highest receiving capacity `budget` can pay the order fee for, or nil when even
+    /// `minLspBalance` is out of reach — the confirm step does the rejecting rather than this
+    /// presenting a range with nothing valid in it.
+    func settleAdvancedLspBalance(
+        clientBalance: UInt64,
+        budget: UInt64,
+        minLspBalance: UInt64,
+        maxLspBalance: UInt64,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> UInt64? {
+        let headroom = budget.saturatingSub(clientBalance)
+
+        guard let maxFee = await lspFeeQuote(clientBalance: clientBalance, lspBalance: maxLspBalance, estimateOrderFee: estimateOrderFee) else {
+            Logger.warn("Advertising unsettled max capacity '\(maxLspBalance)', fee quote unavailable", context: "TransferViewModel")
+            return maxLspBalance
+        }
+        if maxFee <= headroom {
+            return maxLspBalance
+        }
+
+        guard let minFee = await lspFeeQuote(clientBalance: clientBalance, lspBalance: minLspBalance, estimateOrderFee: estimateOrderFee),
+              minFee <= headroom
+        else { return nil }
+
+        return await settleCapacity(
+            clientBalance: clientBalance,
+            headroom: headroom,
+            affordable: minLspBalance,
+            affordableFee: minFee,
+            overBudget: maxLspBalance,
+            overBudgetFee: maxFee,
+            estimateOrderFee: estimateOrderFee
+        )
+    }
+
+    /// Nil when the LSP will not quote: callers skip the check rather than reject.
+    private func lspFeeQuote(
+        clientBalance: UInt64,
+        lspBalance: UInt64,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> UInt64? {
+        guard let fee = try? await estimateOrderFee(clientBalance, lspBalance) else { return nil }
+        return fee.networkFeeSat.saturatingAdd(fee.serviceFeeSat)
+    }
+
+    /// Walks the affordable/over-budget bracket inward along the fee rate its two priced ends imply.
+    ///
+    /// A satoshi off the capacity only takes a fraction of a satoshi off the fee, so stepping down by
+    /// the shortfall would barely move; interpolating lands in a round or two. The invariant
+    /// `affordableFee <= headroom < overBudgetFee` keeps every candidate inside the bracket.
+    private func settleCapacity(
+        clientBalance: UInt64,
+        headroom: UInt64,
+        affordable: UInt64,
+        affordableFee: UInt64,
+        overBudget: UInt64,
+        overBudgetFee: UInt64,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> UInt64 {
+        var settled = affordable
+        var settledFee = affordableFee
+        var ceiling = overBudget
+        var ceilingFee = overBudgetFee
+
+        for _ in 0 ..< Self.maxAffordabilityRounds {
+            let feeSpan = ceilingFee.saturatingSub(settledFee)
+            guard feeSpan > 0 else { return settled }
+
+            let candidate = settled.saturatingAdd(
+                Self.scaledSpan(
+                    span: ceiling.saturatingSub(settled),
+                    numerator: headroom.saturatingSub(settledFee),
+                    denominator: feeSpan
+                )
+            )
+            guard candidate > settled,
+                  let candidateFee = await lspFeeQuote(clientBalance: clientBalance, lspBalance: candidate, estimateOrderFee: estimateOrderFee)
+            else { return settled }
+
+            if candidateFee <= headroom {
+                settled = candidate
+                settledFee = candidateFee
+            } else {
+                ceiling = candidate
+                ceilingFee = candidateFee
+            }
+        }
+
+        return settled
+    }
+
+    /// `span * numerator / denominator` without overflowing the intermediate product. The caller's
+    /// bracket guarantees `numerator < denominator`; the guard keeps `dividingFullWidth` from
+    /// trapping if a misconfigured LSP breaks that.
+    private static func scaledSpan(span: UInt64, numerator: UInt64, denominator: UInt64) -> UInt64 {
+        guard denominator > 0 else { return 0 }
+        let product = span.multipliedFullWidth(by: numerator)
+        guard product.high < denominator else { return span }
+        return denominator.dividingFullWidth(product).quotient
+    }
+
+    /// Backstop before a raised capacity is ordered. Like `canFundOrder`, only a quoted and
+    /// definitively unaffordable capacity is rejected.
+    func canFundAdvancedOrder(
+        clientBalance: UInt64,
+        receivingAmount: UInt64,
+        budget: UInt64?,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> Bool {
+        guard let budget else {
+            Logger.warn("Skipped capacity check for '\(receivingAmount)', no sized budget available", context: "TransferViewModel")
+            return true
+        }
+        guard let fee = try? await estimateOrderFee(clientBalance, receivingAmount) else {
+            Logger.warn("Skipped capacity check for '\(receivingAmount)', fee quote unavailable", context: "TransferViewModel")
+            return true
+        }
+
+        let cost = clientBalance.saturatingAdd(fee.networkFeeSat.saturatingAdd(fee.serviceFeeSat))
+        if cost > budget {
+            Logger.info("Priced capacity '\(receivingAmount)' at '\(cost)', over funding budget '\(budget)'", context: "TransferViewModel")
+        }
+        return cost <= budget
+    }
+
+    /// The device's spendable balance, re-read at decision time. Never on-chain savings, which would
+    /// reject every hardware transfer. Nil without hardware capabilities, leaving the guards
+    /// non-blocking in previews and tests.
+    func hwFundingBudget(walletId: String) async -> UInt64? {
+        guard let hwSigner else { return nil }
+        return try? await hwSigner.availability(walletId: walletId).available
     }
 
     /// Calculates the max amount transferable to spending and the value to display as "Available".
@@ -875,8 +1130,7 @@ class TransferViewModel: ObservableObject {
         let values1 = transferValues(onchainAvailable)
         let lspBalance1 = max(values1.defaultLspBalance, values1.minLspBalance)
         let fee1 = try await estimateOrderFee(onchainAvailable, lspBalance1)
-        let initialFees = fee1.networkFeeSat + fee1.serviceFeeSat
-        let balanceAfterLspFee = onchainAvailable > initialFees ? onchainAvailable - initialFees : 0
+        let balanceAfterLspFee = onchainAvailable.saturatingSub(fee1.networkFeeSat.saturatingAdd(fee1.serviceFeeSat))
 
         let cappedClientBalance: UInt64 = {
             guard let cap = lspMaxClientBalance, cap > 0 else { return balanceAfterLspFee }
@@ -888,10 +1142,89 @@ class TransferViewModel: ObservableObject {
         guard values2.maxClientBalance > 0 else { return (0, 0) }
         let lspBalance2 = max(values2.defaultLspBalance, values2.minLspBalance)
         let fee2 = try await estimateOrderFee(cappedClientBalance, lspBalance2)
-        let finalFees = fee2.networkFeeSat + fee2.serviceFeeSat
-        let afterFee = onchainAvailable > finalFees ? onchainAvailable - finalFees : 0
-        let result = min(values2.maxClientBalance, afterFee)
+
+        let affordable = await resolveAffordableClientBalance(
+            availableAmount: onchainAvailable,
+            quotedBalance: cappedClientBalance,
+            quotedFee: fee2.networkFeeSat.saturatingAdd(fee2.serviceFeeSat),
+            transferValues: transferValues,
+            estimateOrderFee: estimateOrderFee
+        )
+        let result = min(values2.maxClientBalance, affordable)
         return (result, result)
+    }
+
+    /// Settles the advertised max on a client balance the LSP has actually priced.
+    ///
+    /// `availableAmount - fee` is a different balance from the one that fee priced, and the service
+    /// fee moves with the client/LSP split — up with the client balance in production, down on
+    /// staging and regtest — so an order built there can cost more than the wallet holds. Each round
+    /// re-quotes its own candidate.
+    private func resolveAffordableClientBalance(
+        availableAmount: UInt64,
+        quotedBalance: UInt64,
+        quotedFee: UInt64,
+        transferValues: (_ clientBalance: UInt64) -> TransferValues,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> UInt64 {
+        var candidate = quotedBalance
+        var fee = quotedFee
+
+        for _ in 0 ..< Self.maxAffordabilityRounds {
+            if candidate.saturatingAdd(fee) <= availableAmount {
+                return candidate
+            }
+            candidate = availableAmount.saturatingSub(fee)
+            // Re-price against the split order creation will pick for this balance, not the earlier one.
+            let values = transferValues(candidate)
+            let lspBalance = max(values.defaultLspBalance, values.minLspBalance)
+            guard let requoted = await lspFeeQuote(clientBalance: candidate, lspBalance: lspBalance, estimateOrderFee: estimateOrderFee) else {
+                Logger.warn("Advertising unverified max '\(candidate)', fee quote unavailable", context: "TransferViewModel")
+                return candidate
+            }
+            fee = requoted
+        }
+
+        if candidate.saturatingAdd(fee) <= availableAmount {
+            return candidate
+        }
+        let fallback = availableAmount.saturatingSub(fee)
+        Logger.warn(
+            "Max '\(candidate)' still over budget '\(availableAmount)' after \(Self.maxAffordabilityRounds) rounds, "
+                + "advertising unverified '\(fallback)'",
+            context: "TransferViewModel"
+        )
+        return fallback
+    }
+
+    /// Backstop before an order is created: re-quote the fee and confirm the funding source still
+    /// covers it and the balance.
+    ///
+    /// A missing budget or quote does not block — that would lock people out whenever the node is
+    /// briefly unready, and the confirm step stays the authority. Both are logged.
+    func canFundOrder(
+        clientBalance: UInt64,
+        budget: UInt64?,
+        transferValues: (_ clientBalance: UInt64) -> TransferValues,
+        estimateOrderFee: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> (networkFeeSat: UInt64, serviceFeeSat: UInt64)
+    ) async -> Bool {
+        guard let budget else {
+            Logger.warn("Skipped funding check for '\(clientBalance)', no sized budget available", context: "TransferViewModel")
+            return true
+        }
+
+        let values = transferValues(clientBalance)
+        let lspBalance = max(values.defaultLspBalance, values.minLspBalance)
+        guard let fee = try? await estimateOrderFee(clientBalance, lspBalance) else {
+            Logger.warn("Skipped funding check for '\(clientBalance)', fee quote unavailable", context: "TransferViewModel")
+            return true
+        }
+
+        let cost = clientBalance.saturatingAdd(fee.networkFeeSat.saturatingAdd(fee.serviceFeeSat))
+        if cost > budget {
+            Logger.info("Priced amount '\(clientBalance)' at '\(cost)', over funding budget '\(budget)'", context: "TransferViewModel")
+        }
+        return cost <= budget
     }
 
     /// Calculates max client balance accounting for LDK reserve requirement
@@ -1513,7 +1846,9 @@ actor SwapPaymentFailureCapture {
     }
 
     func waitForFailure() async -> Wait {
-        if let outcome { return outcome }
+        if let outcome {
+            return outcome
+        }
         return await withCheckedContinuation { waiters.append($0) }
     }
 

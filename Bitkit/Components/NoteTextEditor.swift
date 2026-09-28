@@ -5,6 +5,10 @@ struct NoteTextEditor: View {
     let placeholder: String
     let testIdentifier: String
     let isFocused: FocusState<Bool>.Binding
+    var minHeight: CGFloat = 30
+    var maxHeight: CGFloat = 50
+    var backgroundColor: Color = .white06
+    var allowsLineBreaks = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -17,16 +21,16 @@ struct NoteTextEditor: View {
                 .font(.custom(Fonts.semiBold, size: 15))
                 .foregroundColor(.textPrimary)
                 .accentColor(.brandAccent)
-                .submitLabel(.done)
+                .submitLabel(allowsLineBreaks ? .return : .done)
                 .scrollContentBackground(.hidden)
                 .padding(EdgeInsets(top: -8, leading: -5, bottom: -5, trailing: -5))
-                .frame(minHeight: 30, maxHeight: 50)
-                .dismissKeyboardOnReturn(text: $text, isFocused: isFocused)
+                .frame(minHeight: minHeight, maxHeight: maxHeight)
+                .dismissKeyboardOnReturn(text: $text, isFocused: isFocused, isEnabled: !allowsLineBreaks)
                 .accessibilityValue(text)
                 .accessibilityIdentifier(testIdentifier)
         }
         .padding()
-        .background(Color.white06)
+        .background(backgroundColor)
         .cornerRadius(8)
     }
 }

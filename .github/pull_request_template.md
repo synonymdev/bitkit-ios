@@ -1,13 +1,33 @@
+<!-- Closes | Fixes | Resolves #ISSUE_ID -->
 <!-- Changelog: For user-facing changes, add one fragment in changelog.d/next/ or changelog.d/hotfix/. Do not edit CHANGELOG.md in normal PRs. -->
+<!-- Brief summary of the PR changes, linking to the related resources (issue/design/bug/etc) if applicable. -->
 
 ### Description
 
-Please include a summary of changes and which issues are fixed. Please also include relevant motivation and context. List any dependencies that are required for this change.
+<!-- One bullet per change: what changed and why. -->
 
-### Linked Issues/Tasks
+#### Out of Scope
 
-Add any links to GitHub issues or Asana tasks that are relevant to this pull request.
+<!-- One bullet per item this PR deliberately leaves out (`path/or/area: item`); reviewers treat them as your non-goals. `None.` when nothing is left out. Required for feat, fix, and refactor PRs; delete it for version, changelog, or dependency bumps and release PRs; other chore, docs, and test PRs at your discretion. -->
 
-### Screenshot / Video
+### Design
 
-Insert relevant screenshot / recording
+<!-- Figma frames for the changed UI (latest `Bitkit - Handoff vNN` page in https://www.figma.com/design/ltqvnKiejWj0JQiqtDf2JJ/). Otherwise `N/A — no UI changes.` or `N/A — no design available.` State an uncertain match; never invent a link. -->
+
+### Preview
+
+<!-- Screenshot or recording of the changed UI; `N/A` when there is no user-visible change. -->
+
+### QA Notes
+
+#### Journeys
+
+<!-- One line per journey this PR adds or updates: `new` or `updated`, the bare journey file name in backticks, then what it proves — `- [ ] new `send-amount-over-balance.xml` — error shows before the 15 s timeout`; prefix the shortest disambiguating folder only when two journeys share a name. `temporary` only when the author asks for a reproduction that cannot be committed; its XML and any `.diff` go in a collapsed `<details>` block under the line. Two empty values: `N/A — no user-visible behaviour change.`, or `N/A — not drivable; see Manual Tests.` when every flow touched needs a capability the Capabilities table in `journeys/README.md` does not list. Leave the boxes unchecked; the reviewer ticks a line after driving it. -->
+
+#### Manual Tests
+
+<!-- Only for a step needing a capability the Capabilities table in `journeys/README.md` does not list: action → expectation — the missing capability, as in `- [ ] Pair a Trezor over BLE → Home shows the hardware wallet card — BLE pairing not in Capabilities`. `N/A` when there is none. -->
+
+#### Automated Checks
+
+<!-- Flat list in the keyword order `added`, `updated`, `removed`, `ran`: keyword, bare test file name, dash, the behaviour proven — `- added `TransferViewModelTests.swift` — rejects amounts over the spending balance`; `ran` only for what CI does not run. `N/A` when nothing changed. -->

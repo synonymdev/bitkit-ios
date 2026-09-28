@@ -183,8 +183,7 @@ struct PubkyChoiceView: View {
             isLoadingAfterAuth = true
             await navigateAfterAuth(publicKey: publicKey)
         } catch is CancellationError {
-            isWaitingForRing = false
-            await pubkyProfile.cancelAuthentication()
+            return
         } catch {
             isWaitingForRing = false
             app.toast(type: .error, title: t("profile__auth_error_title"), description: error.localizedDescription)
@@ -239,23 +238,23 @@ struct PubkyChoiceView: View {
 
     private var backgroundIllustrations: some View {
         GeometryReader { geo in
-            Image("tag-pubky")
-                .resizable()
-                .scaledToFit()
-                .frame(width: geo.size.width * 0.83)
-                .position(
-                    x: geo.size.width * 0.321,
-                    y: geo.size.height * 0.376 + 200
-                )
-
             Image("keyring")
                 .resizable()
                 .scaledToFit()
                 .frame(width: geo.size.width * 0.83)
                 .opacity(0.9)
                 .position(
-                    x: geo.size.width * 0.841,
-                    y: geo.size.height * 0.305 + 200
+                    x: geo.size.width * 0.756,
+                    y: geo.size.height * 0.753
+                )
+
+            Image("tag-pubky")
+                .resizable()
+                .scaledToFit()
+                .frame(width: geo.size.width * 0.736)
+                .position(
+                    x: geo.size.width * 0.125,
+                    y: geo.size.height * 0.839
                 )
         }
         .ignoresSafeArea()

@@ -90,7 +90,9 @@ class TrezorBLEManager: NSObject {
     private func takeConnectContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
-        if let id, id != connectContinuationId { return nil }
+        if let id, id != connectContinuationId {
+            return nil
+        }
         let cont = connectContinuation
         connectContinuation = nil
         return cont
@@ -99,7 +101,9 @@ class TrezorBLEManager: NSObject {
     private func takeWriteContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
-        if let id, id != writeContinuationId { return nil }
+        if let id, id != writeContinuationId {
+            return nil
+        }
         let cont = writeContinuation
         writeContinuation = nil
         return cont
@@ -108,7 +112,9 @@ class TrezorBLEManager: NSObject {
     private func takeServiceDiscoveryContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
-        if let id, id != serviceDiscoveryContinuationId { return nil }
+        if let id, id != serviceDiscoveryContinuationId {
+            return nil
+        }
         let cont = serviceDiscoveryContinuation
         serviceDiscoveryContinuation = nil
         return cont
@@ -117,7 +123,9 @@ class TrezorBLEManager: NSObject {
     private func takeNotificationContinuation(id: UInt64? = nil) -> CheckedContinuation<Void, Error>? {
         continuationLock.lock()
         defer { continuationLock.unlock() }
-        if let id, id != notificationContinuationId { return nil }
+        if let id, id != notificationContinuationId {
+            return nil
+        }
         let cont = notificationContinuation
         notificationContinuation = nil
         return cont
@@ -522,7 +530,9 @@ class TrezorBLEManager: NSObject {
                 throw TrezorBLEError.notConnected
             }
             let remaining = deadline.timeIntervalSinceNow
-            if remaining <= 0 { break }
+            if remaining <= 0 {
+                break
+            }
             let pollInterval = min(remaining, 0.05)
             if let data = readQueue.poll(timeout: pollInterval) {
                 debugLog("readChunk: \(data.count) bytes")

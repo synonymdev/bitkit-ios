@@ -9,8 +9,10 @@ struct SendEnterManuallyView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var sheets: SheetViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
+    let hwSend: HwSendCoordinator
     @FocusState private var isTextEditorFocused: Bool
 
     private var manualEntryBinding: Binding<String> {
@@ -20,7 +22,10 @@ struct SendEnterManuallyView: View {
                 app.manualEntryInput = newValue
                 app.validateManualEntryInput(
                     newValue,
-                    savingsBalanceSats: wallet.spendableOnchainBalanceSats,
+                    savingsBalanceSats: max(
+                        wallet.spendableOnchainBalanceSats,
+                        Int(clamping: hwWalletManager.maximumFundingBalanceSats)
+                    ),
                     spendingBalanceSats: wallet.maxSendLightningSats
                 )
             }
@@ -100,7 +105,11 @@ struct SendEnterManuallyView: View {
                 Logger.error("Failed to set default fee rate: \(error)")
             }
 
-            try await app.handleScannedData(uri)
+            try await app.handleScannedData(
+                uri,
+                scope: hwSend.isActive ? .onchainPayments : .unrestricted,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+            )
 
             if let route = PaymentNavigationHelper.appropriateSendRoute(
                 app: app,
@@ -117,7 +126,7 @@ struct SendEnterManuallyView: View {
 }
 
 #Preview {
-    SendEnterManuallyView(navigationPath: .constant([]))
+    SendEnterManuallyView(navigationPath: .constant([]), hwSend: HwSendCoordinator())
         .environmentObject(AppViewModel())
         .environmentObject(WalletViewModel())
         .environmentObject(CurrencyViewModel())
@@ -126,5 +135,6 @@ struct SendEnterManuallyView: View {
         .environmentObject(NavigationViewModel())
         .environmentObject(PubkyProfileManager())
         .environmentObject(SheetViewModel())
+        .environment(HwWalletManager())
         .preferredColorScheme(.dark)
 }

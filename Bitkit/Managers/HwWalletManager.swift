@@ -16,12 +16,18 @@ import Foundation
 /// injected `HwDeviceSessioning` seam, and read the stored entries fresh from it: a connect that
 /// just wrote one lands there before the push does. Never references `TrezorManager` concretely.
 ///
-/// Adapts bitkit-android's `HwWalletRepo`. iOS supports Bluetooth only, so the cross-transport
-/// (BLE+USB) dedup is reduced to a plain xpub-based identity and USB-specific reconnect handling
-/// is omitted.
 @Observable
 @MainActor
 final class HwWalletManager {
+    typealias AccountInfoProvider = @MainActor (
+        String,
+        String,
+        TrezorCoinType,
+        UInt32,
+        AccountType
+    ) async throws -> AccountInfoResult
+    typealias AddressProvider = @MainActor (TrezorGetAddressParams) async throws -> TrezorAddressResponse
+
     private enum Constants {
         static let watcherIdSeparator = "|"
         static let watcherStartRetryDelay: Duration = .seconds(30)
@@ -35,6 +41,12 @@ final class HwWalletManager {
 
     /// Sum of every paired wallet's balance.
     private(set) var totalSats: UInt64 = 0
+
+    /// Largest funding-account balance held by one paired hardware wallet. Hardware and software
+    /// balances are separate funding sources; fee-adjusted availability is resolved in the send flow.
+    var maximumFundingBalanceSats: UInt64 {
+        wallets.map(\.fundingBalanceSats).max() ?? 0
+    }
 
     /// bitkit-core wallet ids for the paired hardware wallets — the activity list queries these.
     private(set) var hwWalletIds: Set<String> = []
@@ -51,6 +63,8 @@ final class HwWalletManager {
     private let monitoredTypesProvider: () -> Set<String>
     private let electrumUrlProvider: () -> String
     private let networkProvider: () -> TrezorCoinType
+    private let accountInfoProvider: AccountInfoProvider
+    private let addressProvider: AddressProvider
     private let persistSnapshot: @MainActor (HwWalletSnapshot) async throws -> Void
     private let deleteActivities: @MainActor (String) async throws -> Void
     private let readTagMetadata: @MainActor (String) async throws -> [PreActivityMetadata]
@@ -106,6 +120,7 @@ final class HwWalletManager {
 
     private var emittedReceivedTxIds: Set<String> = []
     private var listeners: [String: TrezorEventListener] = [:]
+    private var staleSessionCleanupTasks: [String: Task<Void, Never>] = [:]
 
     init(
         session: HwDeviceSessioning? = nil,
@@ -113,6 +128,18 @@ final class HwWalletManager {
         monitoredTypes: (() -> Set<String>)? = nil,
         electrumUrl: (() -> String)? = nil,
         network: (() -> TrezorCoinType)? = nil,
+        accountInfoProvider: @escaping AccountInfoProvider = { extendedKey, electrumUrl, network, gapLimit, scriptType in
+            try await OnChainHwService.shared.getAccountInfo(
+                extendedKey: extendedKey,
+                electrumUrl: electrumUrl,
+                network: network,
+                gapLimit: gapLimit,
+                scriptType: scriptType
+            )
+        },
+        addressProvider: @escaping AddressProvider = { params in
+            try await TrezorService.shared.getAddress(params: params)
+        },
         persistSnapshot: (@MainActor (HwWalletSnapshot) async throws -> Void)? = nil,
         deleteActivities: (@MainActor (String) async throws -> Void)? = nil,
         readTagMetadata: (@MainActor (String) async throws -> [PreActivityMetadata])? = nil,
@@ -125,6 +152,8 @@ final class HwWalletManager {
             Set(SettingsViewModel.shared.addressTypesToMonitor.map(\.stringValue))
         }
         electrumUrlProvider = electrumUrl ?? { OnChainHwService.getElectrumUrl() }
+        self.accountInfoProvider = accountInfoProvider
+        self.addressProvider = addressProvider
         // Both seams are plain writes: queueing, failure handling and cache repair live in
         // `persist(_:)` / `delete(walletId:)`, so an injected seam exercises them too.
         self.persistSnapshot = persistSnapshot ?? { snapshot in
@@ -269,7 +298,9 @@ final class HwWalletManager {
     /// Transport id to reach `walletId` with: the connected entry, else the most recently used one.
     private func transportDeviceId(for walletId: String) -> String? {
         let entries = entries(for: walletId)
-        if let connected = entries.first(where: { $0.id == session?.connectedDeviceId }) { return connected.id }
+        if let connected = entries.first(where: { $0.id == session?.connectedDeviceId }) {
+            return connected.id
+        }
         return entries.max(by: { $0.lastConnectedAt < $1.lastConnectedAt })?.id
     }
 
@@ -312,6 +343,7 @@ final class HwWalletManager {
         guard let session else {
             throw AppError(message: "Unavailable", debugMessage: "No device session to open a passphrase wallet with")
         }
+        await waitForStaleSessionCleanup(deviceId: deviceId)
         // Absent features mean there is nothing to read the setting from — a session that dropped
         // between pairing and this call — which is a reconnect problem and not a device that refuses
         // hidden wallets.
@@ -350,8 +382,11 @@ final class HwWalletManager {
             throw AppError(message: "Unavailable", debugMessage: "No device session for wallet '\(walletId)'")
         }
         let deviceId = try requireTransportDeviceId(for: walletId)
+        await waitForStaleSessionCleanup(deviceId: deviceId)
         try await session.ensureConnected(deviceId: deviceId)
-        if session.connectedWalletId == walletId { return }
+        if session.connectedWalletId == walletId {
+            return
+        }
 
         Logger.info("Reopening '\(walletId)': the session is not provably this wallet's", context: "HwWalletManager")
         guard !entries(for: walletId).contains(where: \.passphraseProtected) else {
@@ -373,6 +408,31 @@ final class HwWalletManager {
 
     func disconnectStaleSession(walletId: String) async {
         guard let deviceId = transportDeviceId(for: walletId) else { return }
+        if let cleanup = staleSessionCleanupTasks[deviceId] {
+            await cleanup.value
+            return
+        }
+        await performStaleSessionCleanup(deviceId: deviceId)
+    }
+
+    /// Starts timeout recovery without blocking the current UI operation. Any subsequent connect
+    /// for the same physical device waits for this task before opening a new session.
+    func scheduleStaleSessionCleanup(walletId: String) {
+        guard let deviceId = transportDeviceId(for: walletId) else { return }
+        guard staleSessionCleanupTasks[deviceId] == nil else { return }
+
+        staleSessionCleanupTasks[deviceId] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await performStaleSessionCleanup(deviceId: deviceId)
+            staleSessionCleanupTasks[deviceId] = nil
+        }
+    }
+
+    private func waitForStaleSessionCleanup(deviceId: String) async {
+        await staleSessionCleanupTasks[deviceId]?.value
+    }
+
+    private func performStaleSessionCleanup(deviceId: String) async {
         await session?.disconnectStaleSession(deviceId: deviceId)
     }
 
@@ -388,6 +448,7 @@ final class HwWalletManager {
         // about to need. The prompt reopens it properly a moment later.
         guard !needsPassphrase(walletId: walletId) else { return }
         guard let deviceId = transportDeviceId(for: walletId) else { return }
+        guard staleSessionCleanupTasks[deviceId] == nil else { return }
         session?.warmUpConnection(deviceId: deviceId)
     }
 
@@ -400,13 +461,16 @@ final class HwWalletManager {
             throw AppError(message: "Unavailable", debugMessage: "No device session for wallet '\(walletId)'")
         }
         let deviceId = try requireTransportDeviceId(for: walletId)
+        await waitForStaleSessionCleanup(deviceId: deviceId)
         let watchedBefore = watchedWalletIds()
         // Not `ensureConnected`: the session this reopens is usually already gone, either because the
         // app restarted or because a wrong passphrase closed it.
         try await session.connectWithWalletMode(deviceId: deviceId, mode: .passphraseHost, passphrase: passphrase)
 
         let opened = session.connectedWalletId
-        if opened == walletId { return }
+        if opened == walletId {
+            return
+        }
 
         guard let opened else {
             // Not a mismatch: the session opened but its accounts could not be read, so nothing is
@@ -455,10 +519,16 @@ final class HwWalletManager {
         for spec in specs {
             // A start is already in flight for this watcher; skip so we don't launch a duplicate.
             // The next sync after it completes reconciles any electrum-url change.
-            if pendingWatcherStarts.contains(spec.watcherId) { continue }
+            if pendingWatcherStarts.contains(spec.watcherId) {
+                continue
+            }
             let isActive = activeWatchers.contains(spec.watcherId)
-            if isActive, activeWatcherElectrumUrls[spec.watcherId] == spec.electrumUrl { continue }
-            if isActive, !stopActiveWatcher(spec.watcherId) { continue }
+            if isActive, activeWatcherElectrumUrls[spec.watcherId] == spec.electrumUrl {
+                continue
+            }
+            if isActive, !stopActiveWatcher(spec.watcherId) {
+                continue
+            }
             startWatcher(spec)
         }
 
@@ -503,7 +573,9 @@ final class HwWalletManager {
     /// its xpubs for entries written before the id was persisted. Returns nil when neither is
     /// available (no captured xpubs), so callers skip the entry.
     private func resolvedWalletId(for device: TrezorKnownDevice) -> String? {
-        if let walletId = device.walletId, !walletId.isEmpty { return walletId }
+        if let walletId = device.walletId, !walletId.isEmpty {
+            return walletId
+        }
         return walletId(for: device.xpubs)
     }
 
@@ -511,7 +583,9 @@ final class HwWalletManager {
     /// (e.g. no captured xpubs — `HwWalletId.derive` throws on empty), so callers skip the device.
     private func walletId(for xpubs: [String: String]) -> String? {
         let signature = xpubsSignature(xpubs)
-        if let cached = walletIdCache[signature] { return cached }
+        if let cached = walletIdCache[signature] {
+            return cached
+        }
         guard let derived = try? HwWalletId.derive(xpubs: xpubs) else { return nil }
         walletIdCache[signature] = derived
         return derived
@@ -593,17 +667,32 @@ final class HwWalletManager {
 
     /// Update aggregated state from a watcher event. The first event after a watcher starts
     /// delivers the full history (baseline); only later inbound txs are surfaced as received.
-    /// Core builds the persistence-ready activities (core 0.3.4 watch-only watcher); the manager
-    /// stores, aggregates, and scopes them to the wallet.
+    /// Core builds the persistence-ready activities; the manager stores, aggregates, and scopes
+    /// them to the wallet.
     func handleWatcherEvent(watcherId: String, event: WatcherEvent) {
-        guard case let .transactionsChanged(activities, transactionDetails, balance, _, _, _) = event else { return }
+        guard case let .transactionsChanged(
+            activities,
+            transactionDetails,
+            balance,
+            _,
+            _,
+            _,
+            nextUnusedExternalAddress
+        ) = event,
+            let addressType = AddressScriptType.from(string: addressType(fromWatcherId: watcherId))
+        else { return }
         let walletId = walletId(fromWatcherId: watcherId)
         let previous = watcherData[watcherId]
         watcherData[watcherId] = HwWatcherData(
             walletId: walletId,
             balanceSats: balance.total,
             activities: activities,
-            transactionDetails: transactionDetails
+            transactionDetails: transactionDetails,
+            receiveAddress: HwReceiveAddress(
+                address: nextUnusedExternalAddress.address,
+                path: nextUnusedExternalAddress.path,
+                addressType: addressType
+            )
         )
         let groups = deviceGroups()
         recomputeDerivedState(groups: groups)
@@ -820,7 +909,9 @@ final class HwWalletManager {
         var grouped: [String: [TrezorKnownDevice]] = [:]
         for device in knownDevices where !device.xpubs.isEmpty {
             guard let walletId = resolvedWalletId(for: device) else { continue }
-            if grouped[walletId] == nil { order.append(walletId) }
+            if grouped[walletId] == nil {
+                order.append(walletId)
+            }
             grouped[walletId, default: []].append(device)
         }
         return order.compactMap { walletId in
@@ -868,6 +959,80 @@ final class HwWalletManager {
         )
     }
 
+    func watcherReceiveAddress(
+        walletId: String,
+        addressType: AddressScriptType = hwFundingDefaultAddressType
+    ) -> HwReceiveAddress? {
+        let watcherId = "\(walletId)\(Constants.watcherIdSeparator)\(addressType.stringValue)"
+        return watcherData[watcherId]?.receiveAddress
+    }
+
+    /// Resolves the next unused external address from watcher state, falling back to an account scan.
+    func getReceiveAddress(
+        walletId: String,
+        addressType: AddressScriptType = hwFundingDefaultAddressType
+    ) async throws -> HwReceiveAddress {
+        if let address = watcherReceiveAddress(walletId: walletId, addressType: addressType) {
+            return address
+        }
+        let account = try getFundingAccount(walletId: walletId, addressType: addressType)
+        let info = try await accountInfoProvider(
+            account.xpub,
+            electrumUrlProvider(),
+            networkProvider(),
+            Constants.defaultGapLimit,
+            account.accountType
+        )
+        guard let unused = info.account.addresses.unused.first else {
+            throw AppError(
+                message: t("hardware__receive_address_error"),
+                debugMessage: "No unused external address returned for wallet '\(walletId)'"
+            )
+        }
+        let scannedAddress = HwReceiveAddress(address: unused.address, path: unused.path, addressType: addressType)
+        return watcherReceiveAddress(walletId: walletId, addressType: addressType) ?? scannedAddress
+    }
+
+    /// Displays the exact address currently shown by Bitkit on the device and rejects a mismatch.
+    func verifyReceiveAddress(walletId: String, receiveAddress: HwReceiveAddress) async throws {
+        try await ensureConnected(walletId: walletId)
+
+        let response: TrezorAddressResponse
+        do {
+            response = try await readAddressOnDevice(receiveAddress)
+        } catch {
+            guard error.isTrezorSessionFailure() else { throw error }
+            await disconnectStaleSession(walletId: walletId)
+            try await ensureConnected(walletId: walletId)
+            do {
+                response = try await readAddressOnDevice(receiveAddress)
+            } catch {
+                if error.isTrezorSessionFailure() {
+                    await disconnectStaleSession(walletId: walletId)
+                }
+                throw error
+            }
+        }
+
+        guard response.address == receiveAddress.address else {
+            throw AppError(
+                message: t("hardware__verify_address_error"),
+                debugMessage: "Trezor returned '\(response.address)' for '\(receiveAddress.path)', expected '\(receiveAddress.address)'"
+            )
+        }
+    }
+
+    private func readAddressOnDevice(_ receiveAddress: HwReceiveAddress) async throws -> TrezorAddressResponse {
+        try await addressProvider(
+            TrezorGetAddressParams(
+                path: receiveAddress.path,
+                coin: networkProvider(),
+                showOnTrezor: true,
+                scriptType: receiveAddress.addressType.trezorScriptType
+            )
+        )
+    }
+
     /// The exact amount spendable from the funding account after the real coin-selection mining fee,
     /// computed offline via a `sendMax` compose. No connected device is needed — `fingerprint` is only
     /// required for signing — so this mirrors the software wallet's max-sendable estimate.
@@ -898,7 +1063,11 @@ final class HwWalletManager {
             }
         }
         let composeError: String? = results.compactMap {
-            if case let .error(error) = $0 { return error } else { return nil }
+            if case let .error(error) = $0 {
+                return error
+            } else {
+                return nil
+            }
         }.first
         throw AppError(
             message: "Failed to estimate hardware funding amount",
@@ -981,7 +1150,11 @@ final class HwWalletManager {
             }
         }
         let composeError: String? = results.compactMap {
-            if case let .error(error) = $0 { return error } else { return nil }
+            if case let .error(error) = $0 {
+                return error
+            } else {
+                return nil
+            }
         }.first
         throw AppError(
             message: "Failed to compose hardware transfer",
@@ -1063,6 +1236,18 @@ final class HwWalletManager {
         let balanceSats: UInt64
         let activities: [Activity]
         let transactionDetails: [TransactionDetails]
+        let receiveAddress: HwReceiveAddress
+    }
+}
+
+private extension AddressScriptType {
+    var trezorScriptType: TrezorScriptType {
+        switch self {
+        case .legacy: .spendAddress
+        case .nestedSegwit: .spendP2shWitness
+        case .nativeSegwit: .spendWitness
+        case .taproot: .spendTaproot
+        }
     }
 }
 

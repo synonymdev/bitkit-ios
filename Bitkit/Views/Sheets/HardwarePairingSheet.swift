@@ -64,7 +64,9 @@ struct HardwarePairingSheet: View {
 
     private func handleKey(_ key: String) {
         if key == "delete" {
-            if !code.isEmpty { code.removeLast() }
+            if !code.isEmpty {
+                code.removeLast()
+            }
         } else if code.count < codeLength {
             code += key
             if code.count == codeLength {

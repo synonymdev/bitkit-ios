@@ -51,6 +51,16 @@ extension PrivatePaykitService {
         )
     }
 
+    func beginPaymentRequestWaitingForUpdatedList(_ request: PaykitPaymentRequest) async throws -> PublicPaykitPaymentLaunchResult {
+        var result = try await beginPaymentRequest(request)
+        for delay in Self.privatePaymentResolutionRetryDelays {
+            guard case .waitingForUpdatedPaymentList = result else { return result }
+            try await Task.sleep(nanoseconds: delay)
+            result = try await beginPaymentRequest(request)
+        }
+        return result
+    }
+
     private func beginContactPayment(
         to publicKey: String,
         receiverPath: String,
@@ -59,7 +69,7 @@ extension PrivatePaykitService {
         let consumedVersion = state.contacts[publicKey]?.consumedPrivatePaymentListVersionsByReceiverPath[receiverPath]
         let previousPaymentListVersion = consumedVersion.map(String.init) ?? "none"
         let amount = paymentRequest.map {
-            PaymentAmountContext(value: $0.amountValue, asset: "btc")
+            PaymentAmountContext(value: $0.amountValue, asset: PaykitIssuerInterop.bitcoinAsset)
         }
 
         do {
@@ -123,7 +133,8 @@ extension PrivatePaykitService {
             }
 
             Logger.warn(
-                "Failed to resolve Paykit contact payment for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
+                "Failed to resolve Paykit contact payment for \(PubkyPublicKeyFormat.redacted(publicKey)): " +
+                    "reason=\(PaykitResolutionFailureDiagnostics.reason(for: error))",
                 context: "PrivatePaykit"
             )
 

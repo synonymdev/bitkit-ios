@@ -1,0 +1,15 @@
+<journey name="add widgets flow">
+  <description>Precondition: onboarded dev wallet, widgets enabled, widgets intro already seen.</description>
+  <actions>
+    <action>Tap the menu icon</action>
+    <action>Tap "Widgets" (id "DrawerWidgets")</action>
+    <action>Verify the wallet overview widgets section is visible</action>
+    <action>Scroll the widgets page down until "Add Widget" (id "WidgetsAdd") is visible — it sits below the saved widgets and the suggestion cards</action>
+    <action>Verify "Hello, Widgets" is not visible</action>
+    <action>Tap "Add Widget" (id "WidgetsAdd")</action>
+    <action>Verify the "Add Widget" sheet is visible</action>
+    <action>If "Bitcoin Calculator" is not visible, scroll the sheet down until it is</action>
+    <action>Tap the "Bitcoin Calculator" widget card (id "WidgetListItem-calculator")</action>
+    <action>Verify the sheet navigates to "Bitcoin Calculator" and "Save Widget" (id "WidgetSave") is visible</action>
+  </actions>
+</journey>

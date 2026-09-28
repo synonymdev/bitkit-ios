@@ -46,10 +46,14 @@ struct FundManualAmountView: View {
 
                 HStack(alignment: .bottom) {
                     // Excludes Legacy (not usable for channel funding)
-                    AvailableAmount(label: t("wallet__send_available"), amount: wallet.channelFundableBalanceSats)
-                        .onTapGesture {
-                            amountViewModel.updateFromSats(UInt64(wallet.channelFundableBalanceSats), currency: currency)
-                        }
+                    AvailableAmount(
+                        label: t("wallet__send_available"),
+                        amount: wallet.channelFundableBalanceSats,
+                        testIdentifier: "ExternalAmountAvailable"
+                    )
+                    .onTapGesture {
+                        amountViewModel.updateFromSats(UInt64(wallet.channelFundableBalanceSats), currency: currency)
+                    }
 
                     Spacer()
 
@@ -72,6 +76,8 @@ struct FundManualAmountView: View {
                 .accessibilityIdentifier("ExternalAmountContinue")
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ExternalAmount")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
@@ -94,7 +100,8 @@ struct FundManualAmountView: View {
                 "lightning__spending_amount__error_max__description",
                 variables: ["amount": CurrencyFormatter.formatSats(fundableBalanceSats)]
             ),
-            visibilityTime: Toast.visibilityTimeShort
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "ExternalAmountExceededToast"
         )
     }
 

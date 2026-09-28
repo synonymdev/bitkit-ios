@@ -22,8 +22,12 @@ enum WeatherWidgetService {
     }
 
     static func latestWeather() async -> CachedWeather? {
-        if let fresh = cachedLatestIfFresh() { return fresh }
-        if let fresh = try? await fetchFreshLatest() { return fresh }
+        if let fresh = cachedLatestIfFresh() {
+            return fresh
+        }
+        if let fresh = try? await fetchFreshLatest() {
+            return fresh
+        }
         return cachedLatest()
     }
 

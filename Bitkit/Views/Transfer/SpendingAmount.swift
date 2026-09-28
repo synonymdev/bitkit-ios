@@ -1,5 +1,4 @@
 import BitkitCore
-import LDKNode
 import SwiftUI
 
 struct SpendingAmount: View {
@@ -16,6 +15,8 @@ struct SpendingAmount: View {
     @State private var isCalculatingMax = true
     @State private var availableAmount: UInt64?
     @State private var maxTransferAmount: UInt64?
+    /// Reserved once and reused, so re-reading the budget doesn't burn a receive index.
+    @State private var fundingAddress: String?
 
     private var amountSats: UInt64 {
         amountViewModel.amountSats
@@ -51,17 +52,25 @@ struct SpendingAmount: View {
             DisplayText(t("lightning__spending_amount__title"), accentColor: .purpleAccent)
                 .fixedSize(horizontal: false, vertical: true)
 
-            NumberPadTextField(viewModel: amountViewModel, showConversion: false)
-                .onTapGesture {
-                    amountViewModel.togglePrimaryDisplay(currency: currency)
-                }
-                .padding(.top, 32)
+            NumberPadTextField(
+                viewModel: amountViewModel,
+                showConversion: false,
+                testIdentifier: "SpendingAmountNumberField"
+            )
+            .onTapGesture {
+                amountViewModel.togglePrimaryDisplay(currency: currency)
+            }
+            .padding(.top, 32)
 
             Spacer()
 
             HStack(alignment: .bottom) {
                 if let available = availableAmount {
-                    AvailableAmount(label: t("wallet__send_available"), amount: Int(available))
+                    AvailableAmount(
+                        label: t("wallet__send_available"),
+                        amount: Int(available),
+                        testIdentifier: "SpendingAmountAvailable"
+                    )
                 } else {
                     HStack(spacing: 4) {
                         CaptionMText(t("wallet__send_available"))
@@ -95,6 +104,8 @@ struct SpendingAmount: View {
             }
             .accessibilityIdentifier("SpendingAmountContinue")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SpendingAmount")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
@@ -129,7 +140,8 @@ struct SpendingAmount: View {
                 "lightning__spending_amount__error_max__description",
                 variables: ["amount": CurrencyFormatter.formatSats(maxTransferAmount ?? 0)]
             ),
-            visibilityTime: Toast.visibilityTimeShort
+            visibilityTime: Toast.visibilityTimeShort,
+            accessibilityIdentifier: "SpendingAmountExceededToast"
         )
     }
 
@@ -160,10 +172,10 @@ struct SpendingAmount: View {
     }
 
     private func onContinue() async {
+        guard !transfer.isSpendingBusy else { return }
         isLoading = true
         defer { isLoading = false }
 
-        // Wait for node to be running if it's not already
         if wallet.nodeLifecycleState != .running {
             let isReady = await wallet.waitForNodeToRun(timeoutSeconds: 30.0)
             guard isReady else {
@@ -177,15 +189,54 @@ struct SpendingAmount: View {
         }
 
         do {
+            let canFund = await transfer.canFundOrder(
+                clientBalance: amountSats,
+                budget: fundingBudget(),
+                transferValues: { transfer.calculateTransferValues(clientBalanceSat: $0, blocktankInfo: blocktank.info) },
+                estimateOrderFee: { clientBalance, lspBalance in
+                    let estimate = try await blocktank.estimateOrderFee(clientBalance: clientBalance, lspBalance: lspBalance)
+                    return (estimate.networkFeeSat, estimate.serviceFeeSat)
+                }
+            )
+            guard canFund else {
+                app.toast(
+                    type: .warning,
+                    title: t("lightning__spending_amount__error_balance__title"),
+                    description: t("lightning__spending_amount__error_balance__description"),
+                    visibilityTime: Toast.visibilityTimeShort
+                )
+                return
+            }
+
             let values = transfer.calculateTransferValues(clientBalanceSat: amountSats, blocktankInfo: blocktank.info)
             let lspBalance = max(values.defaultLspBalance, values.minLspBalance)
-            let order = try await blocktank.createOrder(clientBalance: amountSats, lspBalance: lspBalance)
+            let feeSat = try await blocktank.estimateFundingAmount(clientBalance: amountSats, lspBalance: lspBalance)
 
-            transfer.onOrderCreated(order: order)
-            navigation.navigate(.spendingConfirm(order: order))
+            transfer.onEstimateReady(clientBalance: amountSats, lspBalance: lspBalance, feeSat: feeSat)
+            navigation.navigate(.spendingConfirm)
         } catch {
             let appError = AppError(error: error)
             app.toast(type: .error, title: appError.message, description: appError.debugMessage)
+        }
+    }
+
+    private func fundingBudget() async -> UInt64? {
+        do {
+            let address: String
+            if let fundingAddress {
+                address = fundingAddress
+            } else {
+                address = try await TransferFundingBudget.reserveSizingAddress()
+                fundingAddress = address
+            }
+            return await TransferFundingBudget.onchainBudget(
+                address: address,
+                feeEstimatesManager: feeEstimatesManager,
+                wallet: wallet
+            )
+        } catch {
+            Logger.warn("Failed to resolve transfer funding budget: \(error)", context: "SpendingAmount")
+            return nil
         }
     }
 
@@ -199,10 +250,7 @@ struct SpendingAmount: View {
         }
 
         do {
-            let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
-            let address = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
-
-            guard let feeEstimates = await feeEstimatesManager.getEstimates(refresh: true) else {
+            guard let calculatedAvailableAmount = await fundingBudget() else {
                 await MainActor.run {
                     let fallback = fallbackMaxTransferAmount(info: info)
                     availableAmount = fallback
@@ -210,13 +258,6 @@ struct SpendingAmount: View {
                 }
                 return
             }
-            let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeEstimates)
-
-            // Calculate max sendable amount (balance minus transaction fee)
-            let calculatedAvailableAmount = try await wallet.calculateMaxSendableAmount(
-                address: address,
-                satsPerVByte: fastFeeRate
-            )
 
             let (available, maxAmount) = try await transfer.calculateSpendingLimits(
                 onchainAvailable: calculatedAvailableAmount,

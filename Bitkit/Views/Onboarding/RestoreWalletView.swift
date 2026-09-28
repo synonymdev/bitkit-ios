@@ -125,6 +125,22 @@ struct RestoreWalletView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    SeedQRCodeScannerView { mnemonic in
+                        handleScannedMnemonic(mnemonic)
+                    }
+                } label: {
+                    Image("scan")
+                        .resizable()
+                        .foregroundColor(.textPrimary)
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel(t("onboarding__restore_scan_seedqr"))
+                .accessibilityIdentifier("RestoreSeedQR")
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             keyboardAccessory
         }
@@ -177,31 +193,29 @@ struct RestoreWalletView: View {
         .padding(.top, 44)
     }
 
+    @ViewBuilder
     private var passphraseSection: some View {
-        Group {
-            if showingPassphrase {
-                VStack(spacing: 16) {
-                    TextField(t("onboarding__restore_passphrase_placeholder"), text: $bip39Passphrase)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
-                        .focused($isPassphraseFocused)
-                        .padding(.top, 4)
-                        .accessibilityIdentifier("PassphraseInput")
+        if showingPassphrase {
+            VStack(spacing: 16) {
+                TextField(t("onboarding__restore_passphrase_placeholder"), text: $bip39Passphrase)
+                    .autocapitalization(.none)
+                    .autocorrectionDisabled()
+                    .focused($isPassphraseFocused)
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("PassphraseInput")
 
-                    BodySText(t("onboarding__restore_passphrase_meaning"))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                BodySText(t("onboarding__restore_passphrase_meaning"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 
+    @ViewBuilder
     private var validationSection: some View {
-        Group {
-            if let info = validationInfo {
-                BodyMText(info.message, textColor: info.color, accentColor: .redAccent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 16)
-            }
+        if let info = validationInfo {
+            BodyMText(info.message, textColor: info.color, accentColor: .redAccent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 16)
         }
     }
 
@@ -229,23 +243,22 @@ struct RestoreWalletView: View {
         }
     }
 
+    @ViewBuilder
     private var keyboardAccessory: some View {
-        Group {
-            if focusedField != nil {
-                SeedInputAccessory(currentWord: currentFocusedWord) { selectedWord in
-                    if let focusedField {
-                        if focusedField == 0 {
-                            firstFieldText = selectedWord
-                        } else {
-                            words[focusedField] = selectedWord
-                        }
+        if focusedField != nil {
+            SeedInputAccessory(currentWord: currentFocusedWord) { selectedWord in
+                if let focusedField {
+                    if focusedField == 0 {
+                        firstFieldText = selectedWord
+                    } else {
+                        words[focusedField] = selectedWord
+                    }
 
-                        // Move to next field
-                        if focusedField < words.count - 1 {
-                            self.focusedField = focusedField + 1
-                        } else {
-                            self.focusedField = nil
-                        }
+                    // Move to next field
+                    if focusedField < words.count - 1 {
+                        self.focusedField = focusedField + 1
+                    } else {
+                        self.focusedField = nil
                     }
                 }
             }
@@ -260,12 +273,21 @@ struct RestoreWalletView: View {
             // Prevent settings changes from triggering backups before the actual restore runs
             BackupService.shared.setRestoring(true)
 
+            // Suppress "Received" sheets for the historical txs the restore replays. Set here, before
+            // the node is started, because startup sync begins as soon as the wallet exists - setting
+            // it on the Get Started tap left a window where replayed txs could still pop a sheet. #588
+            SettingsViewModel.shared.pendingRestoreActivitySeenSince = UInt64(Date().timeIntervalSince1970)
+            SettingsViewModel.shared.restoreSyncedBlockHeight = 0
+
             // When restoring a wallet, monitor all address types to catch any existing funds
             SettingsViewModel.shared.monitorAllAddressTypes()
 
             _ = try StartupHandler.restoreWallet(mnemonic: bip39Mnemonic, bip39Passphrase: bip39Passphrase)
             try wallet.setWalletExistsState()
         } catch {
+            // The node never started, so no sync will lift the hold. Left in place it would silence
+            // every later on-chain receive, across retries and relaunches. #588
+            SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
             BackupService.shared.setRestoring(false)
             app.toast(error)
         }
@@ -290,6 +312,15 @@ struct RestoreWalletView: View {
         firstFieldText = words[0]
 
         // Close the keyboard
+        focusedField = nil
+    }
+
+    private func handleScannedMnemonic(_ mnemonic: String) {
+        let scannedWords = mnemonic.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        guard scannedWords.count == wordCount else { return }
+
+        words = scannedWords
+        firstFieldText = scannedWords[0]
         focusedField = nil
     }
 }

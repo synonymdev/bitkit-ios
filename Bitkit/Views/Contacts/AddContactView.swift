@@ -9,6 +9,7 @@ struct AddContactView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     let publicKey: String
 
@@ -121,7 +122,8 @@ struct AddContactView: View {
                         truncatedKey: profile.truncatedPublicKey,
                         name: profile.name,
                         bio: profile.bio,
-                        imageUrl: profile.imageUrl
+                        imageUrl: profile.imageUrl,
+                        showDivider: false
                     )
                     .padding(.top, 24)
                 }
@@ -292,7 +294,8 @@ struct AddContactView: View {
         do {
             try await app.handleScannedData(
                 paymentRequest,
-                claimedContactPaymentContext: contactPaymentContext
+                claimedContactPaymentContext: contactPaymentContext,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
             )
         } catch is CancellationError {
             if app.ownsContactPaymentContext(contactPaymentContext) {
@@ -334,6 +337,7 @@ struct AddContactView: View {
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
             .environmentObject(WalletViewModel())
+            .environment(HwWalletManager())
     }
     .preferredColorScheme(.dark)
 }

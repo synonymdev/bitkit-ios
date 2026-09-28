@@ -7,6 +7,7 @@ struct TextField: View {
     let axis: Axis
     let testIdentifier: String?
     let submitLabel: SubmitLabel
+    let contentPadding: CGFloat
     @Binding var text: String
 
     init(
@@ -16,7 +17,8 @@ struct TextField: View {
         font: Font = .custom(Fonts.semiBold, size: 15),
         axis: Axis = .horizontal,
         testIdentifier: String? = nil,
-        submitLabel: SubmitLabel = .return
+        submitLabel: SubmitLabel = .return,
+        contentPadding: CGFloat = 16
     ) {
         self.placeholder = placeholder
         self.backgroundColor = backgroundColor
@@ -24,6 +26,7 @@ struct TextField: View {
         self.axis = axis
         self.testIdentifier = testIdentifier
         self.submitLabel = submitLabel
+        self.contentPadding = contentPadding
         _text = text
     }
 
@@ -41,7 +44,7 @@ struct TextField: View {
                 .submitLabel(submitLabel)
                 .accessibilityIdentifierIfPresent(testIdentifier)
         }
-        .padding()
+        .padding(contentPadding)
         .background(backgroundColor)
         .cornerRadius(8)
     }

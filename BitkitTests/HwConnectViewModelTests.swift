@@ -533,7 +533,9 @@ private final class FakeHwConnectService: HwConnectServicing {
 
     func scanForDevices() async throws -> [TrezorDeviceInfo] {
         scanCount += 1
-        if let scanError { throw scanError }
+        if let scanError {
+            throw scanError
+        }
         return nearbyDevices
     }
 

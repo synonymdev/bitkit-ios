@@ -12,31 +12,26 @@ struct PaymentNavigationHelper {
     static func shouldUseQuickpay(
         app: AppViewModel,
         settings: SettingsViewModel,
-        currency: CurrencyViewModel
+        currency: CurrencyViewModel,
+        spendStore: QuickPaySpendStore = .shared,
+        coordinator: QuickPayPaymentCoordinator? = nil
     ) -> Bool {
-        // Check if quickpay is enabled
-        guard settings.enableQuickpay else {
+        guard let amountSats = QuickPayLimits.paymentAmountSats(app: app), amountSats > 0 else {
             return false
         }
 
-        // We need a lightning invoice or LNURL pay data to use quickpay
-        guard app.scannedLightningInvoice != nil || app.lnurlPayData != nil else {
-            return false
+        let coordinator = coordinator ?? .shared
+        if let hash = app.scannedLightningInvoice?.paymentHash.hex, coordinator.hasOpen(hash) {
+            return true
         }
 
-        // Convert quickpay amount from USD to sats
-        let quickpayAmountSats = currency.convert(fiatAmount: settings.quickpayAmount, from: "USD") ?? 0
-        guard quickpayAmountSats > 0 else {
-            return false
-        }
-
-        // Check LNURL pay
-        if let lnurlPayData = app.lnurlPayData {
-            return lnurlPayData.isFixedAmount && lnurlPayData.minSendableSat <= quickpayAmountSats
-        }
-
-        // Check regular lightning invoice
-        return app.scannedLightningInvoice!.amountSatoshis <= quickpayAmountSats
+        return spendStore.canApply(
+            amountSats: amountSats,
+            enabled: settings.enableQuickpay,
+            thresholdUsd: settings.quickpayAmount,
+            multiplier: settings.quickpayDailyLimitMultiplier,
+            rates: .live(currency)
+        )
     }
 
     /// Centralized method to open the appropriate sheet based on the current state
@@ -44,7 +39,9 @@ struct PaymentNavigationHelper {
         app: AppViewModel,
         currency: CurrencyViewModel,
         settings: SettingsViewModel,
-        sheetViewModel: SheetViewModel
+        sheetViewModel: SheetViewModel,
+        spendStore: QuickPaySpendStore = .shared,
+        coordinator: QuickPayPaymentCoordinator? = nil
     ) {
         // Handle LNURL withdraw
         if let lnurlWithdrawData = app.lnurlWithdrawData {
@@ -57,7 +54,13 @@ struct PaymentNavigationHelper {
             return
         }
 
-        let shouldUseQuickpay = shouldUseQuickpay(app: app, settings: settings, currency: currency)
+        let shouldUseQuickpay = shouldUseQuickpay(
+            app: app,
+            settings: settings,
+            currency: currency,
+            spendStore: spendStore,
+            coordinator: coordinator
+        )
 
         // Handle Lightning address / LNURL pay
         if let lnurlPayData = app.lnurlPayData {
@@ -100,7 +103,9 @@ struct PaymentNavigationHelper {
     static func appropriateSendRoute(
         app: AppViewModel,
         currency: CurrencyViewModel,
-        settings: SettingsViewModel
+        settings: SettingsViewModel,
+        spendStore: QuickPaySpendStore = .shared,
+        coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
         if let lnurlWithdrawData = app.lnurlWithdrawData {
             if lnurlWithdrawData.isFixedAmount {
@@ -110,7 +115,13 @@ struct PaymentNavigationHelper {
             }
         }
 
-        let shouldUseQuickpay = shouldUseQuickpay(app: app, settings: settings, currency: currency)
+        let shouldUseQuickpay = shouldUseQuickpay(
+            app: app,
+            settings: settings,
+            currency: currency,
+            spendStore: spendStore,
+            coordinator: coordinator
+        )
 
         // Handle Lightning address / LNURL pay
         if let lnurlPayData = app.lnurlPayData {
@@ -147,37 +158,130 @@ struct PaymentNavigationHelper {
         return nil
     }
 
+    static func confirmRouteAfterQuickPayCap(app: AppViewModel) -> SendRoute {
+        if let lnurlPayData = app.lnurlPayData {
+            return lnurlPayData.isFixedAmount ? .lnurlPayConfirm : .lnurlPayAmount
+        }
+
+        if let invoice = app.scannedLightningInvoice, invoice.amountSatoshis == 0 {
+            return .amount
+        }
+
+        return .confirm
+    }
+
+    static func replacingQuickPay(
+        in path: [SendRoute],
+        root: SendRoute,
+        with route: SendRoute
+    ) -> (root: SendRoute, path: [SendRoute]) {
+        if root == .quickpay {
+            return (route, [])
+        }
+
+        if let index = path.lastIndex(of: .quickpay) {
+            var nextPath = Array(path.prefix(index))
+            nextPath.append(route)
+            return (root, nextPath)
+        }
+
+        return (root, path + [route])
+    }
+
     static func contactPaymentRoute(
         app: AppViewModel,
         currency: CurrencyViewModel,
-        settings: SettingsViewModel
+        settings: SettingsViewModel,
+        spendStore: QuickPaySpendStore = .shared,
+        coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
-        guard let route = appropriateSendRoute(app: app, currency: currency, settings: settings) else {
+        guard let route = appropriateSendRoute(
+            app: app,
+            currency: currency,
+            settings: settings,
+            spendStore: spendStore,
+            coordinator: coordinator
+        ) else {
             return nil
+        }
+
+        if app.contactPaymentContext?.incomingPaymentRequest != nil {
+            switch route {
+            case .quickpay, .amount:
+                return app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+            case .lnurlPayAmount:
+                return .lnurlPayConfirm
+            default:
+                return route
+            }
         }
 
         switch route {
         case .quickpay:
-            if let lnurlPayData = app.lnurlPayData {
-                return lnurlPayData.isFixedAmount ? .lnurlPayConfirm : .lnurlPayAmount
-            }
-
-            if let invoice = app.scannedLightningInvoice {
-                return invoice.amountSatoshis == 0 ? .amount : .confirm
-            }
-
-            if app.scannedOnchainInvoice != nil {
-                return .amount
-            }
-
-            return route
-        case .confirm:
-            if let invoice = app.scannedLightningInvoice {
-                return invoice.amountSatoshis == 0 ? .amount : .confirm
-            }
-            return route
+            return confirmRouteAfterQuickPayCap(app: app)
         default:
             return route
+        }
+    }
+
+    static func openPrivateContactPayment(
+        publicKey: String,
+        app: AppViewModel,
+        currency: CurrencyViewModel,
+        settings: SettingsViewModel,
+        wallet: WalletViewModel,
+        alternativeOnchainBalanceSats: UInt64,
+        present: (SendRoute) -> Void
+    ) async {
+        do {
+            let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: publicKey, wallet: wallet)
+            switch result {
+            case let .opened(paymentRequest, privatePaymentContext):
+                let context = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext)
+                guard app.claimContactPaymentContext(context) else { return }
+
+                do {
+                    try await app.handleScannedData(
+                        paymentRequest,
+                        claimedContactPaymentContext: context,
+                        alternativeOnchainBalanceSats: alternativeOnchainBalanceSats
+                    )
+                } catch is CancellationError {
+                    if app.ownsContactPaymentContext(context) {
+                        app.resetSendState()
+                    }
+                    return
+                } catch {
+                    guard app.ownsContactPaymentContext(context) else { return }
+                    app.resetSendState()
+                    Logger.warn("Failed to decode private contact payment request", context: "PaymentNavigationHelper")
+                    app.toast(
+                        type: .warning,
+                        title: t("slashtags__error_pay_title"),
+                        description: t("slashtags__error_pay_not_opened_msg")
+                    )
+                    return
+                }
+
+                guard app.ownsContactPaymentContext(context),
+                      let route = contactPaymentRoute(app: app, currency: currency, settings: settings)
+                else {
+                    app.resetSendState()
+                    return
+                }
+                present(route)
+
+            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
+                if let messageKey = result.contactPaymentFailureMessageKey {
+                    app.toast(type: .warning, title: t("slashtags__error_pay_title"), description: t(messageKey))
+                }
+            }
+        } catch {
+            Logger.error(
+                "Failed to pay contact \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
+                context: "PaymentNavigationHelper"
+            )
+            app.toast(type: .error, title: t("slashtags__error_pay_title"), description: error.localizedDescription)
         }
     }
 }

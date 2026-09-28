@@ -1,6 +1,64 @@
 import SwiftUI
 
+func canRoutePubkyContactLink(
+    isPaykitUIActive: Bool,
+    isPubkyInitialized: Bool,
+    hasLoadedContacts: Bool
+) -> Bool {
+    !isPaykitUIActive || (isPubkyInitialized && hasLoadedContacts)
+}
+
+func pubkyContactPublicKeyForRouting(from url: URL, isPaykitUIActive: Bool) throws -> String? {
+    guard isPaykitUIActive else { return nil }
+    guard let publicKey = PubkyContactLink.publicKey(from: url) else {
+        throw ContactsManagerError.invalidPublicKey
+    }
+    return publicKey
+}
+
+@MainActor
+func prepareAndRoutePendingDeepLink(
+    preparation: () async -> Void,
+    routing: () async -> Void
+) async {
+    await preparation()
+    guard !Task.isCancelled else { return }
+    await routing()
+}
+
+enum PendingProfileSetupResumeState {
+    case inactive
+    case waiting
+    case ready
+
+    func shouldResume(didResume: inout Bool) -> Bool {
+        if self == .inactive {
+            didResume = false
+        }
+        guard self == .ready, !didResume else { return false }
+        didResume = true
+        return true
+    }
+}
+
+func resolvePendingProfileSetupResumeState(
+    isProfileSetupPending: Bool,
+    isPaykitUIActive: Bool,
+    isAuthenticated: Bool,
+    hasActiveSheet: Bool,
+    isReplacingSheet: Bool,
+    currentRoute: Route?
+) -> PendingProfileSetupResumeState {
+    guard isProfileSetupPending else { return .inactive }
+    guard isPaykitUIActive, isAuthenticated, !hasActiveSheet, !isReplacingSheet, currentRoute != .createProfile else {
+        return .waiting
+    }
+    return .ready
+}
+
 struct MainNavView: View {
+    private let canHandleDeepLinks: Bool
+
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
 
     @EnvironmentObject private var app: AppViewModel
@@ -10,19 +68,49 @@ struct MainNavView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var notificationManager: PushNotificationManager
     @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject private var scannerManager: ScannerManager
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var transfer: TransferViewModel
     @Environment(TrezorManager.self) private var trezorManager
     @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
     @Environment(\.scenePhase) var scenePhase
 
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
+    @State private var didResumePendingPubkyProfileSetup = false
+    @State private var isPreparingPendingContactDeepLink = false
+    init(canHandleDeepLinks: Bool = true) {
+        self.canHandleDeepLinks = canHandleDeepLinks
+    }
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    private var isContactDeepLinkReady: Bool {
+        canRoutePubkyContactLink(
+            isPaykitUIActive: isPaykitUIActive,
+            isPubkyInitialized: pubkyProfile.isInitialized,
+            hasLoadedContacts: contactsManager.hasLoaded
+        )
+    }
+
+    private var canPrepareContactDeepLink: Bool {
+        !isPaykitUIActive || pubkyProfile.isInitialized
+    }
+
+    private var pendingProfileSetupResumeState: PendingProfileSetupResumeState {
+        resolvePendingProfileSetupResumeState(
+            isProfileSetupPending: pubkyProfile.isProfileSetupPending,
+            isPaykitUIActive: isPaykitUIActive,
+            isAuthenticated: pubkyProfile.isAuthenticated,
+            hasActiveSheet: sheets.activeSheetConfiguration != nil,
+            isReplacingSheet: sheets.isReplacingSheet,
+            currentRoute: navigation.currentRoute
+        )
     }
 
     // Delay constants for clipboard processing
@@ -39,10 +127,14 @@ struct MainNavView: View {
                 navigation.navigate(.spendingHwSigned)
             }
         }
+        .onChange(of: pendingProfileSetupResumeState, initial: true) { _, resumeState in
+            guard resumeState.shouldResume(didResume: &didResumePendingPubkyProfileSetup) else { return }
+            navigation.navigate(.createProfile)
+        }
         .sheet(
             item: $sheets.addTagSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.addTag, reason: "Add tag sheet dismissed")
             }
         ) {
             config in AddTagSheet(config: config)
@@ -50,7 +142,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.boostSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.boost, reason: "Boost sheet dismissed")
             }
         ) {
             config in BoostSheet(config: config)
@@ -58,7 +150,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.backupSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.backup, reason: "Backup sheet dismissed")
                 app.ignoreBackup()
             }
         ) {
@@ -67,7 +159,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.giftSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.gift, reason: "Gift sheet dismissed")
             }
         ) {
             config in GiftSheet(config: config)
@@ -75,7 +167,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.connectionClosedSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.connectionClosed, reason: "Connection closed sheet dismissed")
             }
         ) {
             config in ConnectionClosedSheet(config: config)
@@ -83,7 +175,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.highBalanceSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.highBalance, reason: "High balance sheet dismissed")
                 app.ignoreHighBalance()
             }
         ) {
@@ -92,7 +184,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.lnurlAuthSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.lnurlAuth, reason: "LNURL auth sheet dismissed")
             }
         ) {
             config in LnurlAuthSheet(config: config)
@@ -100,7 +192,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.pubkyAuthApprovalSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.pubkyAuthApproval, reason: "Pubky auth approval sheet dismissed")
             }
         ) {
             config in PubkyAuthApprovalSheet(config: config)
@@ -116,7 +208,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.notificationsSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.notifications, reason: "Notifications sheet dismissed")
                 app.hasSeenNotificationsIntro = true
             }
         ) {
@@ -131,9 +223,17 @@ struct MainNavView: View {
             config in PaymentRequestsSheet(config: config)
         }
         .sheet(
+            item: $sheets.subscriptionSheetItem,
+            onDismiss: {
+                sheets.hideSheetIfActive(.subscription, reason: "Subscription sheet dismissed")
+            }
+        ) {
+            config in SubscriptionSheet(config: config)
+        }
+        .sheet(
             item: $sheets.receiveSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.receive, reason: "Receive sheet dismissed")
             }
         ) {
             config in ReceiveSheet(config: config)
@@ -141,7 +241,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.receivedTxSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.receivedTx, reason: "Received transaction sheet dismissed")
             }
         ) {
             config in ReceivedTx(config: config)
@@ -165,7 +265,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.securitySheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.security, reason: "Security sheet dismissed")
             }
         ) {
             config in SecuritySheet(config: config)
@@ -173,7 +273,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.quickpaySheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.quickpay, reason: "Quickpay sheet dismissed")
                 app.hasSeenQuickpayIntro = true
             }
         ) {
@@ -182,8 +282,6 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.sendSheetItem,
             onDismiss: {
-                app.resetSendState()
-                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                 sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")
             }
         ) {
@@ -192,7 +290,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.forceTransferSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.forceTransfer, reason: "Force transfer sheet dismissed")
             }
         ) {
             config in ForceTransferSheet(config: config)
@@ -200,7 +298,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.widgetsSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.widgets, reason: "Widgets sheet dismissed")
             }
         ) {
             config in WidgetsSheet(config: config)
@@ -208,7 +306,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.hardwareConnectSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.hardwareConnect, reason: "Hardware connect sheet dismissed")
             }
         ) {
             config in HardwareConnectSheet(config: config)
@@ -216,7 +314,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.hardwarePairingSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.hardwarePairing, reason: "Hardware pairing sheet dismissed")
             }
         ) {
             config in HardwarePairingSheet(config: config)
@@ -224,7 +322,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.renameHardwareWalletSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.renameHardwareWallet, reason: "Rename hardware wallet sheet dismissed")
             }
         ) {
             config in RenameHardwareWalletSheet(config: config)
@@ -234,6 +332,11 @@ struct MainNavView: View {
             // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
             if needsCode {
                 guard !sheets.hardwareConnectHandlesPairing else { return }
+                if let activeId = sheets.activeSheetConfiguration?.id,
+                   activeId == .send || activeId == .receive
+                {
+                    return
+                }
                 sheets.showSheet(.hardwarePairing)
             } else {
                 sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")
@@ -254,11 +357,11 @@ struct MainNavView: View {
                 // Update permissions in case user changed them in OS settings
                 notificationManager.updateNotificationPermission()
                 cameraManager.refreshPermission()
-
-                guard settings.readClipboard else { return }
-
-                handleClipboard()
             }
+        }
+        .onChange(of: scenePhase, initial: true) { _, newPhase in
+            guard newPhase == .active else { return }
+            handleClipboardIfEnabled()
         }
         .onChange(of: notificationManager.authorizationStatus) { _, newStatus in
             // Handle notification permission changes
@@ -288,6 +391,9 @@ struct MainNavView: View {
             }
         }
         .onChange(of: settings.enableNotifications) { _, newValue in
+            Task {
+                await paykitPaymentRequestManager.synchronizeSubscriptionNotifications(enabled: newValue)
+            }
             // Handle notification enable/disable
             if newValue {
                 // Request permission in case user was not prompted yet
@@ -312,66 +418,29 @@ struct MainNavView: View {
                 notificationManager.unregister()
             }
         }
-        .onOpenURL { url in
-            Task {
-                Logger.info("Received deeplink: \(sanitizedDeeplinkDescription(url))")
-
-                // Web URLs from widgets (e.g. news article tap) bypass payment handling
-                if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
-                    await UIApplication.shared.open(url)
-                    return
-                }
-
-                if let callback = PubkyRingAuthCallback.parse(url: url) {
-                    guard isPaykitUIActive else {
-                        app.toast(
-                            type: .error,
-                            title: t("profile__auth_error_title"),
-                            description: t("other__qr_error_text")
-                        )
-                        return
-                    }
-
-                    let handlingResult = await pubkyProfile.handleAuthCallback(callback)
-
-                    switch handlingResult {
-                    case let .trustedError(message):
-                        app.toast(
-                            type: .error,
-                            title: t("profile__auth_error_title"),
-                            description: message ?? t("other__qr_error_text")
-                        )
-                    case .untrustedError:
-                        app.toast(
-                            type: .error,
-                            title: t("profile__auth_error_title")
-                        )
-                    case .handled, .ignored:
-                        break
-                    }
-
-                    return
-                }
-
-                do {
-                    try await app.handleScannedData(url.absoluteString)
-                    if shouldOpenPaymentSheet(for: url.absoluteString) {
-                        PaymentNavigationHelper.openPaymentSheet(
-                            app: app,
-                            currency: currency,
-                            settings: settings,
-                            sheetViewModel: sheets
-                        )
-                    }
-                } catch {
-                    Logger.error(error, context: "Failed to handle deeplink")
-                    app.toast(
-                        type: .error,
-                        title: t("other__qr_error_header"),
-                        description: t("other__qr_error_text")
-                    )
-                }
-            }
+        .task(id: canHandleDeepLinks) {
+            guard canHandleDeepLinks else { return }
+            await handlePendingDeepLink()
+        }
+        .onChange(of: app.pendingDeepLinkURL) { _, url in
+            guard canHandleDeepLinks, url != nil else { return }
+            Task { await handlePendingDeepLink() }
+        }
+        .task(id: wallet.nodeLifecycleState == .running) {
+            guard canHandleDeepLinks,
+                  wallet.nodeLifecycleState == .running,
+                  let url = app.pendingDeepLinkURL,
+                  !PubkyContactLink.matches(url)
+            else { return }
+            await handlePendingDeepLink()
+        }
+        .onChange(of: canPrepareContactDeepLink) { _, canPrepare in
+            guard canHandleDeepLinks, canPrepare else { return }
+            Task { await handlePendingDeepLink() }
+        }
+        .onChange(of: isContactDeepLinkReady) { _, isReady in
+            guard canHandleDeepLinks, isReady else { return }
+            Task { await handlePendingDeepLink() }
         }
         .alert(
             t("other__clipboard_redirect_title"),
@@ -442,9 +511,9 @@ struct MainNavView: View {
                 case let .spendingAmountHw(walletId): SpendingAmountHw(walletId: walletId)
                 case let .spendingHwSign(walletId): SpendingHwSign(walletId: walletId)
                 case .spendingHwSigned: SpendingHwSigned()
-                case let .spendingConfirm(order): SpendingConfirm(order: order)
-                case let .spendingAdvanced(order): SpendingAdvancedView(order: order)
-                case let .transferLearnMore(order): TransferLearnMoreView(order: order)
+                case .spendingConfirm: SpendingConfirm()
+                case let .spendingAdvanced(walletId): SpendingAdvancedView(walletId: walletId)
+                case .transferLearnMore: TransferLearnMoreView()
                 case .settingUp: SettingUpView()
                 case .fundingAdvanced: FundAdvancedOptions()
                 case let .fundManual(nodeUri): FundManualSetupView(initialNodeUri: nodeUri)
@@ -478,13 +547,29 @@ struct MainNavView: View {
                         ContactsIntroView()
                     }
                 case .contactsIntro:
-                    if isPaykitUIActive { ContactsIntroView() } else { ComingSoonScreen() }
+                    if isPaykitUIActive {
+                        ContactsIntroView()
+                    } else {
+                        ComingSoonScreen()
+                    }
                 case let .contactDetail(publicKey):
-                    if isPaykitUIActive { ContactDetailView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        ContactDetailView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .contactSaved(publicKey):
-                    if isPaykitUIActive { ContactDetailView(publicKey: publicKey, showsDeleteAction: true) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        ContactDetailView(publicKey: publicKey, showsDeleteAction: true)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .contactActivity(publicKey):
-                    if isPaykitUIActive { ContactActivityView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        ContactActivityView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .assignActivityContact(activityId, walletId):
                     if isPaykitUIActive {
                         AssignActivityContactView(activityId: activityId, walletId: walletId)
@@ -513,9 +598,17 @@ struct MainNavView: View {
                         ContactImportSelectView(contacts: contactsManager.pendingImportContacts)
                     }
                 case let .addContact(publicKey):
-                    if isPaykitUIActive { AddContactView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        AddContactView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case let .editContact(publicKey):
-                    if isPaykitUIActive { EditContactView(publicKey: publicKey) } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        EditContactView(publicKey: publicKey)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .profile:
                     if !isPaykitUIActive {
                         ComingSoonScreen()
@@ -531,17 +624,53 @@ struct MainNavView: View {
                         ProfileIntroView()
                     }
                 case .profileIntro:
-                    if isPaykitUIActive { ProfileIntroView() } else { ComingSoonScreen() }
+                    if isPaykitUIActive {
+                        ProfileIntroView()
+                    } else {
+                        ComingSoonScreen()
+                    }
                 case .pubkyChoice:
-                    if isPaykitUIActive { PubkyChoiceView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        PubkyChoiceView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .createProfile:
-                    if isPaykitUIActive { CreateProfileView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        CreateProfileView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .editProfile:
-                    if isPaykitUIActive { EditProfileView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        EditProfileView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
                 case .payContacts:
-                    if isPaykitUIActive { PayContactsView() } else { paykitDisabledRedirectView }
-                case .paymentRequests:
-                    if isPaykitUIActive { PaymentRequestsView() } else { paykitDisabledRedirectView }
+                    if isPaykitUIActive {
+                        PayContactsView()
+                    } else {
+                        paykitDisabledRedirectView
+                    }
+                case let .subscriptions(showPayments):
+                    if isPaykitUIActive {
+                        SubscriptionsView(showPayments: showPayments)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
+                case let .paymentRequestDetail(id):
+                    if isPaykitUIActive {
+                        PaymentRequestDetailView(id: id)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
+                case let .subscriptionDetail(id):
+                    if isPaykitUIActive {
+                        SubscriptionDetailView(id: id)
+                    } else {
+                        paykitDisabledRedirectView
+                    }
 
                 // Shop
                 case .shopIntro: ShopIntro()
@@ -626,7 +755,9 @@ struct MainNavView: View {
             }
     }
 
-    private func handleClipboard() {
+    private func handleClipboardIfEnabled() {
+        guard settings.readClipboard else { return }
+
         Task { @MainActor in
             guard let uri = UIPasteboard.general.string else {
                 return
@@ -658,7 +789,10 @@ struct MainNavView: View {
 
                 await wallet.waitForNodeToRun()
                 try await Task.sleep(nanoseconds: Self.nodeReadyDelayNanoseconds)
-                try await app.handleScannedData(uri)
+                try await app.handleScannedData(
+                    uri,
+                    alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                )
 
                 try await Task.sleep(nanoseconds: Self.statePropagationDelayNanoseconds)
                 if shouldOpenPaymentSheet(for: uri) {
@@ -685,6 +819,125 @@ struct MainNavView: View {
 
     private func shouldOpenPaymentSheet(for uri: String) -> Bool {
         !SamRockSetupRequest.isProtocolURL(uri) && !PubkyAuthRequest.isProtocolURL(uri)
+    }
+
+    private func handlePendingDeepLink() async {
+        await prepareAndRoutePendingDeepLink {
+            await loadContactsForPendingDeepLinkIfNeeded()
+        } routing: {
+            await app.routePendingDeepLinkIfReady(
+                canHandleDeepLinks,
+                nodeIsRunning: wallet.nodeLifecycleState == .running,
+                pubkyContactsAreReady: isContactDeepLinkReady
+            ) { url in
+                await handleDeepLink(url)
+            }
+        }
+    }
+
+    private func loadContactsForPendingDeepLinkIfNeeded() async {
+        guard isPaykitUIActive,
+              pubkyProfile.isInitialized,
+              !contactsManager.hasLoaded,
+              !isPreparingPendingContactDeepLink,
+              let url = app.pendingDeepLinkURL,
+              let contactPublicKey = PubkyContactLink.publicKey(from: url)
+        else { return }
+
+        let contactsOwnerPublicKey = pubkyProfile.publicKey ?? contactPublicKey
+        isPreparingPendingContactDeepLink = true
+        defer { isPreparingPendingContactDeepLink = false }
+
+        do {
+            try await contactsManager.loadContactsIfNeeded(for: contactsOwnerPublicKey)
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.warn("Failed to load contacts before routing contact link: \(error)", context: "MainNavView")
+        }
+    }
+
+    private func handleDeepLink(_ url: URL) async {
+        Logger.info("Received deeplink: \(sanitizedDeeplinkDescription(url))")
+
+        // Web URLs from widgets (e.g. news article tap) bypass payment handling
+        if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            await UIApplication.shared.open(url)
+            return
+        }
+
+        if let callback = PubkyRingAuthCallback.parse(url: url) {
+            guard isPaykitUIActive else {
+                app.toast(
+                    type: .error,
+                    title: t("profile__auth_error_title"),
+                    description: t("other__qr_error_text")
+                )
+                return
+            }
+
+            let handlingResult = await pubkyProfile.handleAuthCallback(callback)
+
+            switch handlingResult {
+            case let .trustedError(message):
+                app.toast(
+                    type: .error,
+                    title: t("profile__auth_error_title"),
+                    description: message ?? t("other__qr_error_text")
+                )
+            case .untrustedError:
+                app.toast(
+                    type: .error,
+                    title: t("profile__auth_error_title")
+                )
+            case .handled, .ignored:
+                break
+            }
+
+            return
+        }
+
+        do {
+            if PubkyContactLink.matches(url) {
+                guard let publicKey = try pubkyContactPublicKeyForRouting(from: url, isPaykitUIActive: isPaykitUIActive) else { return }
+                guard pubkyProfile.initializationErrorMessage == nil,
+                      contactsManager.hasLoaded
+                else { throw ContactsManagerError.invalidPublicKey }
+
+                scannerManager.configure(
+                    app: app,
+                    contactsManager: contactsManager,
+                    currency: currency,
+                    settings: settings,
+                    navigation: navigation,
+                    pubkyProfile: pubkyProfile,
+                    sheets: sheets,
+                    wallet: wallet,
+                    hwWalletManager: hwWalletManager
+                )
+                await scannerManager.handleScan(publicKey, context: .main)
+                return
+            }
+            try await app.handleScannedData(
+                url.absoluteString,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+            )
+            if shouldOpenPaymentSheet(for: url.absoluteString) {
+                PaymentNavigationHelper.openPaymentSheet(
+                    app: app,
+                    currency: currency,
+                    settings: settings,
+                    sheetViewModel: sheets
+                )
+            }
+        } catch {
+            Logger.error(error, context: "Failed to handle deeplink")
+            app.toast(
+                type: .error,
+                title: t("other__qr_error_header"),
+                description: t("other__qr_error_text")
+            )
+        }
     }
 
     private func sanitizedDeeplinkDescription(_ url: URL) -> String {

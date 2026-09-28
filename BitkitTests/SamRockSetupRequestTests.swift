@@ -5,7 +5,6 @@ import XCTest
 final class SamRockSetupRequestTests: XCTestCase {
     override func tearDown() {
         SamRockURLProtocol.handler = nil
-        URLProtocol.unregisterClass(SamRockURLProtocol.self)
         super.tearDown()
     }
 
@@ -287,6 +286,7 @@ private extension SamRockSetupRequestTests {
     }
 
     func prepareWalletKeychain() throws {
+        snapshotAppDefaults("selectedAddressType")
         try? Keychain.delete(key: .bip39Mnemonic(index: Self.testWalletIndex))
         try? Keychain.delete(key: .bip39Passphrase(index: Self.testWalletIndex))
         try Keychain.saveString(key: .bip39Mnemonic(index: Self.testWalletIndex), str: Self.testMnemonic)
@@ -294,7 +294,6 @@ private extension SamRockSetupRequestTests {
     }
 
     func samRockURLSession() -> URLSession {
-        URLProtocol.registerClass(SamRockURLProtocol.self)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [SamRockURLProtocol.self] + (configuration.protocolClasses ?? [])
         return URLSession(configuration: configuration)

@@ -1,0 +1,21 @@
+<journey name="Hardware Wallet Reconnect">
+  <description>
+    iOS counterpart of the Android USB reconnect journey. iOS cannot do WebUSB and has no
+    USB_DEVICE_ATTACHED intent to inject, so the transport here is Trezor Bridge and the
+    disconnect/reconnect chain is driven from the dev Trezor screen instead. Covers the grey
+    disconnect indicator on the home tile, the serialized reconnect retry loop, and the
+    prompt-free reconnect for an already paired wallet. Requires a paired Bridge emulator
+    (run connect-home-tile.xml first).
+  </description>
+  <actions>
+    <action>Launch the Bitkit app, open the menu, navigate to Settings, then Dev Settings, then tap the "Trezor" row</action>
+    <action>Verify the connected device is shown, then tap the "Disconnect" button (id "TrezorDisconnectButton")</action>
+    <action>Navigate back to the wallet home screen</action>
+    <action>Verify the hardware wallet tile (id "ActivityHardware") still shows its name and balance but the connection indicator icon is grey</action>
+    <action>Open the menu, navigate to Settings, then Dev Settings, then tap the "Trezor" row again</action>
+    <action>Tap the known-device connect entry (id "TrezorKnownDeviceConnect-bridge") to reconnect</action>
+    <action>Verify the device reconnects within 15 seconds, with no PIN or pairing prompt shown</action>
+    <action>Navigate back to the wallet home screen</action>
+    <action>Verify the hardware tile connection indicator is green again</action>
+  </actions>
+</journey>

@@ -153,9 +153,13 @@ class ContactsManager: ObservableObject {
 
     func loadContactsIfNeeded(for publicKey: String) async throws {
         while !hasLoaded {
+            try Task.checkCancellation()
             if isLoading {
-                for await isLoading in $isLoading.values where !isLoading {
-                    break
+                for await isLoading in $isLoading.values {
+                    try Task.checkCancellation()
+                    if !isLoading {
+                        break
+                    }
                 }
             } else {
                 try await loadContacts(for: publicKey)

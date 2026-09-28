@@ -1028,12 +1028,15 @@
 "wallet__receive_connect_additional" = "Para recibir más Bitcoin al instante, Bitkit necesita aumentar tu liquidez. Se descontará una comisión de red de <accent>{networkFee}</accent> y una comisión del proveedor de servicio de <accent>{serviceFee}</accent> del monto que especificaste.";
 "wallet__receive_liquidity__nav_title" = "Configuración del saldo de gastos";
 "wallet__receive_liquidity__nav_title_additional" = "Aumentar la capacidad de recepción";
+"wallet__receive_liquidity__invalid_quote" = "Bitkit recibió una cotización de liquidez no válida. Inténtalo de nuevo.";
 "wallet__receive_liquidity__text" = "Tu saldo para gastar usa la red Lightning para que tus pagos sean más baratos, rápidos y privados.\n⠀\nFunciona como el acceso a internet, pero pagas por liquidez y ruteo en lugar de por ancho de banda.\n⠀\nEsta configuración incluye algunos costos únicos.";
 "wallet__receive_liquidity__text_additional" = "Su saldo de gastos utiliza la Lightning Network para que sus pagos sean más baratos, más rápidos y más privados.\n\nFunciona como el acceso a Internet, pero usted paga por la liquidez y el enrutamiento en lugar del ancho de banda.\n\nBitkit necesita aumentar la capacidad de recepción de su saldo de gastos para procesar este pago.";
 "wallet__receive_liquidity__label" = "Liquidez del saldo para gastar";
 "wallet__receive_liquidity__label_additional" = "Liquidez adicional del saldo para gastar";
 "wallet__receive_cjit_error" = "Transacción fallida";
 "wallet__receive_cjit_error_msg" = "No se han podido enviar fondos a su cuenta de gastos.";
+"wallet__receive_cjit_error_node_capacity__title" = "Capacidad adicional no disponible";
+"wallet__receive_cjit_error_node_capacity__description" = "Bitkit no puede agregar más capacidad de gastos a esta billetera en este momento.";
 "wallet__receive_will" = "Recibirás";
 "wallet__receive_ldk_init" = "Saldo de gastos inicializando...";
 "wallet__minimum" = "MÍNIMO";

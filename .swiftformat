@@ -4,6 +4,7 @@
 --maxwidth 150
 --stripunusedargs closure-only
 --swiftversion 5.10
+--exclude build
 
 # rules
 

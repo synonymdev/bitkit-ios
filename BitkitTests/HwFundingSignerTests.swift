@@ -2,8 +2,7 @@
 import BitkitCore
 import XCTest
 
-/// Device-signing orchestration coverage for `HwFundingSigner`, adapting the sign/compose/reconnect
-/// cases from bitkit-android's `TransferViewModelTest`. Exercised in isolation from
+/// Device-signing orchestration coverage for `HwFundingSigner`, exercised in isolation from
 /// `TransferViewModel` via the `HwTransferFunding` / `HwTransferConnecting` mocks.
 @MainActor
 final class HwFundingSignerTests: XCTestCase {
@@ -18,7 +17,13 @@ final class HwFundingSignerTests: XCTestCase {
             funding: funding,
             connecting: connecting,
             feeRateProvider: { feeRate },
-            addressProvider: { if let address { return address } else { throw MockHwFunding.TestError() } },
+            addressProvider: {
+                if let address {
+                    return address
+                } else {
+                    throw MockHwFunding.TestError()
+                }
+            },
             timeouts: timeouts
         )
     }
@@ -37,6 +42,251 @@ final class HwFundingSignerTests: XCTestCase {
     func testFeeReserveFallbackUsesFloorWhenPercentSmaller() {
         // 10% of 5,000 = 500, below the 3 * 1200 floor.
         XCTAssertEqual(HwFundingSigner.feeReserve(balanceSats: 5000, satsPerVByte: nil), 3600)
+    }
+
+    func testCoordinatorChangesFundingWalletAndClearsDevicePrompt() {
+        let coordinator = HwSendCoordinator()
+        coordinator.requestPassphrase()
+
+        coordinator.selectWallet("trezor:wallet", initialAvailableSats: 42000)
+
+        XCTAssertEqual(coordinator.walletId, "trezor:wallet")
+        XCTAssertEqual(coordinator.availableSats, 42000)
+        XCTAssertTrue(coordinator.isActive)
+        XCTAssertFalse(coordinator.isPassphraseRequired)
+
+        coordinator.selectWallet(nil)
+
+        XCTAssertFalse(coordinator.isActive)
+    }
+
+    func testCoordinatorSeedsAvailableForSelectedWalletOnly() {
+        let coordinator = HwSendCoordinator(walletId: "trezor:selected")
+
+        coordinator.seedAvailable(walletId: "trezor:other", availableSats: 10000)
+        XCTAssertEqual(coordinator.availableSats, 0)
+
+        coordinator.seedAvailable(walletId: "trezor:selected", availableSats: 42000)
+        XCTAssertEqual(coordinator.availableSats, 42000)
+    }
+
+    func testCoordinatorTracksFundingSourceRefresh() async {
+        let funding = MockHwFunding()
+        funding.maxSpendable = 42000
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: MockHwConnecting(),
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        coordinator.selectWallet("trezor:wallet", showsLoading: true)
+
+        XCTAssertTrue(coordinator.isFundingSourceLoading)
+        await coordinator.refreshAvailable(
+            manager: manager,
+            destinationAddress: "bc1qtest",
+            satsPerVByte: 2
+        )
+        XCTAssertFalse(coordinator.isFundingSourceLoading)
+        XCTAssertEqual(coordinator.availableSats, 42000)
+    }
+
+    func testCoordinatorSettlesFundingSourceLoadingWithoutFeeRate() async {
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator()
+        coordinator.selectWallet(
+            "trezor:wallet",
+            initialAvailableSats: 42000,
+            showsLoading: true
+        )
+
+        await coordinator.refreshAvailable(
+            manager: manager,
+            destinationAddress: "bc1qtest",
+            satsPerVByte: nil
+        )
+
+        XCTAssertFalse(coordinator.isFundingSourceLoading)
+        XCTAssertEqual(coordinator.availableSats, 42000)
+    }
+
+    func testCoordinatorTracksPreviewPreparation() async throws {
+        let funding = MockHwFunding()
+        funding.estimateDelay = 0.05
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: MockHwConnecting(),
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        coordinator.selectWallet("trezor:wallet", showsLoading: true)
+
+        let preview = Task {
+            try await coordinator.preparePreview(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2
+            )
+        }
+        await Task.yield()
+
+        XCTAssertTrue(coordinator.isFundingSourceLoading)
+        XCTAssertTrue(coordinator.isPreviewLoading)
+        XCTAssertEqual(coordinator.previewFeeSats, 0)
+        _ = try await preview.value
+        XCTAssertFalse(coordinator.isFundingSourceLoading)
+        XCTAssertFalse(coordinator.isPreviewLoading)
+        XCTAssertEqual(coordinator.previewFeeSats, funding.funding.miningFeeSats)
+    }
+
+    func testCoordinatorSettlesLoadingWhenPreviewFails() async {
+        let funding = MockHwFunding()
+        funding.composeError = MockHwFunding.TestError()
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: MockHwConnecting(),
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        coordinator.selectWallet("trezor:wallet", showsLoading: true)
+
+        do {
+            _ = try await coordinator.preparePreview(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2
+            )
+            XCTFail("Expected preview preparation to fail")
+        } catch {
+            XCTAssertTrue(error is MockHwFunding.TestError)
+        }
+
+        XCTAssertFalse(coordinator.isFundingSourceLoading)
+        XCTAssertFalse(coordinator.isPreviewLoading)
+        XCTAssertEqual(coordinator.previewFeeSats, 0)
+    }
+
+    func testCoordinatorRetryReusesSignedPaymentAfterUncertainBroadcast() async throws {
+        try await assertCoordinatorRetryReusesSignedPayment(error: HwTransferError.broadcastUncertain)
+    }
+
+    func testCoordinatorRetryReusesSignedPaymentAfterConnectivityFailure() async throws {
+        try await assertCoordinatorRetryReusesSignedPayment(
+            error: BroadcastError.ElectrumError(errorDetails: "offline")
+        )
+    }
+
+    func testCoordinatorCancelDropsSignedPaymentAfterFailedBroadcast() async throws {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            walletId: "trezor:wallet",
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: connecting,
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2
+            )
+        }
+
+        XCTAssertTrue(coordinator.hasPendingBroadcast)
+
+        coordinator.cancel()
+
+        XCTAssertFalse(coordinator.hasPendingBroadcast)
+
+        funding.broadcastError = nil
+        _ = try await coordinator.signAndBroadcast(
+            manager: manager,
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2
+        )
+
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(funding.broadcastCalls, 2)
+    }
+
+    private func assertCoordinatorRetryReusesSignedPayment(error: Error) async throws {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            walletId: "trezor:wallet",
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: connecting,
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        var beforeBroadcastCalls = 0
+        var completedTransactionIds: [String] = []
+        funding.broadcastError = error
+
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2,
+                beforeBroadcast: { beforeBroadcastCalls += 1 },
+                afterBroadcast: { completedTransactionIds.append($0.txId) }
+            )
+        }
+
+        XCTAssertTrue(coordinator.hasPendingBroadcast)
+        XCTAssertFalse(coordinator.isBroadcastUnresolved)
+        XCTAssertFalse(coordinator.isSigning)
+
+        funding.broadcastError = nil
+        _ = try await coordinator.signAndBroadcast(
+            manager: manager,
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2,
+            beforeBroadcast: { beforeBroadcastCalls += 1 },
+            afterBroadcast: { completedTransactionIds.append($0.txId) }
+        )
+
+        XCTAssertEqual(funding.composeCalls.count, 1)
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 2)
+        XCTAssertEqual(funding.broadcastTransactions, [funding.signedTx.serializedTx, funding.signedTx.serializedTx])
+        XCTAssertEqual(beforeBroadcastCalls, 1)
+        XCTAssertEqual(completedTransactionIds, [funding.broadcastTxId])
     }
 
     // MARK: - Availability
@@ -135,7 +385,9 @@ final class HwFundingSignerTests: XCTestCase {
         await assertThrowsAsync {
             _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")
         } _: { error in
-            if case .funding = error as? HwTransferError {} else { XCTFail("expected .funding, got \(error)") }
+            if case .funding = error as? HwTransferError {} else {
+                XCTFail("expected .funding, got \(error)")
+            }
         }
         XCTAssertEqual(funding.signCalls, 0)
     }
@@ -151,8 +403,31 @@ final class HwFundingSignerTests: XCTestCase {
         } _: { error in
             XCTAssertEqual(error as? HwTransferError, .signingTimeout)
         }
+        await Task.yield()
         XCTAssertEqual(connecting.staleDisconnects, ["trezor:wallet"])
         XCTAssertEqual(funding.signCalls, 1)
+    }
+
+    func testSigningTimeoutDoesNotWaitForCancellationIgnoringOperation() async {
+        let funding = MockHwFunding()
+        funding.cancellationIgnoringSignDelay = 0.5
+        let connecting = MockHwConnecting()
+        let signer = makeSigner(
+            funding: funding,
+            connecting: connecting,
+            timeouts: (reconnect: 5, compose: 5, sign: 0.05, broadcast: 5)
+        )
+        let start = ContinuousClock.now
+
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "trezor:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .signingTimeout)
+        }
+
+        XCTAssertLessThan(start.duration(to: .now), .milliseconds(250))
+        await Task.yield()
+        XCTAssertEqual(connecting.staleDisconnects, ["trezor:wallet"])
     }
 
     func testBroadcastTimeoutThrowsBroadcastUncertainWithoutClearingSession() async {
@@ -213,6 +488,7 @@ final class HwFundingSignerTests: XCTestCase {
         } _: { error in
             XCTAssertEqual(error as? HwTransferError, .signingTimeout)
         }
+        await Task.yield()
         XCTAssertEqual(connecting.staleDisconnects, ["trezor:wallet"], "a compose timeout must tear down the stale session")
         XCTAssertEqual(funding.signCalls, 0, "signing must not run after a compose timeout")
     }
@@ -230,6 +506,26 @@ final class HwFundingSignerTests: XCTestCase {
             XCTAssertNil(error as? HwTransferError)
         }
         XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a non-timeout error must not clear the session")
+    }
+
+    func testBrokenThpSessionReconnectsAndRetriesSigningOnce() async throws {
+        let funding = MockHwFunding()
+        funding.signErrors = [
+            Bitkit.AppError(error: TrezorError.ProtocolError(errorDetails: "THP decryption error: aead::Error")),
+        ]
+        let connecting = MockHwConnecting()
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        let result = try await signer.prepareSignedFunding(
+            order: .mock(),
+            walletId: "trezor:wallet",
+            address: "bc1q..."
+        )
+
+        XCTAssertEqual(result, funding.signedTx)
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(connecting.staleDisconnects, ["trezor:wallet"])
+        XCTAssertEqual(connecting.ensureCalls, 2)
     }
 }
 

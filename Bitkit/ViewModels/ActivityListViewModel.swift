@@ -250,12 +250,15 @@ class ActivityListViewModel: ObservableObject {
     }
 
     /// Find activity by payment hash or transaction ID
-    func findActivity(byPaymentId paymentId: String) async throws -> Activity {
+    func findActivity(
+        byPaymentId paymentId: String,
+        walletId: String = WalletScope.default
+    ) async throws -> Activity {
         guard !paymentId.isEmpty else {
             throw AppError(message: "Payment ID is empty", debugMessage: nil)
         }
 
-        let activities = try await coreService.activity.get(filter: .all, limit: 50)
+        let activities = try await coreService.activity.get(filter: .all, limit: 50, walletId: walletId)
         let activity = activities.first { activity in
             switch activity {
             case let .lightning(ln):

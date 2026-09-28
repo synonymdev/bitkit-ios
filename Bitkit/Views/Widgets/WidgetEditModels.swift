@@ -82,7 +82,9 @@ enum WidgetEditItemFactory {
 
         for field in BlocksWidgetField.allCases {
             let value: String = {
-                if let data = blocksViewModel.blockData { return field.value(from: data) }
+                if let data = blocksViewModel.blockData {
+                    return field.value(from: data)
+                }
                 return fallback[field] ?? ""
             }()
 

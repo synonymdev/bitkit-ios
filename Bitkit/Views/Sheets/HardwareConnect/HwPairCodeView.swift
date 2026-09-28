@@ -76,7 +76,9 @@ struct HwPairCodeView: View {
     private func handleKey(_ key: String) {
         guard !submitted else { return }
         if key == "delete" {
-            if !code.isEmpty { code.removeLast() }
+            if !code.isEmpty {
+                code.removeLast()
+            }
         } else if code.count < codeLength {
             code += key
             if code.count == codeLength {

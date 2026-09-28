@@ -13,12 +13,15 @@ final class HwSnapshotMergeTests: XCTestCase {
         isTransfer: Bool = false,
         channelId: String? = nil,
         transferTxId: String? = nil,
-        confirmed: Bool = true
+        contact: String? = nil,
+        confirmed: Bool = true,
+        txType: PaymentType = .received,
+        createdAt: UInt64? = nil
     ) -> OnchainActivity {
         OnchainActivity(
             walletId: walletId,
             id: id,
-            txType: .received,
+            txType: txType,
             txId: txId ?? id,
             value: 1000,
             fee: 100,
@@ -33,8 +36,8 @@ final class HwSnapshotMergeTests: XCTestCase {
             confirmTimestamp: nil,
             channelId: channelId,
             transferTxId: transferTxId,
-            contact: nil,
-            createdAt: nil,
+            contact: contact,
+            createdAt: createdAt,
             updatedAt: nil,
             seenAt: nil
         )
@@ -47,12 +50,14 @@ final class HwSnapshotMergeTests: XCTestCase {
         existing: [OnchainActivity],
         incoming: [Activity],
         pruneMissing: Bool = true,
+        currentTimestamp: UInt64 = 100_000,
         transferChannelIdsByFundingTxId: [String: String] = [:]
     ) -> HwSnapshotMerge.Plan {
         HwSnapshotMerge.plan(
             existing: existing,
             incoming: incoming,
             pruneMissing: pruneMissing,
+            currentTimestamp: currentTimestamp,
             transferChannelIdsByFundingTxId: transferChannelIdsByFundingTxId
         )
     }
@@ -85,6 +90,24 @@ final class HwSnapshotMergeTests: XCTestCase {
         XCTAssertTrue(plan.toUpsert.isEmpty)
     }
 
+    func testKeepsLocallyCreatedPendingSendUntilWatcherReportsIt() {
+        let plan = makePlan(
+            existing: [onchain(id: "pendingSend", confirmed: false, txType: .sent, createdAt: 100_000)],
+            incoming: []
+        )
+
+        XCTAssertTrue(plan.toDelete.isEmpty)
+    }
+
+    func testDeletesExpiredPendingSendMissingFromCompleteSnapshot() {
+        let plan = makePlan(
+            existing: [onchain(id: "pendingSend", confirmed: false, txType: .sent, createdAt: 1)],
+            incoming: []
+        )
+
+        XCTAssertEqual(plan.toDelete.map(\.id), ["pendingSend"])
+    }
+
     func testCarriesTransferMetadataForwardOntoIncomingActivity() {
         let stored = onchain(id: "tx1", isTransfer: true, channelId: "channel-1", transferTxId: "transfer-1")
         let plan = makePlan(
@@ -108,6 +131,15 @@ final class HwSnapshotMergeTests: XCTestCase {
         XCTAssertEqual(merged?.isTransfer, true)
         XCTAssertEqual(merged?.channelId, "channel-2")
         XCTAssertEqual(merged?.transferTxId, "transfer-2")
+    }
+
+    func testCarriesStoredContactForwardOntoWatcherActivity() {
+        let plan = makePlan(
+            existing: [onchain(id: "tx1", contact: "pubky-contact")],
+            incoming: [.onchain(onchain(id: "tx1"))]
+        )
+
+        XCTAssertEqual(upserted(plan, id: "tx1")?.contact, "pubky-contact")
     }
 
     func testMatchesStoredMetadataByTxIdNotActivityId() {

@@ -4,6 +4,14 @@
 
 This repository contains the **native iOS app** for Bitkit.
 
+## Contact deep links
+
+Use `bitkit://contact?pubky=<public-key>` to open the same flow as scanning a Pubky key.
+The key can be the raw 52-character public key or include its `pubky` prefix; URL-encode the value.
+Unknown keys open Add Contact, saved contacts open Contact Detail, and your own key opens Profile.
+This requires an existing wallet with Paykit enabled and respects the wallet's unlock flow.
+Opening the link does not save a contact or initiate a payment.
+
 ## How to build
 
 1. Open Bitkit.xcodeproj in XCode
@@ -117,6 +125,29 @@ This installs a pre-commit hook that lints Swift files with SwiftFormat.
 ### Xcode Previews
 
 Due to the Rust dependencies in the project, Xcode previews are only compatible with iOS 17 and below.
+
+### XcodeBuildMCP
+
+Builds, simulator control and UI automation go through the [XcodeBuildMCP](https://github.com/getsentry/XcodeBuildMCP) CLI rather than raw `xcodebuild`, `xcrun` and `simctl`. It is also what agents use to run the specs in `journeys/`.
+
+**Install:**
+```bash
+brew tap getsentry/xcodebuildmcp && brew install xcodebuildmcp
+```
+
+**Configure project defaults:**
+```bash
+xcodebuildmcp setup
+```
+
+The wizard writes `.xcodebuildmcp/config.yaml`, which is gitignored because the CLI materializes a machine-local simulator UDID into it. The values this repo wants are project `Bitkit.xcodeproj`, scheme `Bitkit`, configuration `Debug`, simulator `iPhone 17`. There is no standalone `.xcworkspace` here, so this is `--project-path`, never `--workspace-path`.
+
+**Build and run:**
+```bash
+xcodebuildmcp simulator build-and-run
+```
+
+See the Agent CLI section in `AGENTS.md` for E2E compilation flags, UI automation and the cross-platform commands.
 
 ### Common Tasks
 

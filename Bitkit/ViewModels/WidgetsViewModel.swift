@@ -386,7 +386,9 @@ class WidgetsViewModel: ObservableObject {
             savedWidgetsWithOptions = deduped
             savedWidgets = deduped.map { $0.toWidget() }
             // If we removed duplicates, rewrite the blob so the bad state disappears permanently.
-            if deduped.count != decoded.count { persistSavedWidgets() }
+            if deduped.count != decoded.count {
+                persistSavedWidgets()
+            }
         } catch {
             // If no saved data or decode fails, start with default widgets
             savedWidgetsWithOptions = WidgetsViewModel.defaultSavedWidgets

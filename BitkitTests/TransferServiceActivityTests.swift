@@ -11,25 +11,36 @@ import XCTest
 /// App types are `Bitkit.`-qualified because some services are also compiled into the test target,
 /// so unqualified names would resolve to the duplicate and mismatch `Bitkit.TransferService`.
 final class TransferServiceActivityTests: XCTestCase {
-    private let testDbPath = NSTemporaryDirectory()
+    /// Unique per run: `NSTemporaryDirectory()` is shared with every other suite that calls
+    /// `initDb`, and `init_db` creates blocktank.db alongside activity.db, which none of them
+    /// cleaned up.
+    private let testDbPath = FileManager.default.temporaryDirectory
+        .appendingPathComponent("TransferServiceActivityTests-\(UUID().uuidString)", isDirectory: true).path
     private let activity = Bitkit.CoreService.shared.activity
+    private var transferDefaults: UserDefaults!
 
     override func setUp() async throws {
         try await super.setUp()
+        transferDefaults = try makeIsolatedDefaults()
+        guardAppDefaults("transfers")
+        await drainCoreServiceQueue()
+        try FileManager.default.createDirectory(atPath: testDbPath, withIntermediateDirectories: true)
         _ = try initDb(basePath: testDbPath)
         try await Task.sleep(nanoseconds: 1_000_000_000)
     }
 
     override func tearDown() async throws {
         try await super.tearDown()
-        let dbPath = (testDbPath as NSString).appendingPathComponent("activity.db")
-        if FileManager.default.fileExists(atPath: dbPath) {
-            try FileManager.default.removeItem(atPath: dbPath)
-        }
+        await repointCoreToAppStorage()
+        try? FileManager.default.removeItem(atPath: testDbPath)
     }
 
     private func makeService() -> Bitkit.TransferService {
-        Bitkit.TransferService(lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank)
+        Bitkit.TransferService(
+            storage: Bitkit.TransferStorage(defaults: transferDefaults),
+            lightningService: .shared,
+            blocktankService: Bitkit.CoreService.shared.blocktank
+        )
     }
 
     func testPendingToSpendingActivityDoesNotStoreShortChannelId() async throws {

@@ -113,14 +113,18 @@ final class HwConnectViewModel {
             while let self, !Task.isCancelled {
                 do {
                     let devices = try await service.scanForDevices()
-                    if Task.isCancelled { return }
+                    if Task.isCancelled {
+                        return
+                    }
                     errorMessage = nil
                     if let device = devices.first {
                         onDeviceFound(device)
                         return
                     }
                 } catch {
-                    if Task.isCancelled { return }
+                    if Task.isCancelled {
+                        return
+                    }
                     errorMessage = t("hardware__search_error")
                 }
                 do {
@@ -153,10 +157,14 @@ final class HwConnectViewModel {
             guard let self else { return }
             do {
                 let result = try await service.connect(to: device)
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 onConnected(result)
             } catch {
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 onConnectFailed(error)
             }
             connectTask = nil
@@ -223,7 +231,9 @@ final class HwConnectViewModel {
         // of its identities as connected, so there is nothing to tell them apart by.
         let onDevice = wallets.filter { $0.deviceIds.contains(deviceId) }
         let connected = onDevice.filter(\.isConnected)
-        if connected.count == 1 { return connected.first }
+        if connected.count == 1 {
+            return connected.first
+        }
         return onDevice.count == 1 ? onDevice.first : nil
     }
 
@@ -269,10 +279,14 @@ final class HwConnectViewModel {
             guard let self else { return }
             do {
                 let walletId = try await service.connectWithPassphrase(deviceId: deviceId, passphrase: passphrase)
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 onPassphraseWalletAdded(walletId)
             } catch {
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 onPassphraseFailed(error)
             }
             connectTask = nil
@@ -435,7 +449,11 @@ private extension Array {
     /// Splits into (matching, rest), preserving order within each group.
     func partitioned(by isMatch: (Element) -> Bool) -> (matching: [Element], rest: [Element]) {
         reduce(into: ([Element](), [Element]())) { result, element in
-            if isMatch(element) { result.0.append(element) } else { result.1.append(element) }
+            if isMatch(element) {
+                result.0.append(element)
+            } else {
+                result.1.append(element)
+            }
         }
     }
 }

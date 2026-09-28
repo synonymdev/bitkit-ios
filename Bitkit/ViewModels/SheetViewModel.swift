@@ -15,6 +15,7 @@ enum SheetID: String, CaseIterable {
     case pubkyAuthApproval
     case notifications
     case paymentRequests
+    case subscription
     case quickpay
     case receive
     case receivedTx
@@ -33,6 +34,7 @@ enum SheetID: String, CaseIterable {
 struct SheetConfiguration {
     let id: SheetID
     let data: Any?
+    let presentationID = UUID()
 }
 
 class SheetViewModel: ObservableObject {
@@ -41,6 +43,10 @@ class SheetViewModel: ObservableObject {
     @Published private(set) var isReplacingSheet = false
 
     func showSheet(_ id: SheetID, data: Any? = nil) {
+        if activeSheetConfiguration?.id == .send, id == .receivedTx {
+            Logger.debug("Skipping received-transaction sheet while send is active", context: "SheetViewModel")
+            return
+        }
         if isAnySheetOpen {
             // If any other sheet is open, close it and delay before showing the new sheet
             // to prevent the new sheet from closing immediately (bug)
@@ -263,8 +269,8 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .pubkyAuthApproval else { return nil }
             let pubkyConfig = config.data as? PubkyAuthApprovalConfig
-            guard let authUrl = pubkyConfig?.authUrl, let request = pubkyConfig?.request else { return nil }
-            return PubkyAuthApprovalSheetItem(authUrl: authUrl, request: request)
+            guard let request = pubkyConfig?.request else { return nil }
+            return PubkyAuthApprovalSheetItem(request: request)
         }
         set {
             if newValue == nil {
@@ -297,6 +303,18 @@ class SheetViewModel: ObservableObject {
         }
     }
 
+    var subscriptionSheetItem: SubscriptionSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .subscription else { return nil }
+            return config.data as? SubscriptionSheetItem
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
     var quickpaySheetItem: QuickpaySheetItem? {
         get {
             guard let config = activeSheetConfiguration, config.id == .quickpay else { return nil }
@@ -314,7 +332,7 @@ class SheetViewModel: ObservableObject {
             guard let config = activeSheetConfiguration, config.id == .receive else { return nil }
             let receiveConfig = config.data as? ReceiveConfig
             let initialRoute = receiveConfig?.initialRoute ?? .qr(cjitInvoice: nil, tab: nil)
-            return ReceiveSheetItem(initialRoute: initialRoute)
+            return ReceiveSheetItem(id: config.presentationID, initialRoute: initialRoute, hardwareWalletId: receiveConfig?.hardwareWalletId)
         }
         set {
             if newValue == nil {
@@ -419,7 +437,7 @@ class SheetViewModel: ObservableObject {
             guard let config = activeSheetConfiguration, config.id == .send else { return nil }
             let sendConfig = config.data as? SendConfig
             let initialRoute = sendConfig?.initialRoute ?? .options
-            return SendSheetItem(initialRoute: initialRoute)
+            return SendSheetItem(initialRoute: initialRoute, hardwareWalletId: sendConfig?.hardwareWalletId)
         }
         set {
             if newValue == nil {

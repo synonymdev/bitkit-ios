@@ -6,17 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
-        "revision" : "4c859d3f2c0022fda25baa62a029e2c03d1892a7",
-        "version" : "0.5.3"
-      }
-    },
-    {
-      "identity" : "codescanner",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/twostraws/CodeScanner",
-      "state" : {
-        "revision" : "5e886430238944c7200fc9e10dbf2d9550dba865",
-        "version" : "2.5.2"
+        "revision" : "b53fa54a16f04940943072bb6e08dc2650302f93",
+        "version" : "0.5.18"
       }
     },
     {
@@ -24,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
-        "revision" : "c9a41458a646324c6c8728b4de8329ad4d52ac8d",
-        "version" : "0.7.0-rc.63"
+        "revision" : "190a17d966cf5a685444cfa17c3a419c290bf26c",
+        "version" : "0.7.0-rc.66"
       }
     },
     {
@@ -42,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pubky/paykit-rs",
       "state" : {
-        "revision" : "09e388d82f70d02be9860b8b6ac108ae722a3fb9",
-        "version" : "0.1.0-rc46"
+        "revision" : "4613beee25d1680ed8bc849446498e9bfb2cdb16",
+        "version" : "0.1.0-rc55"
       }
     },
     {
@@ -60,7 +51,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/vss-rust-client-ffi",
       "state" : {
-        "revision" : "d7cbc6237a83e50a55b3c93b8837b6f18134065c",
+        "revision" : "3476fa45be919244310c4f65945e8d2bc1b8ee15",
         "version" : "0.5.23"
       }
     }

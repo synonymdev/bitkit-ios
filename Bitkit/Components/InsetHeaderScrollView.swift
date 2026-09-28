@@ -51,7 +51,9 @@ struct InsetHeaderScrollView<Header: View, Content: View, ScrollModifier: ViewMo
                 header().background(HeaderHeightMeasure())
             }
             .onPreferenceChange(HeaderHeightPreferenceKey.self) { newValue in
-                if newValue > 0 { headerHeight = newValue }
+                if newValue > 0 {
+                    headerHeight = newValue
+                }
             }
         }
     }

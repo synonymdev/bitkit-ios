@@ -196,11 +196,15 @@ extension Array {
             isPresented: .constant(true),
             content: {
                 NavigationStack {
-                    SendAmountView(navigationPath: .constant([]))
-                        .environmentObject(AppViewModel())
-                        .environmentObject(WalletViewModel())
-                        .environmentObject(CurrencyViewModel())
-                        .environmentObject(SettingsViewModel.shared)
+                    SendAmountView(
+                        navigationPath: .constant([]),
+                        hwSend: HwSendCoordinator(walletId: nil)
+                    )
+                    .environmentObject(AppViewModel())
+                    .environmentObject(WalletViewModel())
+                    .environmentObject(CurrencyViewModel())
+                    .environmentObject(SettingsViewModel.shared)
+                    .environment(HwWalletManager())
                 }
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }

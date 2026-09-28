@@ -1,0 +1,29 @@
+<journey name="notification toggle off unregisters and settings routes to system">
+  <description>
+    iOS counterpart of the Android "toggle off opens system settings" journey. On iOS the
+    "Enable background setup" toggle does NOT deep link anywhere: switching it off just unregisters
+    push and leaves the user on the same screen, with no alert (the authorization alert is one-shot
+    and already answered). The route into the iOS Settings app lives on Settings → Notifications
+    instead, behind the "Customize in iOS Bitkit Settings" button.
+
+    Precondition: onboarded dev wallet with the node connected to the LSP so a CJIT order can be
+    quoted, notification authorization ALREADY GRANTED, and "Enable background setup" already on so
+    the toggle starts checked. Start on the wallet home screen.
+  </description>
+  <actions>
+    <action>Tap the "Receive" button (id "Receive") on the home screen</action>
+    <action>Tap the "Spending" tab in the Receive sheet</action>
+    <action>Tap "Receive Lightning funds"</action>
+    <action>On the amount screen (id "ReceiveCjitAmount"), enter an amount above the CJIT minimum (e.g. 100 000 sats) using the number pad</action>
+    <action>Tap "Continue" (id "ReceiveCjitAmountContinue") and wait for the confirm screen (id "ReceiveCjitConfirm") to appear</action>
+    <action>Verify the "Enable background setup" toggle (id "ReceiveConfirmNotificationSwitch") is visible and on</action>
+    <action>Tap the "Enable background setup" toggle (id "ReceiveConfirmNotificationSwitch")</action>
+    <action>Verify the toggle turns off, no permission alert appears, the app does not leave the foreground, and the confirm screen is still shown</action>
+    <action>Dismiss the Receive sheet and return to the wallet home screen</action>
+    <action>Open the menu, tap "Settings" (id "DrawerSettings"), then open "Notifications"</action>
+    <action>Verify the "Get paid when Bitkit is closed" row reflects the toggle being off</action>
+    <action>Tap the "Customize in iOS Bitkit Settings" button (id "NotificationsOpenSystemSettings")</action>
+    <action>Verify the iOS Settings app opens on the Bitkit entry, with no in-app navigation and no permission alert</action>
+    <action>Return to Bitkit and verify the Notifications settings screen is still shown</action>
+  </actions>
+</journey>

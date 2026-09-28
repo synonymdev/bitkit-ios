@@ -55,16 +55,14 @@ private struct TxHistoryResultsSection: View {
     @Environment(TrezorViewModel.self) private var trezor
 
     var body: some View {
-        Group {
-            if let result = trezor.txHistoryResult {
-                TxHistorySummarySection(result: result)
+        if let result = trezor.txHistoryResult {
+            TxHistorySummarySection(result: result)
 
-                TxHistoryListSection(transactions: result.transactions)
-            }
+            TxHistoryListSection(transactions: result.transactions)
+        }
 
-            if let error = trezor.txHistoryError {
-                TrezorErrorBanner(message: error)
-            }
+        if let error = trezor.txHistoryError {
+            TrezorErrorBanner(message: error)
         }
     }
 }

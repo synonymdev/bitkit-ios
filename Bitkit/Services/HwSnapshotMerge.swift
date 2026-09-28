@@ -21,8 +21,10 @@ enum ActivityScope {
 
 /// Plans how a hardware-wallet watcher snapshot should replace what bitkit-core already stores for
 /// that wallet. Kept pure and free of the core FFI so the reconciliation rules can be unit tested;
-/// `ActivityService.replaceHwSnapshot` applies the plan. Adapts bitkit-android's `mergeHwSnapshot`.
+/// `ActivityService.replaceHwSnapshot` applies the plan.
 enum HwSnapshotMerge {
+    private static let pendingSendGracePeriod: UInt64 = 24 * 60 * 60
+
     struct Plan {
         let toDelete: [OnchainActivity]
         let toUpsert: [Activity]
@@ -39,15 +41,19 @@ enum HwSnapshotMerge {
         existing: [OnchainActivity],
         incoming: [Activity],
         pruneMissing: Bool,
+        currentTimestamp: UInt64,
         transferChannelIdsByFundingTxId: [String: String] = [:]
     ) -> Plan {
         let incomingIds = Set(incoming.map(ActivityScope.id(of:)))
 
-        // Transfers are never dropped: the pending Transfer To Spending row is written when the
-        // funding tx is broadcast, before any watcher poll can report it, so a snapshot that does
-        // not mention it yet must not delete it.
+        // A broadcast is persisted before the watcher may report it. Keep recent pending sends
+        // through that eventual-consistency window; `createdAt` survives process restarts.
         let toDelete = pruneMissing
-            ? existing.filter { !$0.isTransfer && !incomingIds.contains($0.id) }
+            ? existing.filter {
+                !$0.isTransfer &&
+                    !isRecentPendingSend($0, currentTimestamp: currentTimestamp) &&
+                    !incomingIds.contains($0.id)
+            }
             : []
 
         let storedByTxId = Dictionary(existing.map { ($0.txId, $0) }, uniquingKeysWith: { first, _ in first })
@@ -55,11 +61,12 @@ enum HwSnapshotMerge {
             guard case var .onchain(onchain) = activity else { return activity }
 
             if let stored = storedByTxId[onchain.txId] {
-                // The watcher only knows what is on chain, so transfer metadata the app wrote locally
-                // would otherwise be erased on every snapshot.
+                // The watcher only knows what is on chain, so app-owned metadata would otherwise be
+                // erased on every snapshot.
                 onchain.isTransfer = onchain.isTransfer || stored.isTransfer
                 onchain.channelId = onchain.channelId ?? stored.channelId
                 onchain.transferTxId = onchain.transferTxId ?? stored.transferTxId
+                onchain.contact = onchain.contact ?? stored.contact
             }
 
             // Re-pairing a wallet that was removed leaves nothing to carry forward — removal deleted
@@ -76,5 +83,19 @@ enum HwSnapshotMerge {
         }
 
         return Plan(toDelete: toDelete, toUpsert: toUpsert)
+    }
+
+    private static func isRecentPendingSend(
+        _ activity: OnchainActivity,
+        currentTimestamp: UInt64
+    ) -> Bool {
+        guard activity.txType == .sent,
+              !activity.confirmed,
+              activity.doesExist,
+              let createdAt = activity.createdAt
+        else { return false }
+
+        let age = currentTimestamp >= createdAt ? currentTimestamp - createdAt : 0
+        return age <= pendingSendGracePeriod
     }
 }

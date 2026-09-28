@@ -54,8 +54,12 @@ enum TrezorKnownDeviceMatching {
         refreshed: TrezorKnownDevice?
     ) -> Bool {
         guard entry.id == known.id else { return false }
-        if entry.walletKey == known.walletKey { return true }
-        if let refreshed, entry.walletKey == refreshed.walletKey { return true }
+        if entry.walletKey == known.walletKey {
+            return true
+        }
+        if let refreshed, entry.walletKey == refreshed.walletKey {
+            return true
+        }
         guard let knownTrezorId = known.trezorDeviceId, let entryTrezorId = entry.trezorDeviceId else { return false }
         return entryTrezorId != knownTrezorId
     }

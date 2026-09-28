@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ContactDetailView: View {
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
@@ -8,6 +10,8 @@ struct ContactDetailView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     let publicKey: String
     var showsDeleteAction = false
@@ -110,31 +114,38 @@ struct ContactDetailView: View {
 
     private var contactActions: some View {
         HStack(spacing: 16) {
-            GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send")) {
-                Task {
-                    await payContact()
+            GradientCircleButton(icon: "coins-regular", accessibilityLabel: t("wallet__send")) {
+                if canRequestPayment {
+                    sheets.showSheet(
+                        .receive,
+                        data: ReceiveConfig(view: .requestOrPay(publicKey: publicKey))
+                    )
+                } else {
+                    Task {
+                        await payContact()
+                    }
                 }
             }
             .accessibilityIdentifier("ContactPay")
 
-            GradientCircleButton(icon: "activity", accessibilityLabel: t("wallet__activity")) {
+            GradientCircleButton(icon: "activity-regular", accessibilityLabel: t("wallet__activity")) {
                 navigation.navigate(.contactActivity(publicKey: publicKey))
             }
             .accessibilityIdentifier("ContactActivity")
 
-            GradientCircleButton(icon: "copy", accessibilityLabel: t("common__copy")) {
+            GradientCircleButton(icon: "copy-simple", accessibilityLabel: t("common__copy")) {
                 UIPasteboard.general.string = publicKey
                 app.toast(type: .success, title: t("common__copied"))
             }
             .accessibilityIdentifier("ContactCopy")
 
-            GradientCircleButton(icon: "share", accessibilityLabel: t("common__share")) {
+            GradientCircleButton(icon: "share-regular", accessibilityLabel: t("common__share")) {
                 shareContact()
             }
             .accessibilityIdentifier("ContactShare")
 
             GradientCircleButton(
-                icon: showsDeleteAction ? "trash" : "pencil",
+                icon: showsDeleteAction ? "trash-regular" : "pencil-regular",
                 accessibilityLabel: t(showsDeleteAction ? "common__delete" : "common__edit")
             ) {
                 if showsDeleteAction {
@@ -145,6 +156,14 @@ struct ContactDetailView: View {
             }
             .accessibilityIdentifier(showsDeleteAction ? "ContactDelete" : "ContactEdit")
         }
+    }
+
+    private var canRequestPayment: Bool {
+        PaykitFeatureFlags.isUIAvailable &&
+            isPaykitUIEnabled &&
+            paymentRequests.eligibleTargets.contains {
+                PubkyPublicKeyFormat.matches($0.publicKey, publicKey)
+            }
     }
 
     // MARK: - Links / Metadata
@@ -164,15 +183,17 @@ struct ContactDetailView: View {
             CaptionMText(t("profile__create_tags_label"), textColor: .white64)
                 .accessibilityIdentifier("ContactViewTagsHeader")
 
-            WrappingHStack(spacing: 8) {
-                ForEach(profile.tags, id: \.self) { tag in
-                    Tag(tag, icon: .close, onDelete: {
-                        removeTag(tag)
-                    })
+            if !profile.tags.isEmpty {
+                WrappingHStack(spacing: 8) {
+                    ForEach(profile.tags, id: \.self) { tag in
+                        Tag(tag, icon: .close, onDelete: {
+                            removeTag(tag)
+                        })
+                    }
                 }
-
-                addTagButton
             }
+
+            addTagButton
         }
     }
 
@@ -304,69 +325,16 @@ struct ContactDetailView: View {
     }
 
     private func payContact() async {
-        do {
-            let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: publicKey, wallet: wallet)
-
-            switch result {
-            case let .opened(paymentRequest, privatePaymentContext):
-                _ = await openContactPayment(paymentRequest: paymentRequest, privatePaymentContext: privatePaymentContext)
-            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
-                if let messageKey = result.contactPaymentFailureMessageKey {
-                    app.toast(
-                        type: .warning,
-                        title: t("slashtags__error_pay_title"),
-                        description: t(messageKey)
-                    )
-                }
-            }
-        } catch {
-            Logger.error("Failed to pay contact \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "ContactDetailView")
-            app.toast(
-                type: .error,
-                title: t("slashtags__error_pay_title"),
-                description: error.localizedDescription
-            )
-        }
-    }
-
-    @MainActor
-    private func openContactPayment(paymentRequest: String, privatePaymentContext: PrivatePaykitPaymentContext?) async -> Bool {
-        let contactPaymentContext = ContactPaymentContext(
+        await PaymentNavigationHelper.openPrivateContactPayment(
             publicKey: publicKey,
-            privatePaymentContext: privatePaymentContext
-        )
-        guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
-
-        do {
-            try await app.handleScannedData(
-                paymentRequest,
-                claimedContactPaymentContext: contactPaymentContext
-            )
-        } catch is CancellationError {
-            if app.ownsContactPaymentContext(contactPaymentContext) {
-                app.resetSendState()
-            }
-            return false
-        } catch {
-            guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
-            app.resetSendState()
-            Logger.warn("Failed to decode contact payment request: \(error)", context: "ContactDetailView")
-            app.toast(
-                type: .warning,
-                title: t("slashtags__error_pay_title"),
-                description: t("slashtags__error_pay_not_opened_msg")
-            )
-            return false
+            app: app,
+            currency: currency,
+            settings: settings,
+            wallet: wallet,
+            alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+        ) { route in
+            sheets.showSheet(.send, data: SendConfig(view: route))
         }
-
-        guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
-        guard let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings) else {
-            app.resetSendState()
-            return false
-        }
-
-        sheets.showSheet(.send, data: SendConfig(view: route))
-        return true
     }
 }
 
@@ -380,6 +348,7 @@ struct ContactDetailView: View {
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
             .environmentObject(WalletViewModel())
+            .environment(HwWalletManager())
     }
     .preferredColorScheme(.dark)
 }

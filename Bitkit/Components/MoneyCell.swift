@@ -5,6 +5,7 @@ struct MoneyCell: View {
     let sats: Int
     let prefix: String
     var enableHide: Bool = false
+    var symbol: Bool?
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 2) {
@@ -12,6 +13,7 @@ struct MoneyCell: View {
                 sats: sats,
                 unitType: .primary,
                 size: .bodyMSB,
+                symbol: symbol,
                 enableHide: enableHide,
                 prefix: prefix,
                 color: .textPrimary,

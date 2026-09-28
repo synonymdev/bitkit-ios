@@ -219,11 +219,19 @@ struct Suggestions: View {
         var result: [SuggestionCardData] = []
         for id in orderedIds {
             guard let card = cardsById[id] else { continue }
-            if !isPaykitUIEnabled, card.isPaykitCard { continue }
-            if isCardCompleted(card, app: app, settings: settings, pubkyProfile: pubkyProfile, hasHardwareWallet: hasHardwareWallet) { continue }
-            if suggestionsManager.isDismissed(card.id) { continue }
+            if !isPaykitUIEnabled, card.isPaykitCard {
+                continue
+            }
+            if isCardCompleted(card, app: app, settings: settings, pubkyProfile: pubkyProfile, hasHardwareWallet: hasHardwareWallet) {
+                continue
+            }
+            if suggestionsManager.isDismissed(card.id) {
+                continue
+            }
             result.append(card)
-            if result.count >= 4 { break }
+            if result.count >= 4 {
+                break
+            }
         }
         return result
     }
@@ -297,7 +305,11 @@ struct Suggestions: View {
                         description: card.description,
                         imageName: card.imageName,
                         accentColor: card.color,
-                        onTap: { if !renderStatic { onItemTap(card) } },
+                        onTap: {
+                            if !renderStatic {
+                                onItemTap(card)
+                            }
+                        },
                         onDismiss: { dismissCard(card) }
                     )
                     .background {
@@ -325,7 +337,9 @@ struct Suggestions: View {
     }
 
     private func onItemTap(_ card: SuggestionCardData) {
-        if card.isPaykitCard, !PaykitFeatureFlags.isUIEnabled { return }
+        if card.isPaykitCard, !PaykitFeatureFlags.isUIEnabled {
+            return
+        }
         var route: Route?
 
         switch card.action {
