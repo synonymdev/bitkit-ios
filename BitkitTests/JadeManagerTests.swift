@@ -214,7 +214,9 @@ final class JadeManagerTests: XCTestCase {
         do {
             try await sut.connectKnownDevice(deviceId: JadeFixtures.deviceId)
             XCTFail("a wallet the Jade was never paired with must be rejected")
-        } catch {}
+        } catch {
+            XCTAssertTrue(error is HwWalletMismatchError, "error=\(error)")
+        }
 
         XCTAssertTrue(store.saves.isEmpty)
         XCTAssertEqual(store.devices.map(\.walletId), [JadeFixtures.walletId])
@@ -364,7 +366,46 @@ final class JadeManagerTests: XCTestCase {
 
         XCTAssertEqual(sut.connected?.isLocked, false)
         XCTAssertEqual(service.calls.unlockNetworks, [.regtest])
+        XCTAssertEqual(service.calls.exportTypes, [JadeManager.allAccountTypes], "the unlocked wallet is checked")
         XCTAssertEqual(service.calls.connectPaths.count, 1, "the live session is reused")
+    }
+
+    func testUnlockingASessionThatReconnectedLockedRefusesAJadeRestoredWithAnotherSeed() async throws {
+        store.devices = [JadeFixtures.knownEntry()]
+        service.stubs.scanned = [JadeFixtures.device()]
+        service.stubs.connectResult = .success(JadeFixtures.version(.locked))
+        service.stubs.exportHandler = { _ in JadeFixtures.accountExport(xpub: "zpubOtherSeed") }
+        let sut = makeManager()
+        try await sut.autoReconnect()
+        service.stubs.isConnected = true
+
+        do {
+            try await sut.ensureConnected(deviceId: JadeFixtures.deviceId)
+            XCTFail("an unlocked Jade no longer holding the session's wallet must be refused")
+        } catch {
+            XCTAssertTrue(error is HwWalletMismatchError, "error=\(error)")
+        }
+
+        XCTAssertNil(sut.connected)
+        XCTAssertGreaterThanOrEqual(log.count("service.disconnect"), 1)
+        XCTAssertEqual(store.devices.map(\.walletId), [JadeFixtures.walletId])
+    }
+
+    func testAJadeThatLockedAndReopenedAnotherSeedIsNotAskedToVerify() async throws {
+        let sut = try await connectedManager()
+        service.stubs.isConnected = true
+        service.stubs.verifyErrors = [JadeError.DeviceLocked]
+        service.stubs.exportHandler = { _ in JadeFixtures.accountExport(xpub: "zpubOtherSeed") }
+
+        do {
+            try await sut.verifyAddress(addressType: .nativeSegwit, derivationPath: "m/84'/1'/0'/0/0", expectedAddress: "bcrt1q")
+            XCTFail("a Jade reopened on another seed must not be asked to verify")
+        } catch {
+            XCTAssertTrue(error is HwWalletMismatchError, "error=\(error)")
+        }
+
+        XCTAssertEqual(service.calls.verifications.count, 1)
+        XCTAssertNil(sut.connected)
     }
 
     // MARK: - Background (Android cases 19 and 22, case 21 replaced)

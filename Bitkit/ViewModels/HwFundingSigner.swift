@@ -156,6 +156,9 @@ struct HwFundingSigner {
             if let passphrase = error as? HwPassphraseError {
                 throw passphrase
             }
+            if error is HwWalletMismatchError {
+                throw HwTransferError.walletMismatch
+            }
             if let vendor = error.hwBusyVendor {
                 throw HwTransferError.deviceBusy(vendor)
             }

@@ -360,6 +360,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
             try await manager.ensureConnected(walletId: jadeWalletId)
             XCTFail("expected the other wallet's session to be refused")
         } catch {
+            XCTAssertTrue(error is HwWalletMismatchError, "error=\(error)")
             XCTAssertEqual(log.entries, ["jade.ensure:\(jadeDeviceId)"])
         }
     }
@@ -799,6 +800,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
             _ = try await manager.signFunding(walletId: jadeWalletId, funding: makeFunding())
             XCTFail("expected the other wallet's session to be refused")
         } catch {
+            XCTAssertTrue(error is HwWalletMismatchError, "error=\(error)")
             XCTAssertTrue(jade.signedPsbts.isEmpty)
         }
     }

@@ -70,6 +70,8 @@ enum HwTransferError: Error, Equatable {
     case firmwareReconnect
     /// The entered passphrase opened a different wallet than the one being spent from.
     case passphraseMismatch
+    /// The device holds another wallet than the one being spent from, so reconnecting cannot help.
+    case walletMismatch
     case funding(String?)
     case generic(String?)
 }
@@ -876,6 +878,8 @@ class TransferViewModel: ObservableObject {
             Logger.warn("Received hardware firmware error for '\(walletId)'", context: "TransferViewModel")
         case .passphraseMismatch:
             Logger.warn("Rejected wrong passphrase for hardware wallet '\(walletId)'", context: "TransferViewModel")
+        case .walletMismatch:
+            Logger.warn("Rejected hardware device holding another wallet for '\(walletId)'", context: "TransferViewModel")
         case let .funding(message):
             Logger.warn("Failed to compose hardware funding for '\(walletId)': \(message ?? "")", context: "TransferViewModel")
         case .generic:
@@ -894,6 +898,11 @@ class TransferViewModel: ObservableObject {
         }
         if case HwPassphraseError.mismatch = error {
             hwTransferError = .passphraseMismatch
+            return
+        }
+        if error is HwWalletMismatchError {
+            Logger.warn("Rejected hardware device holding another wallet for '\(walletId)'", context: "TransferViewModel")
+            hwTransferError = .walletMismatch
             return
         }
         if let vendor = error.hwBusyVendor {

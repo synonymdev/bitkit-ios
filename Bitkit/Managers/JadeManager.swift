@@ -365,7 +365,24 @@ final class JadeManager {
     private func rejectUnpairedWallet(expected: HwKnownDevice, fetchedXpubs: [String: String]) throws {
         let paired = HwKnownDeviceMatching.previous(in: allKnownDevices(), deviceId: expected.id, fetchedXpubs: fetchedXpubs)
         guard paired == nil else { return }
-        throw AppError(message: "Reconnect Hardware Device", debugMessage: "The Jade holds a wallet it was not paired with")
+        Logger.warn("The Jade holds a wallet it was not paired with", context: Self.logContext)
+        throw HwWalletMismatchError()
+    }
+
+    /// A session reconnected while locked took its wallet on trust, since a locked Jade reports no
+    /// accounts. Once unlocked it has to hold that wallet still: a Jade restored with another seed
+    /// would otherwise be asked to verify and sign for keys it no longer carries.
+    private func requireSessionWallet(_ session: ConnectedJadeDevice, epoch: UInt64) async throws {
+        guard let walletId = session.walletId,
+              let entry = allKnownDevices().first(where: { $0.id == session.id && $0.resolvedWalletId == walletId }),
+              !entry.xpubs.isEmpty
+        else { return }
+        let fetchedXpubs = try await exportAccounts()
+        try requireCurrent(epoch)
+        guard Set(entry.xpubs.values).isDisjoint(with: fetchedXpubs.values) else { return }
+        Logger.warn("The unlocked Jade no longer holds wallet '\(walletId)'", context: Self.logContext)
+        await beginStaleSessionTeardown(deviceId: session.id, releasingAttempts: false)?.value
+        throw HwWalletMismatchError()
     }
 
     private func unlockConnected() async throws -> JadeVersionInfo {
@@ -755,6 +772,7 @@ extension JadeManager: JadeSessioning {
         let version = try await unlockConnected()
         try requireCurrent(epoch)
         connected?.versionInfo = version
+        try await requireSessionWallet(current, epoch: epoch)
     }
 
     func verifyAddress(addressType: AddressScriptType, derivationPath: String, expectedAddress: String) async throws {

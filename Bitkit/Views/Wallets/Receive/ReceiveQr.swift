@@ -645,7 +645,9 @@ struct ReceiveQr: View {
         if error.isHwUserCancellation() {
             return
         }
-        if let vendor = error.hwBusyVendor {
+        if error is HwWalletMismatchError {
+            app.toast(HwTransferError.walletMismatch)
+        } else if let vendor = error.hwBusyVendor {
             app.toast(HwTransferError.deviceBusy(vendor))
         } else {
             app.toast(error)

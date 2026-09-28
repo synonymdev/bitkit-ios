@@ -575,6 +575,31 @@ final class TransferViewModelHwTests: XCTestCase {
         XCTAssertEqual(vm.hwTransferError, .deviceBusy(.trezor))
     }
 
+    func testADeviceHoldingAnotherWalletShowsTheWalletMismatch() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = HwWalletMismatchError()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "jade:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(vm.hwTransferError, .walletMismatch)
+        XCTAssertTrue(funding.composeCalls.isEmpty)
+    }
+
+    func testASigningSessionHoldingAnotherWalletShowsTheWalletMismatch() async {
+        let funding = MockHwFunding()
+        funding.signError = HwWalletMismatchError()
+        let connecting = MockHwConnecting()
+        let vm = makeViewModel(funding: funding, connecting: connecting)
+
+        vm.onTransferToSpendingHwConfirm(order: .mock(), walletId: "jade:wallet")
+        await awaitSigningComplete(vm)
+
+        XCTAssertEqual(vm.hwTransferError, .walletMismatch)
+    }
+
     func testJadeBusyShowsTheJadeCopy() async {
         let funding = MockHwFunding()
         funding.signError = Bitkit.AppError(error: JadeError.DeviceLocked)

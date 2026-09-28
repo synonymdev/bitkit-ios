@@ -181,7 +181,9 @@ struct HwSendSignView: View {
         if error.isHwUserCancellation() {
             return
         }
-        if let vendor = error.hwBusyVendor {
+        if error is HwWalletMismatchError {
+            app.toast(HwTransferError.walletMismatch)
+        } else if let vendor = error.hwBusyVendor {
             app.toast(HwTransferError.deviceBusy(vendor))
         } else if error.isHwFirmwareError() {
             app.toast(HwTransferError.firmwareReconnect)

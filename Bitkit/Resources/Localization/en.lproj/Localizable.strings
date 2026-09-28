@@ -83,6 +83,7 @@
 "hardware__passphrase_duplicate" = "You are already watching this passphrase wallet.";
 "hardware__passphrase_error" = "Could not open the passphrase wallet. Make sure your hardware device is unlocked and try again.";
 "hardware__passphrase_mismatch" = "That passphrase opens a different wallet. Enter the one you paired this wallet with.";
+"hardware__wallet_mismatch" = "This device holds a different wallet than the one you paired. Connect the paired wallet, or add this one as a new hardware wallet.";
 "hardware__pairing_title" = "Pair Device";
 "hardware__pairing_text" = "Enter the 6-digit code shown on your hardware device.";
 "hardware__receive_address_error" = "Could not load the hardware wallet address.";

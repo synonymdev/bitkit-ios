@@ -416,10 +416,8 @@ final class HwWalletManager {
             entries(for: walletId).contains { $0.id == connectedDeviceId }
         }
         guard !holdsWallet else { return }
-        throw AppError(
-            message: "Reconnect Hardware Device",
-            debugMessage: "A different hardware wallet is connected than the one holding '\(walletId)'"
-        )
+        Logger.warn("A different hardware wallet is connected than the one holding '\(walletId)'", context: "HwWalletManager")
+        throw HwWalletMismatchError()
     }
 
     /// Opens the passphrase (hidden) wallet of an already paired device and starts watching it as
@@ -519,10 +517,8 @@ final class HwWalletManager {
         try Task.checkCancellation()
         try await jadeSession.ensureConnected(deviceId: deviceId)
         if let opened = jadeSession.connectedWalletId, opened != walletId {
-            throw AppError(
-                message: "Reconnect Hardware Device",
-                debugMessage: "Device '\(deviceId)' is not holding wallet '\(walletId)'"
-            )
+            Logger.warn("Device '\(deviceId)' is not holding wallet '\(walletId)'", context: "HwWalletManager")
+            throw HwWalletMismatchError()
         }
     }
 
@@ -1642,6 +1638,10 @@ enum HwWalletRemovalError: Error, Equatable {
     /// repeated without keeping the data.
     case backupDataUnreadable
 }
+
+/// The device is reachable but holds another wallet than the one asked for, as a Jade restored with
+/// another seed does, so reconnecting it cannot help. Mirrors bitkit-android's `HwWalletMismatchError`.
+struct HwWalletMismatchError: Error, Equatable {}
 
 /// Failures specific to passphrase (hidden) wallets, mirroring bitkit-android's `HwPassphrase*Error`
 /// types. The passphrase itself never appears in any of them.

@@ -843,6 +843,20 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertTrue(funding.composeCalls.isEmpty)
     }
 
+    func testADeviceHoldingAnotherWalletReportsTheWalletMismatch() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        connecting.connectError = HwWalletMismatchError()
+        let signer = makeSigner(funding: funding, connecting: connecting)
+
+        await assertThrowsAsync {
+            _ = try await signer.prepareSignedFunding(order: .mock(), walletId: "jade:wallet", address: "bc1q...")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .walletMismatch)
+        }
+        XCTAssertTrue(funding.composeCalls.isEmpty)
+    }
+
     func testBusyTrezorReportsTrezorVendor() async {
         let funding = MockHwFunding()
         let connecting = MockHwConnecting()
