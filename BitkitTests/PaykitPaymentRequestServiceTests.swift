@@ -3060,6 +3060,35 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
+    func testFailedSingleRefreshDoesNotOverrideOverlappingFullRefresh() async throws {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [savedKey: [PaykitReceiverPath.wallet]]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+        await sdk.pauseNextLinkedPeers()
+
+        let fullRefresh = Task {
+            await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+        }
+        try await waitUntil { await sdk.linkedPeersIsPaused() }
+        await sdk.setReceiverPathLookupFailing(true, for: savedKey)
+        let target = await manager.refreshEligibleTarget(publicKey: savedKey)
+        await sdk.setReceiverPathLookupFailing(false, for: savedKey)
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [savedKey: []]
+        )
+        await sdk.resumeLinkedPeers()
+        await fullRefresh.value
+
+        XCTAssertEqual(target, PaykitPaymentRequestTarget(publicKey: savedKey, receiverPath: PaykitReceiverPath.wallet))
+        XCTAssertTrue(manager.eligibleTargets.isEmpty)
+    }
+
     func testOlderEligibilityRefreshCannotOverwriteNewerContacts() async throws {
         let firstKey = "pubky\(String(repeating: "a", count: 52))"
         let secondKey = "pubky\(String(repeating: "b", count: 52))"

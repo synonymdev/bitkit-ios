@@ -1197,24 +1197,22 @@ final class PaykitPaymentRequestManager {
         do {
             let discovery = try await service.discoverEligibleTargets(
                 savedPublicKeys: [savedPublicKey],
-                expectedIdentity: activeIdentity,
-                previousTargets: eligibleTargets
+                expectedIdentity: activeIdentity
             )
             guard currentStateGeneration == stateGeneration,
                   isAvailable(),
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity),
                   savedPublicKeys.contains(where: { PubkyPublicKeyFormat.matches($0, publicKey) })
             else { return nil }
-            guard lastFullEligibilityWriteGeneration <= generation else { return eligibleTarget(publicKey: publicKey) }
-            let target = discovery.targets.first
-            if target != nil || discovery.isComplete {
-                singleEligibilityWriteGenerations[Self.eligibilityKey(publicKey)] = generation
-                var targets = eligibleTargets.filter { !PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
-                if let target {
-                    targets.append(target)
-                }
-                eligibleTargets = targets
+            guard discovery.isComplete,
+                  lastFullEligibilityWriteGeneration <= generation
+            else { return eligibleTarget(publicKey: publicKey) }
+            singleEligibilityWriteGenerations[Self.eligibilityKey(publicKey)] = generation
+            var targets = eligibleTargets.filter { !PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
+            if let target = discovery.targets.first {
+                targets.append(target)
             }
+            eligibleTargets = targets
         } catch is CancellationError {
             return nil
         } catch {
