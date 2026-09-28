@@ -103,13 +103,13 @@ final class TransferViewModelTests: XCTestCase {
         let first = try await vm.orderForSwipe(createOrder: create)
         XCTAssertEqual(first.id, createdOrder.id)
         XCTAssertEqual(vm.uiState.feeSat, 101_000)
-        XCTAssertEqual(vm.feeIncrease(order: first, displayed: displayed, rebuilt: rebuilt), .service(amountSat: 1000))
+        XCTAssertEqual(vm.feeIncrease(order: first, displayedOrderFeeSat: 101_000, displayed: displayed, rebuilt: rebuilt), .service(amountSat: 1000))
         XCTAssertEqual(vm.uiState.feeSat, createdOrder.feeSat)
 
         let second = try await vm.orderForSwipe(createOrder: create)
         XCTAssertEqual(second.id, createdOrder.id)
         XCTAssertEqual(calls, 1)
-        XCTAssertNil(vm.feeIncrease(order: second, displayed: rebuilt, rebuilt: rebuilt))
+        XCTAssertNil(vm.feeIncrease(order: second, displayedOrderFeeSat: vm.uiState.feeSat, displayed: rebuilt, rebuilt: rebuilt))
     }
 
     @MainActor
@@ -126,13 +126,30 @@ final class TransferViewModelTests: XCTestCase {
         let rebuilt = SpendingConfirmAmounts(networkFeeSat: 700, totalSat: 101_700)
 
         let first = try await vm.orderForSwipe(createOrder: create)
-        XCTAssertEqual(vm.feeIncrease(order: first, displayed: displayed, rebuilt: rebuilt), .network(amountSat: 200))
+        XCTAssertEqual(vm.feeIncrease(order: first, displayedOrderFeeSat: 101_000, displayed: displayed, rebuilt: rebuilt), .network(amountSat: 200))
         XCTAssertEqual(vm.uiState.feeSat, 101_000)
 
         let second = try await vm.orderForSwipe(createOrder: create)
         XCTAssertEqual(second.id, createdOrder.id)
         XCTAssertEqual(calls, 1)
-        XCTAssertNil(vm.feeIncrease(order: second, displayed: rebuilt, rebuilt: rebuilt))
+        XCTAssertNil(vm.feeIncrease(order: second, displayedOrderFeeSat: vm.uiState.feeSat, displayed: rebuilt, rebuilt: rebuilt))
+    }
+
+    @MainActor
+    func testSwipeDecidesFromTheSnapshotTakenBeforeTheOrderIsCreated() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let snapshot = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
+        let snapshotOrderFeeSat = vm.uiState.feeSat
+        let createdOrder = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 102_000)
+        let order = try await vm.orderForSwipe { _, _ in createdOrder }
+        vm.uiState.feeSat = createdOrder.feeSat
+        let rebuilt = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 102_500)
+
+        XCTAssertEqual(
+            vm.feeIncrease(order: order, displayedOrderFeeSat: snapshotOrderFeeSat, displayed: snapshot, rebuilt: rebuilt),
+            .service(amountSat: 1000)
+        )
     }
 
     @MainActor
@@ -144,7 +161,7 @@ final class TransferViewModelTests: XCTestCase {
         let displayed = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
         let rebuilt = SpendingConfirmAmounts(networkFeeSat: 300, totalSat: 101_300)
 
-        XCTAssertNil(vm.feeIncrease(order: order, displayed: displayed, rebuilt: rebuilt))
+        XCTAssertNil(vm.feeIncrease(order: order, displayedOrderFeeSat: 101_000, displayed: displayed, rebuilt: rebuilt))
         XCTAssertEqual(vm.uiState.feeSat, 101_000)
     }
 
@@ -157,7 +174,7 @@ final class TransferViewModelTests: XCTestCase {
         let displayed = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
         let rebuilt = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_000)
 
-        XCTAssertNil(vm.feeIncrease(order: order, displayed: displayed, rebuilt: rebuilt))
+        XCTAssertNil(vm.feeIncrease(order: order, displayedOrderFeeSat: 101_000, displayed: displayed, rebuilt: rebuilt))
     }
 
     @MainActor
@@ -168,7 +185,7 @@ final class TransferViewModelTests: XCTestCase {
         let order = try await vm.orderForSwipe { _, _ in createdOrder }
         let amounts = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
 
-        XCTAssertNil(vm.feeIncrease(order: order, displayed: amounts, rebuilt: amounts))
+        XCTAssertNil(vm.feeIncrease(order: order, displayedOrderFeeSat: 101_000, displayed: amounts, rebuilt: amounts))
         XCTAssertEqual(vm.uiState.feeSat, 101_000)
     }
 

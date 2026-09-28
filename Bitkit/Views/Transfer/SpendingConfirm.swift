@@ -172,6 +172,16 @@ struct SpendingConfirm: View {
         transfer.uiState.isConfirming = true
         defer { transfer.uiState.isConfirming = false }
 
+        let displayed = SpendingConfirmAmounts(networkFeeSat: transactionFee, totalSat: total)
+        let displayedOrderFeeSat = transfer.uiState.feeSat
+        let displayedFunding = FundingState(
+            transactionFee: transactionFee,
+            selectedUtxos: selectedUtxos,
+            satsPerVbyte: satsPerVbyte,
+            maxSendableAmount: maxSendableAmount,
+            shouldUseSendAll: shouldUseSendAll
+        )
+
         do {
             let order = try await transfer.orderForSwipe { clientBalance, lspBalance in
                 try await blocktank.createOrder(clientBalance: clientBalance, lspBalance: lspBalance)
@@ -179,8 +189,15 @@ struct SpendingConfirm: View {
             guard let address = order.payment?.onchain?.address else {
                 throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
             }
-            let displayed = SpendingConfirmAmounts(networkFeeSat: transactionFee, totalSat: total)
-            try await calculateTransactionFee(address: address, amountSats: order.feeSat, feeRate: confirmedFeeRate)
+            do {
+                try await calculateTransactionFee(address: address, amountSats: order.feeSat, feeRate: confirmedFeeRate)
+                guard transactionFee > 0 else {
+                    throw AppError(message: t("other__try_again"), debugMessage: "Rebuilt network fee is zero")
+                }
+            } catch {
+                restore(displayedFunding)
+                throw error
+            }
             let rebuilt = SpendingConfirmAmounts(
                 networkFeeSat: transactionFee,
                 totalSat: SpendingConfirmTotal.leavingAmount(
@@ -190,7 +207,12 @@ struct SpendingConfirm: View {
                     maxSendable: maxSendableAmount
                 )
             )
-            if let increase = transfer.feeIncrease(order: order, displayed: displayed, rebuilt: rebuilt) {
+            if let increase = transfer.feeIncrease(
+                order: order,
+                displayedOrderFeeSat: displayedOrderFeeSat,
+                displayed: displayed,
+                rebuilt: rebuilt
+            ) {
                 showFeesIncreasedToast(increase)
                 throw SpendingFeesIncreasedError()
             }
@@ -216,6 +238,22 @@ struct SpendingConfirm: View {
             }
             throw error
         }
+    }
+
+    private struct FundingState {
+        let transactionFee: UInt64
+        let selectedUtxos: [SpendableUtxo]?
+        let satsPerVbyte: UInt32?
+        let maxSendableAmount: UInt64?
+        let shouldUseSendAll: Bool
+    }
+
+    private func restore(_ funding: FundingState) {
+        transactionFee = funding.transactionFee
+        selectedUtxos = funding.selectedUtxos
+        satsPerVbyte = funding.satsPerVbyte
+        maxSendableAmount = funding.maxSendableAmount
+        shouldUseSendAll = funding.shouldUseSendAll
     }
 
     private func showFeesIncreasedToast(_ increase: SpendingFeeIncrease) {

@@ -382,12 +382,17 @@ class TransferViewModel: ObservableObject {
         return order
     }
 
-    /// The increase to report when the funding rebuilt for the order costs more than the confirm screen showed, or nil when
+    /// The increase to report when the funding rebuilt for the order costs more than the confirm screen showed at swipe time, or nil when
     /// the swipe may pay. On an increase the screen moves to the order's fee and nothing is paid until the next swipe.
-    func feeIncrease(order: IBtOrder, displayed: SpendingConfirmAmounts, rebuilt: SpendingConfirmAmounts) -> SpendingFeeIncrease? {
+    func feeIncrease(
+        order: IBtOrder,
+        displayedOrderFeeSat: UInt64,
+        displayed: SpendingConfirmAmounts,
+        rebuilt: SpendingConfirmAmounts
+    ) -> SpendingFeeIncrease? {
         guard rebuilt.totalSat > displayed.totalSat else { return nil }
         let amountSat = rebuilt.totalSat - displayed.totalSat
-        let isServiceIncrease = order.feeSat > uiState.feeSat
+        let isServiceIncrease = order.feeSat > displayedOrderFeeSat
         uiState.feeSat = order.feeSat
         return isServiceIncrease ? .service(amountSat: amountSat) : .network(amountSat: amountSat)
     }
