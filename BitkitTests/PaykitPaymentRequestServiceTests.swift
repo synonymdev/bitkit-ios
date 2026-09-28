@@ -3020,6 +3020,46 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.eligibleTargets.isEmpty)
     }
 
+    func testFullRefreshKeepsOtherContactsWhenSingleRefreshFinishesFirst() async throws {
+        let refreshedKey = "pubky\(String(repeating: "a", count: 52))"
+        let otherKey = "pubky\(String(repeating: "b", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: refreshedKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [refreshedKey: [PaykitReceiverPath.wallet], otherKey: [PaykitReceiverPath.wallet]]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refreshEligibleTargets(savedPublicKeys: [refreshedKey, otherKey])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: otherKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [refreshedKey: [PaykitReceiverPath.wallet], otherKey: [PaykitReceiverPath.wallet]]
+        )
+        await sdk.pauseNextLinkedPeers()
+
+        let fullRefresh = Task {
+            await manager.refreshEligibleTargets(savedPublicKeys: [refreshedKey, otherKey])
+        }
+        try await waitUntil { await sdk.linkedPeersIsPaused() }
+        await sdk.configureRecipients(
+            peers: [
+                linkedPeer(counterparty: refreshedKey, path: PaykitReceiverPath.server, state: .linked),
+                linkedPeer(counterparty: otherKey, path: PaykitReceiverPath.wallet, state: .linked),
+            ],
+            receiverPathsByPublicKey: [refreshedKey: [PaykitReceiverPath.server], otherKey: [PaykitReceiverPath.wallet]]
+        )
+        _ = await manager.refreshEligibleTarget(publicKey: refreshedKey)
+        await sdk.resumeLinkedPeers()
+        await fullRefresh.value
+
+        XCTAssertEqual(
+            Set(manager.eligibleTargets),
+            [
+                PaykitPaymentRequestTarget(publicKey: refreshedKey, receiverPath: PaykitReceiverPath.server),
+                PaykitPaymentRequestTarget(publicKey: otherKey, receiverPath: PaykitReceiverPath.wallet),
+            ]
+        )
+    }
+
     func testOlderEligibilityRefreshCannotOverwriteNewerContacts() async throws {
         let firstKey = "pubky\(String(repeating: "a", count: 52))"
         let secondKey = "pubky\(String(repeating: "b", count: 52))"

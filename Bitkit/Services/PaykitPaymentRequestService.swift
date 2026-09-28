@@ -1054,6 +1054,9 @@ final class PaykitPaymentRequestManager {
     private var presentationRetryTask: Task<Void, Never>?
     private var refreshGeneration = 0
     private var eligibilityGeneration = 0
+    private var lastFullEligibilityWriteGeneration = 0
+    /// The generation each single-contact refresh started at, so a full refresh that started earlier leaves that contact alone.
+    private var singleEligibilityWriteGenerations: [String: Int] = [:]
     private var eligibleTargetRefreshTasks: [String: Task<PaykitPaymentRequestTarget?, Never>] = [:]
     private var stateGeneration = 0
     private var presentationGeneration = 0
@@ -1164,7 +1167,12 @@ final class PaykitPaymentRequestManager {
                   isAvailable(),
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
             else { return }
-            eligibleTargets = discovery.targets
+            let newerSingleRefreshKeys = Set(singleEligibilityWriteGenerations.filter { $0.value >= generation }.keys)
+            let isNewerSingleRefresh: (PaykitPaymentRequestTarget) -> Bool = {
+                newerSingleRefreshKeys.contains(Self.eligibilityKey($0.publicKey))
+            }
+            eligibleTargets = discovery.targets.filter { !isNewerSingleRefresh($0) } + eligibleTargets.filter(isNewerSingleRefresh)
+            lastFullEligibilityWriteGeneration = generation
         } catch is CancellationError {
             return
         } catch {
@@ -1197,11 +1205,10 @@ final class PaykitPaymentRequestManager {
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity),
                   savedPublicKeys.contains(where: { PubkyPublicKeyFormat.matches($0, publicKey) })
             else { return nil }
-            guard generation == eligibilityGeneration else { return eligibleTarget(publicKey: publicKey) }
+            guard lastFullEligibilityWriteGeneration <= generation else { return eligibleTarget(publicKey: publicKey) }
             let target = discovery.targets.first
             if target != nil || discovery.isComplete {
-                // Invalidates a full refresh that started before this lookup, so its older result cannot overwrite this one.
-                eligibilityGeneration += 1
+                singleEligibilityWriteGenerations[Self.eligibilityKey(publicKey)] = generation
                 var targets = eligibleTargets.filter { !PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
                 if let target {
                     targets.append(target)
@@ -1218,6 +1225,10 @@ final class PaykitPaymentRequestManager {
 
     func eligibleTarget(publicKey: String) -> PaykitPaymentRequestTarget? {
         eligibleTargets.first { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
+    }
+
+    private static func eligibilityKey(_ publicKey: String) -> String {
+        PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
     }
 
     @discardableResult
@@ -1263,6 +1274,7 @@ final class PaykitPaymentRequestManager {
 
     func clearEligibleTargets() {
         eligibilityGeneration += 1
+        singleEligibilityWriteGenerations = [:]
         savedPublicKeys = []
         eligibleTargets = []
     }
@@ -1597,6 +1609,7 @@ final class PaykitPaymentRequestManager {
         presentationGeneration += 1
         invalidateRefresh()
         eligibilityGeneration += 1
+        singleEligibilityWriteGenerations = [:]
         expirationTask?.cancel()
         expirationTask = nil
         presentationRetryTask?.cancel()
