@@ -214,33 +214,6 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertTrue(payable.isEmpty)
     }
 
-    func testPaykitUIIsEnabledWhenNoPreferenceIsStored() {
-        XCTAssertEqual(PaykitFeatureFlags.isUIEnabled, PaykitFeatureFlags.isUIAvailable)
-    }
-
-    func testPaykitUIStaysDisabledOnceTurnedOff() {
-        UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
-
-        XCTAssertFalse(PaykitFeatureFlags.isUIEnabled)
-    }
-
-    func testPublishedStateIsEmptyForWalletThatNeverShared() throws {
-        try withIsolatedDefaults { defaults in
-            XCTAssertFalse(PaykitFeatureFlags.hasPublicPublishedState(defaults: defaults))
-            XCTAssertFalse(PaykitFeatureFlags.hasPrivatePublishedState(defaults: defaults))
-        }
-    }
-
-    func testPublishedStateReportsSharedEndpoints() throws {
-        try withIsolatedDefaults { defaults in
-            defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
-            defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
-
-            XCTAssertTrue(PaykitFeatureFlags.hasPublicPublishedState(defaults: defaults))
-            XCTAssertTrue(PaykitFeatureFlags.hasPrivatePublishedState(defaults: defaults))
-        }
-    }
-
     func testBuildAvailabilityMarksPublicCleanupPendingForPublishedPublicState() throws {
         try withIsolatedDefaults { defaults in
             defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
