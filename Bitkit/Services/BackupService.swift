@@ -11,10 +11,89 @@ enum BackupRestoreFailurePolicy {
     }
 }
 
+struct WalletBackupRestoreGate {
+    static let keychain = WalletBackupRestoreGate(
+        load: { try Keychain.load(key: .paykitPendingBackupRestore) },
+        store: { try Keychain.upsert(key: .paykitPendingBackupRestore, data: $0) },
+        clear: { try Keychain.delete(key: .paykitPendingBackupRestore) }
+    )
+
+    private let load: () throws -> Data?
+    private let store: (Data) throws -> Void
+    private let clear: () throws -> Void
+
+    init(
+        load: @escaping () throws -> Data?,
+        store: @escaping (Data) throws -> Void,
+        clear: @escaping () throws -> Void
+    ) {
+        self.load = load
+        self.store = store
+        self.clear = clear
+    }
+
+    static func blocksWalletStart(
+        isRestoreRunning: Bool,
+        hasPendingRestore: Bool,
+        isRestoreCompletionStart: Bool
+    ) -> Bool {
+        hasPendingRestore || isRestoreRunning && !isRestoreCompletionStart
+    }
+
+    func hasPendingRestore() throws -> Bool {
+        try load() != nil
+    }
+
+    func performRestore(_ restore: (Data?) async throws -> Bool) async throws -> Bool {
+        let retainedPayload = try beginRestore()
+        let didRestorePayload = try await restore(retainedPayload)
+        if didRestorePayload {
+            try completeRestore()
+        } else {
+            try completeRestoreWithoutPayload()
+        }
+        return didRestorePayload
+    }
+
+    private func beginRestore() throws -> Data? {
+        guard let pendingPayload = try load() else {
+            try store(Data())
+            return nil
+        }
+        return pendingPayload.isEmpty ? nil : pendingPayload
+    }
+
+    func retain(_ payload: Data) throws {
+        try store(payload)
+    }
+
+    private func completeRestore() throws {
+        try clear()
+    }
+
+    private func completeRestoreWithoutPayload() throws {
+        guard try load()?.isEmpty == true else {
+            throw incompleteRestoreError()
+        }
+        try clear()
+    }
+
+    func requireReplacementBackupAllowed() throws {
+        guard try load() == nil else {
+            throw incompleteRestoreError()
+        }
+    }
+
+    private func incompleteRestoreError() -> NSError {
+        NSError(domain: "BackupService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Wallet backup restore is incomplete"])
+    }
+}
+
 class BackupService {
     static let shared = BackupService()
 
     private let vssBackupClient = VssBackupClient.shared
+    private let walletRestoreGate = WalletBackupRestoreGate.keychain
     private var backupJobs: [BackupCategory: Task<Void, Never>] = [:]
     private var runningBackupTasks: [BackupCategory: Task<Void, Never>] = [:]
     private var cancellables = Set<AnyCancellable>()
@@ -177,7 +256,7 @@ class BackupService {
 
     func hasPendingWalletRestore() -> Bool {
         do {
-            return try Keychain.load(key: .paykitPendingBackupRestore) != nil
+            return try walletRestoreGate.hasPendingRestore()
         } catch {
             Logger.error("Failed to read pending wallet restore state: \(error)", context: "BackupService")
             return true
@@ -196,18 +275,24 @@ class BackupService {
             }
         }
 
-        // Reset VSS client
         VssStoreIdProvider.shared.clearCache()
         await VssBackupClient.shared.reset()
-
         Logger.debug("Full restore starting", context: "BackupService")
 
         do {
-            // Block replacement backups even if downloading the wallet backup fails.
-            let pendingWalletBackup = try Keychain.load(key: .paykitPendingBackupRestore)
-            if pendingWalletBackup == nil {
-                try Keychain.upsert(key: .paykitPendingBackupRestore, data: Data())
+            _ = try await walletRestoreGate.performRestore { retainedWalletBackup in
+                try await performFullRestoreFromLatestBackup(retainedWalletBackup: retainedWalletBackup)
             }
+            markRestoreComplete(category: .wallet)
+            Logger.info("Full restore success", context: "BackupService")
+        } catch {
+            Logger.warn("Full restore error: \(error)", context: "BackupService")
+            throw error
+        }
+    }
+
+    private func performFullRestoreFromLatestBackup(retainedWalletBackup: Data?) async throws -> Bool {
+        do {
             try await performRestore(category: .settings) { dataBytes in
                 let payload = try SettingsBackupV1.decode(from: dataBytes)
                 await SettingsViewModel.shared.restoreSettingsDictionary(payload.settings)
@@ -228,9 +313,8 @@ class BackupService {
             // state.
             var categoriesNeedingRewrite: Set<BackupCategory> = []
 
-            let retainedWalletBackup = pendingWalletBackup.flatMap { $0.isEmpty ? nil : $0 }
             try await performRestore(category: .wallet, retainedData: retainedWalletBackup) { dataBytes in
-                try Keychain.upsert(key: .paykitPendingBackupRestore, data: dataBytes)
+                try walletRestoreGate.retain(dataBytes)
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 if let paymentState = payload.paykitPaymentState {
                     try PaykitSubscriptionStateStore().restoreBackup(paymentState.subscriptions)
@@ -246,14 +330,6 @@ class BackupService {
                 didRestoreWalletBackup = true
 
                 Logger.debug("Restored \(payload.transfers.count) transfers", context: "BackupService")
-            }
-
-            if !didRestoreWalletBackup {
-                guard try Keychain.load(key: .paykitPendingBackupRestore)?.isEmpty == true else {
-                    throw NSError(domain: "BackupService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Wallet backup restore is incomplete"])
-                }
-                try Keychain.delete(key: .paykitPendingBackupRestore)
-                markRestoreComplete(category: .wallet)
             }
 
             try await performRestore(category: .activity) { dataBytes in
@@ -341,15 +417,7 @@ class BackupService {
             // suppression window and let the restore's own change traffic schedule uploads.
             await rewriteMigratedBackups(categoriesNeedingRewrite)
 
-            if didRestoreWalletBackup {
-                try Keychain.delete(key: .paykitPendingBackupRestore)
-                markRestoreComplete(category: .wallet)
-            }
-
-            Logger.info("Full restore success", context: "BackupService")
-        } catch {
-            Logger.warn("Full restore error: \(error)", context: "BackupService")
-            throw error
+            return didRestoreWalletBackup
         }
     }
 
@@ -796,9 +864,7 @@ class BackupService {
             return encoded
 
         case .wallet:
-            guard try Keychain.load(key: .paykitPendingBackupRestore) == nil else {
-                throw NSError(domain: "BackupService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Wallet backup restore is incomplete"])
-            }
+            try walletRestoreGate.requireReplacementBackupAllowed()
             let transfers = try TransferStorage.shared.getAll()
             let privatePaykitHighestReservedReceiveIndexByAddressType = await PrivatePaykitAddressReservationStore.shared.backupSnapshot()
             let paykitSdkBackupState = try await PrivatePaykitService.shared.backupSnapshot()
@@ -939,7 +1005,7 @@ class BackupService {
             }
         }
 
-        if category == .wallet, try Keychain.load(key: .paykitPendingBackupRestore) != nil {
+        if category == .wallet, try walletRestoreGate.hasPendingRestore() {
             return
         }
         markRestoreComplete(category: category)

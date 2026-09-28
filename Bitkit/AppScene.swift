@@ -174,16 +174,6 @@ struct PaykitPaymentRequestPollingSchedule {
     }
 }
 
-enum WalletBackupRestoreGate {
-    static func blocksWalletStart(
-        isRestoreRunning: Bool,
-        hasPendingRestore: Bool,
-        isRestoreCompletionStart: Bool
-    ) -> Bool {
-        hasPendingRestore || isRestoreRunning && !isRestoreCompletionStart
-    }
-}
-
 struct AppScene: View {
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
 

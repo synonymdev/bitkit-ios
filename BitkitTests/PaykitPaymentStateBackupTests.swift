@@ -3,6 +3,10 @@ import Combine
 import Paykit
 import XCTest
 
+private enum PaykitPaymentStateBackupTestError: Error {
+    case restoreFailed
+}
+
 final class PaykitPaymentStateBackupTests: XCTestCase {
     private let identity = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
@@ -119,6 +123,69 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             hasPendingRestore: true,
             isRestoreCompletionStart: true
         ))
+    }
+
+    func testWalletBackupRestoreGateRetainsFailuresAndReplaysPayloadUntilCompletion() async throws {
+        var storedPayload: Data?
+        let gate = WalletBackupRestoreGate(
+            load: { storedPayload },
+            store: { storedPayload = $0 },
+            clear: { storedPayload = nil }
+        )
+        let walletBackup = Data("wallet-backup".utf8)
+        var downloadCount = 0
+
+        do {
+            _ = try await gate.performRestore { retainedPayload in
+                XCTAssertNil(retainedPayload)
+                downloadCount += 1
+                throw PaykitPaymentStateBackupTestError.restoreFailed
+            }
+            XCTFail("Expected the download failure to preserve the placeholder")
+        } catch PaykitPaymentStateBackupTestError.restoreFailed {}
+        XCTAssertEqual(storedPayload, Data())
+        XCTAssertThrowsError(try gate.requireReplacementBackupAllowed())
+
+        do {
+            _ = try await gate.performRestore { retainedPayload in
+                XCTAssertNil(retainedPayload)
+                downloadCount += 1
+                try gate.retain(walletBackup)
+                throw PaykitPaymentStateBackupTestError.restoreFailed
+            }
+            XCTFail("Expected the apply failure to preserve the downloaded payload")
+        } catch PaykitPaymentStateBackupTestError.restoreFailed {}
+        XCTAssertEqual(storedPayload, walletBackup)
+        XCTAssertThrowsError(try gate.requireReplacementBackupAllowed())
+
+        let didRestore = try await gate.performRestore { retainedPayload in
+            XCTAssertEqual(retainedPayload, walletBackup)
+            XCTAssertEqual(downloadCount, 2)
+            return true
+        }
+
+        XCTAssertTrue(didRestore)
+        XCTAssertNil(storedPayload)
+        XCTAssertNoThrow(try gate.requireReplacementBackupAllowed())
+    }
+
+    func testWalletBackupRestoreGateClearsPlaceholderWhenNoWalletPayloadExists() async throws {
+        var storedPayload: Data?
+        let gate = WalletBackupRestoreGate(
+            load: { storedPayload },
+            store: { storedPayload = $0 },
+            clear: { storedPayload = nil }
+        )
+
+        let didRestore = try await gate.performRestore { retainedPayload in
+            XCTAssertNil(retainedPayload)
+            XCTAssertEqual(storedPayload, Data())
+            return false
+        }
+
+        XCTAssertFalse(didRestore)
+        XCTAssertNil(storedPayload)
+        XCTAssertNoThrow(try gate.requireReplacementBackupAllowed())
     }
 
     func testOnlyWalletRestoreFailuresAreFatal() {

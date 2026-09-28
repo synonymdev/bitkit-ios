@@ -987,6 +987,43 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.pendingRequests.isEmpty)
     }
 
+    func testSubscriptionStateLoadFailureLeavesIdentityInactiveUntilRetry() async throws {
+        let subscriptionStore = PaymentRequestSubscriptionStateMemoryStore()
+        subscriptionStore.shouldFailLoad = true
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: nil
+        )
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(recurrence: recurrence)])
+        let manager = PaykitPaymentRequestManager(
+            service: PaykitPaymentRequestService(
+                sdk: sdk,
+                logWarning: { _ in }
+            ),
+            presentationStore: PaymentRequestPresentationMemoryStore(),
+            subscriptionStateStore: subscriptionStore,
+            isAvailable: { true },
+            logWarning: { _ in }
+        )
+        let identity = "pubky\(String(repeating: "z", count: 52))"
+
+        manager.activate(identity: identity)
+        await manager.refresh()
+
+        XCTAssertTrue(manager.subscriptions.isEmpty)
+        XCTAssertEqual(subscriptionStore.saveCallCount, 0)
+
+        subscriptionStore.shouldFailLoad = false
+        manager.activate(identity: identity)
+        await manager.refresh()
+
+        XCTAssertEqual(manager.subscriptions.count, 1)
+        XCTAssertEqual(subscriptionStore.saveCallCount, 0)
+    }
+
     func testSubscriptionDeadlinesExpireWithoutAnotherRefresh() async throws {
         let deadline = Date().addingTimeInterval(2)
         let recurrence = PaymentRequestRecurrence(
@@ -3287,16 +3324,22 @@ private final class PaymentRequestLogRecorder: @unchecked Sendable {
 
 private final class PaymentRequestSubscriptionStateMemoryStore: PaykitSubscriptionStateStoring {
     private var states: [String: PaykitSubscriptionState] = [:]
+    var shouldFailLoad = false
     var shouldFailSave = false
+    private(set) var saveCallCount = 0
 
-    func load(identity: String) -> PaykitSubscriptionState {
-        states[identity] ?? PaykitSubscriptionState()
+    func load(identity: String) throws -> PaykitSubscriptionState {
+        if shouldFailLoad {
+            throw PaymentRequestSdkMockError.preparation
+        }
+        return states[identity] ?? PaykitSubscriptionState()
     }
 
     func save(_ subscriptionState: PaykitSubscriptionState, identity: String) throws {
         if shouldFailSave {
             throw PaymentRequestSdkMockError.preparation
         }
+        saveCallCount += 1
         states[identity] = subscriptionState
     }
 }
