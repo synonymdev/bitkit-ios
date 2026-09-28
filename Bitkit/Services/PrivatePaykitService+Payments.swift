@@ -18,7 +18,8 @@ extension PrivatePaykitService {
             return try await PublicPaykitService.beginPayment(to: publicKey)
         }
 
-        if await canPublishPrivateEndpoints(wallet: wallet) {
+        Task {
+            guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
             _ = await refreshSavedContactEndpointsReturningError(
                 for: [normalizedKey],
                 wallet: wallet,
