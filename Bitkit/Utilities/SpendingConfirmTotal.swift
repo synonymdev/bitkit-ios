@@ -26,6 +26,16 @@ struct SpendingConfirmAmounts: Equatable {
 enum SpendingFeeIncrease: Equatable {
     case service(amountSat: UInt64)
     case network(amountSat: UInt64)
+
+    /// The localized toast description for this increase, with `amount` already formatted in the user's primary display unit.
+    func toastDescription(formattingAmount format: (UInt64) -> String) -> String {
+        switch self {
+        case let .service(amountSat):
+            t("lightning__spending_confirm__fees_changed_service", variables: ["amount": format(amountSat)])
+        case let .network(amountSat):
+            t("lightning__spending_confirm__fees_changed_network", variables: ["amount": format(amountSat)])
+        }
+    }
 }
 
 struct SpendingFeesIncreasedError: Error {}

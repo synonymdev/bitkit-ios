@@ -258,20 +258,10 @@ struct SpendingConfirm: View {
     }
 
     private func showFeesIncreasedToast(_ increase: SpendingFeeIncrease) {
-        let key: String
-        let amountSat: UInt64
-        switch increase {
-        case let .service(amount):
-            key = "lightning__spending_confirm__fees_changed_service"
-            amountSat = amount
-        case let .network(amount):
-            key = "lightning__spending_confirm__fees_changed_network"
-            amountSat = amount
-        }
         app.toast(
             type: .info,
             title: t("lightning__spending_confirm__fees_changed_title"),
-            description: t(key, variables: ["amount": currency.primaryAmountText(sats: amountSat)])
+            description: increase.toastDescription { currency.primaryAmountText(sats: $0) }
         )
     }
 

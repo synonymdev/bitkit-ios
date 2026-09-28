@@ -141,4 +141,48 @@ final class CurrencyTests: XCTestCase {
         let text = CurrencyViewModel.primaryAmountText(sats: 204, converted: nil, primaryDisplay: .fiat, displayUnit: .classic)
         XCTAssertEqual(text, "₿ 204")
     }
+
+    // MARK: - Fees changed toast
+
+    private func feeToastAmount(fiat: Bool, unit: BitcoinDisplayUnit, sats: UInt64) -> String {
+        CurrencyViewModel.primaryAmountText(
+            sats: sats, converted: makeConverted(sats: sats), primaryDisplay: fiat ? .fiat : .bitcoin, displayUnit: unit
+        )
+    }
+
+    func testFeesChangedToast_NetworkIncreaseShowsFiatAmount() {
+        let text = SpendingFeeIncrease.network(amountSat: 204).toastDescription { _ in "$0.95" }
+        XCTAssertTrue(text.contains("$0.95"), text)
+        XCTAssertFalse(text.contains("{amount}"), text)
+        XCTAssertTrue(text.contains("fee rates or your savings balance changed"), text)
+    }
+
+    func testFeesChangedToast_ServiceIncreaseShowsClassicAmount() {
+        let text = SpendingFeeIncrease.service(amountSat: 204).toastDescription { _ in "₿ 0.00000204" }
+        XCTAssertTrue(text.contains("₿ 0.00000204"), text)
+        XCTAssertFalse(text.contains("{amount}"), text)
+        XCTAssertTrue(text.contains("now that your order is created"), text)
+    }
+
+    func testFeesChangedToast_UsesThePrimaryDisplayUnitForEachIncrease() {
+        let cases: [(fiat: Bool, unit: BitcoinDisplayUnit, expected: String)] = [
+            (true, .modern, "$0.12"),
+            (false, .modern, "₿ 204"),
+            (false, .classic, "₿ 0.00000204"),
+        ]
+        for testCase in cases {
+            for increase in [SpendingFeeIncrease.network(amountSat: 204), .service(amountSat: 204)] {
+                let text = increase.toastDescription { feeToastAmount(fiat: testCase.fiat, unit: testCase.unit, sats: $0) }
+                XCTAssertTrue(text.contains("Fees are \(testCase.expected) higher"), text)
+                XCTAssertFalse(text.contains("{amount}"), text)
+            }
+        }
+    }
+
+    func testFeesChangedToast_PassesTheIncreaseAmountToTheFormatter() {
+        var formatted: [UInt64] = []
+        _ = SpendingFeeIncrease.network(amountSat: 77).toastDescription { formatted.append($0); return "x" }
+        _ = SpendingFeeIncrease.service(amountSat: 88).toastDescription { formatted.append($0); return "x" }
+        XCTAssertEqual(formatted, [77, 88])
+    }
 }
