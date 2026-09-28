@@ -234,6 +234,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             (paymentRequestRecord(id: "unknown-role", role: .unknown), .unsupportedLocalRole),
             (paymentRequestRecord(id: "missing-terms"), .missingTerms),
             (paymentRequestRecord(id: "wrong-asset", asset: "BTC"), .unsupportedAsset),
+            (
+                paymentRequestRecord(id: "payment-deadline", paymentDeadline: .at(timestamp: timestamp(now.addingTimeInterval(3600)))),
+                .unsupportedPaymentDeadline
+            ),
             (paymentRequestRecord(id: "invalid-amount", amount: "not-bitcoin"), .invalidAmount),
             (paymentRequestRecord(id: "amount-out-of-range", amount: "184467440737.09551615"), .amountOutOfRange),
             (paymentRequestRecord(id: "unsupported-endpoint", endpoints: ["btc-unsupported-method"]), .noSupportedEndpoint),
@@ -1591,6 +1595,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let manager = try paymentRequestManager(
             sdk: PaymentRequestSdkMock(records: [
                 paymentRequestRecord(id: "malformed", expiresAt: "not-a-timestamp", recurrence: recurrence),
+                paymentRequestRecord(id: "deadline", paymentDeadline: .periodStart(seconds: 3600), recurrence: recurrence),
                 paymentRequestRecord(id: "unsupported", recurrence: recurrence, endpoints: ["btc-unsupported-method"]),
                 paymentRequestRecord(id: "ended", recurrence: endedRecurrence),
             ]),
@@ -1601,6 +1606,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         let subscription = try XCTUnwrap(manager.subscriptions.first)
         XCTAssertEqual(subscription.paymentRequestId, "unsupported")
+        XCTAssertFalse(manager.subscriptions.contains { $0.paymentRequestId == "deadline" })
         XCTAssertFalse(subscription.isProposalActionable(at: Date(timeIntervalSince1970: 1_800_000_000)))
         XCTAssertEqual(manager.subscriptionProposalForPresentation()?.id, subscription.id)
         XCTAssertEqual(
@@ -3639,6 +3645,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         amount: String = "0.001",
         asset: String = "btc",
         expiresAt: String? = nil,
+        paymentDeadline: PaymentDeadline? = nil,
         recurrence: PaymentRequestRecurrence? = nil,
         endpoints: [String] = [PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue],
         metadata: String = "{}",
@@ -3664,6 +3671,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 proposalExpiresAt: expiresAt,
                 recurrence: recurrence,
                 acceptedPaymentEndpointIdentifiers: endpoints,
+                conversion: nil,
+                paymentDeadline: paymentDeadline,
                 metadata: PrivateJsonObject(text: metadata)
             ),
             acceptedEventId: acceptedEventId,
@@ -3672,6 +3681,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
             canceledOutboundStatus: nil,
+            conversionQuotes: [],
             paymentProofs: paymentProofs,
             lastStreamItemId: 1,
             lastOutboundMessageId: nil,
@@ -3694,6 +3704,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             paymentReference: PaymentReference(text: "invoice-123"),
             billingPeriod: billingPeriod,
             paymentEndpointIdentifier: endpoint,
+            allowanceId: nil,
+            conversionQuoteId: nil,
             proof: PrivateJsonObject(text: "{\"data\":\"proof\",\"type\":\"\(kind.rawValue)\"}"),
             recordedAt: "2027-01-15T08:01:00Z"
         )
