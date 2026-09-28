@@ -14,6 +14,9 @@ env:
   TERM: xterm-256color
   FORCE_COLOR: 1
   GIT_LFS_SKIP_SMUDGE: "1"
+  # Both e2e paths must cover the same tags. A matrix cannot read env, so this
+  # reaches them as detect-changes.outputs.shard_grep.
+  E2E_SHARD_GREP: '@transfer_2|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4|@hardware_wallet'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,8 +28,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}
+      shard_grep: ${{ steps.shard.outputs.grep }}
     steps:
       - uses: actions/checkout@v7
+      - id: shard
+        run: |
+          test -n "$E2E_SHARD_GREP"
+          echo "grep=$E2E_SHARD_GREP" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@v4
         if: github.event_name == 'pull_request'
         id: filter
@@ -152,7 +160,7 @@ jobs:
           # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
           # - { name: settings, grep: "@settings" }
           # - { name: security, grep: "@security" }
-          - { name: e2e, grep: '@transfer_2|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4|@hardware_wallet' }
+          - { name: e2e, grep: "${{ needs.detect-changes.outputs.shard_grep }}" }
 
     name: e2e-tests-local - ${{ matrix.shard.name }}
 
@@ -290,8 +298,11 @@ jobs:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, build-local, e2e-branch]
-    # Must outlast e2e-tests-remote: three attempts of the full shard.
-    timeout-minutes: 420
+    permissions:
+      contents: read
+      actions: read
+    # Must outlast the hold loop below, which must outlast e2e-tests-remote.
+    timeout-minutes: 280
     steps:
       - name: Resolve E2E tests ref
         id: e2e-ref
@@ -306,10 +317,10 @@ jobs:
           repository: synonymdev/bitkit-e2e-tests
           ref: ${{ steps.e2e-ref.outputs.ref }}
 
-      - uses: tailscale/github-action@v3
+      - uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
-          hostname: regtest-${{ github.run_id }}
+          hostname: regtest-${{ github.run_id }}-${{ github.run_attempt }}
           args: --accept-dns=false
 
       - name: Start regtest stack
@@ -375,26 +386,28 @@ jobs:
           cp docker/lnd/tls.cert /tmp/creds/
           cp docker/lnd/data/chain/bitcoin/regtest/admin.macaroon /tmp/creds/
           chmod -R a+r /tmp/creds
-          nohup python3 -m http.server 8081 --bind 0.0.0.0 --directory /tmp/creds \
-            > /tmp/creds/access.log 2>&1 &
-          until nc -z 127.0.0.1 8081; do sleep 1; done
-          echo "✓ serving on :8081"
+          tailnet_ip=$(tailscale ip -4)
+          nohup python3 -m http.server 8081 --bind "$tailnet_ip" --directory /tmp/creds \
+            > /tmp/http-creds.log 2>&1 &
+          until nc -z "$tailnet_ip" 8081; do sleep 1; done
+          echo "✓ serving on $tailnet_ip:8081"
 
       - name: Hold the stack up until the tests finish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          deadline=$(( SECONDS + 24000 ))
+          deadline=$(( SECONDS + 15600 ))
           finished=false
           while (( SECONDS < deadline )); do
+            if ! jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100"); then
+              echo "::error::could not read this run's jobs from the API"
+              exit 1
+            fi
             # Matrix jobs are named "<job> - <shard>", so match on the prefix.
-            pending=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
-              --paginate --jq '[.jobs[] | select(.name | startswith("e2e-tests-remote")) | select(.status != "completed")] | length' \
-              2>/dev/null || echo 1)
-            started=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
-              --paginate --jq '[.jobs[] | select(.name | startswith("e2e-tests-remote"))] | length' \
-              2>/dev/null || echo 0)
+            remote=$(jq '[.jobs[] | select(.name | startswith("e2e-tests-remote"))]' <<<"$jobs_json")
+            started=$(jq 'length' <<<"$remote")
+            pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$remote")
             echo "e2e-tests-remote: ${started} job(s), ${pending} still running"
             if [ "$started" -gt 0 ] && [ "$pending" -eq 0 ]; then
               echo "tests finished"
@@ -423,13 +436,13 @@ jobs:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-latest
     needs: [detect-changes, build-local, e2e-branch]
-    timeout-minutes: 360
+    timeout-minutes: 240
 
     strategy:
       fail-fast: false
       matrix:
         shard:
-          - { name: e2e, grep: '@transfer_2|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4|@hardware_wallet' }
+          - { name: e2e, grep: "${{ needs.detect-changes.outputs.shard_grep }}" }
 
     name: e2e-tests-remote - ${{ matrix.shard.name }}
 
@@ -466,10 +479,10 @@ jobs:
       - name: Install ffmpeg
         run: brew install ffmpeg
 
-      - uses: tailscale/github-action@v3
+      - uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
-          hostname: tester-${{ github.run_id }}
+          hostname: tester-${{ github.run_id }}-${{ github.run_attempt }}
           # Peers are found via `tailscale status`, so MagicDNS is unused. Leaving
           # it on rewrites the resolver and WebDriverAgent then fails to start.
           args: --accept-dns=false
@@ -480,7 +493,7 @@ jobs:
           deadline=$(( SECONDS + 1800 ))
           while :; do
             ip=$(tailscale status --json 2>/dev/null \
-              | jq -r --arg h "regtest-${{ github.run_id }}" \
+              | jq -r --arg h "regtest-${{ github.run_id }}-${{ github.run_attempt }}" \
                   'first(.Peer[]? | select(.HostName == $h) | .TailscaleIPs[0]) // empty' \
               || true)
             [ -n "$ip" ] && break
