@@ -47,11 +47,17 @@ struct MetadataBackupV1: Codable {
 struct PubkySessionBackupV1: Codable, Equatable {
     enum Kind: String, Codable {
         case localSeed
-        case externalSession
     }
 
-    let kind: Kind
-    let sessionSecret: String?
+    let kind: Kind?
+}
+
+extension PubkySessionBackupV1 {
+    /// Backups written by older versions carry kinds this app no longer restores; they decode to no identity.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try? container.decodeIfPresent(Kind.self, forKey: .kind)
+    }
 }
 
 struct BlocktankRefundAddress: Codable, Equatable {
