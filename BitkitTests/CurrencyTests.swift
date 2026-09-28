@@ -111,4 +111,34 @@ final class CurrencyTests: XCTestCase {
         )
         XCTAssertEqual(converted.formattedWithSymbol(withSpace: true), "0.35 zł")
     }
+
+    // MARK: - primaryAmountText
+
+    private func makeConverted(sats: UInt64 = 204) -> ConvertedAmount {
+        ConvertedAmount(value: Decimal(string: "0.12")!, formatted: "0.12", symbol: "$", currency: "USD", flag: "🇺🇸", sats: sats)
+    }
+
+    func testPrimaryAmountText_FiatPrimaryShowsFiatWithSymbol() {
+        let text = CurrencyViewModel.primaryAmountText(sats: 204, converted: makeConverted(), primaryDisplay: .fiat, displayUnit: .modern)
+        XCTAssertEqual(text, "$0.12")
+    }
+
+    func testPrimaryAmountText_BitcoinPrimaryModernShowsSats() {
+        let text = CurrencyViewModel.primaryAmountText(
+            sats: 12345, converted: makeConverted(sats: 12345), primaryDisplay: .bitcoin, displayUnit: .modern
+        )
+        XCTAssertEqual(text, "₿ 12 345")
+    }
+
+    func testPrimaryAmountText_BitcoinPrimaryClassicShowsBtc() {
+        let text = CurrencyViewModel.primaryAmountText(
+            sats: 204, converted: makeConverted(), primaryDisplay: .bitcoin, displayUnit: .classic
+        )
+        XCTAssertEqual(text, "₿ 0.00000204")
+    }
+
+    func testPrimaryAmountText_FallsBackToBitcoinWithoutARate() {
+        let text = CurrencyViewModel.primaryAmountText(sats: 204, converted: nil, primaryDisplay: .fiat, displayUnit: .classic)
+        XCTAssertEqual(text, "₿ 204")
+    }
 }

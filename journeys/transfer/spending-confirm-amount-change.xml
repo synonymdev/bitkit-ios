@@ -3,12 +3,12 @@
     Verifies that a transfer to spending never pays more than the total Spending Confirm shows
     (synonymdev/bitkit-ios#783). After the swipe creates the order, the funding is rebuilt for it. A
     plan that costs the same or less than the screen pays on that swipe. A plan that costs more pays
-    nothing: the screen shows the new amounts, a "Fees increased" toast explains the increase, and the
+    nothing: the screen shows the new amounts, a "Fees changed" toast explains the increase, and the
     next swipe pays them.
 
     This journey covers the cheaper plan. Spending Confirm sizes the network fee for two inputs, then
     a larger UTXO confirms before the swipe, so the plan rebuilt at swipe spends one input, costs less
-    and pays at once. The higher-total path (the "Fees increased" toast) is covered by unit tests and a
+    and pays at once. The higher-total path (the "Fees changed" toast) is covered by unit tests and a
     manual test, because spending the wallet's own UTXO outside the app is not a listed capability.
 
     iOS differs from Android in one step: there is no app-log step.

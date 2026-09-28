@@ -5,6 +5,7 @@ import SwiftUI
 struct SpendingConfirm: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -261,16 +262,16 @@ struct SpendingConfirm: View {
         let amountSat: UInt64
         switch increase {
         case let .service(amount):
-            key = "lightning__spending_confirm__fees_increased_service"
+            key = "lightning__spending_confirm__fees_changed_service"
             amountSat = amount
         case let .network(amount):
-            key = "lightning__spending_confirm__fees_increased_network"
+            key = "lightning__spending_confirm__fees_changed_network"
             amountSat = amount
         }
         app.toast(
             type: .info,
-            title: t("lightning__spending_confirm__fees_increased_title"),
-            description: t(key, variables: ["amount": CurrencyFormatter.formatSats(amountSat)])
+            title: t("lightning__spending_confirm__fees_changed_title"),
+            description: t(key, variables: ["amount": currency.primaryAmountText(sats: amountSat)])
         )
     }
 
