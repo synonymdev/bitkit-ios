@@ -16,6 +16,14 @@ enum ToastMotion {
 class ToastWindowManager: ObservableObject {
     static let shared = ToastWindowManager()
 
+    nonisolated static let disableAllToastsKey = "disableAllToasts"
+
+    /// Dev-only switch: toasts are hidden only while dev mode and the toggle are both on.
+    nonisolated static func areToastsDisabled(defaults: UserDefaults = .standard) -> Bool {
+        let devMode = defaults.object(forKey: "showDevSettings") as? Bool ?? Env.isDebug
+        return devMode && defaults.bool(forKey: disableAllToastsKey)
+    }
+
     private var toastWindow: PassThroughWindow?
     private var toastHostingController: UIHostingController<ToastWindowView>?
 
