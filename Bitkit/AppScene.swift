@@ -214,7 +214,6 @@ struct AppScene: View {
     @State private var hideSplash = false
     @State private var removeSplash = false
     @State private var walletIsInitializing: Bool? = nil
-    @State private var walletInitShouldFinish = false
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
 
@@ -637,7 +636,7 @@ struct AppScene: View {
         if case .errorStarting = wallet.nodeLifecycleState {
             WalletRestoreError()
         } else {
-            InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
+            InitializingWalletView(nodeLifecycleState: $wallet.nodeLifecycleState) {
                 Logger.debug("Wallet finished initializing but node state is \(wallet.nodeLifecycleState)")
 
                 if wallet.nodeLifecycleState == .running {
@@ -653,9 +652,8 @@ struct AppScene: View {
         }
         .accentColor(.white)
         .onAppear {
-            // Reset these values if the wallet is wiped
+            // Reset initialization if the wallet is wiped
             walletIsInitializing = nil
-            walletInitShouldFinish = false
 
             // Only the app-update sheet qualifies without a wallet, so onboarding
             // won't surface the other (wallet-gated) timed sheets.
@@ -906,7 +904,6 @@ struct AppScene: View {
         if state == .initializing {
             walletIsInitializing = true
         } else if state == .running {
-            walletInitShouldFinish = true
             app.markAppStatusInit()
             BackupService.shared.startObservingBackups()
             QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
@@ -929,9 +926,6 @@ struct AppScene: View {
                 await refreshIncomingPaykitPaymentRequests()
             }
         } else {
-            if case .errorStarting = state {
-                walletInitShouldFinish = true
-            }
             Task {
                 await BackupService.shared.stopObservingBackups()
             }
