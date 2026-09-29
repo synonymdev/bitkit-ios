@@ -221,7 +221,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         quickpayDailyLimitMultiplier = 5
         enableNotifications = false
         enableNotificationsAmount = false
-        UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(PaykitFeatureFlags.uiEnabledByDefault, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.cleanupPendingKey)
@@ -456,6 +456,36 @@ class SettingsViewModel: NSObject, ObservableObject {
     var pendingRestoreAddressTypePrune: Bool {
         get { UserDefaults.standard.bool(forKey: Self.pendingRestoreAddressTypePruneKey) }
         set { UserDefaults.standard.set(newValue, forKey: Self.pendingRestoreAddressTypePruneKey) }
+    }
+
+    private static let pendingRestoreActivitySeenSinceKey = "pendingRestoreActivitySeenSince"
+
+    /// When a seed restore began, or 0 when no restore is being suppressed.
+    ///
+    /// Set as the restore starts, before the node is started, so the replayed historical txs cannot
+    /// slip a "Received" sheet through ahead of the flag. Doubles as the cutoff for the sweep that
+    /// marks those txs seen, so a payment arriving mid-restore is not swept up with them. Cleared in
+    /// AppViewModel's syncCompleted(.onchainWallet) handler once that sweep succeeds. #588
+    var pendingRestoreActivitySeenSince: UInt64 {
+        get { UInt64(UserDefaults.standard.double(forKey: Self.pendingRestoreActivitySeenSinceKey)) }
+        set { UserDefaults.standard.set(Double(newValue), forKey: Self.pendingRestoreActivitySeenSinceKey) }
+    }
+
+    /// Whether replayed restore activity is still being suppressed.
+    var pendingRestoreActivitySeen: Bool {
+        pendingRestoreActivitySeenSince > 0
+    }
+
+    private static let restoreSyncedBlockHeightKey = "restoreSyncedBlockHeight"
+
+    /// Chain tip of the first on-chain sync after the latest seed restore, or 0 when none completed.
+    ///
+    /// Everything confirmed at or below it was already on chain when the restore scanned the wallet, so
+    /// it outlives the restore hold: a later rescan replays confirmations for those txs, and they must
+    /// stay silent however long after the hold their events are handled. #588
+    var restoreSyncedBlockHeight: UInt32 {
+        get { UInt32(clamping: UserDefaults.standard.integer(forKey: Self.restoreSyncedBlockHeightKey)) }
+        set { UserDefaults.standard.set(Int(newValue), forKey: Self.restoreSyncedBlockHeightKey) }
     }
 
     /// After restore, disables monitoring for address types with zero balance.

@@ -2,6 +2,7 @@ import Foundation
 
 enum PaykitFeatureFlags {
     static let uiEnabledKey = "paykitUiEnabled"
+    static let uiEnabledByDefault = true
 
     static var isUIAvailable: Bool {
         #if FEATURE_PAYKIT_UI_DISABLED
@@ -12,14 +13,22 @@ enum PaykitFeatureFlags {
     }
 
     static var isUIEnabled: Bool {
-        isUIAvailable && UserDefaults.standard.bool(forKey: uiEnabledKey)
+        isUIAvailable && (UserDefaults.standard.object(forKey: uiEnabledKey) as? Bool ?? uiEnabledByDefault)
+    }
+
+    static func hasPublicPublishedState(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) ||
+            defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey) ||
+            !(defaults.string(forKey: "publicPaykitBolt11") ?? "").isEmpty
+    }
+
+    static func hasPrivatePublishedState(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey)
     }
 
     static func enforceBuildAvailability(defaults: UserDefaults = .standard, isUIEnabled: Bool = Self.isUIEnabled) {
-        let hasPublicPublishedState = defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) ||
-            defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey) ||
-            !(defaults.string(forKey: "publicPaykitBolt11") ?? "").isEmpty
-        let hasPrivatePublishedState = defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey)
+        let hasPublicPublishedState = Self.hasPublicPublishedState(defaults: defaults)
+        let hasPrivatePublishedState = Self.hasPrivatePublishedState(defaults: defaults)
         let hasPublishedState = hasPublicPublishedState ||
             hasPrivatePublishedState ||
             defaults.bool(forKey: PublicPaykitService.cleanupPendingKey) ||

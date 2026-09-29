@@ -4,7 +4,7 @@ import SwiftUI
 
 struct ActivityItemView: View {
     let item: Activity
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @EnvironmentObject var activityList: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel

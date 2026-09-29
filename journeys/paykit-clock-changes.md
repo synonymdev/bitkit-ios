@@ -4,16 +4,18 @@ Device-clock control is not provided by the journey runner's capability table. R
 
 ## Setup
 
-Create a fresh wallet and a matching Pubky identity, save a contact, and link a second test identity for private payments. Record the profile, contact, receiving address, and wallet balance. Cover both a local-secret identity and a Ring-authorized session. Enable notifications and accept a recurring subscription with a known UTC billing boundary.
+Create a fresh wallet and a matching Pubky identity, save a contact, and link a second test identity for private payments. Record the profile, contact, receiving address, and wallet balance. Cover both a local-secret identity and a Ring-owned identity selected from the shared identity list. Enable notifications and accept a recurring subscription with a known UTC billing boundary.
+
+On iOS, Ring identities are selected from the shared identity list. There is no relay waiting screen. Android still uses its platform-specific Ring authorization flow, so adapt identity-selection steps without asserting the removed iOS relay behavior.
 
 ## Clock skew and recovery
 
 1. Move the test clock one month forward. Relaunch Bitkit and attempt a Paykit operation. An authentication failure is allowed; the app must not treat it as authorization to erase the saved identity, contacts, or wallet.
-2. Attempt to restore the session while the clock is wrong. Restore the correct clock and retry, then relaunch. If a grant has expired or been revoked, authorize the same identity again in Ring. Do not sign out or reset the wallet as part of recovery.
+2. Attempt to restore the session while the clock is wrong. Restore the correct clock and retry, then relaunch. If a grant has expired or been revoked, select the same Ring-owned identity again. Do not sign out or reset the wallet as part of recovery.
 3. Verify that the original contact, profile, receiving address, and balance are still present, and that private payment requests can be exchanged again. A new payment must still require normal approval.
 4. Repeat with a backward clock change. After correcting the clock, verify that identity publication and payment-request presentation retry normally instead of waiting for the old future timestamp.
-5. After a failed restoration, open the profile from the home header and authorize the same identity through Ring without signing out. The recovery flow must remain reachable and preserve the profile and contact labels.
-6. Repeat failed restoration, then authorize a different identity through Ring. Even if its profile cannot load, the previous identity's name, avatar, and contact labels must not appear. Also verify normal explicit sign-out and identity switching.
+5. After a failed restoration, open the profile from the home header and select the same Ring-owned identity without signing out. The recovery flow must remain reachable and preserve the profile and contact labels.
+6. Repeat failed restoration, then select a different Ring-owned identity. Even if its profile cannot load, the previous identity's name, avatar, and contact labels must not appear. Also verify normal explicit sign-out and identity switching.
 
 ## Travel, daylight saving, and reminders
 
@@ -27,12 +29,12 @@ These steps describe the remaining manual verification. Unit tests cover injecte
 
 ## Connection loss and saved identity recovery
 
-Network fault injection is not provided by the journey capability table. Use a disposable wallet with a saved local identity, then repeat with a Ring-authorized identity.
+Network fault injection is not provided by the journey capability table. Use a disposable wallet with a saved local identity, then repeat with a Ring-owned shared identity.
 
 1. Record the profile name, public key, contacts, receiving address, and wallet balance while online.
 2. Disable both Wi-Fi and mobile data on the test device, force-stop Bitkit, and reopen it. Wait for session restoration to fail. The cached name must remain, and the app must not advertise Pubky signup for this existing identity.
-3. Re-enable connectivity while leaving Bitkit open. Verify that the same identity and contact list recover without scanning Ring again, signing out, or restarting the app when the saved grant is still valid. For an expired or revoked grant, reauthorization remains required.
+3. Re-enable connectivity while leaving Bitkit open. Verify that the same identity and contact list recover without selecting the Ring identity again, signing out, or restarting the app. If the saved grant is expired or revoked, recovery may sign in again with the shared Ring secret. Identity selection is required only when that secret is unavailable or invalid.
 4. Repeat the failed startup and restore connectivity while Bitkit is backgrounded. Return to the foreground from a profile/contact screen and verify the same recovery. Resume must work from any screen, not only Home.
-5. Start a Ring authorization while recovery is pending. Use Back before approving, then retry or foreground the app. The abandoned relay poll must not block recovery. Start another authorization and verify that automatic restoration does not replace it. Explicit sign-out or wallet reset must not be undone by a pending restoration.
+5. While recovery is pending, open the identity list and select a Ring-owned identity. A late restoration result must not replace that selection. Repeat after leaving the identity list with Back, then retry or foreground the app. Recovery must remain available, and explicit sign-out or wallet reset must not be undone by a pending restoration.
 
-Both platforms retry automatically on connectivity restoration and app resume. A valid saved session must recover without a new authorization; expired or revoked grants still require Ring.
+Both platforms retry automatically on connectivity restoration and app resume. A valid saved session must recover without another identity-selection or authorization step. An expired or revoked grant may recover with the shared Ring secret; the platform's Ring flow is needed only when that secret is unavailable or invalid.

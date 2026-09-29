@@ -14,36 +14,40 @@ struct PayContactsView: View {
             NavigationBar(title: t("profile__pay_contacts_nav_title"))
                 .padding(.horizontal, 16)
 
-            Spacer()
+            VStack(spacing: 0) {
+                VStack {
+                    Spacer()
 
-            Image("coin-stack")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 279)
-                .padding(.bottom, 32)
-
-            VStack(alignment: .leading, spacing: 8) {
-                DisplayText(
-                    t("profile__pay_contacts_title"),
-                    accentColor: .pubkyGreen
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+                    Image("coin-stack")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 279)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
                 .padding(.bottom, 16)
 
-                BodyMText(t("profile__pay_contacts_description"), textColor: .white64)
+                VStack(alignment: .leading, spacing: 8) {
+                    DisplayText(
+                        t("profile__pay_contacts_title"),
+                        accentColor: .pubkyGreen
+                    )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 32)
 
-            Spacer()
+                    BodyMText(t("profile__pay_contacts_description"), textColor: .white64)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.horizontal, 16)
 
             CustomButton(title: t("common__continue"), isLoading: isSaving) {
                 await continueFlow()
             }
             .accessibilityIdentifier("PayContactsContinue")
-            .padding(.top, 16)
+            .padding(.top, 32)
             .padding(.horizontal, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -32,6 +32,7 @@ struct CopyAddressCard: View {
                             .lineLimit(2)
                             .truncationMode(.middle)
                             .padding(.bottom, 12)
+                            .accessibilityIdentifier(pair.type == .onchain ? "ReceiveOnchainAddress" : "ReceiveLightningAddress")
 
                         HStack(spacing: 8) {
                             if let editRoute {

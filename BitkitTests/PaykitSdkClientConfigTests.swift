@@ -13,8 +13,11 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         let savedSession = try Keychain.load(key: .paykitSession)
         defer {
             for (key, data) in [(KeychainEntryType.paykitSdkState, savedState), (.paykitSession, savedSession)] {
-                if let data { try? Keychain.upsert(key: key, data: data) }
-                else { try? Keychain.delete(key: key) }
+                if let data {
+                    try? Keychain.upsert(key: key, data: data)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
         let state = Data("saved contacts and identity".utf8)
@@ -41,114 +44,6 @@ final class PaykitSdkClientConfigTests: XCTestCase {
     }
 
     @MainActor
-    func testCanceledAuthActivationBlocksRecoveryUntilDiscardFinishes() async throws {
-        let keys: [KeychainEntryType] = [
-            .paykitSdkState, .paykitSession, .pubkySecretKey, .paykitReceiverNoiseSecretKey,
-            .bip39Mnemonic(index: 0), .bip39Passphrase(index: 0),
-        ]
-        let saved = try keys.map { try Keychain.load(key: $0) }
-        defer {
-            for (key, data) in zip(keys, saved) {
-                if let data {
-                    try? Keychain.upsert(key: key, data: data)
-                } else {
-                    try? Keychain.delete(key: key)
-                }
-            }
-        }
-
-        let mnemonic = Array(repeating: "abandon", count: 11).joined(separator: " ") + " about"
-        try Keychain.upsert(key: .bip39Mnemonic(index: 0), data: Data(mnemonic.utf8))
-        try Keychain.delete(key: .bip39Passphrase(index: 0))
-        let noiseBytes = try PaykitReceiverNoiseKeyDerivation.deriveFromWalletSeed(
-            mnemonic: mnemonic, passphrase: nil, network: Env.networkName, receiverPath: PaykitReceiverPath.wallet
-        )
-        try Keychain.upsert(key: .paykitReceiverNoiseSecretKey, data: noiseBytes)
-        try? Keychain.delete(key: .paykitSdkState)
-        try? Keychain.delete(key: .paykitSession)
-        try? Keychain.delete(key: .pubkySecretKey)
-
-        let session = CacheActivationSession(noPointer: .init())
-        session.noiseBytes = noiseBytes
-        let authRequest = CanceledActivationAuthRequest(noPointer: .init())
-        authRequest.result = PubkySessionBootstrapResult(sessionAccess: session, publicKey: "pubky_test")
-        let bootstrap = CanceledActivationBootstrap(noPointer: .init())
-        bootstrap.request = authRequest
-        let sdk = CanceledActivationSdk(noPointer: .init())
-        let activationStarted = expectation(description: "activation started after credentials persisted")
-        let (activationStream, activationContinuation) = AsyncStream<Void>.makeStream()
-        sdk.initializeOperation = {
-            activationStarted.fulfill()
-            for await _ in activationStream {}
-        }
-        let discardStarted = expectation(description: "abandoned session discard started")
-        let (discardStream, discardContinuation) = AsyncStream<Void>.makeStream()
-        sdk.signOutOperation = {
-            discardStarted.fulfill()
-            for await _ in discardStream {}
-        }
-        let service = PaykitSdkService(sdkFactory: { sdk }, bootstrapFactory: { _, _ in bootstrap })
-        _ = try await service.startAuth()
-
-        let manager = UnavailableProfileManager()
-        manager.isInitialized = true
-        manager.setActiveAuthAttemptIDForTesting(UUID())
-        manager.authState = .authenticating
-        let authentication = Task {
-            try await manager.completeAuthenticationForTesting(
-                completeAuthWithActivationBoundary: { willActivate in
-                    try await service.completeAuth(willActivate: willActivate)
-                },
-                currentPublicKey: { try? await service.currentPublicKey() },
-                discardSessionAccess: { sessionSecret in
-                    await service.discardCompletedAuthSession(sessionSecret: sessionSecret)
-                }
-            )
-        }
-
-        await fulfillment(of: [activationStarted], timeout: 2)
-        XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "new-session")
-        manager.setActiveAuthAttemptIDForTesting(nil)
-        manager.authState = .idle
-        await service.cancelAuth()
-
-        let recoveryCount = TestAsyncCallCounter()
-        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
-            await recoveryCount.increment()
-            return .restored(publicKey: "existing-identity")
-        }
-        let countDuringActivation = await recoveryCount.value
-        XCTAssertEqual(countDuringActivation, 0)
-
-        activationContinuation.finish()
-        await fulfillment(of: [discardStarted], timeout: 2)
-        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
-            await recoveryCount.increment()
-            return .restored(publicKey: "existing-identity")
-        }
-        let countDuringDiscard = await recoveryCount.value
-        XCTAssertEqual(countDuringDiscard, 0)
-
-        discardContinuation.finish()
-        do {
-            _ = try await authentication.value
-            XCTFail("Expected cancellation")
-        } catch is CancellationError {
-        } catch {
-            XCTFail("Expected CancellationError, got \(error)")
-        }
-
-        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
-            await recoveryCount.increment()
-            return .restored(publicKey: "existing-identity")
-        }
-        let countAfterDiscard = await recoveryCount.value
-        XCTAssertEqual(countAfterDiscard, 1)
-        XCTAssertEqual(manager.publicKey, "existing-identity")
-        XCTAssertNil(try Keychain.load(key: .paykitSession))
-    }
-
-    @MainActor
     func testIdentityActivationSeparatesCacheAndPreservesSameOwnerOrLegacyBackup() async throws {
         let defaults = UserDefaults.standard
         let metadataKeys = ["pubky_profile_name", "pubky_profile_image_uri"]
@@ -165,8 +60,11 @@ final class PaykitSdkClientConfigTests: XCTestCase {
             }
             ContactsManager.restoreContactProfileOverrides(savedOverrides)
             for (key, data) in zip(credentialKeys, savedCredentials) {
-                if let data { try? Keychain.upsert(key: key, data: data) }
-                else { try? Keychain.delete(key: key) }
+                if let data {
+                    try? Keychain.upsert(key: key, data: data)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
         let mnemonic = Array(repeating: "abandon", count: 11).joined(separator: " ") + " about"
@@ -180,46 +78,32 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         let differentKey = "5" + String(originalKey.dropFirst())
         let overrides = [originalKey: PubkyProfileData(name: "Private label", bio: "", image: nil, links: [], tags: [])]
         for previousKey in [originalKey, "pubky\(originalKey)", differentKey, nil] {
-            for restoreOnStartup in [false, true] {
-                defaults.set("Original profile", forKey: metadataKeys[0])
-                defaults.set("pubky://original/avatar", forKey: metadataKeys[1])
-                ContactsManager.restoreContactProfileOverrides(overrides)
-                let manager = UnavailableProfileManager()
-                await manager.initialize { .restorationFailed }
-                let sdk = CacheActivationSdk(noPointer: .init())
-                sdk.previousKey = previousKey
-                let service = PaykitSdkService(sdkFactory: { sdk }) { _, _ in CacheActivationBootstrap(noPointer: .init()) }
-                let session = CacheActivationSession(noPointer: .init())
-                session.noiseBytes = noiseBytes
-                let result = PubkySessionBootstrapResult(sessionAccess: session, publicKey: "pubky\(originalKey)")
+            defaults.set("Original profile", forKey: metadataKeys[0])
+            defaults.set("pubky://original/avatar", forKey: metadataKeys[1])
+            ContactsManager.restoreContactProfileOverrides(overrides)
+            let manager = UnavailableProfileManager()
+            await manager.initialize { .restorationFailed }
+            let sdk = CacheActivationSdk(noPointer: .init())
+            sdk.previousKey = previousKey
+            let service = PaykitSdkService(sdkFactory: { sdk }) { _, _ in CacheActivationBootstrap(noPointer: .init()) }
+            let session = CacheActivationSession(noPointer: .init())
+            session.noiseBytes = noiseBytes
+            let result = PubkySessionBootstrapResult(sessionAccess: session, publicKey: "pubky\(originalKey)")
 
-                if restoreOnStartup {
-                    try await service.activateRegisteredIdentity(result)
-                    await manager.initialize { .restored(publicKey: "pubky\(originalKey)") }
-                } else {
-                    manager.setActiveAuthAttemptIDForTesting(UUID())
-                    try await manager.completeAuthenticationForTesting(
-                        completeAuth: {
-                            try await service.activateRegisteredIdentity(result)
-                            return "new-session"
-                        },
-                        currentPublicKey: { "pubky\(originalKey)" },
-                        discardSessionAccess: { _ in XCTFail("Activation must succeed") }
-                    )
-                }
+            try await service.activateRegisteredIdentity(result)
+            await manager.initialize { .restored(publicKey: "pubky\(originalKey)") }
 
-                XCTAssertEqual(manager.publicKey, "pubky\(originalKey)")
-                if previousKey == differentKey {
-                    XCTAssertNil(manager.displayName)
-                    XCTAssertNil(manager.displayImageUri)
-                    XCTAssertNil(defaults.string(forKey: metadataKeys[0]))
-                    XCTAssertNil(defaults.string(forKey: metadataKeys[1]))
-                    XCTAssertNil(ContactsManager.backupContactProfileOverrides())
-                } else {
-                    XCTAssertEqual(manager.displayName, "Original profile")
-                    XCTAssertEqual(manager.displayImageUri, "pubky://original/avatar")
-                    XCTAssertEqual(ContactsManager.backupContactProfileOverrides(), overrides)
-                }
+            XCTAssertEqual(manager.publicKey, "pubky\(originalKey)")
+            if previousKey == differentKey {
+                XCTAssertNil(manager.displayName)
+                XCTAssertNil(manager.displayImageUri)
+                XCTAssertNil(defaults.string(forKey: metadataKeys[0]))
+                XCTAssertNil(defaults.string(forKey: metadataKeys[1]))
+                XCTAssertNil(ContactsManager.backupContactProfileOverrides())
+            } else {
+                XCTAssertEqual(manager.displayName, "Original profile")
+                XCTAssertEqual(manager.displayImageUri, "pubky://original/avatar")
+                XCTAssertEqual(ContactsManager.backupContactProfileOverrides(), overrides)
             }
         }
     }
@@ -364,80 +248,6 @@ final class PaykitSdkClientConfigTests: XCTestCase {
             [KeychainEntryType.paykitSession.storageKey, KeychainEntryType.pubkySecretKey.storageKey]
         )
     }
-
-    func testFailedAuthActivationDiscardsOnlyItsPersistedSession() async {
-        for shouldPersist in [false, true] {
-            for activationError in [PubkyServiceError.sessionNotActive as Error, CancellationError()] {
-                var storedSession = "previous-session"
-                var revoked = false
-                do {
-                    _ = try await PaykitSdkService.completeAuthActivation(
-                        sessionSecret: "new-session",
-                        activate: {
-                            if shouldPersist { storedSession = "new-session" }
-                            throw activationError
-                        },
-                        discardSessionAccess: { session in
-                            _ = await PaykitSdkService.discardAuthSession(
-                                sessionSecret: session,
-                                storedSessionSecret: { storedSession },
-                                revoke: { revoked = true },
-                                forget: { XCTFail("Revocation succeeded") }
-                            )
-                        }
-                    )
-                    XCTFail("Expected activation to fail")
-                } catch {
-                    XCTAssertEqual(error is CancellationError, activationError is CancellationError)
-                    XCTAssertEqual(revoked, shouldPersist)
-                }
-            }
-        }
-    }
-
-    func testLateAuthCleanupPreservesNewerSession() async {
-        let matched = await PaykitSdkService.discardAuthSession(
-            sessionSecret: "canceled-session",
-            storedSessionSecret: { "newer-session" },
-            revoke: { XCTFail("Must not revoke the newer session") },
-            forget: { XCTFail("Must not forget the newer session") }
-        )
-
-        XCTAssertFalse(matched)
-    }
-
-    func testAuthCleanupForgetsMatchingSessionWhenRevocationFails() async {
-        var didForget = false
-        let matched = await PaykitSdkService.discardAuthSession(
-            sessionSecret: "canceled-session",
-            storedSessionSecret: { "canceled-session" },
-            revoke: { throw PubkyServiceError.sessionNotActive },
-            forget: { didForget = true }
-        )
-
-        XCTAssertTrue(matched)
-        XCTAssertTrue(didForget)
-    }
-
-    func testFailedCleanupPreservesOriginalActivationError() async {
-        do {
-            _ = try await PaykitSdkService.completeAuthActivation(
-                sessionSecret: "new-session",
-                activate: { throw CancellationError() },
-                discardSessionAccess: { session in
-                    _ = await PaykitSdkService.discardAuthSession(
-                        sessionSecret: session,
-                        storedSessionSecret: { "new-session" },
-                        revoke: { throw PubkyServiceError.sessionNotActive },
-                        forget: { throw PubkyServiceError.sessionNotActive }
-                    )
-                }
-            )
-            XCTFail("Expected activation cancellation")
-        } catch {
-            XCTAssertTrue(error is CancellationError)
-        }
-    }
 }
 
 private final class IdentityReadFailureSdk: PaykitSdk, @unchecked Sendable {
@@ -462,54 +272,6 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
 
     override func initialize() async throws -> InitializationReport {
         InitializationReport(identity: IdentityStatus(publicKey: previousKey, liveSessionAvailable: false))
-    }
-}
-
-private final class CanceledActivationSdk: PaykitSdk, @unchecked Sendable {
-    var initializeOperation: () async -> Void = {}
-    var signOutOperation: () async -> Void = {}
-
-    override func identityStatus() async throws -> IdentityStatus? {
-        IdentityStatus(publicKey: nil, liveSessionAvailable: false)
-    }
-
-    override func initialize() async throws -> InitializationReport {
-        await initializeOperation()
-        return InitializationReport(identity: IdentityStatus(publicKey: nil, liveSessionAvailable: false))
-    }
-
-    override func signOut() async throws -> IdentityStatus {
-        await signOutOperation()
-        try? Keychain.delete(key: .paykitSession)
-        return IdentityStatus(publicKey: nil, liveSessionAvailable: false)
-    }
-}
-
-private final class CanceledActivationBootstrap: PubkySessionBootstrap, @unchecked Sendable {
-    var request: Paykit.PubkyAuthRequest!
-
-    override func startSignInAuth(capabilities _: String) async throws -> Paykit.PubkyAuthRequest {
-        request
-    }
-
-    override func republishIdentity(publicKey _: String) async throws -> Bool {
-        true
-    }
-}
-
-private final class CanceledActivationAuthRequest: Paykit.PubkyAuthRequest, @unchecked Sendable {
-    var result: PubkySessionBootstrapResult!
-
-    override func authorizationUrl() async throws -> String {
-        "pubkyauth://test"
-    }
-
-    override func complete(
-        localSecretKey _: PubkyLocalSecretKey?,
-        receiverNoiseSecretKey _: ReceiverNoiseSecretKey,
-        requiredCapabilities _: String
-    ) async throws -> PubkySessionBootstrapResult {
-        result
     }
 }
 
@@ -588,13 +350,5 @@ private final class RecoveryBootstrap: PubkySessionBootstrap, @unchecked Sendabl
 
     override func republishIdentity(publicKey _: String) async throws -> Bool {
         true
-    }
-}
-
-private actor TestAsyncCallCounter {
-    private(set) var value = 0
-
-    func increment() {
-        value += 1
     }
 }
