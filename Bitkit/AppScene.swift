@@ -8,6 +8,7 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
         let titleKey: String
         let descriptionKey: String
         let accessibilityIdentifier: String
+        let isInformational: Bool
     }
 
     let diagnosticReason: IncomingPaykitPaymentRequestFailureReason
@@ -28,7 +29,8 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
             toast = Toast(
                 titleKey: "wallet__payment_request",
                 descriptionKey: "wallet__payment_request_unavailable",
-                accessibilityIdentifier: "PaymentRequestUnavailableToast"
+                accessibilityIdentifier: "PaymentRequestUnavailableToast",
+                isInformational: false
             )
         case let .requestExpired(wasRequested):
             diagnosticReason = .requestExpired
@@ -37,7 +39,8 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
             toast = wasRequested ? Toast(
                 titleKey: "wallet__payment_request",
                 descriptionKey: "wallet__payment_request_expired",
-                accessibilityIdentifier: "PaymentRequestExpiredToast"
+                accessibilityIdentifier: "PaymentRequestExpiredToast",
+                isInformational: false
             ) : nil
         case .retryScheduled:
             diagnosticReason = fallbackReason
@@ -52,9 +55,22 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
         }
     }
 
+    init(paymentDetailsPendingWasRequested: Bool) {
+        diagnosticReason = .paymentDetailsPending
+        isTerminal = false
+        shouldLogDiagnostic = true
+        toast = paymentDetailsPendingWasRequested ? Toast(
+            titleKey: "wallet__payment_request",
+            descriptionKey: "wallet__payment_request_waiting_for_details",
+            accessibilityIdentifier: "PaymentRequestWaitingForDetailsToast",
+            isInformational: true
+        ) : nil
+    }
+
     func diagnosticMessage(for request: PaykitPaymentRequest) -> String? {
         guard shouldLogDiagnostic else { return nil }
-        return "Rejected incoming Paykit payment request presentation: category=\(diagnosticReason.category) " +
+        let outcome = diagnosticReason == .paymentDetailsPending ? "Deferred" : "Rejected"
+        return "\(outcome) incoming Paykit payment request presentation: category=\(diagnosticReason.category) " +
             "reason=\(diagnosticReason.rawValue) " +
             "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))"
     }
@@ -107,6 +123,15 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
             fallbackReason: reason,
             shouldLogNonTerminalDiagnostic: result.shouldLogDiagnostic
         )
+    }
+
+    static func finishPendingPrivateLink(
+        for request: PaykitPaymentRequest,
+        with manager: PaykitPaymentRequestManager
+    ) -> IncomingPaykitPaymentRequestPresentationFeedback? {
+        let wasRequested = manager.requestedPresentationId == request.id
+        guard manager.markPresentedIfPending(request) else { return nil }
+        return IncomingPaykitPaymentRequestPresentationFeedback(paymentDetailsPendingWasRequested: wasRequested)
     }
 
     static func handleStateChange(
@@ -955,7 +980,9 @@ struct AppScene: View {
             }
             if wallet.walletExists == true {
                 Task {
-                    if pubkyProfile.isInitialized { await pubkyProfile.checkAdoptedSource() }
+                    if pubkyProfile.isInitialized {
+                        await pubkyProfile.checkAdoptedSource()
+                    }
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
                     try? await wallet.sync()
@@ -1103,6 +1130,15 @@ struct AppScene: View {
                           !sheets.isReplacingSheet,
                           app.contactPaymentContext == nil
                     else { return }
+                    if case .privateLinkPending = result {
+                        if let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.finishPendingPrivateLink(
+                            for: request,
+                            with: paykitPaymentRequestManager
+                        ) {
+                            presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+                        }
+                        continue
+                    }
                     guard case let .opened(paymentTarget, privatePaymentContext) = result else {
                         deferIncomingPaykitPaymentRequestPresentation(
                             request,
@@ -1270,7 +1306,7 @@ struct AppScene: View {
 
         guard let toast = feedback.toast else { return }
         app.toast(
-            type: .error,
+            type: toast.isInformational ? .info : .error,
             title: t(toast.titleKey),
             description: t(toast.descriptionKey),
             accessibilityIdentifier: toast.accessibilityIdentifier

@@ -271,7 +271,7 @@ struct PaymentNavigationHelper {
                 }
                 present(route)
 
-            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
+            case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(type: .warning, title: t("slashtags__error_pay_title"), description: t(messageKey))
                 }

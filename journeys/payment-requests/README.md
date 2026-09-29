@@ -44,6 +44,9 @@ That run established the issuer shapes captured by the fixture: lowercase `btc`,
   localized `wallet__payment_request_expired` message.
 - Automatic presentation uses the same initial retries, then continues every 120 seconds without
   showing terminal feedback.
+- RecoveryRequired or Linking is reported as pending immediately. An explicit Pay action shows
+  `PaymentRequestWaitingForDetailsToast`, releases presentation ownership, and leaves Pay and
+  Dismiss available while the supported SDK recovery continues in the background.
 
 The failure reason vocabulary is:
 
@@ -89,6 +92,8 @@ that the same private payment details can be opened and paid on retry.
 - Pending-request bell: `PaymentRequestsBell`.
 - Incoming sheet: `PaymentRequestsSheet`.
 - Screen: `PaymentRequestsScreen`.
+- Detail screen: `PaymentRequestDetailScreen`.
+- Detail amount and status: `PaymentRequestDetailsAmount`, `PaymentRequestDetailsStatus`.
 - Request row: `PaymentRequestRow-<payment-request-id>-<counterparty>-<receiver-path>-one-time`; construct the complete value from the fixture issuer public key and negotiated receiver path because `wait-for-ui` does not support prefix matching.
 - Pay action: `PaymentRequestPay-<payment-request-id>`.
 - Dismiss action: `PaymentRequestDismiss-<payment-request-id>`.
@@ -99,5 +104,6 @@ that the same private payment details can be opened and paid on retry.
 - Saved-contact recipient: `ReviewContactRecipient`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
 - Expiration feedback: `PaymentRequestExpiredToast`.
+- Private-link recovery feedback: `PaymentRequestWaitingForDetailsToast`.
 - Send failure: `SendFailure` and retry action `Retry`.
 - Swipe control: `GRAB`.

@@ -1737,6 +1737,64 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
 
+    func testPendingPrivateLinkRecoveryReleasesRequestedPresentationForRetry() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+
+        let feedback = try XCTUnwrap(
+            IncomingPaykitPaymentRequestPresentationDispatcher.finishPendingPrivateLink(for: request, with: manager)
+        )
+
+        XCTAssertNil(manager.requestedPresentationId)
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        XCTAssertEqual(feedback.diagnosticReason, .paymentDetailsPending)
+        XCTAssertNotNil(feedback.toast)
+        XCTAssertTrue(manager.requestPresentation(request))
+    }
+
+    func testPendingPrivateLinkRecoveryStopsAutomaticPresentationWithoutToast() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+
+        let feedback = try XCTUnwrap(
+            IncomingPaykitPaymentRequestPresentationDispatcher.finishPendingPrivateLink(for: request, with: manager)
+        )
+
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        XCTAssertNil(feedback.toast)
+    }
+
+    func testPaymentRequestDisplayOnlyShowsMovementAfterPaymentProof() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+
+        XCTAssertNil(PaymentRequestDisplay.paymentDirection(for: request))
+        XCTAssertEqual(
+            PaymentRequestDisplay.statusKey(for: request, isActionable: true),
+            "wallet__payment_request_waiting"
+        )
+        XCTAssertEqual(
+            PaymentRequestDisplay.statusKey(for: request, isActionable: false),
+            "wallet__payment_request_status_unavailable"
+        )
+
+        let paidRequest = request.updatingLifecycleState(.proofSubmitted, paymentProofKind: .onchain)
+        XCTAssertEqual(PaymentRequestDisplay.paymentDirection(for: paidRequest), .incoming)
+        XCTAssertEqual(
+            PaymentRequestDisplay.statusKey(for: paidRequest, isActionable: false),
+            "wallet__payment_request_status_paid"
+        )
+    }
+
     func testUnaffordableRequestUsesRequestedAmountAndStopsAutomaticPresentation() async throws {
         let clock = PaymentRequestTestClock(Date())
         let onchainMethod = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)

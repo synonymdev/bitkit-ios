@@ -152,6 +152,30 @@ final class PrivatePaykitServiceTests: XCTestCase {
         )
     }
 
+    func testRecoveryRequiredDiagnosticsRecognizePaykitErrors() {
+        let error = PaykitError.RecoveryRequired(code: "link_recovery_required", context: "do-not-log")
+
+        XCTAssertTrue(PaykitResolutionFailureDiagnostics.isRecoveryRequired(error))
+        XCTAssertFalse(
+            PaykitResolutionFailureDiagnostics.isRecoveryRequired(
+                PaykitError.Transport(code: "offline", context: "do-not-log")
+            )
+        )
+    }
+
+    func testPaymentRequestWaitsForPrivateLinkRecoveryStates() {
+        XCTAssertTrue(
+            PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(
+                resolutionState: .recoveryPending,
+                linkState: .linked
+            )
+        )
+        XCTAssertTrue(PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(linkState: .linking))
+        XCTAssertTrue(PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(linkState: .recoveryRequired))
+        XCTAssertFalse(PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(linkState: .linked))
+        XCTAssertFalse(PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(linkState: .notLinked))
+    }
+
     func testReceivedPrivateInvoiceHashKeepsContactAttribution() async {
         let service = PrivatePaykitService()
         let publicKey = "pubkycontact"

@@ -113,6 +113,13 @@ extension PrivatePaykitService {
                 return try await PublicPaykitService.beginPayment(to: publicKey)
             }
 
+            if paymentRequest != nil,
+               Self.paymentRequestNeedsPrivateLinkRecovery(resolutionState: resolution.state, linkState: linkState)
+            {
+                schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
+                return .privateLinkPending
+            }
+
             let privateEndpoints = resolvedEndpoints(from: resolution)
             cacheResolvedEndpoints(privateEndpoints, publicKey: publicKey)
             let acceptedIdentifiers = paymentRequest.map { Set($0.acceptedPaymentEndpointIdentifiers) }
@@ -161,7 +168,25 @@ extension PrivatePaykitService {
                 context: "PrivatePaykit"
             )
 
-            let linkState = try await currentLinkState(publicKey: publicKey, receiverPath: receiverPath)
+            if paymentRequest != nil, PaykitResolutionFailureDiagnostics.isRecoveryRequired(error) {
+                schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
+                return .privateLinkPending
+            }
+
+            let linkState: LinkedPeerState?
+            do {
+                linkState = try await currentLinkState(publicKey: publicKey, receiverPath: receiverPath)
+            } catch {
+                if paymentRequest != nil, PaykitResolutionFailureDiagnostics.isRecoveryRequired(error) {
+                    schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
+                    return .privateLinkPending
+                }
+                throw error
+            }
+            if paymentRequest != nil, Self.paymentRequestNeedsPrivateLinkRecovery(linkState: linkState) {
+                schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
+                return .privateLinkPending
+            }
             guard paymentRequest == nil, canUsePublicPayment(linkState: linkState) else {
                 throw error
             }
@@ -286,6 +311,22 @@ extension PrivatePaykitService {
         case nil, .notLinked, .linking:
             return true
         case .linked, .recoveryRequired, .blocked, .unknown:
+            return false
+        }
+    }
+
+    static func paymentRequestNeedsPrivateLinkRecovery(
+        resolutionState: PrivatePaymentResolutionState? = nil,
+        linkState: LinkedPeerState?
+    ) -> Bool {
+        if resolutionState == .recoveryPending {
+            return true
+        }
+
+        switch linkState {
+        case .linking, .recoveryRequired:
+            return true
+        case nil, .notLinked, .linked, .blocked, .unknown:
             return false
         }
     }
