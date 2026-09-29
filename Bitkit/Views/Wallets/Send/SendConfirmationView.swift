@@ -736,13 +736,15 @@ struct SendConfirmationView: View {
                 )
             }
 
-            if let note = oneOffPaymentRequestNote {
-                SendSectionView(t("wallet__payment_request_for")) {
-                    paymentRequestSummaryValue(note, icon: "note", accessibilityIdentifier: "PaymentRequestFor")
-                }
-            } else {
-                Spacer()
-                    .frame(maxWidth: .infinity)
+            let note = oneOffPaymentRequestNote
+
+            SendSectionView(t("wallet__payment_request_for")) {
+                paymentRequestSummaryValue(
+                    note ?? t("wallet__payment_request_for_not_specified"),
+                    icon: "note",
+                    textColor: note == nil ? .textSecondary : .textPrimary,
+                    accessibilityIdentifier: "PaymentRequestFor"
+                )
             }
         }
     }
@@ -764,7 +766,12 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func paymentRequestSummaryValue(_ text: String, icon: String, accessibilityIdentifier: String) -> some View {
+    private func paymentRequestSummaryValue(
+        _ text: String,
+        icon: String,
+        textColor: Color = .textPrimary,
+        accessibilityIdentifier: String
+    ) -> some View {
         HStack(spacing: 4) {
             Image(icon)
                 .resizable()
@@ -772,7 +779,7 @@ struct SendConfirmationView: View {
                 .foregroundColor(accentColor)
                 .frame(width: 16, height: 16)
 
-            BodySSBText(text)
+            BodySSBText(text, textColor: textColor)
                 .lineLimit(1)
                 .accessibilityIdentifier(accessibilityIdentifier)
         }
