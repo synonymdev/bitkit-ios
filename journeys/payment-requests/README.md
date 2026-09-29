@@ -112,4 +112,7 @@ the SDK and can push the Pay step well past the budget.
 Bitkit keeps their lifecycle and paid-period history, and subscription cancellation,
 but does not accept them, offer payments, or schedule payment reminders. The journey
 requires a controlled rc56 peer to prepare the accepted and paid records; repository
-tests cover these states without sending funds.
+tests cover these states without sending funds. On iOS, payment-history rows show dates
+rather than lifecycle labels, and active subscriptions are opened from Overview. The
+iOS journey therefore records each fixture's payment request id, checks its full row
+accessibility identifier, and includes the required back and tab transitions.
