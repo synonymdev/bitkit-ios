@@ -91,3 +91,5 @@ authenticated Pubky identities, saved as each other's contacts and linked on rec
 - Saved-contact recipient: `ReviewContactRecipient`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
 - Expiration feedback: `PaymentRequestExpiredToast`.
+
+`delete-and-readd-contact.xml` uses two Bitkit instances to verify that deleting a contact revokes private requests across restart and that explicitly adding the contact again restores a fresh private connection. It does not send funds.

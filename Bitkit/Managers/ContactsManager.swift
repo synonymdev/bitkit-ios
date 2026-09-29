@@ -114,7 +114,12 @@ struct ContactSection: Identifiable {
 
 @MainActor
 class ContactsManager: ObservableObject {
-    @Published var contacts: [PubkyContact] = []
+    private var contactsRevision = 0
+
+    @Published var contacts: [PubkyContact] = [] {
+        didSet { contactsRevision += 1 }
+    }
+
     @Published var isLoading = false
     @Published var hasLoaded = false
     @Published var loadErrorMessage: String?
@@ -173,6 +178,7 @@ class ContactsManager: ObservableObject {
             return
         }
 
+        let revision = contactsRevision
         isLoading = true
         loadErrorMessage = nil
         defer { isLoading = false }
@@ -225,6 +231,8 @@ class ContactsManager: ObservableObject {
                 return (results, failures, missingFailures, firstError)
             }
 
+            guard contactsRevision == revision else { return }
+
             if !records.isEmpty, loadedResult.contacts.isEmpty {
                 if loadedResult.failures == loadedResult.missingFailures {
                     await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
@@ -250,6 +258,7 @@ class ContactsManager: ObservableObject {
 
             Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
         } catch {
+            guard contactsRevision == revision else { return }
             if Self.isMissingContactsDataError(error) {
                 await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
                 contacts = []
@@ -297,7 +306,12 @@ class ContactsManager: ObservableObject {
         }
 
         let receiverPaths = try await Self.relevantReceiverPaths(for: prefixedKey)
-        _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: profile.name, receiverPaths: receiverPaths)
+        _ = try await PubkyService.saveContact(
+            publicKey: prefixedKey,
+            label: profile.name,
+            receiverPaths: receiverPaths,
+            restorePrivateConnection: true
+        )
 
         Logger.info("Added contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
 
@@ -342,7 +356,12 @@ class ContactsManager: ObservableObject {
                     do {
                         let profile = try await resolveContactProfile(publicKey: key, includePlaceholder: true)
                         let receiverPaths = try await Self.relevantReceiverPaths(for: key)
-                        _ = try await PubkyService.saveContact(publicKey: key, label: profile.name, receiverPaths: receiverPaths)
+                        _ = try await PubkyService.saveContact(
+                            publicKey: key,
+                            label: profile.name,
+                            receiverPaths: receiverPaths,
+                            restorePrivateConnection: true
+                        )
                         return .success(PubkyContact(publicKey: key, profile: profile))
                     } catch is CancellationError {
                         return .failure(CancellationError())
@@ -423,12 +442,11 @@ class ContactsManager: ObservableObject {
         try await Task.detached {
             _ = try await PubkyService.removeContact(publicKey: prefixedKey)
         }.value
-        await PrivatePaykitService.shared.removeSavedContact(publicKey: prefixedKey)
+        contacts.removeAll { $0.publicKey == prefixedKey }
         Self.removeContactProfileOverride(publicKey: prefixedKey)
+        await PrivatePaykitService.shared.removeSavedContact(publicKey: prefixedKey)
 
         Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
-
-        contacts.removeAll { $0.publicKey == prefixedKey }
     }
 
     func deleteAllContacts() async throws {
