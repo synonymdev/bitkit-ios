@@ -1047,7 +1047,7 @@ final class PaykitPaymentRequestManager {
     private var activeIdentity: String?
     private var savedPublicKeys: [String] = []
     private var persistedPresentedRequestIds: Set<PaykitPaymentRequest.ID> = []
-    private var subscriptionAcceptedAt: [PaykitSubscription.ID: Date] = [:]
+    private var subscriptionAcceptedAt: [PaykitSubscription.ID: PaykitPreciseInstant] = [:]
     private var presentedSubscriptionProposalIds: Set<PaykitSubscription.ID> = []
     private var dismissedSubscriptionPaymentIds: Set<PaykitPaymentRequest.ID> = []
     private var persistedSubscriptionState = PaykitSubscriptionState()
@@ -1104,7 +1104,6 @@ final class PaykitPaymentRequestManager {
         if activeIdentity != nil {
             clear()
         }
-        activeIdentity = normalizedIdentity
         do {
             presentedRequestIds = try presentationStore.load(identity: normalizedIdentity)
             persistedPresentedRequestIds = presentedRequestIds
@@ -1125,7 +1124,10 @@ final class PaykitPaymentRequestManager {
             dismissedSubscriptionPaymentIds = []
             persistedSubscriptionState = PaykitSubscriptionState()
             logWarning("Failed to restore Paykit subscription state: \(error)")
+            activeIdentity = nil
+            return
         }
+        activeIdentity = normalizedIdentity
     }
 
     func refreshEligibleTargets(savedPublicKeys: [String]) async {
@@ -1422,10 +1424,11 @@ final class PaykitPaymentRequestManager {
         }
         let acceptedSubscription = try await service.accept(current)
         let acceptanceDate = now()
+        let acceptanceInstant = PaykitPreciseInstant(date: acceptanceDate)
         guard actionGeneration == stateGeneration,
               PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
         else { return nil }
-        subscriptionAcceptedAt[current.id] = acceptanceDate
+        subscriptionAcceptedAt[current.id] = acceptanceInstant
         presentedSubscriptionProposalIds.insert(current.id)
         requestedSubscriptionProposalId = nil
         persistSubscriptionState(identity: activeIdentity)
@@ -1768,7 +1771,9 @@ final class PaykitPaymentRequestManager {
                 subscription.wasAccepted &&
                 subscriptionAcceptedAt[subscription.id] == nil
             {
-                subscriptionAcceptedAt[subscription.id] = subscription.paidPeriods.map(\.startsAt).min() ?? subscription.createdAt ?? refreshDate
+                subscriptionAcceptedAt[subscription.id] = subscription.paidPeriods
+                    .compactMap { PaykitPreciseInstant(timestamp: $0.sdkValue.startsAt) }
+                    .min() ?? PaykitPreciseInstant(date: subscription.createdAt ?? refreshDate)
             }
             let recurringRequestsBySubscription = subscriptions.filter(\.isPayer).map { subscription in
                 let requests: [PaykitPaymentRequest] = if let acceptedAt = subscriptionAcceptedAt[subscription.id] {
