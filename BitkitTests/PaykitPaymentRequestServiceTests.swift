@@ -364,6 +364,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             paymentRequestRecord(id: "outgoing", state: .proposed, role: .payee),
             paymentRequestRecord(id: "recurring", state: .activeRecurring),
             paymentRequestRecord(id: "unsupported", state: .canceled, endpoints: ["btc-unsupported-method"]),
+            paymentRequestRecord(id: "deadline-proposed", paymentDeadline: .at(timestamp: timestamp(now))),
+            paymentRequestRecord(id: "deadline-accepted", state: .accepted, paymentDeadline: .at(timestamp: timestamp(now))),
+            paymentRequestRecord(id: "deadline-paid", state: .proofSubmitted, paymentDeadline: .at(timestamp: timestamp(now))),
+            paymentRequestRecord(id: "deadline-canceled", state: .canceled, paymentDeadline: .at(timestamp: timestamp(now))),
+            paymentRequestRecord(id: "deadline-rejected", state: .rejected, paymentDeadline: .at(timestamp: timestamp(now))),
         ]
         let manager = paymentRequestManager(
             sdk: PaymentRequestSdkMock(records: records),
@@ -375,7 +380,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["incoming", "accepted"])
         XCTAssertEqual(
             Set(manager.historyRequests.map(\.paymentRequestId)),
-            Set(["incoming", "accepted", "rejected", "expired", "outgoing", "unsupported"])
+            Set([
+                "incoming", "accepted", "rejected", "expired", "outgoing", "unsupported",
+                "deadline-proposed", "deadline-accepted", "deadline-paid", "deadline-canceled", "deadline-rejected",
+            ])
         )
         XCTAssertEqual(
             manager.historyRequests.first { $0.paymentRequestId == "accepted" }?.lifecycleState,
@@ -1067,7 +1075,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             anchor: "2027-01-01T08:00:00Z",
             endsAt: nil
         )
-        let record = try paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)
+        let record = try paymentRequestRecord(
+            state: .activeRecurring, paymentDeadline: .periodStart(seconds: 3600), recurrence: recurrence
+        )
         let subscription = try XCTUnwrap(PaykitSubscription(record: record))
         let request = try XCTUnwrap(subscription.requests(through: now, acceptedAt: PaykitPreciseInstant(date: now)).first)
         let manager = paymentRequestManager(
@@ -1123,6 +1133,51 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
             XCTAssertEqual(request.paymentProofKind, proofKind)
         }
+    }
+
+    func testDeadlineSubscriptionsKeepPaidPeriodsAndCancellationWithoutOfferingPayments() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: "2027-01-01T08:00:00Z", anchor: "2027-01-01T08:00:00Z", endsAt: nil
+        )
+        let proof = try paymentProofRecord(
+            endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            billingPeriod: BillingPeriod(startsAt: "2027-01-01T08:00:00Z", endsAt: "2027-02-01T08:00:00Z")
+        )
+        let records = try [PaymentRequestLocalRole.payer, .payee].map { (role: PaymentRequestLocalRole) in
+            try paymentRequestRecord(
+                id: "deadline-\(role)", state: .activeRecurring, role: role,
+                paymentDeadline: .periodStart(seconds: 3600), recurrence: recurrence, paymentProofs: [proof]
+            )
+        }
+        let center = PaykitSubscriptionNotificationCenterMock()
+        let scheduler = PaykitSubscriptionNotificationScheduler(center: center)
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: records), clock: PaymentRequestTestClock(now)
+        )
+
+        await manager.refresh()
+
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertEqual(manager.subscriptions.count, 2)
+        for subscription in manager.subscriptions {
+            XCTAssertEqual(subscription.paidPeriods.count, 1)
+            XCTAssertTrue(subscription.canCancel(at: now))
+            XCTAssertNil(subscription.paymentDueOnAcceptance(at: now))
+        }
+        let paid = try XCTUnwrap(manager.historyRequests.first)
+        XCTAssertEqual(manager.historyRequests.count, 1)
+        XCTAssertEqual(paid.lifecycleState, .proofSubmitted)
+        XCTAssertEqual(paid.paymentProofKind, .lightning)
+        XCTAssertEqual(manager.subscriptions.first { $0.isCreatedByUser }?.receivedPaymentRequests().count, 1)
+        await scheduler.synchronize(
+            manager.subscriptions,
+            acceptedAt: Dictionary(uniqueKeysWithValues: manager.subscriptions.map { ($0.id, PaykitPreciseInstant(date: now)) }),
+            pendingRequestIds: [], payerIdentity: "payer", notificationsEnabled: true, now: now
+        )
+        let pendingNotifications = await center.pendingIdentifiers
+        XCTAssertTrue(pendingNotifications.isEmpty)
     }
 
     func testInFlightSubscriptionPaymentIsNotOfferedOrMarkedPaid() async throws {
@@ -1604,11 +1659,18 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         await manager.refresh()
 
-        let subscription = try XCTUnwrap(manager.subscriptions.first)
-        XCTAssertEqual(subscription.paymentRequestId, "unsupported")
-        XCTAssertFalse(manager.subscriptions.contains { $0.paymentRequestId == "deadline" })
-        XCTAssertFalse(subscription.isProposalActionable(at: Date(timeIntervalSince1970: 1_800_000_000)))
-        XCTAssertEqual(manager.subscriptionProposalForPresentation()?.id, subscription.id)
+        let deadlineSubscription = try XCTUnwrap(manager.subscriptions.first { $0.paymentRequestId == "deadline" })
+        let subscription = try XCTUnwrap(manager.subscriptions.first { $0.paymentRequestId == "unsupported" })
+        XCTAssertFalse(subscription.isProposalActionable(at: expiration))
+        XCTAssertFalse(deadlineSubscription.isProposalActionable(at: expiration))
+        XCTAssertNil(deadlineSubscription.paymentDueOnAcceptance(at: expiration))
+        XCTAssertEqual(manager.subscriptionProposalForPresentation()?.id, deadlineSubscription.id)
+        do {
+            _ = try await manager.accept(deadlineSubscription)
+            XCTFail("Unsupported payment terms must not be accepted")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
         XCTAssertEqual(
             manager.subscriptions.first { $0.paymentRequestId == "ended" }?.lifecycleState,
             .proposalExpired

@@ -134,7 +134,9 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         guard record.state != .activeRecurring else { return .failure(.recurringRequest) }
         guard let terms = record.terms else { return .failure(.missingTerms) }
         guard terms.recurrence == nil else { return .failure(.recurringRequest) }
-        guard terms.paymentDeadline == nil else { return .failure(.unsupportedPaymentDeadline) }
+        if requiresActionableRequest, terms.paymentDeadline != nil {
+            return .failure(.unsupportedPaymentDeadline)
+        }
         guard terms.amount.asset == PaykitIssuerInterop.bitcoinAsset else { return .failure(.unsupportedAsset) }
         guard let amountSats = Self.sats(fromBitcoinAmount: terms.amount.value) else { return .failure(.invalidAmount) }
         guard amountSats <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
@@ -1943,7 +1945,7 @@ final class PaykitPaymentRequestManager {
             dismissedSubscriptionPaymentIds.formIntersection(activeRecurringRequestIds)
             persistSubscriptionState()
             let recurringPending = recurringRequestsBySubscription
-                .filter { $0.0.lifecycleState == .activeRecurring }
+                .filter { $0.0.lifecycleState == .activeRecurring && !$0.0.hasPaymentDeadline }
                 .flatMap { _, requests in
                     requests.filter {
                         $0.lifecycleState != .proofSubmitted &&
@@ -2039,7 +2041,7 @@ final class PaykitPaymentRequestManager {
             subscription.requests(through: date, acceptedAt: $0)
         } ?? []
         pendingRequests.removeAll { $0.belongs(to: subscription) }
-        if subscription.lifecycleState == .activeRecurring {
+        if subscription.lifecycleState == .activeRecurring, !subscription.hasPaymentDeadline {
             pendingRequests.append(contentsOf: recurringRequests.filter { $0.lifecycleState != .proofSubmitted })
             pendingRequests.sort { ($0.createdAt ?? .distantFuture) < ($1.createdAt ?? .distantFuture) }
         }
