@@ -17,18 +17,24 @@ final class PaykitContactLifecycleTests: XCTestCase {
     }
 
     func testActiveSubscriptionPreventsDeletionUntilItEnds() async throws {
-        for (role, endsNaturally) in [(PaymentRequestLocalRole.payer, false), (.payer, true), (.payee, false)] {
+        let fixedEndTimestamp = "2100-02-01T00:00:00Z"
+        let cases: [(role: PaymentRequestLocalRole, endsAt: String?)] = [
+            (.payer, nil),
+            (.payer, fixedEndTimestamp),
+            (.payee, nil),
+        ]
+        for testCase in cases {
             let sdk = ContactLifecycleSdk(noPointer: .init())
             let terms = try PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.001", asset: "btc"),
                 paymentReference: PaymentReference(text: "subscription"), proposalExpiresAt: nil,
                 recurrence: PaymentRequestRecurrence(every: 1, unit: "month", startsAt: "2026-01-01T00:00:00Z",
-                                                     anchor: "2026-01-01T00:00:00Z", endsAt: nil),
+                                                     anchor: "2026-01-01T00:00:00Z", endsAt: testCase.endsAt),
                 acceptedPaymentEndpointIdentifiers: ["lightning:bolt11"], metadata: PrivateJsonObject(text: "{}")
             )
             sdk.requests = [PaymentRequestRecord(
                 counterparty: sdk.publicKey, counterpartyReceiverPath: PaykitReceiverPath.server,
-                paymentRequestId: "550e8400-e29b-41d4-a716-446655440000", localRole: role, state: .activeRecurring,
+                paymentRequestId: "550e8400-e29b-41d4-a716-446655440000", localRole: testCase.role, state: .activeRecurring,
                 proposalStreamItemId: nil, proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
                 proposalEventId: nil, terms: terms, acceptedEventId: nil, acceptedOutboundStatus: nil,
                 rejectedEventId: nil, rejectedOutboundStatus: nil, canceledEventId: nil, canceledOutboundStatus: nil,
@@ -39,11 +45,13 @@ final class PaykitContactLifecycleTests: XCTestCase {
             do {
                 _ = try await service.removeContact(publicKey: sdk.publicKey)
                 XCTFail("Expected active subscription to prevent deletion")
-            } catch PubkyServiceError.activeSubscription {}
+            } catch let PubkyServiceError.activeSubscription(endsAt) {
+                XCTAssertEqual(endsAt, testCase.endsAt.flatMap(PaykitPaymentRequest.parseDate))
+            }
             XCTAssertNotNil(sdk.record)
             XCTAssertTrue(sdk.events.isEmpty)
-            if endsNaturally {
-                sdk.requests[0].terms?.recurrence?.endsAt = "2026-02-01T00:00:00Z"
+            if testCase.endsAt != nil {
+                sdk.requests[0].terms?.recurrence?.endsAt = "2000-02-01T00:00:00Z"
             } else {
                 sdk.requests[0].state = .canceled
             }

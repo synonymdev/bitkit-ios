@@ -9,7 +9,7 @@ enum PubkyServiceError: LocalizedError {
     case sessionNotActive
     case authFailed(String)
     case profileNotFound
-    case activeSubscription
+    case activeSubscription(endsAt: Date?)
 
     var errorDescription: String? {
         switch self {
@@ -653,12 +653,17 @@ actor PaykitSdkService {
             let peers = try await sdk.linkedPeers().filter { PubkyPublicKeyFormat.matches($0.counterparty, publicKey) }
             let receiverPaths = Set(record?.receiverPaths ?? []).union(peers.map(\.counterpartyReceiverPath))
             let now = Date()
-            let hasActiveSubscription = try await sdk.paymentRequests().contains {
+            let activeSubscriptions = try await sdk.paymentRequests().filter {
                 PubkyPublicKeyFormat.matches($0.counterparty, publicKey) &&
                     $0.state == .activeRecurring &&
                     ($0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate).map { $0 > now } ?? true)
             }
-            guard !hasActiveSubscription else { throw PubkyServiceError.activeSubscription }
+            guard activeSubscriptions.isEmpty else {
+                let latestEndDate = activeSubscriptions.compactMap {
+                    $0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate)
+                }.max()
+                throw PubkyServiceError.activeSubscription(endsAt: latestEndDate)
+            }
             for peer in peers where peer.state == .linked {
                 do {
                     let report = try await sdk.clearPrivatePaymentListAndProcessOutbound(
