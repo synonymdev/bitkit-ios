@@ -623,8 +623,24 @@ actor PaykitSdkService {
             let existingPaths = existing?.receiverPaths ?? []
             let contactPaths = Self.mergedReceiverPaths(existingPaths + (receiverPaths ?? []))
             if restorePrivateConnection {
-                for peer in try await sdk.linkedPeers() where peer.state == .blocked && PubkyPublicKeyFormat.matches(peer.counterparty, publicKey) {
-                    _ = try await sdk.unblockPeer(counterparty: peer.counterparty, counterpartyReceiverPath: peer.counterpartyReceiverPath)
+                let blockedPeers = try await sdk.linkedPeers().filter {
+                    $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, publicKey)
+                }
+                do {
+                    for peer in blockedPeers {
+                        _ = try await sdk.unblockPeer(counterparty: peer.counterparty, counterpartyReceiverPath: peer.counterpartyReceiverPath)
+                    }
+                    return try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, receiverPaths: contactPaths, label: label))
+                } catch {
+                    let restorationError = error
+                    for peer in blockedPeers {
+                        do {
+                            _ = try await sdk.blockPeer(counterparty: peer.counterparty, counterpartyReceiverPath: peer.counterpartyReceiverPath)
+                        } catch {
+                            Logger.error("Failed to restore peer block after contact save failed: \(error)", context: "PaykitSdkService")
+                        }
+                    }
+                    throw restorationError
                 }
             }
             return try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, receiverPaths: contactPaths, label: label))

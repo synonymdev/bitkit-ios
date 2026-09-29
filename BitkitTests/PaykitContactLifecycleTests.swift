@@ -80,19 +80,27 @@ final class PaykitContactLifecycleTests: XCTestCase {
     }
 
     func testFailedPrivateConnectionRestoreCanBeRetriedWithoutASavedContact() async throws {
-        for failPeerLookup in [true, false] {
+        let failures: [(peerLookup: Bool, unblockPath: String?, saveContact: Bool)] = [
+            (true, nil, false),
+            (false, PaykitReceiverPath.server, false),
+            (false, nil, true),
+        ]
+        for failure in failures {
             let sdk = ContactLifecycleSdk(noPointer: .init())
             let service = PaykitSdkService(sdkFactory: { sdk })
             _ = try await service.removeContact(publicKey: sdk.publicKey)
-            sdk.failLinkedPeers = failPeerLookup
-            sdk.failUnblockPath = failPeerLookup ? nil : PaykitReceiverPath.server
+            sdk.failLinkedPeers = failure.peerLookup
+            sdk.failUnblockPath = failure.unblockPath
+            sdk.failSaveContact = failure.saveContact
             do {
                 _ = try await service.saveContact(publicKey: sdk.publicKey, label: "Contact", restorePrivateConnection: true)
                 XCTFail("Expected restoration to fail")
             } catch {}
             XCTAssertNil(sdk.record)
+            XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .blocked })
             sdk.failLinkedPeers = false
             sdk.failUnblockPath = nil
+            sdk.failSaveContact = false
             _ = try await service.saveContact(publicKey: sdk.publicKey, label: "Contact", restorePrivateConnection: true)
             XCTAssertNotNil(sdk.record)
             XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .notLinked })
@@ -116,6 +124,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     var failBlock = false
     var failLinkedPeers = false
     var failUnblockPath: String?
+    var failSaveContact = false
     lazy var record: ContactRecord? = ContactRecord(
         publicKey: publicKey, receiverPaths: [PaykitReceiverPath.wallet], label: "Contact", profile: nil,
         profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
@@ -177,6 +186,9 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func saveContact(update: ContactUpdate) async throws -> ContactRecord {
+        if failSaveContact {
+            throw PubkyServiceError.profileNotFound
+        }
         let saved = ContactRecord(
             publicKey: update.publicKey, receiverPaths: update.receiverPaths, label: update.label, profile: nil,
             profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
