@@ -92,7 +92,7 @@ the SDK and can push the Pay step well past the budget.
 - Pending-request bell: `PaymentRequestsBell`.
 - Incoming sheet: `PaymentRequestsSheet`.
 - Screen: `PaymentRequestsScreen`.
-- Request row: `PaymentRequestRow-<payment-request-id>-<counterparty>-<receiver-path>-one-time`; construct the complete value from the fixture issuer public key and negotiated receiver path because `wait-for-ui` does not support prefix matching.
+- Request row: `PaymentRequestRow-<payment-request-id>-one-time` for a one-time request; `wait-for-ui` requires the complete identifier.
 - Pay action: `PaymentRequestPay-<payment-request-id>`.
 - Dismiss action: `PaymentRequestDismiss-<payment-request-id>`.
 - Payment confirmation: `PaymentRequestConfirm`.
@@ -112,7 +112,9 @@ the SDK and can push the Pay step well past the budget.
 Bitkit keeps their lifecycle and paid-period history, and subscription cancellation,
 but does not accept them, offer payments, or schedule payment reminders. The journey
 requires a controlled rc56 peer to prepare the accepted and paid records; repository
-tests cover these states without sending funds. On iOS, payment-history rows show dates
-rather than lifecycle labels, and active subscriptions are opened from Overview. The
-iOS journey therefore records each fixture's payment request id, checks its full row
-accessibility identifier, and includes the required back and tab transitions.
+tests cover these states without sending funds. On both platforms, payment-history rows
+show notes or dates rather than lifecycle labels, and active subscriptions are opened
+from Overview. The journeys therefore record each fixture's payment request id, check
+its full row identifier, and include the required back and tab transitions. The accepted
+subscription must have no end date so cancellation is available. The proposal review
+must explain that its payment details are unsupported and offer no Subscribe control.

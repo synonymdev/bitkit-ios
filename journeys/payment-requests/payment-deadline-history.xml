@@ -3,11 +3,11 @@
     Requests with actual-payment deadlines are visible but cannot be paid by this version of Bitkit.
     Use a disposable Paykit test identity linked to a controlled rc56 peer. Prepare one-time BTC
     requests with deadlines in proposed, accepted, rejected, canceled and proof-submitted states,
-    plus an accepted monthly BTC subscription with a period-start deadline, one paid period and
-    one unpaid period. Acceptance and proof submission must be prepared through the controlled
+    plus an incoming, accepted monthly BTC subscription with no end date, a period-start deadline,
+    one paid period and one unpaid period. Acceptance and proof submission must be prepared through the controlled
     client because Bitkit intentionally cannot accept these terms. Use valid regtest payment proofs.
     Do not reset or replace a funded wallet to prepare this fixture. Record the payment request id
-    for each one-time state because iOS history rows show dates instead of status labels.
+    for each one-time state because history rows show notes or dates instead of status labels.
   </description>
   <actions>
     <action>Open Subscriptions and select the Payments tab after the controlled peer's records have synchronized</action>
@@ -27,7 +27,8 @@
     <action>Verify the unpaid period is not offered for payment in the Payments tab or pending-request sheet</action>
     <action>Have the controlled peer send a new subscription proposal with a period-start deadline</action>
     <action>Select the Overview tab after the proposal has synchronized</action>
-    <action>Open that proposal and verify it is visible but cannot be accepted</action>
+    <action>Open that proposal and verify it explains that its payment details are not supported yet</action>
+    <action>Verify no Subscribe swipe control appears</action>
     <action>Dismiss the proposal to return to Overview</action>
     <action>Open the accepted subscription</action>
     <action>Cancel the accepted subscription and verify its paid-period history remains accessible</action>
