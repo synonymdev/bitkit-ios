@@ -2329,6 +2329,25 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.requestsForPresentation(), [request])
     }
 
+    func testAcceptedRequestIsPreparedAgainAfterDefinitePreBroadcastFailure() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        var privatePaymentListConsumptions = 0
+
+        try await manager.prepareForPayment(request) {
+            privatePaymentListConsumptions += 1
+        }
+        let retryRequest = try XCTUnwrap(manager.paymentRequestForRetry(request.id))
+        try await manager.prepareForPayment(retryRequest) {
+            privatePaymentListConsumptions += 1
+        }
+
+        XCTAssertEqual(privatePaymentListConsumptions, 2)
+        XCTAssertTrue(manager.isApprovedForPayment(retryRequest))
+    }
+
     func testFailedAcceptanceDropsRequestRemovedFromAuthoritativeQueue() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)

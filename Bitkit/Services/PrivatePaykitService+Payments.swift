@@ -1,6 +1,29 @@
 import Foundation
 import Paykit
 
+enum PrivatePaymentListSendOutcome: Equatable {
+    case succeeded
+    case definitePreBroadcastFailure
+    case uncertain
+}
+
+extension ContactPaymentContext {
+    func resolvePrivatePaymentListConsumption(_ outcome: PrivatePaymentListSendOutcome) async {
+        guard incomingPaymentRequest != nil, let privatePaymentContext else { return }
+
+        do {
+            try await PrivatePaykitService.shared.resolvePrivatePaymentListConsumption(
+                publicKey: publicKey,
+                context: privatePaymentContext,
+                attemptId: id,
+                outcome: outcome
+            )
+        } catch {
+            Logger.error("Failed to resolve private Paykit payment list consumption: \(error)", context: "PrivatePaykit")
+        }
+    }
+}
+
 // MARK: - Payment Resolution
 
 extension PrivatePaykitService {
@@ -146,24 +169,91 @@ extension PrivatePaykitService {
         }
     }
 
-    func consumePrivatePaymentList(publicKey: String, context: PrivatePaykitPaymentContext) throws {
+    func consumePrivatePaymentList(
+        publicKey: String,
+        context: PrivatePaykitPaymentContext,
+        attemptId: UUID
+    ) throws {
         guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else {
             throw PrivatePaykitError.invalidPublicKey
         }
 
         var contactState = state.contacts[publicKey, default: ContactState()]
-        if let consumedVersion = contactState.consumedPrivatePaymentListVersionsByReceiverPath[context.receiverPath],
+        let consumedVersion = contactState.consumedPrivatePaymentListVersionsByReceiverPath[context.receiverPath]
+        if let consumedVersion,
            context.paymentListVersion <= consumedVersion
         {
             throw PrivatePaykitError.paymentListAlreadyConsumed
         }
 
+        let previousContactState = state.contacts[publicKey]
         contactState.consumedPrivatePaymentListVersionsByReceiverPath[context.receiverPath] = context.paymentListVersion
         contactState.cachedResolvedEndpoints.removeAll()
         state.contacts[publicKey] = contactState
-        try persistStateOrThrow(markWalletBackup: true)
+        do {
+            try persistStateOrThrow(markWalletBackup: true)
+        } catch {
+            state.contacts[publicKey] = previousContactState
+            throw error
+        }
+
+        let consumptionKey = PrivatePaymentListConsumptionKey(
+            attemptId: attemptId,
+            publicKey: publicKey,
+            receiverPath: context.receiverPath
+        )
+        privatePaymentListConsumptions[consumptionKey] = PrivatePaymentListConsumption(
+            paymentListVersion: context.paymentListVersion,
+            previousPaymentListVersion: consumedVersion
+        )
         Logger.info(
             "Consumed private Paykit payment list version \(context.paymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey))",
+            context: "PrivatePaykit"
+        )
+    }
+
+    func resolvePrivatePaymentListConsumption(
+        publicKey: String,
+        context: PrivatePaykitPaymentContext,
+        attemptId: UUID,
+        outcome: PrivatePaymentListSendOutcome
+    ) throws {
+        guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else {
+            throw PrivatePaykitError.invalidPublicKey
+        }
+
+        let consumptionKey = PrivatePaymentListConsumptionKey(
+            attemptId: attemptId,
+            publicKey: publicKey,
+            receiverPath: context.receiverPath
+        )
+        guard let consumption = privatePaymentListConsumptions[consumptionKey],
+              consumption.paymentListVersion == context.paymentListVersion
+        else { return }
+
+        guard outcome == .definitePreBroadcastFailure else {
+            privatePaymentListConsumptions[consumptionKey] = nil
+            return
+        }
+
+        var contactState = state.contacts[publicKey, default: ContactState()]
+        guard contactState.consumedPrivatePaymentListVersionsByReceiverPath[context.receiverPath] == context.paymentListVersion else {
+            privatePaymentListConsumptions[consumptionKey] = nil
+            return
+        }
+
+        let previousContactState = state.contacts[publicKey]
+        contactState.consumedPrivatePaymentListVersionsByReceiverPath[context.receiverPath] = consumption.previousPaymentListVersion
+        state.contacts[publicKey] = contactState
+        do {
+            try persistStateOrThrow(markWalletBackup: true)
+            privatePaymentListConsumptions[consumptionKey] = nil
+        } catch {
+            state.contacts[publicKey] = previousContactState
+            throw error
+        }
+        Logger.info(
+            "Released private Paykit payment list version \(context.paymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey))",
             context: "PrivatePaykit"
         )
     }

@@ -76,6 +76,14 @@ Use a second Bitkit instance as the requester instead of the fixture issuer: bot
 authenticated Pubky identities, saved as each other's contacts and linked on receiver path
 `bitkit/wallet`, and the payer holds enough balance to pay 21,000 sats.
 
+## Definite pre-broadcast retry
+
+`definite-pre-broadcast-retry.xml` uses the linked fixture issuer and the local regtest LNURL server.
+Configure its LNURL-pay metadata endpoint normally, but make its invoice callback fail the first
+request and succeed after it is switched back to the healthy response. Do not republish the Paykit
+payment list between attempts. This makes the first send fail before Lightning dispatch and proves
+that the same private payment details can be opened and paid on retry.
+
 ## Identifiers used
 
 - Pending-request bell: `PaymentRequestsBell`.
@@ -91,3 +99,5 @@ authenticated Pubky identities, saved as each other's contacts and linked on rec
 - Saved-contact recipient: `ReviewContactRecipient`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
 - Expiration feedback: `PaymentRequestExpiredToast`.
+- Send failure: `SendFailure` and retry action `Retry`.
+- Swipe control: `GRAB`.

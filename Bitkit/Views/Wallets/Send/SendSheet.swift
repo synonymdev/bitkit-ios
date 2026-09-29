@@ -780,7 +780,8 @@ struct SendSheet: View {
             guard let privatePaymentContext = context.privatePaymentContext else { return }
             try await PrivatePaykitService.shared.consumePrivatePaymentList(
                 publicKey: context.publicKey,
-                context: privatePaymentContext
+                context: privatePaymentContext,
+                attemptId: context.id
             )
         }
     }
@@ -803,6 +804,8 @@ struct SendSheet: View {
             try await prepareIncomingPaymentRequest()
             try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address)
         } catch {
+            _ = paykitPaymentRequestManager.paymentRequestForRetry(request.id)
+            await app.contactPaymentContext?.resolvePrivatePaymentListConsumption(.definitePreBroadcastFailure)
             await PaykitPaymentProofService.shared.cancelPreparation(request)
             throw error
         }
@@ -813,6 +816,7 @@ struct SendSheet: View {
               let address = app.scannedOnchainInvoice?.address
         else { return }
 
+        await app.contactPaymentContext?.resolvePrivatePaymentListConsumption(.succeeded)
         await PaykitPaymentProofService.shared.completeOnchainPayment(
             request,
             txid: txid,
@@ -822,6 +826,7 @@ struct SendSheet: View {
 
     private func cancelHardwareContactPayment() async {
         guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+        await app.contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
         await PaykitPaymentProofService.shared.failOnchainPayment(request)
         await PaykitPaymentProofService.shared.cancelPreparation(request)
     }

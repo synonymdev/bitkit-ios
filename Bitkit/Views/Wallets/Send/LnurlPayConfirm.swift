@@ -252,6 +252,7 @@ struct LnurlPayConfirm: View {
         var lightningPaymentHash: String?
         var shouldCancelPaymentProof = false
         var lightningPaymentSubmitted = false
+        var privatePaymentListOutcome = PrivatePaymentListSendOutcome.definitePreBroadcastFailure
 
         do {
             try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
@@ -288,6 +289,7 @@ struct LnurlPayConfirm: View {
             // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
             // LNURL server returns invoices with the amount baked in, so pass sats: nil
             // to let LDK use the invoice's native millisatoshi precision.
+            privatePaymentListOutcome = .uncertain
             try await wallet.sendWithTimeout(
                 bolt11: bolt11,
                 sats: nil,
@@ -298,17 +300,21 @@ struct LnurlPayConfirm: View {
                 }
             )
             shouldCancelPaymentProof = false
+            privatePaymentListOutcome = .succeeded
+            await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
             app.addPendingContactPaymentContext(paymentHash, context: contactPaymentContext)
             Logger.info("LNURL payment successful: \(paymentHash)")
             navigationPath.append(.success(paymentId: paymentHash))
         } catch is PaymentTimeoutError {
             // onTimeout callback already navigated to .pending; suppress throw
             shouldCancelPaymentProof = false
+            await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
             return
         } catch is CancellationError {
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
+            await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
             return
         } catch {
             if let lightningPaymentHash {
@@ -319,6 +325,7 @@ struct LnurlPayConfirm: View {
                     )
                     if !failed {
                         shouldCancelPaymentProof = false
+                        await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
                         app.addPendingPaymentHash(lightningPaymentHash, contactPaymentContext: contactPaymentContext)
                         navigationPath.append(.pending(
                             paymentHash: lightningPaymentHash,
@@ -327,10 +334,12 @@ struct LnurlPayConfirm: View {
                         ))
                         return
                     }
+                    privatePaymentListOutcome = .definitePreBroadcastFailure
                 } else {
                     await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: lightningPaymentHash)
                 }
             }
+            await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
