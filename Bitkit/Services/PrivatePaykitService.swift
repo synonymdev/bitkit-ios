@@ -78,6 +78,7 @@ actor PrivatePaykitService {
     var initialLinkBurstTask: Task<Void, Never>?
     var initialLinkBurstPublicKeys: Set<String> = []
     var initialLinkBurstGeneration = 0
+    var prePaymentPublicationKeys: Set<String> = []
     private let publicationLock = PrivatePaykitPublicationLock()
 
     init() {

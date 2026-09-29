@@ -128,6 +128,8 @@ struct ReceiveSheet: View {
             PaymentRequestAmountView(initialDraft: draft, target: target) { updatedDraft in
                 navigationPath.append(.paymentRequestDetails(updatedDraft, target))
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("PaymentRequestAmount")
         case let .paymentRequestDetails(draft, target):
             PaymentRequestDetailsView(
                 initialDraft: draft,
