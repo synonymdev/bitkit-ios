@@ -87,6 +87,17 @@ request and succeed after it is switched back to the healthy response. Do not re
 payment list between attempts. This makes the first send fail before Lightning dispatch and proves
 that the same private payment details can be opened and paid on retry.
 
+## Contact Request Or Pay
+
+`contact-request-or-pay.xml` is ported alongside Android's matching journey.
+
+### Setup
+
+Use the same two-instance setup as the request summary, and start from the payer's Contact Detail
+screen, opened through the `bitkit://contact?pubky=` deeplink. Its timing step assumes the payer has
+been running for about a minute: right after launch, the Paykit session restore and link refresh hold
+the SDK and can push the Pay step well past the budget.
+
 ## Identifiers used
 
 - Pending-request bell: `PaymentRequestsBell`.
@@ -102,6 +113,9 @@ that the same private payment details can be opened and paid on retry.
 - Confirmation invoice note: `PaymentRequestInvoiceNote`.
 - Confirmation details: `SendConfirmToggleDetails`.
 - Saved-contact recipient: `ReviewContactRecipient`.
+- Contact Detail pay action: `ContactPay`.
+- Request or Pay sheet: `RequestOrPaySheet` (its Pay and Request buttons carry no identifier; find them by label).
+- Payment Request amount screen: `PaymentRequestAmount`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
 - Expiration feedback: `PaymentRequestExpiredToast`.
 - Private-link recovery feedback: `PaymentRequestWaitingForDetailsToast`.

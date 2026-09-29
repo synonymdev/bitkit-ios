@@ -804,7 +804,7 @@ struct SendSheet: View {
             try await prepareIncomingPaymentRequest()
             try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address)
         } catch {
-            _ = paykitPaymentRequestManager.paymentRequestForRetry(request.id)
+            _ = await paykitPaymentRequestManager.paymentRequestForRetry(request.id)
             await app.contactPaymentContext?.resolvePrivatePaymentListConsumption(.definitePreBroadcastFailure)
             await PaykitPaymentProofService.shared.cancelPreparation(request)
             throw error
@@ -878,7 +878,7 @@ struct SendSheet: View {
         _ requestId: PaykitPaymentRequest.ID,
         isInitialSubscriptionPayment: Bool
     ) async {
-        guard let request = paykitPaymentRequestManager.paymentRequestForRetry(requestId) else {
+        guard let request = await paykitPaymentRequestManager.paymentRequestForRetry(requestId) else {
             app.toast(PaykitPaymentRequestError.requestUnavailable)
             return
         }

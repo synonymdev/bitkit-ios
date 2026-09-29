@@ -231,6 +231,9 @@
 "lightning__spending_confirm__background_setup" = "Set up in background";
 "lightning__spending_confirm__total" = "Total";
 "lightning__spending_confirm__default" = "Use Defaults";
+"lightning__spending_confirm__fees_changed_title" = "Fees changed";
+"lightning__spending_confirm__fees_changed_service" = "Fees are {amount} higher now that your order is created. Swipe again to confirm.";
+"lightning__spending_confirm__fees_changed_network" = "Fees are {amount} higher because fee rates or your savings balance changed while you were on this screen. Swipe again to confirm.";
 "lightning__spending_advanced__title" = "Receiving\n<accent>capacity</accent>";
 "lightning__spending_advanced__fee" = "Liquidity fee";
 "lightning__spending_advanced__error_balance__description" = "Your savings cannot cover the liquidity fee for this receiving capacity. Choose a smaller amount.";
@@ -1538,6 +1541,7 @@
 "wallet__payment_request_waiting_for_recipient" = "Waiting for {name} to pay";
 "wallet__payment_request_note" = "Note";
 "wallet__payment_request_for" = "For";
+"wallet__payment_request_for_not_specified" = "Not specified";
 "wallet__payment_request_date" = "Date";
 "wallet__payment_request_time" = "Time";
 "wallet__payment_request_status_pending" = "Pending";
