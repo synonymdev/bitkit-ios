@@ -440,7 +440,7 @@ actor PaykitSdkService {
 
     func importSession(secret: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             let localSecret = try sessionProvider.loadLocalSecretKey()
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().importSession(
@@ -457,7 +457,7 @@ actor PaykitSdkService {
 
     func signUp(secretKeyHex: String, homeserverPublicKey: String, signupCode: String?) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().signUp(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
@@ -490,7 +490,7 @@ actor PaykitSdkService {
 
     func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             do {
                 try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
             } catch {
@@ -506,7 +506,7 @@ actor PaykitSdkService {
 
     func signIn(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().signIn(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
@@ -1062,14 +1062,8 @@ actor PaykitSdkService {
         )
     }
 
-    private func currentSdkStatePublicKey() async -> String? {
-        do {
-            return try await handle().identityStatus()?.publicKey
-        } catch {
-            try? Keychain.delete(key: .paykitSdkState)
-            resetRuntime()
-            return nil
-        }
+    private func currentSdkStatePublicKey() async throws -> String? {
+        try await handle().identityStatus()?.publicKey
     }
 
     private nonisolated static func publicKeysMatch(_ lhs: String?, _ rhs: String) -> Bool {
