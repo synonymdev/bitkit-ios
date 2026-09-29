@@ -774,7 +774,6 @@ struct SendSheet: View {
         guard let context = app.contactPaymentContext,
               let request = context.incomingPaymentRequest
         else { return }
-        guard !paykitPaymentRequestManager.isApprovedForPayment(request) else { return }
 
         try await paykitPaymentRequestManager.prepareForPayment(request) {
             guard let privatePaymentContext = context.privatePaymentContext else { return }
@@ -802,6 +801,12 @@ struct SendSheet: View {
         do {
             try await prepareIncomingPaymentRequest()
             try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address)
+            do {
+                try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
+            } catch {
+                await PaykitPaymentProofService.shared.failOnchainPayment(request)
+                throw error
+            }
         } catch {
             await PaykitPaymentProofService.shared.cancelPreparation(request)
             throw error

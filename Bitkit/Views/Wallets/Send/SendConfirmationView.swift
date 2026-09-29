@@ -3,6 +3,7 @@ import LDKNode
 import SwiftUI
 
 struct SendConfirmationView: View {
+    @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activityList: ActivityListViewModel
     @EnvironmentObject var contactsManager: ContactsManager
@@ -839,6 +840,14 @@ struct SendConfirmationView: View {
                 // For invoices with a built-in amount, pass sats: nil so LDK uses the invoice's
                 // native millisatoshi precision instead of our truncated satoshi value.
                 let paymentSats: UInt64? = invoice.amountSatoshis == 0 ? amount : nil
+                if let incomingPaymentRequest {
+                    do {
+                        try await paykitPaymentRequestManager.ensurePaymentAllowed(incomingPaymentRequest)
+                    } catch {
+                        await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                        throw error
+                    }
+                }
                 do {
                     try await wallet.sendWithTimeout(
                         bolt11: invoice.bolt11,
@@ -889,6 +898,12 @@ struct SendConfirmationView: View {
                             incomingPaymentRequest,
                             address: invoice.address
                         )
+                        do {
+                            try await paykitPaymentRequestManager.ensurePaymentAllowed(incomingPaymentRequest)
+                        } catch {
+                            await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest)
+                            throw error
+                        }
                         onchainPaymentStarted = true
                     }
                 }

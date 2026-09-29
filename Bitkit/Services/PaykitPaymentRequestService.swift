@@ -1292,18 +1292,31 @@ final class PaykitPaymentRequestManager {
         refreshTask = nil
     }
 
+    func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
+        do {
+            try await service.ensurePaymentAllowed(request)
+        } catch {
+            approvedPaymentRequestIds.remove(request.id)
+            throw error
+        }
+    }
+
     func prepareForPayment(
         _ request: PaykitPaymentRequest,
         consumePrivatePaymentList: () async throws -> Void = {}
     ) async throws {
         do {
+            if isApprovedForPayment(request) {
+                try await ensurePaymentAllowed(request)
+                return
+            }
             try await perform(
                 request,
                 resultingState: .accepted,
                 markApprovedForPayment: true,
                 preservePending: !request.requiresAcceptance
             ) {
-                try await service.ensurePaymentAllowed($0)
+                try await ensurePaymentAllowed($0)
                 try await consumePrivatePaymentList()
                 if $0.requiresAcceptance {
                     try await service.accept($0)

@@ -5,12 +5,51 @@ import XCTest
 @MainActor
 final class PaykitContactLifecycleTests: XCTestCase {
     func testDeletionBlocksEveryKnownReceiverBeforeRemovingContact() async throws {
-        let sdk = ContactLifecycleSdk(noPointer: .init())
-        let service = PaykitSdkService(sdkFactory: { sdk })
-        _ = try await service.removeContact(publicKey: sdk.publicKey)
-        XCTAssertNil(sdk.record)
-        XCTAssertEqual(sdk.events, ["block:bitkit/server", "block:bitkit/wallet", "remove"])
-        XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .blocked })
+        for failWithdrawal in [false, true] {
+            let sdk = ContactLifecycleSdk(noPointer: .init())
+            sdk.failWithdrawal = failWithdrawal
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            _ = try await service.removeContact(publicKey: sdk.publicKey)
+            XCTAssertNil(sdk.record)
+            XCTAssertEqual(sdk.events, ["clear:bitkit/wallet", "clear:bitkit/server", "block:bitkit/server", "block:bitkit/wallet", "remove"])
+            XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .blocked })
+        }
+    }
+
+    func testActiveSubscriptionPreventsDeletionUntilItEnds() async throws {
+        for (role, endsNaturally) in [(PaymentRequestLocalRole.payer, false), (.payer, true), (.payee, false)] {
+            let sdk = ContactLifecycleSdk(noPointer: .init())
+            let terms = try PaymentRequestTerms(
+                amount: PaymentRequestAmount(value: "0.001", asset: "btc"),
+                paymentReference: PaymentReference(text: "subscription"), proposalExpiresAt: nil,
+                recurrence: PaymentRequestRecurrence(every: 1, unit: "month", startsAt: "2026-01-01T00:00:00Z",
+                                                     anchor: "2026-01-01T00:00:00Z", endsAt: nil),
+                acceptedPaymentEndpointIdentifiers: ["lightning:bolt11"], metadata: PrivateJsonObject(text: "{}")
+            )
+            sdk.requests = [PaymentRequestRecord(
+                counterparty: sdk.publicKey, counterpartyReceiverPath: PaykitReceiverPath.server,
+                paymentRequestId: "550e8400-e29b-41d4-a716-446655440000", localRole: role, state: .activeRecurring,
+                proposalStreamItemId: nil, proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
+                proposalEventId: nil, terms: terms, acceptedEventId: nil, acceptedOutboundStatus: nil,
+                rejectedEventId: nil, rejectedOutboundStatus: nil, canceledEventId: nil, canceledOutboundStatus: nil,
+                paymentProofs: [], lastStreamItemId: nil, lastOutboundMessageId: nil, lastOutboundStatus: nil,
+                lastEventAt: nil, invalidReason: nil
+            )]
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            do {
+                _ = try await service.removeContact(publicKey: sdk.publicKey)
+                XCTFail("Expected active subscription to prevent deletion")
+            } catch PubkyServiceError.activeSubscription {}
+            XCTAssertNotNil(sdk.record)
+            XCTAssertTrue(sdk.events.isEmpty)
+            if endsNaturally {
+                sdk.requests[0].terms?.recurrence?.endsAt = "2026-02-01T00:00:00Z"
+            } else {
+                sdk.requests[0].state = .canceled
+            }
+            _ = try await service.removeContact(publicKey: sdk.publicKey)
+            XCTAssertNil(sdk.record)
+        }
     }
 
     func testFailedBlockKeepsContactAvailableForDeletionRetry() async throws {
@@ -40,6 +79,26 @@ final class PaykitContactLifecycleTests: XCTestCase {
         XCTAssertEqual(sdk.record?.label, "Readded")
     }
 
+    func testFailedPrivateConnectionRestoreCanBeRetriedWithoutASavedContact() async throws {
+        for failPeerLookup in [true, false] {
+            let sdk = ContactLifecycleSdk(noPointer: .init())
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            _ = try await service.removeContact(publicKey: sdk.publicKey)
+            sdk.failLinkedPeers = failPeerLookup
+            sdk.failUnblockPath = failPeerLookup ? nil : PaykitReceiverPath.server
+            do {
+                _ = try await service.saveContact(publicKey: sdk.publicKey, label: "Contact", restorePrivateConnection: true)
+                XCTFail("Expected restoration to fail")
+            } catch {}
+            XCTAssertNil(sdk.record)
+            sdk.failLinkedPeers = false
+            sdk.failUnblockPath = nil
+            _ = try await service.saveContact(publicKey: sdk.publicKey, label: "Contact", restorePrivateConnection: true)
+            XCTAssertNotNil(sdk.record)
+            XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .notLinked })
+        }
+    }
+
     func testBlockedPeerCleanupDoesNotAttemptNetworkDelivery() async throws {
         let sdk = ContactLifecycleSdk(noPointer: .init())
         let service = PaykitSdkService(sdkFactory: { sdk })
@@ -52,7 +111,11 @@ final class PaykitContactLifecycleTests: XCTestCase {
 private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
     var events: [String] = []
+    var requests: [PaymentRequestRecord] = []
+    var failWithdrawal = false
     var failBlock = false
+    var failLinkedPeers = false
+    var failUnblockPath: String?
     lazy var record: ContactRecord? = ContactRecord(
         publicKey: publicKey, receiverPaths: [PaykitReceiverPath.wallet], label: "Contact", profile: nil,
         profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
@@ -70,12 +133,26 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
         "revision"
     }
 
+    override func paymentRequests() async throws -> [PaymentRequestRecord] {
+        requests
+    }
+
     override func contactRecord(publicKey: String) async throws -> ContactRecord? {
         record
     }
 
     override func linkedPeers() async throws -> [LinkedPeerRecord] {
-        peers
+        if failLinkedPeers { throw PubkyServiceError.profileNotFound }
+        return peers
+    }
+
+    override func clearPrivatePaymentListAndProcessOutbound(
+        counterparty: String,
+        counterpartyReceiverPath: String
+    ) async throws -> PrivatePaymentListDeliveryReport {
+        events.append("clear:\(counterpartyReceiverPath)")
+        if failWithdrawal { throw PubkyServiceError.sessionNotActive }
+        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
     }
 
     override func blockPeer(counterparty: String, counterpartyReceiverPath: String) async throws -> LinkedPeerRecord {
@@ -87,6 +164,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func unblockPeer(counterparty: String, counterpartyReceiverPath: String) async throws -> LinkedPeerRecord {
+        if failUnblockPath == counterpartyReceiverPath { throw PubkyServiceError.profileNotFound }
         let index = try XCTUnwrap(peers.firstIndex { $0.counterpartyReceiverPath == counterpartyReceiverPath })
         peers[index].state = .notLinked
         return peers[index]

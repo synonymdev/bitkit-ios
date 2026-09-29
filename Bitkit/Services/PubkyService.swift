@@ -9,6 +9,7 @@ enum PubkyServiceError: LocalizedError {
     case sessionNotActive
     case authFailed(String)
     case profileNotFound
+    case activeSubscription
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,8 @@ enum PubkyServiceError: LocalizedError {
             return "Authentication failed: \(reason)"
         case .profileNotFound:
             return "Profile not found"
+        case .activeSubscription:
+            return "Contact has an active subscription"
         }
     }
 }
@@ -619,13 +622,12 @@ actor PaykitSdkService {
             guard restorePrivateConnection || existing != nil else { throw PubkyServiceError.profileNotFound }
             let existingPaths = existing?.receiverPaths ?? []
             let contactPaths = Self.mergedReceiverPaths(existingPaths + (receiverPaths ?? []))
-            let record = try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, receiverPaths: contactPaths, label: label))
             if restorePrivateConnection {
                 for peer in try await sdk.linkedPeers() where peer.state == .blocked && PubkyPublicKeyFormat.matches(peer.counterparty, publicKey) {
                     _ = try await sdk.unblockPeer(counterparty: peer.counterparty, counterpartyReceiverPath: peer.counterpartyReceiverPath)
                 }
             }
-            return record
+            return try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, receiverPaths: contactPaths, label: label))
         }
     }
 
@@ -634,6 +636,28 @@ actor PaykitSdkService {
             let record = try await sdk.contactRecord(publicKey: publicKey)
             let peers = try await sdk.linkedPeers().filter { PubkyPublicKeyFormat.matches($0.counterparty, publicKey) }
             let receiverPaths = Set(record?.receiverPaths ?? []).union(peers.map(\.counterpartyReceiverPath))
+            let now = Date()
+            let hasActiveSubscription = try await sdk.paymentRequests().contains {
+                PubkyPublicKeyFormat.matches($0.counterparty, publicKey) &&
+                    $0.state == .activeRecurring &&
+                    ($0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate).map { $0 > now } ?? true)
+            }
+            guard !hasActiveSubscription else { throw PubkyServiceError.activeSubscription }
+            for peer in peers where peer.state == .linked {
+                do {
+                    let report = try await sdk.clearPrivatePaymentListAndProcessOutbound(
+                        counterparty: publicKey,
+                        counterpartyReceiverPath: peer.counterpartyReceiverPath
+                    )
+                    if !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
+                        Logger.warn("Failed to withdraw private endpoints before contact deletion", context: "PaykitSdkService")
+                    }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    Logger.warn("Failed to withdraw private endpoints before contact deletion: \(error)", context: "PaykitSdkService")
+                }
+            }
             for receiverPath in receiverPaths.sorted() {
                 _ = try await sdk.blockPeer(counterparty: publicKey, counterpartyReceiverPath: receiverPath)
             }

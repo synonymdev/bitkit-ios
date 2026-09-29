@@ -266,6 +266,8 @@ struct ContactDetailView: View {
                 accessibilityIdentifier: "ContactDeletedToast"
             )
             navigation.path = [.contacts]
+        } catch PubkyServiceError.activeSubscription {
+            app.toast(type: .error, title: t("contacts__delete_active_subscription"))
         } catch {
             Logger.error("Failed to delete contact: \(error)", context: "ContactDetailView")
             app.toast(type: .error, title: t("contacts__delete_error"))

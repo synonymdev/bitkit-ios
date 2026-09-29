@@ -3,6 +3,7 @@ import LDKNode
 import SwiftUI
 
 struct LnurlPayConfirm: View {
+    @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -282,6 +283,14 @@ struct LnurlPayConfirm: View {
                     incomingPaymentRequest,
                     paymentHash: paymentHash
                 )
+            }
+            if let incomingPaymentRequest {
+                do {
+                    try await paykitPaymentRequestManager.ensurePaymentAllowed(incomingPaymentRequest)
+                } catch {
+                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                    throw error
+                }
             }
             lightningPaymentHash = paymentHash
 

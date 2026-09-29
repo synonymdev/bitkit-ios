@@ -207,7 +207,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
         await manager.refresh()
         XCTAssertTrue(manager.pendingRequests.isEmpty)
-        XCTAssertEqual(manager.historyRequests.map(\.paymentRequestId), [record.paymentRequestId])
+        await sdk.setRecords([])
+        await manager.refresh()
+        XCTAssertTrue(manager.historyRequests.isEmpty)
     }
 
     func testBlockingAnAlreadyPresentedAcceptedRequestPreventsPayment() async throws {
@@ -232,6 +234,32 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
         }
         XCTAssertFalse(consumed)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
+    func testApprovedPaymentRechecksBlockingWithoutRepeatingAcceptance() async throws {
+        let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        var consumedCount = 0
+        try await manager.prepareForPayment(request) { consumedCount += 1 }
+        try await manager.prepareForPayment(request) { consumedCount += 1 }
+        XCTAssertEqual(consumedCount, 1)
+        let accepted = await sdk.snapshot().acceptedRequests
+        XCTAssertEqual(accepted.count, 1)
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: record.counterparty, path: record.counterpartyReceiverPath, state: .blocked)],
+            receiverPathsByPublicKey: [:]
+        )
+        do {
+            try await manager.prepareForPayment(request) { consumedCount += 1 }
+            XCTFail("Expected blocked payment to be rejected")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        XCTAssertEqual(consumedCount, 1)
         XCTAssertFalse(manager.isApprovedForPayment(request))
     }
 
