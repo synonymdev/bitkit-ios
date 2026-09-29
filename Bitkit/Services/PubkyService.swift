@@ -788,22 +788,26 @@ actor PaykitSdkService {
         }
     }
 
+    /// Takes the SDK lock per read and stops between reads once cancelled, so an abandoned eligibility check
+    /// holds up a payment for at most the one read already in flight.
     func paymentRequestReceiverPaths(publicKey: String) async throws -> [String] {
-        try await operationLock.withLock {
-            let sdk = try handle()
-            let paths = try await sdk.paykitReceiverPaths(publicKey: publicKey)
-            var capablePaths = Set<String>()
+        try Task.checkCancellation()
+        let paths = try await operationLock.withLock {
+            try await handle().paykitReceiverPaths(publicKey: publicKey)
+        }
+        var capablePaths = Set<String>()
 
-            for path in paths where PaykitReceiverPath.supported.contains(path) {
-                guard let marker = try await sdk.paykitReceiverMarker(publicKey: publicKey, receiverPath: path),
-                      marker.capabilities.paymentRequests == true
-                else { continue }
-
+        for path in paths where PaykitReceiverPath.supported.contains(path) {
+            try Task.checkCancellation()
+            let marker = try await operationLock.withLock {
+                try await handle().paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
+            }
+            if marker?.capabilities.paymentRequests == true {
                 capablePaths.insert(path)
             }
-
-            return PaykitReceiverPath.supported.filter { capablePaths.contains($0) }
         }
+
+        return PaykitReceiverPath.supported.filter { capablePaths.contains($0) }
     }
 
     func privateReceiverPathSelection(publicKey: String, savedReceiverPaths: [String]) async throws -> PrivateReceiverPathSelection {

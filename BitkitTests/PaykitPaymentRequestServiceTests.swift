@@ -2904,7 +2904,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.eligibleTargets.isEmpty)
     }
 
-    func testWaitingForEligibleTargetStopsAtTimeout() async throws {
+    func testWaitingForEligibleTargetCancelsLookupAtTimeout() async throws {
         let savedKey = "pubky\(String(repeating: "y", count: 52))"
         let sdk = PaymentRequestSdkMock(records: [])
         await sdk.configureRecipients(
@@ -2921,7 +2921,14 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertNil(target)
         try await waitUntil { await sdk.linkedPeersIsPaused() }
+        let abandonedRefresh = manager.startEligibleTargetRefresh(publicKey: savedKey)
         await sdk.resumeLinkedPeers()
+        let abandonedTarget = await abandonedRefresh.value
+        XCTAssertNil(abandonedTarget)
+        let lookups = await sdk.receiverPathLookups()
+        XCTAssertEqual(lookups, 0)
+        XCTAssertTrue(manager.eligibleTargets.isEmpty)
+
         let refreshed = await manager.startEligibleTargetRefresh(publicKey: savedKey).value
         XCTAssertEqual(refreshed, PaykitPaymentRequestTarget(publicKey: savedKey, receiverPath: PaykitReceiverPath.wallet))
     }
@@ -3623,6 +3630,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
     private var liveSessionAvailable = true
     private var linkedPeersError: PaymentRequestSdkMockError?
     private var linkedPeersCallCount = 0
+    private var receiverPathLookupCount = 0
     private var failingReceiverPathKeys: Set<String> = []
     private var proposalResult: PaymentRequestRecord?
     private var uploadCount = 0
@@ -3717,6 +3725,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
     }
 
     func paymentRequestReceiverPaths(publicKey: String) throws -> [String] {
+        receiverPathLookupCount += 1
         if failingReceiverPathKeys.contains(publicKey) {
             throw PaymentRequestSdkMockError.receive
         }
@@ -3934,6 +3943,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
 
     func linkedPeersCalls() -> Int {
         linkedPeersCallCount
+    }
+
+    func receiverPathLookups() -> Int {
+        receiverPathLookupCount
     }
 
     func setLinkedPeersError(_ error: PaymentRequestSdkMockError?) {

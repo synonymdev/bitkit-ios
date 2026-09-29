@@ -606,6 +606,7 @@ struct PaykitPaymentRequestService {
             guard let linkedPaths = linkedPathsByPublicKey[publicKey] else { continue }
             let capablePaths: [String]
             do {
+                try Task.checkCancellation()
                 capablePaths = try await sdk.paymentRequestReceiverPaths(publicKey: publicKey)
             } catch is CancellationError {
                 throw CancellationError()
@@ -1254,7 +1255,8 @@ final class PaykitPaymentRequestManager {
     }
 
     /// Returns the known target at once, otherwise waits at most `timeout` for a refresh without blocking on a slow SDK call.
-    /// A contact checked in the last 30 seconds is not looked up again, because the lookup holds the SDK lock the payment needs next.
+    /// The lookup shares the SDK lock with payment resolution, so a contact checked in the last 30 seconds is not looked up again,
+    /// and a lookup that outlives the timeout is cancelled.
     func eligibleTarget(publicKey: String, waitingAtMost timeout: Duration) async -> PaykitPaymentRequestTarget? {
         if let target = eligibleTarget(publicKey: publicKey) {
             return target
@@ -1282,8 +1284,12 @@ final class PaykitPaymentRequestManager {
             continuation.finish()
         }
         for await target in stream {
-            return target
+            if target == nil {
+                refresh.cancel()
+            }
+            return target ?? eligibleTarget(publicKey: publicKey)
         }
+        refresh.cancel()
         return nil
     }
 
