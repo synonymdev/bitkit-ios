@@ -226,7 +226,7 @@ jobs:
       - name: Download migration env
         uses: actions/download-artifact@v8
         with:
-          name: migration-env_${{ matrix.scenario.version }}_${{ matrix.scenario.name }}_${{ github.run_attempt }}
+          name: migration-env_${{ matrix.scenario.version }}_${{ matrix.scenario.name }}
           path: bitkit-e2e-tests/artifacts
 
       # Restore uses the Android-prepared seed directly in the native target.
