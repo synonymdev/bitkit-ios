@@ -196,6 +196,10 @@ struct SpendingConfirm: View {
                     throw AppError(message: t("other__try_again"), debugMessage: "Rebuilt network fee is zero")
                 }
             } catch {
+                if let increase = transfer.unfundableFeeIncrease(order: order, displayedOrderFeeSat: displayedOrderFeeSat) {
+                    showFeesIncreasedToast(increase)
+                    throw SpendingFeesIncreasedError()
+                }
                 restore(displayedFunding)
                 throw error
             }

@@ -113,6 +113,28 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testUnfundableRebuildReportsTheServiceIncreaseAndMovesToTheOrderFee() {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let order = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 102_500)
+
+        XCTAssertEqual(vm.unfundableFeeIncrease(order: order, displayedOrderFeeSat: 101_000), .service(amountSat: 1500))
+        XCTAssertEqual(vm.uiState.feeSat, 102_500)
+    }
+
+    @MainActor
+    func testUnfundableRebuildReportsNothingWhenTheOrderFeeIsNotHigher() {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let equal = makeOrder(id: "equal", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 101_000)
+        let lower = makeOrder(id: "lower", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 100_000)
+
+        XCTAssertNil(vm.unfundableFeeIncrease(order: equal, displayedOrderFeeSat: 101_000))
+        XCTAssertNil(vm.unfundableFeeIncrease(order: lower, displayedOrderFeeSat: 101_000))
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
+    }
+
+    @MainActor
     func testSwipeReportsANetworkIncreaseThenPaysOnTheNextSwipe() async throws {
         let vm = makeViewModel()
         vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)

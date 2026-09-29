@@ -400,6 +400,15 @@ class TransferViewModel: ObservableObject {
         return isServiceIncrease ? .service(amountSat: amountSat) : .network(amountSat: amountSat)
     }
 
+    /// The increase to report when the funding could not be rebuilt for the created order and its fee is higher than the confirm screen
+    /// showed, or nil when the failure is unrelated to the order fee. On an increase the screen moves to the order's fee, so it re-sizes
+    /// against the real cost instead of repeating the same failure.
+    func unfundableFeeIncrease(order: IBtOrder, displayedOrderFeeSat: UInt64) -> SpendingFeeIncrease? {
+        guard order.feeSat > displayedOrderFeeSat else { return nil }
+        uiState.feeSat = order.feeSat
+        return .service(amountSat: order.feeSat - displayedOrderFeeSat)
+    }
+
     func payOrder(
         order: IBtOrder,
         speed: TransactionSpeed,
