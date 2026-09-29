@@ -369,6 +369,7 @@ class PubkyProfileManager: ObservableObject {
         signIn: @escaping @Sendable (String) async throws -> Void = { try await PubkyProfileManager.signInWithRingKey($0) }
     ) async throws -> PubkyProfile? {
         Self.beginSessionMutation()
+        let revision = Self.sessionRevision
         defer { Self.endSessionMutation() }
         let sourceApp = SharedPubkyKeychain.ringSourceApp
         guard let secretKeyHex = loadSecret(sourceApp, pubky) else {
@@ -385,7 +386,9 @@ class PubkyProfileManager: ObservableObject {
                 return publicKey
             }.value
         } catch {
-            AdoptedPubkyReference.current = previousAdoptedIdentity
+            if revision == Self.sessionRevision {
+                AdoptedPubkyReference.current = previousAdoptedIdentity
+            }
             throw error
         }
 
