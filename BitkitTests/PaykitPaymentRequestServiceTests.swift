@@ -852,7 +852,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refresh()
         let request = try XCTUnwrap(manager.pendingRequests.first)
 
-        XCTAssertEqual(manager.paymentRequestForRetry(request.id), request)
+        let retriedRequest = await manager.paymentRequestForRetry(request.id)
+        XCTAssertEqual(retriedRequest, request)
         XCTAssertTrue(manager.requestPresentation(request))
         XCTAssertEqual(manager.requestedPresentationId, request.id)
     }
@@ -2271,7 +2272,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let refreshTask = Task { await manager.refresh() }
         try await waitUntil { await notificationCenter.isPendingRequestsPaused }
 
-        let retriedRequest = try XCTUnwrap(manager.paymentRequestForRetry(acceptedRequest.id))
+        let retryRequest = await manager.paymentRequestForRetry(acceptedRequest.id)
+        let retriedRequest = try XCTUnwrap(retryRequest)
         XCTAssertTrue(manager.markPresentedIfPending(retriedRequest))
         XCTAssertEqual(manager.pendingRequests, [retriedRequest])
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
@@ -2464,11 +2466,105 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let request = try XCTUnwrap(manager.pendingRequests.first)
 
         try await manager.prepareForPayment(request)
+        try await sdk.setRecords([paymentRequestRecord(state: .accepted)])
 
         XCTAssertTrue(manager.isApprovedForPayment(request))
         await manager.finishPayment(request)
         XCTAssertFalse(manager.isApprovedForPayment(request))
         XCTAssertEqual(manager.pendingRequests, [request.updatingLifecycleState(.accepted)])
+    }
+
+    func testPaidRequestIsNotRequeuedAfterSendFlowFinishes() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+
+        try await manager.prepareForPayment(request)
+        try await sdk.setRecords([paymentRequestRecord(state: .proofSubmitted)])
+
+        await manager.finishPayment(request)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testPaidRequestIsNotReopenedForRetry() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+
+        try await manager.prepareForPayment(request)
+        await manager.finishPayment(request)
+        try await sdk.setRecords([paymentRequestRecord(state: .proofSubmitted)])
+
+        let retriedRequest = await manager.paymentRequestForRetry(request.id)
+        XCTAssertNil(retriedRequest)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testPaidPendingRequestIsNotReopenedForRetry() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(state: .accepted)])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+
+        try await manager.prepareForPayment(request)
+        XCTAssertEqual(manager.pendingRequests, [request])
+        try await sdk.setRecords([paymentRequestRecord(state: .proofSubmitted)])
+
+        let retriedRequest = await manager.paymentRequestForRetry(request.id)
+        XCTAssertNil(retriedRequest)
+    }
+
+    func testUnpaidPendingRequestIsReopenedForRetry() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(state: .accepted)])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+
+        try await manager.prepareForPayment(request)
+
+        let retriedRequest = await manager.paymentRequestForRetry(request.id)
+        XCTAssertEqual(retriedRequest, request)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
+    func testClearingDuringRetryDoesNotReopenRequest() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        try await manager.prepareForPayment(request)
+        try await sdk.setRecords([paymentRequestRecord(state: .accepted)])
+        await sdk.pauseNextPaymentRequestList()
+
+        let retry = Task { await manager.paymentRequestForRetry(request.id) }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        manager.clear()
+        await sdk.resumePaymentRequestList()
+        let retriedRequest = await retry.value
+
+        XCTAssertNil(retriedRequest)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testClearingDuringSendFlowFinishDoesNotRequeueRequest() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        try await manager.prepareForPayment(request)
+        try await sdk.setRecords([paymentRequestRecord(state: .accepted)])
+        await sdk.pauseNextPaymentRequestList()
+
+        let finish = Task { await manager.finishPayment(request) }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        manager.clear()
+        await sdk.resumePaymentRequestList()
+        await finish.value
+
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
     }
 
     func testRefreshKeepsRequestVisibleWhileAcceptanceIsFinishing() async throws {
