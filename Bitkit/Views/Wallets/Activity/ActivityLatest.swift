@@ -2,7 +2,7 @@ import BitkitCore
 import SwiftUI
 
 struct ActivityLatest: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @EnvironmentObject private var activity: ActivityListViewModel
     @EnvironmentObject private var app: AppViewModel

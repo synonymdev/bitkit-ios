@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 struct DevSettingsView: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @AppStorage(ContactPaymentsService.confirmedPreferenceKey) private var hasConfirmedPublicPaykitEndpoints = false
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
@@ -220,6 +220,11 @@ struct DevSettingsView: View {
 
     @MainActor
     private func disablePaykitUI() async {
+        let hadPublicPaykitState = PaykitFeatureFlags.hasPublicPublishedState() ||
+            UserDefaults.standard.bool(forKey: PublicPaykitService.cleanupPendingKey)
+        let hadPrivatePaykitState = PaykitFeatureFlags.hasPrivatePublishedState() ||
+            UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
+
         isPaykitUIEnabled = false
         hasConfirmedPublicPaykitEndpoints = false
         sharesPrivatePaykitEndpoints = false
@@ -229,24 +234,28 @@ struct DevSettingsView: View {
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
 
         var cleanupError: Error?
-        do {
-            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
-            PublicPaykitService.setCleanupPending(false)
-        } catch {
-            cleanupError = error
-            PublicPaykitService.setCleanupPending(true)
-            Logger.warn("Failed to remove public Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
+        if hadPublicPaykitState {
+            do {
+                try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
+                PublicPaykitService.setCleanupPending(false)
+            } catch {
+                cleanupError = error
+                PublicPaykitService.setCleanupPending(true)
+                Logger.warn("Failed to remove public Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
+            }
         }
 
-        do {
-            try await PrivatePaykitService.shared.removePublishedEndpoints()
-            PrivatePaykitService.setContactSharingCleanupPending(false)
-        } catch {
-            if cleanupError == nil {
-                cleanupError = error
+        if hadPrivatePaykitState {
+            do {
+                try await PrivatePaykitService.shared.removePublishedEndpoints()
+                PrivatePaykitService.setContactSharingCleanupPending(false)
+            } catch {
+                if cleanupError == nil {
+                    cleanupError = error
+                }
+                PrivatePaykitService.setContactSharingCleanupPending(true)
+                Logger.warn("Failed to remove private Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
             }
-            PrivatePaykitService.setContactSharingCleanupPending(true)
-            Logger.warn("Failed to remove private Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
         }
 
         if let cleanupError {
