@@ -519,15 +519,7 @@ actor PaykitSdkService {
     func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
         try await operationLock.withLock {
             let previousPublicKey = try await currentSdkStatePublicKey()
-            do {
-                try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
-            } catch {
-                try? sessionProvider.clearSessionAccess()
-                try? Keychain.delete(key: .paykitSdkState)
-                resetRuntime()
-                markWalletBackupDataChanged()
-                throw error
-            }
+            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
             markWalletBackupDataChanged()
         }
     }
@@ -1047,8 +1039,7 @@ actor PaykitSdkService {
         try sessionProvider.persistReceiverNoiseSecretKey(access.exportReceiverNoiseSecretKey())
 
         guard AdoptedPubkyReference.current == nil, let localSecret = access.exportLocalSecretKey() else {
-            try? Keychain.delete(key: .pubkySecretKey)
-            SharedPubkyKeychain.removeAllOwn()
+            try Keychain.delete(key: .pubkySecretKey)
             return
         }
 
@@ -1062,17 +1053,38 @@ actor PaykitSdkService {
         _ result: PubkySessionBootstrapResult,
         previousPublicKey: String?
     ) async throws {
-        try persistSessionAccess(result.sessionAccess)
-        sessionProvider.setLiveSessionAccess(result.sessionAccess)
-        if !Self.publicKeysMatch(previousPublicKey, result.publicKey) {
-            if previousPublicKey != nil {
-                await PubkyProfileManager.clearCachedIdentityMetadata()
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitReceiverNoiseSecretKey, .paykitSdkState]
+        let previousValues = try keys.map { try Keychain.load(key: $0) }
+        let isDifferentIdentity = !Self.publicKeysMatch(previousPublicKey, result.publicKey)
+        let sdk: PaykitSdk
+        do {
+            try persistSessionAccess(result.sessionAccess)
+            sessionProvider.setLiveSessionAccess(result.sessionAccess)
+            if isDifferentIdentity { try Keychain.delete(key: .paykitSdkState) }
+            resetRuntime()
+            sdk = try handle()
+            _ = try await sdk.initialize()
+        } catch {
+            // Activation can write SDK state before failing; restore it along with the credentials.
+            var rollbackError: Error?
+            for (key, value) in zip(keys, previousValues) {
+                do {
+                    if let value { try Keychain.upsert(key: key, data: value) }
+                    else { try Keychain.delete(key: key) }
+                } catch {
+                    rollbackError = rollbackError ?? error
+                }
             }
-            try? Keychain.delete(key: .paykitSdkState)
+            sessionProvider.clearLiveSessionAccess()
+            resetRuntime()
+            throw rollbackError ?? error
         }
-        resetRuntime()
-        let sdk = try handle()
-        _ = try await sdk.initialize()
+        if isDifferentIdentity, previousPublicKey != nil {
+            await PubkyProfileManager.clearCachedIdentityMetadata()
+        }
+        if AdoptedPubkyReference.current != nil || result.sessionAccess.exportLocalSecretKey() == nil {
+            SharedPubkyKeychain.removeAllOwn()
+        }
         await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
         await republishIdentityIfNeeded(publicKey: result.publicKey)
     }

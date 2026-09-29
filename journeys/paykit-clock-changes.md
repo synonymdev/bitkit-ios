@@ -15,7 +15,7 @@ On iOS, Ring identities are selected from the shared identity list. There is no 
 3. Verify that the original contact, profile, receiving address, and balance are still present, and that private payment requests can be exchanged again. A new payment must still require normal approval.
 4. Repeat with a backward clock change. After correcting the clock, verify that identity publication and payment-request presentation retry normally instead of waiting for the old future timestamp.
 5. After a failed restoration, open the profile from the home header and select the same Ring-owned identity without signing out. The recovery flow must remain reachable and preserve the profile and contact labels.
-6. Repeat failed restoration, then select a different Ring-owned identity. Even if its profile cannot load, the previous identity's name, avatar, and contact labels must not appear. Also verify normal explicit sign-out and identity switching.
+6. Repeat failed restoration, then select a different Ring-owned identity. If the new session initializes successfully, the previous identity's name, avatar, and contact labels must not appear, even if its profile cannot load. If initialization fails during the switch, the previous identity, name, avatar, and contact labels must remain after relaunch; correct the clock or connection and retry the switch. Also verify normal explicit sign-out and identity switching.
 
 ## Travel, daylight saving, and reminders
 

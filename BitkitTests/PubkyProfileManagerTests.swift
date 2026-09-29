@@ -37,6 +37,40 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testFailedRingAdoptionKeepsPreviousIdentityAndSession() async throws {
+        let savedReference = AdoptedPubkyReference.current
+        let savedSession = try Keychain.load(key: .paykitSession)
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            if let savedSession { try? Keychain.upsert(key: .paykitSession, data: savedSession) }
+            else { try? Keychain.delete(key: .paykitSession) }
+        }
+        let oldReference = (sourceApp: SharedPubkyKeychain.ringSourceApp, pubky: "previous-ring-identity")
+        for previousReference in [nil, oldReference] {
+            AdoptedPubkyReference.current = previousReference
+            try Keychain.upsert(key: .paykitSession, data: Data("previous-session".utf8))
+            let manager = RecoveryProfileManager()
+            manager.publicKey = "previous-identity"
+            manager.authState = .authenticated
+            do {
+                _ = try await manager.adoptRingIdentity(
+                    pubky: "new-identity",
+                    loadSecret: { _, _ in String(repeating: "02", count: 32) },
+                    signIn: { _ in throw PubkyServiceError.authFailed("activation failed") }
+                )
+                XCTFail("Expected identity activation to fail")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, PubkyServiceError.authFailed("activation failed").localizedDescription)
+            }
+            XCTAssertEqual(manager.publicKey, "previous-identity")
+            XCTAssertEqual(manager.authState, .authenticated)
+            XCTAssertEqual(AdoptedPubkyReference.current?.sourceApp, previousReference?.sourceApp)
+            XCTAssertEqual(AdoptedPubkyReference.current?.pubky, previousReference?.pubky)
+            XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "previous-session")
+        }
+    }
+
+    @MainActor
     func testRecoveryWaitsForStartupAndCoalescesConnectivityEvents() async {
         let manager = RecoveryProfileManager()
         let started = expectation(description: "startup started")

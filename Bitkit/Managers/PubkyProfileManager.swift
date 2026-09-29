@@ -363,32 +363,29 @@ class PubkyProfileManager: ObservableObject {
     }
 
     /// Signs in with a pubky owned by Pubky Ring. The secret is read just-in-time and never persisted here.
-    func adoptRingIdentity(pubky: String) async throws -> PubkyProfile? {
+    func adoptRingIdentity(
+        pubky: String,
+        loadSecret: (String, String) -> String? = SharedPubkyKeychain.loadSecret,
+        signIn: @escaping @Sendable (String) async throws -> Void = { try await PubkyProfileManager.signInWithRingKey($0) }
+    ) async throws -> PubkyProfile? {
         Self.beginSessionMutation()
         defer { Self.endSessionMutation() }
         let sourceApp = SharedPubkyKeychain.ringSourceApp
-        guard let secretKeyHex = SharedPubkyKeychain.loadSecret(sourceApp: sourceApp, pubky: pubky) else {
+        guard let secretKeyHex = loadSecret(sourceApp, pubky) else {
             throw PubkyServiceError.authFailed("Pubky Ring key unavailable")
         }
 
+        let previousAdoptedIdentity = AdoptedPubkyReference.current
         AdoptedPubkyReference.current = (sourceApp, pubky)
         let adoptedPublicKey: String
         do {
             adoptedPublicKey = try await Task.detached {
                 let publicKey = try Self.publicKeyFromSecretKey(secretKeyHex)
-                do {
-                    _ = try await PubkyService.signIn(secretKeyHex: secretKeyHex)
-                } catch {
-                    Logger.warn("Sign-in with the Pubky Ring key failed: \(error)", context: "PubkyProfileManager")
-                    // Signup rewrites the homeserver record, so only a Ring key that was never published signs up.
-                    guard await Self.isUnpublishedIdentity(publicKey: publicKey) else { throw error }
-                    _ = try await Self.signUpToHomeserver(secretKeyHex: secretKeyHex)
-                }
+                try await signIn(secretKeyHex)
                 return publicKey
             }.value
         } catch {
-            await discardAbandonedSession()
-            AdoptedPubkyReference.current = nil
+            AdoptedPubkyReference.current = previousAdoptedIdentity
             throw error
         }
 
@@ -404,6 +401,18 @@ class PubkyProfileManager: ObservableObject {
             cacheProfileMetadata(adoptedProfile)
         }
         return adoptedProfile
+    }
+
+    private nonisolated static func signInWithRingKey(_ secretKeyHex: String) async throws {
+        let publicKey = try publicKeyFromSecretKey(secretKeyHex)
+        do {
+            _ = try await PubkyService.signIn(secretKeyHex: secretKeyHex)
+        } catch {
+            Logger.warn("Sign-in with the Pubky Ring key failed: \(error)", context: "PubkyProfileManager")
+            // Signup rewrites the homeserver record, so only a Ring key that was never published signs up.
+            guard await Self.isUnpublishedIdentity(publicKey: publicKey) else { throw error }
+            _ = try await Self.signUpToHomeserver(secretKeyHex: secretKeyHex)
+        }
     }
 
     static func completeIdentityCreation(
