@@ -1060,7 +1060,9 @@ actor PaykitSdkService {
         do {
             try persistSessionAccess(result.sessionAccess)
             sessionProvider.setLiveSessionAccess(result.sessionAccess)
-            if isDifferentIdentity { try Keychain.delete(key: .paykitSdkState) }
+            if isDifferentIdentity {
+                try Keychain.delete(key: .paykitSdkState)
+            }
             resetRuntime()
             sdk = try handle()
             _ = try await sdk.initialize()
@@ -1069,8 +1071,11 @@ actor PaykitSdkService {
             var rollbackError: Error?
             for (key, value) in zip(keys, previousValues) {
                 do {
-                    if let value { try Keychain.upsert(key: key, data: value) }
-                    else { try Keychain.delete(key: key) }
+                    if let value {
+                        try Keychain.upsert(key: key, data: value)
+                    } else {
+                        try Keychain.delete(key: key)
+                    }
                 } catch {
                     rollbackError = rollbackError ?? error
                 }

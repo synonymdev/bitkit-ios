@@ -42,8 +42,11 @@ final class PubkyProfileManagerTests: XCTestCase {
         let savedSession = try Keychain.load(key: .paykitSession)
         defer {
             AdoptedPubkyReference.current = savedReference
-            if let savedSession { try? Keychain.upsert(key: .paykitSession, data: savedSession) }
-            else { try? Keychain.delete(key: .paykitSession) }
+            if let savedSession {
+                try? Keychain.upsert(key: .paykitSession, data: savedSession)
+            } else {
+                try? Keychain.delete(key: .paykitSession)
+            }
         }
         let oldReference = (sourceApp: SharedPubkyKeychain.ringSourceApp, pubky: "previous-ring-identity")
         for previousReference in [nil, oldReference] {
@@ -92,8 +95,11 @@ final class PubkyProfileManagerTests: XCTestCase {
             }
             ContactsManager.restoreContactProfileOverrides(savedOverrides)
             for (key, value) in zip(keys, savedCredentials) {
-                if let value { try? Keychain.upsert(key: key, data: value) }
-                else { try? Keychain.delete(key: key) }
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
         for key in keys {
@@ -132,6 +138,118 @@ final class PubkyProfileManagerTests: XCTestCase {
             XCTFail("Reset must not leave a Ring identity available for automatic recovery")
             return .restorationFailed
         })
+    }
+
+    @MainActor
+    func testFailedRingAdoptionRestoresPreviousIdentityAfterFailedSignOut() async throws {
+        let savedReference = AdoptedPubkyReference.current
+        let savedSession = try Keychain.load(key: .paykitSession)
+        let defaults = UserDefaults.standard
+        let sharingKeys = [PublicPaykitService.publishingEnabledKey, PrivatePaykitService.publishingEnabledKey]
+        let savedSharingPreferences = sharingKeys.map { defaults.object(forKey: $0) }
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            if let savedSession {
+                try? Keychain.upsert(key: .paykitSession, data: savedSession)
+            } else {
+                try? Keychain.delete(key: .paykitSession)
+            }
+            for (key, value) in zip(sharingKeys, savedSharingPreferences) {
+                defaults.set(value, forKey: key)
+            }
+        }
+        sharingKeys.forEach { defaults.set(false, forKey: $0) }
+        let previousReference = (sourceApp: SharedPubkyKeychain.ringSourceApp, pubky: "previous-ring-identity")
+        AdoptedPubkyReference.current = previousReference
+        try Keychain.upsert(key: .paykitSession, data: Data("previous-session".utf8))
+        let adoptionStarted = expectation(description: "Ring sign-in started")
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        let manager = RecoveryProfileManager()
+        manager.publicKey = "previous-ring-identity"
+        manager.authState = .authenticated
+        let adoption = Task {
+            do {
+                _ = try await manager.adoptRingIdentity(
+                    pubky: "pending-ring-identity",
+                    loadSecret: { _, _ in String(repeating: "02", count: 32) },
+                    signIn: { _ in
+                        adoptionStarted.fulfill()
+                        for await _ in stream {}
+                        throw PubkyServiceError.authFailed("sign-in failed")
+                    }
+                )
+                XCTFail("Expected sign-in failure")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, PubkyServiceError.authFailed("sign-in failed").localizedDescription)
+            }
+        }
+        await fulfillment(of: [adoptionStarted], timeout: 2)
+
+        do {
+            try await manager.signOut(performSessionCleanup: {
+                throw PubkyServiceError.authFailed("sign-out failed")
+            })
+            XCTFail("Expected sign-out failure")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, PubkyServiceError.authFailed("sign-out failed").localizedDescription)
+        }
+        XCTAssertEqual(AdoptedPubkyReference.current?.pubky, "pending-ring-identity")
+
+        continuation.finish()
+        await adoption.value
+
+        XCTAssertEqual(AdoptedPubkyReference.current?.sourceApp, previousReference.sourceApp)
+        XCTAssertEqual(AdoptedPubkyReference.current?.pubky, previousReference.pubky)
+        XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "previous-session")
+        XCTAssertEqual(manager.publicKey, "previous-ring-identity")
+        XCTAssertEqual(manager.authState, .authenticated)
+    }
+
+    @MainActor
+    func testConcurrentRingAdoptionIsRejected() async throws {
+        let savedReference = AdoptedPubkyReference.current
+        defer { AdoptedPubkyReference.current = savedReference }
+        AdoptedPubkyReference.current = nil
+        let adoptionStarted = expectation(description: "Ring sign-in started")
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        let manager = RecoveryProfileManager()
+        let adoption = Task {
+            do {
+                _ = try await manager.adoptRingIdentity(
+                    pubky: "first-ring-identity",
+                    loadSecret: { _, _ in String(repeating: "02", count: 32) },
+                    signIn: { _ in
+                        adoptionStarted.fulfill()
+                        for await _ in stream {}
+                        throw PubkyServiceError.authFailed("sign-in failed")
+                    }
+                )
+                XCTFail("Expected sign-in failure")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, PubkyServiceError.authFailed("sign-in failed").localizedDescription)
+            }
+        }
+        await fulfillment(of: [adoptionStarted], timeout: 2)
+
+        do {
+            _ = try await manager.adoptRingIdentity(
+                pubky: "first-ring-identity",
+                loadSecret: { _, _ in String(repeating: "03", count: 32) },
+                signIn: { _ in XCTFail("Concurrent Ring adoption must not sign in") }
+            )
+            XCTFail("Expected concurrent Ring adoption to be rejected")
+        } catch {
+            XCTAssertEqual(
+                error.localizedDescription,
+                PubkyServiceError.authFailed("Pubky Ring sign-in already in progress").localizedDescription
+            )
+        }
+
+        continuation.finish()
+        await adoption.value
+        XCTAssertNil(AdoptedPubkyReference.current)
     }
 
     @MainActor

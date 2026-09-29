@@ -125,8 +125,11 @@ final class PaykitSdkClientConfigTests: XCTestCase {
             }
             ContactsManager.restoreContactProfileOverrides(savedOverrides)
             for (key, data) in zip(keys, saved) {
-                if let data { try? Keychain.upsert(key: key, data: data) }
-                else { try? Keychain.delete(key: key) }
+                if let data {
+                    try? Keychain.upsert(key: key, data: data)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
         let mnemonic = Array(repeating: "abandon", count: 11).joined(separator: " ") + " about"
@@ -140,8 +143,11 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         let sharedPubky = try SharedPubkyKeychain.derivedPubky(fromSecretKeyHex: oldSecret)
         let savedSharedSecret = SharedPubkyKeychain.loadSecret(sourceApp: SharedPubkyKeychain.ownSourceApp, pubky: sharedPubky)
         defer {
-            if let savedSharedSecret { SharedPubkyKeychain.publishOwn(pubky: sharedPubky, secretKeyHex: savedSharedSecret) }
-            else { SharedPubkyKeychain.removeOwn(pubky: sharedPubky) }
+            if let savedSharedSecret {
+                SharedPubkyKeychain.publishOwn(pubky: sharedPubky, secretKeyHex: savedSharedSecret)
+            } else {
+                SharedPubkyKeychain.removeOwn(pubky: sharedPubky)
+            }
         }
         SharedPubkyKeychain.publishOwn(pubky: sharedPubky, secretKeyHex: oldSecret)
         let state = Data("previous SDK identity and contacts".utf8)
@@ -343,7 +349,9 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func initialize() async throws -> InitializationReport {
-        if let initializationError { throw initializationError }
+        if let initializationError {
+            throw initializationError
+        }
         return InitializationReport(identity: IdentityStatus(publicKey: previousKey, liveSessionAvailable: false))
     }
 }

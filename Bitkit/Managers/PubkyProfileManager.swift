@@ -50,6 +50,7 @@ class PubkyProfileManager: ObservableObject {
 
     private var isSignupInFlight = false
     private var initializationTask: Task<Void, Never>?
+    private static var isRingAdoptionInFlight = false
     private static var sessionRevision = UUID()
     private static var sessionMutationCount = 0
 
@@ -368,9 +369,15 @@ class PubkyProfileManager: ObservableObject {
         loadSecret: (String, String) -> String? = SharedPubkyKeychain.loadSecret,
         signIn: @escaping @Sendable (String) async throws -> Void = { try await PubkyProfileManager.signInWithRingKey($0) }
     ) async throws -> PubkyProfile? {
+        guard !Self.isRingAdoptionInFlight else {
+            throw PubkyServiceError.authFailed("Pubky Ring sign-in already in progress")
+        }
+        Self.isRingAdoptionInFlight = true
         Self.beginSessionMutation()
-        let revision = Self.sessionRevision
-        defer { Self.endSessionMutation() }
+        defer {
+            Self.isRingAdoptionInFlight = false
+            Self.endSessionMutation()
+        }
         let sourceApp = SharedPubkyKeychain.ringSourceApp
         guard let secretKeyHex = loadSecret(sourceApp, pubky) else {
             throw PubkyServiceError.authFailed("Pubky Ring key unavailable")
@@ -386,7 +393,10 @@ class PubkyProfileManager: ObservableObject {
                 return publicKey
             }.value
         } catch {
-            if revision == Self.sessionRevision {
+            if let currentAdoptedIdentity = AdoptedPubkyReference.current,
+               currentAdoptedIdentity.sourceApp == sourceApp,
+               currentAdoptedIdentity.pubky == pubky
+            {
                 AdoptedPubkyReference.current = previousAdoptedIdentity
             }
             throw error
@@ -841,6 +851,16 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func signOut(cleanPrivatePaykitEndpoints: Bool) async throws {
+        try await signOut {
+            if cleanPrivatePaykitEndpoints {
+                try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
+            }
+            await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
+            try await PubkyService.signOut()
+        }
+    }
+
+    func signOut(performSessionCleanup: @escaping @Sendable () async throws -> Void) async throws {
         Self.beginSessionMutation()
         defer { Self.endSessionMutation() }
         let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
@@ -848,11 +868,7 @@ class PubkyProfileManager: ObservableObject {
 
         do {
             try await Task.detached {
-                if cleanPrivatePaykitEndpoints {
-                    try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
-                }
-                await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
-                try await PubkyService.signOut()
+                try await performSessionCleanup()
                 await Self.clearLocalAppState()
             }.value
         } catch {
