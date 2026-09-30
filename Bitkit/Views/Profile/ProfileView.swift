@@ -1,5 +1,21 @@
 import SwiftUI
 
+struct ProfileDestinationView: View {
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+
+    let hasSeenIntro: Bool
+
+    var body: some View {
+        if pubkyProfile.hasExistingIdentity {
+            ProfileView()
+        } else if hasSeenIntro {
+            PubkyChoiceView()
+        } else {
+            ProfileIntroView()
+        }
+    }
+}
+
 struct ProfileView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel

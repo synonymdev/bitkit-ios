@@ -69,6 +69,12 @@ class PubkyProfileManager: ObservableObject {
         isProfileSetupPending = UserDefaults.standard.bool(forKey: Self.profileSetupPendingKey)
     }
 
+    var hasExistingIdentity: Bool {
+        if isAuthenticated || cachedName != nil { return true }
+        // Unreadable credentials must not be treated as a new identity.
+        return (try? Self.hasStoredIdentity()) != false
+    }
+
     // MARK: - Initialization & Session Restoration
 
     /// Initializes Paykit and restores any persisted session.

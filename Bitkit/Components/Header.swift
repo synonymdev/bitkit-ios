@@ -143,8 +143,7 @@ struct Header: View {
             return .profile
         }
         guard profile.isInitialized else { return nil }
-        // Unreadable credentials must not be treated as a new identity.
-        guard (try? PubkyProfileManager.hasStoredIdentity()) == false else { return .profile }
+        guard !profile.hasExistingIdentity else { return .profile }
         return hasSeenIntro ? .pubkyChoice : .profileIntro
     }
 
