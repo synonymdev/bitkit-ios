@@ -41,6 +41,11 @@ struct PrivateReceiverPathSelection {
     var error: Error?
 }
 
+struct PubkyRegisteredIdentity {
+    let result: PubkySessionBootstrapResult
+    let walletGeneration: Int
+}
+
 /// Service layer for Pubky sessions, profiles, contacts, and Paykit SDK workflows.
 enum PubkyService {
     static func initialize() async throws {
@@ -233,7 +238,7 @@ enum PubkyService {
         secretKeyHex: String,
         homeserverZ32: String,
         signupCode: String? = nil
-    ) async throws -> PubkySessionBootstrapResult {
+    ) async throws -> PubkyRegisteredIdentity {
         try await PaykitSdkService.shared.registerIdentity(
             secretKeyHex: secretKeyHex,
             homeserverPublicKey: homeserverZ32,
@@ -241,8 +246,8 @@ enum PubkyService {
         )
     }
 
-    static func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
-        try await PaykitSdkService.shared.activateRegisteredIdentity(result)
+    static func activateRegisteredIdentity(_ identity: PubkyRegisteredIdentity) async throws {
+        try await PaykitSdkService.shared.activateRegisteredIdentity(identity)
     }
 
     /// Sign in with an existing secret key. Returns new session secret.
@@ -513,22 +518,24 @@ actor PaykitSdkService {
         secretKeyHex: String,
         homeserverPublicKey: String,
         signupCode: String?
-    ) async throws -> PubkySessionBootstrapResult {
+    ) async throws -> PubkyRegisteredIdentity {
         try await operationLock.withLock {
-            try await bootstrap().signUp(
+            let generation = try operationLock.walletGeneration()
+            let result = try await bootstrap().signUp(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
                 receiverNoiseSecretKey: sessionProvider.loadOrDeriveReceiverNoiseSecretKey(),
                 homeserverPublicKey: homeserverPublicKey,
                 signupCode: signupCode,
                 requiredCapabilities: Self.requiredCapabilities()
             )
+            return PubkyRegisteredIdentity(result: result, walletGeneration: generation)
         }
     }
 
-    func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
-        try await operationLock.withLock {
+    func activateRegisteredIdentity(_ identity: PubkyRegisteredIdentity) async throws {
+        try await operationLock.withLock(generation: identity.walletGeneration) {
             let previousPublicKey = try await currentSdkStatePublicKey()
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
+            try await activateBootstrapResult(identity.result, previousPublicKey: previousPublicKey)
             markWalletBackupDataChanged()
         }
     }
@@ -1308,14 +1315,18 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     private var activeWipeID: UUID?
     @TaskLocal private static var walletWipeOwner: UUID?
 
-    func withLock<T>(_ operation: () async throws -> T) async throws -> T {
+    func withLock<T>(generation expectedGeneration: Int? = nil, _ operation: () async throws -> T) async throws -> T {
         if ownsWipe() { return try await operation() }
         let admittedGeneration = try admit()
         await acquire()
         defer { release() }
-        try validate(admittedGeneration)
+        try validate(expectedGeneration ?? admittedGeneration)
         try Task.checkCancellation()
         return try await operation()
+    }
+
+    func walletGeneration() throws -> Int {
+        try admit()
     }
 
     func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
