@@ -23,6 +23,7 @@
     <action>Tap Details (id "Details"), tap Explore (id "ActivityTxDetails"), and record the exact transaction ID (id "TXID") without selecting a different transaction by address or amount</action>
     <action>Use the configured regtest backend to query that exact recorded txid and verify the acknowledged transaction pays 1 000 sats to the receiving test wallet</action>
     <action>Navigate back from Transaction Details, then back from the activity to the wallet home screen</action>
+    <action>If the Wallet Backup introduction appears, choose Later (id "BackupIntroViewCancel") before continuing with the fixture send</action>
     <action>Mine one block with the configured regtest fixture backend and wait for the fixed transaction's exact recorded txid to confirm before sending the change output</action>
     <action>Open the menu (id "HeaderMenu"), Settings (id "DrawerSettings"), Advanced (id "Tab-advanced"), Coin Selection (id "CoinSelectPreference"), and choose Manual; return to Wallet from the menu (id "DrawerWallet")</action>
     <action>Hand the receiving test wallet address to the app again with xcrun simctl openurl &lt;simulator-id&gt; "bitcoin:&lt;test recipient address&gt;"</action>

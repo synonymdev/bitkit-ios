@@ -1,0 +1,27 @@
+<journey name="hardware Shop onchain proof">
+  <description>
+    Verifies a hardware-funded Shop Payment Request against the original payer, request and
+    wallet, using fresh exact transaction observation before proof, Sent activity or Success.
+    Requires the paired, funded regtest Bridge Trezor emulator from hardware-wallet/README.md
+    and the saved, linked issuer from payment-requests/README.md, with Paykit UI enabled.
+    Record the original payer public key and hardware wallet identity before signing. Use
+    the canonical lowercase btc and btc-regtest-p2wpkh issuer shape on bitkit/server; a Bitkit
+    issuer uses its negotiated bitkit/wallet path. If real observation initially lags, inspect
+    Pending without another payment and let existing reconciliation finish. Do not manufacture
+    a refusal or missing response: controlled native faults and physical transports are manual
+    tests. This spec has not been run as part of the rc68 software-wallet fixture validation.
+  </description>
+  <actions>
+    <action>Have the fixture issuer publish its current regtest receive address as btc-regtest-p2wpkh with JSON payload {"value":"&lt;current address&gt;"}, then send proposed one-time request "71300000-0000-4000-8000-000000000009" for asset "btc" and amount "0.001"</action>
+    <action>Open that original request through the Payment Requests bell (id "PaymentRequestsBell") and Pay (id "PaymentRequestPay-71300000-0000-4000-8000-000000000009"), or use its automatic confirmation</action>
+    <action>Verify the Payment Request confirmation (id "PaymentRequestConfirm") shows 100,000 sats; tap Show Details (id "SendConfirmToggleDetails") and verify the saved issuer contact (id "ReviewContactRecipient")</action>
+    <action>If necessary, cycle the funding source (id "SendConfirmAssetButton") until it shows the original funded hardware wallet, then verify that wallet and the original request amount before signing</action>
+    <action>Swipe the send handle (id "GRAB") fully right and verify the hardware signing screen (id "HardwareSendSign") shows the original request amount and issuer address</action>
+    <action>Tap Open Trezor Connect (id "HardwareSendOpenTrezorConnect") and approve the transaction prompts on the deterministic emulator as described in hardware-wallet/README.md</action>
+    <action>If fresh observation initially lags and Pending appears, verify it retains 100,000 sats and the original candidate txid, offers no repayment, and has not shown Bitcoin Sent or created Sent activity solely from the bare broadcast return; an existing watcher may independently show a transaction it has actually observed. Record the candidate without initiating another payment</action>
+    <action>Wait for exact positive observation and the sent screen (id "SendSuccess"); on the issuer, verify the onchain proof for the original payer and request contains that exact observed txid, rather than accepting a bare broadcast-returned txid as proof</action>
+    <action>Tap Details (id "Details"), then Explore (id "ActivityTxDetails"); record the exact transaction ID (id "TXID") and verify Details belongs to the original hardware wallet and request amount</action>
+    <action>Query the exact recorded txid on the configured regtest backend and verify the original hardware wallet inputs pay 100,000 sats to the issuer; if Pending supplied a candidate, verify the final proof and Details use that same txid</action>
+    <action>Return to the Payment Requests list and verify the original paid request cannot initiate a second payment; stop recording and shut down only the task-owned simulator</action>
+  </actions>
+</journey>
