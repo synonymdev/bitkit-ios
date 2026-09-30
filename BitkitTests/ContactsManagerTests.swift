@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import enum Paykit.PaykitError
 import XCTest
 
 @MainActor
@@ -246,6 +247,91 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(ContactsManager.isMissingContactsDataError(error))
     }
 
+    func testContactProfileLookupDoesNotRetryMissingProfile() async throws {
+        for outcome: Result<Bitkit.PubkyProfile?, Error> in [.success(nil), .failure(PubkyServiceError.profileNotFound)] {
+            let stub = ContactProfileFetchStub([outcome, .success(makeProfile(publicKey: contactProfileKey))])
+
+            do {
+                _ = try await ContactsManager.resolveContactProfile(
+                    publicKey: contactProfileKey,
+                    retryTransient: true,
+                    fetchRemoteProfile: { try await stub.fetch($0) }
+                )
+                XCTFail("Expected a missing profile to throw")
+            } catch PubkyServiceError.profileNotFound {
+                // Expected.
+            }
+
+            let attempts = await stub.attempts
+            XCTAssertEqual(attempts, 1)
+        }
+    }
+
+    func testBulkContactProfileLookupDoesNotRetryTransportError() async throws {
+        let stub = ContactProfileFetchStub([.failure(profileTransportError), .success(makeProfile(publicKey: contactProfileKey))])
+
+        let profile = try await ContactsManager.resolveContactProfile(
+            publicKey: contactProfileKey,
+            includePlaceholder: true,
+            fetchRemoteProfile: { try await stub.fetch($0) }
+        )
+
+        XCTAssertEqual(profile.name, Bitkit.PubkyProfile.placeholder(publicKey: contactProfileKey).name)
+        let attempts = await stub.attempts
+        XCTAssertEqual(attempts, 1)
+    }
+
+    func testUserInitiatedContactProfileLookupRetriesTransportErrorOnce() async throws {
+        let stub = ContactProfileFetchStub([.failure(profileTransportError), .success(makeProfile(publicKey: contactProfileKey))])
+
+        let profile = try await ContactsManager.resolveContactProfile(
+            publicKey: contactProfileKey,
+            includePlaceholder: true,
+            retryTransient: true,
+            fetchRemoteProfile: { try await stub.fetch($0) }
+        )
+
+        XCTAssertEqual(profile.name, "Alice")
+        let attempts = await stub.attempts
+        XCTAssertEqual(attempts, 2)
+    }
+
+    func testImportContactProfileLookupFallsBackToPlaceholderAfterOneRetry() async throws {
+        let stub = ContactProfileFetchStub([.failure(profileTransportError)])
+
+        let profile = try await ContactsManager.resolveContactProfile(
+            publicKey: contactProfileKey,
+            includePlaceholder: true,
+            retryTransient: true,
+            fetchRemoteProfile: { try await stub.fetch($0) }
+        )
+
+        XCTAssertEqual(profile.name, Bitkit.PubkyProfile.placeholder(publicKey: contactProfileKey).name)
+        let attempts = await stub.attempts
+        XCTAssertEqual(attempts, 2)
+    }
+
+    func testContactProfileRetryStopsWhenCancelledDuringBackoff() async {
+        let stub = ContactProfileFetchStub([.failure(profileTransportError), .success(makeProfile(publicKey: contactProfileKey))])
+
+        let lookup = Task {
+            try await ContactsManager.resolveContactProfile(
+                publicKey: contactProfileKey,
+                includePlaceholder: true,
+                retryTransient: true,
+                fetchRemoteProfile: { publicKey in
+                    withUnsafeCurrentTask { $0?.cancel() }
+                    return try await stub.fetch(publicKey)
+                }
+            )
+        }
+
+        let result = await lookup.result
+        XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError, "Expected cancellation, got \($0)") }
+        let attempts = await stub.attempts
+        XCTAssertEqual(attempts, 1)
+    }
+
     func testShouldDiscardPendingImportWhenLeavingImportFlow() {
         XCTAssertTrue(shouldDiscardPendingImport(currentRoute: .contactImportOverview, destination: .contacts))
         XCTAssertTrue(shouldDiscardPendingImport(currentRoute: .contactImportSelect, destination: nil))
@@ -370,5 +456,25 @@ final class ContactsManagerTests: XCTestCase {
 
     private func makeContact(publicKey: String) -> Bitkit.PubkyContact {
         Bitkit.PubkyContact(publicKey: publicKey, profile: makeProfile(publicKey: publicKey))
+    }
+}
+
+private let contactProfileKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+/// What the SDK returns both for a network failure and for a key with no pkarr record.
+private let profileTransportError = PaykitError.Transport(code: "transport_error", context: "fetch profile")
+
+/// Answers each fetch with the next scripted outcome, repeating the last one once the script runs out.
+private actor ContactProfileFetchStub {
+    private(set) var attempts = 0
+    private var outcomes: [Result<Bitkit.PubkyProfile?, Error>]
+
+    init(_ outcomes: [Result<Bitkit.PubkyProfile?, Error>]) {
+        self.outcomes = outcomes
+    }
+
+    func fetch(_: String) throws -> Bitkit.PubkyProfile? {
+        attempts += 1
+        let outcome = outcomes.count > 1 ? outcomes.removeFirst() : outcomes[0]
+        return try outcome.get()
     }
 }

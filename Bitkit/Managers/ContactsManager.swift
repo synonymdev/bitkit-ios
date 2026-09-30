@@ -293,7 +293,7 @@ class ContactsManager: ObservableObject {
                 status: existingProfile.status
             )
         } else {
-            try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true)
+            try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true, retryTransient: true)
         }
 
         let receiverPaths = try await Self.relevantReceiverPaths(for: prefixedKey)
@@ -340,7 +340,7 @@ class ContactsManager: ObservableObject {
             for key in prefixedKeys {
                 group.addTask { [self] in
                     do {
-                        let profile = try await resolveContactProfile(publicKey: key, includePlaceholder: true)
+                        let profile = try await resolveContactProfile(publicKey: key, includePlaceholder: true, retryTransient: true)
                         let receiverPaths = try await Self.relevantReceiverPaths(for: key)
                         _ = try await PubkyService.saveContact(publicKey: key, label: profile.name, receiverPaths: receiverPaths)
                         return .success(PubkyContact(publicKey: key, profile: profile))
@@ -568,13 +568,13 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Contact Profile Resolution
 
-    func fetchContactProfile(publicKey: String, includePlaceholder: Bool = false) async -> PubkyProfile? {
+    func fetchContactProfile(publicKey: String, includePlaceholder: Bool = false, retryTransient: Bool = false) async -> PubkyProfile? {
         guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
             return nil
         }
 
         do {
-            return try await resolveContactProfile(publicKey: normalizedKey, includePlaceholder: includePlaceholder)
+            return try await resolveContactProfile(publicKey: normalizedKey, includePlaceholder: includePlaceholder, retryTransient: retryTransient)
         } catch {
             return nil
         }
@@ -597,25 +597,39 @@ class ContactsManager: ObservableObject {
         saveContactProfileOverrides(overrides)
     }
 
-    private func resolveContactProfile(publicKey: String, includePlaceholder: Bool = false) async throws -> PubkyProfile {
-        try await Self.resolveContactProfile(publicKey: publicKey, includePlaceholder: includePlaceholder)
+    private func resolveContactProfile(
+        publicKey: String,
+        includePlaceholder: Bool = false,
+        retryTransient: Bool = false
+    ) async throws -> PubkyProfile {
+        try await Self.resolveContactProfile(publicKey: publicKey, includePlaceholder: includePlaceholder, retryTransient: retryTransient)
     }
 
-    private nonisolated static func resolveContactProfile(publicKey: String, includePlaceholder: Bool = false) async throws -> PubkyProfile {
+    /// A missing profile is never retried. `retryTransient` retries any other failure once and is for user-initiated
+    /// lookups only: the SDK reports a key with no pkarr record and a network failure as the same transport error, so a
+    /// retry in bulk loads doubles the wait for every contact without a profile.
+    nonisolated static func resolveContactProfile(
+        publicKey: String,
+        includePlaceholder: Bool = false,
+        retryTransient: Bool = false,
+        fetchRemoteProfile: @Sendable (String) async throws -> PubkyProfile? = {
+            try await PubkyService.resolveContactProfile(publicKey: $0, allowPubkyProfileFallback: true).map(PubkyProfile.init(resolution:))
+        }
+    ) async throws -> PubkyProfile {
         let prefixedKey = ensurePubkyPrefix(publicKey)
         for attempt in 0 ..< 2 {
             do {
-                if let resolution = try await PubkyService.resolveContactProfile(publicKey: prefixedKey, allowPubkyProfileFallback: true) {
-                    return PubkyProfile(resolution: resolution)
+                if let profile = try await fetchRemoteProfile(prefixedKey) {
+                    return profile
                 }
                 throw PubkyServiceError.profileNotFound
             } catch {
-                if attempt == 0, !(error is CancellationError) {
+                if retryTransient, attempt == 0, isRetryableContactProfileError(error) {
                     Logger.warn(
                         "Retrying contact profile resolution for '\(PubkyPublicKeyFormat.redacted(prefixedKey))' after transient error: \(error)",
                         context: "ContactsManager"
                     )
-                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    try await Task.sleep(nanoseconds: 250_000_000)
                     continue
                 }
 
@@ -639,6 +653,16 @@ class ContactsManager: ObservableObject {
         }
 
         throw PubkyServiceError.profileNotFound
+    }
+
+    private nonisolated static func isRetryableContactProfileError(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return false
+        }
+        if case .profileNotFound? = error as? PubkyServiceError {
+            return false
+        }
+        return true
     }
 
     private nonisolated static func relevantReceiverPaths(for publicKey: String) async throws -> [String] {
