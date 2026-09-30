@@ -54,6 +54,9 @@ class PubkyProfileManager: ObservableObject {
     @Published private(set) var isProfileSetupPending: Bool
     /// Public profiles found for the Pubky Ring rows on the choice screen, keyed by normalized pubky. Display-only.
     @Published private(set) var ringIdentityProfiles: [String: PubkyProfile] = [:]
+    /// Covers a Ring adoption from before its reference is written, which already makes `hasExistingIdentity` true, until
+    /// it succeeds, fails or is cancelled.
+    @Published private(set) var isAdoptingRingIdentity = false
 
     private var isSignupInFlight = false
     private var initializationTask: Task<Void, Never>?
@@ -427,6 +430,7 @@ class PubkyProfileManager: ObservableObject {
         Self.beginSessionMutation()
         defer {
             Self.isRingAdoptionInFlight = false
+            isAdoptingRingIdentity = false
             Self.endSessionMutation()
         }
         let sourceApp = SharedPubkyKeychain.ringSourceApp
@@ -435,6 +439,7 @@ class PubkyProfileManager: ObservableObject {
         }
 
         let previousAdoptedIdentity = AdoptedPubkyReference.current
+        isAdoptingRingIdentity = true
         AdoptedPubkyReference.current = (sourceApp, pubky)
         let adoptedPublicKey: String
         do {
@@ -469,7 +474,13 @@ class PubkyProfileManager: ObservableObject {
         let adoptionRevision = Self.sessionRevision
         // Read only after sign-in: when lookups are contended, the tapped row's result lands after the tap. Only a found
         // row profile for this key is reused; anything else takes the fetch that decides profile setup.
-        var adoptedProfile = PubkyPublicKeyFormat.normalized(adoptedPublicKey).flatMap { ringIdentityProfiles[$0] }
+        let rowKey = PubkyPublicKeyFormat.normalized(adoptedPublicKey)
+        var adoptedProfile = rowKey.flatMap { ringIdentityProfiles[$0] }
+        if adoptedProfile == nil, let rowKey, let lookup = ringIdentityLookups[rowKey], !lookup.task.isCancelled {
+            // The row's lookup is already ahead of a fresh fetch for the same key.
+            await lookup.task.value
+            adoptedProfile = ringIdentityProfiles[rowKey]
+        }
         let reusesRowProfile = PubkyPublicKeyFormat.matches(adoptedProfile?.publicKey, adoptedPublicKey)
         if !reusesRowProfile {
             adoptedProfile = if let fetchProfile {
@@ -1158,6 +1169,8 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func clearAuthenticatedState(clearCachedProfile: Bool = true) {
+        // Automatic recovery also lands here while nothing is signed in, which must not discard the choice rows.
+        let wasAuthenticated = isAuthenticated
         invalidateProfileLoads()
         publicKey = nil
         profile = nil
@@ -1165,7 +1178,9 @@ class PubkyProfileManager: ObservableObject {
         if clearCachedProfile {
             clearCachedProfileMetadata()
         }
-        clearRingIdentityProfiles()
+        if wasAuthenticated {
+            clearRingIdentityProfiles()
+        }
     }
 
     private func activeSessionSecret() throws -> String {

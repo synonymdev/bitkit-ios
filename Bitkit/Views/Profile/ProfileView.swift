@@ -5,12 +5,25 @@ struct ProfileDestinationView: View {
 
     let hasSeenIntro: Bool
 
-    var body: some View {
+    /// Adopting a Pubky Ring key counts as an existing identity before sign-in finishes, so the choice screen stays up
+    /// until adoption settles instead of swapping to an empty profile mid-sign-in.
+    static func destination(for pubkyProfile: PubkyProfileManager, hasSeenIntro: Bool) -> Route {
+        if pubkyProfile.isAdoptingRingIdentity {
+            return .pubkyChoice
+        }
         if pubkyProfile.hasExistingIdentity {
+            return .profile
+        }
+        return hasSeenIntro ? .pubkyChoice : .profileIntro
+    }
+
+    var body: some View {
+        switch Self.destination(for: pubkyProfile, hasSeenIntro: hasSeenIntro) {
+        case .profile:
             ProfileView()
-        } else if hasSeenIntro {
+        case .pubkyChoice:
             PubkyChoiceView()
-        } else {
+        default:
             ProfileIntroView()
         }
     }
