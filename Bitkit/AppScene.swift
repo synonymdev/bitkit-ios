@@ -207,6 +207,11 @@ struct PaykitPaymentRequestPollingSchedule {
 struct AppScene: View {
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
 
+    static func shouldRetryNodeStart(state: NodeLifecycleState, isConnected: Bool, walletExists: Bool?) -> Bool {
+        guard isConnected, walletExists == true, case .errorStarting = state else { return false }
+        return true
+    }
+
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject private var session: SessionManager
 
@@ -1058,6 +1063,13 @@ struct AppScene: View {
                 if retryPendingWalletRestoreIfNeeded() {
                     return
                 }
+                if Self.shouldRetryNodeStart(
+                    state: wallet.nodeLifecycleState,
+                    isConnected: network.isConnected,
+                    walletExists: wallet.walletExists
+                ) {
+                    restartNode(reason: "App returned to foreground")
+                }
                 Task {
                     if pubkyProfile.isInitialized {
                         await pubkyProfile.checkAdoptedSource()
@@ -1542,13 +1554,17 @@ struct AppScene: View {
             // Restart node if necessary (e.g. create/restore was skipped due to offline)
             switch wallet.nodeLifecycleState {
             case .stopped, .initializing, .errorStarting:
-                Logger.info("Network restored, retrying wallet start...", context: "AppScene")
-                Task {
-                    await startWallet()
-                }
+                restartNode(reason: "Network restored")
             default:
                 break
             }
+        }
+    }
+
+    private func restartNode(reason: String) {
+        Logger.info("\(reason), retrying wallet start...", context: "AppScene")
+        Task {
+            await startWallet()
         }
     }
 
