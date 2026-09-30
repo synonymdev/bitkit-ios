@@ -226,6 +226,64 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
+    func testRecoveryRequiredIncomingRequestUsesUnderlyingUnpaidLifecycle() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let proposal = try XCTUnwrap(PaykitPaymentRequest(
+            record: paymentRequestRecord(state: .recoveryRequired),
+            now: now
+        ))
+        let accepted = try XCTUnwrap(PaykitPaymentRequest(
+            record: paymentRequestRecord(
+                state: .recoveryRequired,
+                expiresAt: timestamp(now.addingTimeInterval(-1)),
+                acceptedEventId: "accepted"
+            ),
+            now: now
+        ))
+
+        XCTAssertEqual(proposal.lifecycleState, .proposed)
+        XCTAssertTrue(proposal.requiresAcceptance)
+        XCTAssertEqual(accepted.lifecycleState, .accepted)
+        XCTAssertFalse(accepted.requiresAcceptance)
+    }
+
+    func testRecoveryRequiredIncomingRequestRejectsTerminalOrExpiredEvidence() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let cases: [(PaymentRequestRecord, PaykitPaymentRequest.ParseFailure)] = try [
+            (
+                paymentRequestRecord(state: .recoveryRequired, expiresAt: timestamp(now)),
+                .expired
+            ),
+            (
+                paymentRequestRecord(state: .recoveryRequired, rejectedEventId: "rejected"),
+                .nonActionableState
+            ),
+            (
+                paymentRequestRecord(state: .recoveryRequired, canceledEventId: "canceled"),
+                .nonActionableState
+            ),
+            (
+                paymentRequestRecord(
+                    state: .recoveryRequired,
+                    acceptedEventId: "accepted",
+                    paymentProofs: [paymentProofRecord(
+                        endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                        kind: .lightning
+                    )]
+                ),
+                .nonActionableState
+            ),
+        ]
+
+        for (record, expectedFailure) in cases {
+            guard case let .failure(failure) = PaykitPaymentRequest.parseIncoming(record: record, now: now) else {
+                XCTFail("Expected \(record.paymentRequestId) to fail parsing")
+                continue
+            }
+            XCTAssertEqual(failure, expectedFailure)
+        }
+    }
+
     func testIncomingParseFailuresAreReasonSpecific() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let cases: [(PaymentRequestRecord, PaykitPaymentRequest.ParseFailure)] = try [
@@ -1883,6 +1941,67 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.pendingRequests, [request])
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
         XCTAssertNil(feedback.toast)
+    }
+
+    func testPendingPrivateLinkRecoverySurvivesRecoveryRefreshAndManagerRecreation() async throws {
+        let identity = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let presentationStore = PaymentRequestPresentationMemoryStore()
+        let subscriptionStore = PaymentRequestSubscriptionStateMemoryStore()
+        let manager = PaykitPaymentRequestManager(
+            service: PaykitPaymentRequestService(sdk: sdk, logWarning: { _ in }),
+            presentationStore: presentationStore,
+            subscriptionStateStore: subscriptionStore,
+            logWarning: { _ in }
+        )
+        manager.activate(identity: identity)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+        XCTAssertNotNil(IncomingPaykitPaymentRequestPresentationDispatcher.finishPendingPrivateLink(for: request, with: manager))
+
+        try await sdk.setRecords([
+            paymentRequestRecord(state: .recoveryRequired, acceptedEventId: "accepted"),
+        ])
+        await manager.refresh()
+
+        let recoveryRequest = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertEqual(recoveryRequest.lifecycleState, .accepted)
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+
+        let restoredManager = PaykitPaymentRequestManager(
+            service: PaykitPaymentRequestService(sdk: sdk, logWarning: { _ in }),
+            presentationStore: presentationStore,
+            subscriptionStateStore: subscriptionStore,
+            logWarning: { _ in }
+        )
+        restoredManager.activate(identity: identity)
+        await restoredManager.refresh()
+
+        let restoredRequest = try XCTUnwrap(restoredManager.pendingRequests.first)
+        XCTAssertEqual(restoredRequest.lifecycleState, .accepted)
+        XCTAssertTrue(restoredManager.requestsForPresentation().isEmpty)
+        XCTAssertTrue(restoredManager.requestPresentation(restoredRequest))
+        XCTAssertEqual(restoredManager.requestsForPresentation(), [restoredRequest])
+    }
+
+    func testRecoveryRequiredIncomingRequestHonorsLocalPaymentProtection() async throws {
+        let record = try paymentRequestRecord(state: .recoveryRequired, acceptedEventId: "accepted")
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let completedManager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [record]),
+            completedPaymentProofKinds: [request.id: .lightning]
+        )
+        let inFlightManager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [record]),
+            inFlightPaymentRequestIds: [request.id]
+        )
+
+        await completedManager.refresh()
+        await inFlightManager.refresh()
+
+        XCTAssertTrue(completedManager.pendingRequests.isEmpty)
+        XCTAssertTrue(inFlightManager.pendingRequests.isEmpty)
     }
 
     func testPaymentRequestDisplayOnlyShowsMovementAfterPaymentProof() async throws {
@@ -3794,6 +3913,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         proposalOutboundMessageId: UInt64? = nil,
         proposalOutboundStatus: OutboundPrivateMessageStatus? = nil,
         acceptedEventId: String? = nil,
+        rejectedEventId: String? = nil,
+        canceledEventId: String? = nil,
         paymentProofs: [PaymentProofRecord] = []
     ) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
@@ -3818,9 +3939,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             ),
             acceptedEventId: acceptedEventId,
             acceptedOutboundStatus: nil,
-            rejectedEventId: nil,
+            rejectedEventId: rejectedEventId,
             rejectedOutboundStatus: nil,
-            canceledEventId: nil,
+            canceledEventId: canceledEventId,
             canceledOutboundStatus: nil,
             conversionQuotes: [],
             paymentProofs: paymentProofs,
