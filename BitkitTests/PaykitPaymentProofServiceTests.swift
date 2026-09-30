@@ -202,6 +202,42 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(observed.count, 1)
     }
 
+    func testLightningCompletionCannotOverwriteConcurrentOnchainStart() async throws {
+        let onchainEndpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [onchainEndpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let started = PendingPaykitPaymentProof(
+            identity: identity, requestId: request.id, paymentEndpointIdentifier: onchainEndpoint,
+            kind: .onchain, paymentIdentifier: nil, proofData: nil
+        )
+        let lightningId = PaykitPaymentRequest.ID(
+            paymentRequestId: UUID().uuidString, counterparty: counterparty,
+            counterpartyReceiverPath: PaykitReceiverPath.wallet, billingPeriodStartsAt: nil
+        )
+        let lightning = PendingPaykitPaymentProof(
+            identity: identity, requestId: lightningId,
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning, paymentStarted: true, paymentIdentifier: paymentHash, proofData: nil
+        )
+        let store = SuspendedProofSaveStore(proofs: [started, lightning])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        await sdk.setSubmissionFailure(true)
+        let service = PaykitPaymentProofService(
+            sdk: sdk, store: store, attemptService: OnchainSendAttemptService(store: MemoryAttemptStore()),
+            logInfo: { _ in }, logWarning: { _ in }
+        )
+        let completion = Task { await service.completeLightningPayment(paymentHash: paymentHash, preimage: preimage) }
+        await store.waitForSuspendedSave()
+        let marking = Task { try await service.markOnchainPaymentStarted(request, address: onchainAddress) }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        await store.resumeSave()
+        await completion.value
+        try await marking.value
+        let proofs = try await store.load()
+        XCTAssertEqual(proofs.first(where: { $0.requestId == request.id })?.paymentStarted, true)
+        XCTAssertEqual(proofs.first(where: { $0.requestId == lightningId })?.proofData, preimage)
+    }
+
     private func hardwareTransaction(txid: String, sent: UInt64 = 1200) -> TransactionDetail {
         TransactionDetail(
             txid: txid, received: 100, sent: sent, net: -1100, amount: 1000, fee: 100,
@@ -1780,6 +1816,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             store: store,
             lightningPaymentLookup: PaymentProofLightningLookup(status: lightningStatus),
             hardwareTransactionLookup: hardwareLookup,
+            hardwareFollowup: { _, _ in },
             attemptService: attemptService,
             logInfo: { _ in },
             logWarning: { _ in }
@@ -2096,4 +2133,41 @@ private enum PaymentProofSdkMockError: Error {
 private enum PaymentProofStoreMockError: Error {
     case load
     case save
+}
+
+private actor SuspendedProofSaveStore: PaykitPaymentProofStoring {
+    private var proofs: [PendingPaykitPaymentProof]
+    private var suspendNext = true
+    private var saveWaiter: CheckedContinuation<Void, Never>?
+    private var startedWaiter: CheckedContinuation<Void, Never>?
+    private var suspended = false
+
+    init(proofs: [PendingPaykitPaymentProof]) {
+        self.proofs = proofs
+    }
+
+    func load() -> [PendingPaykitPaymentProof] {
+        proofs
+    }
+
+    func save(_ proofs: [PendingPaykitPaymentProof]) async {
+        if suspendNext {
+            suspendNext = false
+            suspended = true
+            startedWaiter?.resume()
+            startedWaiter = nil
+            await withCheckedContinuation { saveWaiter = $0 }
+        }
+        self.proofs = proofs
+    }
+
+    func waitForSuspendedSave() async {
+        if !suspended {
+            await withCheckedContinuation { startedWaiter = $0 }
+        }
+    }
+
+    func resumeSave() {
+        saveWaiter?.resume(); saveWaiter = nil
+    }
 }

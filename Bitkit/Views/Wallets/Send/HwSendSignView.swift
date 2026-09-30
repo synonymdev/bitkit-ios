@@ -123,6 +123,15 @@ struct HwSendSignView: View {
                     satsPerVByte: UInt64(feeRate),
                     beforeBroadcast: prepareContactPayment,
                     afterBroadcast: { result in
+                        if requestId != nil {
+                            // Save original tags before proof reconciliation can complete.
+                            // This retains metadata only; a bare Core txid is not Sent.
+                            await Self.recordPaymentResult(
+                                result, walletId: walletId, address: invoice.address, amount: amount,
+                                contactPublicKey: contactPublicKey, tags: tags, requestId: requestId,
+                                proofVerified: false
+                            )
+                        }
                         proofVerified = await completeContactPayment(result.txId)
                     }
                 )

@@ -334,8 +334,8 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(store.snapshot().count, 1)
     }
 
-    func testCallbackNodeErrorAndCancellationRetainGuardWithoutDispatch() async throws {
-        for error in [NodeError.NotRunning(message: "callback failure") as Error, CancellationError()] {
+    func testCallbackFailuresReleaseGuardWithoutDispatch() async throws {
+        for error in [NodeError.NotRunning(message: "callback failure") as Error, CancellationError(), PaykitPaymentRequestError.requestUnavailable] {
             let store = MemoryAttemptStore()
             let service = OnchainSendAttemptService(store: store)
             let node = AttemptNodeMock(result: .accepted(txid: txid))
@@ -346,11 +346,36 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                 ) { throw error }
                 XCTFail("Callback failure succeeded")
             } catch let error as OnchainSendAttemptError {
-                guard case .unresolved = error else { return XCTFail("Callback error cleared preguard") }
+                guard case .preDispatch = error else { return XCTFail("Proven callback failure was not classified before dispatch") }
             }
             XCTAssertEqual(node.calls, 0)
-            XCTAssertEqual(store.snapshot().first?.status, .pending)
+            XCTAssertTrue(store.snapshot().isEmpty)
+            _ = try await send(service, node: node)
+            XCTAssertEqual(node.calls, 1, "Safe callback release must admit a later payment")
         }
+    }
+
+    func testCallbackReleaseWriteFailureRetainsGuardWithoutDispatch() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        do {
+            _ = try await service.send(
+                using: node, address: "bcrt1qexample", amountSats: 1000,
+                satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false
+            ) {
+                store.failSave = true
+                throw CancellationError()
+            }
+            XCTFail("Callback failure succeeded")
+        } catch let error as OnchainSendAttemptError {
+            guard case .unresolved = error else { return XCTFail("Release storage failure lost the guard") }
+        }
+        XCTAssertEqual(node.calls, 0)
+        XCTAssertEqual(store.snapshot().first?.status, .pending)
+        store.failSave = false
+        do { _ = try await send(service, node: node); XCTFail("Uncleared guard allowed dispatch") } catch {}
+        XCTAssertEqual(node.calls, 0)
     }
 
     func testOnlyNodePreDispatchErrorReleasesGuardAndSaveFailureRetainsIt() async throws {

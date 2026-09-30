@@ -138,6 +138,18 @@ struct SendPendingScreen: View {
                     {
                         foundActivity = .onchain(activity)
                     }
+                    if !onchainStateUnavailable, let requestId = paykitPaymentRequestId,
+                       let identity = hardwarePaymentIdentity ?? pendingOnchainProof?.identity,
+                       let txid = pendingTransactionId,
+                       let resolution = await proofService.resolvedHardwarePayment(
+                           requestId: requestId,
+                           identity: identity,
+                           walletId: walletId,
+                           txid: txid
+                       )
+                    {
+                        applyOnchainPaymentResolution(resolution)
+                    }
                 } else if !onchainStateUnavailable {
                     do {
                         onchainAttempt = try await attemptService.unresolvedAttempt(
@@ -165,26 +177,32 @@ struct SendPendingScreen: View {
             applyOrdinarySendResolution(resolution)
         }
         .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
-            guard resolution.requestId == paykitPaymentRequestId,
-                  let identity = pubkyProfile.publicKey,
-                  PubkyPublicKeyFormat.matches(resolution.identity, identity)
+            applyOnchainPaymentResolution(resolution)
+        }
+    }
+
+    private func applyOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution) {
+        guard !ordinarySendResolved else { return }
+        guard resolution.requestId == paykitPaymentRequestId,
+              let identity = pubkyProfile.publicKey,
+              PubkyPublicKeyFormat.matches(resolution.identity, identity)
+        else { return }
+        if let walletId = pendingHardwareWalletId {
+            guard resolution.walletId == walletId,
+                  let txid = pendingTransactionId,
+                  txid.caseInsensitiveCompare(resolution.transactionId) == .orderedSame,
+                  PubkyPublicKeyFormat.matches(resolution.identity, hardwarePaymentIdentity ?? pendingOnchainProof?.identity)
             else { return }
-            if let walletId = pendingHardwareWalletId {
-                guard resolution.walletId == walletId,
-                      let txid = pendingTransactionId,
-                      txid.caseInsensitiveCompare(resolution.transactionId) == .orderedSame,
-                      PubkyPublicKeyFormat.matches(resolution.identity, hardwarePaymentIdentity ?? pendingOnchainProof?.identity)
-                else { return }
-            }
-            app.addPendingContactPaymentContext(
-                resolution.transactionId,
-                context: ContactPaymentContext(publicKey: resolution.requestId.counterparty)
-            )
-            Task {
-                await proofService.consumeOnchainPaymentResolution(resolution)
-                guard PubkyPublicKeyFormat.matches(resolution.identity, pubkyProfile.publicKey) else { return }
-                navigationPath.append(.success(paymentId: resolution.transactionId, walletId: resolution.walletId))
-            }
+        }
+        ordinarySendResolved = true
+        app.addPendingContactPaymentContext(
+            resolution.transactionId,
+            context: ContactPaymentContext(publicKey: resolution.requestId.counterparty)
+        )
+        Task {
+            await proofService.consumeOnchainPaymentResolution(resolution)
+            guard PubkyPublicKeyFormat.matches(resolution.identity, pubkyProfile.publicKey) else { return }
+            navigationPath.append(.success(paymentId: resolution.transactionId, walletId: resolution.walletId))
         }
     }
 

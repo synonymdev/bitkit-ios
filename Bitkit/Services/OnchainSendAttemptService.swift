@@ -204,7 +204,10 @@ actor OnchainSendAttemptService {
         do {
             try await beforeBroadcastAttempt()
         } catch {
-            throw OnchainSendAttemptError.unresolved
+            let callbackError = error
+            do { try clearBeforeDispatch(attemptId: attemptId) }
+            catch { throw OnchainSendAttemptError.unresolved }
+            throw OnchainSendAttemptError.preDispatch(callbackError)
         }
 
         let result: OnchainSendResult
