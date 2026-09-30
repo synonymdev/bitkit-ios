@@ -493,7 +493,16 @@ final class HwSendCoordinator {
 
             do {
                 try await beforeBroadcastAttempt()
-                isBroadcastUnresolved = true
+            } catch {
+                if pendingPayment?.hasBroadcastAttempted != true {
+                    pendingPayment = nil
+                }
+                throw error
+            }
+
+            isBroadcastUnresolved = true
+            pendingPayment?.hasBroadcastAttempted = true
+            do {
                 let result = try await signer.broadcastSignedFunding(signed)
                 await afterBroadcast(result)
                 return result
@@ -579,5 +588,6 @@ final class HwSendCoordinator {
         let request: PaymentRequest
         let signedTx: HwFundingSignedTx
         var isPreparedForBroadcast = false
+        var hasBroadcastAttempted = false
     }
 }

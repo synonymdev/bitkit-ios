@@ -659,9 +659,10 @@ actor PaykitSdkService {
                     ($0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate).map { $0 > now } ?? true)
             }
             guard activeSubscriptions.isEmpty else {
-                let latestEndDate = activeSubscriptions.compactMap {
+                let endDates = activeSubscriptions.compactMap {
                     $0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate)
-                }.max()
+                }
+                let latestEndDate = endDates.count == activeSubscriptions.count ? endDates.max() : nil
                 throw PubkyServiceError.activeSubscription(endsAt: latestEndDate)
             }
             for peer in peers where peer.state == .linked {

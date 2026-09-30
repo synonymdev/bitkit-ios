@@ -62,6 +62,55 @@ final class PaykitContactLifecycleTests: XCTestCase {
         }
     }
 
+    func testDeletionDateRequiresEveryActiveSubscriptionToHaveValidEnd() async throws {
+        let fixedEndTimestamp = "2099-02-01T00:00:00Z"
+        let laterEndTimestamp = "2100-02-01T00:00:00Z"
+
+        func subscription(publicKey: String, endsAt: String?) throws -> PaymentRequestRecord {
+            let terms = try PaymentRequestTerms(
+                amount: PaymentRequestAmount(value: "0.001", asset: "btc"),
+                paymentReference: PaymentReference(text: "subscription"), proposalExpiresAt: nil,
+                recurrence: PaymentRequestRecurrence(every: 1, unit: "month", startsAt: "2026-01-01T00:00:00Z",
+                                                     anchor: "2026-01-01T00:00:00Z", endsAt: endsAt),
+                acceptedPaymentEndpointIdentifiers: ["lightning:bolt11"], conversion: nil, paymentDeadline: nil,
+                metadata: PrivateJsonObject(text: "{}")
+            )
+            return PaymentRequestRecord(
+                counterparty: publicKey, counterpartyReceiverPath: PaykitReceiverPath.server,
+                paymentRequestId: UUID().uuidString, localRole: .payer, state: .activeRecurring,
+                proposalStreamItemId: nil, proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
+                proposalEventId: nil, terms: terms, acceptedEventId: nil, acceptedOutboundStatus: nil,
+                rejectedEventId: nil, rejectedOutboundStatus: nil, canceledEventId: nil, canceledOutboundStatus: nil,
+                conversionQuotes: [], paymentProofs: [], lastStreamItemId: nil, lastOutboundMessageId: nil,
+                lastOutboundStatus: nil, lastEventAt: nil, invalidReason: nil
+            )
+        }
+
+        let cases: [(endsAt: [String?], malformedIndex: Int?, expectedEnd: String?)] = [
+            ([fixedEndTimestamp, nil], nil, nil),
+            ([fixedEndTimestamp, fixedEndTimestamp], 1, nil),
+            ([fixedEndTimestamp, laterEndTimestamp], nil, laterEndTimestamp),
+        ]
+
+        for testCase in cases {
+            let sdk = ContactLifecycleSdk(noPointer: .init())
+            sdk.requests = try testCase.endsAt.map { try subscription(publicKey: sdk.publicKey, endsAt: $0) }
+            if let malformedIndex = testCase.malformedIndex {
+                sdk.requests[malformedIndex].terms?.recurrence?.endsAt = "not-a-date"
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+
+            do {
+                _ = try await service.removeContact(publicKey: sdk.publicKey)
+                XCTFail("Expected active subscriptions to prevent deletion")
+            } catch let PubkyServiceError.activeSubscription(endsAt) {
+                XCTAssertEqual(endsAt, testCase.expectedEnd.flatMap(PaykitPaymentRequest.parseDate))
+            }
+            XCTAssertNotNil(sdk.record)
+            XCTAssertTrue(sdk.events.isEmpty)
+        }
+    }
+
     func testFailedBlockKeepsContactAvailableForDeletionRetry() async throws {
         let sdk = ContactLifecycleSdk(noPointer: .init())
         sdk.failBlock = true

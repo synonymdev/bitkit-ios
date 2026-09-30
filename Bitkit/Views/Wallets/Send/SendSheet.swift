@@ -810,12 +810,7 @@ struct SendSheet: View {
 
     private func authorizeHardwareContactPayment() async throws {
         guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
-        do {
-            try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
-        } catch {
-            await PaykitPaymentProofService.shared.failOnchainPayment(request)
-            throw error
-        }
+        try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
     }
 
     private func completeHardwareContactPayment(txid: String) async {
