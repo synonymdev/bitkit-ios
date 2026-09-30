@@ -739,6 +739,12 @@ struct SendSheet: View {
                 },
                 cancelContactPayment: {
                     await cancelHardwareContactPayment(context: contactContext)
+                },
+                releaseContactPaymentBeforeDispatch: {
+                    guard let request = contactContext?.incomingPaymentRequest, let walletId, let paymentIdentity else { return }
+                    await PaykitPaymentProofService.shared.cancelHardwarePaymentBeforeDispatch(
+                        request, paymentIdentity: paymentIdentity, walletId: walletId
+                    )
                 }
             )
         case .feeRate:

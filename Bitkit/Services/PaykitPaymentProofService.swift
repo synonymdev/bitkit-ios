@@ -57,6 +57,8 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var onchainWalletId: String?
     var onchainMatchingTransactionIdsBeforeAttempt: Set<String>?
     var onchainAcceptanceVerified: Bool?
+    /// Device-local acknowledgement: backup restore reruns local activity proof.
+    var onchainLocalFollowupComplete: Bool?
 
     var hasUnsupportedOnchainWallet: Bool {
         kind == .onchain && onchainWalletId != nil && onchainWalletId != WalletScope.default
@@ -75,7 +77,8 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         onchainAmountSats: UInt64? = nil,
         onchainWalletId: String? = nil,
         onchainMatchingTransactionIdsBeforeAttempt: Set<String>? = nil,
-        onchainAcceptanceVerified: Bool? = false
+        onchainAcceptanceVerified: Bool? = false,
+        onchainLocalFollowupComplete: Bool? = false
     ) {
         self.identity = identity
         self.requestId = requestId
@@ -90,6 +93,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         self.onchainWalletId = onchainWalletId
         self.onchainMatchingTransactionIdsBeforeAttempt = onchainMatchingTransactionIdsBeforeAttempt
         self.onchainAcceptanceVerified = onchainAcceptanceVerified
+        self.onchainLocalFollowupComplete = onchainLocalFollowupComplete
     }
 }
 
@@ -461,7 +465,27 @@ actor PaykitPaymentProofService {
                 guard let saved else { return false }
                 completed = saved
             }
-            try await hardwareFollowup(completed, detail)
+            if completed.onchainLocalFollowupComplete != true {
+                try await hardwareFollowup(completed, detail)
+                let followedUp: PendingPaykitPaymentProof? = try await mutationLock.withLock {
+                    var proofs = try await loadProofs()
+                    if let index = proofs.firstIndex(of: completed) {
+                        proofs[index].onchainLocalFollowupComplete = true
+                        try await persist(proofs)
+                        return proofs[index]
+                    }
+                    // Another reconciliation may have acknowledged this exact original proof.
+                    return proofs.first {
+                        PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
+                            $0.onchainWalletId == walletId && $0.kind == .onchain && $0.paymentStarted &&
+                            $0.onchainAcceptanceVerified == true && $0.onchainLocalFollowupComplete == true &&
+                            $0.paymentIdentifier?.caseInsensitiveCompare(txid) == .orderedSame &&
+                            $0.proofData?.caseInsensitiveCompare(txid) == .orderedSame
+                    }
+                }
+                guard let followedUp else { return false }
+                completed = followedUp
+            }
             if deliverInBackground {
                 submitInBackground(completed)
             } else {
@@ -496,7 +520,9 @@ actor PaykitPaymentProofService {
         let feeRate = metadata?.feeRate ?? existing?.feeRate ?? UInt64(observed?.feeRate ?? 0)
         guard await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
             txid: txid, address: address, amount: amount, fee: fee, feeRate: UInt32(clamping: feeRate),
-            contact: proof.requestId.counterparty, walletId: walletId
+            // A saved Sent row may already have a later user contact edit, including deletion.
+            // Preserve it even if the proof acknowledgement write needs to be retried.
+            contact: existing?.txType == .sent ? existing?.contact : proof.requestId.counterparty, walletId: walletId
         ) else { throw OnchainSendAttemptError.localFollowupNotSaved }
         if let tags = metadata?.tags, !tags.isEmpty {
             try await CoreService.shared.activity.appendTags(toActivity: txid, tags, walletId: walletId)
@@ -680,6 +706,18 @@ actor PaykitPaymentProofService {
                 $0.paymentStarted &&
                 $0.paymentIdentifier == nil &&
                 $0.proofData == nil
+        }
+    }
+
+    func cancelHardwarePaymentBeforeDispatch(_ request: PaykitPaymentRequest, paymentIdentity: String, walletId: String) async {
+        guard let identity = PubkyPublicKeyFormat.normalized(paymentIdentity), walletId != WalletScope.default,
+              hardwareTransactionLookup.hasWallet(walletId: walletId) else { return }
+        // Called only by the coordinator after authorization fails before its first native dispatch.
+        // A profile switch does not change ownership of the original prepared operation.
+        await removeProofs {
+            PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == request.id &&
+                $0.kind == .onchain && $0.onchainWalletId == walletId && $0.paymentStarted &&
+                $0.paymentIdentifier == nil && $0.proofData == nil && $0.onchainAcceptanceVerified != true
         }
     }
 

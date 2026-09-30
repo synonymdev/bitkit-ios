@@ -14,6 +14,48 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
     private let hardwareWalletId = "trezor:original-ios-wallet"
 
+    func testHardwarePredispatchReleaseMatchesOnlyOriginalProofAndFailsClosedOnSave() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let otherIdentity = "pubky" + String(repeating: "x", count: 52)
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: otherIdentity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+        func proof(payer: String, wallet: String, txid: String? = nil, verified: Bool = false,
+                   requestId: PaykitPaymentRequest.ID? = nil) -> PendingPaykitPaymentProof
+        {
+            PendingPaykitPaymentProof(identity: payer, requestId: requestId ?? request.id, paymentEndpointIdentifier: endpoint,
+                                      kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: verified ? txid : nil,
+                                      onchainWalletId: wallet, onchainAcceptanceVerified: verified)
+        }
+        let otherRequest = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(
+            endpoints: [endpoint], paymentRequestId: UUID().uuidString
+        ), now: Date()))
+        let original = proof(payer: identity, wallet: hardwareWalletId)
+        let retained = [proof(payer: otherIdentity, wallet: hardwareWalletId),
+                        proof(payer: identity, wallet: "trezor:other-wallet"),
+                        proof(payer: identity, wallet: hardwareWalletId, requestId: otherRequest.id),
+                        proof(payer: identity, wallet: hardwareWalletId, verified: true),
+                        proof(payer: identity, wallet: hardwareWalletId, txid: String(repeating: "ab", count: 32)),
+                        proof(payer: identity, wallet: hardwareWalletId, txid: String(repeating: "cd", count: 32), verified: true)]
+        await store.seed([original] + retained)
+        await service.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: identity, walletId: "missing-wallet")
+        let unchanged = await store.snapshot()
+        XCTAssertEqual(unchanged, [original] + retained)
+        await store.failNextSave()
+        await service.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: identity, walletId: hardwareWalletId)
+        let failedClear = await store.snapshot()
+        XCTAssertEqual(failedClear, [original] + retained, "Failed durable clear must preserve every original guard")
+        await service.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: identity, walletId: hardwareWalletId)
+        let afterClear = await store.snapshot()
+        XCTAssertEqual(
+            afterClear,
+            retained,
+            "Current profile must not replace the captured payer; candidate/verified/other wallet proofs stay guarded"
+        )
+    }
+
     func testHardwareCompletionRetainsCapturedPayerAfterProfileSwitch() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint], paymentRequestId: UUID().uuidString)

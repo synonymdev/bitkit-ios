@@ -331,6 +331,16 @@ actor OnchainSendAttemptService {
             }
         }
         guard attempt.status == .accepted else { return nil }
+        if attempt.localFollowupComplete {
+            // A delayed native event must not replay metadata/contact writes or publish a new resolution.
+            guard observedTxid == nil else { return nil }
+            guard let saved = try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid),
+                  saved.txId.caseInsensitiveCompare(txid) == .orderedSame, saved.txType == .sent
+            else { throw OnchainSendAttemptError.localFollowupNotSaved }
+            return OnchainSendLocalResolution(
+                attemptId: attempt.id, walletId: walletId, txid: txid, amountSats: saved.value, contact: saved.contact, activity: saved
+            )
+        }
         let activity = try await localFollowup.save(attempt)
         try acknowledgeLocalFollowup(txid: txid)
         let resolution = OnchainSendLocalResolution(

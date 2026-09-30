@@ -16,6 +16,7 @@ struct HwSendSignView: View {
     let authorizeContactPayment: () async throws -> Void
     let completeContactPayment: (String) async -> Bool
     let cancelContactPayment: () async -> Void
+    var releaseContactPaymentBeforeDispatch: () async -> Void = {}
     @State private var signingTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
 
@@ -124,6 +125,7 @@ struct HwSendSignView: View {
                     satsPerVByte: UInt64(feeRate),
                     beforeFirstBroadcast: prepareContactPayment,
                     beforeBroadcastAttempt: authorizeContactPayment,
+                    onFirstBroadcastAuthorizationFailure: releaseContactPaymentBeforeDispatch,
                     afterBroadcast: { result in
                         if requestId != nil {
                             // Save original tags before proof reconciliation can complete.

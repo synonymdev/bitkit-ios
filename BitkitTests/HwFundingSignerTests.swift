@@ -1,11 +1,55 @@
 @testable import Bitkit
 import BitkitCore
+import Paykit
 import XCTest
 
 /// Device-signing orchestration coverage for `HwFundingSigner`, exercised in isolation from
 /// `TransferViewModel` via the `HwTransferFunding` / `HwTransferConnecting` mocks.
 @MainActor
 final class HwFundingSignerTests: XCTestCase {
+    private func paymentRequestRecord(
+        endpoints: [String] = [PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue],
+        paymentProofs: [PaymentProofRecord] = [],
+        paymentRequestId: String = "550e8400-e29b-41d4-a716-446655440000",
+        state: PaymentRequestLifecycleState = .proposed,
+        recurrence: PaymentRequestRecurrence? = nil
+    ) throws -> PaymentRequestRecord {
+        try PaymentRequestRecord(
+            counterparty: "pubky" + String(repeating: "y", count: 52),
+            counterpartyReceiverPath: PaykitReceiverPath.wallet,
+            paymentRequestId: paymentRequestId,
+            localRole: .payer,
+            state: state,
+            proposalStreamItemId: 1,
+            proposalOutboundMessageId: nil,
+            proposalOutboundStatus: nil,
+            proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
+            terms: PaymentRequestTerms(
+                amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
+                paymentReference: PaymentReference(text: "invoice-123"),
+                proposalExpiresAt: nil,
+                recurrence: recurrence,
+                acceptedPaymentEndpointIdentifiers: endpoints,
+                conversion: nil,
+                paymentDeadline: nil,
+                metadata: PrivateJsonObject(text: "{}")
+            ),
+            acceptedEventId: nil,
+            acceptedOutboundStatus: nil,
+            rejectedEventId: nil,
+            rejectedOutboundStatus: nil,
+            canceledEventId: nil,
+            canceledOutboundStatus: nil,
+            conversionQuotes: [],
+            paymentProofs: paymentProofs,
+            lastStreamItemId: 1,
+            lastOutboundMessageId: nil,
+            lastOutboundStatus: nil,
+            lastEventAt: "2027-01-15T08:00:00Z",
+            invalidReason: nil
+        )
+    }
+
     private func makeSigner(
         funding: MockHwFunding,
         connecting: MockHwConnecting,
@@ -247,7 +291,7 @@ final class HwFundingSignerTests: XCTestCase {
             let connecting = MockHwConnecting()
             let manager = HwWalletManager()
             let coordinator = HwSendCoordinator(
-                walletId: "trezor:wallet",
+                walletId: "trezor:original-ios-wallet",
                 signerFactory: { [self] _, address, satsPerVByte in
                     makeSigner(
                         funding: funding,
@@ -257,10 +301,29 @@ final class HwFundingSignerTests: XCTestCase {
                     )
                 }
             )
+            let identity = "pubky" + String(repeating: "z", count: 52)
+            let request = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(
+                endpoints: [PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue]
+            ), now: Date()))
+            let store = PaymentProofMemoryStore()
+            let sdk = PaymentProofSdkMock(identity: identity, records: [])
+            let proofService = PaykitPaymentProofService(sdk: sdk, store: store, logInfo: { _ in }, logWarning: { _ in })
+            var releases = 0
+            let releaseBeforeDispatch: () async -> Void = {
+                releases += 1
+                await proofService.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: identity, walletId: "trezor:original-ios-wallet")
+            }
             var preparationCalls = 0
             var authorizationCalls = 0
             var isPaymentAllowed = true
-            let preparePayment: () async throws -> Void = { preparationCalls += 1 }
+            let preparePayment: () async throws -> Void = {
+                preparationCalls += 1
+                await store.seed([PendingPaykitPaymentProof(
+                    identity: identity, requestId: request.id,
+                    paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+                    kind: .onchain, paymentStarted: true, paymentIdentifier: nil, proofData: nil, onchainWalletId: "trezor:original-ios-wallet"
+                )])
+            }
             let authorizePayment: () async throws -> Void = {
                 authorizationCalls += 1
                 if !isPaymentAllowed {
@@ -276,7 +339,8 @@ final class HwFundingSignerTests: XCTestCase {
                     sats: 42000,
                     satsPerVByte: 2,
                     beforeFirstBroadcast: preparePayment,
-                    beforeBroadcastAttempt: authorizePayment
+                    beforeBroadcastAttempt: authorizePayment,
+                    onFirstBroadcastAuthorizationFailure: releaseBeforeDispatch
                 )
             }
 
@@ -289,13 +353,18 @@ final class HwFundingSignerTests: XCTestCase {
                     sats: 42000,
                     satsPerVByte: 2,
                     beforeFirstBroadcast: preparePayment,
-                    beforeBroadcastAttempt: authorizePayment
+                    beforeBroadcastAttempt: authorizePayment,
+                    onFirstBroadcastAuthorizationFailure: releaseBeforeDispatch
                 )
             }
 
             XCTAssertTrue(coordinator.hasPendingBroadcast)
             XCTAssertEqual(funding.broadcastCalls, 1)
 
+            let durableProofs = await store.snapshot()
+            XCTAssertEqual(durableProofs.count, 1)
+            XCTAssertEqual(durableProofs.first?.paymentStarted, true, "Denied attempted retry must retain its durable original proof")
+            XCTAssertEqual(releases, 0, "Attempted retry incorrectly invoked pre-dispatch proof release")
             isPaymentAllowed = true
             _ = try await coordinator.signAndBroadcast(
                 manager: manager,
@@ -303,7 +372,8 @@ final class HwFundingSignerTests: XCTestCase {
                 sats: 42000,
                 satsPerVByte: 2,
                 beforeFirstBroadcast: preparePayment,
-                beforeBroadcastAttempt: authorizePayment
+                beforeBroadcastAttempt: authorizePayment,
+                onFirstBroadcastAuthorizationFailure: releaseBeforeDispatch
             )
 
             XCTAssertEqual(preparationCalls, 1)
@@ -314,11 +384,11 @@ final class HwFundingSignerTests: XCTestCase {
         }
     }
 
-    func testCoordinatorDeniedFirstAttemptDropsPreparedPayment() async {
+    func testCoordinatorDeniedFirstAttemptDropsPreparedPayment() async throws {
         let funding = MockHwFunding()
         let manager = HwWalletManager()
         let coordinator = HwSendCoordinator(
-            walletId: "trezor:wallet",
+            walletId: "trezor:original-ios-wallet",
             signerFactory: { [self] _, address, satsPerVByte in
                 makeSigner(
                     funding: funding,
@@ -329,19 +399,52 @@ final class HwFundingSignerTests: XCTestCase {
             }
         )
 
+        let identity = "pubky" + String(repeating: "z", count: 52)
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(
+            endpoints: [PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue]
+        ), now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [])
+        let proofService = PaykitPaymentProofService(sdk: sdk, store: store,
+                                                     hardwareTransactionLookup: PaymentProofHardwareLookup(result: .failure(MockHwFunding
+                                                             .TestError())), logInfo: { _ in }, logWarning: { _ in })
+        let originalProof = PendingPaykitPaymentProof(
+            identity: identity, requestId: request.id,
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+            kind: .onchain, paymentStarted: true, paymentIdentifier: nil, proofData: nil,
+            onchainAddress: "bc1qtest", onchainAmountSats: 42000, onchainWalletId: "trezor:original-ios-wallet"
+        )
         await assertThrowsAsync {
             _ = try await coordinator.signAndBroadcast(
                 manager: manager,
                 address: "bc1qtest",
                 sats: 42000,
                 satsPerVByte: 2,
-                beforeBroadcastAttempt: { throw MockHwFunding.TestError() }
+                beforeFirstBroadcast: {
+                    try await proofService.prepare(
+                        request: request,
+                        paymentEndpointIdentifier: originalProof.paymentEndpointIdentifier,
+                        kind: .onchain
+                    )
+                    try await proofService.markOnchainPaymentStarted(
+                        request,
+                        address: "bc1qtest",
+                        hardwareWalletId: "trezor:original-ios-wallet",
+                        paymentIdentity: identity
+                    )
+                },
+                beforeBroadcastAttempt: { throw MockHwFunding.TestError() },
+                onFirstBroadcastAuthorizationFailure: {
+                    await proofService.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: identity, walletId: "trezor:original-ios-wallet")
+                }
             )
         }
 
         XCTAssertEqual(funding.signCalls, 1)
         XCTAssertEqual(funding.broadcastCalls, 0)
         XCTAssertFalse(coordinator.hasPendingBroadcast)
+        let durableProofs = await store.snapshot()
+        XCTAssertTrue(durableProofs.isEmpty, "Denied first attempt retained its started durable hardware proof despite zero dispatch")
     }
 
     func testCoordinatorCancelDropsSignedPaymentAfterFailedBroadcast() async throws {
