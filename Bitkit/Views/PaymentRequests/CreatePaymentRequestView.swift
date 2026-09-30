@@ -48,8 +48,11 @@ struct RequestOrPayView: View {
     let publicKey: String
     let onRequest: (PaykitPaymentRequestTarget) -> Void
 
+    @State private var isPayLoading = false
+    @State private var payTask: Task<Void, Never>?
+
     private var target: PaykitPaymentRequestTarget? {
-        paymentRequests.eligibleTargets.first { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
+        paymentRequests.eligibleTarget(publicKey: publicKey)
     }
 
     private var contactName: String {
@@ -84,14 +87,17 @@ struct RequestOrPayView: View {
                 CustomButton(
                     title: t("common__pay"),
                     variant: .secondary,
-                    icon: Image("arrow-up").resizable().frame(width: 16, height: 16)
+                    icon: Image("arrow-up").resizable().frame(width: 16, height: 16),
+                    isLoading: isPayLoading
                 ) {
-                    await payContact()
+                    let task = Task { await payContact() }
+                    payTask = task
+                    await task.value
                 }
                 CustomButton(
                     title: t("wallet__payment_request_request"),
                     icon: Image("arrow-down").resizable().frame(width: 16, height: 16),
-                    isDisabled: target == nil
+                    isDisabled: target == nil || isPayLoading
                 ) {
                     if let target {
                         onRequest(target)
@@ -103,10 +109,15 @@ struct RequestOrPayView: View {
         .sheetBackground()
         .navigationBarHidden(true)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("RequestOrPay")
+        .accessibilityIdentifier("RequestOrPaySheet")
+        .onDisappear {
+            payTask?.cancel()
+        }
     }
 
     private func payContact() async {
+        isPayLoading = true
+        defer { isPayLoading = false }
         await PaymentNavigationHelper.openPrivateContactPayment(
             publicKey: publicKey,
             app: app,

@@ -440,6 +440,7 @@ struct PaykitSubscription: Identifiable, Hashable {
     let note: String?
     let createdAt: Date?
     let proposalExpiresAt: Date?
+    let hasPaymentDeadline: Bool
     let recurrence: PaykitSubscriptionRecurrence
     let metadata: PaykitSubscriptionMetadata
     let acceptedPaymentEndpointIdentifiers: [String]
@@ -475,6 +476,7 @@ struct PaykitSubscription: Identifiable, Hashable {
 
     func isProposalActionable(at date: Date) -> Bool {
         isProposalVisible(at: date) &&
+            !hasPaymentDeadline &&
             recurrence.unit.isSupported &&
             recurrence.canMaterializePeriods &&
             !acceptedPaymentEndpointIdentifiers.isEmpty
@@ -555,6 +557,7 @@ struct PaykitSubscription: Identifiable, Hashable {
         note = PaykitPaymentRequest.note(from: terms.metadata).map { String($0.prefix(256)) }
         createdAt = record.lastEventAt.flatMap(PaykitPaymentRequest.parseDate)
         self.proposalExpiresAt = proposalExpiresAt
+        hasPaymentDeadline = terms.paymentDeadline != nil
         self.recurrence = recurrence
         metadata = PaykitSubscriptionMetadata(terms.metadata)
         acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
@@ -594,7 +597,7 @@ struct PaykitSubscription: Identifiable, Hashable {
     }
 
     func paymentDueOnAcceptance(at date: Date) -> PaykitPaymentRequest? {
-        guard isPayer else { return nil }
+        guard isPayer, !hasPaymentDeadline else { return nil }
         guard let period = recurrence.periods(through: date, acceptedAt: PaykitPreciseInstant(date: date)).first else { return nil }
         return PaykitPaymentRequest(subscription: self, billingPeriod: period, lifecycleState: .activeRecurring)
     }
@@ -719,6 +722,7 @@ actor PaykitSubscriptionNotificationScheduler {
             .filter {
                 $0.isPayer &&
                     $0.isActive(at: now) &&
+                    !$0.hasPaymentDeadline &&
                     $0.recurrence.unit.isSupported &&
                     acceptedAt[$0.id] != nil
             }

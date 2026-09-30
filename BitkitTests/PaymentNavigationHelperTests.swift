@@ -256,6 +256,8 @@ final class PaymentNavigationHelperTests: XCTestCase {
                 proposalExpiresAt: nil,
                 recurrence: nil,
                 acceptedPaymentEndpointIdentifiers: [endpointIdentifier],
+                conversion: nil,
+                paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
             ),
             acceptedEventId: nil,
@@ -264,6 +266,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
             canceledOutboundStatus: nil,
+            conversionQuotes: [],
             paymentProofs: [],
             lastStreamItemId: 1,
             lastOutboundMessageId: nil,
