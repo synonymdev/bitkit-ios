@@ -971,6 +971,8 @@ actor PaykitPaymentProofService {
                     proof: Paykit.PaymentProofSubmission(
                         billingPeriod: pendingProof.billingPeriod?.sdkValue,
                         paymentEndpointIdentifier: pendingProof.paymentEndpointIdentifier,
+                        allowanceId: nil,
+                        conversionQuoteId: nil,
                         proof: Paykit.PrivateJsonObject(text: proofText)
                     )
                 )

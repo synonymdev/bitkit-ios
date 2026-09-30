@@ -731,6 +731,9 @@ struct SendSheet: View {
                         paymentIdentity: paymentIdentity
                     )
                 },
+                authorizeContactPayment: {
+                    try await authorizeHardwareContactPayment(context: contactContext, paymentIdentity: paymentIdentity)
+                },
                 completeContactPayment: { txid in
                     await completeHardwareContactPayment(context: contactContext, walletId: walletId, paymentIdentity: paymentIdentity, txid: txid)
                 },
@@ -826,7 +829,6 @@ struct SendSheet: View {
         guard let context,
               let request = context.incomingPaymentRequest
         else { return }
-        guard !paykitPaymentRequestManager.isApprovedForPayment(request) else { return }
 
         try await paykitPaymentRequestManager.prepareForPayment(request) {
             guard let privatePaymentContext = context.privatePaymentContext else { return }
@@ -867,6 +869,13 @@ struct SendSheet: View {
             await PaykitPaymentProofService.shared.cancelPreparation(request)
             throw error
         }
+    }
+
+    private func authorizeHardwareContactPayment(context: ContactPaymentContext?, paymentIdentity: String?) async throws {
+        guard let request = context?.incomingPaymentRequest else { return }
+        guard PubkyPublicKeyFormat.matches(pubkyProfile.publicKey, paymentIdentity)
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
     }
 
     private func completeHardwareContactPayment(context: ContactPaymentContext?, walletId: String?, paymentIdentity: String?,

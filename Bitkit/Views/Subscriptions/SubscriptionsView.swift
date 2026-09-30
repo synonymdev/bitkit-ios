@@ -657,7 +657,7 @@ struct SubscriptionSheet: View {
                 BodyMText(t("subscriptions__unsupported_description"), textColor: .white64)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 16)
-            } else if subscription.acceptedPaymentEndpointIdentifiers.isEmpty {
+            } else if subscription.hasPaymentDeadline || subscription.acceptedPaymentEndpointIdentifiers.isEmpty {
                 BodyMText(t("subscriptions__unsupported_payment_description"), textColor: .white64)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 16)
