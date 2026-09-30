@@ -25,6 +25,18 @@ struct PubkyChoiceView: View {
         !hasRingIdentities
     }
 
+    /// Equals the manager's row profiles, so a row whose lookup now finds nothing drops its old name and avatar. While an
+    /// adoption runs it only adds: adopting clears the manager's cache while this screen is still up, and rows must not
+    /// flash back to bare keys before navigation.
+    static func mirroredRingProfiles(
+        _ shown: [String: PubkyProfile],
+        found: [String: PubkyProfile],
+        isAdopting: Bool
+    ) -> [String: PubkyProfile] {
+        guard isAdopting else { return found }
+        return shown.merging(found) { _, latest in latest }
+    }
+
     /// Only the other rows' lookups stop, since they would compete with sign-in while the tapped row's can still land in
     /// time to be reused. A failed adopt reloads the rows so none is left on a bare key.
     @MainActor
@@ -76,9 +88,7 @@ struct PubkyChoiceView: View {
             reloadIdentities()
         }
         .onReceive(pubkyProfile.$ringIdentityProfiles) { found in
-            // Only ever add: adopting clears the manager's cache while this screen is still up, and rows must not
-            // flash back to bare keys before navigation.
-            ringProfiles.merge(found) { _, latest in latest }
+            ringProfiles = Self.mirroredRingProfiles(ringProfiles, found: found, isAdopting: pubkyProfile.isAdoptingRingIdentity)
         }
     }
 

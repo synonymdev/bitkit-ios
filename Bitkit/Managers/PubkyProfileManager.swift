@@ -499,11 +499,47 @@ class PubkyProfileManager: ObservableObject {
             commitProfile(adoptedProfile)
         }
         if reusesRowProfile {
-            // A row profile can be from earlier in the session. The refresh runs behind navigation, never decides profile
-            // setup, and is dropped if a newer profile write lands first.
-            Task { await loadProfile() }
+            // A row profile can be from earlier in the session, so it is refreshed behind navigation.
+            let generation = profileWriteGeneration
+            Task {
+                await refreshReusedRingProfile(publicKey: adoptedPublicKey, generation: generation, adoptionRevision: adoptionRevision)
+            }
         }
         return adoptedProfile
+    }
+
+    /// Only a definitive not-found undoes the reused profile, leaving the key as adopting one without a profile does so
+    /// routing prompts profile setup. Any other failure may just mean offline and keeps it. Dropped if the identity
+    /// changed or a newer profile write landed.
+    private func refreshReusedRingProfile(publicKey adoptedPublicKey: String, generation: Int, adoptionRevision: UUID) async {
+        guard !isLoadingProfile else { return }
+
+        isLoadingProfile = true
+        defer { isLoadingProfile = false }
+        let resolve = remoteProfileResolver
+        func isStillCurrent() -> Bool {
+            adoptionRevision == Self.sessionRevision && publicKey == adoptedPublicKey && profileWriteGeneration == generation
+        }
+
+        do {
+            let refreshedProfile = try await Task.detached {
+                try await resolve(adoptedPublicKey)
+            }.value
+            guard isStillCurrent() else { return }
+            profile = refreshedProfile
+            cacheProfileMetadata(refreshedProfile)
+        } catch PubkyServiceError.profileNotFound {
+            guard isStillCurrent() else { return }
+            Logger.info("Adopted Pubky Ring profile no longer exists, starting profile setup", context: "PubkyProfileManager")
+            invalidateProfileLoads()
+            profile = nil
+            if PubkyPublicKeyFormat.matches(cachedProfileOwner, adoptedPublicKey) {
+                clearCachedProfileMetadata()
+            }
+            setProfileSetupPending(true)
+        } catch {
+            Logger.warn("Failed to refresh the adopted Pubky Ring profile: \(error)", context: "PubkyProfileManager")
+        }
     }
 
     private nonisolated static func signInWithRingKey(_ secretKeyHex: String) async throws {
