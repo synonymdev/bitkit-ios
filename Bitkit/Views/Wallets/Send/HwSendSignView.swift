@@ -10,6 +10,7 @@ struct HwSendSignView: View {
     @Binding var navigationPath: [SendRoute]
     let hwSend: HwSendCoordinator
     let prepareContactPayment: () async throws -> Void
+    let authorizeContactPayment: () async throws -> Void
     let completeContactPayment: (String) async -> Void
     let cancelContactPayment: () async -> Void
     @State private var signingTask: Task<Void, Never>?
@@ -115,7 +116,8 @@ struct HwSendSignView: View {
                     address: invoice.address,
                     sats: amount,
                     satsPerVByte: UInt64(feeRate),
-                    beforeBroadcast: prepareContactPayment,
+                    beforeFirstBroadcast: prepareContactPayment,
+                    beforeBroadcastAttempt: authorizeContactPayment,
                     afterBroadcast: { result in
                         await completeContactPayment(result.txId)
                     }

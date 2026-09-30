@@ -3,6 +3,7 @@ import LDKNode
 import SwiftUI
 
 struct LnurlPayConfirm: View {
+    @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -21,6 +22,23 @@ struct LnurlPayConfirm: View {
     @State private var comment = ""
     @State private var hasStartedAutomaticPayment = false
     @FocusState private var isCommentFocused: Bool
+
+    static func sendLightningPayment<Result>(
+        request: PaykitPaymentRequest?,
+        authorize: (PaykitPaymentRequest) async throws -> Void,
+        onAuthorizationFailure: (Error) async -> Void,
+        send: () async throws -> Result
+    ) async throws -> Result {
+        if let request {
+            do {
+                try await authorize(request)
+            } catch {
+                await onAuthorizationFailure(error)
+                throw error
+            }
+        }
+        return try await send()
+    }
 
     var uri: String {
         app.lnurlPayData!.uri
@@ -283,20 +301,27 @@ struct LnurlPayConfirm: View {
                     paymentHash: paymentHash
                 )
             }
-            lightningPaymentHash = paymentHash
-
             // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
             // LNURL server returns invoices with the amount baked in, so pass sats: nil
             // to let LDK use the invoice's native millisatoshi precision.
-            try await wallet.sendWithTimeout(
-                bolt11: bolt11,
-                sats: nil,
-                afterListening: { _ in lightningPaymentSubmitted = true },
-                onTimeout: { timedOutHash in
-                    app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
-                    navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .lnurlPayConfirm, paymentRequest: bolt11))
+            _ = try await Self.sendLightningPayment(
+                request: incomingPaymentRequest,
+                authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
+                onAuthorizationFailure: { _ in
+                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
                 }
-            )
+            ) {
+                lightningPaymentHash = paymentHash
+                try await wallet.sendWithTimeout(
+                    bolt11: bolt11,
+                    sats: nil,
+                    afterListening: { _ in lightningPaymentSubmitted = true },
+                    onTimeout: { timedOutHash in
+                        app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
+                        navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .lnurlPayConfirm, paymentRequest: bolt11))
+                    }
+                )
+            }
             shouldCancelPaymentProof = false
             app.addPendingContactPaymentContext(paymentHash, context: contactPaymentContext)
             Logger.info("LNURL payment successful: \(paymentHash)")

@@ -9,6 +9,7 @@ enum PubkyServiceError: LocalizedError {
     case sessionNotActive
     case authFailed(String)
     case profileNotFound
+    case activeSubscription(endsAt: Date?)
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,8 @@ enum PubkyServiceError: LocalizedError {
             return "Authentication failed: \(reason)"
         case .profileNotFound:
             return "Profile not found"
+        case .activeSubscription:
+            return "Contact has an active subscription"
         }
     }
 }
@@ -279,8 +282,15 @@ enum PubkyService {
         try await PaykitSdkService.shared.contactRecords()
     }
 
-    static func saveContact(publicKey: String, label: String?, receiverPaths: [String]? = nil) async throws -> Paykit.ContactRecord {
-        try await PaykitSdkService.shared.saveContact(publicKey: publicKey, label: label, receiverPaths: receiverPaths)
+    static func saveContact(publicKey: String, label: String?, receiverPaths: [String]? = nil,
+                            restorePrivateConnection: Bool = false) async throws -> Paykit.ContactRecord
+    {
+        try await PaykitSdkService.shared.saveContact(
+            publicKey: publicKey,
+            label: label,
+            receiverPaths: receiverPaths,
+            restorePrivateConnection: restorePrivateConnection
+        )
     }
 
     static func removeContact(publicKey: String) async throws -> Paykit.ContactRecord? {
@@ -324,41 +334,63 @@ actor PaykitSdkService {
     private let operationLock = PaykitSdkOperationLock()
     private let publicReadLimiter = PaykitSdkReadLimiter(maxConcurrent: 6)
     private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
+    private let sdkFactory: (() throws -> PaykitSdk)?
     private let bootstrapFactory: BootstrapFactory
     private var cachedBootstrap: PubkySessionBootstrap?
     private var isRepublishingIdentity = false
     private var republishPublicKey: String?
     private var nextIdentityRepublishAt = Date.distantPast
+    private var lastIdentityRepublishAt = Date.distantPast
     private var sdk: PaykitSdk?
 
     init(
+        sdkFactory: (() throws -> PaykitSdk)? = nil,
         bootstrapFactory: @escaping BootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
     ) {
+        self.sdkFactory = sdkFactory
         self.bootstrapFactory = bootstrapFactory
     }
 
     func initialize() async throws {
         startIdentityRepublish()
         try await operationLock.withLock {
-            var sdk = try handle()
+            try await initializeLocked()
+        }
+    }
+
+    private func initializeLocked() async throws {
+        var sdk = try handle()
+        do {
+            _ = try await sdk.initialize()
+        } catch {
+            guard try sessionProvider.canDeferStaleSession(error: error) else { throw error }
+
+            Logger.warn("Deferring stale Paykit session restoration until SDK setup completes", context: "PaykitSdkService")
+            sessionProvider.suspendStoredSessionAccess()
+            resetRuntime()
             do {
+                sdk = try handle()
                 _ = try await sdk.initialize()
             } catch {
-                guard try sessionProvider.canDeferStaleSession(error: error) else { throw error }
-
-                Logger.warn("Deferring stale Paykit session restoration until SDK setup completes", context: "PaykitSdkService")
-                sessionProvider.suspendStoredSessionAccess()
-                resetRuntime()
-                do {
-                    sdk = try handle()
-                    _ = try await sdk.initialize()
-                } catch {
-                    sessionProvider.resumeStoredSessionAccess()
-                    throw error
-                }
                 sessionProvider.resumeStoredSessionAccess()
+                throw error
             }
-            await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
+            sessionProvider.resumeStoredSessionAccess()
+        }
+        await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
+    }
+
+    /// Keep credential reads and fallback activation atomic with sign-out and identity changes.
+    func restorePersistedSession() async throws -> PubkyProfileManager.SessionInitializationResult {
+        Task { await republishIdentityIfNeeded() }
+        return try await operationLock.withLock {
+            try await initializeLocked()
+            return try await PubkyProfileManager.resolveSessionInitialization(
+                savedSessionSecret: Keychain.loadString(key: .paykitSession),
+                storedSecretKeyHex: PubkyProfileManager.activeSecretKeyHex(),
+                importSession: { try await self.importSessionLocked(secret: $0).publicKey },
+                signInWithSecretKey: { try await self.signInLocked(secretKeyHex: $0).publicKey }
+            )
         }
     }
 
@@ -408,10 +440,11 @@ actor PaykitSdkService {
                 try Paykit.pubkyPublicKeyFromSecret(localSecretKey: $0)
             }
             guard let identity = identity.flatMap(PubkyPublicKeyFormat.normalized),
-                  identity != republishPublicKey || now >= nextIdentityRepublishAt
+                  identity != republishPublicKey || now < lastIdentityRepublishAt || now >= nextIdentityRepublishAt
             else { return }
 
             republishPublicKey = identity
+            lastIdentityRepublishAt = now
             nextIdentityRepublishAt = now.addingTimeInterval(60)
             if try await bootstrap().republishIdentity(publicKey: identity) {
                 nextIdentityRepublishAt = now.addingTimeInterval(30 * 60)
@@ -447,19 +480,23 @@ actor PaykitSdkService {
 
     func importSession(secret: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = try await currentSdkStatePublicKey()
-            let localSecret = try sessionProvider.loadLocalSecretKey()
-            let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
-            let result = try await bootstrap().importSession(
-                sessionSecret: secret,
-                localSecretKey: localSecret,
-                receiverNoiseSecretKey: receiverNoiseSecretKey,
-                requiredCapabilities: Self.requiredCapabilities()
-            )
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
-            markWalletBackupDataChanged()
-            return result
+            try await importSessionLocked(secret: secret)
         }
+    }
+
+    private func importSessionLocked(secret: String) async throws -> PubkySessionBootstrapResult {
+        let previousPublicKey = try await currentSdkStatePublicKey()
+        let localSecret = try sessionProvider.loadLocalSecretKey()
+        let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
+        let result = try await bootstrap().importSession(
+            sessionSecret: secret,
+            localSecretKey: localSecret,
+            receiverNoiseSecretKey: receiverNoiseSecretKey,
+            requiredCapabilities: Self.requiredCapabilities()
+        )
+        try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
+        markWalletBackupDataChanged()
+        return result
     }
 
     func signUp(secretKeyHex: String, homeserverPublicKey: String, signupCode: String?) async throws -> PubkySessionBootstrapResult {
@@ -498,32 +535,28 @@ actor PaykitSdkService {
     func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
         try await operationLock.withLock {
             let previousPublicKey = try await currentSdkStatePublicKey()
-            do {
-                try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
-            } catch {
-                try? sessionProvider.clearSessionAccess()
-                try? Keychain.delete(key: .paykitSdkState)
-                resetRuntime()
-                markWalletBackupDataChanged()
-                throw error
-            }
+            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
             markWalletBackupDataChanged()
         }
     }
 
     func signIn(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = try await currentSdkStatePublicKey()
-            let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
-            let result = try await bootstrap().signIn(
-                localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
-                receiverNoiseSecretKey: receiverNoiseSecretKey,
-                requiredCapabilities: Self.requiredCapabilities()
-            )
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
-            markWalletBackupDataChanged()
-            return result
+            try await signInLocked(secretKeyHex: secretKeyHex)
         }
+    }
+
+    private func signInLocked(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
+        let previousPublicKey = try await currentSdkStatePublicKey()
+        let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
+        let result = try await bootstrap().signIn(
+            localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
+            receiverNoiseSecretKey: receiverNoiseSecretKey,
+            requiredCapabilities: Self.requiredCapabilities()
+        )
+        try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
+        markWalletBackupDataChanged()
+        return result
     }
 
     func approveAuth(authUrl: String, expectedCapabilities: String, approvedClientID: String, secretKeyHex: String) async throws {
@@ -601,17 +634,79 @@ actor PaykitSdkService {
         }
     }
 
-    func saveContact(publicKey: String, label: String?, receiverPaths: [String]? = nil) async throws -> Paykit.ContactRecord {
+    func saveContact(
+        publicKey: String,
+        label: String?,
+        receiverPaths: [String]? = nil,
+        restorePrivateConnection: Bool = false
+    ) async throws -> Paykit.ContactRecord {
         try await withStateRevisionTracking { sdk in
-            let existingPaths = try await sdk.contactRecord(publicKey: publicKey)?.receiverPaths ?? []
+            let existing = try await sdk.contactRecord(publicKey: publicKey)
+            guard restorePrivateConnection || existing != nil else { throw PubkyServiceError.profileNotFound }
+            let existingPaths = existing?.receiverPaths ?? []
             let contactPaths = Self.mergedReceiverPaths(existingPaths + (receiverPaths ?? []))
+            if restorePrivateConnection {
+                let blockedPeers = try await sdk.linkedPeers().filter {
+                    $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, publicKey)
+                }
+                do {
+                    for peer in blockedPeers {
+                        _ = try await sdk.unblockPeer(counterparty: peer.counterparty, counterpartyReceiverPath: peer.counterpartyReceiverPath)
+                    }
+                    return try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, receiverPaths: contactPaths, label: label))
+                } catch {
+                    let restorationError = error
+                    for peer in blockedPeers {
+                        do {
+                            _ = try await sdk.blockPeer(counterparty: peer.counterparty, counterpartyReceiverPath: peer.counterpartyReceiverPath)
+                        } catch {
+                            Logger.error("Failed to restore peer block after contact save failed: \(error)", context: "PaykitSdkService")
+                        }
+                    }
+                    throw restorationError
+                }
+            }
             return try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, receiverPaths: contactPaths, label: label))
         }
     }
 
     func removeContact(publicKey: String) async throws -> Paykit.ContactRecord? {
         try await withStateRevisionTracking { sdk in
-            try await sdk.removeContact(publicKey: publicKey)
+            let record = try await sdk.contactRecord(publicKey: publicKey)
+            let peers = try await sdk.linkedPeers().filter { PubkyPublicKeyFormat.matches($0.counterparty, publicKey) }
+            let receiverPaths = Set(record?.receiverPaths ?? []).union(peers.map(\.counterpartyReceiverPath))
+            let now = Date()
+            let activeSubscriptions = try await sdk.paymentRequests().filter {
+                PubkyPublicKeyFormat.matches($0.counterparty, publicKey) &&
+                    $0.state == .activeRecurring &&
+                    ($0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate).map { $0 > now } ?? true)
+            }
+            guard activeSubscriptions.isEmpty else {
+                let endDates = activeSubscriptions.compactMap {
+                    $0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate)
+                }
+                let latestEndDate = endDates.count == activeSubscriptions.count ? endDates.max() : nil
+                throw PubkyServiceError.activeSubscription(endsAt: latestEndDate)
+            }
+            for peer in peers where peer.state == .linked {
+                do {
+                    let report = try await sdk.clearPrivatePaymentListAndProcessOutbound(
+                        counterparty: publicKey,
+                        counterpartyReceiverPath: peer.counterpartyReceiverPath
+                    )
+                    if !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
+                        Logger.warn("Failed to withdraw private endpoints before contact deletion", context: "PaykitSdkService")
+                    }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    Logger.warn("Failed to withdraw private endpoints before contact deletion: \(error)", context: "PaykitSdkService")
+                }
+            }
+            for receiverPath in receiverPaths.sorted() {
+                _ = try await sdk.blockPeer(counterparty: publicKey, counterpartyReceiverPath: receiverPath)
+            }
+            return try await sdk.removeContact(publicKey: publicKey)
         }
     }
 
@@ -754,9 +849,14 @@ actor PaykitSdkService {
     func clearPrivatePaymentList(
         to counterparty: String,
         receiverPath: String
-    ) async throws -> PrivatePaymentListDeliveryReport {
+    ) async throws -> PrivatePaymentListDeliveryReport? {
         try await withStateRevisionTracking { sdk in
-            try await sdk.clearPrivatePaymentListAndProcessOutbound(counterparty: counterparty, counterpartyReceiverPath: receiverPath)
+            if try await sdk.linkedPeers().contains(where: {
+                $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, counterparty) && $0.counterpartyReceiverPath == receiverPath
+            }) {
+                return nil
+            }
+            return try await sdk.clearPrivatePaymentListAndProcessOutbound(counterparty: counterparty, counterpartyReceiverPath: receiverPath)
         }
     }
 
@@ -965,7 +1065,7 @@ actor PaykitSdkService {
             return sdk
         }
 
-        let created = try PaykitSdk.withPaymentAdapterAndPubkyClientConfig(
+        let created = try sdkFactory?() ?? PaykitSdk.withPaymentAdapterAndPubkyClientConfig(
             stateStore: stateStore,
             sessionProvider: sessionProvider,
             paymentAdapter: paymentAdapter,
@@ -1036,8 +1136,7 @@ actor PaykitSdkService {
         try sessionProvider.persistReceiverNoiseSecretKey(access.exportReceiverNoiseSecretKey())
 
         guard AdoptedPubkyReference.current == nil, let localSecret = access.exportLocalSecretKey() else {
-            try? Keychain.delete(key: .pubkySecretKey)
-            SharedPubkyKeychain.removeAllOwn()
+            try Keychain.delete(key: .pubkySecretKey)
             return
         }
 
@@ -1051,14 +1150,43 @@ actor PaykitSdkService {
         _ result: PubkySessionBootstrapResult,
         previousPublicKey: String?
     ) async throws {
-        try persistSessionAccess(result.sessionAccess)
-        sessionProvider.setLiveSessionAccess(result.sessionAccess)
-        if !Self.publicKeysMatch(previousPublicKey, result.publicKey) {
-            try? Keychain.delete(key: .paykitSdkState)
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitReceiverNoiseSecretKey, .paykitSdkState]
+        let previousValues = try keys.map { try Keychain.load(key: $0) }
+        let isDifferentIdentity = !Self.publicKeysMatch(previousPublicKey, result.publicKey)
+        let sdk: PaykitSdk
+        do {
+            try persistSessionAccess(result.sessionAccess)
+            sessionProvider.setLiveSessionAccess(result.sessionAccess)
+            if isDifferentIdentity {
+                try Keychain.delete(key: .paykitSdkState)
+            }
+            resetRuntime()
+            sdk = try handle()
+            _ = try await sdk.initialize()
+        } catch {
+            // Activation can write SDK state before failing; restore it along with the credentials.
+            var rollbackError: Error?
+            for (key, value) in zip(keys, previousValues) {
+                do {
+                    if let value {
+                        try Keychain.upsert(key: key, data: value)
+                    } else {
+                        try Keychain.delete(key: key)
+                    }
+                } catch {
+                    rollbackError = rollbackError ?? error
+                }
+            }
+            sessionProvider.clearLiveSessionAccess()
+            resetRuntime()
+            throw rollbackError ?? error
         }
-        resetRuntime()
-        let sdk = try handle()
-        _ = try await sdk.initialize()
+        if isDifferentIdentity, previousPublicKey != nil {
+            await PubkyProfileManager.clearCachedIdentityMetadata()
+        }
+        if AdoptedPubkyReference.current != nil || result.sessionAccess.exportLocalSecretKey() == nil {
+            SharedPubkyKeychain.removeAllOwn()
+        }
         await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
         startIdentityRepublish(publicKey: result.publicKey)
     }
@@ -1084,7 +1212,10 @@ actor PaykitSdkService {
     }
 
     private func currentSdkStatePublicKey() async throws -> String? {
-        try await handle().identityStatus()?.publicKey
+        // Read the persisted owner without restoring the grant we are about to replace.
+        sessionProvider.suspendStoredSessionAccess()
+        defer { sessionProvider.resumeStoredSessionAccess() }
+        return try await handle().identityStatus()?.publicKey
     }
 
     private nonisolated static func publicKeysMatch(_ lhs: String?, _ rhs: String) -> Bool {
@@ -1123,7 +1254,9 @@ actor PaykitSdkService {
     }
 
     private func bootstrap() throws -> PubkySessionBootstrap {
-        if let cachedBootstrap { return cachedBootstrap }
+        if let cachedBootstrap {
+            return cachedBootstrap
+        }
         let bootstrap = try bootstrapFactory(Self.clientID, pubkyClientConfig)
         cachedBootstrap = bootstrap
         return bootstrap

@@ -316,6 +316,12 @@ struct AppScene: View {
                 config in AppUpdateSheet(config: config)
             }
             .task(priority: .userInitiated, setupTask)
+            .task(id: [scenePhase == .active, wallet.walletExists == true, isWalletBackupRestoreRunning, network.isConnected]) {
+                guard scenePhase == .active, wallet.walletExists == true,
+                      !isWalletBackupRestoreRunning, !BackupService.shared.hasPendingWalletRestore()
+                else { return }
+                await pubkyProfile.retrySessionRestoration()
+            }
             .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
             .task(id: initialPaykitSyncGeneration) { await pollIncomingPaykitPaymentRequestsDuringInitialSync() }
             .task { await handlePendingPaykitSubscriptionNotification() }
@@ -1022,10 +1028,14 @@ struct AppScene: View {
                     return
                 }
                 Task {
-                    if pubkyProfile.isInitialized { await pubkyProfile.checkAdoptedSource() }
+                    if pubkyProfile.isInitialized {
+                        await pubkyProfile.checkAdoptedSource()
+                    }
+                    async let sessionRecovery: Void = network.isConnected ? pubkyProfile.restoreSessionIfNeeded() : ()
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
                     try? await wallet.sync()
+                    await sessionRecovery
                     await retryPendingPaykitEndpointRemoval()
                     await wallet.refreshPublicPaykitEndpointsOnForeground()
                     if PaykitFeatureFlags.isUIEnabled {
@@ -1456,7 +1466,9 @@ struct AppScene: View {
             // Refresh currency rates when network is restored - critical for UI
             // to display balances (MoneyText returns "0" if rates are nil)
             Task {
+                async let sessionRecovery: Void = pubkyProfile.restoreSessionIfNeeded()
                 await currency.refresh()
+                await sessionRecovery
                 if scenePhase == .active {
                     await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
                 }

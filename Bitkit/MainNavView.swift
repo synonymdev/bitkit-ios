@@ -616,12 +616,8 @@ struct MainNavView: View {
                         pubkyInitializationErrorView(message: initializationErrorMessage)
                     } else if !pubkyProfile.isInitialized {
                         pubkyLoadingView
-                    } else if pubkyProfile.isAuthenticated {
-                        ProfileView()
-                    } else if app.hasSeenProfileIntro {
-                        PubkyChoiceView()
                     } else {
-                        ProfileIntroView()
+                        ProfileDestinationView(hasSeenIntro: app.hasSeenProfileIntro)
                     }
                 case .profileIntro:
                     if isPaykitUIActive {
