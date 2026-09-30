@@ -51,7 +51,7 @@ That run established the issuer shapes captured by the fixture: lowercase `btc`,
 The failure reason vocabulary is:
 
 - Parse: `missing_local_role`, `outgoing_request`, `unsupported_local_role`, `missing_terms`,
-  `recurring_request`, `unsupported_asset`, `invalid_amount`, `amount_out_of_range`,
+  `recurring_request`, `unsupported_asset`, `unsupported_payment_deadline`, `invalid_amount`, `amount_out_of_range`,
   `no_supported_endpoint`, `invalid_expiration`, `expired`.
 - Resolution: `no_supported_endpoint`, `endpoint_not_payable`, `payment_details_pending`,
   `resolution_failed`.
@@ -121,3 +121,16 @@ the SDK and can push the Pay step well past the budget.
 - Private-link recovery feedback: `PaymentRequestWaitingForDetailsToast`.
 - Send failure: `SendFailure` and retry action `Retry`.
 - Swipe control: `GRAB`.
+
+## Payment deadline history
+
+`payment-deadline-history.xml` covers rc56 requests with actual-payment deadlines.
+Bitkit keeps their lifecycle and paid-period history, and subscription cancellation,
+but does not accept them, offer payments, or schedule payment reminders. The journey
+requires a controlled rc56 peer to prepare the accepted and paid records; repository
+tests cover these states without sending funds. On both platforms, payment-history rows
+show notes or dates rather than lifecycle labels, and active subscriptions are opened
+from Overview. The journeys therefore record each fixture's payment request id, check
+its full row identifier, and include the required back and tab transitions. The accepted
+subscription must have no end date so cancellation is available. The proposal review
+must explain that its payment details are unsupported and offer no Subscribe control.
