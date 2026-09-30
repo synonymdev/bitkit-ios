@@ -215,7 +215,8 @@ struct AppScene: View {
     @State private var hideSplash = false
     @State private var removeSplash = false
     @State private var walletIsInitializing: Bool? = nil
-    @State private var walletInitShouldFinish = false
+    @State private var isWalletBackupRestoreRunning = false
+    @State private var didWalletBackupRestoreFail = false
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
 
@@ -305,14 +306,14 @@ struct AppScene: View {
         mainContent
             .sheet(
                 item: $sheets.forgotPinSheetItem,
-                onDismiss: { sheets.hideSheet() }
+                onDismiss: { sheets.hideSheetIfActive(.forgotPin, reason: "Forgot PIN sheet dismissed") }
             ) {
                 config in ForgotPinSheet(config: config)
             }
             .sheet(
                 item: $sheets.appUpdateSheetItem,
                 onDismiss: {
-                    sheets.hideSheet()
+                    sheets.hideSheetIfActive(.appUpdate, reason: "App update sheet dismissed")
                     app.ignoreAppUpdate()
                 }
             ) {
@@ -479,6 +480,15 @@ struct AppScene: View {
                     app.toast(type: .error, title: t("profile__session_expired_title"), description: t("profile__session_expired_description"))
                 }
             }
+            .onChange(of: pubkyProfile.adoptedSourceLost) { _, lost in
+                if lost {
+                    pubkyProfile.adoptedSourceLost = false
+                    app.toast(type: .error, title: t("profile__source_lost_title"), description: t("profile__source_lost_description"))
+                    if navigation.path.contains(where: \.isPubkyIdentityRoute) {
+                        navigation.path = [.pubkyChoice]
+                    }
+                }
+            }
             .onAppear {
                 if !settings.pinEnabled {
                     isPinVerified = true
@@ -631,10 +641,15 @@ struct AppScene: View {
 
     @ViewBuilder
     private var initializingContent: some View {
-        if case .errorStarting = wallet.nodeLifecycleState {
-            WalletRestoreError()
+        if didWalletBackupRestoreFail {
+            WalletRestoreError {
+                didWalletBackupRestoreFail = false
+                await restoreWalletBackupAndStart()
+            }
+        } else if case .errorStarting = wallet.nodeLifecycleState {
+            WalletRestoreError(onRetry: retryWalletStart)
         } else {
-            InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
+            InitializingWalletView(nodeLifecycleState: $wallet.nodeLifecycleState) {
                 Logger.debug("Wallet finished initializing but node state is \(wallet.nodeLifecycleState)")
 
                 if wallet.nodeLifecycleState == .running {
@@ -650,9 +665,8 @@ struct AppScene: View {
         }
         .accentColor(.white)
         .onAppear {
-            // Reset these values if the wallet is wiped
+            // Reset initialization if the wallet is wiped
             walletIsInitializing = nil
-            walletInitShouldFinish = false
 
             // Only the app-update sheet qualifies without a wallet, so onboarding
             // won't surface the other (wallet-gated) timed sheets.
@@ -694,16 +708,14 @@ struct AppScene: View {
             app?.handleLdkNodeEvent(lightningEvent)
         }
 
-        Task {
-            if wallet.isRestoringWallet {
-                await restoreFromMostRecentBackup()
+        let shouldRestoreWalletBackup = wallet.isRestoringWallet || BackupService.shared.hasPendingWalletRestore()
+        if shouldRestoreWalletBackup {
+            walletIsInitializing = true
+        }
 
-                await MainActor.run {
-                    widgets.loadSavedWidgets()
-                    widgets.objectWillChange.send()
-                }
-                await pubkyProfile.initialize()
-                await startWallet()
+        Task {
+            if shouldRestoreWalletBackup {
+                await restoreWalletBackupAndStart()
                 return
             }
 
@@ -716,7 +728,17 @@ struct AppScene: View {
         }
     }
 
-    private func startWallet() async {
+    private func startWallet(completingBackupRestore: Bool = false) async {
+        let hasPendingRestore = BackupService.shared.hasPendingWalletRestore()
+        guard !WalletBackupRestoreGate.blocksWalletStart(
+            isRestoreRunning: isWalletBackupRestoreRunning,
+            hasPendingRestore: hasPendingRestore,
+            isRestoreCompletionStart: completingBackupRestore
+        ) else {
+            Logger.warn("Wallet start deferred until backup restoration completes", context: "AppScene")
+            return
+        }
+
         // Check network before attempting to start - LDK hangs when VSS is unreachable
         guard network.isConnected else {
             Logger.warn("Network offline, skipping wallet start", context: "AppScene")
@@ -776,6 +798,7 @@ struct AppScene: View {
 
         if hasNativeKeychain || hasOrphanedRNKeychain {
             Logger.warn("Orphaned keychain detected, wiping", context: "AppScene")
+            SharedPubkyKeychain.removeAllOwn()
             try? Keychain.wipeEntireKeychain()
 
             if hasOrphanedRNKeychain {
@@ -859,13 +882,57 @@ struct AppScene: View {
         }
     }
 
-    private func restoreFromMostRecentBackup() async {
+    private func restoreWalletBackupAndStart() async {
+        guard !isWalletBackupRestoreRunning else { return }
+        isWalletBackupRestoreRunning = true
+        walletIsInitializing = true
+        didWalletBackupRestoreFail = false
+        defer { isWalletBackupRestoreRunning = false }
+
+        let didRestore: Bool = if BackupService.shared.hasPendingWalletRestore() {
+            await restoreVssBackup()
+        } else {
+            await restoreFromMostRecentBackup()
+        }
+        guard didRestore else {
+            didWalletBackupRestoreFail = true
+            return
+        }
+
+        widgets.loadSavedWidgets()
+        widgets.objectWillChange.send()
+        await pubkyProfile.initialize()
+        await startWallet(completingBackupRestore: true)
+    }
+
+    private func retryWalletStart() async {
+        do {
+            wallet.nodeLifecycleState = .initializing
+            try await wallet.start()
+            try wallet.setWalletExistsState()
+        } catch {
+            Logger.error("Failed to start wallet on retry", context: "AppScene")
+            Haptics.notify(.error)
+        }
+    }
+
+    private func retryPendingWalletRestoreIfNeeded() -> Bool {
+        if isWalletBackupRestoreRunning {
+            return true
+        }
+        guard BackupService.shared.hasPendingWalletRestore() else { return false }
+
+        Task { await restoreWalletBackupAndStart() }
+        return true
+    }
+
+    private func restoreFromMostRecentBackup() async -> Bool {
         BackupService.shared.setRestoring(true)
         defer { BackupService.shared.setRestoring(false) }
 
         guard let mnemonicData = try? Keychain.load(key: .bip39Mnemonic(index: 0)),
               let mnemonic = String(data: mnemonicData, encoding: .utf8)
-        else { return }
+        else { return false }
 
         let passphrase: String? = {
             guard let data = try? Keychain.load(key: .bip39Passphrase(index: 0)) else { return nil }
@@ -890,13 +957,24 @@ struct AppScene: View {
         if shouldRestoreRN {
             do {
                 try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+                return true
             } catch {
                 Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
                 // Fall back to VSS
-                await BackupService.shared.performFullRestoreFromLatestBackup()
+                return await restoreVssBackup()
             }
-        } else {
-            await BackupService.shared.performFullRestoreFromLatestBackup()
+        }
+
+        return await restoreVssBackup()
+    }
+
+    private func restoreVssBackup() async -> Bool {
+        do {
+            try await BackupService.shared.performFullRestoreFromLatestBackup()
+            return true
+        } catch {
+            app.toast(error)
+            return false
         }
     }
 
@@ -904,7 +982,6 @@ struct AppScene: View {
         if state == .initializing {
             walletIsInitializing = true
         } else if state == .running {
-            walletInitShouldFinish = true
             app.markAppStatusInit()
             BackupService.shared.startObservingBackups()
             QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
@@ -927,9 +1004,6 @@ struct AppScene: View {
                 await refreshIncomingPaykitPaymentRequests()
             }
         } else {
-            if case .errorStarting = state {
-                walletInitShouldFinish = true
-            }
             Task {
                 await BackupService.shared.stopObservingBackups()
             }
@@ -956,7 +1030,11 @@ struct AppScene: View {
                 Task { await hwWalletManager.reconnectOnForeground() }
             }
             if wallet.walletExists == true {
+                if retryPendingWalletRestoreIfNeeded() {
+                    return
+                }
                 Task {
+                    if pubkyProfile.isInitialized { await pubkyProfile.checkAdoptedSource() }
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
                     try? await wallet.sync()
@@ -1051,6 +1129,9 @@ struct AppScene: View {
             } catch {
                 return
             }
+            guard !isWalletBackupRestoreRunning,
+                  !BackupService.shared.hasPendingWalletRestore()
+            else { continue }
             let refreshMaintenance: Bool
             switch schedule.takeRound(isConnected: network.isConnected) {
             case .skip:
@@ -1386,6 +1467,10 @@ struct AppScene: View {
 
         if isConnected {
             guard wallet.walletExists == true else { return }
+
+            if retryPendingWalletRestoreIfNeeded() {
+                return
+            }
 
             // Refresh currency rates when network is restored - critical for UI
             // to display balances (MoneyText returns "0" if rates are nil)

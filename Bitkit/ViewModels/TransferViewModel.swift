@@ -346,19 +346,38 @@ class TransferViewModel: ObservableObject {
         createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder,
         isCurrent: () -> Bool = { true }
     ) async throws -> IBtOrder? {
+        guard let order = try await currentOrder(createOrder: createOrder, isCurrent: isCurrent) else { return nil }
+        if pendingHwFundingBroadcast?.orderId == order.id {
+            return order
+        }
+        return orderForDisplayedFee(order)
+    }
+
+    func orderForSwipe(
+        createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder
+    ) async throws -> IBtOrder {
+        guard let order = try await currentOrder(createOrder: createOrder, isCurrent: { true }) else { throw CancellationError() }
+        return order
+    }
+
+    private func currentOrder(
+        createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder,
+        isCurrent: () -> Bool
+    ) async throws -> IBtOrder? {
         guard isCurrent() else { return nil }
         if let order = uiState.order {
             if pendingHwFundingBroadcast?.orderId == order.id {
                 return order
             }
             if isReusableSpendingOrder(order) {
-                return orderForDisplayedFee(order)
+                return order
             }
         }
         uiState.order = nil
         let order = try await createOrder(uiState.clientBalanceSat, uiState.lspBalanceSat)
         guard isCurrent() else { return nil }
-        return orderForDisplayedFee(order)
+        uiState.order = order
+        return order
     }
 
     private func isReusableSpendingOrder(_ order: IBtOrder, now: Date = Date()) -> Bool {
@@ -377,6 +396,30 @@ class TransferViewModel: ObservableObject {
             return nil
         }
         return order
+    }
+
+    /// The increase to report when the funding rebuilt for the order costs more than the confirm screen showed at swipe time, or nil when
+    /// the swipe may pay. On an increase the screen moves to the order's fee and nothing is paid until the next swipe.
+    func feeIncrease(
+        order: IBtOrder,
+        displayedOrderFeeSat: UInt64,
+        displayed: SpendingConfirmAmounts,
+        rebuilt: SpendingConfirmAmounts
+    ) -> SpendingFeeIncrease? {
+        guard rebuilt.totalSat > displayed.totalSat else { return nil }
+        let amountSat = rebuilt.totalSat - displayed.totalSat
+        let isServiceIncrease = order.feeSat > displayedOrderFeeSat
+        uiState.feeSat = order.feeSat
+        return isServiceIncrease ? .service(amountSat: amountSat) : .network(amountSat: amountSat)
+    }
+
+    /// The increase to report when the funding could not be rebuilt for the created order and its fee is higher than the confirm screen
+    /// showed, or nil when the failure is unrelated to the order fee. On an increase the screen moves to the order's fee, so it re-sizes
+    /// against the real cost instead of repeating the same failure.
+    func unfundableFeeIncrease(order: IBtOrder, displayedOrderFeeSat: UInt64) -> SpendingFeeIncrease? {
+        guard order.feeSat > displayedOrderFeeSat else { return nil }
+        uiState.feeSat = order.feeSat
+        return .service(amountSat: order.feeSat - displayedOrderFeeSat)
     }
 
     func payOrder(
@@ -412,7 +455,12 @@ class TransferViewModel: ObservableObject {
             isMaxAmount: isMaxAmount
         )
 
-        let txTotalSats = order.feeSat + txFee
+        let txTotalSats = SpendingConfirmTotal.leavingAmount(
+            orderFeeSat: order.feeSat,
+            networkFeeSat: txFee,
+            shouldUseSendAll: isMaxAmount,
+            maxSendable: maxSendableAmount
+        )
 
         // Pre-activity metadata lets the LDK activity sync recognize this send as a transfer.
         let currentTime = UInt64(Date().timeIntervalSince1970)

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContactDetailView: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
@@ -21,6 +21,8 @@ struct ContactDetailView: View {
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
     @State private var showDeleteConfirmation = false
+    @State private var isPayLoading = false
+    @State private var payTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +47,14 @@ struct ContactDetailView: View {
                 isLoading = false
             }
             isLoading = false
+        }
+        .task {
+            if isPaymentRequestAvailable {
+                paymentRequests.startEligibleTargetRefresh(publicKey: publicKey)
+            }
+        }
+        .onDisappear {
+            payTask?.cancel()
         }
         .onReceive(contactsManager.$contacts) { updatedContacts in
             if let cached = updatedContacts.first(where: { $0.publicKey == publicKey }) {
@@ -114,38 +124,31 @@ struct ContactDetailView: View {
 
     private var contactActions: some View {
         HStack(spacing: 16) {
-            GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send")) {
-                if canRequestPayment {
-                    sheets.showSheet(
-                        .receive,
-                        data: ReceiveConfig(view: .requestOrPay(publicKey: publicKey))
-                    )
-                } else {
-                    Task {
-                        await payContact()
-                    }
+            GradientCircleButton(icon: "coins-regular", accessibilityLabel: t("wallet__send"), isLoading: isPayLoading) {
+                payTask = Task {
+                    await onPayTapped()
                 }
             }
             .accessibilityIdentifier("ContactPay")
 
-            GradientCircleButton(icon: "activity", accessibilityLabel: t("wallet__activity")) {
+            GradientCircleButton(icon: "activity-regular", accessibilityLabel: t("wallet__activity")) {
                 navigation.navigate(.contactActivity(publicKey: publicKey))
             }
             .accessibilityIdentifier("ContactActivity")
 
-            GradientCircleButton(icon: "copy", accessibilityLabel: t("common__copy")) {
+            GradientCircleButton(icon: "copy-simple", accessibilityLabel: t("common__copy")) {
                 UIPasteboard.general.string = publicKey
                 app.toast(type: .success, title: t("common__copied"))
             }
             .accessibilityIdentifier("ContactCopy")
 
-            GradientCircleButton(icon: "share", accessibilityLabel: t("common__share")) {
+            GradientCircleButton(icon: "share-regular", accessibilityLabel: t("common__share")) {
                 shareContact()
             }
             .accessibilityIdentifier("ContactShare")
 
             GradientCircleButton(
-                icon: showsDeleteAction ? "trash" : "pencil",
+                icon: showsDeleteAction ? "trash-regular" : "pencil-regular",
                 accessibilityLabel: t(showsDeleteAction ? "common__delete" : "common__edit")
             ) {
                 if showsDeleteAction {
@@ -158,12 +161,25 @@ struct ContactDetailView: View {
         }
     }
 
-    private var canRequestPayment: Bool {
-        PaykitFeatureFlags.isUIAvailable &&
-            isPaykitUIEnabled &&
-            paymentRequests.eligibleTargets.contains {
-                PubkyPublicKeyFormat.matches($0.publicKey, publicKey)
-            }
+    private var isPaymentRequestAvailable: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    private func onPayTapped() async {
+        guard !isPayLoading else { return }
+        isPayLoading = true
+        defer { isPayLoading = false }
+
+        let target = isPaymentRequestAvailable
+            ? await paymentRequests.eligibleTarget(publicKey: publicKey, waitingAtMost: .seconds(2))
+            : nil
+        guard !Task.isCancelled else { return }
+
+        if target != nil {
+            sheets.showSheet(.receive, data: ReceiveConfig(view: .requestOrPay(publicKey: publicKey)))
+        } else {
+            await payContact()
+        }
     }
 
     // MARK: - Links / Metadata
@@ -183,15 +199,17 @@ struct ContactDetailView: View {
             CaptionMText(t("profile__create_tags_label"), textColor: .white64)
                 .accessibilityIdentifier("ContactViewTagsHeader")
 
-            WrappingHStack(spacing: 8) {
-                ForEach(profile.tags, id: \.self) { tag in
-                    Tag(tag, icon: .close, onDelete: {
-                        removeTag(tag)
-                    })
+            if !profile.tags.isEmpty {
+                WrappingHStack(spacing: 8) {
+                    ForEach(profile.tags, id: \.self) { tag in
+                        Tag(tag, icon: .close, onDelete: {
+                            removeTag(tag)
+                        })
+                    }
                 }
-
-                addTagButton
             }
+
+            addTagButton
         }
     }
 
