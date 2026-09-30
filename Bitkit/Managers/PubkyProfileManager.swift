@@ -367,7 +367,8 @@ class PubkyProfileManager: ObservableObject {
     func adoptRingIdentity(
         pubky: String,
         loadSecret: (String, String) -> String? = SharedPubkyKeychain.loadSecret,
-        signIn: @escaping @Sendable (String) async throws -> Void = { try await PubkyProfileManager.signInWithRingKey($0) }
+        signIn: @escaping @Sendable (String) async throws -> Void = { try await PubkyProfileManager.signInWithRingKey($0) },
+        fetchProfile: (@Sendable (String) async -> PubkyProfile?)? = nil
     ) async throws -> PubkyProfile? {
         guard !Self.isRingAdoptionInFlight else {
             throw PubkyServiceError.authFailed("Pubky Ring sign-in already in progress")
@@ -407,7 +408,15 @@ class PubkyProfileManager: ObservableObject {
         authState = .authenticated
         Self.notifyAppStateBackupChanged()
 
-        let adoptedProfile = await fetchRemoteProfile(publicKey: adoptedPublicKey)
+        let adoptionRevision = Self.sessionRevision
+        let adoptedProfile = if let fetchProfile {
+            await fetchProfile(adoptedPublicKey)
+        } else {
+            await fetchRemoteProfile(publicKey: adoptedPublicKey)
+        }
+        guard adoptionRevision == Self.sessionRevision, publicKey == adoptedPublicKey else {
+            throw CancellationError()
+        }
         setProfileSetupPending(adoptedProfile == nil)
         if let adoptedProfile {
             profile = adoptedProfile

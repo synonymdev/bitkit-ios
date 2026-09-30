@@ -130,6 +130,8 @@ struct PubkyChoiceView: View {
                 publicKey: adopted.publicKey
             )
             navigation.path = [destination]
+        } catch is CancellationError {
+            return
         } catch {
             app.toast(type: .error, title: t("profile__adopt_error_title"), description: error.localizedDescription)
         }

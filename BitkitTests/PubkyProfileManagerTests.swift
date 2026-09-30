@@ -4,6 +4,11 @@ import struct Paykit.PubkySessionBootstrapResult
 import XCTest
 
 final class PubkyProfileManagerTests: XCTestCase {
+    private enum RingAdoptionTeardown {
+        case reset
+        case signOut
+    }
+
     @MainActor
     func testFailedRestorationPreservesCachedProfile() async {
         let keys = ["pubky_profile_name", "pubky_profile_image_uri"]
@@ -250,6 +255,110 @@ final class PubkyProfileManagerTests: XCTestCase {
         continuation.finish()
         await adoption.value
         XCTAssertNil(AdoptedPubkyReference.current)
+    }
+
+    @MainActor
+    func testRingAdoptionDropsLateProfileAfterSessionTeardown() async throws {
+        let savedReference = AdoptedPubkyReference.current
+        let keychainKeys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let savedCredentials = try keychainKeys.map { try Keychain.load(key: $0) }
+        let defaults = UserDefaults.standard
+        let preferenceKeys = [
+            "pubky_profile_name", "pubky_profile_image_uri", "pubky_profile_setup_pending",
+            PublicPaykitService.publishingEnabledKey, PrivatePaykitService.publishingEnabledKey,
+            ContactPaymentsService.confirmedPreferenceKey, "publicPaykitBolt11", "publicPaykitBolt11PaymentHash", "publicPaykitBolt11ExpiresAt",
+            PrivatePaykitService.cacheStateKey, PrivatePaykitService.cleanupPendingKey,
+            PrivatePaykitService.deletedContactCleanupKeysKey, "privatePaykitAddressReservations",
+        ]
+        let savedPreferences = preferenceKeys.map { defaults.object(forKey: $0) }
+        let savedOverrides = ContactsManager.backupContactProfileOverrides()
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            for (key, value) in zip(preferenceKeys, savedPreferences) {
+                defaults.set(value, forKey: key)
+            }
+            ContactsManager.restoreContactProfileOverrides(savedOverrides)
+            for (key, value) in zip(keychainKeys, savedCredentials) {
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
+            }
+        }
+
+        for teardown in [RingAdoptionTeardown.signOut, .reset] {
+            preferenceKeys.forEach { defaults.removeObject(forKey: $0) }
+            AdoptedPubkyReference.current = nil
+            let manager = RecoveryProfileManager()
+            let profileFetchStarted = expectation(description: "Ring profile fetch started")
+            let (stream, continuation) = AsyncStream<Void>.makeStream()
+            let adoption = Task {
+                try await manager.adoptRingIdentity(
+                    pubky: "pending-ring-identity",
+                    loadSecret: { _, _ in String(repeating: "02", count: 32) },
+                    signIn: { _ in },
+                    fetchProfile: { publicKey in
+                        profileFetchStarted.fulfill()
+                        for await _ in stream {}
+                        return PubkyProfile(
+                            publicKey: publicKey,
+                            name: "Late profile",
+                            bio: "",
+                            imageUrl: "pubky://late/avatar",
+                            links: [],
+                            status: nil
+                        )
+                    }
+                )
+            }
+            await fulfillment(of: [profileFetchStarted], timeout: 2)
+
+            switch teardown {
+            case .signOut:
+                try await manager.signOut(performSessionCleanup: {})
+            case .reset:
+                await PubkyProfileManager.clearLocalState()
+            }
+
+            continuation.finish()
+            do {
+                _ = try await adoption.value
+                XCTFail("Expected abandoned Ring adoption to stop")
+            } catch {
+                XCTAssertTrue(error is CancellationError)
+            }
+            XCTAssertNil(manager.profile)
+            XCTAssertNil(defaults.string(forKey: "pubky_profile_name"))
+            XCTAssertNil(defaults.string(forKey: "pubky_profile_image_uri"))
+            XCTAssertFalse(defaults.bool(forKey: "pubky_profile_setup_pending"))
+        }
+    }
+
+    @MainActor
+    func testRingAdoptionWithoutProfileStartsProfileSetup() async throws {
+        let savedReference = AdoptedPubkyReference.current
+        let defaults = UserDefaults.standard
+        let savedPending = defaults.object(forKey: "pubky_profile_setup_pending")
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            defaults.set(savedPending, forKey: "pubky_profile_setup_pending")
+        }
+        AdoptedPubkyReference.current = nil
+        defaults.removeObject(forKey: "pubky_profile_setup_pending")
+        let manager = RecoveryProfileManager()
+
+        let adoptedProfile = try await manager.adoptRingIdentity(
+            pubky: "new-ring-identity",
+            loadSecret: { _, _ in String(repeating: "02", count: 32) },
+            signIn: { _ in },
+            fetchProfile: { _ in nil }
+        )
+
+        XCTAssertNil(adoptedProfile)
+        XCTAssertNotNil(manager.publicKey)
+        XCTAssertEqual(manager.authState, .authenticated)
+        XCTAssertTrue(manager.isProfileSetupPending)
     }
 
     @MainActor
