@@ -237,7 +237,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertFalse(manager.isApprovedForPayment(request))
     }
 
-    func testApprovedPaymentRechecksBlockingWithoutRepeatingAcceptance() async throws {
+    func testApprovedPaymentRechecksBlockingBeforeSendWithoutRepeatingAcceptance() async throws {
         let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
         let sdk = PaymentRequestSdkMock(records: [record])
         let manager = paymentRequestManager(sdk: sdk)
@@ -253,13 +253,16 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             peers: [linkedPeer(counterparty: record.counterparty, path: record.counterpartyReceiverPath, state: .blocked)],
             receiverPathsByPublicKey: [:]
         )
+        var sendCalls = 0
         do {
-            try await manager.prepareForPayment(request) { consumedCount += 1 }
+            try await manager.ensurePaymentAllowed(request)
+            sendCalls += 1
             XCTFail("Expected blocked payment to be rejected")
         } catch {
             XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
         }
         XCTAssertEqual(consumedCount, 1)
+        XCTAssertEqual(sendCalls, 0)
         XCTAssertFalse(manager.isApprovedForPayment(request))
     }
 

@@ -695,6 +695,7 @@ struct SendSheet: View {
                 navigationPath: $navigationPath,
                 hwSend: hwSend,
                 prepareContactPayment: prepareHardwareContactPayment,
+                authorizeContactPayment: authorizeHardwareContactPayment,
                 completeContactPayment: completeHardwareContactPayment,
                 cancelContactPayment: cancelHardwareContactPayment
             )
@@ -801,14 +802,18 @@ struct SendSheet: View {
         do {
             try await prepareIncomingPaymentRequest()
             try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address)
-            do {
-                try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
-            } catch {
-                await PaykitPaymentProofService.shared.failOnchainPayment(request)
-                throw error
-            }
         } catch {
             await PaykitPaymentProofService.shared.cancelPreparation(request)
+            throw error
+        }
+    }
+
+    private func authorizeHardwareContactPayment() async throws {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+        do {
+            try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
+        } catch {
+            await PaykitPaymentProofService.shared.failOnchainPayment(request)
             throw error
         }
     }
