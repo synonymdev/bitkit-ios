@@ -40,6 +40,7 @@ class PubkyProfileManager: ObservableObject {
     @Published var profile: PubkyProfile?
     @Published var publicKey: String?
     @Published var isLoadingProfile = false
+    @Published private(set) var isRestoringSession = false
     @Published var isInitialized = false
     @Published var initializationErrorMessage: String?
     @Published var sessionRestorationFailed = false
@@ -95,8 +96,12 @@ class PubkyProfileManager: ObservableObject {
             return
         }
         guard Self.sessionMutationCount == 0 else { return }
+        isRestoringSession = true
         let task = Task {
-            defer { initializationTask = nil }
+            defer {
+                initializationTask = nil
+                isRestoringSession = false
+            }
             guard Self.sessionMutationCount == 0 else { return }
             await initializeSessionState(mode: mode, initializeSession: initializeSession)
         }

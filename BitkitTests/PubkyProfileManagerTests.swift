@@ -501,6 +501,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             }
         }
         await fulfillment(of: [started], timeout: 2)
+        XCTAssertTrue(manager.isRestoringSession)
         let restored = expectation(description: "one recovery")
         restored.assertForOverFulfill = true
         let retries = (0 ..< 2).map { _ in
@@ -517,6 +518,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             await retry.value
         }
         await fulfillment(of: [restored], timeout: 2)
+        XCTAssertFalse(manager.isRestoringSession)
         XCTAssertEqual(manager.publicKey, "existing-identity")
         XCTAssertEqual(manager.authState, .authenticated)
         XCTAssertNil(manager.initializationErrorMessage)
@@ -537,12 +539,14 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
 
         await fulfillment(of: [started], timeout: 2)
+        XCTAssertTrue(manager.isRestoringSession)
         XCTAssertTrue(manager.isInitialized)
         XCTAssertNil(manager.initializationErrorMessage)
         XCTAssertFalse(manager.sessionRestorationFailed)
 
         retryContinuation.finish()
         await recovery.value
+        XCTAssertFalse(manager.isRestoringSession)
         XCTAssertTrue(manager.isInitialized)
         XCTAssertNil(manager.initializationErrorMessage)
         XCTAssertFalse(manager.sessionRestorationFailed)
