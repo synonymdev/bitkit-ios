@@ -454,7 +454,8 @@ final class HwSendCoordinator {
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
-        beforeBroadcast: @escaping () async throws -> Void = {},
+        beforeFirstBroadcast: @escaping () async throws -> Void = {},
+        beforeBroadcastAttempt: @escaping () async throws -> Void = {},
         afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in }
     ) async throws -> HwFundingBroadcastResult {
         guard let walletId else {
@@ -486,11 +487,21 @@ final class HwSendCoordinator {
             }
 
             if pendingPayment?.isPreparedForBroadcast != true {
-                try await beforeBroadcast()
+                try await beforeFirstBroadcast()
                 pendingPayment?.isPreparedForBroadcast = true
             }
 
+            do {
+                try await beforeBroadcastAttempt()
+            } catch {
+                if pendingPayment?.hasBroadcastAttempted != true {
+                    pendingPayment = nil
+                }
+                throw error
+            }
+
             isBroadcastUnresolved = true
+            pendingPayment?.hasBroadcastAttempted = true
             do {
                 let result = try await signer.broadcastSignedFunding(signed)
                 await afterBroadcast(result)
@@ -577,5 +588,6 @@ final class HwSendCoordinator {
         let request: PaymentRequest
         let signedTx: HwFundingSignedTx
         var isPreparedForBroadcast = false
+        var hasBroadcastAttempted = false
     }
 }

@@ -56,7 +56,7 @@
             ))
         }
 
-        override init() {
+        init() {
             super.init()
             pendingImportProfile = fixtureProfile
             pendingImportContacts = fixtureContacts
