@@ -956,7 +956,9 @@ struct PaykitPaymentRequestService {
         _ record: Paykit.PaymentRequestRecord,
         reports: [Paykit.OutboundPrivateCounterpartySendReport]
     ) -> Bool {
-        if case .sent? = record.proposalOutboundStatus { return true }
+        if case .sent? = record.proposalOutboundStatus {
+            return true
+        }
         guard let messageId = record.proposalOutboundMessageId else { return false }
         return reports.contains { report in
             PubkyPublicKeyFormat.matches(report.counterparty, record.counterparty) &&
@@ -1068,6 +1070,7 @@ final class PaykitPaymentRequestManager {
         String,
         PaykitSubscription.ID
     ) async throws -> Set<PaykitPaymentRequest.ID>
+    private let retryNow: @Sendable () -> ContinuousClock.Instant
     private let now: @Sendable () -> Date
     private let logWarning: @Sendable (String) -> Void
     private let isAvailable: @MainActor () -> Bool
@@ -1075,7 +1078,7 @@ final class PaykitPaymentRequestManager {
     private var approvedPaymentRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentedRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentationRetryAttempts: [PaykitPaymentRequest.ID: Int] = [:]
-    private var presentationRetryDates: [PaykitPaymentRequest.ID: Date] = [:]
+    private var presentationRetryDeadlines: [PaykitPaymentRequest.ID: ContinuousClock.Instant] = [:]
     private var automaticPresentationDiagnosticReasons:
         [PaykitPaymentRequest.ID: Set<IncomingPaykitPaymentRequestFailureReason>] = [:]
     private var expiredRequestedPresentations: [PaykitPaymentRequest] = []
@@ -1131,6 +1134,7 @@ final class PaykitPaymentRequestManager {
             )
         },
         now: @escaping @Sendable () -> Date = { Date() },
+        retryNow: @escaping @Sendable () -> ContinuousClock.Instant = { .now },
         isAvailable: @escaping @MainActor () -> Bool = { PaykitFeatureFlags.isUIEnabled },
         logWarning: @escaping @Sendable (String) -> Void = {
             Logger.warn($0, context: "PaykitPaymentRequest")
@@ -1144,6 +1148,7 @@ final class PaykitPaymentRequestManager {
         self.inFlightPaymentRequestIds = inFlightPaymentRequestIds
         self.protectedRequestIdsForSubscriptionCancellation = protectedRequestIdsForSubscriptionCancellation
         self.now = now
+        self.retryNow = retryNow
         self.isAvailable = isAvailable
         self.logWarning = logWarning
     }
@@ -1576,7 +1581,7 @@ final class PaykitPaymentRequestManager {
         pendingRequests.removeAll { $0.id == request.id }
         presentedRequestIds.remove(request.id)
         presentationRetryAttempts.removeValue(forKey: request.id)
-        presentationRetryDates.removeValue(forKey: request.id)
+        presentationRetryDeadlines.removeValue(forKey: request.id)
         if requestedPresentationId == request.id {
             presentationGeneration += 1
             requestedPresentationId = nil
@@ -1666,7 +1671,7 @@ final class PaykitPaymentRequestManager {
         else { return false }
         presentationGeneration += 1
         presentationRetryAttempts.removeValue(forKey: request.id)
-        presentationRetryDates.removeValue(forKey: request.id)
+        presentationRetryDeadlines.removeValue(forKey: request.id)
         requestedPresentationId = request.id
         schedulePresentationRetry()
         return true
@@ -1695,7 +1700,7 @@ final class PaykitPaymentRequestManager {
         presentedRequestIds = []
         persistedPresentedRequestIds = []
         presentationRetryAttempts = [:]
-        presentationRetryDates = [:]
+        presentationRetryDeadlines = [:]
         automaticPresentationDiagnosticReasons = [:]
         expiredRequestedPresentations = []
         unavailableRequestedPresentations = []
@@ -1717,12 +1722,12 @@ final class PaykitPaymentRequestManager {
     }
 
     func requestsForPresentation() -> [PaykitPaymentRequest] {
-        let date = now()
+        let date = retryNow()
         if let requestedPresentationId {
             guard !processingRequestIds.contains(requestedPresentationId),
                   let requestedRequest = pendingRequests.first(where: { $0.id == requestedPresentationId }),
                   presentationRetryAttempts[requestedPresentationId, default: 0] <= Self.presentationRetryDelays.count,
-                  presentationRetryDates[requestedPresentationId].map({ $0 <= date }) ?? true
+                  presentationRetryDeadlines[requestedPresentationId].map({ $0 <= date }) ?? true
             else { return [] }
             return [requestedRequest]
         }
@@ -1730,7 +1735,7 @@ final class PaykitPaymentRequestManager {
         return pendingRequests.filter {
             !presentedRequestIds.contains($0.id) &&
                 !processingRequestIds.contains($0.id) &&
-                (presentationRetryDates[$0.id].map { $0 <= date } ?? true)
+                (presentationRetryDeadlines[$0.id].map { $0 <= date } ?? true)
         }
     }
 
@@ -1873,7 +1878,7 @@ final class PaykitPaymentRequestManager {
             presentationRetryAttempts[request.id] = attempt + 1
             delay = Self.presentationRetryDelays[attempt]
         } else if isRequestedPresentation {
-            presentationRetryDates.removeValue(forKey: request.id)
+            presentationRetryDeadlines.removeValue(forKey: request.id)
             requestedPresentationId = nil
             presentedRequestIds.insert(request.id)
             persistPresentedRequestIds()
@@ -1883,7 +1888,7 @@ final class PaykitPaymentRequestManager {
         } else {
             delay = Self.automaticPresentationRetryDelay
         }
-        presentationRetryDates[request.id] = now().addingTimeInterval(delay)
+        presentationRetryDeadlines[request.id] = retryNow().advanced(by: .seconds(delay))
         schedulePresentationRetry()
         return .retryScheduled
     }
@@ -1912,7 +1917,7 @@ final class PaykitPaymentRequestManager {
             requestedPresentationId = nil
         }
         presentationRetryAttempts.removeValue(forKey: request.id)
-        presentationRetryDates.removeValue(forKey: request.id)
+        presentationRetryDeadlines.removeValue(forKey: request.id)
         automaticPresentationDiagnosticReasons.removeValue(forKey: request.id)
         schedulePresentationRetry()
         persistPresentedRequestIds()
@@ -2032,7 +2037,7 @@ final class PaykitPaymentRequestManager {
             let currentRequestIds = Set(pendingRequests.map(\.id))
             presentedRequestIds.formIntersection(currentRequestIds)
             presentationRetryAttempts = presentationRetryAttempts.filter { currentRequestIds.contains($0.key) }
-            presentationRetryDates = presentationRetryDates.filter { currentRequestIds.contains($0.key) }
+            presentationRetryDeadlines = presentationRetryDeadlines.filter { currentRequestIds.contains($0.key) }
             automaticPresentationDiagnosticReasons = automaticPresentationDiagnosticReasons.filter { currentRequestIds.contains($0.key) }
             persistPresentedRequestIds()
             discardExpiredRequests(handledRequestedExpirationId: handledRequestedExpirationId)
@@ -2126,7 +2131,7 @@ final class PaykitPaymentRequestManager {
             pendingRequests.removeAll { $0.id == request.id }
             presentedRequestIds.remove(request.id)
             presentationRetryAttempts.removeValue(forKey: request.id)
-            presentationRetryDates.removeValue(forKey: request.id)
+            presentationRetryDeadlines.removeValue(forKey: request.id)
             automaticPresentationDiagnosticReasons.removeValue(forKey: request.id)
             schedulePresentationRetry()
             if requestedPresentationId == request.id {
@@ -2171,7 +2176,7 @@ final class PaykitPaymentRequestManager {
         let requestIds = Set(pendingRequests.map(\.id))
         presentedRequestIds.formIntersection(requestIds)
         presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
-        presentationRetryDates = presentationRetryDates.filter { requestIds.contains($0.key) }
+        presentationRetryDeadlines = presentationRetryDeadlines.filter { requestIds.contains($0.key) }
         automaticPresentationDiagnosticReasons = automaticPresentationDiagnosticReasons.filter { requestIds.contains($0.key) }
         if requestedPresentationId.map({ !requestIds.contains($0) }) == true {
             presentationGeneration += 1
@@ -2203,11 +2208,11 @@ final class PaykitPaymentRequestManager {
         presentationRetryTask?.cancel()
         presentationRetryTask = nil
 
-        guard let nextRetry = presentationRetryDates.values.min() else { return }
-        let delay = max(0, nextRetry.timeIntervalSince(now()))
+        guard let nextRetry = presentationRetryDeadlines.values.min() else { return }
+        let delay = max(Duration.zero, retryNow().duration(to: nextRetry))
         presentationRetryTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: .seconds(delay))
+                try await Task.sleep(for: delay)
             } catch {
                 return
             }

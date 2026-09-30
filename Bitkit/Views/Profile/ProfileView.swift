@@ -1,10 +1,27 @@
 import SwiftUI
 
+struct ProfileDestinationView: View {
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+
+    let hasSeenIntro: Bool
+
+    var body: some View {
+        if pubkyProfile.hasExistingIdentity {
+            ProfileView()
+        } else if hasSeenIntro {
+            PubkyChoiceView()
+        } else {
+            ProfileIntroView()
+        }
+    }
+}
+
 struct ProfileView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
+    @State private var isRefreshing = true
     @State private var showSignOutConfirmation = false
     @State private var showAddTagSheet = false
     @State private var isUpdatingTags = false
@@ -20,7 +37,7 @@ struct ProfileView: View {
                 VStack(spacing: 0) {
                     navigationBar
 
-                    if pubkyProfile.isLoadingProfile {
+                    if isRefreshing || pubkyProfile.isRestoringSession || pubkyProfile.isLoadingProfile {
                         loadingContent
                     } else {
                         emptyContent
@@ -42,8 +59,7 @@ struct ProfileView: View {
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .task {
-            guard pubkyProfile.profile == nil else { return }
-            await pubkyProfile.loadProfile()
+            await refreshProfile()
         }
         .alert(
             t("profile__sign_out_title"),
@@ -245,12 +261,21 @@ struct ProfileView: View {
         }
     }
 
+    private func refreshProfile() async {
+        isRefreshing = true
+        defer { isRefreshing = false }
+        guard pubkyProfile.profile == nil else { return }
+        await pubkyProfile.restoreSessionIfNeeded()
+        await pubkyProfile.loadProfile()
+    }
+
     // MARK: - Loading / Empty States
 
     private var loadingContent: some View {
         VStack {
             Spacer()
             ActivityIndicator(size: 32)
+                .accessibilityIdentifier("ProfileLoading")
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -261,7 +286,7 @@ struct ProfileView: View {
             Spacer()
             BodyMText(t("profile__empty_state"))
             CustomButton(title: t("profile__retry_load"), variant: .secondary) {
-                await pubkyProfile.loadProfile()
+                await refreshProfile()
             }
             .accessibilityIdentifier("ProfileRetry")
             Button(t("profile__sign_out")) {
