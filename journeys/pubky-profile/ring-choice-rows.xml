@@ -1,0 +1,35 @@
+<journey name="pubky ring choice rows">
+  <description>
+    Verifies that the Pubky Ring choice screen lists every Ring identity straight away under its
+    truncated key and fills each name in as its profile lookup finishes. It also verifies that
+    tapping a row shows a spinner on that row only and disables every row until adoption finishes.
+
+    Precondition, outside the Capabilities table in journeys/README.md: Pubky Ring installed on the
+    same simulator or device and signed by the same Apple team, so it shares Bitkit's pubky.shared
+    keychain group. It holds at least two identities, at least one with a profile name published
+    where this Bitkit build resolves profiles. Without Pubky Ring, run these steps as a manual test
+    and name the missing capability in the PR. Bitkit is an onboarded E2E build with Paykit UI
+    enabled and no Pubky identity. Use the test simulator UDID for &lt;UDID&gt;.
+    &lt;ring-pubky&gt; is a Ring identity's bare z32 key without the "pubky" prefix, and
+    &lt;named-ring-pubky&gt; is the one with a published name. Tapping that row signs in with it.
+
+    iOS-only, with no Android counterpart. Android shows one loading line in place of the rows
+    while it loads and while it adopts, and tags every row "PubkyChoiceIdentity". iOS keeps the
+    rows up and tags each one "PubkyChoiceRing_&lt;pubky&gt;". See README.md.
+  </description>
+  <actions>
+    <action>Run `xcrun simctl terminate &lt;UDID&gt; to.bitkit`, then `xcrun simctl launch &lt;UDID&gt; to.bitkit`, so no Ring row profile is remembered from earlier in the session</action>
+    <action>If the PIN screen appears, unlock the wallet</action>
+    <action>Tap the header profile button (id "ProfileButton"). If nothing happens, Pubky is still initializing: wait a moment and tap it again</action>
+    <action>If the Profile intro (id "ProfileIntro") appears, tap Continue (id "ProfileIntro-button")</action>
+    <action>Verify the choice screen shows one row per Ring identity (id "PubkyChoiceRing_&lt;ring-pubky&gt;") and no create option (id "PubkyChoiceCreate")</action>
+    <action>Verify every row is already tappable and captioned with its truncated key in capitals: the key's first four and last four characters around "...". A row whose name has not arrived also shows that truncated key as its title. If every name is already showing, the lookups finished first: report "already resolved" rather than failing</action>
+    <action>Wait for the row for the named identity (id "PubkyChoiceRing_&lt;named-ring-pubky&gt;") to show its published name as its title</action>
+    <action>Verify that row keeps its truncated key as its caption, and any row whose identity has no published name still shows its truncated key as its title</action>
+    <action>Tap the row for the named identity (id "PubkyChoiceRing_&lt;named-ring-pubky&gt;")</action>
+    <action>Straight away, capture a snapshot and a screenshot before adoption finishes</action>
+    <action>Verify from the snapshot that every Ring row is disabled while the identity is adopted. A disabled button drops out of the snapshot's Targets list, so the signal is the "PubkyChoiceRing_" rows missing from Targets while the choice screen is still showing. If adoption finished before the capture, report "already adopted" rather than failing</action>
+    <action>Verify from the screenshot that only the tapped row shows a spinner in place of its key icon, while every other row keeps its key icon and its name or truncated key. The spinner has no identifier, so a snapshot cannot settle this. If adoption finished before the capture, report "already adopted" rather than failing</action>
+    <action>Verify the choice screen gives way to the contact import overview (id "ContactImportOverviewProfile") or Pay Contacts (id "PayContactsContinue")</action>
+  </actions>
+</journey>

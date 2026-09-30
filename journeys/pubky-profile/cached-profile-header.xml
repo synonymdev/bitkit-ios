@@ -1,0 +1,29 @@
+<journey name="cached profile header while loading">
+  <description>
+    Verifies that opening Profile straight after a relaunch, while the signed-in profile is still
+    loading, shows the cached name read-only. The edit, copy, share, QR code and tag controls are
+    absent. The full profile then replaces the cached header in place.
+
+    Precondition: an onboarded E2E Bitkit build with Paykit UI enabled and a Bitkit-generated Pubky
+    identity whose profile has a name. Profile must have loaded fully once on this build, so the
+    cache records which key the name belongs to. Use the test simulator UDID for &lt;UDID&gt;.
+
+    iOS-only, with no Android counterpart. Android shows a spinner until the profile loads. A warm
+    network can finish the load before the first snapshot, so an "already loaded" result repeats
+    the relaunch once instead of failing. See README.md.
+  </description>
+  <actions>
+    <action>Tap the header profile button (id "ProfileButton")</action>
+    <action>Wait for the full profile name (id "ProfileViewName", predicate exists) and note the name it shows</action>
+    <action>Run `xcrun simctl terminate &lt;UDID&gt; to.bitkit`</action>
+    <action>Run `xcrun simctl launch &lt;UDID&gt; to.bitkit`</action>
+    <action>If the PIN screen appears, unlock the wallet</action>
+    <action>As soon as the home screen shows, tap the header profile button (id "ProfileButton")</action>
+    <action>If a bare spinner with no "Profile" title shows first, wait for it to clear. That is the Pubky initialization wait, which has to finish before the cached header can show. A spinner under the "Profile" title with no name is not that wait: no cached header showed, so report it</action>
+    <action>Verify the cached profile header (id "ProfileCachedHeader") is visible and its name (id "ProfileCachedName") matches the name noted before the relaunch. If the full profile name (id "ProfileViewName") is already showing, the load finished first: report "already loaded" and repeat from the terminate step once rather than failing</action>
+    <action>Verify the cached header is read-only: edit (id "ProfileEdit"), copy (id "ProfileCopy"), share (id "ProfileShare"), the QR code (id "ProfileQRCode") and add tag (id "ProfileAddTag") are all absent</action>
+    <action>Wait for the full profile name (id "ProfileViewName", predicate exists)</action>
+    <action>Verify the cached profile header (id "ProfileCachedHeader") is gone and the full profile name (id "ProfileViewName") matches the cached name</action>
+    <action>Verify edit (id "ProfileEdit") and the QR code (id "ProfileQRCode") are visible</action>
+  </actions>
+</journey>

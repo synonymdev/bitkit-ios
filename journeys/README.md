@@ -124,6 +124,8 @@ Known naming differences:
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
 | Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
+| Pubky Ring choice row | `PubkyChoiceIdentity` (the same tag on every row) | `PubkyChoiceRing_<pubky>` (bare z32 key) |
+| Cached profile header while the profile loads | — | `ProfileCachedHeader`, with the name `ProfileCachedName` |
 
 `SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix
 but appends the billing period (`-one-time` for a one-off), because every recurring payment of one
