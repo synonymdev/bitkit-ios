@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import Paykit
 import XCTest
 
 @MainActor
@@ -9,6 +10,59 @@ final class ContactsManagerTests: XCTestCase {
         // tearDown used to delete this outright, so a user who had enabled Paykit UI lost the setting.
         snapshotAppDefaults(PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
+    }
+
+    func testInitialLoadPreservesUnchangedContactsAfterLocalMutations() async throws {
+        for deletesContact in [true, false] {
+            let first = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "First")
+            let second = contactRecord(key: "pubky" + String(repeating: "z", count: 52), name: "Second")
+            let added = contactRecord(key: "pubky" + String(repeating: "r", count: 52), name: "Added")
+            let source = SuspendedContactRecords(records: [first, second])
+            let manager = ContactsManager(contactRecords: { await source.load() })
+            let load = Task { try await manager.loadContacts(for: "owner") }
+            while await !(source.isPaused) {
+                await Task.yield()
+            }
+            let expected: [ContactRecord]
+            if deletesContact {
+                manager.contacts.removeAll { $0.publicKey == second.publicKey }
+                expected = [first]
+            } else {
+                manager.contacts.append(makeContact(publicKey: added.publicKey))
+                expected = [first, second, added]
+            }
+            await source.resume(with: expected)
+            try await load.value
+            XCTAssertEqual(Set(manager.contacts.map(\.publicKey)), Set(expected.map(\.publicKey)))
+            XCTAssertTrue(manager.hasLoaded)
+            XCTAssertFalse(manager.isLoading)
+        }
+    }
+
+    func testResetStopsAnInvalidatedContactLoad() async throws {
+        let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
+        let source = SuspendedContactRecords(records: [record])
+        let manager = ContactsManager(contactRecords: { await source.load() })
+        let load = Task { try await manager.loadContacts(for: "owner") }
+        while await !(source.isPaused) {
+            await Task.yield()
+        }
+        manager.reset()
+        await source.resume(with: [record])
+        try await load.value
+        XCTAssertTrue(manager.contacts.isEmpty)
+        XCTAssertFalse(manager.hasLoaded)
+        XCTAssertFalse(manager.isLoading)
+    }
+
+    private func contactRecord(key: String, name: String) -> ContactRecord {
+        ContactRecord(
+            publicKey: key, receiverPaths: [PaykitReceiverPath.wallet], label: name,
+            profile: PaykitProfile(displayName: name, imageUri: nil, extraJson: nil),
+            profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
+            publicContactMarkerStatus: .notPublished, publicContactMarkerReceiverPath: nil,
+            publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
+        )
     }
 
     func testPubkyPublicKeyFormatNormalizesPrefixedAndUnprefixedKeys() {
@@ -370,5 +424,34 @@ final class ContactsManagerTests: XCTestCase {
 
     private func makeContact(publicKey: String) -> Bitkit.PubkyContact {
         Bitkit.PubkyContact(publicKey: publicKey, profile: makeProfile(publicKey: publicKey))
+    }
+}
+
+private actor SuspendedContactRecords {
+    private var records: [ContactRecord]
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var shouldPause = true
+
+    var isPaused: Bool {
+        continuation != nil
+    }
+
+    init(records: [ContactRecord]) {
+        self.records = records
+    }
+
+    func load() async -> [ContactRecord] {
+        let snapshot = records
+        if shouldPause {
+            shouldPause = false
+            await withCheckedContinuation { continuation = $0 }
+        }
+        return snapshot
+    }
+
+    func resume(with records: [ContactRecord]) {
+        self.records = records
+        continuation?.resume()
+        continuation = nil
     }
 }

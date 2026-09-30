@@ -1127,6 +1127,7 @@
 "contacts__import_select_none" = "Select none";
 "contacts__import_friends_count" = "{count} friends";
 "contacts__import_selected_count" = "{count} selected";
+"contacts__delete_active_subscription" = "End active subscriptions before deleting this contact.";
 "contacts__delete_title" = "Delete {name}?";
 "contacts__delete_description" = "Are you sure you want to delete {name} from your contacts?";
 "contacts__delete_confirm" = "Yes, Delete";

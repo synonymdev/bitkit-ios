@@ -193,6 +193,124 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(app.claimContactPaymentContext(second))
     }
 
+    func testBlockingPeerHidesRequestsFromAnEarlierSnapshot() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let record = try paymentRequestRecord(
+            counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy",
+            expiresAt: timestamp(now.addingTimeInterval(60))
+        )
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refresh()
+        XCTAssertEqual(manager.pendingRequests.count, 1)
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: record.counterparty, path: record.counterpartyReceiverPath, state: .blocked)],
+            receiverPathsByPublicKey: [:]
+        )
+        await manager.refresh()
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        await sdk.setRecords([])
+        await manager.refresh()
+        XCTAssertTrue(manager.historyRequests.isEmpty)
+    }
+
+    func testBlockingAnAlreadyPresentedAcceptedRequestPreventsPayment() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let record = try paymentRequestRecord(
+            counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy",
+            state: .accepted
+        )
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: record.counterparty, path: record.counterpartyReceiverPath, state: .blocked)],
+            receiverPathsByPublicKey: [:]
+        )
+        var consumed = false
+        do {
+            try await manager.prepareForPayment(request) { consumed = true }
+            XCTFail("Expected the deleted contact's request to be unavailable")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        XCTAssertFalse(consumed)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
+    func testApprovedPaymentRechecksBlockingInEachSoftwareSendRouteWithoutRepeatingAcceptance() async throws {
+        let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        var consumedCount = 0
+        try await manager.prepareForPayment(request) { consumedCount += 1 }
+        try await manager.prepareForPayment(request) { consumedCount += 1 }
+        XCTAssertEqual(consumedCount, 1)
+        let accepted = await sdk.snapshot().acceptedRequests
+        XCTAssertEqual(accepted.count, 1)
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: record.counterparty, path: record.counterpartyReceiverPath, state: .blocked)],
+            receiverPathsByPublicKey: [:]
+        )
+        var lightningSendCalls = 0
+        var lnurlSendCalls = 0
+        var onchainPreparationCalls = 0
+        var onchainAuthorizationCalls = 0
+        var onchainSendCalls = 0
+        var authorizationFailureCalls = 0
+        do {
+            try await SendConfirmationView.sendLightningPayment(
+                request: request,
+                authorize: { try await manager.ensurePaymentAllowed($0) },
+                onAuthorizationFailure: { _ in authorizationFailureCalls += 1 }
+            ) {
+                lightningSendCalls += 1
+            }
+            XCTFail("Expected the Lightning send to be rejected")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        do {
+            try await LnurlPayConfirm.sendLightningPayment(
+                request: request,
+                authorize: { try await manager.ensurePaymentAllowed($0) },
+                onAuthorizationFailure: { _ in authorizationFailureCalls += 1 }
+            ) {
+                lnurlSendCalls += 1
+            }
+            XCTFail("Expected the LNURL send to be rejected")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        do {
+            try await SendConfirmationView.sendOnchainPayment(
+                request: request,
+                prepareBroadcast: { _ in onchainPreparationCalls += 1 },
+                authorize: { try await manager.ensurePaymentAllowed($0) },
+                onAuthorizationFailure: { _ in authorizationFailureCalls += 1 },
+                onAuthorized: { _ in onchainAuthorizationCalls += 1 },
+                send: { beforeBroadcastAttempt in
+                    try await beforeBroadcastAttempt()
+                    onchainSendCalls += 1
+                }
+            )
+            XCTFail("Expected the on-chain send to be rejected")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        XCTAssertEqual(consumedCount, 1)
+        XCTAssertEqual(lightningSendCalls, 0)
+        XCTAssertEqual(lnurlSendCalls, 0)
+        XCTAssertEqual(onchainPreparationCalls, 1)
+        XCTAssertEqual(onchainAuthorizationCalls, 0)
+        XCTAssertEqual(onchainSendCalls, 0)
+        XCTAssertEqual(authorizationFailureCalls, 3)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
     func testRefreshMapsSupportedOneTimeBitcoinRequest() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let currentOnchain = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)
