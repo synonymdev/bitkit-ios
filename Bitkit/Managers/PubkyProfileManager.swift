@@ -108,12 +108,31 @@ class PubkyProfileManager: ObservableObject {
         if let initializationTask {
             await initializationTask.value
         }
-        guard publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
+        guard !Task.isCancelled, publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
         do {
             guard try hasStoredIdentity() else { return }
             await initialize(mode: .automaticRecovery, initializeSession: initializeSession)
         } catch {
             Logger.warn("Unable to read saved Pubky identity for recovery: \(error)", context: "PubkyProfileManager")
+        }
+    }
+
+    func retrySessionRestoration(
+        retryDelay: Duration = .seconds(10),
+        hasStoredIdentity: () throws -> Bool = { try PubkyProfileManager.hasStoredIdentity() },
+        initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult = {
+            try await PubkyProfileManager.initializePersistedSession()
+        }
+    ) async {
+        // A usable connection can return without a new network-path event.
+        while !Task.isCancelled {
+            await restoreSessionIfNeeded(hasStoredIdentity: hasStoredIdentity, initializeSession: initializeSession)
+            guard !isAuthenticated else { return }
+            do {
+                try await Task.sleep(for: retryDelay)
+            } catch {
+                return
+            }
         }
     }
 

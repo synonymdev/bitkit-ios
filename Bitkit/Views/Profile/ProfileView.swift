@@ -43,6 +43,7 @@ struct ProfileView: View {
         .navigationBarHidden(true)
         .task {
             guard pubkyProfile.profile == nil else { return }
+            await pubkyProfile.restoreSessionIfNeeded()
             await pubkyProfile.loadProfile()
         }
         .alert(
@@ -261,6 +262,7 @@ struct ProfileView: View {
             Spacer()
             BodyMText(t("profile__empty_state"))
             CustomButton(title: t("profile__retry_load"), variant: .secondary) {
+                await pubkyProfile.restoreSessionIfNeeded()
                 await pubkyProfile.loadProfile()
             }
             .accessibilityIdentifier("ProfileRetry")

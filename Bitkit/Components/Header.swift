@@ -119,17 +119,8 @@ struct Header: View {
                 return
             }
 
-            if pubkyProfile.isAuthenticated {
-                navigation.navigate(.profile)
-            } else if pubkyProfile.initializationErrorMessage != nil {
-                navigation.navigate(.profile)
-            } else if !pubkyProfile.isInitialized {
-                // Still initializing — don't navigate to choice screen yet
-                return
-            } else if app.hasSeenProfileIntro {
-                navigation.navigate(.pubkyChoice)
-            } else {
-                navigation.navigate(.profileIntro)
+            if let destination = Self.profileDestination(for: pubkyProfile, hasSeenIntro: app.hasSeenProfileIntro) {
+                navigation.navigate(destination)
             }
         } label: {
             HStack(alignment: .center, spacing: 16) {
@@ -145,6 +136,16 @@ struct Header: View {
         }
         .accessibilityLabel(pubkyProfile.displayName ?? t("profile__nav_title"))
         .accessibilityIdentifier("ProfileButton")
+    }
+
+    static func profileDestination(for profile: PubkyProfileManager, hasSeenIntro: Bool) -> Route? {
+        if profile.isAuthenticated || profile.cachedName != nil || profile.initializationErrorMessage != nil {
+            return .profile
+        }
+        guard profile.isInitialized else { return nil }
+        // Unreadable credentials must not be treated as a new identity.
+        guard (try? PubkyProfileManager.hasStoredIdentity()) == false else { return .profile }
+        return hasSeenIntro ? .pubkyChoice : .profileIntro
     }
 
     private func dismissCalculatorIfNeeded() -> Bool {

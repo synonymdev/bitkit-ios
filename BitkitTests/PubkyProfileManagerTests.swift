@@ -35,10 +35,92 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: keys[1]), manager.cachedImageUri)
 
         manager.sessionRestorationFailed = false
+        XCTAssertEqual(Header.profileDestination(for: manager, hasSeenIntro: true), .profile)
         await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: "existing-identity") }
         XCTAssertEqual(manager.publicKey, "existing-identity")
         XCTAssertEqual(manager.cachedName, "Existing profile")
         XCTAssertEqual(manager.cachedImageUri, "pubky://existing/avatar")
+    }
+
+    @MainActor
+    func testProfileEntryPreservesSavedIdentityWithoutCachedMetadata() throws {
+        snapshotAppDefaults("pubky_profile_name")
+        UserDefaults.standard.removeObject(forKey: "pubky_profile_name")
+        let savedReference = AdoptedPubkyReference.current
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
+        let savedValues = try keys.map { try Keychain.load(key: $0) }
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            for (key, value) in zip(keys, savedValues) {
+                if let value { try? Keychain.upsert(key: key, data: value) }
+                else { try? Keychain.delete(key: key) }
+            }
+        }
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
+        AdoptedPubkyReference.current = nil
+        let manager = RecoveryProfileManager()
+        manager.isInitialized = true
+        XCTAssertEqual(Header.profileDestination(for: manager, hasSeenIntro: false), .profileIntro)
+        XCTAssertEqual(Header.profileDestination(for: manager, hasSeenIntro: true), .pubkyChoice)
+
+        try Keychain.upsert(key: .pubkySecretKey, data: Data("saved-local-key".utf8))
+        XCTAssertEqual(Header.profileDestination(for: manager, hasSeenIntro: true), .profile)
+        try Keychain.delete(key: .pubkySecretKey)
+        AdoptedPubkyReference.current = (SharedPubkyKeychain.ringSourceApp, "saved-ring-key")
+        XCTAssertEqual(Header.profileDestination(for: manager, hasSeenIntro: true), .profile)
+    }
+
+    @MainActor
+    func testPeriodicRecoveryRestoresIdentityWithoutConnectivityEvent() async {
+        let manager = RecoveryProfileManager()
+        await manager.initialize { .restorationFailed }
+        manager.sessionRestorationFailed = false
+        let attempts = SessionRecoveryAttempts()
+        let recovered = expectation(description: "saved identity recovered")
+        let recovery = Task {
+            await manager.retrySessionRestoration(retryDelay: .milliseconds(1), hasStoredIdentity: { true }) {
+                guard await attempts.next() >= 3 else { return .restorationFailed }
+                return .restored(publicKey: "existing-identity")
+            }
+            recovered.fulfill()
+        }
+        defer { recovery.cancel() }
+        await fulfillment(of: [recovered], timeout: 3)
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+        XCTAssertEqual(manager.authState, .authenticated)
+        XCTAssertFalse(manager.sessionRestorationFailed)
+        XCTAssertNil(manager.initializationErrorMessage)
+    }
+
+    @MainActor
+    func testCancelledRecoveryDoesNotRetryAfterPendingStartup() async {
+        let manager = RecoveryProfileManager()
+        let started = expectation(description: "startup started")
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let startup = Task {
+            await manager.initialize {
+                started.fulfill()
+                for await _ in stream {}
+                return .restorationFailed
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        let retryStarted = expectation(description: "recovery waiting for startup")
+        let recovery = Task {
+            retryStarted.fulfill()
+            await manager.retrySessionRestoration(hasStoredIdentity: { true }) {
+                XCTFail("Cancelled foreground recovery must not start a session")
+                return .restored(publicKey: "existing-identity")
+            }
+        }
+        await fulfillment(of: [retryStarted], timeout: 2)
+        recovery.cancel()
+        continuation.finish()
+        await startup.value
+        await recovery.value
+        XCTAssertNil(manager.publicKey)
     }
 
     @MainActor
@@ -1500,4 +1582,13 @@ private func XCTAssertThrowsErrorAsync(
         _ = try await expression()
         XCTFail("Expected expression to throw", file: file, line: line)
     } catch {}
+}
+
+private actor SessionRecoveryAttempts {
+    private var count = 0
+
+    func next() -> Int {
+        count += 1
+        return count
+    }
 }

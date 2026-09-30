@@ -317,6 +317,12 @@ struct AppScene: View {
                 config in AppUpdateSheet(config: config)
             }
             .task(priority: .userInitiated, setupTask)
+            .task(id: [scenePhase == .active, wallet.walletExists == true, isWalletBackupRestoreRunning]) {
+                guard scenePhase == .active, wallet.walletExists == true,
+                      !isWalletBackupRestoreRunning, !BackupService.shared.hasPendingWalletRestore()
+                else { return }
+                await pubkyProfile.retrySessionRestoration()
+            }
             .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
             .task(id: initialPaykitSyncGeneration) { await pollIncomingPaykitPaymentRequestsDuringInitialSync() }
             .task { await handlePendingPaykitSubscriptionNotification() }
