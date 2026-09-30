@@ -128,9 +128,10 @@ the SDK and can push the Pay step well past the budget.
 Bitkit keeps their lifecycle and paid-period history, and subscription cancellation,
 but does not accept them, offer payments, or schedule payment reminders. The journey
 requires a controlled rc56 peer to prepare the accepted and paid records; repository
-tests cover these states without sending funds. On both platforms, payment-history rows
-show notes or dates rather than lifecycle labels, and active subscriptions are opened
-from Overview. The journeys therefore record each fixture's payment request id, check
+tests cover these states without sending funds. On iOS, payment-history rows show notes
+or dates rather than lifecycle labels. On Android, unpaid history rows show lifecycle
+labels, while paid rows show subscription names, notes, or dates. Active subscriptions
+are opened from Overview. The journeys therefore record each fixture's payment request id, check
 its full row identifier, and include the required back and tab transitions. The accepted
 subscription must have no end date so cancellation is available. The proposal review
 must explain that its payment details are unsupported and offer no Subscribe control.
