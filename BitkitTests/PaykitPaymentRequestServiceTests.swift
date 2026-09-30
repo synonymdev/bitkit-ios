@@ -1504,6 +1504,75 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
+    func testCanceledSubscriptionReadsCanceledAndExpiresAtTheEndOfItsPaidPeriod() throws {
+        let period = BillingPeriod(startsAt: "2027-01-01T08:00:00Z", endsAt: "2027-02-01T08:00:00Z")
+        let canceled = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .canceled,
+            recurrence: PaymentRequestRecurrence(
+                every: 1,
+                unit: "month",
+                startsAt: period.startsAt,
+                anchor: period.startsAt,
+                endsAt: nil
+            ),
+            paymentProofs: [paymentProofRecord(
+                endpoint: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                kind: .lightning,
+                billingPeriod: period
+            )]
+        )))
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let paidThrough = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-01T08:00:00Z"))
+
+        XCTAssertEqual(canceled.statusLabel(at: now), t("wallet__payment_request_status_canceled"))
+        XCTAssertEqual(canceled.rowSubtitle(at: now), t("wallet__payment_request_status_canceled"))
+        XCTAssertEqual(canceled.timingTitle(at: now), t("subscriptions__expires"))
+        XCTAssertEqual(canceled.timingTitle(at: paidThrough), t("subscriptions__expired"))
+        XCTAssertEqual(canceled.statusLabel(at: paidThrough), t("wallet__payment_request_status_canceled"))
+    }
+
+    func testCanceledSubscriptionWithoutPaidPeriodReadsExpiredTiming() throws {
+        let canceled = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .canceled,
+            recurrence: PaymentRequestRecurrence(
+                every: 1,
+                unit: "month",
+                startsAt: "2027-01-01T08:00:00Z",
+                anchor: "2027-01-01T08:00:00Z",
+                endsAt: nil
+            )
+        )))
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+
+        XCTAssertEqual(canceled.statusLabel(at: now), t("wallet__payment_request_status_canceled"))
+        XCTAssertEqual(canceled.timingTitle(at: now), t("subscriptions__expired"))
+    }
+
+    func testActiveAndEndedSubscriptionsKeepTheirStatusAndTiming() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        func subscription(endsAt: String?) throws -> PaykitSubscription {
+            try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+                state: .activeRecurring,
+                recurrence: PaymentRequestRecurrence(
+                    every: 1,
+                    unit: "month",
+                    startsAt: "2027-01-01T08:00:00Z",
+                    anchor: "2027-01-01T08:00:00Z",
+                    endsAt: endsAt
+                )
+            )))
+        }
+        let openEnded = try subscription(endsAt: nil)
+        let fixedEnd = try subscription(endsAt: "2027-06-01T08:00:00Z")
+        let ended = try subscription(endsAt: "2027-01-10T08:00:00Z")
+
+        XCTAssertEqual(openEnded.statusLabel(at: now), t("subscriptions__active"))
+        XCTAssertEqual(openEnded.timingTitle(at: now), t("subscriptions__renews"))
+        XCTAssertEqual(fixedEnd.timingTitle(at: now), t("subscriptions__expires"))
+        XCTAssertEqual(ended.statusLabel(at: now), t("subscriptions__expired"))
+        XCTAssertEqual(ended.timingTitle(at: now), t("subscriptions__expired"))
+    }
+
     func testActiveSubscriptionTransitionUsesNextPeriodBoundary() throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let weekly = PaymentRequestRecurrence(

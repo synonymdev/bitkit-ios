@@ -440,7 +440,7 @@ struct SubscriptionDetailView: View {
             )
             if subscription.isActive(at: now) || subscription.isExpired(at: now) || subscription.recurrence.endsAt != nil {
                 LabeledDetailCell(
-                    title: timingTitle(subscription),
+                    title: subscription.timingTitle(at: now),
                     value: renewalText(subscription),
                     icon: "calendar"
                 )
@@ -514,17 +514,13 @@ struct SubscriptionDetailView: View {
         return date.map(Self.dateFormatter.string) ?? t("subscriptions__ongoing")
     }
 
-    private func timingTitle(_ subscription: PaykitSubscription) -> String {
-        guard subscription.isActive(at: now) else { return t("subscriptions__expired") }
-        return subscription.recurrence.endsAt == nil ? t("subscriptions__renews") : t("subscriptions__expires")
-    }
-
     private var nextTransitionDate: Date? {
         guard let subscription else { return nil }
         return [
             subscription.recurrence.startsAt,
             subscription.recurrence.endsAt,
             subscription.isActive(at: now) ? subscription.recurrence.nextPeriod(after: now)?.startsAt : nil,
+            subscription.lifecycleState == .canceled ? subscriptionEndDate(subscription: subscription) : nil,
         ]
         .compactMap { $0 }
         .filter { $0 > now }
@@ -1048,12 +1044,26 @@ extension PaykitSubscriptionRecurrence {
     }
 }
 
-private extension PaykitSubscription {
+extension PaykitSubscription {
     func statusLabel(at now: Date) -> String {
         if isProposalVisible(at: now) {
             return t("subscriptions__pending")
         }
-        return isActive(at: now) ? t("subscriptions__active") : t("subscriptions__expired")
+        if isActive(at: now) {
+            return t("subscriptions__active")
+        }
+        return lifecycleState == .canceled ? t("wallet__payment_request_status_canceled") : t("subscriptions__expired")
+    }
+
+    /// An inactive subscription still runs until its last paid period ends, so a future date "Expires".
+    func timingTitle(at now: Date) -> String {
+        if isActive(at: now) {
+            return recurrence.endsAt == nil ? t("subscriptions__renews") : t("subscriptions__expires")
+        }
+        if let endDate = subscriptionEndDate(subscription: self), endDate > now {
+            return t("subscriptions__expires")
+        }
+        return t("subscriptions__expired")
     }
 
     func rowSubtitle(at now: Date) -> String {
@@ -1072,6 +1082,9 @@ private extension PaykitSubscription {
         }
         if isProposalVisible(at: now) || !recurrence.unit.isSupported {
             return recurrence.subscriptionFrequencyLabel
+        }
+        if lifecycleState == .canceled {
+            return t("wallet__payment_request_status_canceled")
         }
         if isExpired(at: now) {
             guard let endsAt = recurrence.endsAt else { return t("subscriptions__expired") }

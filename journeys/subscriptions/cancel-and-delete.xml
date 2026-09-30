@@ -18,6 +18,10 @@
     <action>Verify the sheet title reads "Cancel Subscription", the cross illustration is shown, and the swipe control reads "Swipe To Cancel"</action>
     <action>Swipe the confirm control to the end</action>
     <action>Verify the sheet dismisses and "Journey Sub" leaves the ACTIVE section</action>
+    <action>Verify "Journey Sub" is listed under EXPIRED with "Canceled" as its subtitle</action>
+    <action>Tap the "Journey Sub" row</action>
+    <action>Verify STATUS reads "Canceled" and the timing cell reads "EXPIRES" with the end date of the paid period, not "EXPIRED"</action>
+    <action>Navigate back and verify the Subscriptions list is shown again</action>
     <action>Switch to the creator instance and open Subscriptions</action>
     <action>Verify "Journey Sub" is still listed under CREATED, because its paid periods are retained as history</action>
     <action>Tap the pending "Journey Sub Two" row in the CREATED section</action>
