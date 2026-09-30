@@ -21,6 +21,8 @@ struct ContactDetailView: View {
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
     @State private var showDeleteConfirmation = false
+    @State private var isPayLoading = false
+    @State private var payTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +47,14 @@ struct ContactDetailView: View {
                 isLoading = false
             }
             isLoading = false
+        }
+        .task {
+            if isPaymentRequestAvailable {
+                paymentRequests.startEligibleTargetRefresh(publicKey: publicKey)
+            }
+        }
+        .onDisappear {
+            payTask?.cancel()
         }
         .onReceive(contactsManager.$contacts) { updatedContacts in
             if let cached = updatedContacts.first(where: { $0.publicKey == publicKey }) {
@@ -114,16 +124,9 @@ struct ContactDetailView: View {
 
     private var contactActions: some View {
         HStack(spacing: 16) {
-            GradientCircleButton(icon: "coins-regular", accessibilityLabel: t("wallet__send")) {
-                if canRequestPayment {
-                    sheets.showSheet(
-                        .receive,
-                        data: ReceiveConfig(view: .requestOrPay(publicKey: publicKey))
-                    )
-                } else {
-                    Task {
-                        await payContact()
-                    }
+            GradientCircleButton(icon: "coins-regular", accessibilityLabel: t("wallet__send"), isLoading: isPayLoading) {
+                payTask = Task {
+                    await onPayTapped()
                 }
             }
             .accessibilityIdentifier("ContactPay")
@@ -158,12 +161,25 @@ struct ContactDetailView: View {
         }
     }
 
-    private var canRequestPayment: Bool {
-        PaykitFeatureFlags.isUIAvailable &&
-            isPaykitUIEnabled &&
-            paymentRequests.eligibleTargets.contains {
-                PubkyPublicKeyFormat.matches($0.publicKey, publicKey)
-            }
+    private var isPaymentRequestAvailable: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    private func onPayTapped() async {
+        guard !isPayLoading else { return }
+        isPayLoading = true
+        defer { isPayLoading = false }
+
+        let target = isPaymentRequestAvailable
+            ? await paymentRequests.eligibleTarget(publicKey: publicKey, waitingAtMost: .seconds(2))
+            : nil
+        guard !Task.isCancelled else { return }
+
+        if target != nil {
+            sheets.showSheet(.receive, data: ReceiveConfig(view: .requestOrPay(publicKey: publicKey)))
+        } else {
+            await payContact()
+        }
     }
 
     // MARK: - Links / Metadata

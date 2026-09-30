@@ -883,7 +883,7 @@ struct SendSheet: View {
         _ requestId: PaykitPaymentRequest.ID,
         isInitialSubscriptionPayment: Bool
     ) async {
-        guard let request = paykitPaymentRequestManager.paymentRequestForRetry(requestId) else {
+        guard let request = await paykitPaymentRequestManager.paymentRequestForRetry(requestId) else {
             app.toast(PaykitPaymentRequestError.requestUnavailable)
             return
         }

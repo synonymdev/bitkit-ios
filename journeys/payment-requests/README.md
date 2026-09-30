@@ -48,7 +48,7 @@ That run established the issuer shapes captured by the fixture: lowercase `btc`,
 The failure reason vocabulary is:
 
 - Parse: `missing_local_role`, `outgoing_request`, `unsupported_local_role`, `missing_terms`,
-  `recurring_request`, `unsupported_asset`, `invalid_amount`, `amount_out_of_range`,
+  `recurring_request`, `unsupported_asset`, `unsupported_payment_deadline`, `invalid_amount`, `amount_out_of_range`,
   `no_supported_endpoint`, `invalid_expiration`, `expired`.
 - Resolution: `no_supported_endpoint`, `endpoint_not_payable`, `payment_details_pending`,
   `resolution_failed`.
@@ -76,12 +76,23 @@ Use a second Bitkit instance as the requester instead of the fixture issuer: bot
 authenticated Pubky identities, saved as each other's contacts and linked on receiver path
 `bitkit/wallet`, and the payer holds enough balance to pay 21,000 sats.
 
+## Contact Request Or Pay
+
+`contact-request-or-pay.xml` is ported alongside Android's matching journey.
+
+### Setup
+
+Use the same two-instance setup as the request summary, and start from the payer's Contact Detail
+screen, opened through the `bitkit://contact?pubky=` deeplink. Its timing step assumes the payer has
+been running for about a minute: right after launch, the Paykit session restore and link refresh hold
+the SDK and can push the Pay step well past the budget.
+
 ## Identifiers used
 
 - Pending-request bell: `PaymentRequestsBell`.
 - Incoming sheet: `PaymentRequestsSheet`.
 - Screen: `PaymentRequestsScreen`.
-- Request row: `PaymentRequestRow-<payment-request-id>-<counterparty>-<receiver-path>-one-time`; construct the complete value from the fixture issuer public key and negotiated receiver path because `wait-for-ui` does not support prefix matching.
+- Request row: `PaymentRequestRow-<payment-request-id>-one-time` for a one-time request; `wait-for-ui` requires the complete identifier.
 - Pay action: `PaymentRequestPay-<payment-request-id>`.
 - Dismiss action: `PaymentRequestDismiss-<payment-request-id>`.
 - Payment confirmation: `PaymentRequestConfirm`.
@@ -89,9 +100,25 @@ authenticated Pubky identities, saved as each other's contacts and linked on rec
 - Confirmation invoice note: `PaymentRequestInvoiceNote`.
 - Confirmation details: `SendConfirmToggleDetails`.
 - Saved-contact recipient: `ReviewContactRecipient`.
+- Contact Detail pay action: `ContactPay`.
+- Request or Pay sheet: `RequestOrPaySheet` (its Pay and Request buttons carry no identifier; find them by label).
+- Payment Request amount screen: `PaymentRequestAmount`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
 - Expiration feedback: `PaymentRequestExpiredToast`.
 
 `delete-and-readd-contact.xml` uses two Bitkit instances to verify that deleting a contact revokes private requests across restart and that explicitly adding the contact again restores a fresh private connection. It does not send funds.
 
 `delete-contact-with-active-subscription.xml` requires an accepted open-ended payer subscription. It verifies that deletion explains why the contact must stay saved until the subscription ends, then that canceling, deleting, and readding does not revive it. No new payment is sent. Both contact-deletion journeys are mirrored on iOS and Android.
+
+## Payment deadline history
+
+`payment-deadline-history.xml` covers rc56 requests with actual-payment deadlines.
+Bitkit keeps their lifecycle and paid-period history, and subscription cancellation,
+but does not accept them, offer payments, or schedule payment reminders. The journey
+requires a controlled rc56 peer to prepare the accepted and paid records; repository
+tests cover these states without sending funds. On both platforms, payment-history rows
+show notes or dates rather than lifecycle labels, and active subscriptions are opened
+from Overview. The journeys therefore record each fixture's payment request id, check
+its full row identifier, and include the required back and tab transitions. The accepted
+subscription must have no end date so cancellation is available. The proposal review
+must explain that its payment details are unsupported and offer no Subscribe control.

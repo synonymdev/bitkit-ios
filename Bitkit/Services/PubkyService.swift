@@ -453,7 +453,7 @@ actor PaykitSdkService {
 
     func importSession(secret: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             let localSecret = try sessionProvider.loadLocalSecretKey()
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().importSession(
@@ -470,7 +470,7 @@ actor PaykitSdkService {
 
     func signUp(secretKeyHex: String, homeserverPublicKey: String, signupCode: String?) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().signUp(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
@@ -503,7 +503,7 @@ actor PaykitSdkService {
 
     func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             do {
                 try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
             } catch {
@@ -519,7 +519,7 @@ actor PaykitSdkService {
 
     func signIn(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
-            let previousPublicKey = await currentSdkStatePublicKey()
+            let previousPublicKey = try await currentSdkStatePublicKey()
             let receiverNoiseSecretKey = try sessionProvider.loadOrDeriveReceiverNoiseSecretKey()
             let result = try await bootstrap().signIn(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
@@ -719,22 +719,26 @@ actor PaykitSdkService {
         }
     }
 
+    /// Takes the SDK lock per read and drops out of its queue once cancelled, so an abandoned eligibility check
+    /// holds up a payment for at most the one read already in flight.
     func paymentRequestReceiverPaths(publicKey: String) async throws -> [String] {
-        try await operationLock.withLock {
-            let sdk = try handle()
-            let paths = try await sdk.paykitReceiverPaths(publicKey: publicKey)
-            var capablePaths = Set<String>()
+        try Task.checkCancellation()
+        let paths = try await operationLock.withCancellableLock {
+            try await handle().paykitReceiverPaths(publicKey: publicKey)
+        }
+        var capablePaths = Set<String>()
 
-            for path in paths where PaykitReceiverPath.supported.contains(path) {
-                guard let marker = try await sdk.paykitReceiverMarker(publicKey: publicKey, receiverPath: path),
-                      marker.capabilities.paymentRequests == true
-                else { continue }
-
+        for path in paths where PaykitReceiverPath.supported.contains(path) {
+            try Task.checkCancellation()
+            let marker = try await operationLock.withCancellableLock {
+                try await handle().paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
+            }
+            if marker?.capabilities.paymentRequests == true {
                 capablePaths.insert(path)
             }
-
-            return PaykitReceiverPath.supported.filter { capablePaths.contains($0) }
         }
+
+        return PaykitReceiverPath.supported.filter { capablePaths.contains($0) }
     }
 
     func privateReceiverPathSelection(publicKey: String, savedReceiverPaths: [String]) async throws -> PrivateReceiverPathSelection {
@@ -1141,14 +1145,8 @@ actor PaykitSdkService {
         )
     }
 
-    private func currentSdkStatePublicKey() async -> String? {
-        do {
-            return try await handle().identityStatus()?.publicKey
-        } catch {
-            try? Keychain.delete(key: .paykitSdkState)
-            resetRuntime()
-            return nil
-        }
+    private func currentSdkStatePublicKey() async throws -> String? {
+        try await handle().identityStatus()?.publicKey
     }
 
     private nonisolated static func publicKeysMatch(_ lhs: String?, _ rhs: String) -> Bool {
@@ -1227,10 +1225,15 @@ actor PaykitSdkService {
     }
 }
 
-private final class PaykitSdkOperationLock: @unchecked Sendable {
+final class PaykitSdkOperationLock: @unchecked Sendable {
+    private enum Waiter {
+        case uncancellable(CheckedContinuation<Void, Never>)
+        case cancellable(UUID, CheckedContinuation<Void, Error>)
+    }
+
     private let lock = NSLock()
     private var isLocked = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [Waiter] = []
 
     func withLock<T>(_ operation: () async throws -> T) async rethrows -> T {
         await acquire()
@@ -1238,11 +1241,20 @@ private final class PaykitSdkOperationLock: @unchecked Sendable {
         return try await operation()
     }
 
+    /// Leaves the queue as soon as the caller is cancelled and never runs `operation` for a cancelled caller,
+    /// so an abandoned read cannot take the lock ahead of work queued after it.
+    func withCancellableLock<T>(_ operation: () async throws -> T) async throws -> T {
+        try await acquireCancellable()
+        defer { release() }
+        try Task.checkCancellation()
+        return try await operation()
+    }
+
     private func acquire() async {
         await withCheckedContinuation { continuation in
             lock.lock()
             if isLocked {
-                waiters.append(continuation)
+                waiters.append(.uncancellable(continuation))
                 lock.unlock()
             } else {
                 isLocked = true
@@ -1252,8 +1264,42 @@ private final class PaykitSdkOperationLock: @unchecked Sendable {
         }
     }
 
+    private func acquireCancellable() async throws {
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                lock.lock()
+                if Task.isCancelled {
+                    lock.unlock()
+                    continuation.resume(throwing: CancellationError())
+                } else if isLocked {
+                    waiters.append(.cancellable(id, continuation))
+                    lock.unlock()
+                } else {
+                    isLocked = true
+                    lock.unlock()
+                    continuation.resume()
+                }
+            }
+        } onCancel: {
+            removeWaiter(id: id)?.resume(throwing: CancellationError())
+        }
+    }
+
+    private func removeWaiter(id: UUID) -> CheckedContinuation<Void, Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index = waiters.firstIndex(where: {
+            if case let .cancellable(waiterID, _) = $0 { return waiterID == id }
+            return false
+        }),
+            case let .cancellable(_, continuation) = waiters.remove(at: index)
+        else { return nil }
+        return continuation
+    }
+
     private func release() {
-        let nextWaiter: CheckedContinuation<Void, Never>?
+        let nextWaiter: Waiter?
         lock.lock()
         if waiters.isEmpty {
             isLocked = false
@@ -1262,7 +1308,14 @@ private final class PaykitSdkOperationLock: @unchecked Sendable {
             nextWaiter = waiters.removeFirst()
         }
         lock.unlock()
-        nextWaiter?.resume()
+        switch nextWaiter {
+        case let .uncancellable(continuation):
+            continuation.resume()
+        case let .cancellable(_, continuation):
+            continuation.resume()
+        case nil:
+            break
+        }
     }
 }
 

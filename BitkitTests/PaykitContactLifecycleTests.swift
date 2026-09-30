@@ -30,7 +30,8 @@ final class PaykitContactLifecycleTests: XCTestCase {
                 paymentReference: PaymentReference(text: "subscription"), proposalExpiresAt: nil,
                 recurrence: PaymentRequestRecurrence(every: 1, unit: "month", startsAt: "2026-01-01T00:00:00Z",
                                                      anchor: "2026-01-01T00:00:00Z", endsAt: testCase.endsAt),
-                acceptedPaymentEndpointIdentifiers: ["lightning:bolt11"], metadata: PrivateJsonObject(text: "{}")
+                acceptedPaymentEndpointIdentifiers: ["lightning:bolt11"], conversion: nil, paymentDeadline: nil,
+                metadata: PrivateJsonObject(text: "{}")
             )
             sdk.requests = [PaymentRequestRecord(
                 counterparty: sdk.publicKey, counterpartyReceiverPath: PaykitReceiverPath.server,
@@ -38,6 +39,7 @@ final class PaykitContactLifecycleTests: XCTestCase {
                 proposalStreamItemId: nil, proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
                 proposalEventId: nil, terms: terms, acceptedEventId: nil, acceptedOutboundStatus: nil,
                 rejectedEventId: nil, rejectedOutboundStatus: nil, canceledEventId: nil, canceledOutboundStatus: nil,
+                conversionQuotes: [],
                 paymentProofs: [], lastStreamItemId: nil, lastOutboundMessageId: nil, lastOutboundStatus: nil,
                 lastEventAt: nil, invalidReason: nil
             )]
