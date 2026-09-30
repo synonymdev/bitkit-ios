@@ -979,16 +979,15 @@ actor PaykitSdkService {
     /// Public-only read lane: skips `operationLock` and runs up to the limiter's cap at once. It is sound only for reads
     /// that fetch unauthenticated public Pubky data; in paykit rc56 those use the SDK's public client and never load
     /// session access, the local secret or the state blob. Session, secret or state-blob operations must never use it.
-    /// Without an SDK it takes the locked path, so a read never builds one outside the lock.
+    /// Without an SDK it takes `operationLock` only to build one, cancellably, and releases it before the read, so a
+    /// read never builds an SDK outside the lock and never holds the lock across the network call.
     private func withPublicRead<T>(_ read: (PaykitSdk) async throws -> T) async throws -> T {
-        if sdk != nil {
-            let result: T? = try await publicReadLimiter.withSlot {
-                guard let sdk else { return nil }
-                return try await read(sdk)
-            }
-            if let result { return result }
+        let instance: PaykitSdk = if let sdk {
+            sdk
+        } else {
+            try await operationLock.withCancellableLock { try handle() }
         }
-        return try await operationLock.withLock { try await read(handle()) }
+        return try await publicReadLimiter.withSlot { try await read(instance) }
     }
 
     private func withStateRevisionTracking<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {

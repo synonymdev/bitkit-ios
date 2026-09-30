@@ -111,12 +111,21 @@ final class PubkyIdentityRepublishTests: XCTestCase {
 
     func testStartedRepublishReturnsWhilePublicationIsStillRunning() async {
         let started = expectation(description: "Publication started")
+        let finishedBeforeGateOpened = expectation(description: "Publication finished before the gate opened")
+        finishedBeforeGateOpened.isInverted = true
         let finished = expectation(description: "Publication finished")
         let gate = AsyncStream<Void>.makeStream()
         let bootstrap = RepublishBootstrap(noPointer: .init())
         bootstrap.operation = { _ in
             started.fulfill()
-            for await _ in gate.stream {}
+            var gateOpened = false
+            for await _ in gate.stream {
+                gateOpened = true
+                break
+            }
+            if !gateOpened {
+                finishedBeforeGateOpened.fulfill()
+            }
             finished.fulfill()
             return true
         }
@@ -124,9 +133,12 @@ final class PubkyIdentityRepublishTests: XCTestCase {
 
         await service.startIdentityRepublish(publicKey: publicKey)
         await fulfillment(of: [started], timeout: 1)
+        // A caller that awaited the republish would return only once its timeout cancelled the publication, ending the
+        // gate loop without the gate opening.
+        await fulfillment(of: [finishedBeforeGateOpened], timeout: 0.2)
         XCTAssertEqual(bootstrap.publicKeys, ["pubky\(publicKey)"])
 
-        gate.continuation.finish()
+        gate.continuation.yield()
         await fulfillment(of: [finished], timeout: 1)
     }
 

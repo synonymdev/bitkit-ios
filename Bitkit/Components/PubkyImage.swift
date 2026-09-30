@@ -72,12 +72,13 @@ struct PubkyImage: View {
             return cached
         }
 
+        let cacheGeneration = PubkyImageCache.shared.generation
         let data = try await PubkyService.fetchFile(uri: uri, maxBytes: PubkyImagePolicy.maxDownloadBytes)
         let blobData = try await resolveImageData(data, originalUri: uri)
 
         let image = try PubkyImageDecoder.image(from: blobData)
 
-        PubkyImageCache.shared.store(image, data: blobData, for: uri)
+        PubkyImageCache.shared.store(image, data: blobData, for: uri, generation: cacheGeneration)
         return image
     }
 
@@ -158,6 +159,7 @@ final class PubkyImageCache: @unchecked Sendable {
     private var memoryCache: [String: MemoryEntry] = [:]
     private var memoryCost = 0
     private var accessSequence: UInt64 = 0
+    private var clearGeneration: UInt64 = 0
     private let memoryLock = NSLock()
     private let diskQueue = DispatchQueue(label: "pubky-image-cache-disk", qos: .utility)
     private let diskDirectory: URL
@@ -225,12 +227,22 @@ final class PubkyImageCache: @unchecked Sendable {
         }
     }
 
-    func store(_ image: UIImage, data: Data, for uri: String) {
+    /// Bumped by `clear()`. Capture it before fetching and pass it to `store`, so a fetch that finishes after a sign-out
+    /// or wipe cannot put the previous identity's image back.
+    var generation: UInt64 {
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
+        return clearGeneration
+    }
+
+    /// Drops the write, in memory and on disk, when `clear()` ran after `generation` was captured.
+    func store(_ image: UIImage, data: Data, for uri: String, generation: UInt64) {
         guard data.count <= maxFileBytes else { return }
 
-        storeInMemory(image, for: uri)
+        storeInMemory(image, for: uri, generation: generation)
 
         diskQueue.async { [self] in
+            guard generation == self.generation else { return }
             let path = diskPath(for: uri)
             try? data.write(to: path, options: .atomic)
             trimDiskCache()
@@ -251,6 +263,7 @@ final class PubkyImageCache: @unchecked Sendable {
 
     private func clearMemoryCache() {
         memoryLock.lock()
+        clearGeneration &+= 1
         memoryCache.removeAll()
         memoryCost = 0
         memoryLock.unlock()
@@ -270,12 +283,13 @@ final class PubkyImageCache: @unchecked Sendable {
         return cgImage.bytesPerRow * cgImage.height
     }
 
-    private func storeInMemory(_ image: UIImage, for uri: String) {
+    private func storeInMemory(_ image: UIImage, for uri: String, generation: UInt64? = nil) {
         let cost = Self.memoryCost(of: image)
 
         memoryLock.lock()
         defer { memoryLock.unlock() }
 
+        if let generation, generation != clearGeneration { return }
         if let replaced = memoryCache.removeValue(forKey: uri) {
             memoryCost -= replaced.cost
         }
