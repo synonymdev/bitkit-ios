@@ -1518,11 +1518,21 @@ final class PaykitSdkStateBlobStore: SdkStateBlobStore, @unchecked Sendable {
     }
 }
 
-private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendable {
+final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendable {
     private let lock = NSLock()
     private let receiverNoiseKeyStore = PaykitReceiverNoiseKeyStore()
+    private let loadSessionSecret: () throws -> String?
+    private let deleteKeychainValue: (KeychainEntryType) throws -> Void
     private var liveSessionAccess: PubkySessionAccess?
     private var isStoredSessionAccessSuspended = false
+
+    init(
+        loadSessionSecret: @escaping () throws -> String? = { try Keychain.loadString(key: .paykitSession) },
+        deleteKeychainValue: @escaping (KeychainEntryType) throws -> Void = { try Keychain.delete(key: $0) }
+    ) {
+        self.loadSessionSecret = loadSessionSecret
+        self.deleteKeychainValue = deleteKeychainValue
+    }
 
     func setLiveSessionAccess(_ access: PubkySessionAccess) {
         lock.lock()
@@ -1545,7 +1555,7 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
                 return nil
             }
 
-            guard let sessionSecret = try Keychain.loadString(key: .paykitSession), !sessionSecret.isEmpty else {
+            guard let sessionSecret = try loadSessionSecret(), !sessionSecret.isEmpty else {
                 return nil
             }
 
@@ -1569,7 +1579,7 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
     }
 
     func canDeferStaleSession(error: Error) throws -> Bool {
-        let hasStoredSession = try Keychain.loadString(key: .paykitSession)?.isEmpty == false
+        let hasStoredSession = try loadSessionSecret()?.isEmpty == false
         return PaykitSdkService.shouldDeferStaleSession(error: error, hasStoredSession: hasStoredSession)
     }
 
@@ -1589,7 +1599,7 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
     func clearSessionAccess() throws {
         try paykitStorageCallback(code: "session_clear_failed") {
             clearLiveSessionAccess()
-            try PubkySessionAccessTeardown.clear { try Keychain.delete(key: $0) }
+            try PubkySessionAccessTeardown.clear(deleteKeychainValue: deleteKeychainValue)
         }
     }
 
