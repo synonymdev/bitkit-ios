@@ -3,6 +3,8 @@
     Precondition: the import preview is open for a disposable Ring identity with known follows
     that are not yet saved in this Bitkit wallet. Include Pubky-only profiles without Paykit receivers.
     Repeat with a large list (for example 62 contacts).
+    Also repeat with an identity that follows itself. The preview count must exclude your own
+    profile, and your own profile must be absent from the saved contacts.
   </description>
   <actions>
     <action>Note the friend count shown in the import preview</action>

@@ -366,7 +366,9 @@ class ContactsManager: ObservableObject {
         contacts.append(contentsOf: imported.filter { !currentKeys.contains($0.publicKey) })
         contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
         Logger.info("Imported \(imported.count) new contacts", context: "ContactsManager")
-        if let firstError { throw firstError }
+        if let firstError {
+            throw firstError
+        }
     }
 
     // MARK: - Update Contact
@@ -496,12 +498,18 @@ class ContactsManager: ObservableObject {
         return hasImportData ? .contactImportOverview : .payContacts
     }
 
-    func discoverRemoteContacts(publicKey: String) async {
+    func discoverRemoteContacts(
+        publicKey: String,
+        fetchContactKeys: @escaping @Sendable (String) async throws -> [String] = { try await PubkyService.getContacts(publicKey: $0) },
+        resolveProfile: @escaping @Sendable (String) async throws -> PubkyProfile = {
+            try await ContactsManager.resolveContactProfile(publicKey: $0, includePlaceholder: true)
+        }
+    ) async {
         let prefixedKey = ensurePubkyPrefix(publicKey)
 
         do {
             let contactKeys = try await Task.detached {
-                try await PubkyService.getContacts(publicKey: prefixedKey)
+                try await fetchContactKeys(prefixedKey)
             }.value
 
             Logger.info("Discovered \(contactKeys.count) contacts from pubky.app", context: "ContactsManager")
@@ -509,9 +517,10 @@ class ContactsManager: ObservableObject {
             let discoveryResult: (contacts: [PubkyContact], failures: Int) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
                 for key in contactKeys {
                     let pk = ensurePubkyPrefix(key)
-                    group.addTask { [self] in
+                    guard !PubkyPublicKeyFormat.matches(pk, prefixedKey) else { continue }
+                    group.addTask {
                         do {
-                            let profile = try await resolveContactProfile(publicKey: pk, includePlaceholder: true)
+                            let profile = try await resolveProfile(pk)
                             return .success(PubkyContact(publicKey: pk, profile: profile))
                         } catch {
                             return .failure(error)

@@ -2,6 +2,8 @@
   <description>
     Precondition: the import preview is open for a disposable Ring identity with at least three
     known follows that are not yet saved in this Bitkit wallet.
+    Also repeat with an identity that follows itself. Your own profile must be absent from the
+    selection list and the saved contacts.
   </description>
   <actions>
     <action>Tap Select</action>
