@@ -2798,49 +2798,122 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.requestsForPresentation(), [request])
     }
 
-    func testAcceptedRequestIsPreparedAgainAfterDefinitePreBroadcastFailure() async throws {
-        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
-        let manager = paymentRequestManager(sdk: sdk)
-        await manager.refresh()
-        let request = try XCTUnwrap(manager.pendingRequests.first)
-        var privatePaymentListConsumptions = 0
-        let app = AppViewModel()
-        let context = ContactPaymentContext(
-            publicKey: request.counterparty,
-            privatePaymentContext: PrivatePaykitPaymentContext(receiverPath: request.counterpartyReceiverPath, paymentListVersion: 7),
-            incomingPaymentRequest: request,
-            isInitialSubscriptionPayment: true
-        )
-        XCTAssertTrue(app.claimContactPaymentContext(context))
+    func testHardwareFailureCleanupPreservesConsumptionProofAndRetryOwnership() async throws {
+        snapshotAppDefaultsDomain()
+        let counterparty = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let cases: [(outcome: PrivatePaymentListSendOutcome, started: Bool, ownsContext: Bool, paid: Bool)] = [
+            (.definitePreBroadcastFailure, true, true, false),
+            (.definitePreBroadcastFailure, false, true, false),
+            (.uncertain, true, true, false),
+            (.definitePreBroadcastFailure, true, false, false),
+            (.definitePreBroadcastFailure, true, true, true),
+        ]
 
-        try await manager.prepareForPayment(request) {
-            privatePaymentListConsumptions += 1
-        }
-        try await sdk.setRecords([paymentRequestRecord(state: .accepted)])
-        await sdk.setLinkedPeersError(.linkedPeers)
-        do {
-            try await manager.ensurePaymentAllowed(request)
-            XCTFail("Expected final authorization to fail")
-        } catch {
-            XCTAssertEqual(error as? PaymentRequestSdkMockError, .linkedPeers)
-        }
-        await sdk.setLinkedPeersError(nil)
-        await SendSheet.restoreHardwareContactPaymentForRetry(context, app: app, manager: manager)
-        let retriedContext = try XCTUnwrap(app.contactPaymentContext)
-        let retriedRequest = try XCTUnwrap(retriedContext.incomingPaymentRequest)
-        XCTAssertEqual(retriedContext.id, context.id)
-        XCTAssertEqual(retriedContext.publicKey, context.publicKey)
-        XCTAssertEqual(retriedContext.privatePaymentContext, context.privatePaymentContext)
-        XCTAssertEqual(retriedContext.isInitialSubscriptionPayment, context.isInitialSubscriptionPayment)
-        XCTAssertEqual(retriedRequest.lifecycleState, .accepted)
-        try await manager.prepareForPayment(retriedRequest) {
-            privatePaymentListConsumptions += 1
-        }
+        for testCase in cases {
+            UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+            let privateService = PrivatePaykitService()
+            let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(counterparty: counterparty, endpoints: [endpoint])])
+            let manager = paymentRequestManager(sdk: sdk)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            let app = AppViewModel()
+            let privateContext = PrivatePaykitPaymentContext(receiverPath: request.counterpartyReceiverPath, paymentListVersion: 7)
+            let context = ContactPaymentContext(
+                publicKey: counterparty,
+                privatePaymentContext: privateContext,
+                incomingPaymentRequest: request,
+                isInitialSubscriptionPayment: true
+            )
+            XCTAssertTrue(app.claimContactPaymentContext(context))
+            let proofStore = HardwarePaymentProofMemoryStore()
+            let proofService = PaykitPaymentProofService(
+                sdk: sdk,
+                store: proofStore,
+                onchainPaymentLookup: HardwarePaymentProofOnchainLookup(),
+                logInfo: { _ in },
+                logWarning: { _ in }
+            )
+            try await proofService.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+            try await manager.prepareForPayment(request) {
+                try await privateService.consumePrivatePaymentList(publicKey: counterparty, context: privateContext, attemptId: context.id)
+            }
+            if testCase.started {
+                try await proofService.markOnchainPaymentStarted(request, address: "bcrt1qhardwarecleanup")
+            }
+            let preparedProofs = try await proofStore.load()
+            XCTAssertEqual(preparedProofs.count, 1)
+            let acceptedRecord = try paymentRequestRecord(
+                counterparty: counterparty,
+                state: testCase.paid ? .proofSubmitted : .accepted,
+                endpoints: [endpoint]
+            )
+            try await sdk.setRecords([acceptedRecord])
+            if !testCase.paid {
+                await sdk.setLinkedPeersError(.linkedPeers)
+                do {
+                    try await manager.ensurePaymentAllowed(request)
+                    XCTFail("Expected final authorization to fail")
+                } catch {
+                    XCTAssertEqual(error as? PaymentRequestSdkMockError, .linkedPeers)
+                }
+                await sdk.setLinkedPeersError(nil)
+            }
+            if !testCase.ownsContext {
+                app.contactPaymentContext = ContactPaymentContext(publicKey: counterparty)
+            }
+            let contextBeforeCleanup = app.contactPaymentContext
 
-        XCTAssertEqual(privatePaymentListConsumptions, 2)
-        XCTAssertTrue(manager.isApprovedForPayment(retriedRequest))
-        let snapshot = await sdk.snapshot()
-        XCTAssertEqual(snapshot.acceptedRequests.map(\.paymentRequestId), [request.paymentRequestId])
+            await SendSheet.cancelHardwareContactPayment(
+                context,
+                outcome: testCase.outcome,
+                app: app,
+                manager: manager,
+                privatePaykitService: privateService,
+                paymentProofService: proofService
+            )
+
+            let persistedVersion = await PrivatePaykitService().state.contacts[counterparty]?
+                .consumedPrivatePaymentListVersionsByReceiverPath[privateContext.receiverPath]
+            let remainingProofs = try await proofStore.load()
+            if testCase.outcome == .uncertain {
+                XCTAssertEqual(persistedVersion, privateContext.paymentListVersion)
+                XCTAssertEqual(remainingProofs, preparedProofs)
+                XCTAssertEqual(app.contactPaymentContext, contextBeforeCleanup)
+                do {
+                    try await privateService.consumePrivatePaymentList(publicKey: counterparty, context: privateContext, attemptId: UUID())
+                    XCTFail("Uncertain sends must keep the private list consumed")
+                } catch PrivatePaykitError.paymentListAlreadyConsumed {}
+                let restartedProofService = PaykitPaymentProofService(sdk: sdk, store: proofStore, logInfo: { _ in }, logWarning: { _ in })
+                do {
+                    try await restartedProofService.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+                    XCTFail("An uncertain started proof must prevent a new preparation")
+                } catch PaykitPaymentRequestError.operationInProgress {}
+            } else {
+                XCTAssertNil(persistedVersion)
+                XCTAssertTrue(remainingProofs.isEmpty)
+                if testCase.ownsContext, !testCase.paid {
+                    let retriedContext = try XCTUnwrap(app.contactPaymentContext)
+                    let retriedRequest = try XCTUnwrap(retriedContext.incomingPaymentRequest)
+                    XCTAssertEqual(retriedContext.id, context.id)
+                    XCTAssertEqual(retriedContext.publicKey, context.publicKey)
+                    XCTAssertEqual(retriedContext.privatePaymentContext, context.privatePaymentContext)
+                    XCTAssertEqual(retriedContext.isInitialSubscriptionPayment, context.isInitialSubscriptionPayment)
+                    XCTAssertEqual(retriedRequest.lifecycleState, .accepted)
+                    try await proofService.prepare(request: retriedRequest, paymentEndpointIdentifier: endpoint, kind: .onchain)
+                    try await manager.prepareForPayment(retriedRequest) {
+                        try await privateService.consumePrivatePaymentList(
+                            publicKey: counterparty, context: privateContext, attemptId: retriedContext.id
+                        )
+                    }
+                    XCTAssertTrue(manager.isApprovedForPayment(retriedRequest))
+                } else {
+                    XCTAssertEqual(app.contactPaymentContext, contextBeforeCleanup)
+                }
+            }
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.acceptedRequests.map(\.paymentRequestId), [request.paymentRequestId])
+        }
     }
 
     func testFailedAcceptanceDropsRequestRemovedFromAuthoritativeQueue() async throws {
@@ -4245,7 +4318,7 @@ private final class PaymentRequestSubscriptionStateMemoryStore: PaykitSubscripti
     }
 }
 
-private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
+private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaymentProofSdkHandling {
     private var activeIdentity = "pubky\(String(repeating: "z", count: 52))"
     private var records: [PaymentRequestRecord]
     private var peerRecords: [LinkedPeerRecord] = []
@@ -4330,6 +4403,16 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
 
     func identityStatus() -> IdentityStatus? {
         IdentityStatus(publicKey: activeIdentity, liveSessionAvailable: liveSessionAvailable)
+    }
+
+    func submitPaymentProof(
+        counterparty _: String,
+        counterpartyReceiverPath _: String,
+        paymentRequestId _: String,
+        proof _: PaymentProofSubmission
+    ) throws -> PaymentRequestRecord {
+        XCTFail("Failure cleanup must not submit a payment proof")
+        throw PaymentRequestSdkMockError.process
     }
 
     func linkedPeers() async throws -> [LinkedPeerRecord] {
@@ -4832,5 +4915,27 @@ private func waitUntil(
     while await !condition() {
         guard clock.now < deadline else { throw PaymentRequestTestError.timedOut }
         try await Task.sleep(for: .milliseconds(10))
+    }
+}
+
+private actor HardwarePaymentProofMemoryStore: PaykitPaymentProofStoring {
+    private var proofs: [PendingPaykitPaymentProof] = []
+
+    func load() -> [PendingPaykitPaymentProof] {
+        proofs
+    }
+
+    func save(_ proofs: [PendingPaykitPaymentProof]) {
+        self.proofs = proofs
+    }
+}
+
+private struct HardwarePaymentProofOnchainLookup: PaykitOnchainPaymentProofLookingUp {
+    func existingTransactionIds(address _: String, amountSats _: UInt64) async throws -> Set<String> {
+        ["transaction-before-attempt"]
+    }
+
+    func transactionId(address _: String, amountSats _: UInt64, excluding _: Set<String>) async throws -> String? {
+        nil
     }
 }

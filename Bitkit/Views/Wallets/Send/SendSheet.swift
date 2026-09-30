@@ -834,13 +834,25 @@ struct SendSheet: View {
     }
 
     private func cancelHardwareContactPayment(_ context: ContactPaymentContext?, outcome: PrivatePaymentListSendOutcome) async {
+        await Self.cancelHardwareContactPayment(context, outcome: outcome, app: app, manager: paykitPaymentRequestManager)
+    }
+
+    @MainActor
+    static func cancelHardwareContactPayment(
+        _ context: ContactPaymentContext?,
+        outcome: PrivatePaymentListSendOutcome,
+        app: AppViewModel,
+        manager: PaykitPaymentRequestManager,
+        privatePaykitService: PrivatePaykitService = .shared,
+        paymentProofService: PaykitPaymentProofService = .shared
+    ) async {
         guard let request = context?.incomingPaymentRequest else { return }
-        await context?.resolvePrivatePaymentListConsumption(outcome)
+        await context?.resolvePrivatePaymentListConsumption(outcome, service: privatePaykitService)
         guard outcome == .definitePreBroadcastFailure else { return }
-        await PaykitPaymentProofService.shared.failOnchainPayment(request)
-        await PaykitPaymentProofService.shared.cancelPreparation(request)
+        await paymentProofService.failOnchainPayment(request)
+        await paymentProofService.cancelPreparation(request)
         if let context {
-            await Self.restoreHardwareContactPaymentForRetry(context, app: app, manager: paykitPaymentRequestManager)
+            await restoreHardwareContactPaymentForRetry(context, app: app, manager: manager)
         }
     }
 

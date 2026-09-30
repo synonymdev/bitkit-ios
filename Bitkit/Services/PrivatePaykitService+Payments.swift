@@ -8,11 +8,14 @@ enum PrivatePaymentListSendOutcome: Equatable {
 }
 
 extension ContactPaymentContext {
-    func resolvePrivatePaymentListConsumption(_ outcome: PrivatePaymentListSendOutcome) async {
+    func resolvePrivatePaymentListConsumption(
+        _ outcome: PrivatePaymentListSendOutcome,
+        service: PrivatePaykitService = .shared
+    ) async {
         guard incomingPaymentRequest != nil, let privatePaymentContext else { return }
 
         do {
-            try await PrivatePaykitService.shared.resolvePrivatePaymentListConsumption(
+            try await service.resolvePrivatePaymentListConsumption(
                 publicKey: publicKey,
                 context: privatePaymentContext,
                 attemptId: id,
