@@ -105,7 +105,7 @@ the SDK and can push the Pay step well past the budget.
 - Screen: `PaymentRequestsScreen`.
 - Detail screen: `PaymentRequestDetailScreen`.
 - Detail amount and status: `PaymentRequestDetailsAmount`, `PaymentRequestDetailsStatus`.
-- Request row: `PaymentRequestRow-<payment-request-id>-<counterparty>-<receiver-path>-one-time`; construct the complete value from the fixture issuer public key and negotiated receiver path because `wait-for-ui` does not support prefix matching.
+- Request row: `PaymentRequestRow-<payment-request-id>-one-time`; use the complete identifier because `wait-for-ui` does not support prefix matching.
 - Pay action: `PaymentRequestPay-<payment-request-id>`.
 - Dismiss action: `PaymentRequestDismiss-<payment-request-id>`.
 - Payment confirmation: `PaymentRequestConfirm`.
