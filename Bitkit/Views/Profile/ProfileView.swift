@@ -16,6 +16,8 @@ struct ProfileView: View {
         Group {
             if let profile = pubkyProfile.profile {
                 profileContent(profile)
+            } else if pubkyProfile.isLoadingProfile, let cachedProfile = pubkyProfile.cachedProfilePreview {
+                cachedProfileContent(cachedProfile)
             } else {
                 VStack(spacing: 0) {
                     navigationBar
@@ -246,6 +248,29 @@ struct ProfileView: View {
     }
 
     // MARK: - Loading / Empty States
+
+    /// Read-only, and laid out like `profileContent` so the name and avatar stay put when the profile arrives.
+    private func cachedProfileContent(_ cachedProfile: PubkyProfile) -> some View {
+        InsetHeaderScrollView(header: { navigationBar }) {
+            VStack(spacing: 0) {
+                CenteredProfileHeader(
+                    truncatedKey: cachedProfile.truncatedPublicKey,
+                    name: cachedProfile.name,
+                    bio: "",
+                    imageUrl: cachedProfile.imageUrl,
+                    showDivider: false,
+                    nameAccessibilityIdentifier: "ProfileCachedName"
+                )
+                .padding(.top, 16)
+                .padding(.bottom, 16)
+
+                ActivityIndicator(size: 24)
+            }
+            .padding(.horizontal, 16)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("ProfileCachedHeader")
+        }
+    }
 
     private var loadingContent: some View {
         VStack {

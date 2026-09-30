@@ -43,6 +43,8 @@ class PubkyProfileManager: ObservableObject {
     @Published var adoptedSourceLost = false
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
+    /// The pubky the cached name and avatar were written for. Nil for a cache written before the owner was stored.
+    @Published private var cachedProfileOwner: String?
     @Published private(set) var isProfileSetupPending: Bool
     /// Public profiles found for the Pubky Ring rows on the choice screen, keyed by normalized pubky. Display-only.
     @Published private(set) var ringIdentityProfiles: [String: PubkyProfile] = [:]
@@ -60,6 +62,7 @@ class PubkyProfileManager: ObservableObject {
         self.remoteProfileResolver = remoteProfileResolver
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
         cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
+        cachedProfileOwner = UserDefaults.standard.string(forKey: Self.cachedProfileOwnerKey)
         isProfileSetupPending = UserDefaults.standard.bool(forKey: Self.profileSetupPendingKey)
     }
 
@@ -767,6 +770,7 @@ class PubkyProfileManager: ObservableObject {
         await PubkyImageCache.shared.clear()
         UserDefaults.standard.removeObject(forKey: cachedNameKey)
         UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
+        UserDefaults.standard.removeObject(forKey: cachedProfileOwnerKey)
         UserDefaults.standard.removeObject(forKey: profileSetupPendingKey)
         ContactsManager.restoreContactProfileOverrides(nil)
         clearPublicPaykitSharingState()
@@ -904,6 +908,7 @@ class PubkyProfileManager: ObservableObject {
 
     private static let cachedNameKey = "pubky_profile_name"
     private static let cachedImageUriKey = "pubky_profile_image_uri"
+    private static let cachedProfileOwnerKey = "pubky_profile_owner"
     private static let profileSetupPendingKey = "pubky_profile_setup_pending"
 
     var displayName: String? {
@@ -914,18 +919,35 @@ class PubkyProfileManager: ObservableObject {
         profile?.imageUrl ?? cachedImageUri
     }
 
+    /// The cached name and avatar for the signed-in pubky, shown read-only while its profile loads. It has no bio, links
+    /// or tags, so it must never stand in for `profile`. Nil before initialization and when the cache belongs to
+    /// another pubky or has no recorded owner.
+    var cachedProfilePreview: PubkyProfile? {
+        guard isInitialized,
+              let publicKey,
+              let cachedName,
+              PubkyPublicKeyFormat.matches(cachedProfileOwner, publicKey)
+        else { return nil }
+
+        return .forDisplay(publicKey: publicKey, name: cachedName, imageUrl: cachedImageUri)
+    }
+
     private func cacheProfileMetadata(_ profile: PubkyProfile) {
         cachedName = profile.name
         cachedImageUri = profile.imageUrl
+        cachedProfileOwner = profile.publicKey
         UserDefaults.standard.set(profile.name, forKey: Self.cachedNameKey)
         UserDefaults.standard.set(profile.imageUrl, forKey: Self.cachedImageUriKey)
+        UserDefaults.standard.set(profile.publicKey, forKey: Self.cachedProfileOwnerKey)
     }
 
     private func clearCachedProfileMetadata() {
         cachedName = nil
         cachedImageUri = nil
+        cachedProfileOwner = nil
         UserDefaults.standard.removeObject(forKey: Self.cachedNameKey)
         UserDefaults.standard.removeObject(forKey: Self.cachedImageUriKey)
+        UserDefaults.standard.removeObject(forKey: Self.cachedProfileOwnerKey)
     }
 
     private func setProfileSetupPending(_ pending: Bool) {

@@ -410,6 +410,55 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
     }
 
+    // MARK: - Cached profile preview
+
+    @MainActor
+    func testCachedProfilePreviewShowsOnlyForThePubkyItWasCachedFor() async {
+        await withRestoredProfileDefaults {
+            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+            manager.publicKey = ringKeyA
+            await manager.loadProfile()
+            manager.isInitialized = true
+
+            XCTAssertEqual(manager.cachedProfilePreview?.name, "Alice")
+            manager.publicKey = bareRingKeyA
+            XCTAssertEqual(manager.cachedProfilePreview?.name, "Alice", "The owner matches either key form")
+            manager.publicKey = ringKeyB
+            XCTAssertNil(manager.cachedProfilePreview, "Another pubky never shows this pubky's name")
+            XCTAssertEqual(manager.cachedName, "Alice")
+
+            let relaunched = PubkyProfileManager()
+            relaunched.publicKey = ringKeyA
+            XCTAssertNil(relaunched.cachedProfilePreview, "Nothing shows before initialization completes")
+            relaunched.isInitialized = true
+            XCTAssertEqual(relaunched.cachedProfilePreview?.name, "Alice", "The owner persists across launches")
+
+            manager.clearAuthenticatedStateForTesting()
+            XCTAssertNil(UserDefaults.standard.string(forKey: "pubky_profile_owner"))
+        }
+    }
+
+    @MainActor
+    func testCachedNameWithoutAnOwnerShowsNoPreviewUntilALoadRecordsOne() async {
+        await withRestoredProfileDefaults {
+            // Builds before the owner was stored cached only the name and avatar.
+            UserDefaults.standard.set("Legacy", forKey: "pubky_profile_name")
+            UserDefaults.standard.removeObject(forKey: "pubky_profile_owner")
+            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+            manager.publicKey = ringKeyA
+            manager.isInitialized = true
+
+            XCTAssertEqual(manager.cachedName, "Legacy")
+            XCTAssertNil(manager.cachedProfilePreview)
+
+            await manager.loadProfile()
+            XCTAssertEqual(manager.cachedProfilePreview?.name, "Alice")
+            XCTAssertEqual(UserDefaults.standard.string(forKey: "pubky_profile_owner"), ringKeyA)
+        }
+    }
+
     // MARK: - Pubky Ring choice rows
 
     @MainActor
@@ -1156,7 +1205,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     private func withRestoredProfileDefaults(_ body: () async -> Void) async {
         let defaults = UserDefaults.standard
-        let keys = ["pubky_profile_name", "pubky_profile_image_uri", "pubky_profile_setup_pending"]
+        let keys = ["pubky_profile_name", "pubky_profile_image_uri", "pubky_profile_owner", "pubky_profile_setup_pending"]
         let previousValues = keys.map { defaults.object(forKey: $0) }
         defer {
             for (key, value) in zip(keys, previousValues) {
