@@ -262,7 +262,6 @@ struct SendSheet: View {
                             isResumingAcceptedOrdinarySend = true
                             hasValidatedAfterSync = true
                             app.selectedWalletToPayFrom = .onchain
-                            wallet.sendAmountSats = attempt.amountSats
                             replaceRootRoute(with: .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil))
                             return
                         }

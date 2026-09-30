@@ -937,34 +937,27 @@ struct SendConfirmationView: View {
                     )
                 }
 
-                // Create pre-activity metadata for tags and activity address
-                let metadataSaved = await createPreActivityMetadata(
-                    paymentId: txid,
-                    address: invoice.address,
-                    txId: txid,
-                    feeRate: wallet.selectedFeeRateSatsPerVByte
-                )
-
-                // Create sent onchain activity immediately so it appears before LDK event (which can be delayed)
-                let activitySaved = await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
-                    txid: txid,
-                    address: invoice.address,
-                    amount: amount,
-                    fee: UInt64(transactionFee),
-                    feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1,
-                    contact: contactPublicKey
-                )
-
-                if proofSaved, metadataSaved, activitySaved {
+                var savedActivity: OnchainActivity?
+                if proofSaved {
                     do {
-                        try await OnchainSendAttemptService.shared.acknowledgeLocalFollowup(txid: txid)
+                        if let incomingPaymentRequest {
+                            if try await OnchainSendAttemptService.shared
+                                .resumeAcceptedRequestSend(requestId: incomingPaymentRequest.id, txid: txid)
+                            {
+                                savedActivity = try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid)
+                            }
+                        } else {
+                            savedActivity = try await OnchainSendAttemptService.shared.resumeAcceptedOrdinarySend(
+                                walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)
+                            )?.activity
+                        }
                     } catch {
-                        Logger.warn("Accepted payment follow-up could not be acknowledged; retaining the attempt", context: "SendConfirmation")
+                        Logger.warn("Accepted payment local follow-up remains guarded: \(error)", context: "SendConfirmation")
                     }
                 }
 
-                // Set the amount for the success screen
-                wallet.sendAmountSats = amount
+                // The accepted attempt owns the original amount and metadata during local resume.
+                wallet.sendAmountSats = savedActivity?.value ?? incomingPaymentRequest?.amountSats ?? amount
 
                 Logger.info("Onchain send result txid: \(txid)")
 

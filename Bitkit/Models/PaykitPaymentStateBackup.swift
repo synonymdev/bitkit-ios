@@ -72,7 +72,7 @@ struct PaykitPaymentStateBackup: Codable {
         let onchainAmountSats: UInt64?
         let onchainWalletId: String?
         let onchainMatchingTransactionIdsBeforeAttempt: Set<String>
-        let onchainBroadcastAccepted: Bool?
+        let onchainAcceptanceVerified: Bool?
 
         init(_ proof: PendingPaykitPaymentProof) {
             identity = proof.identity
@@ -87,7 +87,7 @@ struct PaykitPaymentStateBackup: Codable {
             onchainAmountSats = proof.onchainAmountSats
             onchainWalletId = proof.onchainWalletId
             onchainMatchingTransactionIdsBeforeAttempt = proof.onchainMatchingTransactionIdsBeforeAttempt ?? []
-            onchainBroadcastAccepted = proof.onchainBroadcastAccepted
+            onchainAcceptanceVerified = proof.onchainAcceptanceVerified
         }
 
         func restored() throws -> PendingPaykitPaymentProof {
@@ -110,7 +110,7 @@ struct PaykitPaymentStateBackup: Codable {
                 onchainAmountSats: onchainAmountSats,
                 onchainWalletId: onchainWalletId,
                 onchainMatchingTransactionIdsBeforeAttempt: onchainMatchingTransactionIdsBeforeAttempt,
-                onchainBroadcastAccepted: onchainBroadcastAccepted
+                onchainAcceptanceVerified: onchainAcceptanceVerified
             )
         }
     }

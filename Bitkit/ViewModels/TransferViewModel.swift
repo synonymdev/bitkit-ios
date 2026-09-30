@@ -152,6 +152,9 @@ class TransferViewModel: ObservableObject {
 
     private let coreService: CoreService
     private let lightningService: LightningService
+    private let onchainAttemptService: OnchainSendAttemptService
+    private let onchainSender: any OnchainSending
+    private let onchainBalanceProvider: () -> UInt64
     private let currencyService: CurrencyService
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
@@ -201,10 +204,16 @@ class TransferViewModel: ObservableObject {
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
         hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
-        onBalanceRefresh: (() async -> Void)? = nil
+        onBalanceRefresh: (() async -> Void)? = nil,
+        onchainAttemptService: OnchainSendAttemptService = .shared,
+        onchainSender: (any OnchainSending)? = nil,
+        onchainBalanceProvider: (() -> UInt64)? = nil
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
+        self.onchainAttemptService = onchainAttemptService
+        self.onchainSender = onchainSender ?? lightningService
+        self.onchainBalanceProvider = onchainBalanceProvider ?? { lightningService.balances?.totalOnchainBalanceSats ?? 0 }
         self.currencyService = currencyService
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
@@ -422,7 +431,7 @@ class TransferViewModel: ObservableObject {
             throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
         }
 
-        let preTransferOnchainSats = lightningService.balances?.totalOnchainBalanceSats ?? 0
+        let preTransferOnchainSats = onchainBalanceProvider()
 
         // Verify we can afford the transfer when using sendAll
         if isMaxAmount, let maxSendable = maxSendableAmount, maxSendable < order.feeSat {
@@ -432,16 +441,32 @@ class TransferViewModel: ObservableObject {
             )
         }
 
+        let txTotalSats = SpendingConfirmTotal.leavingAmount(
+            orderFeeSat: order.feeSat,
+            networkFeeSat: txFee,
+            shouldUseSendAll: isMaxAmount,
+            maxSendable: maxSendableAmount
+        )
+
         // For sendAll (change would be dust), send entire balance
         // Otherwise, send exact order.feeSat amount
-        let result = try await OnchainSendAttemptService.shared.send(
-            using: lightningService,
+        let result = try await onchainAttemptService.send(
+            using: onchainSender,
             address: address,
             amountSats: order.feeSat,
             satsPerVbyte: satsPerVbyte,
             utxosToSpend: utxosToSpend,
             isMaxAmount: isMaxAmount,
-            orderId: order.id
+            orderId: order.id,
+            followupContext: OnchainSendFollowupContext(
+                feeSats: txFee, feeRate: satsPerVbyte, tags: [], contact: nil,
+                createdAt: UInt64(Date().timeIntervalSince1970)
+            ),
+            transferContext: OnchainSendTransferContext(
+                clientBalanceSats: order.clientBalanceSat,
+                txTotalSats: txTotalSats,
+                preTransferOnchainSats: preTransferOnchainSats
+            )
         )
         let txid: String
         switch result {
@@ -459,56 +484,21 @@ class TransferViewModel: ObservableObject {
             )
         }
 
-        let txTotalSats = SpendingConfirmTotal.leavingAmount(
-            orderFeeSat: order.feeSat,
-            networkFeeSat: txFee,
-            shouldUseSendAll: isMaxAmount,
-            maxSendable: maxSendableAmount
-        )
-
-        // Pre-activity metadata lets the LDK activity sync recognize this send as a transfer.
-        let currentTime = UInt64(Date().timeIntervalSince1970)
-        let preActivityMetadata = BitkitCore.PreActivityMetadata(
-            walletId: WalletScope.default,
-            paymentId: txid,
-            tags: [],
-            paymentHash: nil,
-            txId: txid,
-            address: address,
-            isReceive: false,
-            feeRate: UInt64(satsPerVbyte),
-            isTransfer: true,
-            channelId: nil,
-            createdAt: currentTime
-        )
-        let metadataSaved: Bool
         do {
-            try await coreService.activity.addPreActivityMetadata(preActivityMetadata)
-            metadataSaved = true
+            guard try await onchainAttemptService.resumeAcceptedTransfer(
+                orderId: order.id, txid: txid, using: transferService
+            ) else { throw OnchainSendAttemptError.localFollowupNotSaved }
         } catch {
-            metadataSaved = false
-            Logger.warn("Accepted funding metadata could not be saved; retaining the attempt", context: "TransferViewModel")
-        }
-
-        let trackingSaved = await fundPaidOrder(
-            order: order,
-            txId: txid,
-            txTotalSats: txTotalSats,
-            preTransferOnchainSats: preTransferOnchainSats
-        )
-        if trackingSaved, metadataSaved {
-            do {
-                try await OnchainSendAttemptService.shared.acknowledgeLocalFollowup(txid: txid)
-            } catch {
-                Logger.warn("Accepted funding follow-up could not be acknowledged; retaining the attempt", context: "TransferViewModel")
-            }
-        }
-        if !trackingSaved {
+            Logger.warn("Accepted funding local follow-up remains guarded: \(error)", context: "TransferViewModel")
             throw AppError(
                 message: "Funding was sent, but local order tracking could not be saved. Do not fund this order again.",
                 debugMessage: "Accepted funding transaction \(txid) for order \(order.id)"
             )
         }
+        fundedOrderId = order.id
+        lightningSetupStep = 0
+        await onBalanceRefresh?()
+        watchOrder(orderId: order.id)
     }
 
     @discardableResult

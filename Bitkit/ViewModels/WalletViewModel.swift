@@ -101,7 +101,8 @@ class WalletViewModel: ObservableObject {
         rgsConfigService: RgsConfigService = RgsConfigService(),
         transferService: TransferService,
         sheetViewModel: SheetViewModel,
-        feeEstimatesManager: FeeEstimatesManager
+        feeEstimatesManager: FeeEstimatesManager,
+        onchainAttemptService: OnchainSendAttemptService = .shared
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
@@ -115,11 +116,32 @@ class WalletViewModel: ObservableObject {
             transferService: transferService,
             coreService: coreService
         )
+        Task {
+            do {
+                _ = try await onchainAttemptService.resumeAcceptedTransfer(
+                    walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex), using: transferService
+                )
+            } catch {
+                Logger.warn("Accepted order local follow-up remains guarded: \(error)", context: "WalletViewModel")
+            }
+        }
+        lightningService.onchainTransactionReceived = { txid in
+            do {
+                _ = try await onchainAttemptService.resumeAcceptedOrdinarySend(
+                    walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex), observedTxid: txid
+                )
+            } catch {
+                Logger.warn("Observed ordinary payment local follow-up remains guarded: \(error)", context: "WalletViewModel")
+            }
+        }
         lightningService.onchainTransactionConfirmed = { txid in
             do {
-                if try await OnchainSendAttemptService.shared.observeConfirmedTransaction(txid: txid) {
-                    _ = try await OnchainSendAttemptService.shared.resumeAcceptedOrdinarySend(
+                if try await onchainAttemptService.observeConfirmedTransaction(txid: txid) {
+                    _ = try await onchainAttemptService.resumeAcceptedOrdinarySend(
                         walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
+                    )
+                    _ = try await onchainAttemptService.resumeAcceptedTransfer(
+                        walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex), using: transferService
                     )
                     await PaykitPaymentProofService.shared.reconcile()
                 }

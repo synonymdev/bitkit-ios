@@ -28,6 +28,7 @@ class LightningService {
 
     private var storedEventCallback: ((Event) -> Void)?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
+    var onchainTransactionReceived: (@Sendable (String) async -> Void)?
 
     var syncStatusChangedPublisher: AnyPublisher<UInt64, Never> {
         syncStatusChangedSubject.eraseToAnyPublisher()
@@ -1469,6 +1470,7 @@ extension LightningService {
                 case let .onchainTransactionReceived(txid, details):
                     Logger.info("📥 Onchain transaction received: txid=\(txid) amountSats=\(details.amountSats)")
                     Task {
+                        await self.onchainTransactionReceived?(txid)
                         do {
                             try await CoreService.shared.activity.handleOnchainTransactionReceived(txid: txid, details: details)
                         } catch {

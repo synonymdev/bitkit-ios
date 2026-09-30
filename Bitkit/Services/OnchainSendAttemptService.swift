@@ -60,6 +60,7 @@ struct OnchainSendAttempt: Codable, Equatable {
     var rejectionReason: String? = nil
     var localFollowupComplete = false
     var followupContext: OnchainSendFollowupContext? = nil
+    var transferContext: OnchainSendTransferContext? = nil
 
     var blocksNewSend: Bool {
         status.blocksNewSend || !localFollowupComplete
@@ -74,12 +75,19 @@ struct OnchainSendFollowupContext: Codable, Equatable {
     let createdAt: UInt64
 }
 
+struct OnchainSendTransferContext: Codable, Equatable {
+    let clientBalanceSats: UInt64
+    let txTotalSats: UInt64
+    let preTransferOnchainSats: UInt64
+}
+
 struct OnchainSendLocalResolution {
     let attemptId: UUID
     let walletId: String
     let txid: String
     let amountSats: UInt64
     let contact: String?
+    let activity: OnchainActivity
 }
 
 protocol OnchainSendLocalFollowupHandling {
@@ -169,6 +177,7 @@ actor OnchainSendAttemptService {
         requestId: PaykitPaymentRequest.ID? = nil,
         orderId: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
+        transferContext: OnchainSendTransferContext? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {}
     ) async throws -> OnchainSendResult {
         let walletIndex = lightningService.currentWalletIndex
@@ -189,7 +198,8 @@ actor OnchainSendAttemptService {
             address: address,
             amountSats: amountSats,
             isMaxAmount: isMaxAmount,
-            followupContext: followupContext
+            followupContext: followupContext,
+            transferContext: transferContext
         )
         do {
             try await beforeBroadcastAttempt()
@@ -237,7 +247,8 @@ actor OnchainSendAttemptService {
         address: String,
         amountSats: UInt64,
         isMaxAmount: Bool,
-        followupContext: OnchainSendFollowupContext? = nil
+        followupContext: OnchainSendFollowupContext? = nil,
+        transferContext: OnchainSendTransferContext? = nil
     ) throws -> UUID {
         if let previous = try currentAttempt() {
             guard !previous.blocksNewSend else {
@@ -259,7 +270,8 @@ actor OnchainSendAttemptService {
             amountSats: amountSats,
             isMaxAmount: isMaxAmount,
             status: .pending,
-            followupContext: followupContext
+            followupContext: followupContext,
+            transferContext: transferContext
         )
         try store.save([attempt])
         knownAttempt = attempt
@@ -303,17 +315,78 @@ actor OnchainSendAttemptService {
         knownAttempt = attempt
     }
 
-    func resumeAcceptedOrdinarySend(walletId: String) async throws -> OnchainSendLocalResolution? {
-        guard let attempt = try currentAttempt(), attempt.walletId == walletId,
-              attempt.requestId == nil, attempt.orderId == nil, attempt.status == .accepted, let txid = attempt.txid
+    func resumeAcceptedOrdinarySend(walletId: String, observedTxid: String? = nil) async throws -> OnchainSendLocalResolution? {
+        guard var attempt = try currentAttempt(), attempt.walletId == walletId,
+              attempt.requestId == nil, attempt.orderId == nil, let txid = attempt.txid
         else { return nil }
+        if let observedTxid {
+            guard txid.caseInsensitiveCompare(observedTxid) == .orderedSame else { return nil }
+            if attempt.status != .accepted {
+                attempt.status = .accepted
+                knownAttempt = attempt
+                try store.save([attempt])
+            }
+        }
+        guard attempt.status == .accepted else { return nil }
         let activity = try await localFollowup.save(attempt)
         try acknowledgeLocalFollowup(txid: txid)
         let resolution = OnchainSendLocalResolution(
-            attemptId: attempt.id, walletId: walletId, txid: txid, amountSats: activity.value, contact: activity.contact
+            attemptId: attempt.id, walletId: walletId, txid: txid, amountSats: activity.value, contact: activity.contact, activity: activity
         )
         Self.localResolutionSubject.send(resolution)
         return resolution
+    }
+
+    func acceptedRequestAttempt() throws -> OnchainSendAttempt? {
+        try currentAttempt().flatMap { $0.requestId != nil && $0.status == .accepted && !$0.localFollowupComplete ? $0 : nil }
+    }
+
+    @discardableResult
+    func resumeAcceptedRequestSend(requestId: PaykitPaymentRequest.ID, txid: String) async throws -> Bool {
+        guard let attempt = try currentAttempt(), attempt.requestId == requestId, attempt.orderId == nil,
+              attempt.status == .accepted, attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame
+        else { return false }
+        if !attempt.localFollowupComplete {
+            _ = try await localFollowup.save(attempt)
+            try acknowledgeLocalFollowup(txid: txid)
+        }
+        return true
+    }
+
+    @discardableResult
+    func resumeAcceptedTransfer(walletId: String, using transferService: TransferService) async throws -> Bool {
+        guard let attempt = try currentAttempt(), attempt.walletId == walletId,
+              attempt.status == .accepted, attempt.requestId == nil, attempt.orderId != nil, attempt.txid != nil
+        else { return false }
+        return try await restoreAcceptedTransfer(attempt, using: transferService)
+    }
+
+    @discardableResult
+    func resumeAcceptedTransfer(orderId: String, txid: String, using transferService: TransferService) async throws -> Bool {
+        guard let attempt = try currentAttempt(), attempt.orderId == orderId,
+              attempt.status == .accepted, attempt.requestId == nil,
+              attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame
+        else { return false }
+        return try await restoreAcceptedTransfer(attempt, using: transferService)
+    }
+
+    private func restoreAcceptedTransfer(_ attempt: OnchainSendAttempt, using transferService: TransferService) async throws -> Bool {
+        guard let savedOrderId = attempt.orderId, let txid = attempt.txid else { return false }
+        guard !attempt.localFollowupComplete else { return true }
+        guard let context = attempt.followupContext, let transfer = attempt.transferContext else {
+            throw OnchainSendAttemptError.localFollowupNotSaved
+        }
+        try await CoreService.shared.activity.upsertPreActivityMetadata([BitkitCore.PreActivityMetadata(
+            walletId: WalletScope.default, paymentId: txid, tags: context.tags, paymentHash: nil,
+            txId: txid, address: attempt.address, isReceive: false, feeRate: UInt64(context.feeRate),
+            isTransfer: true, channelId: nil, createdAt: context.createdAt
+        )])
+        _ = try await transferService.createTransfer(
+            type: .toSpending, amountSats: transfer.clientBalanceSats, fundingTxId: txid,
+            lspOrderId: savedOrderId, txTotalSats: transfer.txTotalSats, preTransferOnchainSats: transfer.preTransferOnchainSats
+        )
+        try acknowledgeLocalFollowup(txid: txid)
+        return true
     }
 
     func clearBeforeDispatch(attemptId: UUID) throws {

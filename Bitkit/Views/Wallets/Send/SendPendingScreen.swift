@@ -29,6 +29,7 @@ struct SendPendingScreen: View {
     let paymentRequest: String?
     let paykitPaymentRequestId: PaykitPaymentRequest.ID?
     let routingCacheResetAttempted: Bool
+    var attemptService: OnchainSendAttemptService = .shared
     @Binding var navigationPath: [SendRoute]
 
     @EnvironmentObject private var activityList: ActivityListViewModel
@@ -48,7 +49,11 @@ struct SendPendingScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__send_pending"), showBackButton: false)
 
-            if let sendAmountSats = wallet.sendAmountSats {
+            if let sendAmountSats = onchainAttempt?.amountSats ?? wallet.sendAmountSats {
+                if onchainAttempt?.requestId == nil, onchainAttempt != nil {
+                    BodySSBText("Earlier on-chain payment")
+                        .accessibilityIdentifier("EarlierOnchainPayment")
+                }
                 MoneyStack(sats: Int(sendAmountSats), showSymbol: true)
                     .padding(.bottom, 32)
             }
@@ -94,15 +99,15 @@ struct SendPendingScreen: View {
         .task {
             if paymentHash == nil {
                 do {
-                    onchainAttempt = try await OnchainSendAttemptService.shared.unresolvedAttempt(
+                    onchainAttempt = try await attemptService.unresolvedAttempt(
                         walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)
                     )
                 } catch {
                     onchainStateUnavailable = true
                 }
-                if paykitPaymentRequestId == nil {
+                if paykitPaymentRequestId == nil, onchainAttempt != nil {
                     do {
-                        if let resolution = try await OnchainSendAttemptService.shared.resumeAcceptedOrdinarySend(
+                        if let resolution = try await attemptService.resumeAcceptedOrdinarySend(
                             walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)
                         ) {
                             applyOrdinarySendResolution(resolution)
@@ -147,6 +152,9 @@ struct SendPendingScreen: View {
         case .unknown, .pending:
             return "This transaction may have been sent. Its outcome is unknown. Do not send it again."
         case .accepted:
+            if ordinarySendResolved {
+                return "The earlier payment's local details were restored. No new payment was sent."
+            }
             if localFollowupUnavailable {
                 return "This payment was sent, but its local details could not be restored. Do not send this payment again."
             }
@@ -159,13 +167,12 @@ struct SendPendingScreen: View {
     private func applyOrdinarySendResolution(_ resolution: OnchainSendLocalResolution) {
         guard paymentHash == nil, paykitPaymentRequestId == nil, !ordinarySendResolved,
               resolution.walletId == OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex),
-              onchainAttempt == nil || onchainAttempt?.id == resolution.attemptId
+              onchainAttempt?.id == resolution.attemptId
         else { return }
         ordinarySendResolved = true
-        wallet.sendAmountSats = resolution.amountSats
-        app.selectedWalletToPayFrom = .onchain
-        app.contactPaymentContext = resolution.contact.map { ContactPaymentContext(publicKey: $0) }
-        navigationPath.append(.success(paymentId: resolution.txid))
+        foundActivity = .onchain(resolution.activity)
+        onchainAttempt?.status = .accepted
+        onchainAttempt?.localFollowupComplete = true
     }
 
     private func applyPendingResolutionIfNeeded(_ resolution: SendSheetPendingResolution?) {
