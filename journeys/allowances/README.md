@@ -1,7 +1,7 @@
 # Allowances journeys
 
 Cover the Paykit allowance lifecycle between two Bitkit instances: the payer sets an allowance for a
-contact, the payee accepts it, requests within the limits are paid without asking, a request above a
+contact, the payee's wallet accepts it by itself, requests within the limits are paid without asking, a request above a
 limit falls back to the normal Payment Request sheet, and either side ends it. The restart journey
 pins the one rule that must never break: a payment interrupted mid-flight is never paid twice.
 
@@ -14,8 +14,8 @@ requests). Automatic payments pay the payee's private Lightning invoice first an
 address otherwise, so the payer needs a spending balance above 50,000 sats with a usable channel,
 and the payee needs receiving capacity; fund both through the staging LSP.
 
-Allow notifications for Bitkit on the payer when it asks: the "Payment Executed" and "Limit
-Reached" events post a local notification when they can, and fall back to an in-app toast that the
+Allow notifications for Bitkit on both instances when it asks: the payer's "Payment Executed" and
+"Limit Reached" events and the payee's "Allowance Added" event post a local notification when they can, and fall back to an in-app toast that the
 UI snapshot cannot see.
 
 The journeys set $5 a payment and $50 a month, the second stop on each slider, and the cap journey
@@ -40,15 +40,18 @@ killed right after handing the payment to the node never paid twice after relaun
   `AllowancePerPaymentStop-<index>` and `AllowanceMonthlyStop-<index>`, `AllowanceSummary`,
   `AllowanceSave`
 - List row: `AllowanceRow-<allowanceId>` with its status line `AllowanceRowStatus`
-- Review sheet (payee): `AllowanceReview`, `AllowanceCounterparty`, `AllowancePerPaymentValue`,
-  `AllowanceMonthlyValue`, `AllowanceAccept`, `AllowanceDecline`
+- Offer notification (payee): the toast `AllowanceOfferAcceptedToast` when notifications are off
+- Review sheet: `AllowanceReview`, `AllowanceCounterparty`, `AllowancePerPaymentValue`,
+  `AllowanceMonthlyValue`, `AllowanceAccept`, `AllowanceDecline`; it opens only on the allower's wallet
+  for an allowance the payee asked for, never for the payer's own offer
 - Detail sheet: `AllowanceDetail`, `AllowancePaidSoFar`, `AllowanceDetailStatus`
 - Payments tab: `Tab-payments`, `PaymentRequestRequestPayment`,
   `PaymentRequestRow-<paymentRequestId>-one-time` whose subtitle ends with "· Auto-paid" for an
   automatic payment
 - Incoming request: `PaymentRequestsBell`, `PaymentRequestsSheet`
 
-The review sheet on the payee opens on its own about a second after the proposal arrives; no tap is
-needed to reach it. The file names, journey names and step prose match
+The payee's wallet accepts the payer's offer as soon as it arrives, about a second after the
+proposal is received, and posts "<payer> set up an allowance for you"; no review sheet opens and no
+tap is needed. The file names, journey names and step prose match
 [`bitkit-android/journeys/allowances`](https://github.com/synonymdev/bitkit-android/tree/master/journeys/allowances);
 only the identifier annotations and the kill, relaunch and notification mechanics differ.

@@ -51,6 +51,7 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private let canPayNow: @MainActor () -> Bool
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var isProcessingRequests = false
+    @ObservationIgnored private var isAcceptingOffers = false
     @ObservationIgnored private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
     /// Covered requests waiting to be paid automatically: kept off the Send sheet until paid or found manual.
     @ObservationIgnored private var waitingRequestIds: Set<PaykitPaymentRequest.ID> = []
@@ -224,6 +225,30 @@ final class PaykitAllowanceManager {
         await refresh()
     }
 
+    /// Accepts the offers that make this wallet the allowee, and returns the ones now active so the caller can tell the
+    /// user. A failed accept stays unanswered and is tried again on the next refresh.
+    func acceptOffersFromAllowers() async -> [PaykitAllowanceEntry] {
+        guard identity != nil, !isAcceptingOffers else { return [] }
+        let offers = entries.filter { entry in
+            let answerable = entry.allowances.filter(\.isAnswerable)
+            return !answerable.isEmpty && answerable.allSatisfy(\.isOfferFromAllower)
+        }
+        guard !offers.isEmpty else { return [] }
+
+        isAcceptingOffers = true
+        defer { isAcceptingOffers = false }
+        var accepted: [PaykitAllowanceEntry] = []
+        for offer in offers {
+            do {
+                try await accept(offer)
+                accepted.append(offer)
+            } catch {
+                Logger.warn("Failed to accept an allowance offer: \(error)", context: "PaykitAllowance")
+            }
+        }
+        return accepted
+    }
+
     private func respond(to entry: PaykitAllowanceEntry, _ response: (PaykitAllowance) async throws -> Paykit.AllowanceRecord) async throws {
         isWorking = true
         defer { isWorking = false }
@@ -245,7 +270,7 @@ final class PaykitAllowanceManager {
 
     func proposalForPresentation() -> PaykitAllowanceEntry? {
         entries.first { entry in
-            entry.allowances.contains(where: \.isAnswerable) &&
+            entry.allowances.contains(where: { $0.isAnswerable && !$0.isOfferFromAllower }) &&
                 !entry.allowances.contains { localState.presentedProposalIds.contains($0.allowanceId) }
         }
     }

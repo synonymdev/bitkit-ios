@@ -1139,6 +1139,8 @@ struct AppScene: View {
         guard let identity = pubkyProfile.publicKey else { return }
         await paykitPaymentRequestManager.refresh()
         await paykitAllowanceManager.refresh()
+        let acceptedOffers = await paykitAllowanceManager.acceptOffersFromAllowers()
+        announceAcceptedAllowanceOffers(acceptedOffers)
         let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(paykitPaymentRequestManager.pendingRequests)
         let adoptedAcceptances = paykitPaymentRequestManager.reloadAcceptedRequestIds()
         if handledAutomatically || adoptedAcceptances {
@@ -1520,6 +1522,16 @@ struct AppScene: View {
             })
         case .ledgerChanged:
             Task { await paykitAllowanceManager.refresh() }
+        }
+    }
+
+    private func announceAcceptedAllowanceOffers(_ offers: [PaykitAllowanceEntry]) {
+        for offer in offers {
+            let title = t("subscriptions__allowance_offer_accepted_title")
+            let description = t("subscriptions__allowance_offer_accepted_description", variables: ["name": contactName(offer.counterparty)])
+            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+                app.toast(type: .success, title: title, description: description, accessibilityIdentifier: "AllowanceOfferAcceptedToast")
+            })
         }
     }
 
