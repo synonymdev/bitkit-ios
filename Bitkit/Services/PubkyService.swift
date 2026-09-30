@@ -322,6 +322,7 @@ actor PaykitSdkService {
     private let sessionProvider = PaykitSdkSessionProvider()
     private let paymentAdapter = PaykitSdkPaymentAdapter()
     private let operationLock = PaykitSdkOperationLock()
+    private let publicReadLimiter = PaykitSdkReadLimiter(maxConcurrent: 6)
     private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
     private let bootstrapFactory: BootstrapFactory
     private var cachedBootstrap: PubkySessionBootstrap?
@@ -337,7 +338,7 @@ actor PaykitSdkService {
     }
 
     func initialize() async throws {
-        Task { await republishIdentityIfNeeded() }
+        startIdentityRepublish()
         try await operationLock.withLock {
             var sdk = try handle()
             do {
@@ -359,6 +360,12 @@ actor PaykitSdkService {
             }
             await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
         }
+    }
+
+    /// Republishes without making the caller wait on the DHT. Only the public key string reaches the task, so it never
+    /// keeps session access alive.
+    func startIdentityRepublish(publicKey: String? = nil) {
+        Task { await republishIdentityIfNeeded(publicKey: publicKey) }
     }
 
     func republishIdentityIfNeeded(publicKey: String? = nil, now: Date = Date(), timeout: Duration = .seconds(5)) async {
@@ -547,12 +554,10 @@ actor PaykitSdkService {
     }
 
     func fetchFile(uri: String, maxBytes: UInt64) async throws -> Data {
-        try await operationLock.withLock {
-            guard let data = try await handle().fetchPubkyFileBounded(uri: uri, maxBytes: maxBytes) else {
-                throw PubkyServiceError.profileNotFound
-            }
-            return data
+        guard let data = try await withPublicRead({ try await $0.fetchPubkyFileBounded(uri: uri, maxBytes: maxBytes) }) else {
+            throw PubkyServiceError.profileNotFound
         }
+        return data
     }
 
     func publishPaykitProfile(_ profile: Paykit.PaykitProfile) async throws -> Paykit.PaykitProfileRecord {
@@ -581,9 +586,7 @@ actor PaykitSdkService {
     }
 
     func fetchPubkyFollows(publicKey: String) async throws -> [String] {
-        try await operationLock.withLock {
-            try await handle().fetchPubkyFollows(publicKey: publicKey)
-        }
+        try await withPublicRead { try await $0.fetchPubkyFollows(publicKey: publicKey) }
     }
 
     func contactRecords() async throws -> [Paykit.ContactRecord] {
@@ -613,8 +616,8 @@ actor PaykitSdkService {
     }
 
     func resolveContactProfile(publicKey: String, allowPubkyProfileFallback: Bool) async throws -> Paykit.ContactProfileResolution? {
-        try await operationLock.withLock {
-            try await handle().resolveContactProfile(
+        try await withPublicRead {
+            try await $0.resolveContactProfile(
                 publicKey: publicKey,
                 receiverPath: PaykitReceiverPath.wallet,
                 allowPubkyProfileFallback: allowPubkyProfileFallback
@@ -973,6 +976,21 @@ actor PaykitSdkService {
         return created
     }
 
+    /// Public-only read lane: skips `operationLock` and runs up to the limiter's cap at once. It is sound only for reads
+    /// that fetch unauthenticated public Pubky data; in paykit rc56 those use the SDK's public client and never load
+    /// session access, the local secret or the state blob. Session, secret or state-blob operations must never use it.
+    /// Without an SDK it takes the locked path, so a read never builds one outside the lock.
+    private func withPublicRead<T>(_ read: (PaykitSdk) async throws -> T) async throws -> T {
+        if sdk != nil {
+            let result: T? = try await publicReadLimiter.withSlot {
+                guard let sdk else { return nil }
+                return try await read(sdk)
+            }
+            if let result { return result }
+        }
+        return try await operationLock.withLock { try await read(handle()) }
+    }
+
     private func withStateRevisionTracking<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {
         try await operationLock.withLock {
             let sdk = try handle()
@@ -1043,7 +1061,7 @@ actor PaykitSdkService {
         let sdk = try handle()
         _ = try await sdk.initialize()
         await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
-        await republishIdentityIfNeeded(publicKey: result.publicKey)
+        startIdentityRepublish(publicKey: result.publicKey)
     }
 
     private func publishReceiverMarkerIfLiveSessionAvailable(using sdk: PaykitSdk) async {
@@ -1237,6 +1255,68 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         case nil:
             break
         }
+    }
+}
+
+/// Caps concurrent operations. Waiters are served in FIFO order and leave the queue as soon as their task is
+/// cancelled, without taking a slot, so an abandoned read never runs ahead of work queued after it.
+final class PaykitSdkReadLimiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private let maxConcurrent: Int
+    private var inFlight = 0
+    private var waiters: [(id: UUID, continuation: CheckedContinuation<Void, Error>)] = []
+
+    init(maxConcurrent: Int) {
+        self.maxConcurrent = maxConcurrent
+    }
+
+    func withSlot<T>(_ operation: () async throws -> T) async throws -> T {
+        try await acquire()
+        defer { release() }
+        try Task.checkCancellation()
+        return try await operation()
+    }
+
+    private func acquire() async throws {
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                lock.lock()
+                if Task.isCancelled {
+                    lock.unlock()
+                    continuation.resume(throwing: CancellationError())
+                } else if inFlight < maxConcurrent {
+                    inFlight += 1
+                    lock.unlock()
+                    continuation.resume()
+                } else {
+                    waiters.append((id, continuation))
+                    lock.unlock()
+                }
+            }
+        } onCancel: {
+            removeWaiter(id: id)?.resume(throwing: CancellationError())
+        }
+    }
+
+    private func removeWaiter(id: UUID) -> CheckedContinuation<Void, Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return nil }
+        return waiters.remove(at: index).continuation
+    }
+
+    /// Hands the slot straight to the oldest waiter, so a newcomer cannot overtake the queue.
+    private func release() {
+        lock.lock()
+        guard !waiters.isEmpty else {
+            inFlight -= 1
+            lock.unlock()
+            return
+        }
+        let next = waiters.removeFirst()
+        lock.unlock()
+        next.continuation.resume()
     }
 }
 

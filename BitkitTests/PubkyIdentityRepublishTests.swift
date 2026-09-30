@@ -109,6 +109,27 @@ final class PubkyIdentityRepublishTests: XCTestCase {
         XCTAssertEqual(bootstrap.publicKeys.count, 2)
     }
 
+    func testStartedRepublishReturnsWhilePublicationIsStillRunning() async {
+        let started = expectation(description: "Publication started")
+        let finished = expectation(description: "Publication finished")
+        let gate = AsyncStream<Void>.makeStream()
+        let bootstrap = RepublishBootstrap(noPointer: .init())
+        bootstrap.operation = { _ in
+            started.fulfill()
+            for await _ in gate.stream {}
+            finished.fulfill()
+            return true
+        }
+        let service = PaykitSdkService { _, _ in bootstrap }
+
+        await service.startIdentityRepublish(publicKey: publicKey)
+        await fulfillment(of: [started], timeout: 1)
+        XCTAssertEqual(bootstrap.publicKeys, ["pubky\(publicKey)"])
+
+        gate.continuation.finish()
+        await fulfillment(of: [finished], timeout: 1)
+    }
+
     func testAuthRepublishesSigningIdentityBeforeApprovalEvenWhenPublicationFails() async throws {
         for kind in [Approval.ordinary, .companion] {
             for result in [Result<Bool, Error>.success(true), .failure(PubkyServiceError.profileNotFound)] {
