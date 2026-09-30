@@ -13,6 +13,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         case missingTerms = "missing_terms"
         case recurringRequest = "recurring_request"
         case unsupportedAsset = "unsupported_asset"
+        case unsupportedPaymentDeadline = "unsupported_payment_deadline"
         case invalidAmount = "invalid_amount"
         case amountOutOfRange = "amount_out_of_range"
         case noSupportedEndpoint = "no_supported_endpoint"
@@ -133,6 +134,9 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         guard record.state != .activeRecurring else { return .failure(.recurringRequest) }
         guard let terms = record.terms else { return .failure(.missingTerms) }
         guard terms.recurrence == nil else { return .failure(.recurringRequest) }
+        if requiresActionableRequest, terms.paymentDeadline != nil {
+            return .failure(.unsupportedPaymentDeadline)
+        }
         guard terms.amount.asset == PaykitIssuerInterop.bitcoinAsset else { return .failure(.unsupportedAsset) }
         guard let amountSats = Self.sats(fromBitcoinAmount: terms.amount.value) else { return .failure(.invalidAmount) }
         guard amountSats <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
@@ -666,6 +670,8 @@ struct PaykitPaymentRequestService {
             proposalExpiresAt: Self.timestamp(draft.expiresAt),
             recurrence: nil,
             acceptedPaymentEndpointIdentifiers: acceptedPaymentEndpointIdentifiers,
+            conversion: nil,
+            paymentDeadline: nil,
             metadata: Paykit.PrivateJsonObject(text: metadataText)
         )
         let record = try await sdk.proposePaymentRequest(
@@ -795,6 +801,8 @@ struct PaykitPaymentRequestService {
             proposalExpiresAt: Self.timestamp(draft.expiresAt),
             recurrence: recurrence,
             acceptedPaymentEndpointIdentifiers: endpoints,
+            conversion: nil,
+            paymentDeadline: nil,
             metadata: Paykit.PrivateJsonObject(text: metadataText)
         )
     }
@@ -1937,7 +1945,7 @@ final class PaykitPaymentRequestManager {
             dismissedSubscriptionPaymentIds.formIntersection(activeRecurringRequestIds)
             persistSubscriptionState()
             let recurringPending = recurringRequestsBySubscription
-                .filter { $0.0.lifecycleState == .activeRecurring }
+                .filter { $0.0.lifecycleState == .activeRecurring && !$0.0.hasPaymentDeadline }
                 .flatMap { _, requests in
                     requests.filter {
                         $0.lifecycleState != .proofSubmitted &&
@@ -2033,7 +2041,7 @@ final class PaykitPaymentRequestManager {
             subscription.requests(through: date, acceptedAt: $0)
         } ?? []
         pendingRequests.removeAll { $0.belongs(to: subscription) }
-        if subscription.lifecycleState == .activeRecurring {
+        if subscription.lifecycleState == .activeRecurring, !subscription.hasPaymentDeadline {
             pendingRequests.append(contentsOf: recurringRequests.filter { $0.lifecycleState != .proofSubmitted })
             pendingRequests.sort { ($0.createdAt ?? .distantFuture) < ($1.createdAt ?? .distantFuture) }
         }
