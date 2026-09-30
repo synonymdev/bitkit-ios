@@ -168,6 +168,19 @@ class ContactsManager: ObservableObject {
     }
 
     func loadContacts(for publicKey: String) async throws {
+        try await loadContacts(
+            for: publicKey,
+            fetchContactRecords: { try await PubkyService.contactRecords() },
+            fetchRemoteProfile: Self.fetchRemoteContactProfile
+        )
+    }
+
+    /// A cancelled load publishes nothing: lookups it abandoned would otherwise replace loaded profiles with placeholders.
+    func loadContacts(
+        for publicKey: String,
+        fetchContactRecords: @escaping @Sendable () async throws -> [Paykit.ContactRecord],
+        fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?
+    ) async throws {
         guard !isLoading else {
             Logger.debug("loadContacts skipped — already loading", context: "ContactsManager")
             return
@@ -181,8 +194,9 @@ class ContactsManager: ObservableObject {
 
         do {
             let records = try await Task.detached {
-                try await PubkyService.contactRecords()
+                try await fetchContactRecords()
             }.value
+            guard !Task.isCancelled else { return }
 
             Logger.debug("Loaded \(records.count) SDK contact records", context: "ContactsManager")
 
@@ -192,7 +206,12 @@ class ContactsManager: ObservableObject {
                 for record in records {
                     group.addTask {
                         do {
-                            let contact = try await Self.contact(from: record, overrides: overrides, includePlaceholder: true)
+                            let contact = try await Self.contact(
+                                from: record,
+                                overrides: overrides,
+                                includePlaceholder: true,
+                                fetchRemoteProfile: fetchRemoteProfile
+                            )
                             return .success(contact)
                         } catch {
                             Logger.warn(
@@ -224,6 +243,7 @@ class ContactsManager: ObservableObject {
 
                 return (results, failures, missingFailures, firstError)
             }
+            guard !Task.isCancelled else { return }
 
             if !records.isEmpty, loadedResult.contacts.isEmpty {
                 if loadedResult.failures == loadedResult.missingFailures {
@@ -605,6 +625,10 @@ class ContactsManager: ObservableObject {
         try await Self.resolveContactProfile(publicKey: publicKey, includePlaceholder: includePlaceholder, retryTransient: retryTransient)
     }
 
+    nonisolated static let fetchRemoteContactProfile: @Sendable (String) async throws -> PubkyProfile? = {
+        try await PubkyService.resolveContactProfile(publicKey: $0, allowPubkyProfileFallback: true).map(PubkyProfile.init(resolution:))
+    }
+
     /// A missing profile is never retried. `retryTransient` retries any other failure once and is for user-initiated
     /// lookups only: the SDK reports a key with no pkarr record and a network failure as the same transport error, so a
     /// retry in bulk loads doubles the wait for every contact without a profile.
@@ -612,9 +636,7 @@ class ContactsManager: ObservableObject {
         publicKey: String,
         includePlaceholder: Bool = false,
         retryTransient: Bool = false,
-        fetchRemoteProfile: @Sendable (String) async throws -> PubkyProfile? = {
-            try await PubkyService.resolveContactProfile(publicKey: $0, allowPubkyProfileFallback: true).map(PubkyProfile.init(resolution:))
-        }
+        fetchRemoteProfile: @Sendable (String) async throws -> PubkyProfile? = ContactsManager.fetchRemoteContactProfile
     ) async throws -> PubkyProfile {
         let prefixedKey = ensurePubkyPrefix(publicKey)
         for attempt in 0 ..< 2 {
@@ -684,7 +706,8 @@ class ContactsManager: ObservableObject {
     private nonisolated static func contact(
         from record: Paykit.ContactRecord,
         overrides: [String: PubkyProfileData],
-        includePlaceholder: Bool
+        includePlaceholder: Bool,
+        fetchRemoteProfile: @Sendable (String) async throws -> PubkyProfile?
     ) async throws -> PubkyContact {
         let prefixedKey = PubkyPublicKeyFormat.normalized(record.publicKey) ?? ensurePubkyPrefix(record.publicKey)
 
@@ -699,14 +722,18 @@ class ContactsManager: ObservableObject {
         }
 
         do {
-            let profile = try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: includePlaceholder)
-                .withNameFallback(record.label)
+            let profile = try await resolveContactProfile(
+                publicKey: prefixedKey,
+                includePlaceholder: includePlaceholder,
+                fetchRemoteProfile: fetchRemoteProfile
+            )
+            .withNameFallback(record.label)
             return PubkyContact(
                 publicKey: prefixedKey,
                 profile: profile
             )
         } catch {
-            if !includePlaceholder {
+            if !includePlaceholder || error is CancellationError {
                 throw error
             }
         }

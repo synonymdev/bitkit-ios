@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import struct Paykit.ContactRecord
 import enum Paykit.PaykitError
 import XCTest
 
@@ -330,6 +331,47 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError, "Expected cancellation, got \($0)") }
         let attempts = await stub.attempts
         XCTAssertEqual(attempts, 1)
+    }
+
+    func testCancelledContactsReloadKeepsLoadedContacts() async throws {
+        let manager = ContactsManager()
+        manager.contacts = [makeContact(publicKey: contactProfileKey)]
+        let hasLoadedBefore = manager.hasLoaded
+        let record = ContactRecord(
+            publicKey: contactProfileKey,
+            receiverPaths: [],
+            label: "Label only",
+            profile: nil,
+            profileFetchedAt: nil,
+            createdAt: "",
+            updatedAt: "",
+            publicContactMarkerStatus: .notPublished,
+            publicContactMarkerReceiverPath: nil,
+            publicContactPublishedAt: nil,
+            publicContactRemovedAt: nil,
+            publicContactLastError: nil
+        )
+        let lookupStarted = expectation(description: "profile lookup started")
+
+        let reload = Task {
+            try await manager.loadContacts(
+                for: contactProfileKey,
+                fetchContactRecords: { [record] },
+                fetchRemoteProfile: { _ in
+                    lookupStarted.fulfill()
+                    try await Task.sleep(nanoseconds: 60_000_000_000)
+                    return nil
+                }
+            )
+        }
+        await fulfillment(of: [lookupStarted], timeout: 2)
+        reload.cancel()
+        try await reload.value
+
+        XCTAssertEqual(manager.contacts.map(\.profile.name), ["Alice"])
+        XCTAssertEqual(manager.hasLoaded, hasLoadedBefore)
+        XCTAssertNil(manager.loadErrorMessage)
+        XCTAssertFalse(manager.isLoading)
     }
 
     func testShouldDiscardPendingImportWhenLeavingImportFlow() {

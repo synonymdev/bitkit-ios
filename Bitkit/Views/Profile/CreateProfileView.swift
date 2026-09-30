@@ -191,6 +191,8 @@ struct CreateProfileView: View {
         } catch PubkyServiceError.profileNotFound {
             remoteLookupFailed = false
             return nil
+        } catch is CancellationError {
+            return nil
         } catch {
             Logger.warn("Failed to look up the existing profile: \(error)", context: "CreateProfileView")
             remoteLookupFailed = true
