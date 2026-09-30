@@ -1229,6 +1229,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
                 proposalExpiresAt: nil,
                 recurrence: recurrence,
                 acceptedPaymentEndpointIdentifiers: endpoints,
+                conversion: nil,
+                paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
             ),
             acceptedEventId: nil,
@@ -1237,6 +1239,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
             canceledOutboundStatus: nil,
+            conversionQuotes: [],
             paymentProofs: paymentProofs,
             lastStreamItemId: 1,
             lastOutboundMessageId: nil,
@@ -1260,6 +1263,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             paymentReference: PaymentReference(text: "invoice-123"),
             billingPeriod: billingPeriod,
             paymentEndpointIdentifier: endpoint,
+            allowanceId: nil,
+            conversionQuoteId: nil,
             proof: PrivateJsonObject(text: "{\"data\":\"\(data)\",\"type\":\"\(kind.rawValue)\"}"),
             recordedAt: "2027-01-15T08:01:00Z"
         )
@@ -1442,6 +1447,8 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
             paymentReference: paymentReference,
             billingPeriod: proof.billingPeriod,
             paymentEndpointIdentifier: proof.paymentEndpointIdentifier,
+            allowanceId: nil,
+            conversionQuoteId: nil,
             proof: proof.proof,
             recordedAt: "2027-01-15T08:01:00Z"
         ))
