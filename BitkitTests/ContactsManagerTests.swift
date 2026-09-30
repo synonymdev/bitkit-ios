@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import Paykit
 import XCTest
 
 @MainActor
@@ -9,6 +10,51 @@ final class ContactsManagerTests: XCTestCase {
         // tearDown used to delete this outright, so a user who had enabled Paykit UI lost the setting.
         snapshotAppDefaults(PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
+    }
+
+    func testImportPersistsPreparedContactThroughDefaultSDKWithoutSession() async throws {
+        let keys: [KeychainEntryType] = [.paykitSdkState, .paykitSession]
+        let originals = try keys.map { try Keychain.load(key: $0) }
+        addTeardownBlock {
+            await PaykitSdkService.shared.clearState()
+            for (key, value) in zip(keys, originals) {
+                if let value { try Keychain.upsert(key: key, data: value) }
+                else { try Keychain.delete(key: key) }
+            }
+        }
+        await PaykitSdkService.shared.clearState()
+        try Keychain.delete(key: .paykitSession)
+        // Generated with Paykit rc56's StorageStateEnvelope v1 and postcard::to_allocvec:
+        // one public identity initialized at 2026-01-01T00:00:00Z, generation 0, no Noise key or other records.
+        let fixture = try XCTUnwrap(Data(base64Encoded:
+            "AQEBNDNyc2R1aGN4cHc3NHNud3ljdDg2bTM4YzYzajNwcTh4NHljcWlreGc2NHJvaWs4eXc1eHkAFDIwMjYtMDEtMDFUMDA6MDA6MDBaAAAAAAAAAAAAAAAAAAAAAAA="))
+        let snapshot = SdkStateBlobSnapshot(blob: SdkStateBlob(bytes: fixture), revision: "contact-import-fixture")
+        try Keychain.upsert(key: .paykitSdkState, data: encodeSdkStateBlobSnapshot(snapshot: snapshot))
+
+        let prepared = makeContact(publicKey: "pubky5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo")
+        let manager = ContactsManager()
+        try await manager.importContacts(contacts: [prepared])
+        let stored = try await PubkyService.contactRecords()
+        XCTAssertEqual(stored.count, 1)
+        XCTAssertEqual(stored.first?.publicKey, prepared.publicKey)
+        XCTAssertEqual(stored.first?.label, prepared.displayName)
+        XCTAssertEqual(stored.first?.receiverPaths, [PaykitReceiverPath.wallet])
+        XCTAssertEqual(manager.contacts, [prepared])
+
+        _ = try await PubkyService.saveContact(
+            publicKey: prepared.publicKey, label: prepared.displayName,
+            receiverPaths: [PaykitReceiverPath.wallet, PaykitReceiverPath.server]
+        )
+        try await ContactsManager().importContacts(contacts: [prepared])
+        let persisted = try XCTUnwrap(Keychain.load(key: .paykitSdkState))
+        await PaykitSdkService.shared.clearState()
+        try Keychain.upsert(key: .paykitSdkState, data: persisted)
+        let reloaded = try await PubkyService.contactRecords()
+        XCTAssertEqual(reloaded.count, 1)
+        XCTAssertEqual(reloaded.first?.publicKey, prepared.publicKey)
+        XCTAssertEqual(reloaded.first?.label, prepared.displayName)
+        XCTAssertEqual(Set(reloaded.first?.receiverPaths ?? []), [PaykitReceiverPath.wallet, PaykitReceiverPath.server])
+        XCTAssertNil(try Keychain.load(key: .paykitSession))
     }
 
     func testImportSavesPreparedContactsWithoutNetworkAndSkipsDuplicates() async throws {
