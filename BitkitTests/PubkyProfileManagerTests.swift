@@ -553,11 +553,11 @@ final class PubkyProfileManagerTests: XCTestCase {
             let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
             let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
             await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
+            // Held from here on, so adoption only returns if it reads nothing remote itself.
+            await stub.setHoldsRequests(true)
 
             let adopted = await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
 
-            let requests = await stub.requests
-            XCTAssertEqual(requests.count, 2, "Adoption reuses the row's profile instead of fetching it again")
             XCTAssertEqual(adopted?.name, "Alice")
             XCTAssertEqual(manager.profile?.name, "Alice")
             XCTAssertEqual(manager.cachedName, "Alice")
@@ -565,7 +565,87 @@ final class PubkyProfileManagerTests: XCTestCase {
             XCTAssertEqual(manager.authState, .authenticated)
             XCTAssertFalse(manager.isProfileSetupPending)
             XCTAssertTrue(manager.ringIdentityProfiles.isEmpty)
+
+            await stub.waitForRequests(3)
+            let requests = await stub.requests
+            XCTAssertEqual(requests.count, 3, "Adoption reuses the row's profile; only the background refresh reads it again")
+            XCTAssertEqual(requests.last, ringKeyA)
+            await stub.release(request: 2)
+            await waitUntil("the background refresh finishes") { !manager.isLoadingProfile }
         }
+    }
+
+    @MainActor
+    func testRingAdoptionReusesTheRowProfileWhateverFormTheAdoptedKeyTakes() async {
+        await withRestoredProfileDefaults {
+            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+            await manager.loadRingIdentityProfiles([bareRingKeyA])
+            await stub.setHoldsRequests(true)
+
+            let adopted = await manager.completeRingAdoptionForTesting(publicKey: bareRingKeyA)
+
+            XCTAssertEqual(adopted?.name, "Alice", "Rows are cached under the normalized pubky")
+            XCTAssertFalse(manager.isProfileSetupPending)
+            await stub.waitForRequests(2)
+            await stub.release(request: 1)
+            await waitUntil("the background refresh finishes") { !manager.isLoadingProfile }
+            let requests = await stub.requests
+            XCTAssertEqual(requests, [ringKeyA, bareRingKeyA], "Only the background refresh reads again")
+        }
+    }
+
+    @MainActor
+    func testRingAdoptionRefreshesAReusedRowProfileWithoutDecidingProfileSetup() async {
+        await withRestoredProfileDefaults {
+            for refreshedProfile in [makeProfile(publicKey: ringKeyA, name: "Alice Renamed"), nil] {
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+                await manager.loadRingIdentityProfiles([bareRingKeyA])
+                await stub.setProfile(refreshedProfile, for: ringKeyA)
+
+                _ = await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
+                await stub.waitForRequests(2)
+                await waitUntil("the background refresh finishes") { !manager.isLoadingProfile }
+
+                let expectedName = refreshedProfile?.name ?? "Alice"
+                XCTAssertEqual(manager.profile?.name, expectedName, "A failed refresh keeps the adopted row profile")
+                XCTAssertEqual(manager.cachedName, expectedName)
+                XCTAssertFalse(manager.isProfileSetupPending, "Only the adoption decides profile setup")
+            }
+        }
+    }
+
+    @MainActor
+    func testAdoptingStopsOnlyTheOtherRowLookupsAndAFailedAdoptReloadsTheRows() async {
+        let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")], holdsRequests: true)
+        let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+        let rows = Task { await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB]) }
+        await stub.waitForRequests(2)
+
+        var rowReloads = 0
+        do {
+            // No Pubky Ring secret is stored under test, so signing in fails.
+            _ = try await PubkyChoiceView.adoptRingIdentity(bareRingKeyA, pubkyProfile: manager) { rowReloads += 1 }
+            XCTFail("Expected adopting without a Pubky Ring key to fail")
+        } catch {}
+        XCTAssertEqual(rowReloads, 1, "A failed adopt reloads the rows")
+
+        await stub.release(request: 0)
+        await stub.release(request: 1)
+        await rows.value
+        let requests = await stub.requests
+        let cancelledRequests = await stub.cancelledRequests
+        XCTAssertEqual(cancelledRequests, Set(requests.indices.filter { requests[$0] == ringKeyB }), "Only the other row's lookup stops")
+        XCTAssertEqual(manager.ringIdentityProfiles[ringKeyA]?.name, "Alice", "The tapped row's lookup still lands")
+
+        await stub.setHoldsRequests(false)
+        await stub.setProfile(makeProfile(publicKey: ringKeyB, name: "Bob"), for: ringKeyB)
+        await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
+        let reloadRequests = await stub.requests
+        XCTAssertEqual(reloadRequests.count, 3)
+        XCTAssertEqual(reloadRequests.last, ringKeyB, "The stopped row recorded no miss, so reloading looks it up again")
+        XCTAssertEqual(manager.ringIdentityProfiles[ringKeyB]?.name, "Bob")
     }
 
     @MainActor
@@ -1216,6 +1296,24 @@ final class PubkyProfileManagerTests: XCTestCase {
         await body()
     }
 
+    /// Fails the test instead of hanging it when `condition` does not hold before the deadline.
+    @MainActor
+    private func waitUntil(
+        _ description: String,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: () -> Bool
+    ) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !condition() {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("Timed out waiting until \(description)", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
     private func withIsolatedDefaults(_ body: (UserDefaults) throws -> Void) throws {
         let suiteName = "PubkyProfileManagerTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -1277,13 +1375,18 @@ private let ringKeyB = "pubky\(bareRingKeyB)"
 private let ringKeyC = "pubky\(bareRingKeyC)"
 
 /// Stands in for the remote profile lookup. While holding, each request waits for its own `release(request:)` and then
-/// answers from the profiles set at that moment; a key with no profile fails as not found.
+/// answers from the profiles set at that moment; a key with no profile fails as not found. A request held, or a wait for
+/// requests, that outlasts the deadline fails the test and moves on instead of hanging the suite.
 private actor RemoteProfileStub {
+    private static let deadline: Duration = .seconds(5)
+
     private(set) var requests: [String] = []
+    /// Indexes of the requests whose task was cancelled by the time they answered.
+    private(set) var cancelledRequests: Set<Int> = []
     private var profiles: [String: PubkyProfile]
     private var isHolding: Bool
     private var heldRequests: [Int: CheckedContinuation<Void, Never>] = [:]
-    private var requestWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private var requestWaiters: [UUID: (count: Int, continuation: CheckedContinuation<Void, Never>)] = [:]
 
     init(profiles: [String: PubkyProfile] = [:], holdsRequests: Bool = false) {
         self.profiles = profiles
@@ -1293,23 +1396,34 @@ private actor RemoteProfileStub {
     func resolve(_ key: String) async throws -> PubkyProfile {
         let index = requests.count
         requests.append(key)
-        let satisfiedWaiters = requestWaiters.filter { $0.count <= requests.count }
-        requestWaiters.removeAll { $0.count <= requests.count }
-        satisfiedWaiters.forEach { $0.continuation.resume() }
+        for (id, waiter) in requestWaiters where waiter.count <= requests.count {
+            requestWaiters[id] = nil
+            waiter.continuation.resume()
+        }
 
         if isHolding {
-            await withCheckedContinuation { heldRequests[index] = $0 }
+            await withCheckedContinuation { continuation in
+                heldRequests[index] = continuation
+                failAfterDeadline { await $0.expireHeldRequest(index) }
+            }
+        }
+        if Task.isCancelled {
+            cancelledRequests.insert(index)
         }
         guard let profile = profiles[key] else { throw PubkyServiceError.profileNotFound }
         return profile
     }
 
-    func waitForRequests(_ count: Int) async {
+    func waitForRequests(_ count: Int, file: StaticString = #filePath, line: UInt = #line) async {
         guard requests.count < count else { return }
-        await withCheckedContinuation { requestWaiters.append((count, $0)) }
+        let id = UUID()
+        await withCheckedContinuation { continuation in
+            requestWaiters[id] = (count, continuation)
+            failAfterDeadline { await $0.expireRequestWaiter(id, file: file, line: line) }
+        }
     }
 
-    func setProfile(_ profile: PubkyProfile, for key: String) {
+    func setProfile(_ profile: PubkyProfile?, for key: String) {
         profiles[key] = profile
     }
 
@@ -1319,6 +1433,25 @@ private actor RemoteProfileStub {
 
     func release(request index: Int) {
         heldRequests.removeValue(forKey: index)?.resume()
+    }
+
+    private func failAfterDeadline(_ expire: @escaping @Sendable (RemoteProfileStub) async -> Void) {
+        Task {
+            try? await Task.sleep(for: Self.deadline)
+            await expire(self)
+        }
+    }
+
+    private func expireHeldRequest(_ index: Int) {
+        guard let continuation = heldRequests.removeValue(forKey: index) else { return }
+        XCTFail("Request \(index) was never released")
+        continuation.resume()
+    }
+
+    private func expireRequestWaiter(_ id: UUID, file: StaticString, line: UInt) {
+        guard let waiter = requestWaiters.removeValue(forKey: id) else { return }
+        XCTFail("Timed out waiting for \(waiter.count) requests; saw \(requests.count)", file: file, line: line)
+        waiter.continuation.resume()
     }
 }
 

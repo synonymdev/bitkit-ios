@@ -25,6 +25,23 @@ struct PubkyChoiceView: View {
         !hasRingIdentities
     }
 
+    /// Only the other rows' lookups stop, since they would compete with sign-in while the tapped row's can still land in
+    /// time to be reused. A failed adopt reloads the rows so none is left on a bare key.
+    @MainActor
+    static func adoptRingIdentity(
+        _ pubky: String,
+        pubkyProfile: PubkyProfileManager,
+        reloadRows: () -> Void
+    ) async throws -> PubkyProfile? {
+        pubkyProfile.cancelRingIdentityLookups(except: pubky)
+        do {
+            return try await pubkyProfile.adoptRingIdentity(pubky: pubky)
+        } catch {
+            reloadRows()
+            throw error
+        }
+    }
+
     var body: some View {
         ZStack {
             backgroundIllustrations
@@ -127,8 +144,6 @@ struct PubkyChoiceView: View {
 
     private func startAdopting(_ pubky: String) {
         guard adoptingPubky == nil else { return }
-        // Row lookups still queued would only compete with sign-in.
-        cancelLoad()
         adoptingPubky = pubky
         Task { await adopt(pubky) }
     }
@@ -137,7 +152,7 @@ struct PubkyChoiceView: View {
         defer { adoptingPubky = nil }
 
         do {
-            guard let adopted = try await pubkyProfile.adoptRingIdentity(pubky: pubky) else {
+            guard let adopted = try await Self.adoptRingIdentity(pubky, pubkyProfile: pubkyProfile, reloadRows: reloadIdentities) else {
                 navigation.navigate(.createProfile)
                 return
             }

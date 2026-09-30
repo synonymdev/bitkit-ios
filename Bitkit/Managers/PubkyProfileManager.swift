@@ -330,8 +330,9 @@ class PubkyProfileManager: ObservableObject {
 
         // Read only after sign-in: when lookups are contended, the tapped row's result lands after the tap. Only a found
         // row profile for this key is reused; anything else takes the fetch that decides profile setup.
-        var adoptedProfile = ringIdentityProfiles[adoptedPublicKey]
-        if !PubkyPublicKeyFormat.matches(adoptedProfile?.publicKey, adoptedPublicKey) {
+        var adoptedProfile = PubkyPublicKeyFormat.normalized(adoptedPublicKey).flatMap { ringIdentityProfiles[$0] }
+        let reusesRowProfile = PubkyPublicKeyFormat.matches(adoptedProfile?.publicKey, adoptedPublicKey)
+        if !reusesRowProfile {
             adoptedProfile = await fetchRemoteProfile(publicKey: adoptedPublicKey)
         }
         clearRingIdentityProfiles()
@@ -339,6 +340,11 @@ class PubkyProfileManager: ObservableObject {
         setProfileSetupPending(adoptedProfile == nil)
         if let adoptedProfile {
             commitProfile(adoptedProfile)
+        }
+        if reusesRowProfile {
+            // A row profile can be from earlier in the session. The refresh runs behind navigation, never decides profile
+            // setup, and is dropped if a newer profile write lands first.
+            Task { await loadProfile() }
         }
         return adoptedProfile
     }
@@ -706,6 +712,15 @@ class PubkyProfileManager: ObservableObject {
     /// Forgets the misses on returning to the app, since the user may have just published that pubky in Pubky Ring.
     func forgetRingIdentityMisses() {
         ringIdentityMisses.removeAll()
+    }
+
+    /// Stops every row lookup but `pubky`'s, whose result adoption can still reuse if it lands before sign-in finishes.
+    /// A stopped lookup records no miss, so the next load looks that row up again.
+    func cancelRingIdentityLookups(except pubky: String) {
+        let keptKey = PubkyPublicKeyFormat.normalized(pubky)
+        for (key, lookup) in ringIdentityLookups where key != keptKey {
+            lookup.task.cancel()
+        }
     }
 
     private func needsRingIdentityLookup(_ key: String) -> Bool {
