@@ -8,6 +8,7 @@ struct PubkyChoiceRow: View {
     let title: String
     var avatarName: String?
     var avatarImageUrl: String?
+    var isLoading = false
     let accessibilityId: String
     let action: () -> Void
 
@@ -39,7 +40,9 @@ struct PubkyChoiceRow: View {
 
     private var iconView: some View {
         Group {
-            if let icon {
+            if isLoading {
+                ActivityIndicator(size: 20)
+            } else if let icon {
                 Image(icon)
                     .resizable()
                     .scaledToFit()

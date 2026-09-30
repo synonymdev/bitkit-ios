@@ -31,6 +31,8 @@ class PubkyProfileManager: ObservableObject {
         case restorationFailed
     }
 
+    typealias RemoteProfileResolver = @Sendable (String) async throws -> PubkyProfile
+
     @Published var authState: PubkyAuthState = .idle
     @Published var profile: PubkyProfile?
     @Published var publicKey: String?
@@ -42,10 +44,20 @@ class PubkyProfileManager: ObservableObject {
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
     @Published private(set) var isProfileSetupPending: Bool
+    /// Public profiles found for the Pubky Ring rows on the choice screen, keyed by normalized pubky. Display-only.
+    @Published private(set) var ringIdentityProfiles: [String: PubkyProfile] = [:]
 
     private var isSignupInFlight = false
+    private let remoteProfileResolver: RemoteProfileResolver
+    /// Bumped whenever `profile` is written or the identity changes, so a remote read that started earlier is dropped.
+    private var profileWriteGeneration = 0
+    /// Ring rows whose lookup found nothing. The SDK reports a missing record and an offline failure alike, so a miss
+    /// only stops repeat lookups and must never drive sign-up or profile-setup decisions.
+    private var ringIdentityMisses: Set<String> = []
+    private var ringIdentityLookups: [String: (id: UUID, task: Task<Void, Never>)] = [:]
 
-    init() {
+    init(remoteProfileResolver: @escaping RemoteProfileResolver = { try await PubkyProfileManager.resolveRemoteProfile(publicKey: $0) }) {
+        self.remoteProfileResolver = remoteProfileResolver
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
         cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
         isProfileSetupPending = UserDefaults.standard.bool(forKey: Self.profileSetupPendingKey)
@@ -304,15 +316,26 @@ class PubkyProfileManager: ObservableObject {
             throw error
         }
 
+        return await completeRingAdoption(publicKey: adoptedPublicKey)
+    }
+
+    private func completeRingAdoption(publicKey adoptedPublicKey: String) async -> PubkyProfile? {
+        invalidateProfileLoads()
         publicKey = adoptedPublicKey
         authState = .authenticated
         Self.notifyAppStateBackupChanged()
 
-        let adoptedProfile = await fetchRemoteProfile(publicKey: adoptedPublicKey)
+        // Read only after sign-in: when lookups are contended, the tapped row's result lands after the tap. Only a found
+        // row profile for this key is reused; anything else takes the fetch that decides profile setup.
+        var adoptedProfile = ringIdentityProfiles[adoptedPublicKey]
+        if !PubkyPublicKeyFormat.matches(adoptedProfile?.publicKey, adoptedPublicKey) {
+            adoptedProfile = await fetchRemoteProfile(publicKey: adoptedPublicKey)
+        }
+        clearRingIdentityProfiles()
+
         setProfileSetupPending(adoptedProfile == nil)
         if let adoptedProfile {
-            profile = adoptedProfile
-            cacheProfileMetadata(adoptedProfile)
+            commitProfile(adoptedProfile)
         }
         return adoptedProfile
     }
@@ -368,8 +391,7 @@ class PubkyProfileManager: ObservableObject {
         )
         self.publicKey = publicKey
         authState = .authenticated
-        profile = createdProfile
-        cacheProfileMetadata(createdProfile)
+        commitProfile(createdProfile)
         setProfileSetupPending(false)
     }
 
@@ -497,8 +519,7 @@ class PubkyProfileManager: ObservableObject {
             tags: tags,
             status: profile?.status
         )
-        profile = updatedProfile
-        cacheProfileMetadata(updatedProfile)
+        commitProfile(updatedProfile)
     }
 
     func deleteProfile() async throws {
@@ -515,6 +536,7 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Bitkit profile storage already missing, continuing sign out", context: "PubkyProfileManager")
         }
 
+        invalidateProfileLoads()
         Self.clearPaykitSharingAfterProfileDeletion()
         try await signOut(cleanPrivatePaykitEndpoints: false)
     }
@@ -596,6 +618,14 @@ class PubkyProfileManager: ObservableObject {
                 forgetSessionAccess: forgetSessionAccess
             )
         }
+
+        func completeRingAdoptionForTesting(publicKey: String) async -> PubkyProfile? {
+            await completeRingAdoption(publicKey: publicKey)
+        }
+
+        func clearAuthenticatedStateForTesting() {
+            clearAuthenticatedState()
+        }
     #endif
 
     // MARK: - Profile
@@ -604,12 +634,14 @@ class PubkyProfileManager: ObservableObject {
         guard let pk = publicKey, !isLoadingProfile else { return }
 
         isLoadingProfile = true
+        let generation = profileWriteGeneration
+        let resolve = remoteProfileResolver
 
         do {
             let loadedProfile = try await Task.detached {
-                try await Self.resolveRemoteProfile(publicKey: pk)
+                try await resolve(pk)
             }.value
-            if publicKey == pk {
+            if publicKey == pk, profileWriteGeneration == generation {
                 profile = loadedProfile
                 cacheProfileMetadata(loadedProfile)
             }
@@ -623,9 +655,9 @@ class PubkyProfileManager: ObservableObject {
     /// Fetch a remote profile by public key. Returns nil if no profile exists.
     func fetchRemoteProfile(publicKey: String) async -> PubkyProfile? {
         do {
-            return try await Self.resolveRemoteProfile(publicKey: publicKey)
+            return try await remoteProfileResolver(publicKey)
         } catch {
-            Logger.debug("No remote profile found for \(publicKey): \(error)", context: "PubkyProfileManager")
+            Logger.debug("No remote profile found for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "PubkyProfileManager")
             return nil
         }
     }
@@ -637,6 +669,82 @@ class PubkyProfileManager: ObservableObject {
         }
 
         throw PubkyServiceError.profileNotFound
+    }
+
+    /// Sets a profile this device just wrote or chose, dropping any remote read that started before it.
+    private func commitProfile(_ newProfile: PubkyProfile) {
+        invalidateProfileLoads()
+        profile = newProfile
+        cacheProfileMetadata(newProfile)
+    }
+
+    private func invalidateProfileLoads() {
+        profileWriteGeneration += 1
+    }
+
+    // MARK: - Pubky Ring Choice Rows
+
+    /// Looks up the rows that have no cached result and no live lookup. Cancelling the caller cancels the lookups it
+    /// started, so a screen the user has left stops queueing for read slots.
+    func loadRingIdentityProfiles(_ pubkys: [String]) async {
+        let lookups = Set(pubkys.compactMap(PubkyPublicKeyFormat.normalized))
+            .filter { needsRingIdentityLookup($0) }
+            .map { startRingIdentityLookup($0) }
+
+        await withTaskCancellationHandler {
+            for lookup in lookups {
+                await lookup.value
+            }
+        } onCancel: {
+            lookups.forEach { $0.cancel() }
+        }
+    }
+
+    /// Forgets the misses on returning to the app, since the user may have just published that pubky in Pubky Ring.
+    func forgetRingIdentityMisses() {
+        ringIdentityMisses.removeAll()
+    }
+
+    private func needsRingIdentityLookup(_ key: String) -> Bool {
+        guard ringIdentityProfiles[key] == nil, !ringIdentityMisses.contains(key) else { return false }
+        // A cancelled lookup records no miss when it fails, so it cannot stand in for a live one.
+        return ringIdentityLookups[key]?.task.isCancelled ?? true
+    }
+
+    private func startRingIdentityLookup(_ key: String) -> Task<Void, Never> {
+        let id = UUID()
+        let resolve = remoteProfileResolver
+        let task = Task {
+            var foundProfile: PubkyProfile?
+            do {
+                foundProfile = try await resolve(key)
+            } catch {
+                Logger.debug("No profile found for Pubky Ring key \(PubkyPublicKeyFormat.redacted(key)): \(error)", context: "PubkyProfileManager")
+            }
+            finishRingIdentityLookup(key, id: id, foundProfile: foundProfile)
+        }
+        ringIdentityLookups[key] = (id, task)
+        return task
+    }
+
+    /// Runs on the lookup's own task, so `Task.isCancelled` is that lookup's cancellation.
+    private func finishRingIdentityLookup(_ key: String, id: UUID, foundProfile: PubkyProfile?) {
+        // A newer lookup or a cache clear has replaced this one, so its result may be stale.
+        guard ringIdentityLookups[key]?.id == id else { return }
+        ringIdentityLookups[key] = nil
+
+        if let foundProfile {
+            ringIdentityProfiles[key] = foundProfile
+        } else if !Task.isCancelled {
+            ringIdentityMisses.insert(key)
+        }
+    }
+
+    private func clearRingIdentityProfiles() {
+        ringIdentityLookups.values.forEach { $0.task.cancel() }
+        ringIdentityLookups.removeAll()
+        ringIdentityMisses.removeAll()
+        ringIdentityProfiles.removeAll()
     }
 
     // MARK: - Sign Out
@@ -826,10 +934,12 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func clearAuthenticatedState() {
+        invalidateProfileLoads()
         publicKey = nil
         profile = nil
         authState = .idle
         clearCachedProfileMetadata()
+        clearRingIdentityProfiles()
     }
 
     private func activeSessionSecret() throws -> String {

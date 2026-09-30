@@ -8,9 +8,10 @@ struct PubkyChoiceView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var ringPubkys: [String] = []
-    @State private var profiles: [String: PubkyProfile] = [:]
+    @State private var ringProfiles: [String: PubkyProfile] = [:]
     @State private var didLoad = false
-    @State private var isAdopting = false
+    @State private var adoptingPubky: String?
+    @State private var loadTask: Task<Void, Never>?
 
     private var hasRingIdentities: Bool {
         !ringPubkys.isEmpty
@@ -49,10 +50,18 @@ struct PubkyChoiceView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
-        .task { await loadIdentities() }
+        .onAppear(perform: reloadIdentities)
+        .onDisappear(perform: cancelLoad)
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
-            Task { await loadIdentities() }
+            pubkyProfile.forgetRingIdentityMisses()
+            guard adoptingPubky == nil else { return }
+            reloadIdentities()
+        }
+        .onReceive(pubkyProfile.$ringIdentityProfiles) { found in
+            // Only ever add: adopting clears the manager's cache while this screen is still up, and rows must not
+            // flash back to bare keys before navigation.
+            ringProfiles.merge(found) { _, latest in latest }
         }
     }
 
@@ -98,7 +107,7 @@ struct PubkyChoiceView: View {
 
     private func ringRow(_ pubky: String) -> some View {
         let truncatedKey = PubkyPublicKeyFormat.displayTruncated(pubky)
-        let profile = profiles[pubky]
+        let profile = PubkyPublicKeyFormat.normalized(pubky).flatMap { ringProfiles[$0] }
         let name = profile?.name ?? ""
         let title = name.isEmpty ? truncatedKey : name
 
@@ -108,16 +117,24 @@ struct PubkyChoiceView: View {
             title: title,
             avatarName: title,
             avatarImageUrl: profile?.imageUrl,
+            isLoading: adoptingPubky == pubky,
             accessibilityId: "PubkyChoiceRing_\(pubky)"
         ) {
-            Task { await adopt(pubky) }
+            startAdopting(pubky)
         }
-        .disabled(isAdopting)
+        .disabled(adoptingPubky != nil)
+    }
+
+    private func startAdopting(_ pubky: String) {
+        guard adoptingPubky == nil else { return }
+        // Row lookups still queued would only compete with sign-in.
+        cancelLoad()
+        adoptingPubky = pubky
+        Task { await adopt(pubky) }
     }
 
     private func adopt(_ pubky: String) async {
-        isAdopting = true
-        defer { isAdopting = false }
+        defer { adoptingPubky = nil }
 
         do {
             guard let adopted = try await pubkyProfile.adoptRingIdentity(pubky: pubky) else {
@@ -135,21 +152,18 @@ struct PubkyChoiceView: View {
         }
     }
 
-    private func loadIdentities() async {
+    private func reloadIdentities() {
+        loadTask?.cancel()
         ringPubkys = SharedPubkyKeychain.listRingIdentities()
         didLoad = true
-        profiles = profiles.filter { ringPubkys.contains($0.key) }
 
-        let manager = pubkyProfile
-        await withTaskGroup(of: (String, PubkyProfile?).self) { group in
-            for pubky in ringPubkys where profiles[pubky] == nil {
-                group.addTask { await (pubky, manager.fetchRemoteProfile(publicKey: pubky)) }
-            }
+        let pubkys = ringPubkys
+        loadTask = Task { await pubkyProfile.loadRingIdentityProfiles(pubkys) }
+    }
 
-            for await (pubky, profile) in group {
-                profiles[pubky] = profile
-            }
-        }
+    private func cancelLoad() {
+        loadTask?.cancel()
+        loadTask = nil
     }
 
     // MARK: - Background Illustrations
