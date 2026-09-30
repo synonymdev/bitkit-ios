@@ -30,7 +30,7 @@ final class PubkyImageCacheTests: XCTestCase {
 
         XCTAssertNil(cache.memoryImage(for: uri))
         XCTAssertFalse(FileManager.default.fileExists(atPath: diskPath.path))
-        let diskImage = await cache.image(for: uri)
+        let diskImage = await cache.image(for: uri, generation: cache.generation)
         XCTAssertNil(diskImage)
     }
 
@@ -56,6 +56,27 @@ final class PubkyImageCacheTests: XCTestCase {
         let currentFileStored = await waitForFile(at: currentPath)
         XCTAssertTrue(currentFileStored)
         XCTAssertFalse(FileManager.default.fileExists(atPath: stalePath.path))
+    }
+
+    func testDiskPromotionCapturedBeforeClearIsNotKeptInMemory() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = PubkyImageCache(diskDirectory: directory)
+        let uri = "pubky://previous-user/pub/bitkit.to/blobs/avatar.jpg"
+        let imageData = try XCTUnwrap(image(color: .red).pngData())
+        let generationBeforeClear = cache.generation
+
+        await cache.clear()
+        // Stands in for a disk read that started before the clear and still found the previous identity's file.
+        try imageData.write(to: pubkyImageDiskPath(for: uri, directory: directory))
+        let staleImage = await cache.image(for: uri, generation: generationBeforeClear)
+
+        XCTAssertNotNil(staleImage)
+        XCTAssertNil(cache.memoryImage(for: uri))
+
+        let currentImage = await cache.image(for: uri, generation: cache.generation)
+        XCTAssertNotNil(currentImage)
+        XCTAssertNotNil(cache.memoryImage(for: uri))
     }
 
     func testDecoderDownsamplesLargeImagesBeforeCaching() throws {
@@ -161,7 +182,7 @@ final class PubkyImageCacheTests: XCTestCase {
         )
 
         let removedFirstFile = await waitForMissingFile(at: firstPath)
-        let remainingImage = await cache.image(for: secondURI)
+        let remainingImage = await cache.image(for: secondURI, generation: cache.generation)
         XCTAssertTrue(removedFirstFile)
         XCTAssertNotNil(remainingImage)
     }
@@ -175,7 +196,7 @@ final class PubkyImageCacheTests: XCTestCase {
         let cache = PubkyImageCache(diskDirectory: directory, maxFileBytes: 3, memoryCostLimit: 1024, diskByteLimit: 1024)
         try Data([0, 1, 2, 3]).write(to: path)
 
-        let image = await cache.image(for: uri)
+        let image = await cache.image(for: uri, generation: cache.generation)
         XCTAssertNil(image)
         XCTAssertFalse(FileManager.default.fileExists(atPath: path.path))
     }

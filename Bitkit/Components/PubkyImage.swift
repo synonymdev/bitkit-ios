@@ -68,11 +68,11 @@ struct PubkyImage: View {
 
     /// All heavy work (disk cache, network/FFI) runs off the main actor.
     private nonisolated static func loadImageOffMain(uri: String) async throws -> UIImage {
-        if let cached = await PubkyImageCache.shared.image(for: uri) {
+        let cacheGeneration = PubkyImageCache.shared.generation
+        if let cached = await PubkyImageCache.shared.image(for: uri, generation: cacheGeneration) {
             return cached
         }
 
-        let cacheGeneration = PubkyImageCache.shared.generation
         let data = try await PubkyService.fetchFile(uri: uri, maxBytes: PubkyImagePolicy.maxDownloadBytes)
         let blobData = try await resolveImageData(data, originalUri: uri)
 
@@ -196,7 +196,8 @@ final class PubkyImageCache: @unchecked Sendable {
     }
 
     /// Full lookup (memory + disk). Disk I/O runs on a dedicated queue to avoid blocking cooperative threads.
-    func image(for uri: String) async -> UIImage? {
+    /// A disk hit is promoted to memory only while `generation` is still current, as with `store`.
+    func image(for uri: String, generation: UInt64) async -> UIImage? {
         if let memoryHit = memoryImage(for: uri) {
             return memoryHit
         }
@@ -221,7 +222,7 @@ final class PubkyImageCache: @unchecked Sendable {
                 }
 
                 try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: path.path)
-                storeInMemory(diskImage, for: uri)
+                storeInMemory(diskImage, for: uri, generation: generation)
                 continuation.resume(returning: diskImage)
             }
         }
@@ -283,13 +284,13 @@ final class PubkyImageCache: @unchecked Sendable {
         return cgImage.bytesPerRow * cgImage.height
     }
 
-    private func storeInMemory(_ image: UIImage, for uri: String, generation: UInt64? = nil) {
+    private func storeInMemory(_ image: UIImage, for uri: String, generation: UInt64) {
         let cost = Self.memoryCost(of: image)
 
         memoryLock.lock()
         defer { memoryLock.unlock() }
 
-        if let generation, generation != clearGeneration { return }
+        guard generation == clearGeneration else { return }
         if let replaced = memoryCache.removeValue(forKey: uri) {
             memoryCost -= replaced.cost
         }

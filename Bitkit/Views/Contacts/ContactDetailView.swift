@@ -314,7 +314,7 @@ struct ContactDetailView: View {
 
                 if let contact = contactsManager.contacts.first(where: { $0.publicKey == publicKey }) {
                     profile = contact.profile
-                } else if let fetched = await contactsManager.fetchContactProfile(publicKey: publicKey) {
+                } else if let fetched = await contactsManager.fetchContactProfile(publicKey: publicKey, retryTransient: true) {
                     profile = fetched
                 }
             }
