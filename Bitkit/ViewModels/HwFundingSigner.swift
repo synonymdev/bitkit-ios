@@ -533,6 +533,20 @@ final class HwSendCoordinator {
         isPassphraseRequired = false
     }
 
+    func completionRoute(
+        result: HwFundingBroadcastResult,
+        walletId: String,
+        requestId: PaykitPaymentRequest.ID?,
+        paymentIdentity: String?,
+        completeContactPayment: (String) async -> Bool
+    ) async -> SendRoute {
+        let verified = await completeContactPayment(result.txId)
+        if let requestId, !verified {
+            return .hardwarePending(requestId: requestId, walletId: walletId, transactionId: result.txId, paymentIdentity: paymentIdentity)
+        }
+        return .success(paymentId: result.txId, walletId: walletId)
+    }
+
     func completeBroadcast() {
         pendingPayment = nil
         isBroadcastUnresolved = false

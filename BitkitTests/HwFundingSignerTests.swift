@@ -187,6 +187,49 @@ final class HwFundingSignerTests: XCTestCase {
         try await assertCoordinatorRetryReusesSignedPayment(error: HwTransferError.broadcastUncertain)
     }
 
+    func testCoordinatorRoutesOnlyUnverifiedShopBroadcastToPending() async throws {
+        let requestId = PaykitPaymentRequest.ID(
+            paymentRequestId: UUID().uuidString, counterparty: "merchant", counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil
+        )
+        for (request, verified) in [(Optional(requestId), false), (Optional(requestId), true), (nil, false)] {
+            let funding = MockHwFunding()
+            let connecting = MockHwConnecting()
+            let coordinator = HwSendCoordinator(walletId: "trezor:original-ios-wallet", signerFactory: { [self] _, address, rate in
+                makeSigner(funding: funding, connecting: connecting, feeRate: rate, address: address)
+            })
+            var route: SendRoute?
+            var completionTxids: [String] = []
+            let result = try await coordinator.signAndBroadcast(
+                manager: HwWalletManager(), address: "bc1qoriginal", sats: 42000, satsPerVByte: 2,
+                afterBroadcast: { result in
+                    route = await coordinator.completionRoute(
+                        result: result, walletId: "trezor:original-ios-wallet", requestId: request, paymentIdentity: "original-payer",
+                        completeContactPayment: { txid in
+                            completionTxids.append(txid)
+                            return verified
+                        }
+                    )
+                }
+            )
+            if let request, !verified {
+                XCTAssertEqual(
+                    route,
+                    .hardwarePending(
+                        requestId: request,
+                        walletId: "trezor:original-ios-wallet",
+                        transactionId: result.txId,
+                        paymentIdentity: "original-payer"
+                    )
+                )
+            } else {
+                XCTAssertEqual(route, .success(paymentId: result.txId, walletId: "trezor:original-ios-wallet"))
+            }
+            XCTAssertEqual(completionTxids, [result.txId])
+            XCTAssertEqual(funding.broadcastCalls, 1)
+            XCTAssertEqual(funding.signCalls, 1)
+        }
+    }
+
     func testCoordinatorRetryReusesSignedPaymentAfterConnectivityFailure() async throws {
         try await assertCoordinatorRetryReusesSignedPayment(
             error: BroadcastError.ElectrumError(errorDetails: "offline")

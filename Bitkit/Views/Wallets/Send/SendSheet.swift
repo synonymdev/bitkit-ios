@@ -66,6 +66,7 @@ enum SendRoute: Hashable {
         paymentRequest: String?,
         paykitPaymentRequestId: PaykitPaymentRequest.ID? = nil
     )
+    case hardwarePending(requestId: PaykitPaymentRequest.ID, walletId: String, transactionId: String, paymentIdentity: String?)
     case success(paymentId: String, walletId: String = WalletScope.default)
     case failure(SendFailureContext)
     case lnurlPayAmount
@@ -104,6 +105,7 @@ struct SendSheet: View {
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var tagManager: TagManager
     @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(TrezorManager.self) private var trezorManager
@@ -712,12 +714,29 @@ struct SendSheet: View {
                 routingCacheResetAttempted: routingCacheResetAttempted
             )
         case .hardwareSign:
+            let contactContext = app.contactPaymentContext
+            let address = app.scannedOnchainInvoice?.address
+            let walletId = hwSend.walletId
+            let paymentIdentity = pubkyProfile.publicKey
             HwSendSignView(
                 navigationPath: $navigationPath,
                 hwSend: hwSend,
-                prepareContactPayment: prepareHardwareContactPayment,
-                completeContactPayment: completeHardwareContactPayment,
-                cancelContactPayment: cancelHardwareContactPayment
+                contactPaymentRequestId: contactContext?.incomingPaymentRequest?.id,
+                contactPaymentIdentity: paymentIdentity,
+                prepareContactPayment: {
+                    try await prepareHardwareContactPayment(
+                        context: contactContext,
+                        address: address,
+                        walletId: walletId,
+                        paymentIdentity: paymentIdentity
+                    )
+                },
+                completeContactPayment: { txid in
+                    await completeHardwareContactPayment(context: contactContext, walletId: walletId, paymentIdentity: paymentIdentity, txid: txid)
+                },
+                cancelContactPayment: {
+                    await cancelHardwareContactPayment(context: contactContext)
+                }
             )
         case .feeRate:
             SendFeeRate(navigationPath: $navigationPath, hwSend: hwSend)
@@ -741,6 +760,14 @@ struct SendSheet: View {
                 paymentRequest: paymentRequest,
                 paykitPaymentRequestId: paykitPaymentRequestId,
                 routingCacheResetAttempted: routingCacheResetAttempted,
+                navigationPath: $navigationPath
+            )
+        case let .hardwarePending(requestId, walletId, transactionId, paymentIdentity):
+            SendPendingScreen(
+                paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                hardwareWalletId: walletId, hardwareTransactionId: transactionId,
+                hardwarePaymentIdentity: paymentIdentity,
                 navigationPath: $navigationPath
             )
         case let .success(paymentId, walletId):
@@ -792,7 +819,11 @@ struct SendSheet: View {
     }
 
     private func prepareIncomingPaymentRequest() async throws {
-        guard let context = app.contactPaymentContext,
+        try await prepareIncomingPaymentRequest(context: app.contactPaymentContext)
+    }
+
+    private func prepareIncomingPaymentRequest(context: ContactPaymentContext?) async throws {
+        guard let context,
               let request = context.incomingPaymentRequest
         else { return }
         guard !paykitPaymentRequestManager.isApprovedForPayment(request) else { return }
@@ -806,13 +837,20 @@ struct SendSheet: View {
         }
     }
 
-    private func prepareHardwareContactPayment() async throws {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest,
-              let address = app.scannedOnchainInvoice?.address
-        else {
-            try await prepareIncomingPaymentRequest()
+    private func prepareHardwareContactPayment(
+        context: ContactPaymentContext?,
+        address: String?,
+        walletId: String?,
+        paymentIdentity: String?
+    ) async throws {
+        guard let request = context?.incomingPaymentRequest else {
+            try await prepareIncomingPaymentRequest(context: context)
             return
         }
+        guard let address, let walletId, let paymentIdentity,
+              PubkyPublicKeyFormat.matches(pubkyProfile.publicKey, paymentIdentity)
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        _ = try hwWalletManager.getFundingAccount(walletId: walletId)
 
         let endpointIdentifier = PublicPaykitService.onchainMethodId(for: address).rawValue
         try await PaykitPaymentProofService.shared.prepare(
@@ -821,28 +859,32 @@ struct SendSheet: View {
             kind: .onchain
         )
         do {
-            try await prepareIncomingPaymentRequest()
-            try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address)
+            try await prepareIncomingPaymentRequest(context: context)
+            try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
+                request, address: address, hardwareWalletId: walletId, paymentIdentity: paymentIdentity
+            )
         } catch {
             await PaykitPaymentProofService.shared.cancelPreparation(request)
             throw error
         }
     }
 
-    private func completeHardwareContactPayment(txid: String) async {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest,
-              let address = app.scannedOnchainInvoice?.address
-        else { return }
+    private func completeHardwareContactPayment(context: ContactPaymentContext?, walletId: String?, paymentIdentity: String?,
+                                                txid: String) async -> Bool
+    {
+        guard let request = context?.incomingPaymentRequest else { return true }
+        guard let walletId, let paymentIdentity else { return false }
 
-        await PaykitPaymentProofService.shared.completeOnchainPayment(
+        return await PaykitPaymentProofService.shared.completeHardwareOnchainPayment(
             request,
-            txid: txid,
-            paymentEndpointIdentifier: PublicPaykitService.onchainMethodId(for: address).rawValue
+            paymentIdentity: paymentIdentity,
+            walletId: walletId,
+            txid: txid
         )
     }
 
-    private func cancelHardwareContactPayment() async {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+    private func cancelHardwareContactPayment(context: ContactPaymentContext?) async {
+        guard let request = context?.incomingPaymentRequest else { return }
         await PaykitPaymentProofService.shared.cancelPreparation(request)
     }
 

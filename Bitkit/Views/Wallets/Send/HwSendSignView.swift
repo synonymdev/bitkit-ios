@@ -5,12 +5,15 @@ struct HwSendSignView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var tagManager: TagManager
     @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
     let hwSend: HwSendCoordinator
+    let contactPaymentRequestId: PaykitPaymentRequest.ID?
+    let contactPaymentIdentity: String?
     let prepareContactPayment: () async throws -> Void
-    let completeContactPayment: (String) async -> Void
+    let completeContactPayment: (String) async -> Bool
     let cancelContactPayment: () async -> Void
     @State private var signingTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
@@ -108,8 +111,11 @@ struct HwSendSignView: View {
                 return
             }
             let contactPublicKey = app.contactPaymentContext?.publicKey
+            let requestId = contactPaymentRequestId
+            let tags = tagManager.selectedTagsArray
 
             do {
+                var proofVerified = requestId == nil
                 let result = try await hwSend.signAndBroadcast(
                     manager: hwWalletManager,
                     address: invoice.address,
@@ -117,18 +123,27 @@ struct HwSendSignView: View {
                     satsPerVByte: UInt64(feeRate),
                     beforeBroadcast: prepareContactPayment,
                     afterBroadcast: { result in
-                        await completeContactPayment(result.txId)
+                        proofVerified = await completeContactPayment(result.txId)
                     }
                 )
-                await recordSentPayment(
+                await Self.recordPaymentResult(
                     result,
                     walletId: walletId,
                     address: invoice.address,
                     amount: amount,
-                    contactPublicKey: contactPublicKey
+                    contactPublicKey: contactPublicKey,
+                    tags: tags,
+                    requestId: requestId,
+                    proofVerified: proofVerified
                 )
                 hwSend.completeBroadcast()
-                navigationPath.append(.success(paymentId: result.txId, walletId: walletId))
+                let completionRoute = await hwSend.completionRoute(
+                    result: result, walletId: walletId, requestId: requestId, paymentIdentity: contactPaymentIdentity,
+                    completeContactPayment: { _ in
+                        proofVerified && (requestId == nil || PubkyPublicKeyFormat.matches(pubkyProfile.publicKey, contactPaymentIdentity))
+                    }
+                )
+                navigationPath.append(completionRoute)
             } catch is CancellationError {
                 await cancelContactPaymentIfBroadcastIsRetryable()
                 return
@@ -188,17 +203,20 @@ struct HwSendSignView: View {
         }
     }
 
-    private func recordSentPayment(
+    static func recordPaymentResult(
         _ result: HwFundingBroadcastResult,
         walletId: String,
         address: String,
         amount: UInt64,
-        contactPublicKey: String?
+        contactPublicKey: String?,
+        tags: [String],
+        requestId: PaykitPaymentRequest.ID?,
+        proofVerified: Bool
     ) async {
         let metadata = PreActivityMetadata(
             walletId: walletId,
             paymentId: result.txId,
-            tags: tagManager.selectedTagsArray,
+            tags: tags,
             paymentHash: nil,
             txId: result.txId,
             address: address,
@@ -210,6 +228,9 @@ struct HwSendSignView: View {
         )
         try? await CoreService.shared.activity.addPreActivityMetadata(metadata)
 
+        // Retain original metadata for an eventual exact observation. A Shop payment's
+        // local Core txid alone must not create a Sent row.
+        guard requestId == nil || proofVerified else { return }
         await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
             txid: result.txId,
             address: address,
@@ -219,10 +240,10 @@ struct HwSendSignView: View {
             contact: contactPublicKey,
             walletId: walletId
         )
-        if !tagManager.selectedTagsArray.isEmpty {
+        if !tags.isEmpty {
             try? await CoreService.shared.activity.appendTags(
                 toActivity: result.txId,
-                tagManager.selectedTagsArray,
+                tags,
                 walletId: walletId
             )
         }
