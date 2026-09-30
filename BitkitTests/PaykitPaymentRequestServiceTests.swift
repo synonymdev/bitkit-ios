@@ -2804,19 +2804,43 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refresh()
         let request = try XCTUnwrap(manager.pendingRequests.first)
         var privatePaymentListConsumptions = 0
+        let app = AppViewModel()
+        let context = ContactPaymentContext(
+            publicKey: request.counterparty,
+            privatePaymentContext: PrivatePaykitPaymentContext(receiverPath: request.counterpartyReceiverPath, paymentListVersion: 7),
+            incomingPaymentRequest: request,
+            isInitialSubscriptionPayment: true
+        )
+        XCTAssertTrue(app.claimContactPaymentContext(context))
 
         try await manager.prepareForPayment(request) {
             privatePaymentListConsumptions += 1
         }
         try await sdk.setRecords([paymentRequestRecord(state: .accepted)])
-        let retryRequest = await manager.paymentRequestForRetry(request.id)
-        let retriedRequest = try XCTUnwrap(retryRequest)
+        await sdk.setLinkedPeersError(.linkedPeers)
+        do {
+            try await manager.ensurePaymentAllowed(request)
+            XCTFail("Expected final authorization to fail")
+        } catch {
+            XCTAssertEqual(error as? PaymentRequestSdkMockError, .linkedPeers)
+        }
+        await sdk.setLinkedPeersError(nil)
+        await SendSheet.restoreHardwareContactPaymentForRetry(context, app: app, manager: manager)
+        let retriedContext = try XCTUnwrap(app.contactPaymentContext)
+        let retriedRequest = try XCTUnwrap(retriedContext.incomingPaymentRequest)
+        XCTAssertEqual(retriedContext.id, context.id)
+        XCTAssertEqual(retriedContext.publicKey, context.publicKey)
+        XCTAssertEqual(retriedContext.privatePaymentContext, context.privatePaymentContext)
+        XCTAssertEqual(retriedContext.isInitialSubscriptionPayment, context.isInitialSubscriptionPayment)
+        XCTAssertEqual(retriedRequest.lifecycleState, .accepted)
         try await manager.prepareForPayment(retriedRequest) {
             privatePaymentListConsumptions += 1
         }
 
         XCTAssertEqual(privatePaymentListConsumptions, 2)
         XCTAssertTrue(manager.isApprovedForPayment(retriedRequest))
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.acceptedRequests.map(\.paymentRequestId), [request.paymentRequestId])
     }
 
     func testFailedAcceptanceDropsRequestRemovedFromAuthoritativeQueue() async throws {

@@ -456,7 +456,8 @@ final class HwSendCoordinator {
         satsPerVByte: UInt64,
         beforeFirstBroadcast: @escaping () async throws -> Void = {},
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
-        afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in }
+        afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in },
+        afterFailure: @escaping (PrivatePaymentListSendOutcome) async -> Void = { _ in }
     ) async throws -> HwFundingBroadcastResult {
         guard let walletId else {
             throw AppError(message: "Unknown hardware wallet", debugMessage: "The send flow has no wallet id")
@@ -491,27 +492,34 @@ final class HwSendCoordinator {
                 pendingPayment?.isPreparedForBroadcast = true
             }
 
+            var broadcastWasAttempted = pendingPayment?.hasBroadcastAttempted == true
             do {
-                try await beforeBroadcastAttempt()
-            } catch {
-                if pendingPayment?.hasBroadcastAttempted != true {
-                    pendingPayment = nil
+                do {
+                    try await beforeBroadcastAttempt()
+                } catch {
+                    if !broadcastWasAttempted {
+                        pendingPayment = nil
+                    }
+                    throw error
                 }
-                throw error
-            }
 
-            isBroadcastUnresolved = true
-            pendingPayment?.hasBroadcastAttempted = true
-            do {
-                let result = try await signer.broadcastSignedFunding(signed)
-                await afterBroadcast(result)
-                return result
-            } catch {
-                isBroadcastUnresolved = false
-                let outcomeIsUncertain = (error as? HwTransferError) == .broadcastUncertain
-                if !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
-                    pendingPayment = nil
+                isBroadcastUnresolved = true
+                broadcastWasAttempted = true
+                pendingPayment?.hasBroadcastAttempted = true
+                do {
+                    let result = try await signer.broadcastSignedFunding(signed)
+                    await afterBroadcast(result)
+                    return result
+                } catch {
+                    isBroadcastUnresolved = false
+                    let outcomeIsUncertain = (error as? HwTransferError) == .broadcastUncertain
+                    if !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
+                        pendingPayment = nil
+                    }
+                    throw error
                 }
+            } catch {
+                await afterFailure(broadcastWasAttempted ? .uncertain : .definitePreBroadcastFailure)
                 throw error
             }
         }

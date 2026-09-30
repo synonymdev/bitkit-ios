@@ -772,7 +772,11 @@ struct SendSheet: View {
     }
 
     private func prepareIncomingPaymentRequest() async throws {
-        guard let context = app.contactPaymentContext,
+        try await prepareIncomingPaymentRequest(context: app.contactPaymentContext)
+    }
+
+    private func prepareIncomingPaymentRequest(context: ContactPaymentContext?) async throws {
+        guard let context,
               let request = context.incomingPaymentRequest
         else { return }
 
@@ -786,11 +790,11 @@ struct SendSheet: View {
         }
     }
 
-    private func prepareHardwareContactPayment() async throws {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest,
+    private func prepareHardwareContactPayment(_ context: ContactPaymentContext?) async throws {
+        guard let request = context?.incomingPaymentRequest,
               let address = app.scannedOnchainInvoice?.address
         else {
-            try await prepareIncomingPaymentRequest()
+            try await prepareIncomingPaymentRequest(context: context)
             return
         }
 
@@ -801,27 +805,27 @@ struct SendSheet: View {
             kind: .onchain
         )
         do {
-            try await prepareIncomingPaymentRequest()
+            try await prepareIncomingPaymentRequest(context: context)
             try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address)
         } catch {
             _ = await paykitPaymentRequestManager.paymentRequestForRetry(request.id)
-            await app.contactPaymentContext?.resolvePrivatePaymentListConsumption(.definitePreBroadcastFailure)
+            await context?.resolvePrivatePaymentListConsumption(.definitePreBroadcastFailure)
             await PaykitPaymentProofService.shared.cancelPreparation(request)
             throw error
         }
     }
 
-    private func authorizeHardwareContactPayment() async throws {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+    private func authorizeHardwareContactPayment(_ context: ContactPaymentContext?) async throws {
+        guard let request = context?.incomingPaymentRequest else { return }
         try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
     }
 
-    private func completeHardwareContactPayment(txid: String) async {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest,
+    private func completeHardwareContactPayment(_ context: ContactPaymentContext?, txid: String) async {
+        guard let request = context?.incomingPaymentRequest,
               let address = app.scannedOnchainInvoice?.address
         else { return }
 
-        await app.contactPaymentContext?.resolvePrivatePaymentListConsumption(.succeeded)
+        await context?.resolvePrivatePaymentListConsumption(.succeeded)
         await PaykitPaymentProofService.shared.completeOnchainPayment(
             request,
             txid: txid,
@@ -829,11 +833,35 @@ struct SendSheet: View {
         )
     }
 
-    private func cancelHardwareContactPayment() async {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
-        await app.contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
+    private func cancelHardwareContactPayment(_ context: ContactPaymentContext?, outcome: PrivatePaymentListSendOutcome) async {
+        guard let request = context?.incomingPaymentRequest else { return }
+        await context?.resolvePrivatePaymentListConsumption(outcome)
+        guard outcome == .definitePreBroadcastFailure else { return }
         await PaykitPaymentProofService.shared.failOnchainPayment(request)
         await PaykitPaymentProofService.shared.cancelPreparation(request)
+        if let context {
+            await Self.restoreHardwareContactPaymentForRetry(context, app: app, manager: paykitPaymentRequestManager)
+        }
+    }
+
+    @MainActor
+    static func restoreHardwareContactPaymentForRetry(
+        _ context: ContactPaymentContext,
+        app: AppViewModel,
+        manager: PaykitPaymentRequestManager
+    ) async {
+        guard let request = context.incomingPaymentRequest,
+              let retriedRequest = await manager.paymentRequestForRetry(request.id),
+              app.ownsContactPaymentContext(context)
+        else { return }
+
+        app.contactPaymentContext = ContactPaymentContext(
+            id: context.id,
+            publicKey: context.publicKey,
+            privatePaymentContext: context.privatePaymentContext,
+            incomingPaymentRequest: retriedRequest,
+            isInitialSubscriptionPayment: context.isInitialSubscriptionPayment
+        )
     }
 
     private func replaceQuickPay(with route: SendRoute) {

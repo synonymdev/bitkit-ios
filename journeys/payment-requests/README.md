@@ -87,6 +87,15 @@ request and succeed after it is switched back to the healthy response. Do not re
 payment list between attempts. This makes the first send fail before Lightning dispatch and proves
 that the same private payment details can be opened and paid on retry.
 
+### Hardware authorization failure
+
+Injecting a failure in the final Paykit authorization check is not a journey capability. Check this
+manually with the linked issuer and a funded regtest hardware wallet: allow preparation to succeed,
+then fail `linkedPeers()` during the authorization check before broadcast. Restore the peer without
+publishing a new payment list and retry from the hardware signing screen. The same unpaid request
+must be prepared and authorized again before it broadcasts. If a broadcast may have begun, retain
+the consumed details and started proof until the payment is reconciled.
+
 ## Contact Request Or Pay
 
 `contact-request-or-pay.xml` is ported alongside Android's matching journey.
