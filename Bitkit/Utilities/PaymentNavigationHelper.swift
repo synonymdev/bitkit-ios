@@ -235,6 +235,7 @@ struct PaymentNavigationHelper {
     ) async {
         do {
             let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: publicKey, wallet: wallet)
+            guard !Task.isCancelled else { return }
             switch result {
             case let .opened(paymentRequest, privatePaymentContext):
                 let context = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext)
@@ -263,7 +264,8 @@ struct PaymentNavigationHelper {
                     return
                 }
 
-                guard app.ownsContactPaymentContext(context),
+                guard !Task.isCancelled,
+                      app.ownsContactPaymentContext(context),
                       let route = contactPaymentRoute(app: app, currency: currency, settings: settings)
                 else {
                     app.resetSendState()
@@ -276,6 +278,8 @@ struct PaymentNavigationHelper {
                     app.toast(type: .warning, title: t("slashtags__error_pay_title"), description: t(messageKey))
                 }
             }
+        } catch is CancellationError {
+            return
         } catch {
             Logger.error(
                 "Failed to pay contact \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",

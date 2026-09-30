@@ -76,6 +76,17 @@ Use a second Bitkit instance as the requester instead of the fixture issuer: bot
 authenticated Pubky identities, saved as each other's contacts and linked on receiver path
 `bitkit/wallet`, and the payer holds enough balance to pay 21,000 sats.
 
+## Contact Request Or Pay
+
+`contact-request-or-pay.xml` is ported alongside Android's matching journey.
+
+### Setup
+
+Use the same two-instance setup as the request summary, and start from the payer's Contact Detail
+screen, opened through the `bitkit://contact?pubky=` deeplink. Its timing step assumes the payer has
+been running for about a minute: right after launch, the Paykit session restore and link refresh hold
+the SDK and can push the Pay step well past the budget.
+
 ## Identifiers used
 
 - Pending-request bell: `PaymentRequestsBell`.
@@ -89,5 +100,8 @@ authenticated Pubky identities, saved as each other's contacts and linked on rec
 - Confirmation invoice note: `PaymentRequestInvoiceNote`.
 - Confirmation details: `SendConfirmToggleDetails`.
 - Saved-contact recipient: `ReviewContactRecipient`.
+- Contact Detail pay action: `ContactPay`.
+- Request or Pay sheet: `RequestOrPaySheet` (its Pay and Request buttons carry no identifier; find them by label).
+- Payment Request amount screen: `PaymentRequestAmount`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
 - Expiration feedback: `PaymentRequestExpiredToast`.
