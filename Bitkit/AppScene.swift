@@ -317,7 +317,7 @@ struct AppScene: View {
                 config in AppUpdateSheet(config: config)
             }
             .task(priority: .userInitiated, setupTask)
-            .task(id: [scenePhase == .active, wallet.walletExists == true, isWalletBackupRestoreRunning]) {
+            .task(id: [scenePhase == .active, wallet.walletExists == true, isWalletBackupRestoreRunning, network.isConnected]) {
                 guard scenePhase == .active, wallet.walletExists == true,
                       !isWalletBackupRestoreRunning, !BackupService.shared.hasPendingWalletRestore()
                 else { return }

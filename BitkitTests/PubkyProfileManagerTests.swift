@@ -95,6 +95,51 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testPeriodicRecoveryStopsWithoutStoredIdentity() async {
+        for initiallyStored in [false, true] {
+            let manager = RecoveryProfileManager()
+            var hasIdentity = initiallyStored
+            var delays: [Duration] = []
+            await manager.retrySessionRestoration(
+                sleep: { delay in
+                    delays.append(delay)
+                    hasIdentity = false
+                    if delays.count > 1 {
+                        XCTFail("Retry must stop after credentials are removed")
+                        throw CancellationError()
+                    }
+                },
+                hasStoredIdentity: { hasIdentity },
+                initializeSession: { .restorationFailed }
+            )
+            XCTAssertEqual(delays.count, initiallyStored ? 1 : 0)
+        }
+    }
+
+    @MainActor
+    func testPeriodicRecoveryBacksOffWithJitterAndResetsOnRestart() async {
+        let manager = RecoveryProfileManager()
+        for multiplier in [0.8, 1.0, 1.2] {
+            var delays: [Duration] = []
+            await manager.retrySessionRestoration(
+                jitter: { multiplier },
+                sleep: { delay in
+                    delays.append(delay)
+                    if delays.count == 8 { throw CancellationError() }
+                },
+                hasStoredIdentity: { true },
+                initializeSession: { .restorationFailed }
+            )
+            let expected: [Double] = switch multiplier {
+            case 0.8: [8, 16, 32, 64, 128, 144, 144, 144]
+            case 1.0: [10, 20, 40, 80, 160, 180, 180, 180]
+            default: [12, 24, 48, 96, 180, 180, 180, 180]
+            }
+            XCTAssertEqual(delays, expected.map { .seconds($0) })
+        }
+    }
+
+    @MainActor
     func testCancelledRecoveryDoesNotRetryAfterPendingStartup() async {
         let manager = RecoveryProfileManager()
         let started = expectation(description: "startup started")

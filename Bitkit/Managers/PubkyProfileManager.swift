@@ -119,20 +119,25 @@ class PubkyProfileManager: ObservableObject {
 
     func retrySessionRestoration(
         retryDelay: Duration = .seconds(10),
+        jitter: () -> Double = { Double.random(in: 0.8 ... 1.2) },
+        sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         hasStoredIdentity: () throws -> Bool = { try PubkyProfileManager.hasStoredIdentity() },
         initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult = {
             try await PubkyProfileManager.initializePersistedSession()
         }
     ) async {
         // A usable connection can return without a new network-path event.
+        let maximumDelay = Duration.seconds(180)
+        var delay = retryDelay
         while !Task.isCancelled {
             await restoreSessionIfNeeded(hasStoredIdentity: hasStoredIdentity, initializeSession: initializeSession)
-            guard !isAuthenticated else { return }
+            guard !isAuthenticated, (try? hasStoredIdentity()) != false else { return }
             do {
-                try await Task.sleep(for: retryDelay)
+                try await sleep(min(delay * jitter(), maximumDelay))
             } catch {
                 return
             }
+            delay = min(delay * 2, maximumDelay)
         }
     }
 
