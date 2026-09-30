@@ -562,8 +562,14 @@ struct PaykitPaymentRequestService {
         logIntakeFailures(intakeReports)
         let synchronizationDate = now()
         let records = try await sdk.paymentRequests()
+        let blockedPeers = try await sdk.linkedPeers().filter { $0.state == .blocked }
+        let availableRecords = records.filter { record in
+            !blockedPeers.contains {
+                PubkyPublicKeyFormat.matches($0.counterparty, record.counterparty) && $0.counterpartyReceiverPath == record.counterpartyReceiverPath
+            }
+        }
         var rejections: [IncomingPaykitPaymentRequestRejection] = []
-        let incoming = records.compactMap { record in
+        let incoming = availableRecords.compactMap { record in
             switch PaykitPaymentRequest.parseIncoming(record: record, now: synchronizationDate) {
             case let .success(request):
                 return request
@@ -589,7 +595,7 @@ struct PaykitPaymentRequestService {
         let history = records.compactMap {
             PaykitPaymentRequest(historyRecord: $0, now: synchronizationDate)
         }
-        let subscriptions = records.compactMap { PaykitSubscription(record: $0) }
+        let subscriptions = availableRecords.compactMap { PaykitSubscription(record: $0) }
         return PaykitPaymentRequestSnapshot(
             incoming: incoming,
             history: history,
@@ -828,6 +834,13 @@ struct PaykitPaymentRequestService {
             paymentDeadline: nil,
             metadata: Paykit.PrivateJsonObject(text: metadataText)
         )
+    }
+
+    func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
+        guard try await !sdk.linkedPeers().contains(where: {
+            $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty) &&
+                $0.counterpartyReceiverPath == request.counterpartyReceiverPath
+        }) else { throw PaykitPaymentRequestError.requestUnavailable }
     }
 
     func accept(_ request: PaykitPaymentRequest) async throws {
@@ -1467,17 +1480,31 @@ final class PaykitPaymentRequestManager {
         refreshTask = nil
     }
 
+    func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
+        do {
+            try await service.ensurePaymentAllowed(request)
+        } catch {
+            approvedPaymentRequestIds.remove(request.id)
+            throw error
+        }
+    }
+
     func prepareForPayment(
         _ request: PaykitPaymentRequest,
         consumePrivatePaymentList: () async throws -> Void = {}
     ) async throws {
         do {
+            if isApprovedForPayment(request) {
+                try await ensurePaymentAllowed(request)
+                return
+            }
             try await perform(
                 request,
                 resultingState: .accepted,
                 markApprovedForPayment: true,
                 preservePending: !request.requiresAcceptance
             ) {
+                try await ensurePaymentAllowed($0)
                 try await consumePrivatePaymentList()
                 if $0.requiresAcceptance {
                     try await service.accept($0)

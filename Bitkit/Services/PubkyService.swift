@@ -9,6 +9,7 @@ enum PubkyServiceError: LocalizedError {
     case sessionNotActive
     case authFailed(String)
     case profileNotFound
+    case activeSubscription(endsAt: Date?)
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,8 @@ enum PubkyServiceError: LocalizedError {
             return "Authentication failed: \(reason)"
         case .profileNotFound:
             return "Profile not found"
+        case .activeSubscription:
+            return "Contact has an active subscription"
         }
     }
 }
@@ -279,8 +282,15 @@ enum PubkyService {
         try await PaykitSdkService.shared.contactRecords()
     }
 
-    static func saveContact(publicKey: String, label: String?, receiverPaths: [String]? = nil) async throws -> Paykit.ContactRecord {
-        try await PaykitSdkService.shared.saveContact(publicKey: publicKey, label: label, receiverPaths: receiverPaths)
+    static func saveContact(publicKey: String, label: String?, receiverPaths: [String]? = nil,
+                            restorePrivateConnection: Bool = false) async throws -> Paykit.ContactRecord
+    {
+        try await PaykitSdkService.shared.saveContact(
+            publicKey: publicKey,
+            label: label,
+            receiverPaths: receiverPaths,
+            restorePrivateConnection: restorePrivateConnection
+        )
     }
 
     static func removeContact(publicKey: String) async throws -> Paykit.ContactRecord? {
@@ -323,6 +333,7 @@ actor PaykitSdkService {
     private let paymentAdapter = PaykitSdkPaymentAdapter()
     private let operationLock = PaykitSdkOperationLock()
     private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
+    private let sdkFactory: (() throws -> PaykitSdk)?
     private let bootstrapFactory: BootstrapFactory
     private var cachedBootstrap: PubkySessionBootstrap?
     private var isRepublishingIdentity = false
@@ -331,8 +342,10 @@ actor PaykitSdkService {
     private var sdk: PaykitSdk?
 
     init(
+        sdkFactory: (() throws -> PaykitSdk)? = nil,
         bootstrapFactory: @escaping BootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
     ) {
+        self.sdkFactory = sdkFactory
         self.bootstrapFactory = bootstrapFactory
     }
 
@@ -598,17 +611,79 @@ actor PaykitSdkService {
         }
     }
 
-    func saveContact(publicKey: String, label: String?, receiverPaths: [String]? = nil) async throws -> Paykit.ContactRecord {
+    func saveContact(
+        publicKey: String,
+        label: String?,
+        receiverPaths: [String]? = nil,
+        restorePrivateConnection: Bool = false
+    ) async throws -> Paykit.ContactRecord {
         try await withStateRevisionTracking { sdk in
-            let existingPaths = try await sdk.contactRecord(publicKey: publicKey)?.receiverPaths ?? []
+            let existing = try await sdk.contactRecord(publicKey: publicKey)
+            guard restorePrivateConnection || existing != nil else { throw PubkyServiceError.profileNotFound }
+            let existingPaths = existing?.receiverPaths ?? []
             let contactPaths = Self.mergedReceiverPaths(existingPaths + (receiverPaths ?? []))
+            if restorePrivateConnection {
+                let blockedPeers = try await sdk.linkedPeers().filter {
+                    $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, publicKey)
+                }
+                do {
+                    for peer in blockedPeers {
+                        _ = try await sdk.unblockPeer(counterparty: peer.counterparty, counterpartyReceiverPath: peer.counterpartyReceiverPath)
+                    }
+                    return try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, receiverPaths: contactPaths, label: label))
+                } catch {
+                    let restorationError = error
+                    for peer in blockedPeers {
+                        do {
+                            _ = try await sdk.blockPeer(counterparty: peer.counterparty, counterpartyReceiverPath: peer.counterpartyReceiverPath)
+                        } catch {
+                            Logger.error("Failed to restore peer block after contact save failed: \(error)", context: "PaykitSdkService")
+                        }
+                    }
+                    throw restorationError
+                }
+            }
             return try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, receiverPaths: contactPaths, label: label))
         }
     }
 
     func removeContact(publicKey: String) async throws -> Paykit.ContactRecord? {
         try await withStateRevisionTracking { sdk in
-            try await sdk.removeContact(publicKey: publicKey)
+            let record = try await sdk.contactRecord(publicKey: publicKey)
+            let peers = try await sdk.linkedPeers().filter { PubkyPublicKeyFormat.matches($0.counterparty, publicKey) }
+            let receiverPaths = Set(record?.receiverPaths ?? []).union(peers.map(\.counterpartyReceiverPath))
+            let now = Date()
+            let activeSubscriptions = try await sdk.paymentRequests().filter {
+                PubkyPublicKeyFormat.matches($0.counterparty, publicKey) &&
+                    $0.state == .activeRecurring &&
+                    ($0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate).map { $0 > now } ?? true)
+            }
+            guard activeSubscriptions.isEmpty else {
+                let endDates = activeSubscriptions.compactMap {
+                    $0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate)
+                }
+                let latestEndDate = endDates.count == activeSubscriptions.count ? endDates.max() : nil
+                throw PubkyServiceError.activeSubscription(endsAt: latestEndDate)
+            }
+            for peer in peers where peer.state == .linked {
+                do {
+                    let report = try await sdk.clearPrivatePaymentListAndProcessOutbound(
+                        counterparty: publicKey,
+                        counterpartyReceiverPath: peer.counterpartyReceiverPath
+                    )
+                    if !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
+                        Logger.warn("Failed to withdraw private endpoints before contact deletion", context: "PaykitSdkService")
+                    }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    Logger.warn("Failed to withdraw private endpoints before contact deletion: \(error)", context: "PaykitSdkService")
+                }
+            }
+            for receiverPath in receiverPaths.sorted() {
+                _ = try await sdk.blockPeer(counterparty: publicKey, counterpartyReceiverPath: receiverPath)
+            }
+            return try await sdk.removeContact(publicKey: publicKey)
         }
     }
 
@@ -751,9 +826,14 @@ actor PaykitSdkService {
     func clearPrivatePaymentList(
         to counterparty: String,
         receiverPath: String
-    ) async throws -> PrivatePaymentListDeliveryReport {
+    ) async throws -> PrivatePaymentListDeliveryReport? {
         try await withStateRevisionTracking { sdk in
-            try await sdk.clearPrivatePaymentListAndProcessOutbound(counterparty: counterparty, counterpartyReceiverPath: receiverPath)
+            if try await sdk.linkedPeers().contains(where: {
+                $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, counterparty) && $0.counterpartyReceiverPath == receiverPath
+            }) {
+                return nil
+            }
+            return try await sdk.clearPrivatePaymentListAndProcessOutbound(counterparty: counterparty, counterpartyReceiverPath: receiverPath)
         }
     }
 
@@ -962,7 +1042,7 @@ actor PaykitSdkService {
             return sdk
         }
 
-        let created = try PaykitSdk.withPaymentAdapterAndPubkyClientConfig(
+        let created = try sdkFactory?() ?? PaykitSdk.withPaymentAdapterAndPubkyClientConfig(
             stateStore: stateStore,
             sessionProvider: sessionProvider,
             paymentAdapter: paymentAdapter,

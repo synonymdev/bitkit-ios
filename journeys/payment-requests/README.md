@@ -122,6 +122,10 @@ the SDK and can push the Pay step well past the budget.
 - Send failure: `SendFailure` and retry action `Retry`.
 - Swipe control: `GRAB`.
 
+`delete-and-readd-contact.xml` uses two Bitkit instances to verify that deleting a contact revokes private requests across restart and that explicitly adding the contact again restores a fresh private connection. It does not send funds.
+
+`delete-contact-with-active-subscription.xml` requires an accepted open-ended payer subscription. It verifies that deletion explains why the contact must stay saved until the subscription ends, then that canceling, deleting, and readding does not revive it. No new payment is sent. Both contact-deletion journeys are mirrored on iOS and Android.
+
 ## Payment deadline history
 
 `payment-deadline-history.xml` covers rc56 requests with actual-payment deadlines.

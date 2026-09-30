@@ -695,6 +695,7 @@ struct SendSheet: View {
                 navigationPath: $navigationPath,
                 hwSend: hwSend,
                 prepareContactPayment: prepareHardwareContactPayment,
+                authorizeContactPayment: authorizeHardwareContactPayment,
                 completeContactPayment: completeHardwareContactPayment,
                 cancelContactPayment: cancelHardwareContactPayment
             )
@@ -774,7 +775,6 @@ struct SendSheet: View {
         guard let context = app.contactPaymentContext,
               let request = context.incomingPaymentRequest
         else { return }
-        guard !paykitPaymentRequestManager.isApprovedForPayment(request) else { return }
 
         try await paykitPaymentRequestManager.prepareForPayment(request) {
             guard let privatePaymentContext = context.privatePaymentContext else { return }
@@ -809,6 +809,11 @@ struct SendSheet: View {
             await PaykitPaymentProofService.shared.cancelPreparation(request)
             throw error
         }
+    }
+
+    private func authorizeHardwareContactPayment() async throws {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+        try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
     }
 
     private func completeHardwareContactPayment(txid: String) async {
