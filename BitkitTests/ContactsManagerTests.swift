@@ -11,6 +11,56 @@ final class ContactsManagerTests: XCTestCase {
         UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
     }
 
+    func testImportSavesPreparedContactsWithoutNetworkAndSkipsDuplicates() async throws {
+        let manager = ContactsManager()
+        let prepared = (0 ..< 62).map { makeContact(publicKey: "pubky-contact-\($0)") }
+        var saved: [String] = []
+        try await manager.importContacts(contacts: prepared + prepared) { key, label in
+            XCTAssertEqual(label, "Alice")
+            saved.append(key)
+        }
+
+        XCTAssertEqual(saved, prepared.map(\.publicKey))
+        XCTAssertEqual(Set(manager.contacts), Set(prepared))
+        XCTAssertEqual(manager.contacts.count, 62)
+    }
+
+    func testImportPreservesSavedContactsOnFailureAndRetriesMissingContacts() async throws {
+        let manager = ContactsManager()
+        let alice = makeContact(publicKey: "pubky-alice")
+        let bob = makeContact(publicKey: "pubky-bob")
+        var saved: [String] = []
+        do {
+            try await manager.importContacts(contacts: [alice, bob]) { key, _ in
+                if key == bob.publicKey { throw CocoaError(.fileWriteUnknown) }
+                saved.append(key)
+            }
+            XCTFail("Import should report the failed save")
+        } catch {
+            XCTAssertEqual(manager.contacts, [alice])
+        }
+
+        try await manager.importContacts(contacts: [alice, bob]) { key, _ in saved.append(key) }
+        XCTAssertEqual(saved, [alice.publicKey, bob.publicKey])
+        XCTAssertEqual(Set(manager.contacts), Set([alice, bob]))
+    }
+
+    func testCancelledImportStopsSavingAndDoesNotPublishStaleResults() async throws {
+        let manager = ContactsManager()
+        let prepared = (0 ..< 3).map { makeContact(publicKey: "pubky-contact-\($0)") }
+        var attempted: [String] = []
+        do {
+            try await manager.importContacts(contacts: prepared) { key, _ in
+                attempted.append(key)
+                if key == prepared[1].publicKey { throw CancellationError() }
+            }
+            XCTFail("Import should propagate cancellation")
+        } catch is CancellationError {
+            XCTAssertEqual(attempted, Array(prepared.prefix(2)).map(\.publicKey))
+            XCTAssertTrue(manager.contacts.isEmpty)
+        }
+    }
+
     func testPubkyPublicKeyFormatNormalizesPrefixedAndUnprefixedKeys() {
         let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         let prefixedKey = "pubky\(rawKey)"

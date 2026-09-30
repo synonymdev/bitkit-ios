@@ -332,60 +332,41 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Import Contacts
 
-    func importContacts(publicKeys: [String]) async throws {
-        let prefixedKeys = Array(Set(publicKeys.compactMap(PubkyPublicKeyFormat.normalized)))
+    func importContacts(
+        contacts selected: [PubkyContact],
+        saveContact: (String, String) async throws -> Void = { publicKey, label in
+            _ = try await PubkyService.saveContact(publicKey: publicKey, label: label)
+        }
+    ) async throws {
+        var imported: [PubkyContact] = []
+        var existingKeys = Set(contacts.map(\.publicKey))
+        var firstError: Error?
 
-        let loadedResult: (contacts: [PubkyContact], failures: Int,
-                           firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
-            for key in prefixedKeys {
-                group.addTask { [self] in
-                    do {
-                        let profile = try await resolveContactProfile(publicKey: key, includePlaceholder: true)
-                        let receiverPaths = try await Self.relevantReceiverPaths(for: key)
-                        _ = try await PubkyService.saveContact(publicKey: key, label: profile.name, receiverPaths: receiverPaths)
-                        return .success(PubkyContact(publicKey: key, profile: profile))
-                    } catch is CancellationError {
-                        return .failure(CancellationError())
-                    } catch {
-                        Logger.warn("Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(key))': \(error)", context: "ContactsManager")
-                        return .failure(error)
-                    }
-                }
+        for contact in selected {
+            try Task.checkCancellation()
+            guard !existingKeys.contains(contact.publicKey) else { continue }
+            do {
+                // The preview already resolved this profile. Receiver discovery runs during contact refresh.
+                try await saveContact(contact.publicKey, contact.displayName)
+                imported.append(contact)
+                existingKeys.insert(contact.publicKey)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                firstError = firstError ?? error
+                Logger.warn(
+                    "Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(contact.publicKey))': \(error)",
+                    context: "ContactsManager"
+                )
             }
-
-            var results: [PubkyContact] = []
-            var failures = 0
-            var firstError: Error?
-
-            for await result in group {
-                switch result {
-                case let .success(contact):
-                    results.append(contact)
-                case let .failure(error):
-                    failures += 1
-                    firstError = firstError ?? error
-                }
-            }
-
-            return (results, failures, firstError)
         }
 
         try Task.checkCancellation()
-
-        if !prefixedKeys.isEmpty, loadedResult.contacts.isEmpty {
-            throw loadedResult.firstError ?? PubkyServiceError.profileNotFound
-        }
-
-        let existingKeys = Set(contacts.map(\.publicKey))
-        let newContacts = loadedResult.contacts.filter { !existingKeys.contains($0.publicKey) }
-        contacts.append(contentsOf: newContacts)
+        let currentKeys = Set(contacts.map(\.publicKey))
+        contacts.append(contentsOf: imported.filter { !currentKeys.contains($0.publicKey) })
         contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-
-        if loadedResult.failures > 0 {
-            Logger.warn("Skipped \(loadedResult.failures) contacts during import", context: "ContactsManager")
-        }
-
-        Logger.info("Imported \(newContacts.count) new contacts", context: "ContactsManager")
+        Logger.info("Imported \(imported.count) new contacts", context: "ContactsManager")
+        if let firstError { throw firstError }
     }
 
     // MARK: - Update Contact

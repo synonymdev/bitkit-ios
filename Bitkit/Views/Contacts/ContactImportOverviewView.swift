@@ -154,6 +154,7 @@ struct ContactImportOverviewView: View {
             CustomButton(title: t("contacts__import_select"), variant: .secondary) {
                 navigation.navigate(.contactImportSelect)
             }
+            .disabled(isImporting)
             .accessibilityIdentifier("ContactImportOverviewSelect")
 
             CustomButton(
@@ -169,11 +170,12 @@ struct ContactImportOverviewView: View {
     // MARK: - Actions
 
     private func importAllContacts() async {
+        guard !isImporting else { return }
         isImporting = true
         defer { isImporting = false }
 
         do {
-            try await contactsManager.importContacts(publicKeys: contacts.map(\.publicKey))
+            try await contactsManager.importContacts(contacts: contacts)
             contactsManager.clearPendingImport()
             navigation.path = [.payContacts]
         } catch {
