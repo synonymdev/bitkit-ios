@@ -115,6 +115,18 @@ class WalletViewModel: ObservableObject {
             transferService: transferService,
             coreService: coreService
         )
+        lightningService.onchainTransactionConfirmed = { txid in
+            do {
+                if try await OnchainSendAttemptService.shared.observeConfirmedTransaction(txid: txid) {
+                    _ = try await OnchainSendAttemptService.shared.resumeAcceptedOrdinarySend(
+                        walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
+                    )
+                    await PaykitPaymentProofService.shared.reconcile()
+                }
+            } catch {
+                Logger.error("Failed to retain confirmed transaction evidence for \(txid): \(error)", context: "WalletViewModel")
+            }
+        }
     }
 
     /// Convenience initializer for previews and testing
@@ -597,14 +609,16 @@ class WalletViewModel: ObservableObject {
     ///   - address: The bitcoin address to send to
     ///   - sats: The amount in satoshis to send
     ///   - isMaxAmount: Whether this is a max amount send (uses sendAllToAddress)
-    /// - Returns: The transaction ID (txid) of the sent transaction
+    /// - Returns: The backend's broadcast result and the attempted transaction ID
     /// - Throws: An error if the transaction fails or if fee rates cannot be retrieved
     func send(
         address: String,
         sats: UInt64,
         isMaxAmount: Bool = false,
+        requestId: PaykitPaymentRequest.ID? = nil,
+        followupContext: OnchainSendFollowupContext? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {}
-    ) async throws -> Txid {
+    ) async throws -> OnchainSendResult {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
@@ -615,21 +629,25 @@ class WalletViewModel: ObservableObject {
             Logger.warn("No UTXO selected, using default selection algorithm.")
         }
 
-        try await beforeBroadcastAttempt()
-        let txid = try await lightningService.send(
+        let result = try await OnchainSendAttemptService.shared.send(
+            using: lightningService,
             address: address,
-            sats: sats,
+            amountSats: sats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
             utxosToSpend: selectedUtxos,
-            isMaxAmount: isMaxAmount
+            isMaxAmount: isMaxAmount,
+            requestId: requestId,
+            followupContext: followupContext,
+            beforeBroadcastAttempt: beforeBroadcastAttempt
         )
 
-        Task {
-            // Best to auto sync on chain so we have latest state
-            try await sync()
+        if case .accepted = result {
+            Task {
+                try await sync()
+            }
         }
 
-        return txid
+        return result
     }
 
     /// Sets the fee rate for the send flow

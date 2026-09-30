@@ -8,6 +8,7 @@ enum KeychainEntryType {
     case securityPin
     case paykitSession
     case paykitPendingPaymentProofs
+    case onchainSendAttempts
     case paykitPresentedPaymentRequests
     case paykitSubscriptionState
     case paykitReceiverNoiseSecretKey
@@ -23,6 +24,7 @@ enum KeychainEntryType {
         case .securityPin: "security_pin"
         case .paykitSession: "paykit_session"
         case .paykitPendingPaymentProofs: "paykit_pending_payment_proofs"
+        case .onchainSendAttempts: "onchain_send_attempts"
         case .paykitPresentedPaymentRequests: "paykit_presented_payment_requests"
         case .paykitSubscriptionState: "paykit_subscription_state"
         case .paykitReceiverNoiseSecretKey: "paykit_receiver_noise_secret_key"

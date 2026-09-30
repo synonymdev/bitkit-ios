@@ -434,13 +434,30 @@ class TransferViewModel: ObservableObject {
 
         // For sendAll (change would be dust), send entire balance
         // Otherwise, send exact order.feeSat amount
-        let txid = try await lightningService.send(
+        let result = try await OnchainSendAttemptService.shared.send(
+            using: lightningService,
             address: address,
-            sats: order.feeSat,
+            amountSats: order.feeSat,
             satsPerVbyte: satsPerVbyte,
             utxosToSpend: utxosToSpend,
-            isMaxAmount: isMaxAmount
+            isMaxAmount: isMaxAmount,
+            orderId: order.id
         )
+        let txid: String
+        switch result {
+        case let .accepted(acceptedTxid):
+            txid = acceptedTxid
+        case let .rejected(rejectedTxid, reason):
+            throw AppError(
+                message: "The funding transaction was rejected. Do not try to fund this order again.",
+                debugMessage: "Broadcast rejected for \(rejectedTxid): \(reason)"
+            )
+        case let .unknown(unknownTxid):
+            throw AppError(
+                message: "The funding transaction may have been sent. Do not try to fund this order again.",
+                debugMessage: "Broadcast outcome unknown for \(unknownTxid)"
+            )
+        }
 
         let txTotalSats = SpendingConfirmTotal.leavingAmount(
             orderFeeSat: order.feeSat,
@@ -464,16 +481,37 @@ class TransferViewModel: ObservableObject {
             channelId: nil,
             createdAt: currentTime
         )
-        try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
+        let metadataSaved: Bool
+        do {
+            try await coreService.activity.addPreActivityMetadata(preActivityMetadata)
+            metadataSaved = true
+        } catch {
+            metadataSaved = false
+            Logger.warn("Accepted funding metadata could not be saved; retaining the attempt", context: "TransferViewModel")
+        }
 
-        await fundPaidOrder(
+        let trackingSaved = await fundPaidOrder(
             order: order,
             txId: txid,
             txTotalSats: txTotalSats,
             preTransferOnchainSats: preTransferOnchainSats
         )
+        if trackingSaved, metadataSaved {
+            do {
+                try await OnchainSendAttemptService.shared.acknowledgeLocalFollowup(txid: txid)
+            } catch {
+                Logger.warn("Accepted funding follow-up could not be acknowledged; retaining the attempt", context: "TransferViewModel")
+            }
+        }
+        if !trackingSaved {
+            throw AppError(
+                message: "Funding was sent, but local order tracking could not be saved. Do not fund this order again.",
+                debugMessage: "Accepted funding transaction \(txid) for order \(order.id)"
+            )
+        }
     }
 
+    @discardableResult
     private func fundPaidOrder(
         order: IBtOrder,
         txId: String,
@@ -483,8 +521,9 @@ class TransferViewModel: ObservableObject {
         txTotalSats: UInt64? = nil,
         preTransferOnchainSats: UInt64? = nil,
         activityWalletId: String = WalletScope.default
-    ) async {
+    ) async -> Bool {
         fundedOrderId = order.id
+        var trackingSaved = false
         do {
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
@@ -495,6 +534,7 @@ class TransferViewModel: ObservableObject {
                 preTransferOnchainSats: preTransferOnchainSats
             )
             Logger.info("Created transfer tracking record: \(transferId)", context: "TransferViewModel")
+            trackingSaved = true
         } catch {
             Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
         }
@@ -512,6 +552,7 @@ class TransferViewModel: ObservableObject {
         lightningSetupStep = 0
         await onBalanceRefresh?()
         watchOrder(orderId: order.id)
+        return trackingSaved
     }
 
     func startWatchingOrderFromRestart(_ order: IBtOrder) async {

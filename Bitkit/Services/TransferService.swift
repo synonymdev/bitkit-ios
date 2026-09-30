@@ -38,6 +38,10 @@ class TransferService {
         txTotalSats: UInt64? = nil,
         preTransferOnchainSats: UInt64? = nil
     ) async throws -> String {
+        if let lspOrderId, let existing = try storage.getAll().first(where: { $0.lspOrderId == lspOrderId }) {
+            guard existing.fundingTxId == fundingTxId else { throw OnchainSendAttemptError.duplicate }
+            return existing.id
+        }
         // When geoblocked, block transfers to spending that involve LSP (Blocktank)
         // toSpending with lspOrderId means it's a Blocktank LSP channel order
         let isGeoblocked = GeoService.shared.isGeoBlocked

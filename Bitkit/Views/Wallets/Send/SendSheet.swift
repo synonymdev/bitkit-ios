@@ -121,6 +121,7 @@ struct SendSheet: View {
     @State private var pendingEmbeddedRetryRoute: SendRoute?
     @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
+    @State private var isResumingAcceptedOrdinarySend = false
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
     @State private var hwSend: HwSendCoordinator
     @State private var setupTask: Task<Void, Never>?
@@ -144,7 +145,7 @@ struct SendSheet: View {
     /// If there are no channels at all, we should NOT wait behind the sync UI – that's a capacity issue, not a sync issue.
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
-        if hwSend.isActive {
+        if hwSend.isActive || isResumingAcceptedOrdinarySend {
             return false
         }
 
@@ -201,7 +202,9 @@ struct SendSheet: View {
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
-        .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut)
+        .offlineSheetOverlay(
+            title: t("wallet__send_bitcoin"), forceShow: syncTimedOut, isEnabled: !isResumingAcceptedOrdinarySend
+        )
         .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
         }
@@ -249,6 +252,24 @@ struct SendSheet: View {
 
             setupTask?.cancel()
             setupTask = Task {
+                if incomingPaymentRequest == nil, config.hardwareWalletId == nil,
+                   currentRoot == .options || app.selectedWalletToPayFrom == .onchain
+                {
+                    do {
+                        if let attempt = try await OnchainSendAttemptService.shared.unresolvedAttempt(
+                            walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)
+                        ), attempt.status == .accepted, attempt.requestId == nil, attempt.orderId == nil {
+                            isResumingAcceptedOrdinarySend = true
+                            hasValidatedAfterSync = true
+                            app.selectedWalletToPayFrom = .onchain
+                            wallet.sendAmountSats = attempt.amountSats
+                            replaceRootRoute(with: .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil))
+                            return
+                        }
+                    } catch {
+                        Logger.warn("Could not inspect retained on-chain follow-up", context: "SendSheet")
+                    }
+                }
                 do {
                     try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
                 } catch is CancellationError {
@@ -444,6 +465,7 @@ struct SendSheet: View {
     /// For onchain: validates balance and shows error if insufficient
     /// Pass `ignoreChannelWait: true` to validate even while channels are unusable (sync timeout).
     private func validatePaymentAfterSync(ignoreChannelWait: Bool = false) {
+        guard !isResumingAcceptedOrdinarySend else { return }
         let result = performPaymentValidationAfterSync(ignoreChannelWait: ignoreChannelWait)
         guard let route = pendingEmbeddedRetryRoute else { return }
 
@@ -822,7 +844,6 @@ struct SendSheet: View {
 
     private func cancelHardwareContactPayment() async {
         guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
-        await PaykitPaymentProofService.shared.failOnchainPayment(request)
         await PaykitPaymentProofService.shared.cancelPreparation(request)
     }
 

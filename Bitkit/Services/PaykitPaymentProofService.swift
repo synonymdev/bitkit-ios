@@ -33,6 +33,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var onchainAmountSats: UInt64?
     let onchainWalletId: String?
     var onchainMatchingTransactionIdsBeforeAttempt: Set<String>?
+    var onchainBroadcastAccepted: Bool?
 
     var hasUnsupportedOnchainWallet: Bool {
         kind == .onchain && onchainWalletId != nil && onchainWalletId != WalletScope.default
@@ -50,7 +51,8 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         onchainAddress: String? = nil,
         onchainAmountSats: UInt64? = nil,
         onchainWalletId: String? = nil,
-        onchainMatchingTransactionIdsBeforeAttempt: Set<String>? = nil
+        onchainMatchingTransactionIdsBeforeAttempt: Set<String>? = nil,
+        onchainBroadcastAccepted: Bool? = nil
     ) {
         self.identity = identity
         self.requestId = requestId
@@ -64,6 +66,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         self.onchainAmountSats = onchainAmountSats
         self.onchainWalletId = onchainWalletId
         self.onchainMatchingTransactionIdsBeforeAttempt = onchainMatchingTransactionIdsBeforeAttempt
+        self.onchainBroadcastAccepted = onchainBroadcastAccepted
     }
 }
 
@@ -139,39 +142,24 @@ struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
     }
 }
 
-protocol PaykitOnchainPaymentProofLookingUp: Sendable {
-    func existingTransactionIds(address: String, amountSats: UInt64) async throws -> Set<String>
-    func transactionId(address: String, amountSats: UInt64, excluding transactionIds: Set<String>) async throws -> String?
-}
+private actor PaykitProofMutationLock {
+    private var isLocked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
 
-struct PaykitOnchainPaymentProofLookup: PaykitOnchainPaymentProofLookingUp {
-    func existingTransactionIds(address: String, amountSats: UInt64) async throws -> Set<String> {
-        try await Set(matchingTransactionIds(address: address, amountSats: amountSats).map { $0.lowercased() })
-    }
-
-    func transactionId(address: String, amountSats: UInt64, excluding transactionIds: Set<String>) async throws -> String? {
-        try await matchingTransactionIds(address: address, amountSats: amountSats)
-            .reversed()
-            .first { !transactionIds.contains($0.lowercased()) }
-    }
-
-    private func matchingTransactionIds(address: String, amountSats: UInt64) async throws -> [String] {
-        guard let payments = await LightningService.shared.listPayments() else {
-            throw PaykitPaymentRequestError.requestUnavailable
+    func withLock<T>(_ operation: () async throws -> T) async rethrows -> T {
+        if isLocked {
+            await withCheckedContinuation { waiters.append($0) }
+        } else {
+            isLocked = true
         }
-        var transactionIds: [String] = []
-        for payment in payments {
-            guard payment.direction == .outbound,
-                  payment.status != .failed,
-                  case let .onchain(txid, _) = payment.kind,
-                  let details = try? await CoreService.shared.activity.getTransactionDetails(txid: txid),
-                  details.outputs.contains(where: {
-                      $0.scriptpubkeyAddress == address && $0.value == amountSats
-                  })
-            else { continue }
-            transactionIds.append(txid)
+        defer {
+            if waiters.isEmpty {
+                isLocked = false
+            } else {
+                waiters.removeFirst().resume()
+            }
         }
-        return transactionIds
+        return try await operation()
     }
 }
 
@@ -192,9 +180,10 @@ actor PaykitPaymentProofService {
     private let sdk: any PaykitPaymentProofSdkHandling
     private let store: any PaykitPaymentProofStoring
     private let lightningPaymentLookup: any PaykitLightningPaymentProofLookingUp
-    private let onchainPaymentLookup: any PaykitOnchainPaymentProofLookingUp
+    private let attemptService: OnchainSendAttemptService
     private let logInfo: @Sendable (String) -> Void
     private let logWarning: @Sendable (String) -> Void
+    private let mutationLock = PaykitProofMutationLock()
 
     func backupSnapshot() async throws -> [PaykitPaymentStateBackup.Proof] {
         try await store.load().map(PaykitPaymentStateBackup.Proof.init)
@@ -213,7 +202,7 @@ actor PaykitPaymentProofService {
         sdk: any PaykitPaymentProofSdkHandling = PaykitSdkService.shared,
         store: any PaykitPaymentProofStoring = PaykitPaymentProofStore(),
         lightningPaymentLookup: any PaykitLightningPaymentProofLookingUp = PaykitLightningPaymentProofLookup(),
-        onchainPaymentLookup: any PaykitOnchainPaymentProofLookingUp = PaykitOnchainPaymentProofLookup(),
+        attemptService: OnchainSendAttemptService = .shared,
         logInfo: @escaping @Sendable (String) -> Void = {
             Logger.info($0, context: "PaykitPaymentProof")
         },
@@ -224,7 +213,7 @@ actor PaykitPaymentProofService {
         self.sdk = sdk
         self.store = store
         self.lightningPaymentLookup = lightningPaymentLookup
-        self.onchainPaymentLookup = onchainPaymentLookup
+        self.attemptService = attemptService
         self.logInfo = logInfo
         self.logWarning = logWarning
     }
@@ -234,6 +223,22 @@ actor PaykitPaymentProofService {
         paymentEndpointIdentifier: String,
         kind: PaykitPaymentProofKind
     ) async throws {
+        try await mutationLock.withLock {
+            try await prepareLocked(request: request, paymentEndpointIdentifier: paymentEndpointIdentifier, kind: kind)
+        }
+    }
+
+    private func prepareLocked(
+        request: PaykitPaymentRequest,
+        paymentEndpointIdentifier: String,
+        kind: PaykitPaymentProofKind
+    ) async throws {
+        if try await attemptService.hasAttempt(for: request.id) {
+            if kind == .onchain, try await attemptService.acceptedTransactionId(for: request.id) != nil {
+                return
+            }
+            throw PaykitPaymentRequestError.operationInProgress
+        }
         let proof = try await pendingProof(
             request: request,
             paymentEndpointIdentifier: paymentEndpointIdentifier,
@@ -275,6 +280,20 @@ actor PaykitPaymentProofService {
             throw PaykitPaymentRequestError.requestUnavailable
         }
 
+        let records = try await sdk.paymentRequests()
+        if records.contains(where: { record in
+            guard record.localRole == .payer,
+                  record.paymentRequestId == request.paymentRequestId,
+                  PubkyPublicKeyFormat.matches(record.counterparty, request.counterparty),
+                  record.counterpartyReceiverPath == request.counterpartyReceiverPath
+            else { return false }
+            return (request.billingPeriod == nil && record.state == .proofSubmitted) || record.paymentProofs.contains {
+                Self.billingPeriod($0.billingPeriod, matches: request.billingPeriod)
+            }
+        }) {
+            throw PaykitPaymentRequestError.operationInProgress
+        }
+
         return PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
@@ -287,6 +306,15 @@ actor PaykitPaymentProofService {
     }
 
     func associateLightningPayment(_ request: PaykitPaymentRequest, paymentHash: String) async throws {
+        try await mutationLock.withLock {
+            try await associateLightningPaymentLocked(request, paymentHash: paymentHash)
+        }
+    }
+
+    private func associateLightningPaymentLocked(_ request: PaykitPaymentRequest, paymentHash: String) async throws {
+        if try await attemptService.hasAttempt(for: request.id) {
+            throw PaykitPaymentRequestError.operationInProgress
+        }
         guard Self.isHex(paymentHash, byteCount: 32) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
@@ -309,11 +337,13 @@ actor PaykitPaymentProofService {
     }
 
     func markOnchainPaymentStarted(_ request: PaykitPaymentRequest, address: String) async throws {
+        try await mutationLock.withLock {
+            try await markOnchainPaymentStartedLocked(request, address: address)
+        }
+    }
+
+    private func markOnchainPaymentStartedLocked(_ request: PaykitPaymentRequest, address: String) async throws {
         let identity = try await currentIdentity()
-        let existingTransactionIds = try await onchainPaymentLookup.existingTransactionIds(
-            address: address,
-            amountSats: request.amountSats
-        )
         var pendingProofs = try await loadProofs()
         guard let index = pendingProofs.lastIndex(where: {
             PubkyPublicKeyFormat.matches($0.identity, identity) &&
@@ -329,7 +359,6 @@ actor PaykitPaymentProofService {
         pendingProofs[index].paymentStarted = true
         pendingProofs[index].onchainAddress = address
         pendingProofs[index].onchainAmountSats = request.amountSats
-        pendingProofs[index].onchainMatchingTransactionIdsBeforeAttempt = existingTransactionIds
         try await persist(pendingProofs)
     }
 
@@ -360,38 +389,50 @@ actor PaykitPaymentProofService {
         }
     }
 
+    @discardableResult
     func completeOnchainPayment(
         _ request: PaykitPaymentRequest,
         txid: String,
         paymentEndpointIdentifier: String
-    ) async {
-        guard let identity = try? await currentIdentity() else { return }
-        let fallbackProof = try? await pendingProof(
-            request: request,
-            paymentEndpointIdentifier: paymentEndpointIdentifier,
-            kind: .onchain
-        )
-        await completeOnchainPayment(
+    ) async -> Bool {
+        guard let identity = try? await currentIdentity() else { return false }
+        return await completeOnchainPayment(
             requestId: request.id,
             identity: identity,
-            txid: txid,
-            fallbackProof: fallbackProof
+            txid: txid
         )
     }
 
     private func completeOnchainPayment(
         requestId: PaykitPaymentRequest.ID,
         identity: String,
-        txid: String,
-        fallbackProof: PendingPaykitPaymentProof? = nil
-    ) async {
+        txid: String
+    ) async -> Bool {
+        return await mutationLock.withLock {
+            return await completeOnchainPaymentLocked(requestId: requestId, identity: identity, txid: txid)
+        }
+    }
+
+    private func completeOnchainPaymentLocked(
+        requestId: PaykitPaymentRequest.ID,
+        identity: String,
+        txid: String
+    ) async -> Bool {
         guard Self.isHex(txid, byteCount: 32) else {
             logWarning("Ignored a Paykit on-chain proof with an invalid transaction id")
-            return
+            return false
         }
 
         do {
             var pendingProofs = try await loadProofs()
+            if let completed = pendingProofs.last(where: {
+                PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
+                    $0.kind == .onchain && !$0.hasUnsupportedOnchainWallet && $0.onchainBroadcastAccepted == true &&
+                    $0.proofData?.caseInsensitiveCompare(txid) == .orderedSame
+            }) {
+                submitInBackground(completed)
+                return true
+            }
             guard let index = pendingProofs.lastIndex(where: {
                 PubkyPublicKeyFormat.matches($0.identity, identity) &&
                     $0.requestId == requestId &&
@@ -400,40 +441,34 @@ actor PaykitPaymentProofService {
                     $0.paymentStarted &&
                     $0.paymentIdentifier == nil &&
                     $0.proofData == nil
-            }) else { return }
+            }) else {
+                return try await sdk.paymentRequests().contains { record in
+                    record.localRole == .payer && record.paymentRequestId == requestId.paymentRequestId &&
+                        PubkyPublicKeyFormat.matches(record.counterparty, requestId.counterparty) &&
+                        record.counterpartyReceiverPath == requestId.counterpartyReceiverPath && record.paymentProofs.contains { proof in
+                            proof.billingPeriod.flatMap(PaykitBillingPeriod.init)?.startsAt == requestId.billingPeriodStartsAt &&
+                                Self.proofValues(proof.proof.exportText()) == [
+                                    "type": PaykitPaymentProofKind.onchain.rawValue,
+                                    "data": txid.lowercased(),
+                                ]
+                        }
+                }
+            }
             pendingProofs[index].paymentIdentifier = txid.lowercased()
             pendingProofs[index].proofData = txid.lowercased()
+            pendingProofs[index].onchainBroadcastAccepted = true
             let completedProof = pendingProofs[index]
-            let didPersist: Bool
-            do {
-                try await persist(pendingProofs)
-                didPersist = true
-            } catch {
-                didPersist = false
-                logWarning("Failed to persist a completed Paykit payment proof; attempting immediate delivery: \(error)")
-            }
-            if didPersist {
-                submitInBackground(completedProof)
-            } else {
-                persistAndSubmitInBackground(completedProof, allProofs: pendingProofs)
-            }
+            try await persist(pendingProofs)
+            submitInBackground(completedProof)
             Self.onchainPaymentResolutionSubject.send(PaykitOnchainPaymentResolution(
                 identity: completedProof.identity,
                 requestId: requestId,
                 transactionId: txid.lowercased()
             ))
+            return true
         } catch {
-            logWarning("Failed to load a Paykit on-chain payment proof; attempting immediate delivery: \(error)")
-            guard var fallbackProof else { return }
-            fallbackProof.paymentStarted = true
-            fallbackProof.paymentIdentifier = txid.lowercased()
-            fallbackProof.proofData = txid.lowercased()
-            submitInBackground(fallbackProof)
-            Self.onchainPaymentResolutionSubject.send(PaykitOnchainPaymentResolution(
-                identity: fallbackProof.identity,
-                requestId: requestId,
-                transactionId: txid.lowercased()
-            ))
+            logWarning("Failed to retain a completed Paykit on-chain proof for retry: \(error)")
+            return false
         }
     }
 
@@ -498,20 +533,17 @@ actor PaykitPaymentProofService {
                 do {
                     guard !proof.hasUnsupportedOnchainWallet else { continue }
                     if proof.proofData != nil {
+                        if proof.kind == .onchain, proof.onchainBroadcastAccepted != true {
+                            continue
+                        }
                         await submit(proof)
                         continue
                     }
                     if proof.kind == .onchain,
                        proof.paymentStarted,
-                       let address = proof.onchainAddress,
-                       let amountSats = proof.onchainAmountSats,
-                       let txid = try await onchainPaymentLookup.transactionId(
-                           address: address,
-                           amountSats: amountSats,
-                           excluding: proof.onchainMatchingTransactionIdsBeforeAttempt ?? []
-                       )
+                       let txid = try await attemptService.acceptedTransactionId(for: proof.requestId)
                     {
-                        await completeOnchainPayment(requestId: proof.requestId, identity: proof.identity, txid: txid)
+                        _ = await completeOnchainPayment(requestId: proof.requestId, identity: proof.identity, txid: txid)
                         continue
                     }
                     guard proof.kind == PaykitPaymentProofKind.lightning, let paymentHash = proof.paymentIdentifier else { continue }
@@ -597,7 +629,9 @@ actor PaykitPaymentProofService {
     func completedRequestProofKindsAwaitingSubmission(identity: String) async -> [PaykitPaymentRequest.ID: PaykitPaymentProofKind] {
         do {
             return try await loadProofs().reduce(into: [:]) { result, proof in
-                guard PubkyPublicKeyFormat.matches(proof.identity, identity), proof.proofData != nil else { return }
+                guard PubkyPublicKeyFormat.matches(proof.identity, identity), proof.proofData != nil,
+                      proof.kind != .onchain || proof.onchainBroadcastAccepted == true
+                else { return }
                 result[proof.requestId] = proof.kind
             }
         } catch {
@@ -660,6 +694,7 @@ actor PaykitPaymentProofService {
     @discardableResult
     private func submit(_ pendingProof: PendingPaykitPaymentProof) async -> Bool {
         guard !pendingProof.hasUnsupportedOnchainWallet, let proofData = pendingProof.proofData else { return false }
+        guard pendingProof.kind != .onchain || pendingProof.onchainBroadcastAccepted == true else { return false }
         do {
             guard let identityStatus = try await sdk.identityStatus(),
                   identityStatus.liveSessionAvailable,
@@ -772,6 +807,15 @@ actor PaykitPaymentProofService {
         _ request: PaykitPaymentRequest,
         where shouldRemove: (PendingPaykitPaymentProof) -> Bool
     ) async {
+        await mutationLock.withLock {
+            await removeRequestProofsLocked(request, where: shouldRemove)
+        }
+    }
+
+    private func removeRequestProofsLocked(
+        _ request: PaykitPaymentRequest,
+        where shouldRemove: (PendingPaykitPaymentProof) -> Bool
+    ) async {
         do {
             let pendingProofs = try await loadProofs()
             let candidates = pendingProofs.filter { $0.requestId == request.id && shouldRemove($0) }
@@ -792,6 +836,12 @@ actor PaykitPaymentProofService {
     }
 
     private func removeProofs(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async {
+        await mutationLock.withLock {
+            await removeProofsLocked(where: shouldRemove)
+        }
+    }
+
+    private func removeProofsLocked(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async {
         do {
             let pendingProofs = try await loadProofs()
             let remainingProofs = pendingProofs.filter { !shouldRemove($0) }
@@ -799,28 +849,6 @@ actor PaykitPaymentProofService {
             try await persist(remainingProofs)
         } catch {
             logWarning("Failed to clear a pending Paykit payment proof: \(error)")
-        }
-    }
-
-    static func isDefiniteOnchainPreBroadcastFailure(_ error: Error) -> Bool {
-        let underlyingError = (error as? AppError)?.underlyingError ?? error
-        if let serviceError = underlyingError as? CustomServiceError {
-            switch serviceError {
-            case .nodeNotSetup, .nodeNotStarted:
-                return true
-            default:
-                return false
-            }
-        }
-        guard let nodeError = underlyingError as? NodeError else { return false }
-
-        switch nodeError {
-        case .NotRunning, .OnchainTxCreationFailed, .OnchainWalletAccountNotRegistered,
-             .OnchainTxSigningFailed, .WalletOperationFailed, .PersistenceFailed, .InvalidAddress, .InvalidAmount, .InvalidNetwork,
-             .InvalidFeeRate, .InsufficientFunds, .CoinSelectionFailed, .NoSpendableOutputs:
-            return true
-        default:
-            return false
         }
     }
 

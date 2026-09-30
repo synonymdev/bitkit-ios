@@ -54,7 +54,8 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             onchainAddress: "test-address",
             onchainAmountSats: 1000,
             onchainWalletId: "trezor:android",
-            onchainMatchingTransactionIdsBeforeAttempt: ["previous-transaction"]
+            onchainMatchingTransactionIdsBeforeAttempt: ["previous-transaction"],
+            onchainBroadcastAccepted: true
         )
         let backup = PaykitPaymentStateBackup(
             subscriptions: [identity: .init(subscriptions)],
@@ -63,6 +64,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         let data = try JSONEncoder().encode(backup)
         let decoded = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: data)
         XCTAssertEqual(decoded.pendingProofs.first?.requestId.billingPeriodStartsAt, "2026-09-24T10:00:00.100Z")
+        XCTAssertEqual(decoded.pendingProofs.first?.onchainBroadcastAccepted, true)
         try PaykitSubscriptionStateStore().restoreBackup(decoded.subscriptions)
         try await PaykitPaymentProofService.shared.restoreBackup(decoded.pendingProofs)
 
@@ -254,6 +256,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
 
         let proof = try XCTUnwrap(backup.pendingProofs.first).restored()
         XCTAssertTrue(proof.paymentStarted)
+        XCTAssertNil(proof.onchainBroadcastAccepted)
         XCTAssertEqual(proof.requestId.billingPeriodStartsAt, proof.billingPeriod?.startsAt)
         XCTAssertEqual(proof.onchainWalletId, "trezor:android")
         XCTAssertEqual(PaykitPaymentStateBackup.Proof(proof).onchainWalletId, "trezor:android")
