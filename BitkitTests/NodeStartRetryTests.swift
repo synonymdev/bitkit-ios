@@ -4,27 +4,38 @@ import XCTest
 final class NodeStartRetryTests: XCTestCase {
     private struct StartFailure: Error {}
 
+    private let failedStart = NodeLifecycleState.errorStarting(cause: StartFailure())
+
+    private func shouldRetry(
+        _ state: NodeLifecycleState,
+        isConnected: Bool = true,
+        walletExists: Bool? = true,
+        isRecoveryShown: Bool = false
+    ) -> Bool {
+        AppScene.shouldRetryNodeStart(state: state, isConnected: isConnected, walletExists: walletExists, isRecoveryShown: isRecoveryShown)
+    }
+
     func testRetriesAFailedStartWhenConnectedWithAWallet() {
-        XCTAssertTrue(AppScene.shouldRetryNodeStart(state: .errorStarting(cause: StartFailure()), isConnected: true, walletExists: true))
+        XCTAssertTrue(shouldRetry(failedStart))
     }
 
     func testDoesNotRetryWhileOffline() {
-        XCTAssertFalse(AppScene.shouldRetryNodeStart(state: .errorStarting(cause: StartFailure()), isConnected: false, walletExists: true))
+        XCTAssertFalse(shouldRetry(failedStart, isConnected: false))
+    }
+
+    func testDoesNotRetryWhileTheRecoveryScreenIsShown() {
+        XCTAssertFalse(shouldRetry(failedStart, isRecoveryShown: true))
     }
 
     func testDoesNotRetryWithoutAWallet() {
         for walletExists in [false, nil] {
-            XCTAssertFalse(AppScene.shouldRetryNodeStart(
-                state: .errorStarting(cause: StartFailure()),
-                isConnected: true,
-                walletExists: walletExists
-            ))
+            XCTAssertFalse(shouldRetry(failedStart, walletExists: walletExists))
         }
     }
 
     func testDoesNotRetryStatesThatAreNotAFailedStart() {
         for state in [NodeLifecycleState.stopped, .starting, .running, .stopping, .initializing] {
-            XCTAssertFalse(AppScene.shouldRetryNodeStart(state: state, isConnected: true, walletExists: true), "\(state)")
+            XCTAssertFalse(shouldRetry(state), "\(state)")
         }
     }
 }
