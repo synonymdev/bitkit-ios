@@ -808,7 +808,7 @@ extension PrivatePaykitService {
         let savedPaths = supportedReceiverPaths(record?.receiverPaths ?? [])
 
         do {
-            let discoveredPaths = try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey)
+            let discoveredPaths = try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey, priority: .bulk)
             let mergedPaths = supportedReceiverPaths(savedPaths + discoveredPaths)
             guard mergedPaths != savedPaths else { return savedPaths }
 

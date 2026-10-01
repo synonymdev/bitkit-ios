@@ -388,7 +388,7 @@ class ContactsManager: ObservableObject {
                 group.addTask { [self] in
                     do {
                         let profile = try await resolveContactProfile(publicKey: key, includePlaceholder: true, retryTransient: true)
-                        let receiverPaths = try await Self.relevantReceiverPaths(for: key)
+                        let receiverPaths = try await Self.relevantReceiverPaths(for: key, priority: .bulk)
                         _ = try await PubkyService.saveContact(
                             publicKey: key,
                             label: profile.name,
@@ -727,9 +727,12 @@ class ContactsManager: ObservableObject {
         return true
     }
 
-    private nonisolated static func relevantReceiverPaths(for publicKey: String) async throws -> [String] {
+    private nonisolated static func relevantReceiverPaths(
+        for publicKey: String,
+        priority: PaykitPublicReadPriority = .interactive
+    ) async throws -> [String] {
         do {
-            return try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey)
+            return try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey, priority: priority)
         } catch is CancellationError {
             throw CancellationError()
         } catch {

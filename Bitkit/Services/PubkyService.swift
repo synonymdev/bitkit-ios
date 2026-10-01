@@ -321,8 +321,8 @@ enum PubkyService {
         )
     }
 
-    static func discoverRelevantReceiverPaths(publicKey: String) async throws -> [String] {
-        try await PaykitSdkService.shared.discoverRelevantReceiverPaths(publicKey: publicKey)
+    static func discoverRelevantReceiverPaths(publicKey: String, priority: PaykitPublicReadPriority = .interactive) async throws -> [String] {
+        try await PaykitSdkService.shared.discoverRelevantReceiverPaths(publicKey: publicKey, priority: priority)
     }
 
     // MARK: - Sign Out
@@ -777,9 +777,10 @@ actor PaykitSdkService {
         }
     }
 
-    func discoverRelevantReceiverPaths(publicKey: String) async throws -> [String] {
-        try await operationLock.withLock {
-            let sdk = try handle()
+    /// Reads only the contact's public receiver paths and markers, so it runs on the public read lane and never holds
+    /// `operationLock` across the network.
+    func discoverRelevantReceiverPaths(publicKey: String, priority: PaykitPublicReadPriority = .interactive) async throws -> [String] {
+        try await withPublicRead(priority: priority) { sdk in
             let paths = try await sdk.paykitReceiverPaths(publicKey: publicKey)
             var discovered = Set<String>()
 
@@ -800,39 +801,46 @@ actor PaykitSdkService {
         }
     }
 
-    /// Takes the SDK lock per read and drops out of its queue once cancelled, so an abandoned eligibility check
-    /// holds up a payment for at most the one read already in flight.
+    /// Public reads on the bulk lane, so it never holds `operationLock`. An abandoned eligibility check leaves the read
+    /// queue at once and stops before its next read.
     func paymentRequestReceiverPaths(publicKey: String) async throws -> [String] {
         try Task.checkCancellation()
-        let paths = try await operationLock.withCancellableLock {
-            try await handle().paykitReceiverPaths(publicKey: publicKey)
-        }
-        var capablePaths = Set<String>()
+        return try await withPublicRead(priority: .bulk) { sdk in
+            let paths = try await sdk.paykitReceiverPaths(publicKey: publicKey)
+            var capablePaths = Set<String>()
 
-        for path in paths where PaykitReceiverPath.supported.contains(path) {
-            try Task.checkCancellation()
-            let marker = try await operationLock.withCancellableLock {
-                try await handle().paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
+            for path in paths where PaykitReceiverPath.supported.contains(path) {
+                try Task.checkCancellation()
+                let marker = try await sdk.paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
+                if marker?.capabilities.paymentRequests == true {
+                    capablePaths.insert(path)
+                }
             }
-            if marker?.capabilities.paymentRequests == true {
-                capablePaths.insert(path)
-            }
-        }
 
-        return PaykitReceiverPath.supported.filter { capablePaths.contains($0) }
+            return PaykitReceiverPath.supported.filter { capablePaths.contains($0) }
+        }
     }
 
+    /// Reads only the saved paths' public markers, so the reads run on the bulk lane rather than under `operationLock`.
+    /// The caller reads the saved paths from the contact record under the lock. When no SDK can be built it reports
+    /// `sessionNotActive` and protects every saved path from cleanup.
     func privateReceiverPathSelection(publicKey: String, savedReceiverPaths: [String]) async throws -> PrivateReceiverPathSelection {
-        try await operationLock.withLock {
-            let paths = Self.mergedReceiverPaths(savedReceiverPaths)
-            guard let sdk = try? handle() else {
-                return PrivateReceiverPathSelection(
-                    linkableReceiverPaths: [],
-                    publishableReceiverPaths: [],
-                    cleanupProtectedReceiverPaths: paths,
-                    error: PubkyServiceError.sessionNotActive
-                )
-            }
+        let paths = Self.mergedReceiverPaths(savedReceiverPaths)
+        let instance: PaykitSdk? = if let sdk {
+            sdk
+        } else {
+            try await operationLock.withCancellableLock { try? handle() }
+        }
+        guard let instance else {
+            return PrivateReceiverPathSelection(
+                linkableReceiverPaths: [],
+                publishableReceiverPaths: [],
+                cleanupProtectedReceiverPaths: paths,
+                error: PubkyServiceError.sessionNotActive
+            )
+        }
+
+        return try await publicReadSlots.withSlot(.bulk) {
             var linkable: [String] = []
             var publishable: [String] = []
             var cleanupProtected: [String] = []
@@ -840,7 +848,7 @@ actor PaykitSdkService {
 
             for path in paths {
                 do {
-                    let marker = try await sdk.paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
+                    let marker = try await instance.paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
                     if Self.requiresPrivateLink(marker: marker) {
                         linkable.append(path)
                     }
