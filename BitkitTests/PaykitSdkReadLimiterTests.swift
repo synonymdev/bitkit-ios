@@ -12,6 +12,8 @@ final class PaykitSdkReadLimiterTests: XCTestCase {
 
     private struct ReadFailure: Error {}
 
+    private typealias SlotRun = @Sendable (@Sendable () async -> Void) async throws -> Void
+
     private struct Gate {
         private let signal = AsyncStream<Void>.makeStream()
 
@@ -113,40 +115,49 @@ final class PaykitSdkReadLimiterTests: XCTestCase {
         XCTAssertEqual(events, ["holder", "a", "b", "c"])
     }
 
+    /// A cancelled read throws while the slot it queues for is still held and takes no slot, so the read queued behind it
+    /// runs next. A bulk read holding its bulk slot while it waits for a read slot gives that bulk slot up.
     func testCancelledQueuedReadLeavesQueueWithoutTakingASlot() async throws {
         let limiter = PaykitSdkReadLimiter(maxConcurrent: 1)
-        let recorder = Recorder()
-        let holderGate = Gate()
-        let holder = startGatedRead("holder", on: limiter, recorder: recorder, gate: holderGate)
-        try await waitForEvents(recorder, count: 1)
-
-        let lookup = Task {
-            try await limiter.withSlot {
-                await recorder.record("lookup")
+        let slots = PaykitPublicReadSlots(readCap: 1, bulkCap: 1)
+        let cases: [(name: String, hold: SlotRun, queue: SlotRun)] = [
+            ("queued read", { try await limiter.withSlot($0) }, { try await limiter.withSlot($0) }),
+            ("bulk read waiting for a read slot", { try await slots.withSlot(.interactive, $0) }, { try await slots.withSlot(.bulk, $0) }),
+        ]
+        for testCase in cases {
+            let recorder = Recorder()
+            let holderGate = Gate()
+            let holder = Task {
+                try await testCase.hold {
+                    await recorder.record("holder")
+                    await holderGate.wait()
+                }
             }
-        }
-        try await Task.sleep(for: .milliseconds(50))
-        let payment = Task {
-            try await limiter.withSlot {
-                await recorder.record("payment")
+            try await waitForEvents(recorder, count: 1)
+
+            let abandonedThrew = expectation(description: "\(testCase.name): cancelled read threw while the slot was still held")
+            let abandoned = Task {
+                do {
+                    try await testCase.queue { await recorder.record("abandoned") }
+                } catch is CancellationError {
+                    abandonedThrew.fulfill()
+                }
             }
-        }
-        try await Task.sleep(for: .milliseconds(50))
+            try await Task.sleep(for: .milliseconds(50))
+            let next = Task { try await testCase.queue { await recorder.record("next") } }
+            try await Task.sleep(for: .milliseconds(50))
 
-        lookup.cancel()
-        do {
-            try await lookup.value
-            XCTFail("Expected the cancelled lookup to throw while the slot is still held")
-        } catch is CancellationError {}
+            abandoned.cancel()
+            await fulfillment(of: [abandonedThrew], timeout: 2)
 
-        holderGate.open()
-        try await holder.value
-        try await payment.value
-        try await limiter.withSlot {
-            await recorder.record("after")
+            holderGate.open()
+            try await abandoned.value
+            try await holder.value
+            try await next.value
+            try await testCase.queue { await recorder.record("after") }
+            let events = await recorder.events
+            XCTAssertEqual(events, ["holder", "next", "after"], testCase.name)
         }
-        let events = await recorder.events
-        XCTAssertEqual(events, ["holder", "payment", "after"])
     }
 
     func testAlreadyCancelledReadDoesNotRunOrTakeASlot() async throws {
@@ -215,45 +226,6 @@ final class PaykitSdkReadLimiterTests: XCTestCase {
         }
         let finalEvents = await recorder.events
         XCTAssertEqual(finalEvents.last, "bulk4")
-    }
-
-    func testCancelledBulkReadWaitingForAReadSlotGivesUpItsBulkSlot() async throws {
-        let slots = PaykitPublicReadSlots(readCap: 1, bulkCap: 1)
-        let recorder = Recorder()
-        let holderGate = Gate()
-        let holder = startGatedRead("holder", on: slots, priority: .interactive, recorder: recorder, gate: holderGate)
-        try await waitForEvents(recorder, count: 1)
-
-        let abandonedThrew = expectation(description: "Cancelled bulk read threw while the read slot was still held")
-        let abandoned = Task {
-            do {
-                try await slots.withSlot(.bulk) {
-                    await recorder.record("abandoned")
-                }
-            } catch is CancellationError {
-                abandonedThrew.fulfill()
-            }
-        }
-        try await Task.sleep(for: .milliseconds(50))
-        let next = Task {
-            try await slots.withSlot(.bulk) {
-                await recorder.record("next")
-            }
-        }
-        try await Task.sleep(for: .milliseconds(50))
-
-        abandoned.cancel()
-        await fulfillment(of: [abandonedThrew], timeout: 2)
-
-        holderGate.open()
-        try await abandoned.value
-        try await holder.value
-        try await next.value
-        try await slots.withSlot(.bulk) {
-            await recorder.record("after")
-        }
-        let events = await recorder.events
-        XCTAssertEqual(events, ["holder", "next", "after"])
     }
 
     func testFailingReadReleasesItsSlotToTheNextWaiter() async throws {
