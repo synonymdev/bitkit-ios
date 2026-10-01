@@ -1,12 +1,11 @@
 import Foundation
 import Paykit
 
-/// An Allowance between this wallet and one contact link, built from the SDK record.
+/// An Allowance between this wallet's identity and one contact's identity, built from the SDK record.
 /// Eligibility runs on the trusted time passed in by the caller, never on a value read from the allowance itself.
 struct PaykitAllowance: Identifiable, Hashable {
     struct ID: Codable, Hashable {
         let counterparty: String
-        let counterpartyReceiverPath: String
         let allowanceId: String
     }
 
@@ -41,7 +40,6 @@ struct PaykitAllowance: Identifiable, Hashable {
     let lastEventAt: Date?
 
     var counterparty: String { id.counterparty }
-    var counterpartyReceiverPath: String { id.counterpartyReceiverPath }
     var allowanceId: String { id.allowanceId }
 
     init?(record: Paykit.AllowanceRecord) {
@@ -52,11 +50,7 @@ struct PaykitAllowance: Identifiable, Hashable {
         else { return nil }
 
         let monthly = terms.periodLimits().first { Self.isMonthly($0.period()) }
-        id = ID(
-            counterparty: record.counterparty,
-            counterpartyReceiverPath: record.counterpartyReceiverPath,
-            allowanceId: record.allowanceId
-        )
+        id = ID(counterparty: record.counterparty, allowanceId: record.allowanceId)
         self.role = role
         lifecycleState = record.state
         isProposedByMe = record.proposalOutboundMessageId != nil

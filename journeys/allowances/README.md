@@ -8,10 +8,10 @@ pins the one rule that must never break: a payment interrupted mid-flight is nev
 ## Setup
 
 Run Bitkit against regtest with Paykit UI enabled on two instances that have each other saved as
-contacts and linked on receiver path `bitkit/wallet`, exactly as for
-[`../subscriptions/README.md`](../subscriptions/README.md). One instance plays the payer (the one
-that sets the allowance), the other the payee (the one that sends requests). Automatic payments go
-over Lightning only, so the payer needs a spending balance above 50,000 sats with a usable channel,
+contacts and linked, exactly as for [`../subscriptions/README.md`](../subscriptions/README.md). One
+instance plays the payer (the one that sets the allowance), the other the payee (the one that sends
+requests). Automatic payments pay the payee's private Lightning invoice first and an on-chain
+address otherwise, so the payer needs a spending balance above 50,000 sats with a usable channel,
 and the payee needs receiving capacity; fund both through the staging LSP.
 
 Allow notifications for Bitkit on the payer when it asks: the "Payment Executed" and "Limit

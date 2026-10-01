@@ -893,49 +893,47 @@ actor PaykitSdkService {
 
     func proposeAllowance(
         counterparty: String,
-        counterpartyReceiverPath: String,
         localRole: Paykit.AllowanceLocalRole,
         terms: Paykit.AllowanceTerms
     ) async throws -> Paykit.AllowanceRecord {
         try await withStateRevisionTracking { sdk in
             try await sdk.proposeAllowance(
                 counterparty: counterparty,
-                counterpartyReceiverPath: counterpartyReceiverPath,
                 localRole: localRole,
                 terms: terms
             )
         }
     }
 
-    func acceptAllowance(counterparty: String, counterpartyReceiverPath: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
+    func acceptAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
         try await withStateRevisionTracking { sdk in
-            try await sdk.acceptAllowance(counterparty: counterparty, counterpartyReceiverPath: counterpartyReceiverPath, allowanceId: allowanceId)
+            try await sdk.acceptAllowance(counterparty: counterparty, allowanceId: allowanceId)
         }
     }
 
-    func rejectAllowance(counterparty: String, counterpartyReceiverPath: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
+    func rejectAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
         try await withStateRevisionTracking { sdk in
-            try await sdk.rejectAllowance(counterparty: counterparty, counterpartyReceiverPath: counterpartyReceiverPath, allowanceId: allowanceId)
+            try await sdk.rejectAllowance(counterparty: counterparty, allowanceId: allowanceId)
         }
     }
 
-    func endAllowance(counterparty: String, counterpartyReceiverPath: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
+    func endAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
         try await withStateRevisionTracking { sdk in
-            try await sdk.endAllowance(counterparty: counterparty, counterpartyReceiverPath: counterpartyReceiverPath, allowanceId: allowanceId)
-        }
-    }
-
-    @discardableResult
-    func receivePrivateMessages(counterparty: String, counterpartyReceiverPath: String) async throws -> Paykit.PrivateStreamIntakeReport {
-        try await withStateRevisionTracking { sdk in
-            try await sdk.receivePrivateMessages(counterparty: counterparty, counterpartyReceiverPath: counterpartyReceiverPath)
+            try await sdk.endAllowance(counterparty: counterparty, allowanceId: allowanceId)
         }
     }
 
     @discardableResult
-    func processOutboundPrivateMessages(counterparty: String, counterpartyReceiverPath: String) async throws -> Paykit.OutboundPrivateSendReport {
+    func receivePrivateMessages(counterparty: String) async throws -> Paykit.PrivateStreamIntakeReport {
         try await withStateRevisionTracking { sdk in
-            try await sdk.processOutboundPrivateMessages(counterparty: counterparty, counterpartyReceiverPath: counterpartyReceiverPath)
+            try await sdk.receivePrivateMessages(counterparty: counterparty)
+        }
+    }
+
+    @discardableResult
+    func processOutboundPrivateMessages(counterparty: String) async throws -> Paykit.OutboundPrivateSendReport {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
         }
     }
 

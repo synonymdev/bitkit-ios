@@ -43,7 +43,6 @@ final class PaykitAllowanceTests: XCTestCase {
         let allowance = try XCTUnwrap(PaykitAllowance(record: record))
 
         XCTAssertEqual(allowance.counterparty, Fixtures.counterpartyKey)
-        XCTAssertEqual(allowance.counterpartyReceiverPath, PaykitReceiverPath.wallet)
         XCTAssertEqual(allowance.allowanceId, Fixtures.walletAllowanceId)
         XCTAssertEqual(allowance.role, .allower)
         XCTAssertTrue(allowance.isAllower)
@@ -239,7 +238,7 @@ final class PaykitAllowanceTests: XCTestCase {
     func testCapacityIgnoresPreviousMonthAndOtherAllowanceAttempts() {
         let attempts = [
             Fixtures.capacityAttempt(sats: 50000, at: "2026-08-31T23:59:59Z"),
-            Fixtures.capacityAttempt(allowanceId: Fixtures.serverAllowanceId, sats: 50000, at: "2026-09-10T10:00:00Z"),
+            Fixtures.capacityAttempt(allowanceId: Fixtures.otherAllowanceId, sats: 50000, at: "2026-09-10T10:00:00Z"),
             Fixtures.capacityAttempt(sats: 1000, at: "2026-09-01T00:00:00Z"),
         ]
 
@@ -297,31 +296,16 @@ final class PaykitAllowanceTests: XCTestCase {
 
     // MARK: Grouping
 
-    @MainActor
-    func testOrderedReceiverPathsPutTheWalletLinkFirst() {
-        XCTAssertEqual(
-            PaykitAllowanceManager.orderedReceiverPaths([
-                PaykitReceiverPath.server,
-                "a/other",
-                PaykitReceiverPath.wallet,
-                PaykitReceiverPath.server,
-            ]),
-            [PaykitReceiverPath.wallet, "a/other", PaykitReceiverPath.server]
-        )
-        XCTAssertEqual(PaykitAllowanceManager.orderedReceiverPaths([PaykitReceiverPath.server]), [PaykitReceiverPath.server])
-        XCTAssertEqual(PaykitAllowanceManager.orderedReceiverPaths([]), [])
-    }
+    func testEntryPrimaryIsTheGrantsAllowance() {
+        let allowance = Fixtures.allowance(allowanceId: Fixtures.walletAllowanceId)
 
-    func testEntryPrimaryPrefersTheWalletLink() {
-        let server = Fixtures.allowance(allowanceId: Fixtures.serverAllowanceId, receiverPath: PaykitReceiverPath.server, perPaymentMaxSats: 1)
-        let wallet = Fixtures.allowance(allowanceId: Fixtures.walletAllowanceId, receiverPath: PaykitReceiverPath.wallet)
+        let entry = PaykitAllowanceEntry(id: "group", allowances: [allowance], limits: Fixtures.limits)
 
-        let entry = PaykitAllowanceEntry(id: "group", allowances: [server, wallet], limits: Fixtures.limits)
         XCTAssertEqual(entry.primary.allowanceId, Fixtures.walletAllowanceId)
+        XCTAssertEqual(entry.counterparty, Fixtures.counterpartyKey)
         XCTAssertEqual(entry.perPaymentMaxSats, 5000)
-
-        let serverOnly = PaykitAllowanceEntry(id: "server", allowances: [server], limits: nil)
-        XCTAssertEqual(serverOnly.primary.allowanceId, Fixtures.serverAllowanceId)
+        XCTAssertEqual(entry.monthlyLimitSats, 50000)
+        XCTAssertEqual(entry.limits, Fixtures.limits)
     }
 }
 
@@ -331,7 +315,7 @@ enum PaykitAllowanceFixtures {
     static let counterpartyKey = "pubky\(String(repeating: "y", count: 52))"
     static let otherCounterpartyKey = "pubky\(String(repeating: "x", count: 52))"
     static let walletAllowanceId = "allowance-wallet"
-    static let serverAllowanceId = "allowance-server"
+    static let otherAllowanceId = "allowance-other"
     static let lightningIdentifier = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
     static let onchainIdentifier = PublicPaykitService.MethodId.bitcoinOnchainP2wpkh.rawValue
     static let now = utc("2026-09-24T12:00:00Z")
@@ -372,7 +356,6 @@ enum PaykitAllowanceFixtures {
     static func record(
         allowanceId: String = walletAllowanceId,
         counterparty: String = counterpartyKey,
-        receiverPath: String = PaykitReceiverPath.wallet,
         localRole: Paykit.AllowanceLocalRole? = .allower,
         state: Paykit.AllowanceLifecycleState = .accepted,
         historyStatus: Paykit.AllowanceHistoryStatus = .consistent,
@@ -382,7 +365,6 @@ enum PaykitAllowanceFixtures {
     ) -> Paykit.AllowanceRecord {
         Paykit.AllowanceRecord(
             counterparty: counterparty,
-            counterpartyReceiverPath: receiverPath,
             allowanceId: allowanceId,
             localRole: localRole,
             state: state,
@@ -408,10 +390,31 @@ enum PaykitAllowanceFixtures {
         )
     }
 
+    static func contact(publicKey: String = counterpartyKey) -> PubkyContact {
+        PubkyContact(
+            publicKey: publicKey,
+            profile: PubkyProfile(publicKey: publicKey, name: "Alice", bio: "", imageUrl: nil, links: [], status: nil)
+        )
+    }
+
+    static func linkedPeer(counterparty: String = counterpartyKey, state: Paykit.LinkedPeerState) -> Paykit.LinkedPeerRecord {
+        Paykit.LinkedPeerRecord(
+            counterparty: counterparty,
+            state: state,
+            lastSyncAt: nil,
+            lastPrivateReceiveAt: nil,
+            failureCount: 0,
+            localRecoveryAttemptId: nil,
+            localRecoveryMarkerCreatedAt: nil,
+            localRecoveryMarkerLastError: nil,
+            remoteRecoveryAttemptId: nil,
+            remoteRecoveryMarkerObservedAt: nil
+        )
+    }
+
     static func allowance(
         allowanceId: String = walletAllowanceId,
         counterparty: String = counterpartyKey,
-        receiverPath: String = PaykitReceiverPath.wallet,
         role: PaykitAllowance.Role = .allower,
         state: Paykit.AllowanceLifecycleState = .accepted,
         perPaymentMaxSats: UInt64? = 5000,
@@ -420,7 +423,7 @@ enum PaykitAllowanceFixtures {
         expiresAt: Date? = nil
     ) -> PaykitAllowance {
         PaykitAllowance(
-            id: PaykitAllowance.ID(counterparty: counterparty, counterpartyReceiverPath: receiverPath, allowanceId: allowanceId),
+            id: PaykitAllowance.ID(counterparty: counterparty, allowanceId: allowanceId),
             role: role,
             lifecycleState: state,
             isProposedByMe: role == .allower,
@@ -469,9 +472,7 @@ enum PaykitAllowanceFixtures {
     static func accountingScope(_ paymentRequestId: String) -> Paykit.PaymentAccountingScope {
         Paykit.PaymentAccountingScope(
             localPublicKey: identityKey,
-            localReceiverPath: PaykitReceiverPath.wallet,
             counterparty: counterpartyKey,
-            counterpartyReceiverPath: PaykitReceiverPath.wallet,
             paymentRequestId: paymentRequestId
         )
     }
@@ -507,13 +508,11 @@ enum PaykitAllowanceFixtures {
     static func paymentRequest(
         id: String = "550e8400-e29b-41d4-a716-446655440001",
         counterparty: String = counterpartyKey,
-        receiverPath: String = PaykitReceiverPath.wallet,
         amount: String = "0.00001",
         createdAt: String = "2026-09-24T11:00:00Z"
     ) throws -> PaykitPaymentRequest {
         let record = try Paykit.PaymentRequestRecord(
             counterparty: counterparty,
-            counterpartyReceiverPath: receiverPath,
             paymentRequestId: id,
             localRole: .payer,
             state: .proposed,
@@ -521,12 +520,19 @@ enum PaykitAllowanceFixtures {
             proposalOutboundMessageId: nil,
             proposalOutboundStatus: nil,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
+            proposalAppId: "bitkit",
+            payerAppId: nil,
+            executionClaimAppId: nil,
             terms: Paykit.PaymentRequestTerms(
                 amount: Paykit.PaymentRequestAmount(value: amount, asset: PaykitIssuerInterop.bitcoinAsset),
                 paymentReference: Paykit.PaymentReference(text: "invoice-123"),
                 proposalExpiresAt: nil,
                 recurrence: nil,
                 acceptedPaymentEndpointIdentifiers: [lightningIdentifier],
+                paymentEndpoints: nil,
+                requiredAppId: "bitkit",
+                conversion: nil,
+                paymentDeadline: nil,
                 metadata: Paykit.PrivateJsonObject(text: "{}")
             ),
             acceptedEventId: nil,
@@ -535,6 +541,7 @@ enum PaykitAllowanceFixtures {
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
             canceledOutboundStatus: nil,
+            conversionQuotes: [],
             paymentProofs: [],
             lastStreamItemId: 1,
             lastOutboundMessageId: nil,

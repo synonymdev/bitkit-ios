@@ -443,17 +443,15 @@ extension PrivatePaykitService {
               let publicKey = PubkyPublicKeyFormat.normalized(request.counterparty)
         else { return nil }
 
-        let consumedVersion = state.contacts[publicKey]?
-            .consumedPrivatePaymentListVersionsByReceiverPath[request.counterpartyReceiverPath]
+        let consumedVersion = state.contacts[publicKey]?.consumedPrivatePaymentListVersion
         let prepared = try await PaykitSdkService.shared.prepareAndResolvePrivateContactPayment(
             counterparty: publicKey,
-            receiverPath: request.counterpartyReceiverPath,
             amount: PaymentAmountContext(value: request.amountValue, asset: PaykitIssuerInterop.bitcoinAsset),
             afterPrivatePaymentListVersion: consumedVersion
         )
         if prepared.resolution.state == .recoveryPending || prepared.resolution.status == .waitingForUpdatedPaymentList {
             // The last list was already paid from; a new one arrives once the payee sees that payment settle.
-            schedulePrivatePaymentRecovery(for: publicKey, receiverPath: request.counterpartyReceiverPath)
+            schedulePrivatePaymentRecovery(for: publicKey)
             throw PaykitAllowanceError.paymentListPending
         }
         guard let paymentListVersion = prepared.resolution.privatePaymentListVersion else { return nil }
@@ -461,26 +459,30 @@ extension PrivatePaykitService {
         let eligible = Set(eligibleIdentifiers).intersection(request.acceptedPaymentEndpointIdentifiers)
         let candidates = resolvedEndpoints(from: prepared.resolution).filter {
             eligible.contains($0.methodId.rawValue) &&
-                ($0.methodId == .bitcoinLightningBolt11 || $0.methodId.onchainNetwork != nil)
+                ($0.methodId == .bitcoinLightningBolt11 || $0.methodId.onchainNetwork != nil) && $0.appId != nil
         }
         let payable = await privatePayableEndpoints(from: candidates, publicKey: publicKey)
 
         for methodId in PublicPaykitService.MethodId.payablePreferenceOrder {
-            guard let endpoint = payable.first(where: { $0.methodId == methodId }) else { continue }
+            guard let endpoint = payable.first(where: { $0.methodId == methodId }), let appId = endpoint.appId else { continue }
+            let context = PrivatePaykitPaymentContext(
+                paymentAppsByEndpoint: [methodId.rawValue: appId],
+                paymentListVersion: paymentListVersion
+            )
             if methodId == .bitcoinLightningBolt11 {
                 guard case let .lightning(invoice) = try? await decode(invoice: endpoint.value),
                       invoice.amountSatoshis == 0 || invoice.amountSatoshis == request.amountSats
                 else { continue }
                 return PrivatePaykitAllowancePayment(
                     endpoint: endpoint,
-                    context: PrivatePaykitPaymentContext(receiverPath: request.counterpartyReceiverPath, paymentListVersion: paymentListVersion),
+                    context: context,
                     lightningPaymentHash: invoice.paymentHash.hex,
                     lightningInvoiceHasAmount: invoice.amountSatoshis != 0
                 )
             }
             return PrivatePaykitAllowancePayment(
                 endpoint: endpoint,
-                context: PrivatePaykitPaymentContext(receiverPath: request.counterpartyReceiverPath, paymentListVersion: paymentListVersion),
+                context: context,
                 lightningPaymentHash: nil,
                 lightningInvoiceHasAmount: false
             )

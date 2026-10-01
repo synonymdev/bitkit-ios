@@ -9,14 +9,17 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
     private static let admissionCalls = [
         "evaluateAllowanceCandidates",
+        "claimForExecution",
         "acceptPaymentRequestAutomatically",
         "reserveAutomaticPayment",
         "receivePrivateMessages",
         "beginPaymentExecution",
         "consumePaymentList",
+        "ensurePaymentAllowed",
         "prepareProof",
         "associateLightningPayment",
         "payLightning",
+        "resolvePaymentList",
     ]
 
     // MARK: Admission
@@ -29,7 +32,6 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             [Fixtures.allowance(role: .allowee)],
             [Fixtures.allowance(state: .proposed)],
             [Fixtures.allowance(state: .ended)],
-            [Fixtures.allowance(receiverPath: PaykitReceiverPath.server)],
             [Fixtures.allowance(counterparty: Fixtures.otherCounterpartyKey)],
         ]
 
@@ -63,7 +65,14 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         let reservedRevisions = await harness.sdk.reservedAssociationRevisions
         XCTAssertEqual(reservedRevisions, [1])
         let preparedProofs = await harness.payer.preparedProofs
-        XCTAssertEqual(preparedProofs, [.init(endpoint: Fixtures.lightningIdentifier, allowanceId: Fixtures.walletAllowanceId)])
+        XCTAssertEqual(
+            preparedProofs,
+            [.init(appId: AllowanceHarness.paymentAppId, endpoint: Fixtures.lightningIdentifier, allowanceId: Fixtures.walletAllowanceId)]
+        )
+        let claimed = await harness.payer.claimedRequestIds
+        XCTAssertEqual(claimed, [request.id])
+        let listOutcomes = await harness.payer.paymentListOutcomes
+        XCTAssertEqual(listOutcomes, [.uncertain], "A hand-off to the node keeps the payment list consumed")
         let associatedHashes = await harness.payer.associatedPaymentHashes
         XCTAssertEqual(associatedHashes, [AllowanceHarness.paymentHash])
         let payments = await harness.payer.lightningPayments
@@ -195,7 +204,6 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             Paykit.PaymentOccurrence(
                 request: Paykit.PaymentRequestScope(
                     counterparty: request.counterparty,
-                    counterpartyReceiverPath: request.counterpartyReceiverPath,
                     paymentRequestId: request.paymentRequestId
                 ),
                 billingPeriod: nil
@@ -223,6 +231,34 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(log.contains("consumePaymentList"))
         XCTAssertFalse(log.contains("prepareProof"))
         XCTAssertFalse(log.contains("payLightning"))
+    }
+
+    func testClaimFailureStaysManualBeforeAnyAcceptance() async throws {
+        let harness = AllowanceHarness()
+        await harness.payer.setClaimError(PaykitPaymentRequestError.requestUnavailable)
+
+        let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        let log = harness.log.entries
+        XCTAssertTrue(log.contains("claimForExecution"))
+        XCTAssertFalse(log.contains("acceptPaymentRequestAutomatically"))
+        XCTAssertFalse(log.contains("reserveAutomaticPayment"))
+        XCTAssertFalse(log.contains("payLightning"))
+    }
+
+    func testNodeRejectionBeforeRoutingReleasesThePaymentListAndRecordsAFailure() async throws {
+        let harness = AllowanceHarness()
+        await harness.payer.setLightningError(AllowanceMockError.unsupported)
+
+        let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        let listOutcomes = await harness.payer.paymentListOutcomes
+        XCTAssertEqual(listOutcomes, [.definitePreBroadcastFailure])
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: AllowanceSdkMock.automaticAttemptId, outcome: .failed)])
+        XCTAssertTrue(harness.log.entries.contains("failLightningPayment"))
     }
 
     // MARK: Settlement and recovery
@@ -412,20 +448,19 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     // MARK: Manager
 
     @MainActor
-    func testManagerGroupsOneGrantAcrossLinksWithTheWalletLinkAsPrimary() async throws {
+    func testManagerPresentsEachGrantAsOneEntryWithItsLimitsAndLeavesInvalidHistoryOut() async throws {
         let harness = AllowanceHarness()
         let terms = try Fixtures.standardTerms()
         await harness.sdk.setRecords([
-            Fixtures.record(allowanceId: Fixtures.serverAllowanceId, receiverPath: PaykitReceiverPath.server, terms: terms),
-            Fixtures.record(allowanceId: Fixtures.walletAllowanceId, receiverPath: PaykitReceiverPath.wallet, terms: terms),
-            Fixtures.record(allowanceId: "allowance-other", counterparty: Fixtures.otherCounterpartyKey, terms: terms),
+            Fixtures.record(allowanceId: Fixtures.walletAllowanceId, terms: terms),
+            Fixtures.record(allowanceId: Fixtures.otherAllowanceId, counterparty: Fixtures.otherCounterpartyKey, terms: terms),
             Fixtures.record(allowanceId: "allowance-invalid", historyStatus: .invalid, terms: terms),
         ])
         let group = PaykitAllowanceLocalState.Group(
             id: "group-1",
             counterparty: Fixtures.counterpartyKey,
             limits: Fixtures.limits,
-            allowanceIds: [Fixtures.walletAllowanceId, Fixtures.serverAllowanceId],
+            allowanceIds: [Fixtures.walletAllowanceId],
             createdAt: Fixtures.now
         )
         harness.store.seed(PaykitAllowanceLocalState(groups: [group]), identity: Fixtures.identityKey)
@@ -434,19 +469,84 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         await manager.activate(identity: Fixtures.identityKey)
 
         let entries = manager.entries
-        XCTAssertEqual(entries.map(\.id), ["group-1", "allowance-other"])
-        let grouped = try XCTUnwrap(entries.first)
-        XCTAssertEqual(grouped.allowances.map(\.allowanceId), [Fixtures.serverAllowanceId, Fixtures.walletAllowanceId])
-        XCTAssertEqual(grouped.primary.allowanceId, Fixtures.walletAllowanceId)
-        XCTAssertEqual(grouped.primary.counterpartyReceiverPath, PaykitReceiverPath.wallet)
-        XCTAssertEqual(grouped.limits, Fixtures.limits)
-        XCTAssertEqual(grouped.counterparty, Fixtures.counterpartyKey)
-        XCTAssertEqual(grouped.role, .allower)
-        XCTAssertEqual(grouped.perPaymentMaxSats, 5000)
-        XCTAssertEqual(grouped.monthlyLimitSats, 50000)
-        XCTAssertEqual(grouped.status(at: Fixtures.now), .active)
+        XCTAssertEqual(entries.map(\.id), ["group-1", Fixtures.otherAllowanceId])
+        let grant = try XCTUnwrap(entries.first)
+        XCTAssertEqual(grant.allowances.map(\.allowanceId), [Fixtures.walletAllowanceId])
+        XCTAssertEqual(grant.limits, Fixtures.limits)
+        XCTAssertEqual(grant.counterparty, Fixtures.counterpartyKey)
+        XCTAssertEqual(grant.role, .allower)
+        XCTAssertEqual(grant.perPaymentMaxSats, 5000)
+        XCTAssertEqual(grant.monthlyLimitSats, 50000)
+        XCTAssertEqual(grant.status(at: Fixtures.now), .active)
         XCTAssertNil(entries.last?.limits)
         XCTAssertEqual(manager.entry(id: "group-1")?.primary.allowanceId, Fixtures.walletAllowanceId)
+    }
+
+    @MainActor
+    func testManagerCoversRequestsFromTheGrantedIdentityOnly() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms(), lastEventAt: "2026-09-24T09:00:00Z")])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+
+        await manager.activate(identity: Fixtures.identityKey)
+
+        XCTAssertTrue(try manager.coversRequest(Fixtures.paymentRequest()), "One Encrypted Link per identity: no folder is part of coverage")
+        XCTAssertFalse(try manager.coversRequest(Fixtures.paymentRequest(counterparty: Fixtures.otherCounterpartyKey)))
+    }
+
+    // MARK: Granting
+
+    @MainActor
+    func testProposeWaitsForTheContactsLinkAndThenProposesOneAllowance() async throws {
+        let harness = AllowanceHarness()
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+        let contact = Fixtures.contact()
+
+        for state in [Paykit.LinkedPeerState.notLinked, .linking, .recoveryRequired, .blocked] {
+            await harness.sdk.setPeers([Fixtures.linkedPeer(state: state)])
+            do {
+                try await manager.propose(to: contact, limits: Fixtures.limits)
+                XCTFail("Expected contactNotLinked while the link is \(state)")
+            } catch PaykitAllowanceError.contactNotLinked {
+                // expected
+            }
+        }
+        var proposals = await harness.sdk.proposals
+        XCTAssertEqual(proposals.count, 0, "A grant never reaches a contact that has no usable link")
+        XCTAssertTrue(manager.entries.isEmpty)
+
+        await harness.sdk.setPeers([Fixtures.linkedPeer(state: .linked)])
+        try await manager.propose(to: contact, limits: Fixtures.limits)
+
+        proposals = await harness.sdk.proposals
+        XCTAssertEqual(proposals.count, 1, "One link per identity means one SDK Allowance")
+        XCTAssertEqual(proposals.first?.counterparty, Fixtures.counterpartyKey)
+        XCTAssertEqual(proposals.first?.localRole, .allower)
+        XCTAssertEqual(proposals.first?.terms.perPaymentAmount()?.maximum(), "0.00005")
+        XCTAssertEqual(proposals.first?.terms.allowedPaymentEndpointIdentifiers(), PaykitAllowanceManager.allowedPaymentEndpointIdentifiers)
+        XCTAssertTrue(harness.log.entries.contains("processOutboundPrivateMessages"))
+        let entry = try XCTUnwrap(manager.entries.first)
+        XCTAssertEqual(entry.allowances.map(\.allowanceId), ["proposed-1"])
+        XCTAssertEqual(entry.limits, Fixtures.limits)
+        XCTAssertEqual(entry.status(at: Fixtures.now), .awaitingAnswer)
+    }
+
+    @MainActor
+    func testProposeIgnoresALinkedPeerThatIsAnotherContact() async throws {
+        let harness = AllowanceHarness()
+        await harness.sdk.setPeers([Fixtures.linkedPeer(counterparty: Fixtures.otherCounterpartyKey, state: .linked)])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        do {
+            try await manager.propose(to: Fixtures.contact(), limits: Fixtures.limits)
+            XCTFail("Expected contactNotLinked")
+        } catch PaykitAllowanceError.contactNotLinked {
+            // expected
+        }
+        let proposals = await harness.sdk.proposals
+        XCTAssertEqual(proposals.count, 0)
     }
 
     @MainActor
@@ -507,6 +607,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 private struct AllowanceHarness {
     static let paymentHash = String(repeating: "ab", count: 32)
     static let invoice = "lnbcrt10u1allowancetestinvoice"
+    static let paymentAppId = "bitkit"
 
     let log = AllowanceCallLog()
     let store = AllowanceMemoryStore()
@@ -516,9 +617,9 @@ private struct AllowanceHarness {
     let lookup: AllowanceLightningLookupMock
     let executor: PaykitAllowanceExecutor
 
-    init() {
+    init(payment: PrivatePaykitAllowancePayment = Self.lightningPayment()) {
         sdk = AllowanceSdkMock(log: log)
-        payer = AllowancePayerMock(log: log, payment: Self.lightningPayment())
+        payer = AllowancePayerMock(log: log, payment: payment)
         lookup = AllowanceLightningLookupMock(log: log)
         let clock = clock
         executor = PaykitAllowanceExecutor(sdk: sdk, store: store, payer: payer, lightningLookup: lookup, now: { clock.now() })
@@ -532,6 +633,26 @@ private struct AllowanceHarness {
         )
     }
 
+    static let onchainAddress = "bcrt1qallowancetestaddress"
+
+    static func onchainPayment() -> PrivatePaykitAllowancePayment {
+        PrivatePaykitAllowancePayment(
+            endpoint: PublicPaykitService.Endpoint(
+                methodId: .bitcoinOnchainP2wpkh,
+                value: onchainAddress,
+                min: nil,
+                max: nil,
+                rawPayload: "{\"value\":\"\(onchainAddress)\"}"
+            ),
+            context: PrivatePaykitPaymentContext(
+                paymentAppsByEndpoint: [PaykitAllowanceFixtures.onchainIdentifier: paymentAppId],
+                paymentListVersion: 3
+            ),
+            lightningPaymentHash: nil,
+            lightningInvoiceHasAmount: false
+        )
+    }
+
     static func lightningPayment() -> PrivatePaykitAllowancePayment {
         PrivatePaykitAllowancePayment(
             endpoint: PublicPaykitService.Endpoint(
@@ -541,7 +662,10 @@ private struct AllowanceHarness {
                 max: nil,
                 rawPayload: "{\"value\":\"\(invoice)\"}"
             ),
-            context: PrivatePaykitPaymentContext(receiverPath: PaykitReceiverPath.wallet, paymentListVersion: 3),
+            context: PrivatePaykitPaymentContext(
+                paymentAppsByEndpoint: [PaykitAllowanceFixtures.lightningIdentifier: paymentAppId],
+                paymentListVersion: 3
+            ),
             lightningPaymentHash: paymentHash,
             lightningInvoiceHasAmount: true
         )
@@ -639,6 +763,7 @@ private actor AllowanceLightningLookupMock: PaykitLightningPaymentProofLookingUp
 
 private actor AllowancePayerMock: PaykitAllowancePaying {
     struct PreparedProof: Equatable {
+        let appId: String
         let endpoint: String
         let allowanceId: String?
     }
@@ -651,7 +776,11 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
     private let log: AllowanceCallLog
     private let payment: PrivatePaykitAllowancePayment?
     private var resolveError: Error?
+    private var claimError: Error?
+    private var lightningError: Error?
     private(set) var callCount = 0
+    private(set) var claimedRequestIds: [PaykitPaymentRequest.ID] = []
+    private(set) var paymentListOutcomes: [PrivatePaymentListSendOutcome] = []
     private(set) var preparedProofs: [PreparedProof] = []
     private(set) var associatedPaymentHashes: [String] = []
     private(set) var lightningPayments: [LightningPayment] = []
@@ -670,19 +799,47 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         resolveError = error
     }
 
+    func setClaimError(_ error: Error?) {
+        claimError = error
+    }
+
+    func setLightningError(_ error: Error?) {
+        lightningError = error
+    }
+
     func resolve(_ request: PaykitPaymentRequest, eligibleIdentifiers: [String]) async throws -> PrivatePaykitAllowancePayment? {
         called("resolve")
         if let resolveError { throw resolveError }
         return payment
     }
 
-    func consumePaymentList(publicKey: String, context: PrivatePaykitPaymentContext) async throws {
+    func consumePaymentList(publicKey: String, context: PrivatePaykitPaymentContext, attemptId: UUID) async throws {
         called("consumePaymentList")
     }
 
-    func prepareProof(_ request: PaykitPaymentRequest, paymentEndpointIdentifier: String, allowanceId: String?) async throws {
+    func resolvePaymentList(
+        publicKey: String,
+        context: PrivatePaykitPaymentContext,
+        attemptId: UUID,
+        outcome: PrivatePaymentListSendOutcome
+    ) async {
+        called("resolvePaymentList")
+        paymentListOutcomes.append(outcome)
+    }
+
+    func claimForExecution(_ request: PaykitPaymentRequest) async throws {
+        called("claimForExecution")
+        if let claimError { throw claimError }
+        claimedRequestIds.append(request.id)
+    }
+
+    func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
+        called("ensurePaymentAllowed")
+    }
+
+    func prepareProof(_ request: PaykitPaymentRequest, paymentAppId: String, paymentEndpointIdentifier: String, allowanceId: String?) async throws {
         called("prepareProof")
-        preparedProofs.append(PreparedProof(endpoint: paymentEndpointIdentifier, allowanceId: allowanceId))
+        preparedProofs.append(PreparedProof(appId: paymentAppId, endpoint: paymentEndpointIdentifier, allowanceId: allowanceId))
     }
 
     func associateLightningPayment(_ request: PaykitPaymentRequest, paymentHash: String) async throws {
@@ -697,6 +854,7 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
     func payLightning(bolt11: String, sats: UInt64?) async throws {
         called("payLightning")
         lightningPayments.append(LightningPayment(bolt11: bolt11, sats: sats))
+        if let lightningError { throw lightningError }
     }
 
     func payOnchain(address: String, sats: UInt64) async throws -> String {
@@ -704,7 +862,7 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         return String(repeating: "c", count: 64)
     }
 
-    func completeOnchainPayment(_ request: PaykitPaymentRequest, txid: String, paymentEndpointIdentifier: String) async {
+    func completeOnchainPayment(_ request: PaykitPaymentRequest, txid: String, paymentAppId: String, paymentEndpointIdentifier: String) async {
         called("completeOnchainPayment")
     }
 
@@ -722,7 +880,14 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
     static let manualAttemptId = "manual-1"
 
     private let log: AllowanceCallLog
+    struct Proposal {
+        let counterparty: String
+        let localRole: Paykit.AllowanceLocalRole
+        let terms: Paykit.AllowanceTerms
+    }
+
     private var records: [Paykit.AllowanceRecord] = []
+    private var peers: [LinkedPeerRecord] = []
     private var accountingState: Paykit.AllowanceAccountingState? = PaykitAllowanceFixtures.accountingState()
     private var candidates: [Paykit.AllowanceCandidate] = [AllowanceHarness.candidate()]
     private var automaticReservation: Paykit.PaymentAttemptDecision?
@@ -735,6 +900,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
     private(set) var recordedOutcomes: [Paykit.PaymentOutcomeReport] = []
     private(set) var reconciliations: [Paykit.AllowanceAccountingReconciliation] = []
     private(set) var manualOnlyOccurrences: [Paykit.PaymentOccurrence] = []
+    private(set) var proposals: [Proposal] = []
 
     init(log: AllowanceCallLog) {
         self.log = log
@@ -742,6 +908,10 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
 
     func setRecords(_ records: [Paykit.AllowanceRecord]) {
         self.records = records
+    }
+
+    func setPeers(_ peers: [LinkedPeerRecord]) {
+        self.peers = peers
     }
 
     func setAccountingState(_ state: Paykit.AllowanceAccountingState?) {
@@ -766,7 +936,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
 
     func linkedPeers() async throws -> [LinkedPeerRecord] {
         log.append("linkedPeers")
-        return []
+        return peers
     }
 
     func listAllowances(filter: Paykit.AllowanceFilter) async throws -> [Paykit.AllowanceRecord] {
@@ -776,35 +946,42 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
 
     func proposeAllowance(
         counterparty: String,
-        counterpartyReceiverPath: String,
         localRole: Paykit.AllowanceLocalRole,
         terms: Paykit.AllowanceTerms
     ) async throws -> Paykit.AllowanceRecord {
         log.append("proposeAllowance")
-        throw AllowanceMockError.unsupported
+        proposals.append(Proposal(counterparty: counterparty, localRole: localRole, terms: terms))
+        let record = PaykitAllowanceFixtures.record(
+            allowanceId: "proposed-\(proposals.count)",
+            counterparty: counterparty,
+            state: .proposed,
+            terms: terms
+        )
+        records.append(record)
+        return record
     }
 
-    func acceptAllowance(counterparty: String, counterpartyReceiverPath: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
+    func acceptAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
         log.append("acceptAllowance")
         throw AllowanceMockError.unsupported
     }
 
-    func rejectAllowance(counterparty: String, counterpartyReceiverPath: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
+    func rejectAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
         log.append("rejectAllowance")
         throw AllowanceMockError.unsupported
     }
 
-    func endAllowance(counterparty: String, counterpartyReceiverPath: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
+    func endAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
         log.append("endAllowance")
         throw AllowanceMockError.unsupported
     }
 
-    func receivePrivateMessages(counterparty: String, counterpartyReceiverPath: String) async throws -> Paykit.PrivateStreamIntakeReport {
+    func receivePrivateMessages(counterparty: String) async throws -> Paykit.PrivateStreamIntakeReport {
         log.append("receivePrivateMessages")
         return Paykit.PrivateStreamIntakeReport(receiveBatchId: nil, streamItemIds: [], eventConflicts: [])
     }
 
-    func processOutboundPrivateMessages(counterparty: String, counterpartyReceiverPath: String) async throws -> Paykit.OutboundPrivateSendReport {
+    func processOutboundPrivateMessages(counterparty: String) async throws -> Paykit.OutboundPrivateSendReport {
         log.append("processOutboundPrivateMessages")
         return Paykit.OutboundPrivateSendReport(attempted: [], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: [])
     }

@@ -3,16 +3,14 @@ import Observation
 import Paykit
 import UserNotifications
 
-/// One grant as the user sees it. Bitkit proposes the same terms on each of a contact's links (their wallet, and
-/// their Paykit Server folder for Locks and Shop requests), so one row can stand for several SDK Allowances.
+/// One grant as the user sees it. An SDK Allowance binds this wallet's identity to the contact's identity and covers
+/// every Paykit app they use, so a grant is one SDK Allowance. The row keeps the USD limits picked when it was made.
 struct PaykitAllowanceEntry: Identifiable, Hashable {
     let id: String
     let allowances: [PaykitAllowance]
     let limits: PaykitAllowanceLimits?
 
-    var primary: PaykitAllowance {
-        allowances.first { $0.counterpartyReceiverPath == PaykitReceiverPath.wallet } ?? allowances[0]
-    }
+    var primary: PaykitAllowance { allowances[0] }
 
     var counterparty: String { primary.counterparty }
     var role: PaykitAllowance.Role { primary.role }
@@ -127,7 +125,7 @@ final class PaykitAllowanceManager {
         guard let identity else { return }
         do {
             let records = try await sdk.listAllowances(
-                filter: Paykit.AllowanceFilter(counterparty: nil, counterpartyReceiverPath: nil, localRole: nil, states: [])
+                filter: Paykit.AllowanceFilter(counterparty: nil, localRole: nil, states: [])
             )
             allowances = records
                 .filter { $0.historyStatus == .consistent || $0.historyStatus == .unresolvedReferences }
@@ -153,8 +151,7 @@ final class PaykitAllowanceManager {
     func coversRequest(_ request: PaykitPaymentRequest) -> Bool {
         allowances.contains { allowance in
             guard allowance.isAllower, allowance.status(at: now()) == .active,
-                  PubkyPublicKeyFormat.matches(allowance.counterparty, request.counterparty),
-                  allowance.counterpartyReceiverPath == request.counterpartyReceiverPath
+                  PubkyPublicKeyFormat.matches(allowance.counterparty, request.counterparty)
             else { return false }
             guard let acceptedAt = allowance.lastEventAt, let createdAt = request.createdAt else { return true }
             return createdAt >= acceptedAt.addingTimeInterval(-Self.acceptanceClockTolerance)
@@ -178,61 +175,39 @@ final class PaykitAllowanceManager {
         isWorking = true
         defer { isWorking = false }
 
-        let peers = try await sdk.linkedPeers().filter {
+        let isLinked = try await sdk.linkedPeers().contains {
             PubkyPublicKeyFormat.matches($0.counterparty, contact.publicKey) && $0.state == .linked
         }
-        let receiverPaths = Self.orderedReceiverPaths(peers.map(\.counterpartyReceiverPath))
-        guard !receiverPaths.isEmpty else { throw PaykitAllowanceError.contactNotLinked }
+        guard isLinked else { throw PaykitAllowanceError.contactNotLinked }
 
         let terms = try limits.terms(
             monthAnchor: PaykitAllowanceTime.monthStart(containing: now()),
             allowedPaymentEndpointIdentifiers: Self.allowedPaymentEndpointIdentifiers
         )
-        var allowanceIds: [String] = []
-        for receiverPath in receiverPaths {
-            do {
-                let record = try await sdk.proposeAllowance(
-                    counterparty: contact.publicKey,
-                    counterpartyReceiverPath: receiverPath,
-                    localRole: .allower,
-                    terms: terms
-                )
-                allowanceIds.append(record.allowanceId)
-                try? await sdk.processOutboundPrivateMessages(counterparty: contact.publicKey, counterpartyReceiverPath: receiverPath)
-            } catch where receiverPath != PaykitReceiverPath.wallet {
-                Logger.warn("Could not propose the allowance on a secondary link: \(error)", context: "PaykitAllowance")
-            }
-        }
+        let record = try await sdk.proposeAllowance(counterparty: contact.publicKey, localRole: .allower, terms: terms)
+        try? await sdk.processOutboundPrivateMessages(counterparty: contact.publicKey)
 
         let group = PaykitAllowanceLocalState.Group(
             id: UUID().uuidString.lowercased(),
             counterparty: contact.publicKey,
             limits: limits,
-            allowanceIds: allowanceIds,
+            allowanceIds: [record.allowanceId],
             createdAt: now()
         )
         await executor.updateLocalState(identity: identity) { $0.groups.append(group) }
-        Logger.info("Proposed an allowance on \(allowanceIds.count) link(s)", context: "PaykitAllowance")
+        Logger.info("Proposed an allowance", context: "PaykitAllowance")
         await refresh()
     }
 
     func accept(_ entry: PaykitAllowanceEntry) async throws {
         try await respond(to: entry) { allowance in
-            try await self.sdk.acceptAllowance(
-                counterparty: allowance.counterparty,
-                counterpartyReceiverPath: allowance.counterpartyReceiverPath,
-                allowanceId: allowance.allowanceId
-            )
+            try await self.sdk.acceptAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
         }
     }
 
     func reject(_ entry: PaykitAllowanceEntry) async throws {
         try await respond(to: entry) { allowance in
-            try await self.sdk.rejectAllowance(
-                counterparty: allowance.counterparty,
-                counterpartyReceiverPath: allowance.counterpartyReceiverPath,
-                allowanceId: allowance.allowanceId
-            )
+            try await self.sdk.rejectAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
         }
     }
 
@@ -241,16 +216,9 @@ final class PaykitAllowanceManager {
         defer { isWorking = false }
         var endedAny = false
         for allowance in entry.allowances where allowance.canEnd {
-            _ = try await sdk.endAllowance(
-                counterparty: allowance.counterparty,
-                counterpartyReceiverPath: allowance.counterpartyReceiverPath,
-                allowanceId: allowance.allowanceId
-            )
+            _ = try await sdk.endAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
             endedAny = true
-            try? await sdk.processOutboundPrivateMessages(
-                counterparty: allowance.counterparty,
-                counterpartyReceiverPath: allowance.counterpartyReceiverPath
-            )
+            try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
         guard endedAny else { throw PaykitAllowanceError.unavailable }
         await refresh()
@@ -263,10 +231,7 @@ final class PaykitAllowanceManager {
         for allowance in entry.allowances where allowance.isAnswerable {
             _ = try await response(allowance)
             respondedAny = true
-            try? await sdk.processOutboundPrivateMessages(
-                counterparty: allowance.counterparty,
-                counterpartyReceiverPath: allowance.counterpartyReceiverPath
-            )
+            try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
         guard respondedAny else { throw PaykitAllowanceError.unavailable }
         if let identity {
@@ -343,15 +308,6 @@ final class PaykitAllowanceManager {
         PublicPaykitService.MethodId.publishableMethodIds.map(\.rawValue),
         network: Env.network
     )
-
-    static func orderedReceiverPaths(_ paths: [String]) -> [String] {
-        let unique = Array(Set(paths))
-        return unique.sorted { lhs, rhs in
-            if lhs == PaykitReceiverPath.wallet { return true }
-            if rhs == PaykitReceiverPath.wallet { return false }
-            return lhs < rhs
-        }
-    }
 }
 
 /// Allowance outcomes reach the user as a notification banner when notifications are allowed, or as a toast.
