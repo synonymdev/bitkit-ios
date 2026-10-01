@@ -188,48 +188,40 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(manager.isLoading)
     }
 
-    /// General Settings used to await this in its `.task`, so leaving mid-load surfaced the cancellation as an error toast.
-    func testCancelledLoadContactsIfNeededLeavesTheLoadToAnUncancelledCaller() async throws {
-        let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
-        let source = SuspendedContactRecords(records: [record])
-        let manager = ContactsManager(contactRecords: { await source.load() })
-        let screenLoad = Task { try await manager.loadContactsIfNeeded(for: "owner") }
-        while await !(source.isPaused) {
+    /// General Settings used to await `loadContactsIfNeeded` in its `.task`, so leaving mid-load surfaced the cancellation
+    /// as an error toast. Another caller still finishes the load whichever screen's load it waited on is cancelled.
+    func testLoadContactsIfNeededFinishesAfterTheLoadItWaitedOnIsCancelled() async throws {
+        let cases: [(name: String, cancelledLoadThrows: Bool, cancelledLoad: @MainActor (ContactsManager) async throws -> Void)] = [
+            ("another loadContactsIfNeeded", true, { try await $0.loadContactsIfNeeded(for: "owner") }),
+            ("the Contacts screen's loadContacts", false, { try await $0.loadContacts(for: "owner") }),
+        ]
+        for testCase in cases {
+            let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
+            let source = SuspendedContactRecords(records: [record])
+            let manager = ContactsManager(contactRecords: { await source.load() })
+            let cancelledLoad = Task { try await testCase.cancelledLoad(manager) }
+            while await !(source.isPaused) {
+                await Task.yield()
+            }
+            let enable = Task { try await manager.loadContactsIfNeeded(for: "owner") }
             await Task.yield()
+            cancelledLoad.cancel()
+            await source.resume(with: [record])
+
+            let cancelledResult = await cancelledLoad.result
+            if testCase.cancelledLoadThrows {
+                XCTAssertThrowsError(try cancelledResult.get(), testCase.name) {
+                    XCTAssertTrue($0 is CancellationError, "\(testCase.name): expected cancellation, got \($0)")
+                }
+            } else {
+                XCTAssertNoThrow(try cancelledResult.get(), testCase.name)
+            }
+            try await enable.value
+            XCTAssertTrue(manager.hasLoaded, testCase.name)
+            XCTAssertEqual(manager.contacts.map(\.publicKey), [record.publicKey], testCase.name)
+            XCTAssertNil(manager.loadErrorMessage, testCase.name)
+            XCTAssertFalse(manager.isLoading, testCase.name)
         }
-        let enable = Task { try await manager.loadContactsIfNeeded(for: "owner") }
-        await Task.yield()
-        screenLoad.cancel()
-        await source.resume(with: [record])
-
-        let screenResult = await screenLoad.result
-        XCTAssertThrowsError(try screenResult.get()) { XCTAssertTrue($0 is CancellationError, "Expected cancellation, got \($0)") }
-        try await enable.value
-        XCTAssertTrue(manager.hasLoaded)
-        XCTAssertEqual(manager.contacts.map(\.publicKey), [record.publicKey])
-        XCTAssertNil(manager.loadErrorMessage)
-        XCTAssertFalse(manager.isLoading)
-    }
-
-    func testLoadContactsIfNeededFinishesAfterTheContactsScreenLoadItWaitedOnIsCancelled() async throws {
-        let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
-        let source = SuspendedContactRecords(records: [record])
-        let manager = ContactsManager(contactRecords: { await source.load() })
-        let contactsScreenLoad = Task { try await manager.loadContacts(for: "owner") }
-        while await !(source.isPaused) {
-            await Task.yield()
-        }
-        let enable = Task { try await manager.loadContactsIfNeeded(for: "owner") }
-        await Task.yield()
-        contactsScreenLoad.cancel()
-        await source.resume(with: [record])
-
-        try await contactsScreenLoad.value
-        try await enable.value
-        XCTAssertTrue(manager.hasLoaded)
-        XCTAssertEqual(manager.contacts.map(\.publicKey), [record.publicKey])
-        XCTAssertNil(manager.loadErrorMessage)
-        XCTAssertFalse(manager.isLoading)
     }
 
     private func contactRecord(key: String, name: String) -> ContactRecord {
@@ -506,48 +498,28 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
-    func testBulkContactProfileLookupDoesNotRetryTransportError() async throws {
-        let stub = ContactProfileFetchStub([.failure(profileTransportError), .success(makeProfile(publicKey: contactProfileKey))])
+    func testOnlyAUserInitiatedContactProfileLookupRetriesATransportErrorAndOnlyOnce() async throws {
+        let placeholderName = Bitkit.PubkyProfile.placeholder(publicKey: contactProfileKey).name
+        let found: Result<Bitkit.PubkyProfile?, Error> = .success(makeProfile(publicKey: contactProfileKey))
+        let cases: [(name: String, retryTransient: Bool, outcomes: [Result<Bitkit.PubkyProfile?, Error>], expectedName: String, attempts: Int)] = [
+            ("bulk lookup does not retry", false, [.failure(profileTransportError), found], placeholderName, 1),
+            ("user-initiated lookup retries once", true, [.failure(profileTransportError), found], "Alice", 2),
+            ("user-initiated lookup falls back to the placeholder after one retry", true, [.failure(profileTransportError)], placeholderName, 2),
+        ]
+        for testCase in cases {
+            let stub = ContactProfileFetchStub(testCase.outcomes)
 
-        let profile = try await ContactsManager.resolveContactProfile(
-            publicKey: contactProfileKey,
-            includePlaceholder: true,
-            fetchRemoteProfile: { try await stub.fetch($0) }
-        )
+            let profile = try await ContactsManager.resolveContactProfile(
+                publicKey: contactProfileKey,
+                includePlaceholder: true,
+                retryTransient: testCase.retryTransient,
+                fetchRemoteProfile: { try await stub.fetch($0) }
+            )
 
-        XCTAssertEqual(profile.name, Bitkit.PubkyProfile.placeholder(publicKey: contactProfileKey).name)
-        let attempts = await stub.attempts
-        XCTAssertEqual(attempts, 1)
-    }
-
-    func testUserInitiatedContactProfileLookupRetriesTransportErrorOnce() async throws {
-        let stub = ContactProfileFetchStub([.failure(profileTransportError), .success(makeProfile(publicKey: contactProfileKey))])
-
-        let profile = try await ContactsManager.resolveContactProfile(
-            publicKey: contactProfileKey,
-            includePlaceholder: true,
-            retryTransient: true,
-            fetchRemoteProfile: { try await stub.fetch($0) }
-        )
-
-        XCTAssertEqual(profile.name, "Alice")
-        let attempts = await stub.attempts
-        XCTAssertEqual(attempts, 2)
-    }
-
-    func testUserInitiatedContactProfileLookupFallsBackToPlaceholderAfterOneRetry() async throws {
-        let stub = ContactProfileFetchStub([.failure(profileTransportError)])
-
-        let profile = try await ContactsManager.resolveContactProfile(
-            publicKey: contactProfileKey,
-            includePlaceholder: true,
-            retryTransient: true,
-            fetchRemoteProfile: { try await stub.fetch($0) }
-        )
-
-        XCTAssertEqual(profile.name, Bitkit.PubkyProfile.placeholder(publicKey: contactProfileKey).name)
-        let attempts = await stub.attempts
-        XCTAssertEqual(attempts, 2)
+            XCTAssertEqual(profile.name, testCase.expectedName, testCase.name)
+            let attempts = await stub.attempts
+            XCTAssertEqual(attempts, testCase.attempts, testCase.name)
+        }
     }
 
     func testContactProfileRetryStopsWhenCancelledDuringBackoff() async {
@@ -734,49 +706,40 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(fetchedKeys, [contactProfileKey], "Reopening Contacts must not look the same contact up again")
     }
 
-    func testLabelOnlyContactLooksItsProfileUpOnTheInteractiveLane() async throws {
-        let manager = ContactsManager()
-        let bulk = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
-        await bulk.hold()
-        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
-        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
-        let interactive = ContactProfileFetchStub([.success(publishedContactProfile)])
+    func testOnlyALabelOnlyContactIsLookedUpOnTheInteractiveLaneAndOnlyOnce() async throws {
+        let labelOnly = Bitkit.PubkyProfile.forDisplay(publicKey: contactProfileKey, name: "Label only", imageUrl: nil)
+        let cases: [(name: String, outcome: Result<Bitkit.PubkyProfile?, Error>, row: Bitkit.PubkyProfile, names: [String])] = [
+            ("lookup finds the profile", .success(publishedContactProfile), publishedContactProfile, ["Alice", "Bob"]),
+            ("lookup fails", .failure(profileTransportError), labelOnly, ["Bob", "Label only"]),
+        ]
+        for testCase in cases {
+            let manager = ContactsManager()
+            let bulk = HeldProfileLookups(profiles: [:])
+            await bulk.hold()
+            let records = [unprofiledRecord(key: contactProfileKey, label: "Label only"), contactRecord(key: unresolvedFollowKey, name: "Bob")]
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+            let interactive = ContactProfileFetchStub([testCase.outcome])
 
-        async let first: Void = manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
-        async let second: Void = manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
-        _ = await (first, second)
-        await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+            await manager.resolvePendingContactProfile(publicKey: unresolvedFollowKey) { try await interactive.fetch($0) }
+            let storedAttempts = await interactive.attempts
+            XCTAssertEqual(storedAttempts, 0, "\(testCase.name): a stored profile is not looked up")
 
-        let profile = try XCTUnwrap(manager.contacts.first?.profile)
-        XCTAssertEqual(profile.name, "Alice")
-        XCTAssertEqual(profile.bio, "Hello", "An edit made now must not save the label-only row over the bio")
-        XCTAssertEqual(profile.imageUrl, "pubky://alice/avatar")
-        XCTAssertEqual(profile.links.map(\.url), ["https://alice.example"])
-        let attempts = await interactive.attempts
-        XCTAssertEqual(attempts, 1, "Concurrent callers share one lookup, and a resolved row is not looked up again")
-        await bulk.release()
-        await manager.waitForProfileRefreshForTesting()
-    }
+            async let first: Void = manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+            async let second: Void = manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+            _ = await (first, second)
+            await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
 
-    func testOnlyALabelOnlyContactIsLookedUpOnTheInteractiveLane() async throws {
-        let manager = ContactsManager()
-        let bulk = HeldProfileLookups(profiles: [:])
-        await bulk.hold()
-        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only"), contactRecord(key: unresolvedFollowKey, name: "Bob")]
-        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
-        let interactive = ContactProfileFetchStub([.failure(profileTransportError)])
-
-        await manager.resolvePendingContactProfile(publicKey: unresolvedFollowKey) { try await interactive.fetch($0) }
-        let storedAttempts = await interactive.attempts
-        XCTAssertEqual(storedAttempts, 0, "A stored profile is not looked up")
-
-        await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
-        await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
-        let attempts = await interactive.attempts
-        XCTAssertEqual(attempts, 1, "A contact whose own lookup failed is not looked up again")
-        XCTAssertEqual(manager.contacts.map(\.displayName), ["Bob", "Label only"])
-        await bulk.release()
-        await manager.waitForProfileRefreshForTesting()
+            let attempts = await interactive.attempts
+            XCTAssertEqual(attempts, 1, "\(testCase.name): concurrent callers share one lookup, and the contact is not looked up again")
+            let row = try XCTUnwrap(manager.contacts.first { $0.publicKey == contactProfileKey }?.profile, testCase.name)
+            XCTAssertEqual(row.name, testCase.row.name, testCase.name)
+            XCTAssertEqual(row.bio, testCase.row.bio, "\(testCase.name): an edit made now keeps the bio the lookup found")
+            XCTAssertEqual(row.imageUrl, testCase.row.imageUrl, testCase.name)
+            XCTAssertEqual(row.links.map(\.url), testCase.row.links.map(\.url), testCase.name)
+            XCTAssertEqual(manager.contacts.map(\.displayName), testCase.names, testCase.name)
+            await bulk.release()
+            await manager.waitForProfileRefreshForTesting()
+        }
     }
 
     func testEditSavesWithoutWaitingForTheQueuedBackgroundLookupWhenTheContactsOwnLookupFails() async throws {
