@@ -1481,6 +1481,14 @@ final class PaykitPaymentRequestManager {
         await refresh(excludingProtectedRequestId: nil)
     }
 
+    /// Applies a changed subscription clock offset: waits for a refresh already reading the old clock, then refreshes again.
+    func refreshAfterSubscriptionClockChange() async {
+        if let refreshTask {
+            await refreshTask.value
+        }
+        await refresh()
+    }
+
     func synchronizeSubscriptionNotifications(enabled: Bool) async {
         guard let activeIdentity else { return }
         await subscriptionNotificationScheduler.synchronize(

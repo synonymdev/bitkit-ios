@@ -722,10 +722,8 @@ actor PaykitSubscriptionNotificationScheduler {
         let currentGeneration = generation
         let realNow = now.addingTimeInterval(-clockOffset)
         let previousClockOffset = lastClockOffset
-        lastClockOffset = clockOffset
-        let activeSubscriptions = subscriptions.filter {
+        let eligibleSubscriptions = subscriptions.filter {
             $0.isPayer &&
-                $0.isActive(at: now) &&
                 !$0.hasPaymentDeadline &&
                 $0.recurrence.unit.isSupported &&
                 acceptedAt[$0.id] != nil
@@ -733,7 +731,24 @@ actor PaykitSubscriptionNotificationScheduler {
         // A trigger is a real date, so a period scheduled on the subscription clock fires at its start minus the offset.
         var notifications: [(subscription: PaykitSubscription, period: PaykitBillingPeriod, fireDate: Date)] = []
         if notificationsEnabled {
-            notifications = activeSubscriptions
+            // Moving the clock can make a period due that no pending trigger will ever announce: notify the latest
+            // one per subscription now, including a subscription whose end the jump crossed.
+            var dueNow: [(subscription: PaykitSubscription, period: PaykitBillingPeriod, fireDate: Date)] = []
+            if let previousClockOffset, previousClockOffset != clockOffset {
+                let previousNow = realNow.addingTimeInterval(previousClockOffset)
+                for subscription in eligibleSubscriptions where subscription.isActive(at: now) || subscription.isActive(at: previousNow) {
+                    guard let acceptedAt = acceptedAt[subscription.id] else { continue }
+                    let crossed = subscription.requests(through: now, acceptedAt: acceptedAt)
+                        .filter { pendingRequestIds.contains($0.id) }
+                        .compactMap(\.billingPeriod)
+                        .filter { $0.startsAt > previousNow && $0.startsAt <= now }
+                    if let period = crossed.max(by: { $0.startsAt < $1.startsAt }) {
+                        dueNow.append((subscription, period, realNow.addingTimeInterval(2)))
+                    }
+                }
+            }
+            let upcoming = eligibleSubscriptions
+                .filter { $0.isActive(at: now) }
                 .flatMap { subscription in
                     subscription.recurrence.upcomingPeriods(
                         after: now,
@@ -741,23 +756,7 @@ actor PaykitSubscriptionNotificationScheduler {
                     ).map { (subscription, $0, $0.startsAt.addingTimeInterval(-clockOffset)) }
                 }
                 .sorted { $0.1.startsAt < $1.1.startsAt }
-                .prefix(Self.maximumNotifications)
-                .map { $0 }
-            // Moving the clock can make a period due that no pending trigger will ever announce: notify it now.
-            if let previousClockOffset, previousClockOffset != clockOffset {
-                let previousNow = realNow.addingTimeInterval(previousClockOffset)
-                for subscription in activeSubscriptions {
-                    guard let acceptedAt = acceptedAt[subscription.id] else { continue }
-                    for request in subscription.requests(through: now, acceptedAt: acceptedAt)
-                        where pendingRequestIds.contains(request.id) {
-                        guard let period = request.billingPeriod,
-                              period.startsAt > previousNow,
-                              period.startsAt <= now
-                        else { continue }
-                        notifications.append((subscription, period, realNow.addingTimeInterval(2)))
-                    }
-                }
-            }
+            notifications = Array((dueNow + upcoming).prefix(Self.maximumNotifications))
         }
 
         let desiredIdentifiers = Set(notifications.map {
@@ -770,6 +769,19 @@ actor PaykitSubscriptionNotificationScheduler {
 
         let pending = await center.pendingNotificationRequests()
         guard generation == currentGeneration else { return }
+
+        // A trigger still ahead in real time for a period the clock already passed was set before the offset moved.
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let staleDueIdentifiers = Set(pending.filter { request in
+            guard unpaidIdentifiers.contains(request.identifier),
+                  !desiredIdentifiers.contains(request.identifier),
+                  let components = (request.trigger as? UNCalendarNotificationTrigger)?.dateComponents,
+                  let date = utcCalendar.date(from: components)
+            else { return false }
+            return date.timeIntervalSince(realNow) > 60
+        }.map(\.identifier))
+        retainedIdentifiers.subtract(staleDueIdentifiers)
 
         let existingIdentifiers = Set(pending.map(\.identifier))
         await center.removePendingNotificationRequests(
@@ -821,6 +833,8 @@ actor PaykitSubscriptionNotificationScheduler {
                 return
             }
         }
+        // Only a completed synchronization has announced the periods the offset made due.
+        lastClockOffset = clockOffset
     }
 
     func cancel() async {

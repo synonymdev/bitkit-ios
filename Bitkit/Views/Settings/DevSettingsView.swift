@@ -229,7 +229,7 @@ struct DevSettingsView: View {
             ForEach(SubscriptionClock.offsetDaysPresets, id: \.self) { days in
                 Button(Self.subscriptionClockOffsetLabel(days)) {
                     subscriptionClockOffsetDays = days
-                    Task { await paymentRequests.refresh() }
+                    Task { await paymentRequests.refreshAfterSubscriptionClockChange() }
                 }
                 .accessibilityIdentifier("SubscriptionClockOffset-\(days)")
             }

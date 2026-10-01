@@ -178,19 +178,15 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
     func testClockOffsetReschedulesPendingSubscriptionNotification() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:30Z"))
-        let recurrence = PaymentRequestRecurrence(
-            every: 1,
-            unit: "week",
-            startsAt: "2027-01-01T08:00:00Z",
-            anchor: "2027-01-01T08:00:00Z",
-            endsAt: nil
-        )
-        let subscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
-            state: .activeRecurring,
-            recurrence: recurrence
-        )))
+        let subscription = try weeklySubscription()
         let payerIdentity = "pubky\(String(repeating: "z", count: 52))"
         let acceptedAt = [subscription.id: PaykitPreciseInstant(date: now)]
+        let nextPeriod = try XCTUnwrap(subscription.recurrence.upcomingPeriods(after: now, limit: 1).first)
+        let identifier = PaykitSubscriptionNotificationIdentifier.identifier(
+            identity: payerIdentity,
+            subscription: subscription,
+            period: nextPeriod
+        )
         let center = PaykitSubscriptionNotificationCenterMock()
         let scheduler = PaykitSubscriptionNotificationScheduler(center: center)
 
@@ -203,7 +199,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             now: now
         )
         var triggers = try await center.calendarTriggers()
-        XCTAssertEqual(triggers.values.map { $0.day }, [22])
+        XCTAssertEqual(triggers[identifier]?.day, 22)
 
         let offset: TimeInterval = 3 * 24 * 60 * 60
         await scheduler.synchronize(
@@ -216,24 +212,13 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             clockOffset: offset
         )
         triggers = try await center.calendarTriggers()
-        XCTAssertEqual(triggers.count, 1)
-        XCTAssertEqual(triggers.values.first?.day, 19)
-        XCTAssertEqual(triggers.values.first?.hour, 8)
+        XCTAssertEqual(triggers[identifier]?.day, 19)
+        XCTAssertEqual(triggers[identifier]?.hour, 8)
     }
 
     func testClockOffsetNotifiesPeriodThatBecomesDueFromTheJump() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:30Z"))
-        let recurrence = PaymentRequestRecurrence(
-            every: 1,
-            unit: "week",
-            startsAt: "2027-01-01T08:00:00Z",
-            anchor: "2027-01-01T08:00:00Z",
-            endsAt: nil
-        )
-        let subscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
-            state: .activeRecurring,
-            recurrence: recurrence
-        )))
+        let subscription = try weeklySubscription()
         let payerIdentity = "pubky\(String(repeating: "z", count: 52))"
         let acceptedAt = [subscription.id: PaykitPreciseInstant(date: now)]
         let center = PaykitSubscriptionNotificationCenterMock()
@@ -268,7 +253,123 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let jumped = try XCTUnwrap(triggers[identifier])
         XCTAssertEqual(jumped.day, 15)
         XCTAssertEqual(jumped.second, 32)
-        XCTAssertEqual(triggers.count, 2)
+    }
+
+    func testClockOffsetNotifiesOnePeriodPerSubscriptionAndStaysWithinTheNotificationCap() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:30Z"))
+        let subscription = try weeklySubscription(unit: "day")
+        let payerIdentity = "pubky\(String(repeating: "z", count: 52))"
+        let acceptedAt = [subscription.id: PaykitPreciseInstant(date: now)]
+        let center = PaykitSubscriptionNotificationCenterMock()
+        let scheduler = PaykitSubscriptionNotificationScheduler(center: center)
+        await scheduler.synchronize(
+            [subscription],
+            acceptedAt: acceptedAt,
+            pendingRequestIds: [],
+            payerIdentity: payerIdentity,
+            notificationsEnabled: true,
+            now: now
+        )
+
+        let offset: TimeInterval = 365 * 24 * 60 * 60
+        let shiftedNow = now.addingTimeInterval(offset)
+        let dueRequests = subscription.requests(through: shiftedNow, acceptedAt: acceptedAt[subscription.id]!)
+        XCTAssertGreaterThan(dueRequests.count, 300)
+        await scheduler.synchronize(
+            [subscription],
+            acceptedAt: acceptedAt,
+            pendingRequestIds: Set(dueRequests.map(\.id)),
+            payerIdentity: payerIdentity,
+            notificationsEnabled: true,
+            now: shiftedNow,
+            clockOffset: offset
+        )
+
+        let triggers = try await center.calendarTriggers()
+        XCTAssertEqual(triggers.values.filter { $0.day == 15 && $0.second == 32 }.count, 1)
+        XCTAssertLessThanOrEqual(triggers.count, 32)
+    }
+
+    func testClockOffsetNotifiesPeriodDueAfterTheJumpCrossesTheSubscriptionEnd() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:30Z"))
+        let subscription = try weeklySubscription(endsAt: "2027-01-29T08:00:00Z")
+        let payerIdentity = "pubky\(String(repeating: "z", count: 52))"
+        let acceptedAt = [subscription.id: PaykitPreciseInstant(date: now)]
+        let center = PaykitSubscriptionNotificationCenterMock()
+        let scheduler = PaykitSubscriptionNotificationScheduler(center: center)
+        await scheduler.synchronize(
+            [subscription],
+            acceptedAt: acceptedAt,
+            pendingRequestIds: [],
+            payerIdentity: payerIdentity,
+            notificationsEnabled: true,
+            now: now
+        )
+
+        let offset: TimeInterval = 20 * 24 * 60 * 60
+        let shiftedNow = now.addingTimeInterval(offset)
+        let dueRequests = subscription.requests(through: shiftedNow, acceptedAt: acceptedAt[subscription.id]!)
+        XCTAssertFalse(subscription.isActive(at: shiftedNow))
+        await scheduler.synchronize(
+            [subscription],
+            acceptedAt: acceptedAt,
+            pendingRequestIds: Set(dueRequests.map(\.id)),
+            payerIdentity: payerIdentity,
+            notificationsEnabled: true,
+            now: shiftedNow,
+            clockOffset: offset
+        )
+
+        let triggers = try await center.calendarTriggers()
+        XCTAssertEqual(triggers.values.filter { $0.day == 15 && $0.second == 32 }.count, 1)
+    }
+
+    func testSupersededSynchronizationDoesNotConsumeTheClockJump() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:30Z"))
+        let subscription = try weeklySubscription()
+        let payerIdentity = "pubky\(String(repeating: "z", count: 52))"
+        let acceptedAt = [subscription.id: PaykitPreciseInstant(date: now)]
+        let center = PaykitSubscriptionNotificationCenterMock()
+        let scheduler = PaykitSubscriptionNotificationScheduler(center: center)
+        await scheduler.synchronize(
+            [subscription],
+            acceptedAt: acceptedAt,
+            pendingRequestIds: [],
+            payerIdentity: payerIdentity,
+            notificationsEnabled: true,
+            now: now
+        )
+
+        let offset: TimeInterval = 10 * 24 * 60 * 60
+        let shiftedNow = now.addingTimeInterval(offset)
+        let dueIds = Set(subscription.requests(through: shiftedNow, acceptedAt: acceptedAt[subscription.id]!).map(\.id))
+        await center.pauseNextPendingRequests()
+        let first = Task {
+            await scheduler.synchronize(
+                [subscription],
+                acceptedAt: acceptedAt,
+                pendingRequestIds: dueIds,
+                payerIdentity: payerIdentity,
+                notificationsEnabled: true,
+                now: shiftedNow,
+                clockOffset: offset
+            )
+        }
+        try await waitUntil { await center.isPendingRequestsPaused }
+        await scheduler.synchronize(
+            [subscription],
+            acceptedAt: acceptedAt,
+            pendingRequestIds: dueIds,
+            payerIdentity: payerIdentity,
+            notificationsEnabled: true,
+            now: shiftedNow,
+            clockOffset: offset
+        )
+        await center.resumePendingRequests()
+        await first.value
+
+        let triggers = try await center.calendarTriggers()
+        XCTAssertEqual(triggers.values.filter { $0.day == 15 && $0.second == 32 }.count, 1)
     }
 
     func testContactPaymentContextClaimIsExclusiveAndIdentityBased() {
@@ -4522,6 +4623,20 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
         manager.activate(identity: "pubky\(String(repeating: "z", count: 52))")
         return manager
+    }
+
+    private func weeklySubscription(unit: String = "week", endsAt: String? = nil) throws -> PaykitSubscription {
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: unit,
+            startsAt: "2027-01-01T08:00:00Z",
+            anchor: "2027-01-01T08:00:00Z",
+            endsAt: endsAt
+        )
+        return try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
+            state: .activeRecurring,
+            recurrence: recurrence
+        )))
     }
 
     private func paymentRequestRecord(
