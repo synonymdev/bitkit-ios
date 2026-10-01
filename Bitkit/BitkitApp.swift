@@ -186,12 +186,25 @@ struct BitkitApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if Env.isUnitTest, !Env.isTrezorEmulatorTesting {
-                Text("Running tests...")
-            } else {
-                ContentView()
-                    .preferredColorScheme(.dark)
-            }
+            #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-contact-import-ui-test") {
+                    ContactImportUITestFixture()
+                } else {
+                    appContent
+                }
+            #else
+                appContent
+            #endif
+        }
+    }
+
+    @ViewBuilder
+    private var appContent: some View {
+        if Env.isUnitTest, !Env.isTrezorEmulatorTesting {
+            Text("Running tests...")
+        } else {
+            ContentView()
+                .preferredColorScheme(.dark)
         }
     }
 }

@@ -3,7 +3,7 @@ import SwiftUI
 struct Header: View {
     @Environment(CalculatorInputManager.self) private var calculatorInput
 
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
@@ -119,24 +119,15 @@ struct Header: View {
                 return
             }
 
-            if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
-                navigation.navigate(.profile)
-            } else if pubkyProfile.initializationErrorMessage != nil {
-                navigation.navigate(.profile)
-            } else if !pubkyProfile.isInitialized {
-                // Still initializing — don't navigate to choice screen yet
-                return
-            } else if app.hasSeenProfileIntro {
-                navigation.navigate(.pubkyChoice)
-            } else {
-                navigation.navigate(.profileIntro)
+            if let destination = Self.profileDestination(for: pubkyProfile, hasSeenIntro: app.hasSeenProfileIntro) {
+                navigation.navigate(destination)
             }
         } label: {
             HStack(alignment: .center, spacing: 16) {
                 profileAvatar
 
                 if let name = pubkyProfile.displayName {
-                    TitleText(name)
+                    TitleText(name.capitalizingFirstLetterOfEachWord)
                 } else {
                     TitleText(t("slashtags__your_name_capital"))
                 }
@@ -147,27 +138,26 @@ struct Header: View {
         .accessibilityIdentifier("ProfileButton")
     }
 
+    static func profileDestination(for profile: PubkyProfileManager, hasSeenIntro: Bool) -> Route? {
+        if profile.isAuthenticated || profile.cachedName != nil || profile.initializationErrorMessage != nil {
+            return .profile
+        }
+        guard profile.isInitialized else { return nil }
+        guard !profile.hasExistingIdentity else { return .profile }
+        return hasSeenIntro ? .pubkyChoice : .profileIntro
+    }
+
     private func dismissCalculatorIfNeeded() -> Bool {
         guard calculatorInput.isPresented else { return false }
         calculatorInput.dismiss()
         return true
     }
 
-    @ViewBuilder
     private var profileAvatar: some View {
-        if let imageUri = pubkyProfile.displayImageUri {
-            PubkyImage(uri: imageUri, size: 32)
-        } else {
-            Circle()
-                .fill(Color.gray4)
-                .frame(width: 32, height: 32)
-                .overlay {
-                    Image("user-square")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundColor(.white32)
-                        .frame(width: 16, height: 16)
-                }
-        }
+        PubkyContactAvatar(
+            name: pubkyProfile.displayName ?? t("slashtags__your_name_capital"),
+            imageUrl: pubkyProfile.displayImageUri,
+            size: 32
+        )
     }
 }

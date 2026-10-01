@@ -16,13 +16,14 @@ struct LinkSuggestionsSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: t("profile__suggestions_title"), showBackButton: true)
+                .padding(.horizontal, 16)
 
             WrappingHStack(spacing: 8) {
                 ForEach(suggestions, id: \.self) { suggestion in
-                    Tag(suggestion, onPress: {
+                    IconActionButton(title: suggestion, accessibilityId: "Tag-\(suggestion)") {
                         onSelect(suggestion)
                         dismiss()
-                    })
+                    }
                 }
             }
             .padding(.horizontal, 16)

@@ -102,6 +102,8 @@ final class PaykitIssuerInteropTests: XCTestCase {
                 proposalExpiresAt: nil,
                 recurrence: nil,
                 acceptedPaymentEndpointIdentifiers: endpointIdentifiers,
+                conversion: nil,
+                paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: #"{"order":"713"}"#)
             ),
             acceptedEventId: nil,
@@ -110,6 +112,7 @@ final class PaykitIssuerInteropTests: XCTestCase {
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
             canceledOutboundStatus: nil,
+            conversionQuotes: [],
             paymentProofs: [],
             lastStreamItemId: 1,
             lastOutboundMessageId: nil,

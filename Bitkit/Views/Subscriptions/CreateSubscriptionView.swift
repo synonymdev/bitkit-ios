@@ -256,7 +256,7 @@ struct SubscriptionRecipientView: View {
         Menu {
             ForEach(PaymentRequestExpiration.allCases) { expiration in
                 Button(expiration.description) {
-                    draft.expiresAt = expiration.date(from: DemoClock.subscriptionNow())
+                    draft.expiresAt = expiration.date(from: SubscriptionClock.subscriptionNow())
                 }
             }
         } label: {
@@ -326,7 +326,7 @@ struct SubscriptionProposalSentView: View {
                         }
                         SubscriptionRow(
                             subscription: subscription,
-                            now: DemoClock.subscriptionNow(),
+                            now: SubscriptionClock.subscriptionNow(),
                             subtitle: subscription.recurrence.subscriptionFrequencyLabel
                         )
                         .padding(.top, 16)

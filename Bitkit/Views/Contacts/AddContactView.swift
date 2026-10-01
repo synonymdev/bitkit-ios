@@ -122,7 +122,8 @@ struct AddContactView: View {
                         truncatedKey: profile.truncatedPublicKey,
                         name: profile.name,
                         bio: profile.bio,
-                        imageUrl: profile.imageUrl
+                        imageUrl: profile.imageUrl,
+                        showDivider: false
                     )
                     .padding(.top, 24)
                 }
@@ -266,7 +267,7 @@ struct AddContactView: View {
             switch result {
             case let .opened(paymentRequest, _):
                 _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey)
-            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
+            case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
                         type: .warning,

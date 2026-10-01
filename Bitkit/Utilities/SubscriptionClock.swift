@@ -1,10 +1,10 @@
 import Foundation
 
-/// Dev-only offset that moves Paykit subscription scheduling forward, so a recorded demo can show a renewal
-/// without waiting a whole billing period. It covers subscription proposals, acceptance, due periods, renewal
-/// dates and due notifications. One-time payment requests, invoices, payments and allowance checks keep real time.
-enum DemoClock {
-    static let offsetDaysKey = "demoClockOffsetDays"
+/// Dev-only offset that moves Paykit subscription scheduling forward, so a renewal can be tested on a debug
+/// build without waiting a whole billing period. It covers subscription proposals, acceptance, due periods,
+/// renewal dates and due notifications. One-time payment requests, invoices and payments keep real time.
+enum SubscriptionClock {
+    static let offsetDaysKey = "subscriptionClockOffsetDays"
     static let offsetDaysRange = 0 ... 400
     static let offsetDaysPresets = [0, 1, 7, 30, 31, 62, 365]
 

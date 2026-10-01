@@ -131,6 +131,20 @@ extension Route {
             false
         }
     }
+
+    var isPubkyIdentityRoute: Bool {
+        if isContactImportRoute {
+            return true
+        }
+
+        switch self {
+        case .profile, .editProfile, .createProfile, .payContacts,
+             .contacts, .contactDetail, .contactSaved, .addContact, .editContact:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 func shouldDiscardPendingImport(currentRoute: Route?, destination: Route?) -> Bool {

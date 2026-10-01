@@ -14,7 +14,7 @@ struct HomeWidgetsView: View {
 
     @Binding var isEditingWidgets: Bool
 
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     /// Global frame of the (single) calculator widget card, reported via preference key.
     /// Used to compute how far to lift content so the focused calculator sits above the keypad.

@@ -36,8 +36,13 @@ struct WalletRestoreSuccess: View {
                 app.backupVerified = true
                 wallet.isRestoringWallet = false
 
-                // Skip pruning if backup had explicit monitored address types
                 let settings = SettingsViewModel.shared
+
+                // Note: the "Received" sheet suppression for replayed historical txs is armed when the
+                // restore starts, in RestoreWalletView, not here - by this tap the node has already
+                // been syncing for a while. #588
+
+                // Skip pruning if backup had explicit monitored address types
                 if !settings.restoredMonitoredTypesFromBackup {
                     settings.pendingRestoreAddressTypePrune = true
                 }

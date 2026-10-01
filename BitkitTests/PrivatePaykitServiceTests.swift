@@ -152,6 +152,30 @@ final class PrivatePaykitServiceTests: XCTestCase {
         )
     }
 
+    func testRecoveryRequiredDiagnosticsRecognizePaykitErrors() {
+        let error = PaykitError.RecoveryRequired(code: "link_recovery_required", context: "do-not-log")
+
+        XCTAssertTrue(PaykitResolutionFailureDiagnostics.isRecoveryRequired(error))
+        XCTAssertFalse(
+            PaykitResolutionFailureDiagnostics.isRecoveryRequired(
+                PaykitError.Transport(code: "offline", context: "do-not-log")
+            )
+        )
+    }
+
+    func testPaymentRequestWaitsForPrivateLinkRecoveryStates() {
+        XCTAssertTrue(
+            PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(
+                resolutionState: .recoveryPending,
+                linkState: .linked
+            )
+        )
+        XCTAssertTrue(PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(linkState: .linking))
+        XCTAssertTrue(PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(linkState: .recoveryRequired))
+        XCTAssertFalse(PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(linkState: .linked))
+        XCTAssertFalse(PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(linkState: .notLinked))
+    }
+
     func testReceivedPrivateInvoiceHashKeepsContactAttribution() async {
         let service = PrivatePaykitService()
         let publicKey = "pubkycontact"
@@ -351,19 +375,114 @@ final class PrivatePaykitServiceTests: XCTestCase {
             rawPayload: #"{"value":"lnurl1private"}"#
         )
         let context = PrivatePaykitPaymentContext(receiverPath: PaykitReceiverPath.wallet, paymentListVersion: 7)
+        let attemptId = UUID()
 
         await service.cacheResolvedEndpoints([endpoint], publicKey: publicKey)
-        try await service.consumePrivatePaymentList(publicKey: publicKey, context: context)
+        try await service.consumePrivatePaymentList(publicKey: publicKey, context: context, attemptId: attemptId)
 
         let contactState = await service.testContactState(publicKey: publicKey)
         XCTAssertTrue(contactState?.cachedResolvedEndpoints.isEmpty == true)
         XCTAssertEqual(contactState?.consumedPrivatePaymentListVersionsByReceiverPath[PaykitReceiverPath.wallet], 7)
 
         do {
-            try await service.consumePrivatePaymentList(publicKey: publicKey, context: context)
+            try await service.consumePrivatePaymentList(publicKey: publicKey, context: context, attemptId: UUID())
             XCTFail("Expected the private payment list to be consumed only once")
         } catch PrivatePaykitError.paymentListAlreadyConsumed {
             // Expected.
+        }
+    }
+
+    func testPaymentListConsumptionResolutionReleasesOnlyDefinitePreBroadcastFailures() async throws {
+        try await withIsolatedPrivatePaykitState { service in
+            let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+            let outcomes: [(String, PrivatePaymentListSendOutcome, UInt64)] = [
+                ("success", .succeeded, 7),
+                ("uncertain", .uncertain, 7),
+                ("definite-failure", .definitePreBroadcastFailure, 4),
+            ]
+
+            for (receiverPath, outcome, expectedVersion) in outcomes {
+                let previousContext = PrivatePaykitPaymentContext(receiverPath: receiverPath, paymentListVersion: 4)
+                let attemptedContext = PrivatePaykitPaymentContext(receiverPath: receiverPath, paymentListVersion: 7)
+                let previousAttemptId = UUID()
+                try await service.consumePrivatePaymentList(publicKey: publicKey, context: previousContext, attemptId: previousAttemptId)
+                try await service.resolvePrivatePaymentListConsumption(
+                    publicKey: publicKey,
+                    context: previousContext,
+                    attemptId: previousAttemptId,
+                    outcome: .succeeded
+                )
+
+                let attemptId = UUID()
+                try await service.consumePrivatePaymentList(publicKey: publicKey, context: attemptedContext, attemptId: attemptId)
+                try await service.resolvePrivatePaymentListConsumption(
+                    publicKey: publicKey,
+                    context: attemptedContext,
+                    attemptId: attemptId,
+                    outcome: outcome
+                )
+
+                let contactState = await service.testContactState(publicKey: publicKey)
+                XCTAssertEqual(contactState?.consumedPrivatePaymentListVersionsByReceiverPath[receiverPath], expectedVersion)
+
+                if outcome == .definitePreBroadcastFailure {
+                    try await service.consumePrivatePaymentList(
+                        publicKey: publicKey,
+                        context: attemptedContext,
+                        attemptId: UUID()
+                    )
+                    try await service.resolvePrivatePaymentListConsumption(
+                        publicKey: publicKey,
+                        context: attemptedContext,
+                        attemptId: attemptId,
+                        outcome: .definitePreBroadcastFailure
+                    )
+                    let stateAfterDelayedRelease = await service.testContactState(publicKey: publicKey)
+                    XCTAssertEqual(stateAfterDelayedRelease?.consumedPrivatePaymentListVersionsByReceiverPath[receiverPath], 7)
+                } else {
+                    do {
+                        try await service.consumePrivatePaymentList(
+                            publicKey: publicKey,
+                            context: attemptedContext,
+                            attemptId: UUID()
+                        )
+                        XCTFail("A retained payment list version must not be reusable")
+                    } catch PrivatePaykitError.paymentListAlreadyConsumed {
+                        // Expected.
+                    }
+                }
+            }
+        }
+    }
+
+    func testStalePaymentListReleaseDoesNotUndoNewerConsumption() async throws {
+        try await withIsolatedPrivatePaykitState { service in
+            let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+            let receiverPath = PaykitReceiverPath.wallet
+            let olderContext = PrivatePaykitPaymentContext(receiverPath: receiverPath, paymentListVersion: 7)
+            let newerContext = PrivatePaykitPaymentContext(receiverPath: receiverPath, paymentListVersion: 8)
+            let olderAttemptId = UUID()
+            let newerAttemptId = UUID()
+
+            try await service.consumePrivatePaymentList(publicKey: publicKey, context: olderContext, attemptId: olderAttemptId)
+            try await service.consumePrivatePaymentList(publicKey: publicKey, context: newerContext, attemptId: newerAttemptId)
+            try await service.resolvePrivatePaymentListConsumption(
+                publicKey: publicKey,
+                context: olderContext,
+                attemptId: olderAttemptId,
+                outcome: .definitePreBroadcastFailure
+            )
+            let stateAfterStaleRelease = await service.testContactState(publicKey: publicKey)
+            XCTAssertEqual(stateAfterStaleRelease?.consumedPrivatePaymentListVersionsByReceiverPath[receiverPath], 8)
+
+            try await service.resolvePrivatePaymentListConsumption(
+                publicKey: publicKey,
+                context: newerContext,
+                attemptId: newerAttemptId,
+                outcome: .definitePreBroadcastFailure
+            )
+            let stateAfterCurrentRelease = await service.testContactState(publicKey: publicKey)
+            XCTAssertEqual(stateAfterCurrentRelease?.consumedPrivatePaymentListVersionsByReceiverPath[receiverPath], 7)
         }
     }
 
@@ -391,7 +510,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let context = PrivatePaykitPaymentContext(receiverPath: PaykitReceiverPath.server, paymentListVersion: 9)
 
         await service.cacheResolvedEndpoints([endpoint], publicKey: publicKey)
-        try await service.consumePrivatePaymentList(publicKey: publicKey, context: context)
+        try await service.consumePrivatePaymentList(publicKey: publicKey, context: context, attemptId: UUID())
         await service.clearContactState(publicKey: publicKey)
 
         let contactState = await service.testContactState(publicKey: publicKey)
@@ -556,6 +675,22 @@ final class PrivatePaykitServiceTests: XCTestCase {
         )
 
         XCTAssertNil(error)
+    }
+
+    private func withIsolatedPrivatePaykitState(
+        _ operation: (PrivatePaykitService) async throws -> Void
+    ) async throws {
+        let defaults = UserDefaults.standard
+        let previousState = defaults.data(forKey: PrivatePaykitService.cacheStateKey)
+        defaults.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        defer {
+            if let previousState {
+                defaults.set(previousState, forKey: PrivatePaykitService.cacheStateKey)
+            } else {
+                defaults.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+            }
+        }
+        try await operation(PrivatePaykitService())
     }
 }
 

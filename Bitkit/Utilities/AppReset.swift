@@ -9,6 +9,18 @@ enum AppReset {
         session: SessionManager,
         toastType: Toast.ToastType = .success
     ) async throws {
+        try await PaykitSdkService.shared.withWalletWipe {
+            try await wipeLocal(app: app, wallet: wallet, session: session, toastType: toastType)
+        }
+    }
+
+    @MainActor
+    private static func wipeLocal(
+        app: AppViewModel,
+        wallet: WalletViewModel,
+        session: SessionManager,
+        toastType: Toast.ToastType
+    ) async throws {
         await PubkyProfileManager.removePublicPaykitEndpointsBestEffort(context: "AppReset.wipe")
         await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "AppReset.wipe")
 

@@ -20,28 +20,25 @@ struct EditContactView: View {
     @State private var avatarImage: UIImage?
 
     var body: some View {
-        VStack(spacing: 0) {
-            NavigationBar(title: t("contacts__edit_title"))
-                .padding(.horizontal, 16)
-
-            ProfileEditFormView(
-                name: $name,
-                bio: $bio,
-                links: $links,
-                tags: $tags,
-                publicKey: publicKey,
-                publicKeyLabel: t("profile__create_pubky_label"),
-                bioPlaceholder: t("contacts__edit_bio_placeholder"),
-                isSaving: isSaving,
-                footerNote: t("contacts__edit_public_note"),
-                deleteLabel: t("contacts__delete_label"),
-                deleteActionStyle: .buttonWithIcon,
-                onSave: { await saveContact() },
-                onCancel: { navigation.navigateBack() },
-                onDelete: { showDeleteConfirmation = true }
-            ) {
-                avatarSection
-            }
+        ProfileEditFormView(
+            navigationTitle: t("contacts__edit_title"),
+            name: $name,
+            bio: $bio,
+            links: $links,
+            tags: $tags,
+            publicKey: publicKey,
+            publicKeyLabel: t("profile__create_pubky_label"),
+            bioLabel: t("contacts__edit_notes_label"),
+            bioPlaceholder: t("contacts__edit_bio_placeholder"),
+            isSaving: isSaving,
+            footerNote: t("contacts__edit_public_note"),
+            deleteLabel: t("contacts__delete_label"),
+            deleteActionStyle: .buttonWithIcon,
+            onSave: { await saveContact() },
+            onCancel: { navigation.navigateBack() },
+            onDelete: { showDeleteConfirmation = true }
+        ) {
+            avatarSection
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .bottomSafeAreaPadding()
@@ -132,6 +129,11 @@ struct EditContactView: View {
                 accessibilityIdentifier: "ContactDeletedToast"
             )
             navigation.path = [.contacts]
+        } catch let PubkyServiceError.activeSubscription(endsAt) {
+            let description = endsAt.map {
+                t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
+            }
+            app.toast(type: .error, title: t("contacts__delete_active_subscription"), description: description)
         } catch {
             Logger.error("Failed to delete contact: \(error)", context: "EditContactView")
             app.toast(type: .error, title: t("contacts__delete_error"))
@@ -182,6 +184,7 @@ struct EditContactView: View {
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
+            .environment(KeyboardManager())
             .environmentObject(PubkyProfileManager())
     }
     .preferredColorScheme(.dark)

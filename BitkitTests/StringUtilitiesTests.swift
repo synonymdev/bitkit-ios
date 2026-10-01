@@ -21,4 +21,12 @@ final class StringUtilitiesTests: XCTestCase {
     func testRemovingLightningSchemesTrimsWhitespace() {
         XCTAssertEqual("  lnurlw:lnurl1example  ".removingLightningSchemes(), "lnurl1example")
     }
+
+    func testCapitalizingFirstLetterOfEachWord() {
+        XCTAssertEqual("satoshi nakamoto".capitalizingFirstLetterOfEachWord, "Satoshi Nakamoto")
+        XCTAssertEqual("Satoshi NAKAMOTO".capitalizingFirstLetterOfEachWord, "Satoshi NAKAMOTO")
+        XCTAssertEqual("ronald mcDonald".capitalizingFirstLetterOfEachWord, "Ronald McDonald")
+        XCTAssertEqual("élodie  van".capitalizingFirstLetterOfEachWord, "Élodie  Van")
+        XCTAssertEqual("".capitalizingFirstLetterOfEachWord, "")
+    }
 }

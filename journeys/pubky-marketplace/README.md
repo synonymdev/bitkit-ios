@@ -56,13 +56,21 @@ The full journey depends on the sibling work from the parent epic:
 - [#717](https://github.com/synonymdev/bitkit-ios/issues/717) prevents an Electrum-rejected broadcast
   from reaching `SendSuccess`.
 
-Before opening the fixture setup auth URL, enable Paykit UI on both wallets through Settings →
-Advanced → Dev Settings → Enable Paykit UI (`PaykitUiToggle`), confirm the warning, and verify
-activation (`PaykitUiEnabledToast`). Then use the header profile button and Create path to give each
-wallet a Bitkit-generated Pubky identity; an identity imported through Pubky Ring cannot approve the
-setup auth URL. Contact payments must then be enabled in General Settings, and the buyer and seller
-must save each other before Bitkit's `receivePrivateMessagesFromLinkedPeers()` poll can receive the
-request.
+Before opening the fixture setup auth URL, use the header profile button and Create path to give
+each wallet a Bitkit-generated Pubky identity; an identity imported through Pubky Ring cannot
+approve the setup auth URL. Contact payments must then be enabled in General Settings, and the buyer
+and seller must save each other before Bitkit's `receivePrivateMessagesFromLinkedPeers()` poll can
+receive the request.
+
+## Periodic payout detection
+
+Use separate seller and buyer devices. Before creating the purchase, return the seller to Home,
+wait for any startup or foreground-triggered full-wallet sync to finish, and record its balance.
+Keep the seller app active and the device awake while completing the purchase on the buyer device.
+Do not background, restart, or manually refresh the seller before the payout appears. Capture
+seller lifecycle and sync logs from before purchase creation through payout detection, alongside
+the balance change and received activity for the fixture transaction. If the seller is resumed or
+restarted during that interval, the run does not prove periodic payout detection and must be repeated.
 
 ## Evidence contract
 
