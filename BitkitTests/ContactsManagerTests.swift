@@ -601,6 +601,108 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(fetchedKeys, [contactProfileKey], "Reopening Contacts must not look the same contact up again")
     }
 
+    func testLabelOnlyContactLooksItsProfileUpOnTheInteractiveLane() async throws {
+        let manager = ContactsManager()
+        let bulk = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        await bulk.hold()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+        let published = Bitkit.PubkyProfile(
+            publicKey: contactProfileKey,
+            name: "Alice",
+            bio: "Hello",
+            imageUrl: "pubky://alice/avatar",
+            links: [PubkyProfileLink(label: "Site", url: "https://alice.example")],
+            tags: [],
+            status: nil
+        )
+        let interactive = ContactProfileFetchStub([.success(published)])
+
+        async let first: Void = manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+        async let second: Void = manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+        _ = await (first, second)
+        await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+
+        let profile = try XCTUnwrap(manager.contacts.first?.profile)
+        XCTAssertEqual(profile.name, "Alice")
+        XCTAssertEqual(profile.bio, "Hello", "An edit made now must not save the label-only row over the bio")
+        XCTAssertEqual(profile.imageUrl, "pubky://alice/avatar")
+        XCTAssertEqual(profile.links.map(\.url), ["https://alice.example"])
+        let attempts = await interactive.attempts
+        XCTAssertEqual(attempts, 1, "Concurrent callers share one lookup, and a resolved row is not looked up again")
+        await bulk.release()
+        await manager.waitForProfileRefreshForTesting()
+    }
+
+    func testOnlyALabelOnlyContactIsLookedUpOnTheInteractiveLane() async throws {
+        let manager = ContactsManager()
+        let bulk = HeldProfileLookups(profiles: [:])
+        await bulk.hold()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only"), contactRecord(key: unresolvedFollowKey, name: "Bob")]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+        let interactive = ContactProfileFetchStub([.failure(profileTransportError)])
+
+        await manager.resolvePendingContactProfile(publicKey: unresolvedFollowKey) { try await interactive.fetch($0) }
+        let storedAttempts = await interactive.attempts
+        XCTAssertEqual(storedAttempts, 0, "A stored profile is not looked up")
+
+        await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+        await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+        let attempts = await interactive.attempts
+        XCTAssertEqual(attempts, 1, "A failed lookup is left to the background refresh")
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Bob", "Label only"])
+        await bulk.release()
+        await manager.waitForProfileRefreshForTesting()
+    }
+
+    func testInteractiveProfileLookupStartedBeforeResetIsIgnored() async throws {
+        let manager = ContactsManager()
+        let bulk = HeldProfileLookups(profiles: [:])
+        await bulk.hold()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+        let interactive = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        await interactive.hold()
+        let lookup = Task {
+            await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+        }
+        while await interactive.heldCount < 1 {
+            await Task.yield()
+        }
+
+        manager.reset()
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+        await interactive.release()
+        await lookup.value
+        await bulk.release()
+        await manager.waitForProfileRefreshForTesting()
+
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Label only"], "A lookup from before the reset must not update rows")
+    }
+
+    func testEditFormKeepsTheUsersChangesWhenTheContactsProfileArrives() {
+        var form = ContactEditForm()
+        form.fill(from: Bitkit.PubkyProfile.forDisplay(publicKey: contactProfileKey, name: "Label only", imageUrl: nil))
+        form.name = "My Alice"
+        form.tags = ["friend"]
+
+        form.fill(from: Bitkit.PubkyProfile(
+            publicKey: contactProfileKey,
+            name: "Alice",
+            bio: "Hello",
+            imageUrl: "pubky://alice/avatar",
+            links: [PubkyProfileLink(label: "Site", url: "https://alice.example")],
+            tags: ["remote"],
+            status: nil
+        ))
+
+        XCTAssertEqual(form.name, "My Alice")
+        XCTAssertEqual(form.tags, ["friend"])
+        XCTAssertEqual(form.bio, "Hello", "A field the user left alone takes the arriving profile")
+        XCTAssertEqual(form.imageUrl, "pubky://alice/avatar")
+        XCTAssertEqual(form.links.map(\.url), ["https://alice.example"])
+    }
+
     func testImportSavesPreparedProfilesAndKeepsUnresolvedFollowsAsPlaceholders() async throws {
         let manager = ContactsManager()
         let placeholderName = Bitkit.PubkyProfile.placeholder(publicKey: unresolvedFollowKey).name

@@ -121,9 +121,11 @@ class ContactsManager: ObservableObject {
     private var isApplyingProfileRefresh = false
     private var profileRefresh: ContactProfileRefresh?
     private var profileRefreshCount = 0
+    private var pendingProfileLookups: [String: Task<Void, Never>] = [:]
     /// Profiles resolved this session for the owner's contacts, shown in place of stored labels while a load refreshes.
     private var resolvedProfiles: [String: PubkyProfile] = [:]
     private var resolvedProfilesOwner: String?
+    private var resolvedProfilesGeneration = 0
     private let contactRecords: @Sendable () async throws -> [ContactRecord]
 
     init(contactRecords: @escaping @Sendable () async throws -> [ContactRecord] = PubkyService.contactRecords) {
@@ -332,11 +334,12 @@ class ContactsManager: ObservableObject {
             }
             self?.finishProfileRefresh(refreshID)
         }
-        profileRefresh = ContactProfileRefresh(id: refreshID, labels: labels, task: task)
+        profileRefresh = ContactProfileRefresh(id: refreshID, labels: labels, pendingKeys: Set(labels.keys), task: task)
     }
 
     private func finishRefreshLookup(of publicKey: String, profile: PubkyProfile?, refreshID: Int) {
         guard profileRefresh?.id == refreshID else { return }
+        profileRefresh?.pendingKeys.remove(publicKey)
         if let profile {
             applyResolvedProfile(profile, for: publicKey)
         }
@@ -345,6 +348,47 @@ class ContactsManager: ObservableObject {
     private func finishProfileRefresh(_ refreshID: Int) {
         if profileRefresh?.id == refreshID {
             profileRefresh = nil
+        }
+    }
+
+    /// Looks a saved contact's profile up on the interactive read lane while its row still shows only its saved label
+    /// because the background refresh has not reached it, so a screen showing that contact does not wait behind bulk
+    /// reads and an edit made there keeps the contact's avatar, bio and links. Returns at once for any other row, and
+    /// joins a lookup already running for the contact. When the lookup fails, the row keeps its label.
+    func resolvePendingContactProfile(publicKey: String) async {
+        await resolvePendingContactProfile(publicKey: publicKey, fetchRemoteProfile: Self.fetchRemoteContactProfile)
+    }
+
+    func resolvePendingContactProfile(
+        publicKey: String,
+        fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?
+    ) async {
+        guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { return }
+        if let lookup = pendingProfileLookups[key] {
+            return await lookup.value
+        }
+        guard let refresh = profileRefresh,
+              refresh.pendingKeys.contains(key),
+              let label = refresh.labels[key],
+              resolvedProfiles[key] == nil,
+              Self.loadContactProfileOverrides()[key] == nil
+        else { return }
+
+        let generation = resolvedProfilesGeneration
+        let lookup = Task { [weak self] in
+            let profile = try? await Self.resolveContactProfile(publicKey: key, fetchRemoteProfile: fetchRemoteProfile)
+            self?.finishPendingProfileLookup(of: key, profile: profile?.withNameFallback(label), generation: generation)
+        }
+        pendingProfileLookups[key] = lookup
+        await lookup.value
+    }
+
+    private func finishPendingProfileLookup(of publicKey: String, profile: PubkyProfile?, generation: Int) {
+        guard generation == resolvedProfilesGeneration else { return }
+        pendingProfileLookups[publicKey] = nil
+        profileRefresh?.pendingKeys.remove(publicKey)
+        if let profile {
+            applyResolvedProfile(profile, for: publicKey)
         }
     }
 
@@ -371,8 +415,11 @@ class ContactsManager: ObservableObject {
     /// Stops every profile lookup still running for the previous owner, so none of them can fill the next owner's rows
     /// or cache.
     private func forgetResolvedProfiles(owner: String?) {
+        resolvedProfilesGeneration += 1
         profileRefresh?.task.cancel()
         profileRefresh = nil
+        pendingProfileLookups.values.forEach { $0.cancel() }
+        pendingProfileLookups = [:]
         resolvedProfiles = [:]
         resolvedProfilesOwner = owner
     }
@@ -766,10 +813,12 @@ class ContactsManager: ObservableObject {
         }
     }
 
-    /// A background refresh of saved contacts' profiles. `labels` maps each contact it looks up to its saved label.
+    /// A background refresh of saved contacts' profiles. `labels` maps each contact it looks up to its saved label, and
+    /// `pendingKeys` holds those whose lookup has not finished, whose rows may still show only that label.
     private struct ContactProfileRefresh {
         let id: Int
         let labels: [String: String?]
+        var pendingKeys: Set<String>
         let task: Task<Void, Never>
     }
 

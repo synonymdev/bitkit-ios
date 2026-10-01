@@ -23,6 +23,7 @@ struct ContactDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var isPayLoading = false
     @State private var payTask: Task<Void, Never>?
+    @State private var tagUpdate: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,6 +48,7 @@ struct ContactDetailView: View {
                 isLoading = false
             }
             isLoading = false
+            await contactsManager.resolvePendingContactProfile(publicKey: publicKey)
         }
         .task {
             if isPaymentRequestAvailable {
@@ -226,50 +228,53 @@ struct ContactDetailView: View {
     // MARK: - Tag Persistence
 
     private func addTag(_ newTag: String) {
-        guard var current = profile else { return }
-        current = PubkyProfile(
-            publicKey: current.publicKey,
-            name: current.name,
-            bio: current.bio,
-            imageUrl: current.imageUrl,
-            links: current.links,
-            tags: current.tags + [newTag],
-            status: current.status
-        )
-        profile = current
-        persistContact(current)
+        updateTags { $0 + [newTag] }
     }
 
     private func removeTag(_ tag: String) {
-        guard var current = profile else { return }
-        current = PubkyProfile(
-            publicKey: current.publicKey,
-            name: current.name,
-            bio: current.bio,
-            imageUrl: current.imageUrl,
-            links: current.links,
-            tags: current.tags.filter { $0 != tag },
-            status: current.status
-        )
-        profile = current
-        persistContact(current)
+        updateTags { $0.filter { $0 != tag } }
     }
 
-    private func persistContact(_ profile: PubkyProfile) {
-        Task {
-            do {
-                try await contactsManager.updateContact(
-                    publicKey: publicKey,
-                    name: profile.name,
-                    bio: profile.bio,
-                    imageUrl: profile.imageUrl,
-                    links: profile.links,
-                    tags: profile.tags
-                )
-            } catch {
-                Logger.error("Failed to persist contact tags: \(error)", context: "ContactDetailView")
-                app.toast(type: .error, title: t("contacts__error_saving"))
-            }
+    /// Shows the change at once, then saves it, one tag change at a time, over the contact's latest profile. It first
+    /// waits for a profile the row is still waiting for, so a tag change never saves a label-only row over the contact's
+    /// bio, links and avatar.
+    private func updateTags(_ transform: @escaping ([String]) -> [String]) {
+        guard let current = profile else { return }
+        profile = Self.profile(current, withTags: transform(current.tags))
+        let previousUpdate = tagUpdate
+        tagUpdate = Task {
+            await previousUpdate?.value
+            await contactsManager.resolvePendingContactProfile(publicKey: publicKey)
+            let latest = contactsManager.contacts.first(where: { $0.publicKey == publicKey })?.profile ?? current
+            await persistContact(Self.profile(latest, withTags: transform(latest.tags)))
+        }
+    }
+
+    private static func profile(_ profile: PubkyProfile, withTags tags: [String]) -> PubkyProfile {
+        PubkyProfile(
+            publicKey: profile.publicKey,
+            name: profile.name,
+            bio: profile.bio,
+            imageUrl: profile.imageUrl,
+            links: profile.links,
+            tags: tags,
+            status: profile.status
+        )
+    }
+
+    private func persistContact(_ profile: PubkyProfile) async {
+        do {
+            try await contactsManager.updateContact(
+                publicKey: publicKey,
+                name: profile.name,
+                bio: profile.bio,
+                imageUrl: profile.imageUrl,
+                links: profile.links,
+                tags: profile.tags
+            )
+        } catch {
+            Logger.error("Failed to persist contact tags: \(error)", context: "ContactDetailView")
+            app.toast(type: .error, title: t("contacts__error_saving"))
         }
     }
 

@@ -22,6 +22,8 @@ while profiles are still loading from the network. Where Android differs, see
 - `contacts-list-loading.xml` relaunches and opens Contacts. The saved contacts show straight away
   under the names they were saved with, and each fills in its profile name and avatar as its lookup
   finishes. Reopening Contacts in the same session shows the profiles already found straight away.
+  Opening a contact whose profile has not loaded yet looks it up at once, and its edit form shows
+  the published bio.
 
 ## Preconditions
 
@@ -51,8 +53,8 @@ pubky.app, at least one of them with no published profile, and no Pubky identity
 journey saves the follows as contacts; sign out in Bitkit before running it again.
 
 **Contacts list loading.** A Pubky identity with at least five saved contacts, at least one with a
-published profile name and one with no published profile. Running the contact import journey first
-leaves exactly that.
+published profile name and bio and one with no published profile. Running the contact import journey
+first leaves exactly that if one of the follows publishes a bio.
 
 ## Timing
 
