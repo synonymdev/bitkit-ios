@@ -3,83 +3,59 @@ import Paykit
 import XCTest
 
 final class PaykitPublicReadLaneTests: XCTestCase {
-    func testBulkProfileLookupsLeaveReadSlotsForInteractiveFetches() async throws {
-        let sdk = PublicReadLaneSdk(noPointer: .init())
-        let service = PaykitSdkService(sdkFactory: { sdk })
-        let lookups = (0 ..< 6).map { index in
-            Task {
-                try await service.resolveContactProfile(publicKey: "contact\(index)", allowPubkyProfileFallback: true, priority: .bulk)
+    /// Five bulk reads of each kind start, each blocked on its first network read. Only four may run, and a contact record
+    /// read under the SDK lock and an interactive fetch must both finish meanwhile.
+    func testBulkReadsLeaveTheSdkLockAndReadSlotsFree() async throws {
+        let cases: [(name: String, read: @Sendable (PaykitSdkService, String) async throws -> Void)] = [
+            ("profile lookup", { service, publicKey in
+                let resolution = try await service.resolveContactProfile(publicKey: publicKey, allowPubkyProfileFallback: true, priority: .bulk)
+                XCTAssertNil(resolution, "profile lookup")
+            }),
+            ("receiver discovery", { service, publicKey in
+                let paths = try await service.discoverRelevantReceiverPaths(publicKey: publicKey, priority: .bulk)
+                XCTAssertEqual(paths, [PaykitReceiverPath.wallet, PaykitReceiverPath.server], "receiver discovery")
+            }),
+            ("payment request receiver paths", { service, publicKey in
+                let paths = try await service.paymentRequestReceiverPaths(publicKey: publicKey, priority: .bulk)
+                XCTAssertEqual(paths, [PaykitReceiverPath.server], "payment request receiver paths")
+            }),
+            ("private receiver path selection", { service, publicKey in
+                let selection = try await service.privateReceiverPathSelection(publicKey: publicKey, savedReceiverPaths: [PaykitReceiverPath.server])
+                XCTAssertEqual(selection.linkableReceiverPaths, [PaykitReceiverPath.server], "private receiver path selection")
+                XCTAssertEqual(selection.publishableReceiverPaths, [PaykitReceiverPath.server], "private receiver path selection")
+                XCTAssertEqual(selection.cleanupProtectedReceiverPaths, [], "private receiver path selection")
+                XCTAssertNil(selection.error, "private receiver path selection")
+            }),
+        ]
+        for testCase in cases {
+            let sdk = PublicReadLaneSdk(noPointer: .init())
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let reads = (0 ..< 5).map { index in
+                Task { try await testCase.read(service, "contact\(index)") }
             }
-        }
-        try await sdk.log.waitForEntries(count: 4)
-        try await Task.sleep(for: .milliseconds(50))
-        let lookupsInFlight = await sdk.log.entries.count
-        XCTAssertEqual(lookupsInFlight, 4, "Bulk lookups may hold only four of the six read slots")
+            try await sdk.log.waitForEntries(count: 4)
+            try await Task.sleep(for: .milliseconds(50))
+            let readsInFlight = await sdk.log.entries.count
+            XCTAssertEqual(readsInFlight, 4, "\(testCase.name): only four bulk reads may run at once")
 
-        let fetched = expectation(description: "Interactive fetch finished")
-        let fetch = Task {
-            _ = try await service.fetchFile(uri: "pubky://avatar", maxBytes: 10)
-            fetched.fulfill()
-        }
-        await fulfillment(of: [fetched], timeout: 2)
-
-        await sdk.gate.open()
-        try await fetch.value
-        for lookup in lookups {
-            _ = try await lookup.value
-        }
-    }
-
-    func testReceiverDiscoveryDoesNotHoldTheSdkLock() async throws {
-        let sdk = PublicReadLaneSdk(noPointer: .init())
-        let service = PaykitSdkService(sdkFactory: { sdk })
-        let discoveries = (0 ..< 5).map { index in
-            Task { try await service.discoverRelevantReceiverPaths(publicKey: "contact\(index)", priority: .bulk) }
-        }
-
-        try await assertBulkReadsLeaveTheLockAndReadSlotsFree(sdk: sdk, service: service)
-
-        for discovery in discoveries {
-            let paths = try await discovery.value
-            XCTAssertEqual(paths, [PaykitReceiverPath.wallet, PaykitReceiverPath.server])
-        }
-    }
-
-    func testPaymentRequestReceiverPathsDoesNotHoldTheSdkLock() async throws {
-        let sdk = PublicReadLaneSdk(noPointer: .init())
-        let service = PaykitSdkService(sdkFactory: { sdk })
-        let checks = (0 ..< 5).map { index in
-            Task { try await service.paymentRequestReceiverPaths(publicKey: "contact\(index)", priority: .bulk) }
-        }
-
-        try await assertBulkReadsLeaveTheLockAndReadSlotsFree(sdk: sdk, service: service)
-
-        for check in checks {
-            let paths = try await check.value
-            XCTAssertEqual(paths, [PaykitReceiverPath.server])
-        }
-    }
-
-    func testPrivateReceiverPathSelectionDoesNotHoldTheSdkLock() async throws {
-        let sdk = PublicReadLaneSdk(noPointer: .init())
-        let service = PaykitSdkService(sdkFactory: { sdk })
-        let selections = (0 ..< 5).map { index in
-            Task {
-                try await service.privateReceiverPathSelection(
-                    publicKey: "contact\(index)",
-                    savedReceiverPaths: [PaykitReceiverPath.server]
-                )
+            let lockedReadFinished = expectation(description: "\(testCase.name): contact record read under the SDK lock finished")
+            let lockedRead = Task {
+                _ = try await service.contactRecords()
+                lockedReadFinished.fulfill()
             }
-        }
+            let fetched = expectation(description: "\(testCase.name): interactive fetch finished")
+            let fetch = Task {
+                _ = try await service.fetchFile(uri: "pubky://avatar", maxBytes: 10)
+                fetched.fulfill()
+            }
+            await fulfillment(of: [lockedReadFinished, fetched], timeout: 2)
 
-        try await assertBulkReadsLeaveTheLockAndReadSlotsFree(sdk: sdk, service: service)
-
-        for selection in selections {
-            let result = try await selection.value
-            XCTAssertEqual(result.linkableReceiverPaths, [PaykitReceiverPath.server])
-            XCTAssertEqual(result.publishableReceiverPaths, [PaykitReceiverPath.server])
-            XCTAssertEqual(result.cleanupProtectedReceiverPaths, [])
-            XCTAssertNil(result.error)
+            await sdk.gate.open()
+            try await lockedRead.value
+            try await fetch.value
+            for read in reads {
+                try await read.value
+            }
         }
     }
 
@@ -206,36 +182,6 @@ final class PaykitPublicReadLaneTests: XCTestCase {
         case let .failure(error):
             XCTFail("\(message): got \(error)", file: file, line: line)
         }
-    }
-
-    /// Expects five bulk reads to have been started, each blocked on its first network read. Four may run, a contact
-    /// record read under the SDK lock and an interactive fetch must both finish meanwhile, then the gate opens.
-    private func assertBulkReadsLeaveTheLockAndReadSlotsFree(
-        sdk: PublicReadLaneSdk,
-        service: PaykitSdkService,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async throws {
-        try await sdk.log.waitForEntries(count: 4)
-        try await Task.sleep(for: .milliseconds(50))
-        let readsInFlight = await sdk.log.entries.count
-        XCTAssertEqual(readsInFlight, 4, "Only four bulk reads may run at once", file: file, line: line)
-
-        let lockedReadFinished = expectation(description: "Contact record read under the SDK lock finished")
-        let lockedRead = Task {
-            _ = try await service.contactRecords()
-            lockedReadFinished.fulfill()
-        }
-        let fetched = expectation(description: "Interactive fetch finished")
-        let fetch = Task {
-            _ = try await service.fetchFile(uri: "pubky://avatar", maxBytes: 10)
-            fetched.fulfill()
-        }
-        await fulfillment(of: [lockedReadFinished, fetched], timeout: 2)
-
-        await sdk.gate.open()
-        try await lockedRead.value
-        try await fetch.value
     }
 }
 
