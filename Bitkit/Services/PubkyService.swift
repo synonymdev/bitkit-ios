@@ -342,15 +342,12 @@ actor PaykitSdkService {
     private var lastIdentityRepublishAt = Date.distantPast
     private var sdk: PaykitSdk?
 
-    private let sdkFactory: (() throws -> PaykitSdk)?
-
     init(
         sdkFactory: (() throws -> PaykitSdk)? = nil,
         bootstrapFactory: @escaping BootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
     ) {
         self.sdkFactory = sdkFactory
         self.bootstrapFactory = bootstrapFactory
-        self.sdkFactory = sdkFactory
     }
 
     func initialize() async throws {
