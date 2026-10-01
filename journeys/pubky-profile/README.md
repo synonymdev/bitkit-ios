@@ -76,15 +76,18 @@ header showed.
 - **Profile while loading.** iOS shows the cached name and avatar read-only under
   `ProfileCachedHeader`, with no edit, copy, share, QR code or tag controls, and then the full
   profile under `ProfileViewName`.
-- **Contact import and Contacts list.** `contact-import.xml` is new on both platforms at once:
-  synonymdev/bitkit-android#1399 adds an Android journey with the same file and journey name but its
-  own steps, and adds the testTags `ContactImportOverviewSelect`, `ContactImportOverviewImportAll` and
-  `ContactImportSelectContinue`. `Contact_<pubky>`, `HeaderMenu` and `DrawerContacts` already match
-  Android. The overview profile and summary (`ContactImportOverviewProfile`,
-  `ContactImportOverviewSummary`) and the selection rows (`ContactImportSelect_<pubky>`) are iOS-only;
-  see [Identifiers](../README.md#identifiers). `contacts-list-loading.xml` is iOS-only for now; the
-  Android journey checks the list at the end of its import instead. iOS has always kept a follow with
-  no published profile in the import; it shows under its truncated key.
+- **Contact import and Contacts list.** `contact-import.xml` and `contacts-list-loading.xml` are new
+  on both platforms at once: synonymdev/bitkit-android#1399 adds both to Android with the same file
+  names, journey names and prose, changing only identifiers and `adb` commands, and adds the
+  testTags `ContactImportOverviewSelect`, `ContactImportOverviewImportAll` and
+  `ContactImportSelectContinue`, so once it merges the two platforms share the journeys and those
+  identifiers. Android master has neither until then. `Contact_<pubky>`, `HeaderMenu`,
+  `DrawerContacts`, `PayContactsContinue`, `ContactViewNotes`, `ContactEdit`, `ProfileEditCancel`
+  and `NavigationBack` already match Android. Android has no identifier for the overview profile and
+  summary (`ContactImportOverviewProfile`, `ContactImportOverviewSummary`) or the selection rows
+  (`ContactImportSelect_<pubky>`), and names the Ring rows differently; see
+  [Identifiers](../README.md#identifiers). iOS has always kept a follow with no published profile in
+  the import; it shows under its truncated key.
 - **Ring choice rows.** Android names the rows and their lookup spinners differently; see
   [Identifiers](../README.md#identifiers). iOS keeps the rows up, spins only the tapped row, and
   tags each row `PubkyChoiceRing_<pubky>`, using the bare z32 key without the `pubky` prefix.
