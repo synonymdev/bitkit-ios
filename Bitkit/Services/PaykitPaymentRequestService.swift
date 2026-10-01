@@ -1017,6 +1017,23 @@ enum PaykitPaymentRequestPresentationDeferral: Equatable {
 
 enum PaykitPaymentRequestPresentationCoordinator {
     @MainActor
+    static func canPresentPreparedRequest(
+        isSceneActive: Bool,
+        isUnlocked: Bool,
+        context: ContactPaymentContext,
+        app: AppViewModel,
+        resetWalletSendState: () -> Void
+    ) -> Bool {
+        guard app.ownsContactPaymentContext(context) else { return false }
+        guard isSceneActive, isUnlocked else {
+            app.resetSendState()
+            resetWalletSendState()
+            return false
+        }
+        return true
+    }
+
+    @MainActor
     static func handleAmountMismatch(
         _ error: Error,
         request: PaykitPaymentRequest,

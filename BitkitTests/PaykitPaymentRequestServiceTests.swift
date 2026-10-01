@@ -2839,6 +2839,39 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertNil(manager.consumeExpiredRequestedPresentation())
     }
 
+    func testPendingRequestArrivalDispatchesPresentationBeforeRefreshFinishes() async throws {
+        let sdk = PaymentRequestSdkMock(records: [])
+        let notificationCenter = PaykitSubscriptionNotificationCenterMock()
+        let manager = paymentRequestManager(
+            sdk: sdk,
+            subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler(center: notificationCenter)
+        )
+        await manager.refresh()
+        let previous = IncomingPaykitPaymentRequestPresentationState(manager)
+        try await sdk.setRecords([paymentRequestRecord()])
+        await notificationCenter.pauseNextPendingRequests()
+        let refreshTask = Task { await manager.refresh() }
+        try await waitUntil { await notificationCenter.isPendingRequestsPaused }
+
+        let current = IncomingPaykitPaymentRequestPresentationState(manager)
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let dispatches = IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: previous,
+            to: current,
+            manager: manager
+        )
+        XCTAssertEqual(dispatches, [.presentNext])
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+        XCTAssertTrue(IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: current,
+            to: IncomingPaykitPaymentRequestPresentationState(manager),
+            manager: manager
+        ).isEmpty)
+
+        await notificationCenter.resumePendingRequests()
+        await refreshTask.value
+    }
+
     func testRefreshPreservesUnavailableOutcomeForRequestedPresentation() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
@@ -3168,6 +3201,104 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+    }
+
+    func testInterruptedPreparationRemainsImmediatelyPresentableAfterForegroundOrUnlock() async throws {
+        for interruption in [(isSceneActive: false, isUnlocked: true), (isSceneActive: true, isUnlocked: false)] {
+            for userRequested in [false, true] {
+                let clock = PaymentRequestTestClock(Date())
+                let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+                let manager = paymentRequestManager(sdk: sdk, clock: clock)
+                await manager.refresh()
+                let request = try XCTUnwrap(manager.requestsForPresentation().first)
+                if userRequested {
+                    XCTAssertTrue(manager.requestPresentation(request))
+                }
+                let sheets = SheetViewModel()
+                let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+                let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+                let invoice = OnChainInvoice(address: "bcrt1qexample", amountSatoshis: 0, label: nil, message: nil, params: nil)
+                var isSceneActive = true
+                var isUnlocked = true
+                var walletResetCount = 0
+                var continuation: CheckedContinuation<Void, Never>?
+
+                let preparation = Task {
+                    await manager.presentRequests { _ in
+                        XCTAssertTrue(app.claimContactPaymentContext(context))
+                        await withCheckedContinuation { continuation = $0 }
+                        app.scannedOnchainInvoice = invoice
+                        if PaykitPaymentRequestPresentationCoordinator.canPresentPreparedRequest(
+                            isSceneActive: isSceneActive,
+                            isUnlocked: isUnlocked,
+                            context: context,
+                            app: app,
+                            resetWalletSendState: { walletResetCount += 1 }
+                        ) {
+                            sheets.showSheet(.send, data: SendConfig(view: .confirm))
+                        }
+                    }
+                }
+                try await waitUntil { continuation != nil }
+                isSceneActive = interruption.isSceneActive
+                isUnlocked = interruption.isUnlocked
+                continuation?.resume()
+                let interrupted = await preparation.value
+                XCTAssertTrue(interrupted)
+
+                XCTAssertNil(sheets.activeSheetConfiguration)
+                XCTAssertNil(app.contactPaymentContext)
+                XCTAssertFalse(app.hasSendPaymentTarget)
+                XCTAssertEqual(walletResetCount, 1)
+                XCTAssertEqual(manager.pendingRequests, [request])
+                XCTAssertEqual(manager.requestsForPresentation(), [request])
+                XCTAssertEqual(manager.requestedPresentationId, userRequested ? request.id : nil)
+
+                isSceneActive = true
+                isUnlocked = true
+                let presented = await manager.presentRequests { requests in
+                    XCTAssertEqual(requests, [request])
+                    XCTAssertTrue(app.claimContactPaymentContext(context))
+                    app.scannedOnchainInvoice = invoice
+                    if PaykitPaymentRequestPresentationCoordinator.canPresentPreparedRequest(
+                        isSceneActive: isSceneActive,
+                        isUnlocked: isUnlocked,
+                        context: context,
+                        app: app,
+                        resetWalletSendState: { walletResetCount += 1 }
+                    ) {
+                        sheets.showSheet(.send, data: SendConfig(view: .confirm))
+                    }
+                }
+                XCTAssertTrue(presented)
+                XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+                XCTAssertTrue(app.ownsContactPaymentContext(context))
+                XCTAssertEqual(app.scannedOnchainInvoice?.address, invoice.address)
+                XCTAssertEqual(walletResetCount, 1)
+            }
+        }
+    }
+
+    func testInterruptedPreparationPreservesReplacementPaymentContext() {
+        let app = AppViewModel()
+        let interruptedContext = ContactPaymentContext(publicKey: "pubkyold")
+        let replacementContext = ContactPaymentContext(publicKey: "pubkynew")
+        XCTAssertTrue(app.claimContactPaymentContext(interruptedContext))
+        app.resetSendState()
+        XCTAssertTrue(app.claimContactPaymentContext(replacementContext))
+        app.scannedOnchainInvoice = OnChainInvoice(
+            address: "bcrt1qreplacement", amountSatoshis: 0, label: nil, message: nil, params: nil
+        )
+
+        XCTAssertFalse(PaykitPaymentRequestPresentationCoordinator.canPresentPreparedRequest(
+            isSceneActive: false,
+            isUnlocked: false,
+            context: interruptedContext,
+            app: app,
+            resetWalletSendState: { XCTFail("A replaced context must not reset wallet send state") }
+        ))
+        XCTAssertTrue(app.ownsContactPaymentContext(replacementContext))
+        XCTAssertEqual(app.scannedOnchainInvoice?.address, "bcrt1qreplacement")
     }
 
     func testPresentationOperationIsNotReentered() async throws {
