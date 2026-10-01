@@ -827,49 +827,51 @@ actor PaykitSdkService {
     /// `sessionNotActive` and protects every saved path from cleanup.
     func privateReceiverPathSelection(publicKey: String, savedReceiverPaths: [String]) async throws -> PrivateReceiverPathSelection {
         let paths = Self.mergedReceiverPaths(savedReceiverPaths)
-        let instance: PaykitSdk? = if let sdk {
-            sdk
-        } else {
-            try await operationLock.withCancellableLock { try? handle() }
-        }
-        guard let instance else {
-            return PrivateReceiverPathSelection(
-                linkableReceiverPaths: [],
-                publishableReceiverPaths: [],
-                cleanupProtectedReceiverPaths: paths,
-                error: PubkyServiceError.sessionNotActive
-            )
-        }
-
-        return try await publicReadSlots.withSlot(.bulk) {
-            var linkable: [String] = []
-            var publishable: [String] = []
-            var cleanupProtected: [String] = []
-            var firstError: Error?
-
-            for path in paths {
-                do {
-                    let marker = try await instance.paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
-                    if Self.requiresPrivateLink(marker: marker) {
-                        linkable.append(path)
-                    }
-                    if Self.canReceivePrivatePaymentDetails(marker: marker) {
-                        publishable.append(path)
-                    }
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    cleanupProtected.append(path)
-                    firstError = firstError ?? error
-                }
+        return try await operationLock.withoutLock {
+            let instance: PaykitSdk? = if let sdk {
+                sdk
+            } else {
+                try await operationLock.withCancellableLock { try? handle() }
+            }
+            guard let instance else {
+                return PrivateReceiverPathSelection(
+                    linkableReceiverPaths: [],
+                    publishableReceiverPaths: [],
+                    cleanupProtectedReceiverPaths: paths,
+                    error: PubkyServiceError.sessionNotActive
+                )
             }
 
-            return PrivateReceiverPathSelection(
-                linkableReceiverPaths: linkable,
-                publishableReceiverPaths: publishable,
-                cleanupProtectedReceiverPaths: cleanupProtected,
-                error: firstError
-            )
+            return try await publicReadSlots.withSlot(.bulk) {
+                var linkable: [String] = []
+                var publishable: [String] = []
+                var cleanupProtected: [String] = []
+                var firstError: Error?
+
+                for path in paths {
+                    do {
+                        let marker = try await instance.paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
+                        if Self.requiresPrivateLink(marker: marker) {
+                            linkable.append(path)
+                        }
+                        if Self.canReceivePrivatePaymentDetails(marker: marker) {
+                            publishable.append(path)
+                        }
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        cleanupProtected.append(path)
+                        firstError = firstError ?? error
+                    }
+                }
+
+                return PrivateReceiverPathSelection(
+                    linkableReceiverPaths: linkable,
+                    publishableReceiverPaths: publishable,
+                    cleanupProtectedReceiverPaths: cleanupProtected,
+                    error: firstError
+                )
+            }
         }
     }
 
@@ -1161,17 +1163,21 @@ actor PaykitSdkService {
     /// that fetch unauthenticated public Pubky data; in paykit rc56 those use the SDK's public client and never load
     /// session access, the local secret or the state blob. Session, secret or state-blob operations must never use it.
     /// Without an SDK it takes `operationLock` only to build one, cancellably, and releases it before the read, so a
-    /// read never builds an SDK outside the lock and never holds the lock across the network call.
+    /// read never builds an SDK outside the lock and never holds the lock across the network call. Like a locked call, a
+    /// read that starts during a wallet wipe is rejected, and one that a wipe overtakes fails instead of returning its
+    /// result across the wipe.
     private func withPublicRead<T>(
         priority: PaykitPublicReadPriority = .interactive,
         _ read: (PaykitSdk) async throws -> T
     ) async throws -> T {
-        let instance: PaykitSdk = if let sdk {
-            sdk
-        } else {
-            try await operationLock.withCancellableLock { try handle() }
+        try await operationLock.withoutLock {
+            let instance: PaykitSdk = if let sdk {
+                sdk
+            } else {
+                try await operationLock.withCancellableLock { try handle() }
+            }
+            return try await publicReadSlots.withSlot(priority) { try await read(instance) }
         }
-        return try await publicReadSlots.withSlot(priority) { try await read(instance) }
     }
 
     private func withStateRevisionTracking<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {
@@ -1406,6 +1412,17 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
 
     func walletGeneration() throws -> Int {
         try admit()
+    }
+
+    /// Runs `operation` without the lock but under the wallet wipe admission of `withLock`: it is rejected while a wipe
+    /// is in progress. A wipe cannot drain work that does not hold the lock, so a result that a wipe overtakes is
+    /// discarded and the caller gets the wipe error instead.
+    func withoutLock<T>(_ operation: () async throws -> T) async throws -> T {
+        if ownsWipe() { return try await operation() }
+        let admittedGeneration = try admit()
+        let result = try await operation()
+        try validate(admittedGeneration)
+        return result
     }
 
     func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
