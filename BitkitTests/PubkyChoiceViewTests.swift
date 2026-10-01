@@ -15,44 +15,34 @@ final class PubkyChoiceViewTests: XCTestCase {
         XCTAssertTrue(PubkyChoiceView.showsCreateCard(hasRingIdentities: false))
     }
 
-    func testMirroredRingProfilesEqualTheFoundProfilesWhenNotAdopting() {
-        let shown = ["alice": profile("alice", name: "Alice"), "bob": profile("bob", name: "Bob")]
-        let found = ["alice": profile("alice", name: "Alice Renamed")]
-
-        let mirrored = PubkyChoiceView.mirroredRingProfiles(shown, found: found, isAdopting: false)
-
-        XCTAssertEqual(mirrored.mapValues(\.name), ["alice": "Alice Renamed"], "A row whose lookup now finds nothing drops its old profile")
-    }
-
-    func testMirroredRingProfilesOnlyAddWhileAdopting() {
+    func testMirroredRingProfilesEqualTheFoundProfilesButOnlyAddWhileAdopting() {
         let shown = ["alice": profile("alice", name: "Alice"), "bob": profile("bob", name: "Bob")]
         let found = ["alice": profile("alice", name: "Alice Renamed"), "carol": profile("carol", name: "Carol")]
-
-        let cleared = PubkyChoiceView.mirroredRingProfiles(shown, found: [:], isAdopting: true)
-        let merged = PubkyChoiceView.mirroredRingProfiles(shown, found: found, isAdopting: true)
-
-        XCTAssertEqual(cleared.mapValues(\.name), ["alice": "Alice", "bob": "Bob"], "Rows keep their profiles while adopting clears the cache")
-        XCTAssertEqual(merged.mapValues(\.name), ["alice": "Alice Renamed", "bob": "Bob", "carol": "Carol"])
+        let cases: [(name: String, found: [String: PubkyProfile], isAdopting: Bool, expected: [String: String])] = [
+            ("a row whose lookup now finds nothing drops its old profile", found, false, ["alice": "Alice Renamed", "carol": "Carol"]),
+            ("rows keep their profiles while adopting clears the cache", [:], true, ["alice": "Alice", "bob": "Bob"]),
+            ("adopting only adds", found, true, ["alice": "Alice Renamed", "bob": "Bob", "carol": "Carol"]),
+        ]
+        for testCase in cases {
+            let mirrored = PubkyChoiceView.mirroredRingProfiles(shown, found: testCase.found, isAdopting: testCase.isAdopting)
+            XCTAssertEqual(mirrored.mapValues(\.name), testCase.expected, testCase.name)
+        }
     }
 
+    /// A finished lookup brings back the avatar, a found profile replaces the spinner, and the adopting row shows only its
+    /// key-icon spinner.
     func testRingLookupShowsOnlyForARowStillLookingUpWithoutAProfileThatIsNotBeingAdopted() {
-        XCTAssertTrue(PubkyChoiceView.showsRingLookup(isLookingUp: true, hasProfile: false, isAdoptingRow: false))
-        XCTAssertFalse(
-            PubkyChoiceView.showsRingLookup(isLookingUp: false, hasProfile: false, isAdoptingRow: false),
-            "A finished lookup brings back the avatar"
-        )
-        XCTAssertFalse(
-            PubkyChoiceView.showsRingLookup(isLookingUp: true, hasProfile: true, isAdoptingRow: false),
-            "A found profile replaces the spinner"
-        )
-        XCTAssertFalse(
-            PubkyChoiceView.showsRingLookup(isLookingUp: true, hasProfile: false, isAdoptingRow: true),
-            "The adopting row shows only its key-icon spinner"
-        )
-        XCTAssertFalse(PubkyChoiceView.showsRingLookup(isLookingUp: true, hasProfile: true, isAdoptingRow: true))
-        XCTAssertFalse(PubkyChoiceView.showsRingLookup(isLookingUp: false, hasProfile: true, isAdoptingRow: false))
-        XCTAssertFalse(PubkyChoiceView.showsRingLookup(isLookingUp: false, hasProfile: false, isAdoptingRow: true))
-        XCTAssertFalse(PubkyChoiceView.showsRingLookup(isLookingUp: false, hasProfile: true, isAdoptingRow: true))
+        for isLookingUp in [true, false] {
+            for hasProfile in [true, false] {
+                for isAdoptingRow in [true, false] {
+                    XCTAssertEqual(
+                        PubkyChoiceView.showsRingLookup(isLookingUp: isLookingUp, hasProfile: hasProfile, isAdoptingRow: isAdoptingRow),
+                        isLookingUp && !hasProfile && !isAdoptingRow,
+                        "isLookingUp: \(isLookingUp), hasProfile: \(hasProfile), isAdoptingRow: \(isAdoptingRow)"
+                    )
+                }
+            }
+        }
     }
 
     private func profile(_ publicKey: String, name: String) -> PubkyProfile {
