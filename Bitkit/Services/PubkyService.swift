@@ -801,11 +801,11 @@ actor PaykitSdkService {
         }
     }
 
-    /// Public reads on the bulk lane, so it never holds `operationLock`. An abandoned eligibility check leaves the read
+    /// Public reads on the read lane, so it never holds `operationLock`. An abandoned eligibility check leaves the read
     /// queue at once and stops before its next read.
-    func paymentRequestReceiverPaths(publicKey: String) async throws -> [String] {
+    func paymentRequestReceiverPaths(publicKey: String, priority: PaykitPublicReadPriority) async throws -> [String] {
         try Task.checkCancellation()
-        return try await withPublicRead(priority: .bulk) { sdk in
+        return try await withPublicRead(priority: priority) { sdk in
             let paths = try await sdk.paykitReceiverPaths(publicKey: publicKey)
             var capablePaths = Set<String>()
 

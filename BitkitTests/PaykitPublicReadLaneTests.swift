@@ -49,7 +49,7 @@ final class PaykitPublicReadLaneTests: XCTestCase {
         let sdk = PublicReadLaneSdk(noPointer: .init())
         let service = PaykitSdkService(sdkFactory: { sdk })
         let checks = (0 ..< 5).map { index in
-            Task { try await service.paymentRequestReceiverPaths(publicKey: "contact\(index)") }
+            Task { try await service.paymentRequestReceiverPaths(publicKey: "contact\(index)", priority: .bulk) }
         }
 
         try await assertBulkReadsLeaveTheLockAndReadSlotsFree(sdk: sdk, service: service)

@@ -3258,6 +3258,38 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
+    func testOnlyTheRefreshOfEverySavedContactReadsCapabilitiesInBulk() async throws {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let expiresAt = Date(timeIntervalSince1970: 1_900_000_000)
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, path: PaykitReceiverPath.wallet, state: .linked)],
+            receiverPathsByPublicKey: [savedKey: [PaykitReceiverPath.wallet]]
+        )
+        try await sdk.setProposalResult(paymentRequestRecord(
+            id: "outgoing",
+            counterparty: savedKey,
+            counterpartyReceiverPath: PaykitReceiverPath.wallet,
+            role: .payee,
+            expiresAt: timestamp(expiresAt)
+        ))
+        let manager = paymentRequestManager(sdk: sdk)
+
+        await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+        let target = await manager.refreshEligibleTarget(publicKey: savedKey)
+        _ = try await manager.propose(
+            PaykitPaymentRequestDraft(amountSats: 1, note: "Coffee", expiresAt: expiresAt),
+            to: XCTUnwrap(target)
+        )
+
+        let priorities = await sdk.receiverPathReadPriorities()
+        XCTAssertEqual(
+            priorities,
+            [.bulk, .interactive, .interactive],
+            "Contact detail's Pay check and a proposal must not queue behind the Contacts list's bulk reads"
+        )
+    }
+
     func testSingleEligibilityRefreshRemovesContactThatIsNoLongerLinked() async {
         let savedKey = "pubky\(String(repeating: "y", count: 52))"
         let sdk = PaymentRequestSdkMock(records: [])
@@ -4030,6 +4062,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
     private var linkedPeersError: PaymentRequestSdkMockError?
     private var linkedPeersCallCount = 0
     private var receiverPathLookupCount = 0
+    private var receiverPathLookupPriorities: [PaykitPublicReadPriority] = []
     private var failingReceiverPathKeys: Set<String> = []
     private var proposalResult: PaymentRequestRecord?
     private var uploadCount = 0
@@ -4123,8 +4156,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
         return snapshot
     }
 
-    func paymentRequestReceiverPaths(publicKey: String) throws -> [String] {
+    func paymentRequestReceiverPaths(publicKey: String, priority: PaykitPublicReadPriority) throws -> [String] {
         receiverPathLookupCount += 1
+        receiverPathLookupPriorities.append(priority)
         if failingReceiverPathKeys.contains(publicKey) {
             throw PaymentRequestSdkMockError.receive
         }
@@ -4346,6 +4380,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling {
 
     func receiverPathLookups() -> Int {
         receiverPathLookupCount
+    }
+
+    func receiverPathReadPriorities() -> [PaykitPublicReadPriority] {
+        receiverPathLookupPriorities
     }
 
     func setLinkedPeersError(_ error: PaymentRequestSdkMockError?) {
