@@ -126,7 +126,6 @@ Known naming differences:
 | Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
 | Pubky Ring choice row | `PubkyChoiceIdentity` (the same tag on every row) | `PubkyChoiceRing_<pubky>` (bare z32 key) |
 | Pubky Ring choice row lookup spinner | `PubkyChoiceIdentityLookup` | `PubkyChoiceRingLookup_<pubky>` (bare z32 key) |
-| Cached profile header while the profile loads | — | `ProfileCachedHeader`, with the name `ProfileCachedName` |
 | Contact import overview profile and friend count | — | `ContactImportOverviewProfile`, `ContactImportOverviewSummary` |
 | Contact import selection row | — | `ContactImportSelect_<pubky>` |
 
