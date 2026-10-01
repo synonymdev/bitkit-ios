@@ -920,6 +920,37 @@ final class ContactsManagerTests: XCTestCase {
         await manager.waitForProfileRefreshForTesting()
     }
 
+    func testImportThatAResetOvertakesStopsSavingAndReportsNothing() async throws {
+        let prepared = (0 ..< 3).map { makeContact(publicKey: "pubky-contact-\($0)") }
+        // The save running when the user signs out may land first or fail after the sign-out; later saves would fail.
+        for heldSaveSucceeds in [true, false] {
+            let manager = ContactsManager()
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { [] }, fetchRemoteProfile: { _ in nil })
+            let saves = HeldProfileLookups(profiles: heldSaveSucceeds ? [prepared[0].publicKey: "Alice"] : [:])
+            await saves.hold()
+            let importTask = Task {
+                try await manager.importContacts(contacts: prepared) { key, _ in
+                    _ = try await saves.fetch(key)
+                }
+            }
+            while await saves.heldCount < 1 {
+                await Task.yield()
+            }
+
+            manager.reset()
+            await saves.release()
+            do {
+                try await importTask.value
+            } catch {
+                XCTFail("An import a reset overtook must not report an error after the sign-out: \(error)")
+            }
+
+            let attempted = await saves.fetchedKeys
+            XCTAssertEqual(attempted, [prepared[0].publicKey], "A reset stops the import before its next save")
+            XCTAssertTrue(manager.contacts.isEmpty, "An import a reset overtook adds nothing to the cleared list")
+        }
+    }
+
     func testShouldDiscardPendingImportWhenLeavingImportFlow() {
         XCTAssertTrue(shouldDiscardPendingImport(currentRoute: .contactImportOverview, destination: .contacts))
         XCTAssertTrue(shouldDiscardPendingImport(currentRoute: .contactImportSelect, destination: nil))

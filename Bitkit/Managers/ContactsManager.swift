@@ -520,6 +520,8 @@ class ContactsManager: ObservableObject {
 
     /// Remembers the profiles it saves for this session, so the Contacts list shows them at once rather than only their
     /// saved labels. A placeholder for a follow whose lookup failed is not remembered, so that profile is still looked up.
+    /// An import outlives its screens, so a reset or another identity's load while it runs, such as after a sign-out,
+    /// stops it quietly: it saves nothing more, adds nothing to the next session's list and reports no error.
     func importContacts(
         contacts selected: [PubkyContact],
         saveContact: (String, String) async throws -> Void = { publicKey, label in
@@ -533,6 +535,7 @@ class ContactsManager: ObservableObject {
 
         for contact in selected {
             try Task.checkCancellation()
+            guard profilesGeneration == resolvedProfilesGeneration else { break }
             guard !existingKeys.contains(contact.publicKey) else { continue }
             do {
                 // The preview already resolved this profile. Receiver discovery runs during contact refresh.
@@ -551,10 +554,12 @@ class ContactsManager: ObservableObject {
         }
 
         try Task.checkCancellation()
-        if profilesGeneration == resolvedProfilesGeneration {
-            for contact in imported where !contact.profile.isPlaceholder {
-                rememberResolvedProfile(contact.profile, for: contact.publicKey)
-            }
+        guard profilesGeneration == resolvedProfilesGeneration else {
+            Logger.info("Stopped a contact import that a reset overtook after \(imported.count) saves", context: "ContactsManager")
+            return
+        }
+        for contact in imported where !contact.profile.isPlaceholder {
+            rememberResolvedProfile(contact.profile, for: contact.publicKey)
         }
         let currentKeys = Set(contacts.map(\.publicKey))
         contacts.append(contentsOf: imported.filter { !currentKeys.contains($0.publicKey) })
