@@ -46,6 +46,13 @@ struct PubkyRegisteredIdentity {
     let walletGeneration: Int
 }
 
+/// Which public read slots a read may use. Background work that reads for many contacts at once is `bulk`, so it can
+/// never take every read slot from reads for what the user is looking at.
+enum PaykitPublicReadPriority {
+    case interactive
+    case bulk
+}
+
 /// Service layer for Pubky sessions, profiles, contacts, and Paykit SDK workflows.
 enum PubkyService {
     static func initialize() async throws {
@@ -302,8 +309,16 @@ enum PubkyService {
         try await PaykitSdkService.shared.removeContact(publicKey: publicKey)
     }
 
-    static func resolveContactProfile(publicKey: String, allowPubkyProfileFallback: Bool) async throws -> Paykit.ContactProfileResolution? {
-        try await PaykitSdkService.shared.resolveContactProfile(publicKey: publicKey, allowPubkyProfileFallback: allowPubkyProfileFallback)
+    static func resolveContactProfile(
+        publicKey: String,
+        allowPubkyProfileFallback: Bool,
+        priority: PaykitPublicReadPriority = .interactive
+    ) async throws -> Paykit.ContactProfileResolution? {
+        try await PaykitSdkService.shared.resolveContactProfile(
+            publicKey: publicKey,
+            allowPubkyProfileFallback: allowPubkyProfileFallback,
+            priority: priority
+        )
     }
 
     static func discoverRelevantReceiverPaths(publicKey: String) async throws -> [String] {
@@ -337,7 +352,7 @@ actor PaykitSdkService {
     private let sessionProvider = PaykitSdkSessionProvider()
     private let paymentAdapter = PaykitSdkPaymentAdapter()
     private let operationLock = PaykitSdkOperationLock()
-    private let publicReadLimiter = PaykitSdkReadLimiter(maxConcurrent: 6)
+    private let publicReadSlots = PaykitPublicReadSlots()
     private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
     private let sdkFactory: (() throws -> PaykitSdk)?
     private let bootstrapFactory: BootstrapFactory
@@ -748,8 +763,12 @@ actor PaykitSdkService {
         }
     }
 
-    func resolveContactProfile(publicKey: String, allowPubkyProfileFallback: Bool) async throws -> Paykit.ContactProfileResolution? {
-        try await withPublicRead {
+    func resolveContactProfile(
+        publicKey: String,
+        allowPubkyProfileFallback: Bool,
+        priority: PaykitPublicReadPriority = .interactive
+    ) async throws -> Paykit.ContactProfileResolution? {
+        try await withPublicRead(priority: priority) {
             try await $0.resolveContactProfile(
                 publicKey: publicKey,
                 receiverPath: PaykitReceiverPath.wallet,
@@ -1129,18 +1148,21 @@ actor PaykitSdkService {
         return created
     }
 
-    /// Public-only read lane: skips `operationLock` and runs up to the limiter's cap at once. It is sound only for reads
+    /// Public-only read lane: skips `operationLock` and runs up to the read slots' cap at once. It is sound only for reads
     /// that fetch unauthenticated public Pubky data; in paykit rc56 those use the SDK's public client and never load
     /// session access, the local secret or the state blob. Session, secret or state-blob operations must never use it.
     /// Without an SDK it takes `operationLock` only to build one, cancellably, and releases it before the read, so a
     /// read never builds an SDK outside the lock and never holds the lock across the network call.
-    private func withPublicRead<T>(_ read: (PaykitSdk) async throws -> T) async throws -> T {
+    private func withPublicRead<T>(
+        priority: PaykitPublicReadPriority = .interactive,
+        _ read: (PaykitSdk) async throws -> T
+    ) async throws -> T {
         let instance: PaykitSdk = if let sdk {
             sdk
         } else {
             try await operationLock.withCancellableLock { try handle() }
         }
-        return try await publicReadLimiter.withSlot { try await read(instance) }
+        return try await publicReadSlots.withSlot(priority) { try await read(instance) }
     }
 
     private func withStateRevisionTracking<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {
@@ -1569,6 +1591,31 @@ final class PaykitSdkReadLimiter: @unchecked Sendable {
         let next = waiters.removeFirst()
         lock.unlock()
         next.continuation.resume()
+    }
+}
+
+/// Slots for the public read lane. Every read holds one of `readCap` read slots while it runs. A bulk read first takes
+/// one of `bulkCap` bulk slots, so bulk work holds at most `bulkCap` read slots and the rest stay free for interactive
+/// reads. A bulk read takes its bulk slot before its read slot and never waits for a bulk slot while holding a read
+/// slot, so the two limiters cannot deadlock. Each limiter keeps its own FIFO order and cancellation behaviour.
+final class PaykitPublicReadSlots: Sendable {
+    private let readSlots: PaykitSdkReadLimiter
+    private let bulkSlots: PaykitSdkReadLimiter
+
+    init(readCap: Int = 6, bulkCap: Int = 4) {
+        readSlots = PaykitSdkReadLimiter(maxConcurrent: readCap)
+        bulkSlots = PaykitSdkReadLimiter(maxConcurrent: bulkCap)
+    }
+
+    func withSlot<T>(_ priority: PaykitPublicReadPriority, _ operation: () async throws -> T) async throws -> T {
+        switch priority {
+        case .interactive:
+            return try await readSlots.withSlot(operation)
+        case .bulk:
+            return try await bulkSlots.withSlot {
+                try await readSlots.withSlot(operation)
+            }
+        }
     }
 }
 

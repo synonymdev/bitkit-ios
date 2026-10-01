@@ -183,7 +183,7 @@ class ContactsManager: ObservableObject {
         try await loadContacts(
             for: publicKey,
             fetchContactRecords: contactRecords,
-            fetchRemoteProfile: Self.fetchRemoteContactProfile
+            fetchRemoteProfile: Self.fetchRemoteContactProfileInBulk
         )
     }
 
@@ -579,9 +579,13 @@ class ContactsManager: ObservableObject {
             let discoveryResult: (contacts: [PubkyContact], failures: Int) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
                 for key in contactKeys {
                     let pk = ensurePubkyPrefix(key)
-                    group.addTask { [self] in
+                    group.addTask {
                         do {
-                            let profile = try await resolveContactProfile(publicKey: pk, includePlaceholder: true)
+                            let profile = try await Self.resolveContactProfile(
+                                publicKey: pk,
+                                includePlaceholder: true,
+                                fetchRemoteProfile: Self.fetchRemoteContactProfileInBulk
+                            )
                             return .success(PubkyContact(publicKey: pk, profile: profile))
                         } catch {
                             return .failure(error)
@@ -658,6 +662,11 @@ class ContactsManager: ObservableObject {
 
     nonisolated static let fetchRemoteContactProfile: @Sendable (String) async throws -> PubkyProfile? = {
         try await PubkyService.resolveContactProfile(publicKey: $0, allowPubkyProfileFallback: true).map(PubkyProfile.init(resolution:))
+    }
+
+    nonisolated static let fetchRemoteContactProfileInBulk: @Sendable (String) async throws -> PubkyProfile? = {
+        try await PubkyService.resolveContactProfile(publicKey: $0, allowPubkyProfileFallback: true, priority: .bulk)
+            .map(PubkyProfile.init(resolution:))
     }
 
     /// A missing profile is never retried. `retryTransient` retries any other failure once and is for user-initiated
