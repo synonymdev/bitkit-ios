@@ -150,7 +150,8 @@ struct GeneralSettingsView: View {
                   !hasConfirmedContactPaymentsPreference
             else { return }
 
-            await updateContactPayments(true)
+            // Leaving the screen cancels `.task`; its own task lets the first contacts load and the enable still finish.
+            Task { await updateContactPayments(true) }
         }
     }
 
@@ -176,6 +177,8 @@ struct GeneralSettingsView: View {
                 contactPublicKeys: contactsManager.contacts.map(\.publicKey),
                 canUsePrivatePayments: canUsePrivatePayments
             )
+        } catch is CancellationError {
+            return
         } catch {
             Logger.error("Failed to update contact payments: \(error)", context: "GeneralSettingsView")
             app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)

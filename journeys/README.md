@@ -125,6 +125,7 @@ Known naming differences:
 | External amount available | — | `ExternalAmountAvailable` |
 | Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
 | Pubky Ring choice row | `PubkyChoiceIdentity` (the same tag on every row) | `PubkyChoiceRing_<pubky>` (bare z32 key) |
+| Pubky Ring choice row lookup spinner | `PubkyChoiceIdentityLookup` | `PubkyChoiceRingLookup_<pubky>` (bare z32 key) |
 | Cached profile header while the profile loads | — | `ProfileCachedHeader`, with the name `ProfileCachedName` |
 
 `SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix

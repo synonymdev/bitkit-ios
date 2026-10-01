@@ -1,8 +1,7 @@
 # Pubky profile loading
 
 This suite covers what Profile and the Pubky Ring choice screen show while their profiles are still
-loading from the network. Both journeys are iOS-only: Android has no journey for either screen, and
-it behaves differently in both places (see [iOS vs Android](#ios-vs-android)).
+loading from the network. Where Android differs, see [iOS vs Android](#ios-vs-android).
 
 - `cached-profile-header.xml` opens Profile straight after a relaunch, while the signed-in profile is
   still loading. Profile shows the name cached from the last load, read-only, then swaps in the full
@@ -54,12 +53,12 @@ header showed.
 - **Profile while loading.** Android shows only a spinner until the profile loads. iOS shows the
   cached name and avatar read-only under `ProfileCachedHeader`, with no edit, copy, share, QR code
   or tag controls, and then the full profile under `ProfileViewName`.
-- **Ring choice rows.** Android's `PubkyChoiceScreen` replaces the rows with one loading line while
-  it loads and while it adopts, and tags every row `PubkyChoiceIdentity`. iOS keeps the rows up,
-  spins only the tapped row, and tags each row `PubkyChoiceRing_<pubky>`, using the bare z32 key
-  without the `pubky` prefix. While a row's lookup runs, iOS shows a spinner in place of its avatar,
-  tagged `PubkyChoiceRingLookup_<pubky>`. Adopting a row stops the other rows' lookups, so their
-  spinners go, and the tapped row keeps its avatar.
+- **Ring choice rows.** Android names the rows and their lookup spinners differently; see
+  [Identifiers](../README.md#identifiers). iOS keeps the rows up, spins only the tapped row, and
+  tags each row `PubkyChoiceRing_<pubky>`, using the bare z32 key without the `pubky` prefix.
+  While a row's lookup runs, iOS shows a spinner in place of its avatar, tagged
+  `PubkyChoiceRingLookup_<pubky>`. Adopting a row stops the other rows' lookups, so their spinners
+  go, and the tapped row keeps its avatar.
 
 ## Identifiers used
 

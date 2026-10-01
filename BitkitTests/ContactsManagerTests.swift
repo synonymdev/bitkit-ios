@@ -55,6 +55,50 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(manager.isLoading)
     }
 
+    /// General Settings used to await this in its `.task`, so leaving mid-load surfaced the cancellation as an error toast.
+    func testCancelledLoadContactsIfNeededLeavesTheLoadToAnUncancelledCaller() async throws {
+        let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
+        let source = SuspendedContactRecords(records: [record])
+        let manager = ContactsManager(contactRecords: { await source.load() })
+        let screenLoad = Task { try await manager.loadContactsIfNeeded(for: "owner") }
+        while await !(source.isPaused) {
+            await Task.yield()
+        }
+        let enable = Task { try await manager.loadContactsIfNeeded(for: "owner") }
+        await Task.yield()
+        screenLoad.cancel()
+        await source.resume(with: [record])
+
+        let screenResult = await screenLoad.result
+        XCTAssertThrowsError(try screenResult.get()) { XCTAssertTrue($0 is CancellationError, "Expected cancellation, got \($0)") }
+        try await enable.value
+        XCTAssertTrue(manager.hasLoaded)
+        XCTAssertEqual(manager.contacts.map(\.publicKey), [record.publicKey])
+        XCTAssertNil(manager.loadErrorMessage)
+        XCTAssertFalse(manager.isLoading)
+    }
+
+    func testLoadContactsIfNeededFinishesAfterTheContactsScreenLoadItWaitedOnIsCancelled() async throws {
+        let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
+        let source = SuspendedContactRecords(records: [record])
+        let manager = ContactsManager(contactRecords: { await source.load() })
+        let contactsScreenLoad = Task { try await manager.loadContacts(for: "owner") }
+        while await !(source.isPaused) {
+            await Task.yield()
+        }
+        let enable = Task { try await manager.loadContactsIfNeeded(for: "owner") }
+        await Task.yield()
+        contactsScreenLoad.cancel()
+        await source.resume(with: [record])
+
+        try await contactsScreenLoad.value
+        try await enable.value
+        XCTAssertTrue(manager.hasLoaded)
+        XCTAssertEqual(manager.contacts.map(\.publicKey), [record.publicKey])
+        XCTAssertNil(manager.loadErrorMessage)
+        XCTAssertFalse(manager.isLoading)
+    }
+
     private func contactRecord(key: String, name: String) -> ContactRecord {
         ContactRecord(
             publicKey: key, receiverPaths: [PaykitReceiverPath.wallet], label: name,

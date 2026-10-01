@@ -15,10 +15,9 @@
     &lt;ring-pubky&gt; is a Ring identity's bare z32 key without the "pubky" prefix, and
     &lt;named-ring-pubky&gt; is the one with a published name. Tapping that row signs in with it.
 
-    iOS-only, with no Android counterpart. Android shows one loading line in place of the rows
-    while it loads and while it adopts, and tags every row "PubkyChoiceIdentity". iOS keeps the
-    rows up and tags each one "PubkyChoiceRing_&lt;pubky&gt;", with "PubkyChoiceRingLookup_&lt;pubky&gt;"
-    on its lookup spinner. The row avatar and the adoption spinner have no identifier. See README.md.
+    iOS tags each row "PubkyChoiceRing_&lt;pubky&gt;", with "PubkyChoiceRingLookup_&lt;pubky&gt;" on its
+    lookup spinner; Android names both differently, as the Identifiers table in journeys/README.md
+    records. The row avatar and the adoption spinner have no identifier. See README.md.
   </description>
   <actions>
     <action>Run `xcrun simctl terminate &lt;UDID&gt; to.bitkit`, then `xcrun simctl launch &lt;UDID&gt; to.bitkit`, so no Ring row profile is remembered from earlier in the session</action>
