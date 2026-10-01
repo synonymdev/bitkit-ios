@@ -23,6 +23,30 @@ enum PubkySignupError: Error {
     case inProgress
 }
 
+/// Counts the choice-screen loads still waiting on one Ring row lookup, starting with the load that started it. A load
+/// leaves from its cancellation handler, which runs off the main actor, so the count is locked.
+private final class RingIdentityLookupLoaders: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 1
+
+    /// Fails once every load has left, since the lookup is then being cancelled.
+    func join() -> Bool {
+        lock.withLock {
+            guard count > 0 else { return false }
+            count += 1
+            return true
+        }
+    }
+
+    /// True for the last load to leave, which cancels the lookup.
+    func leave() -> Bool {
+        lock.withLock {
+            count -= 1
+            return count == 0
+        }
+    }
+}
+
 @MainActor
 class PubkyProfileManager: ObservableObject {
     enum SessionInitializationResult: Equatable {
@@ -72,7 +96,8 @@ class PubkyProfileManager: ObservableObject {
     /// Ring rows whose lookup found nothing. The SDK reports a missing record and an offline failure alike, so a miss
     /// only stops repeat lookups and must never drive sign-up or profile-setup decisions.
     private var ringIdentityMisses: Set<String> = []
-    private var ringIdentityLookups: [String: (id: UUID, task: Task<Void, Never>)] = [:]
+    private typealias RingIdentityLookup = (id: UUID, task: Task<Void, Never>, loaders: RingIdentityLookupLoaders)
+    private var ringIdentityLookups: [String: RingIdentityLookup] = [:]
 
     private static func beginSessionMutation() {
         sessionRevision = UUID()
@@ -906,19 +931,20 @@ class PubkyProfileManager: ObservableObject {
 
     // MARK: - Pubky Ring Choice Rows
 
-    /// Looks up the rows that have no cached result and no live lookup. Cancelling the caller cancels the lookups it
-    /// started, so a screen the user has left stops queueing for read slots.
+    /// Looks up the rows that have no cached result, joining the live lookup of a row that has one. Cancelling the caller
+    /// cancels each of its lookups that no other caller still waits on, so a screen the user has left stops queueing for
+    /// read slots without stopping rows another choice screen still shows.
     func loadRingIdentityProfiles(_ pubkys: [String]) async {
-        let lookups = Set(pubkys.compactMap(PubkyPublicKeyFormat.normalized))
-            .filter { needsRingIdentityLookup($0) }
-            .map { startRingIdentityLookup($0) }
+        let lookups = Set(pubkys.compactMap(PubkyPublicKeyFormat.normalized)).compactMap { joinRingIdentityLookup($0) }
 
         await withTaskCancellationHandler {
             for lookup in lookups {
-                await lookup.value
+                await lookup.task.value
             }
         } onCancel: {
-            lookups.forEach { $0.cancel() }
+            for lookup in lookups where lookup.loaders.leave() {
+                lookup.task.cancel()
+            }
             // This handler runs off the main actor, so the stopped rows leave the published set on it.
             Task { @MainActor [weak self] in self?.publishRingIdentityLookupsInFlight() }
         }
@@ -939,13 +965,17 @@ class PubkyProfileManager: ObservableObject {
         publishRingIdentityLookupsInFlight()
     }
 
-    private func needsRingIdentityLookup(_ key: String) -> Bool {
-        guard ringIdentityProfiles[key] == nil, !ringIdentityMisses.contains(key) else { return false }
-        // A cancelled lookup records no miss when it fails, so it cannot stand in for a live one.
-        return ringIdentityLookups[key]?.task.isCancelled ?? true
+    private func joinRingIdentityLookup(_ key: String) -> RingIdentityLookup? {
+        guard ringIdentityProfiles[key] == nil, !ringIdentityMisses.contains(key) else { return nil }
+        // A cancelled lookup records no miss when it fails, so it cannot stand in for a live one, and one every caller
+        // has left is being cancelled.
+        if let lookup = ringIdentityLookups[key], !lookup.task.isCancelled, lookup.loaders.join() {
+            return lookup
+        }
+        return startRingIdentityLookup(key)
     }
 
-    private func startRingIdentityLookup(_ key: String) -> Task<Void, Never> {
+    private func startRingIdentityLookup(_ key: String) -> RingIdentityLookup {
         let id = UUID()
         let resolve = remoteProfileResolver
         let task = Task {
@@ -957,9 +987,10 @@ class PubkyProfileManager: ObservableObject {
             }
             finishRingIdentityLookup(key, id: id, foundProfile: foundProfile)
         }
-        ringIdentityLookups[key] = (id, task)
+        let lookup = (id: id, task: task, loaders: RingIdentityLookupLoaders())
+        ringIdentityLookups[key] = lookup
         publishRingIdentityLookupsInFlight()
-        return task
+        return lookup
     }
 
     /// Runs on the lookup's own task, so `Task.isCancelled` is that lookup's cancellation.

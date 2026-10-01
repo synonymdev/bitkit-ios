@@ -1111,13 +1111,69 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         let first = Task { await manager.loadRingIdentityProfiles([bareRingKeyA]) }
         await stub.waitForRequests(1)
+        // The second load waits on the lookup it joins, so the request is released behind it.
+        let release = Task { await stub.release(request: 0) }
         await manager.loadRingIdentityProfiles([bareRingKeyA, ringKeyA])
 
-        await stub.release(request: 0)
+        await release.value
         await first.value
         let requests = await stub.requests
         XCTAssertEqual(requests, [ringKeyA])
         XCTAssertEqual(manager.ringIdentityProfiles[ringKeyA]?.name, "Alice")
+    }
+
+    @MainActor
+    func testRingIdentityLookupKeepsRunningWhileAnotherLoadStillWantsIt() async throws {
+        let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")], holdsRequests: true)
+        let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+        let first = Task { await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB]) }
+        await stub.waitForRequests(2)
+        // Its own row's request shows the second load has also joined the shared row's lookup.
+        let second = Task { await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyC]) }
+        await stub.waitForRequests(3)
+
+        first.cancel()
+        await waitUntil("only the first load's own row leaves") { manager.ringIdentityLookupsInFlight == [ringKeyA, ringKeyC] }
+
+        let requests = await stub.requests
+        let sharedRequest = try XCTUnwrap(requests.firstIndex(of: ringKeyA))
+        await stub.release(request: sharedRequest)
+        await waitUntil("the shared row's result is recorded") { manager.ringIdentityProfiles[ringKeyA] != nil }
+        XCTAssertEqual(manager.ringIdentityProfiles[ringKeyA]?.name, "Alice")
+        XCTAssertEqual(manager.ringIdentityLookupsInFlight, [ringKeyC])
+
+        second.cancel()
+        for index in requests.indices where index != sharedRequest {
+            await stub.release(request: index)
+        }
+        await first.value
+        await second.value
+        let cancelledRequests = await stub.cancelledRequests
+        XCTAssertEqual(cancelledRequests, Set(requests.indices.filter { $0 != sharedRequest }), "Only rows no load still wants stop")
+        XCTAssertTrue(manager.ringIdentityLookupsInFlight.isEmpty)
+    }
+
+    @MainActor
+    func testRingIdentityLookupStopsOnceEveryLoadWantingItIsCancelled() async {
+        let stub = RemoteProfileStub(holdsRequests: true)
+        let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+        let first = Task { await manager.loadRingIdentityProfiles([bareRingKeyA]) }
+        await stub.waitForRequests(1)
+        let second = Task { await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB]) }
+        await stub.waitForRequests(2)
+
+        first.cancel()
+        second.cancel()
+        await waitUntil("the shared row leaves once no load wants it") { manager.ringIdentityLookupsInFlight.isEmpty }
+
+        await stub.release(request: 0)
+        await stub.release(request: 1)
+        await first.value
+        await second.value
+        let requests = await stub.requests
+        let cancelledRequests = await stub.cancelledRequests
+        XCTAssertEqual(requests, [ringKeyA, ringKeyB], "The second load joined the shared row instead of looking it up again")
+        XCTAssertEqual(cancelledRequests, [0, 1])
     }
 
     @MainActor

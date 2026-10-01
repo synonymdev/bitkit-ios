@@ -82,7 +82,7 @@ enum PubkyService {
         secretKeyHex: String,
         sdkService: PaykitSdkService = .shared
     ) async throws {
-        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+        try await sdkService.republishIdentityBeforeApproval(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
         try await sdkService.approveAuth(
             authUrl: authUrl,
@@ -93,7 +93,7 @@ enum PubkyService {
     }
 
     static func approveRingAuth(authUrl: String, secretKeyHex: String, sdkService: PaykitSdkService = .shared) async throws {
-        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+        try await sdkService.republishIdentityBeforeApproval(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
         try await ServiceQueue.background(.core) {
             try await BitkitCore.approvePubkyAuth(authUrl: authUrl, secretKeyHex: secretKeyHex)
@@ -107,7 +107,7 @@ enum PubkyService {
         secretKeyHex: String,
         sdkService: PaykitSdkService = .shared
     ) async throws {
-        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+        try await sdkService.republishIdentityBeforeApproval(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
         try await sdkService.approveAuthWithCompanionClaim(
             authUrl: authUrl,
@@ -338,6 +338,9 @@ actor PaykitSdkService {
     private let bootstrapFactory: BootstrapFactory
     private var cachedBootstrap: PubkySessionBootstrap?
     private var isRepublishingIdentity = false
+    /// The normalized identity the running publication is for, so an approval signing with it can wait for it.
+    private var republishingIdentity: String?
+    private var republishWaiters: [AsyncStream<Void>.Continuation] = []
     private var republishPublicKey: String?
     private var nextIdentityRepublishAt = Date.distantPast
     private var lastIdentityRepublishAt = Date.distantPast
@@ -408,6 +411,29 @@ actor PaykitSdkService {
             await republishIdentity(publicKey: publicKey, now: now)
             continuation.finish()
         }
+        defer { publication.cancel() }
+        await waitForRepublish(stream, finishedBy: continuation, timeout: timeout)
+    }
+
+    /// For auth approvals. Background triggers skip a publication that is already running, but an approval must still
+    /// follow its signing identity's publication, such as the one sign-in starts without waiting, so it waits for that
+    /// one under the same cap instead.
+    func republishIdentityBeforeApproval(publicKey: String, timeout: Duration = .seconds(5)) async {
+        guard !Task.isCancelled else { return }
+        guard let runningIdentity = republishingIdentity, runningIdentity == PubkyPublicKeyFormat.normalized(publicKey) else {
+            await republishIdentityIfNeeded(publicKey: publicKey, timeout: timeout)
+            return
+        }
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        republishWaiters.append(continuation)
+        await waitForRepublish(stream, finishedBy: continuation, timeout: timeout)
+    }
+
+    private func waitForRepublish(
+        _ stream: AsyncStream<Void>,
+        finishedBy continuation: AsyncStream<Void>.Continuation,
+        timeout: Duration
+    ) async {
         let deadline = Task {
             do {
                 try await Task.sleep(for: timeout)
@@ -418,7 +444,6 @@ actor PaykitSdkService {
             continuation.finish()
         }
         defer {
-            publication.cancel()
             deadline.cancel()
             continuation.finish()
         }
@@ -433,7 +458,12 @@ actor PaykitSdkService {
     private func republishIdentity(publicKey: String?, now: Date) async {
         guard !Task.isCancelled, !isRepublishingIdentity else { return }
         isRepublishingIdentity = true
-        defer { isRepublishingIdentity = false }
+        defer {
+            isRepublishingIdentity = false
+            republishingIdentity = nil
+            republishWaiters.forEach { $0.finish() }
+            republishWaiters.removeAll()
+        }
 
         do {
             let identity = try publicKey ?? sessionProvider.loadLocalSecretKey().map {
@@ -446,6 +476,7 @@ actor PaykitSdkService {
             republishPublicKey = identity
             lastIdentityRepublishAt = now
             nextIdentityRepublishAt = now.addingTimeInterval(60)
+            republishingIdentity = identity
             if try await bootstrap().republishIdentity(publicKey: identity) {
                 nextIdentityRepublishAt = now.addingTimeInterval(30 * 60)
                 Logger.debug("Republished Pubky identity", context: "PaykitSdkService")
