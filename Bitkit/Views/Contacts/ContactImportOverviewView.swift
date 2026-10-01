@@ -173,9 +173,11 @@ struct ContactImportOverviewView: View {
         defer { isImporting = false }
 
         do {
-            try await contactsManager.importContacts(publicKeys: contacts.map(\.publicKey))
+            try await contactsManager.importContacts(contacts)
             contactsManager.clearPendingImport()
             navigation.path = [.payContacts]
+        } catch is CancellationError {
+            return
         } catch {
             app.toast(type: .error, title: t("contacts__import_error"))
         }

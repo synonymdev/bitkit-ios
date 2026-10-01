@@ -116,6 +116,7 @@ struct ContactSection: Identifiable {
 class ContactsManager: ObservableObject {
     private var contactsRevision = 0
     private var loadGeneration = 0
+    private var sessionGeneration = 0
     private let contactRecords: @Sendable () async throws -> [ContactRecord]
 
     init(contactRecords: @escaping @Sendable () async throws -> [ContactRecord] = PubkyService.contactRecords) {
@@ -134,6 +135,8 @@ class ContactsManager: ObservableObject {
     /// Pending contacts discovered during import, such as pubky.app follows after Ring auth.
     @Published var pendingImportProfile: PubkyProfile?
     @Published var pendingImportContacts: [PubkyContact] = []
+    /// Pending follows whose profile lookup failed, shown and imported with a placeholder profile.
+    private var pendingImportUnresolvedKeys: Set<String> = []
 
     var hasPendingImport: Bool {
         pendingImportProfile != nil && !pendingImportContacts.isEmpty
@@ -148,6 +151,7 @@ class ContactsManager: ObservableObject {
 
     func reset() {
         loadGeneration += 1
+        sessionGeneration += 1
         contacts = []
         isLoading = false
         hasLoaded = false
@@ -159,6 +163,7 @@ class ContactsManager: ObservableObject {
     func clearPendingImport() {
         pendingImportProfile = nil
         pendingImportContacts = []
+        pendingImportUnresolvedKeys = []
     }
 
     // MARK: - Load Contacts
@@ -379,27 +384,57 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Import Contacts
 
-    func importContacts(publicKeys: [String]) async throws {
-        let prefixedKeys = Array(Set(publicKeys.compactMap(PubkyPublicKeyFormat.normalized)))
+    /// Saves the follows the import screens show with the profiles `prepareImport` resolved, so it looks no profile up
+    /// again. A follow whose lookup failed is saved as a placeholder on the wallet receiver path without discovery:
+    /// private sync discovers and merges a saved contact's receivers before it uses them. Only a failed save skips a
+    /// contact.
+    func importContacts(_ contactsToImport: [PubkyContact]) async throws {
+        try await importContacts(
+            contactsToImport,
+            discoverReceiverPaths: { try await Self.relevantReceiverPaths(for: $0, priority: .bulk) },
+            saveContact: { publicKey, label, receiverPaths in
+                _ = try await PubkyService.saveContact(
+                    publicKey: publicKey,
+                    label: label,
+                    receiverPaths: receiverPaths,
+                    restorePrivateConnection: true
+                )
+            }
+        )
+    }
+
+    /// Stops saving once `reset()` runs, so an import that outlives a sign-out or identity change saves nothing more.
+    func importContacts(
+        _ contactsToImport: [PubkyContact],
+        discoverReceiverPaths: @escaping @Sendable (String) async throws -> [String],
+        saveContact: @escaping @Sendable (_ publicKey: String, _ label: String, _ receiverPaths: [String]) async throws -> Void
+    ) async throws {
+        let session = sessionGeneration
+        let unresolvedKeys = pendingImportUnresolvedKeys
+        var seenKeys = Set<String>()
+        let imports: [(contact: PubkyContact, isResolved: Bool)] = contactsToImport.compactMap { contact in
+            guard let key = PubkyPublicKeyFormat.normalized(contact.publicKey), seenKeys.insert(key).inserted else { return nil }
+            return (PubkyContact(publicKey: key, profile: contact.profile), !unresolvedKeys.contains(key))
+        }
 
         let loadedResult: (contacts: [PubkyContact], failures: Int,
                            firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
-            for key in prefixedKeys {
+            for (contact, isResolved) in imports {
                 group.addTask { [self] in
                     do {
-                        let profile = try await resolveContactProfile(publicKey: key, includePlaceholder: true, retryTransient: true)
-                        let receiverPaths = try await Self.relevantReceiverPaths(for: key, priority: .bulk)
-                        _ = try await PubkyService.saveContact(
-                            publicKey: key,
-                            label: profile.name,
-                            receiverPaths: receiverPaths,
-                            restorePrivateConnection: true
-                        )
-                        return .success(PubkyContact(publicKey: key, profile: profile))
+                        let receiverPaths = isResolved
+                            ? try await discoverReceiverPaths(contact.publicKey)
+                            : [PaykitReceiverPath.wallet]
+                        guard await isCurrentSession(session) else { throw CancellationError() }
+                        try await saveContact(contact.publicKey, contact.profile.name, receiverPaths)
+                        return .success(contact)
                     } catch is CancellationError {
                         return .failure(CancellationError())
                     } catch {
-                        Logger.warn("Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(key))': \(error)", context: "ContactsManager")
+                        Logger.warn(
+                            "Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(contact.publicKey))': \(error)",
+                            context: "ContactsManager"
+                        )
                         return .failure(error)
                     }
                 }
@@ -423,8 +458,9 @@ class ContactsManager: ObservableObject {
         }
 
         try Task.checkCancellation()
+        guard isCurrentSession(session) else { throw CancellationError() }
 
-        if !prefixedKeys.isEmpty, loadedResult.contacts.isEmpty {
+        if !imports.isEmpty, loadedResult.contacts.isEmpty {
             throw loadedResult.firstError ?? PubkyServiceError.profileNotFound
         }
 
@@ -438,6 +474,10 @@ class ContactsManager: ObservableObject {
         }
 
         Logger.info("Imported \(newContacts.count) new contacts", context: "ContactsManager")
+    }
+
+    private func isCurrentSession(_ session: Int) -> Bool {
+        session == sessionGeneration
     }
 
     // MARK: - Update Contact
@@ -567,58 +607,83 @@ class ContactsManager: ObservableObject {
     }
 
     func discoverRemoteContacts(publicKey: String) async {
+        await discoverRemoteContacts(
+            publicKey: publicKey,
+            fetchFollows: { try await PubkyService.getContacts(publicKey: $0) },
+            fetchRemoteProfile: Self.fetchRemoteContactProfileInBulk
+        )
+    }
+
+    func discoverRemoteContacts(
+        publicKey: String,
+        fetchFollows: @escaping @Sendable (String) async throws -> [String],
+        fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?
+    ) async {
         let prefixedKey = ensurePubkyPrefix(publicKey)
 
         do {
             let contactKeys = try await Task.detached {
-                try await PubkyService.getContacts(publicKey: prefixedKey)
+                try await fetchFollows(prefixedKey)
             }.value
 
             Logger.info("Discovered \(contactKeys.count) contacts from pubky.app", context: "ContactsManager")
 
-            let discoveryResult: (contacts: [PubkyContact], failures: Int) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
+            let lookups = await withTaskGroup(of: FollowLookup.self) { group in
                 for key in contactKeys {
                     let pk = ensurePubkyPrefix(key)
                     group.addTask {
                         do {
-                            let profile = try await Self.resolveContactProfile(
-                                publicKey: pk,
-                                includePlaceholder: true,
-                                fetchRemoteProfile: Self.fetchRemoteContactProfileInBulk
-                            )
-                            return .success(PubkyContact(publicKey: pk, profile: profile))
+                            let profile = try await Self.resolveContactProfile(publicKey: pk, fetchRemoteProfile: fetchRemoteProfile)
+                            return .resolved(PubkyContact(publicKey: pk, profile: profile))
+                        } catch is CancellationError {
+                            return .cancelled
                         } catch {
-                            return .failure(error)
+                            return .unresolved(PubkyContact(publicKey: pk, profile: PubkyProfile.placeholder(publicKey: pk)))
                         }
                     }
                 }
 
-                var results: [PubkyContact] = []
-                var failures = 0
-
-                for await result in group {
-                    switch result {
-                    case let .success(contact):
-                        results.append(contact)
-                    case .failure:
-                        failures += 1
-                    }
+                var results: [FollowLookup] = []
+                for await lookup in group {
+                    results.append(lookup)
                 }
-
-                return (results, failures)
+                return results
             }
 
-            if discoveryResult.failures > 0 {
-                Logger.warn("Skipped \(discoveryResult.failures) remote contacts during discovery", context: "ContactsManager")
+            var discovered: [PubkyContact] = []
+            var unresolvedKeys = Set<String>()
+            var failures = 0
+            for lookup in lookups {
+                switch lookup {
+                case let .resolved(contact):
+                    discovered.append(contact)
+                case let .unresolved(contact):
+                    discovered.append(contact)
+                    unresolvedKeys.insert(PubkyPublicKeyFormat.normalized(contact.publicKey) ?? contact.publicKey)
+                case .cancelled:
+                    failures += 1
+                }
             }
 
-            pendingImportContacts = discoveryResult.contacts.sorted {
+            if failures > 0 {
+                Logger.warn("Skipped \(failures) remote contacts during discovery", context: "ContactsManager")
+            }
+
+            pendingImportContacts = discovered.sorted {
                 $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
             }
+            pendingImportUnresolvedKeys = unresolvedKeys
         } catch {
             Logger.warn("Failed to discover remote contacts: \(error)", context: "ContactsManager")
             pendingImportContacts = []
+            pendingImportUnresolvedKeys = []
         }
+    }
+
+    private enum FollowLookup {
+        case resolved(PubkyContact)
+        case unresolved(PubkyContact)
+        case cancelled
     }
 
     // MARK: - Contact Profile Resolution
