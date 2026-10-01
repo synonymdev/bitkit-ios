@@ -1312,171 +1312,127 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertTrue(manager.ringIdentityLookupsInFlight.isEmpty)
     }
 
+    /// Automatic recovery also clears the authenticated state while nothing is signed in, which must keep the choice rows.
     @MainActor
-    func testClearingAuthenticatedStateDropsRingIdentityProfilesAndLookups() async {
-        await withRestoredProfileDefaults {
-            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
-            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
-            await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
-            await stub.setHoldsRequests(true)
-            let inFlight = Task { await manager.loadRingIdentityProfiles([bareRingKeyC]) }
-            await stub.waitForRequests(3)
-
-            XCTAssertEqual(manager.ringIdentityLookupsInFlight, [ringKeyC])
-            manager.publicKey = ringKeyA
-            manager.clearAuthenticatedStateForTesting()
-            XCTAssertTrue(manager.ringIdentityLookupsInFlight.isEmpty, "The reset drops a row lookup before its task ends")
-            await stub.setProfile(makeProfile(publicKey: ringKeyC, name: "Carol"), for: ringKeyC)
-            await stub.release(request: 2)
-            await inFlight.value
-            XCTAssertTrue(manager.ringIdentityProfiles.isEmpty)
-            XCTAssertTrue(manager.ringIdentityLookupsInFlight.isEmpty)
-
-            await stub.setHoldsRequests(false)
-            await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
-            let requests = await stub.requests
-            XCTAssertEqual(requests.count, 5, "The miss is forgotten along with the found profile")
-        }
-    }
-
-    @MainActor
-    func testAutomaticRecoveryWhileSignedOutKeepsRingIdentityProfilesAndLookups() async {
+    func testSignOutDropsRingIdentityProfilesAndLookupsButRecoveryWhileSignedOutKeepsThem() async {
         let savedReference = AdoptedPubkyReference.current
         defer { AdoptedPubkyReference.current = savedReference }
-        AdoptedPubkyReference.current = nil
-        await withRestoredProfileDefaults {
-            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
-            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
-            await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
-            await stub.setHoldsRequests(true)
-            let inFlight = Task { await manager.loadRingIdentityProfiles([bareRingKeyC]) }
-            await stub.waitForRequests(3)
+        let cases: [(name: String, keepsRows: Bool, clear: @MainActor (PubkyProfileManager) async -> Void)] = [
+            ("sign-out", false, { manager in
+                manager.publicKey = ringKeyA
+                manager.clearAuthenticatedStateForTesting()
+            }),
+            ("automatic recovery while signed out", true, { manager in
+                for result in [PubkyProfileManager.SessionInitializationResult.noSession, .restorationFailed] {
+                    await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { result }
+                }
+            }),
+        ]
+        for testCase in cases {
+            AdoptedPubkyReference.current = nil
+            await withRestoredProfileDefaults {
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+                await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
+                await stub.setHoldsRequests(true)
+                let inFlight = Task { await manager.loadRingIdentityProfiles([bareRingKeyC]) }
+                await stub.waitForRequests(3)
+                XCTAssertEqual(manager.ringIdentityLookupsInFlight, [ringKeyC], testCase.name)
 
-            for result in [PubkyProfileManager.SessionInitializationResult.noSession, .restorationFailed] {
-                await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { result }
+                await testCase.clear(manager)
+                XCTAssertNil(manager.publicKey, testCase.name)
+                XCTAssertEqual(
+                    manager.ringIdentityLookupsInFlight,
+                    testCase.keepsRows ? [ringKeyC] : [],
+                    "\(testCase.name): a dropped row lookup leaves before its task ends"
+                )
+                await stub.setProfile(makeProfile(publicKey: ringKeyC, name: "Carol"), for: ringKeyC)
+                await stub.release(request: 2)
+                await inFlight.value
+                let cancelledRequests = await stub.cancelledRequests
+                XCTAssertEqual(cancelledRequests, testCase.keepsRows ? [] : [2], "\(testCase.name): only a dropped row lookup stops")
+                XCTAssertEqual(
+                    manager.ringIdentityProfiles.mapValues(\.name),
+                    testCase.keepsRows ? [ringKeyA: "Alice", ringKeyC: "Carol"] : [:],
+                    testCase.name
+                )
+                XCTAssertEqual(manager.ringIdentityLookupsInFlight, [], testCase.name)
+
+                await stub.setHoldsRequests(false)
+                await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB, bareRingKeyC])
+                let requests = await stub.requests
+                XCTAssertEqual(
+                    requests.count,
+                    testCase.keepsRows ? 3 : 6,
+                    "\(testCase.name): found profiles and misses are forgotten together or kept together"
+                )
             }
-            XCTAssertNil(manager.publicKey)
-
-            await stub.setProfile(makeProfile(publicKey: ringKeyC, name: "Carol"), for: ringKeyC)
-            await stub.release(request: 2)
-            await inFlight.value
-            let cancelledRequests = await stub.cancelledRequests
-            XCTAssertTrue(cancelledRequests.isEmpty, "Recovery while signed out stops no row lookup")
-            XCTAssertEqual(manager.ringIdentityProfiles[ringKeyA]?.name, "Alice")
-            XCTAssertEqual(manager.ringIdentityProfiles[ringKeyC]?.name, "Carol")
-
-            await stub.setHoldsRequests(false)
-            await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB, bareRingKeyC])
-            let requests = await stub.requests
-            XCTAssertEqual(requests.count, 3, "Neither the found profiles nor the miss are looked up again")
         }
     }
 
     @MainActor
-    func testRingAdoptionReusesTheFoundRowProfileAndClearsTheRows() async throws {
-        try await withRestoredProfileDefaults {
-            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
-            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
-            await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
-            // Held from here on, so adoption only returns if it reads nothing remote itself.
-            await stub.setHoldsRequests(true)
+    func testRingAdoptionReusesTheFoundRowProfileWhateverFormTheAdoptedKeyTakesAndClearsTheRows() async throws {
+        // Rows are cached under the normalized pubky.
+        for (name, adoptedKey) in [("prefixed key", ringKeyA), ("bare key", bareRingKeyA)] {
+            try await withRestoredProfileDefaults {
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+                await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
+                // Held from here on, so adoption only returns if it reads nothing remote itself.
+                await stub.setHoldsRequests(true)
 
-            let adopted = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
+                let adopted = try await manager.completeRingAdoptionForTesting(publicKey: adoptedKey)
 
-            XCTAssertEqual(adopted?.name, "Alice")
-            XCTAssertEqual(manager.profile?.name, "Alice")
-            XCTAssertEqual(manager.cachedName, "Alice")
-            XCTAssertEqual(manager.publicKey, ringKeyA)
-            XCTAssertEqual(manager.authState, .authenticated)
-            XCTAssertFalse(manager.isProfileSetupPending)
-            XCTAssertTrue(manager.ringIdentityProfiles.isEmpty)
+                XCTAssertEqual(adopted?.name, "Alice", name)
+                XCTAssertEqual(manager.profile?.name, "Alice", name)
+                XCTAssertEqual(manager.cachedName, "Alice", name)
+                XCTAssertEqual(manager.publicKey, adoptedKey, name)
+                XCTAssertEqual(manager.authState, .authenticated, name)
+                XCTAssertFalse(manager.isProfileSetupPending, name)
+                XCTAssertTrue(manager.ringIdentityProfiles.isEmpty, name)
 
-            await stub.waitForRequests(3)
-            let requests = await stub.requests
-            XCTAssertEqual(requests.count, 3, "Adoption reuses the row's profile; only the background refresh reads it again")
-            XCTAssertEqual(requests.last, ringKeyA)
-            await stub.release(request: 2)
-            await waitUntil("the background refresh finishes") { !manager.isLoadingProfile }
+                await stub.waitForRequests(3)
+                let requests = await stub.requests
+                XCTAssertEqual(Set(requests.prefix(2)), [ringKeyA, ringKeyB], name)
+                XCTAssertEqual(requests.dropFirst(2), [adoptedKey], "\(name): only the background refresh reads the row's profile again")
+                await stub.release(request: 2)
+                await waitUntil("\(name): the background refresh finishes") { !manager.isLoadingProfile }
+            }
         }
     }
 
+    /// Only a definitive not-found undoes the reused row profile and starts profile setup; an offline refresh keeps it.
     @MainActor
-    func testRingAdoptionReusesTheRowProfileWhateverFormTheAdoptedKeyTakes() async throws {
-        try await withRestoredProfileDefaults {
-            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
-            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
-            await manager.loadRingIdentityProfiles([bareRingKeyA])
-            await stub.setHoldsRequests(true)
+    func testRingAdoptionRefreshOfAReusedRowProfile() async throws {
+        let renamed = makeProfile(publicKey: ringKeyA, name: "Alice Renamed")
+        let cases: [(name: String, change: (RemoteProfileStub) async -> Void, expectedName: String?)] = [
+            ("renamed", { await $0.setProfile(renamed, for: ringKeyA) }, "Alice Renamed"),
+            ("removed", { await $0.setProfile(nil, for: ringKeyA) }, nil),
+            ("offline", { await $0.makeUnreachable(ringKeyA) }, "Alice"),
+        ]
+        for testCase in cases {
+            try await withRestoredProfileDefaults {
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+                await manager.loadRingIdentityProfiles([bareRingKeyA])
+                await testCase.change(stub)
 
-            let adopted = try await manager.completeRingAdoptionForTesting(publicKey: bareRingKeyA)
+                let adopted = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
+                XCTAssertEqual(adopted?.name, "Alice", "\(testCase.name): adoption reuses the row profile found earlier")
+                await stub.waitForRequests(2)
+                await waitUntil("\(testCase.name): the background refresh finishes") { !manager.isLoadingProfile }
 
-            XCTAssertEqual(adopted?.name, "Alice", "Rows are cached under the normalized pubky")
-            XCTAssertFalse(manager.isProfileSetupPending)
-            await stub.waitForRequests(2)
-            await stub.release(request: 1)
-            await waitUntil("the background refresh finishes") { !manager.isLoadingProfile }
-            let requests = await stub.requests
-            XCTAssertEqual(requests, [ringKeyA, bareRingKeyA], "Only the background refresh reads again")
-        }
-    }
-
-    @MainActor
-    func testRingAdoptionRefreshUpdatesAReusedRowProfile() async throws {
-        try await withRestoredProfileDefaults {
-            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
-            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
-            await manager.loadRingIdentityProfiles([bareRingKeyA])
-            await stub.setProfile(makeProfile(publicKey: ringKeyA, name: "Alice Renamed"), for: ringKeyA)
-
-            _ = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
-            await stub.waitForRequests(2)
-            await waitUntil("the background refresh finishes") { !manager.isLoadingProfile }
-
-            XCTAssertEqual(manager.profile?.name, "Alice Renamed")
-            XCTAssertEqual(manager.cachedName, "Alice Renamed")
-            XCTAssertFalse(manager.isProfileSetupPending)
-        }
-    }
-
-    @MainActor
-    func testRingAdoptionStartsProfileSetupWhenTheReusedRowProfileWasRemoved() async throws {
-        try await withRestoredProfileDefaults {
-            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
-            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
-            await manager.loadRingIdentityProfiles([bareRingKeyA])
-            await stub.setProfile(nil, for: ringKeyA)
-
-            let adopted = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
-            XCTAssertEqual(adopted?.name, "Alice", "Adoption reuses the row profile found earlier")
-            await stub.waitForRequests(2)
-            await waitUntil("the background refresh finishes") { !manager.isLoadingProfile }
-
-            XCTAssertNil(manager.profile, "A definitive not-found undoes the reused profile")
-            XCTAssertNil(manager.cachedName)
-            XCTAssertNil(UserDefaults.standard.string(forKey: "pubky_profile_name"))
-            XCTAssertNil(UserDefaults.standard.string(forKey: "pubky_profile_owner"))
-            XCTAssertTrue(manager.isProfileSetupPending)
-            XCTAssertTrue(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"))
-            XCTAssertEqual(manager.publicKey, ringKeyA)
-            XCTAssertEqual(manager.authState, .authenticated)
-        }
-    }
-
-    @MainActor
-    func testRingAdoptionKeepsTheReusedRowProfileWhenItsRefreshFails() async throws {
-        try await withRestoredProfileDefaults {
-            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
-            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
-            await manager.loadRingIdentityProfiles([bareRingKeyA])
-            await stub.makeUnreachable(ringKeyA)
-
-            _ = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
-            await stub.waitForRequests(2)
-            await waitUntil("the background refresh finishes") { !manager.isLoadingProfile }
-
-            XCTAssertEqual(manager.profile?.name, "Alice", "An offline refresh keeps the adopted row profile")
-            XCTAssertEqual(manager.cachedName, "Alice")
-            XCTAssertFalse(manager.isProfileSetupPending)
+                let defaults = UserDefaults.standard
+                let setupPending = testCase.expectedName == nil
+                XCTAssertEqual(manager.profile?.name, testCase.expectedName, testCase.name)
+                XCTAssertEqual(manager.cachedName, testCase.expectedName, testCase.name)
+                XCTAssertEqual(defaults.string(forKey: "pubky_profile_name"), testCase.expectedName, testCase.name)
+                XCTAssertEqual(defaults.string(forKey: "pubky_profile_owner"), setupPending ? nil : ringKeyA, testCase.name)
+                XCTAssertEqual(manager.isProfileSetupPending, setupPending, testCase.name)
+                XCTAssertEqual(defaults.bool(forKey: "pubky_profile_setup_pending"), setupPending, testCase.name)
+                XCTAssertEqual(manager.publicKey, ringKeyA, testCase.name)
+                XCTAssertEqual(manager.authState, .authenticated, testCase.name)
+            }
         }
     }
 
@@ -1628,55 +1584,36 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testRingAdoptionWaitsForTheTappedRowLookupInsteadOfFetchingAgain() async throws {
-        try await withRestoredProfileDefaults {
-            let stub = RemoteProfileStub(holdsRequests: true)
-            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
-            let rows = Task { await manager.loadRingIdentityProfiles([bareRingKeyA]) }
-            await stub.waitForRequests(1)
+    func testRingAdoptionWaitsForTheTappedRowLookupAndFetchesOnlyWhenItMisses() async throws {
+        for rowLookupFinds in [true, false] {
+            let name = "rowLookupFinds: \(rowLookupFinds)"
+            try await withRestoredProfileDefaults {
+                let stub = RemoteProfileStub(holdsRequests: true)
+                let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+                let rows = Task { await manager.loadRingIdentityProfiles([bareRingKeyA]) }
+                await stub.waitForRequests(1)
 
-            let adoption = Task { try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA) }
-            await waitUntil("adoption reaches the row lookup") { manager.publicKey == ringKeyA }
-            await stub.setProfile(makeProfile(publicKey: ringKeyA, name: "Alice"), for: ringKeyA)
-            await stub.release(request: 0)
-            await rows.value
-            // A fetch of adoption's own would answer with this instead.
-            await stub.setProfile(makeProfile(publicKey: ringKeyA, name: "Alice Refetched"), for: ringKeyA)
+                let adoption = Task { try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA) }
+                await waitUntil("\(name): adoption reaches the row lookup") { manager.publicKey == ringKeyA }
+                if rowLookupFinds {
+                    await stub.setProfile(makeProfile(publicKey: ringKeyA, name: "Alice"), for: ringKeyA)
+                }
+                await stub.release(request: 0)
+                await rows.value
+                // Adoption reuses a profile the row's lookup found, so a fetch of its own would answer "Alice Refetched". A
+                // row miss can mean offline, so then the fresh fetch still decides profile setup.
+                await stub.setProfile(makeProfile(publicKey: ringKeyA, name: rowLookupFinds ? "Alice Refetched" : "Alice"), for: ringKeyA)
+                // The second request is the background refresh of a reused profile, or adoption's own fetch after a miss.
+                await stub.waitForRequests(2)
+                await stub.release(request: 1)
 
-            let adopted = try await adoption.value
-            XCTAssertEqual(adopted?.name, "Alice", "Adoption reuses the tapped row's lookup that was still in flight")
-            XCTAssertFalse(manager.isProfileSetupPending)
-
-            await stub.waitForRequests(2)
-            await stub.release(request: 1)
-            await waitUntil("the background refresh finishes") { !manager.isLoadingProfile }
-            let requests = await stub.requests
-            XCTAssertEqual(requests, [ringKeyA, ringKeyA], "Only the background refresh reads again")
-        }
-    }
-
-    @MainActor
-    func testRingAdoptionFetchesWhenTheTappedRowLookupInFlightMisses() async throws {
-        try await withRestoredProfileDefaults {
-            let stub = RemoteProfileStub(holdsRequests: true)
-            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
-            let rows = Task { await manager.loadRingIdentityProfiles([bareRingKeyA]) }
-            await stub.waitForRequests(1)
-
-            let adoption = Task { try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA) }
-            await waitUntil("adoption reaches the row lookup") { manager.publicKey == ringKeyA }
-            await stub.release(request: 0)
-            await rows.value
-            // A row miss can mean offline, so the fresh fetch still decides profile setup.
-            await stub.waitForRequests(2)
-            await stub.setProfile(makeProfile(publicKey: ringKeyA, name: "Alice"), for: ringKeyA)
-            await stub.release(request: 1)
-
-            let adopted = try await adoption.value
-            XCTAssertEqual(adopted?.name, "Alice")
-            XCTAssertFalse(manager.isProfileSetupPending)
-            let requests = await stub.requests
-            XCTAssertEqual(requests, [ringKeyA, ringKeyA])
+                let adopted = try await adoption.value
+                XCTAssertEqual(adopted?.name, "Alice", name)
+                XCTAssertFalse(manager.isProfileSetupPending, name)
+                await waitUntil("\(name): the background refresh finishes") { !manager.isLoadingProfile }
+                let requests = await stub.requests
+                XCTAssertEqual(requests, [ringKeyA, ringKeyA], name)
+            }
         }
     }
 
