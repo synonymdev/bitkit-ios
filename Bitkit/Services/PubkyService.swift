@@ -365,6 +365,7 @@ actor PaykitSdkService {
         do {
             _ = try await sdk.initialize()
         } catch {
+            invalidatePaykitKeyIfNeeded(after: error)
             guard try sessionProvider.canDeferStaleSession(error: error) else { throw error }
 
             Logger.warn("Deferring stale Paykit session restoration until SDK setup completes", context: "PaykitSdkService")
@@ -656,6 +657,7 @@ actor PaykitSdkService {
                         do {
                             _ = try await sdk.blockPeer(counterparty: peer.counterparty)
                         } catch {
+                            invalidatePaykitKeyIfNeeded(after: error)
                             Logger.error("Failed to restore peer block after contact save failed: \(error)", context: "PaykitSdkService")
                         }
                     }
@@ -693,6 +695,7 @@ actor PaykitSdkService {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
+                    invalidatePaykitKeyIfNeeded(after: error)
                     Logger.warn("Failed to withdraw private endpoints before contact deletion: \(error)", context: "PaykitSdkService")
                 }
             }
@@ -1025,16 +1028,33 @@ actor PaykitSdkService {
 
     private func withSdk<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {
         try await operationLock.withLock {
-            try await refreshPaykitKey()
-            let sdk = try handle()
-            return try await operation(sdk)
+            try await withSdkErrorHandling {
+                try await refreshPaykitKey()
+                return try await operation(handle())
+            }
         }
+    }
+
+    private func withSdkErrorHandling<T>(_ operation: () async throws -> T) async throws -> T {
+        do {
+            return try await operation()
+        } catch {
+            invalidatePaykitKeyIfNeeded(after: error)
+            throw error
+        }
+    }
+
+    private func invalidatePaykitKeyIfNeeded(after error: Error) {
+        guard case PaykitError.Identity = error else { return }
+        // Refresh on the next authenticated operation; never replay a possibly completed write or lower the generation floor.
+        cachedPaykitKey = nil
+        cachedBackupState = nil
     }
 
     private func withStateRevisionTracking<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {
         try await withSdk { sdk in
             return try await Self.withBackupStateRevisionTracking(
-                readRevision: { try await sdk.backupStateRevision() },
+                readRevision: { try await self.withSdkErrorHandling { try await sdk.backupStateRevision() } },
                 readStateRevision: { try sdk.stateRevision() },
                 cachedSnapshot: self.cachedBackupState,
                 onSnapshot: { self.cachedBackupState = $0 },
@@ -1120,7 +1140,9 @@ actor PaykitSdkService {
 
     func paykitKeyForAuthorization(secretKeyHex: String) async throws -> PaykitIdentitySecretKey {
         try await operationLock.withLock {
-            try await paykitKey(for: Self.localSecretKey(fromHex: secretKeyHex))
+            try await withSdkErrorHandling {
+                try await paykitKey(for: Self.localSecretKey(fromHex: secretKeyHex))
+            }
         }
     }
 
@@ -1202,6 +1224,7 @@ actor PaykitSdkService {
             capabilities.privatePayments = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
             _ = try await sdk.publishPaykitApp(displayName: "Bitkit", capabilities: capabilities)
         } catch {
+            invalidatePaykitKeyIfNeeded(after: error)
             Logger.warn("Failed to publish Paykit app: \(error)", context: "PaykitSdkService")
         }
     }
