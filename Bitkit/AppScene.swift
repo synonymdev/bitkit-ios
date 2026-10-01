@@ -1313,13 +1313,18 @@ struct AppScene: View {
                         continue
                     }
 
+                    guard scenePhase == .active,
+                          isPinVerified || !settings.pinEnabled
+                    else {
+                        app.resetSendState()
+                        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        return
+                    }
                     guard let route = PaymentNavigationHelper.contactPaymentRoute(
                         app: app,
                         currency: currency,
                         settings: settings
-                    ), paykitPaymentRequestManager.isCurrentPresentation(request),
-                    scenePhase == .active,
-                    isPinVerified || !settings.pinEnabled
+                    ), paykitPaymentRequestManager.isCurrentPresentation(request)
                     else {
                         app.resetSendState()
                         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
