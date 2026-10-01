@@ -194,6 +194,15 @@ class ContactsManager: ObservableObject {
         pendingImportContacts = []
     }
 
+    /// Clears the pending import once an import of it finishes and returns whether it was still pending. An import
+    /// outlives its screens and leaving the import flow discards the pending import, so false means the user left and
+    /// must not be taken to Pay Contacts.
+    func completePendingImport() -> Bool {
+        guard hasPendingImport else { return false }
+        clearPendingImport()
+        return true
+    }
+
     // MARK: - Load Contacts
 
     func loadContactsIfNeeded(for publicKey: String) async throws {

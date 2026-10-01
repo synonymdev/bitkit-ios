@@ -930,6 +930,20 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(shouldDiscardPendingImport(currentRoute: .contacts, destination: .profile))
     }
 
+    func testFinishedImportOpensPayContactsOnlyWhileItsImportIsStillPending() {
+        let manager = ContactsManager()
+        manager.pendingImportProfile = makeProfile(publicKey: "pubky-owner")
+        manager.pendingImportContacts = [makeContact(publicKey: contactProfileKey)]
+        XCTAssertTrue(manager.completePendingImport(), "An import that finishes on the import screens opens Pay Contacts")
+        XCTAssertFalse(manager.hasPendingImport)
+
+        manager.pendingImportProfile = makeProfile(publicKey: "pubky-owner")
+        manager.pendingImportContacts = [makeContact(publicKey: contactProfileKey)]
+        XCTAssertTrue(shouldDiscardPendingImport(currentRoute: .contactImportOverview, destination: .settings))
+        manager.clearPendingImport()
+        XCTAssertFalse(manager.completePendingImport(), "An import that finishes after the user left must not pull them away")
+    }
+
     func testDeleteAllContactsThrowsWithoutActiveSession() async {
         let manager = ContactsManager()
         manager.contacts = [
