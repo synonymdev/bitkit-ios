@@ -270,6 +270,10 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
         "revision"
     }
 
+    override func stateRevision() throws -> String? {
+        nil
+    }
+
     override func paymentRequests() async throws -> [PaymentRequestRecord] {
         requests
     }

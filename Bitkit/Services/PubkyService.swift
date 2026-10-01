@@ -317,6 +317,11 @@ enum PubkyService {
 actor PaykitSdkService {
     typealias BootstrapFactory = (String, PubkyClientConfig) throws -> PubkySessionBootstrap
 
+    struct BackupStateSnapshot {
+        let stateRevision: String
+        let backupRevision: String
+    }
+
     static let shared = PaykitSdkService()
     private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
 
@@ -336,6 +341,8 @@ actor PaykitSdkService {
     private var nextIdentityRepublishAt = Date.distantPast
     private var lastIdentityRepublishAt = Date.distantPast
     private var sdk: PaykitSdk?
+    private var cachedPaykitKey: (publicKey: String, generation: UInt64)?
+    private var cachedBackupState: BackupStateSnapshot?
 
     init(
         sdkFactory: (() throws -> PaykitSdk)? = nil,
@@ -353,7 +360,7 @@ actor PaykitSdkService {
     }
 
     private func initializeLocked() async throws {
-        try await refreshPaykitKey()
+        try await refreshPaykitKey(force: true)
         var sdk = try handle()
         do {
             _ = try await sdk.initialize()
@@ -1028,6 +1035,9 @@ actor PaykitSdkService {
         try await withSdk { sdk in
             return try await Self.withBackupStateRevisionTracking(
                 readRevision: { try await sdk.backupStateRevision() },
+                readStateRevision: { try sdk.stateRevision() },
+                cachedSnapshot: self.cachedBackupState,
+                onSnapshot: { self.cachedBackupState = $0 },
                 onChange: { self.markWalletBackupDataChanged() },
                 operation: { try await operation(sdk) }
             )
@@ -1036,17 +1046,42 @@ actor PaykitSdkService {
 
     static func withBackupStateRevisionTracking<T>(
         readRevision: () async throws -> String,
+        readStateRevision: () throws -> String? = { nil },
+        cachedSnapshot: BackupStateSnapshot? = nil,
+        onSnapshot: (BackupStateSnapshot?) -> Void = { _ in },
         onChange: () async -> Void,
         operation: () async throws -> T
     ) async throws -> T {
-        let previousRevision = try? await readRevision()
+        let observedStateRevision = try? readStateRevision()
+        let previousRevision: String? = if let cachedSnapshot, observedStateRevision == cachedSnapshot.stateRevision {
+            cachedSnapshot.backupRevision
+        } else {
+            try? await readRevision()
+        }
+        let previousStateRevision = try? readStateRevision()
         let result: Result<T, Error>
         do {
             result = try await .success(operation())
         } catch {
             result = .failure(error)
         }
+        let nextStateRevision = try? readStateRevision()
+        if case .success = result,
+           let previousStateRevision,
+           previousStateRevision == nextStateRevision,
+           let previousRevision
+        {
+            onSnapshot(BackupStateSnapshot(stateRevision: previousStateRevision, backupRevision: previousRevision))
+            return try result.get()
+        }
+
+        // An unconfirmed remote write can fail without advancing the local revision.
         let nextRevision = try? await readRevision()
+        if case .success = result, let stateRevision = try? readStateRevision(), let nextRevision {
+            onSnapshot(BackupStateSnapshot(stateRevision: stateRevision, backupRevision: nextRevision))
+        } else {
+            onSnapshot(nil)
+        }
         if previousRevision == nil || nextRevision == nil || previousRevision != nextRevision {
             await onChange()
         }
@@ -1059,11 +1094,28 @@ actor PaykitSdkService {
 
     private func resetRuntime() {
         sdk = nil
+        cachedPaykitKey = nil
+        cachedBackupState = nil
     }
 
-    private func refreshPaykitKey() async throws {
-        guard let root = try sessionProvider.loadLocalSecretKey() else { return }
-        try await sessionProvider.setPaykitIdentitySecretKey(paykitKey(for: root))
+    private func refreshPaykitKey(force: Bool = false) async throws {
+        if force {
+            cachedPaykitKey = nil
+        }
+        guard let root = try sessionProvider.loadLocalSecretKey() else {
+            cachedPaykitKey = nil
+            return
+        }
+        let publicKey = try Paykit.pubkyPublicKeyFromSecret(localSecretKey: root)
+        let savedGeneration = try Keychain.load(key: .paykitKeyGeneration(publicKey: publicKey))
+            .map { try JSONDecoder().decode(UInt64.self, from: $0) }
+        if let cachedPaykitKey, cachedPaykitKey.publicKey == publicKey, cachedPaykitKey.generation == savedGeneration {
+            return
+        }
+        cachedPaykitKey = nil
+        let key = try await paykitKey(for: root)
+        sessionProvider.setPaykitIdentitySecretKey(key)
+        cachedPaykitKey = (publicKey, key.keyGeneration())
     }
 
     func paykitKeyForAuthorization(secretKeyHex: String) async throws -> PaykitIdentitySecretKey {

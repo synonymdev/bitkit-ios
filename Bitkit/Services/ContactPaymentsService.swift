@@ -82,6 +82,13 @@ enum ContactPaymentsService {
     ) async throws {
         enableAllPaymentOptions(defaults: defaults)
 
+        if !enabled {
+            if let error = await disable(operations: operations, defaults: defaults) {
+                throw error
+            }
+            return
+        }
+
         let previousState = StoredState(
             sharesPublicEndpoints: defaults.bool(forKey: PublicPaykitService.publishingEnabledKey),
             sharesPrivateEndpoints: defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey),
@@ -90,18 +97,13 @@ enum ContactPaymentsService {
             privateCleanupPending: defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey)
         )
 
-        var privateCleanupError: Error?
         do {
-            if enabled {
-                try await enable(
-                    contactPublicKeys: contactPublicKeys,
-                    canUsePrivatePayments: canUsePrivatePayments,
-                    operations: operations,
-                    defaults: defaults
-                )
-            } else {
-                privateCleanupError = try await disable(operations: operations, defaults: defaults)
-            }
+            try await enable(
+                contactPublicKeys: contactPublicKeys,
+                canUsePrivatePayments: canUsePrivatePayments,
+                operations: operations,
+                defaults: defaults
+            )
         } catch {
             await restore(
                 previousState,
@@ -111,9 +113,6 @@ enum ContactPaymentsService {
                 defaults: defaults
             )
             throw error
-        }
-        if let privateCleanupError {
-            throw privateCleanupError
         }
     }
 
@@ -150,14 +149,14 @@ enum ContactPaymentsService {
     }
 
     @MainActor
-    private static func disable(operations: Operations, defaults: UserDefaults) async throws -> Error? {
-        var privateCleanupError: Error?
+    private static func disable(operations: Operations, defaults: UserDefaults) async -> Error? {
+        var cleanupError: Error?
         do {
             try await operations.removePrivateEndpoints()
             operations.setPrivateCleanupPending(false)
         } catch {
             operations.setPrivateCleanupPending(true)
-            privateCleanupError = error
+            cleanupError = error
         }
 
         defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
@@ -169,9 +168,9 @@ enum ContactPaymentsService {
             operations.setPublicCleanupPending(false)
         } catch {
             operations.setPublicCleanupPending(true)
-            throw error
+            cleanupError = cleanupError ?? error
         }
-        return privateCleanupError
+        return cleanupError
     }
 
     @MainActor
