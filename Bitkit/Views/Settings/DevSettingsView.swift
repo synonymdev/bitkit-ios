@@ -15,6 +15,7 @@ struct DevSettingsView: View {
     @EnvironmentObject var notificationManager: PushNotificationManager
     @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     @State private var showPaykitWarning = false
 
@@ -228,6 +229,7 @@ struct DevSettingsView: View {
             ForEach(SubscriptionClock.offsetDaysPresets, id: \.self) { days in
                 Button(Self.subscriptionClockOffsetLabel(days)) {
                     subscriptionClockOffsetDays = days
+                    Task { await paymentRequests.refresh() }
                 }
                 .accessibilityIdentifier("SubscriptionClockOffset-\(days)")
             }
@@ -309,5 +311,6 @@ struct DevSettingsView: View {
         .environmentObject(NavigationViewModel())
         .environmentObject(WalletViewModel())
         .environmentObject(WidgetsViewModel())
+        .environment(PaykitPaymentRequestManager())
         .preferredColorScheme(.dark)
 }

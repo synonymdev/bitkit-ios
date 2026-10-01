@@ -703,6 +703,7 @@ actor PaykitSubscriptionNotificationScheduler {
     private let center: any PaykitSubscriptionNotificationCenter
     private var generation = 0
     private var retainedIdentifiers: Set<String> = []
+    private var lastClockOffset: TimeInterval?
 
     init(center: any PaykitSubscriptionNotificationCenter = SystemPaykitSubscriptionNotificationCenter()) {
         self.center = center
@@ -714,29 +715,53 @@ actor PaykitSubscriptionNotificationScheduler {
         pendingRequestIds: Set<PaykitPaymentRequest.ID>,
         payerIdentity: String,
         notificationsEnabled: Bool,
-        now: Date
+        now: Date,
+        clockOffset: TimeInterval = 0
     ) async {
         generation += 1
         let currentGeneration = generation
-        let notifications: [(PaykitSubscription, PaykitBillingPeriod)] = notificationsEnabled ? Array(subscriptions
-            .filter {
-                $0.isPayer &&
-                    $0.isActive(at: now) &&
-                    !$0.hasPaymentDeadline &&
-                    $0.recurrence.unit.isSupported &&
-                    acceptedAt[$0.id] != nil
+        let realNow = now.addingTimeInterval(-clockOffset)
+        let previousClockOffset = lastClockOffset
+        lastClockOffset = clockOffset
+        let activeSubscriptions = subscriptions.filter {
+            $0.isPayer &&
+                $0.isActive(at: now) &&
+                !$0.hasPaymentDeadline &&
+                $0.recurrence.unit.isSupported &&
+                acceptedAt[$0.id] != nil
+        }
+        // A trigger is a real date, so a period scheduled on the subscription clock fires at its start minus the offset.
+        var notifications: [(subscription: PaykitSubscription, period: PaykitBillingPeriod, fireDate: Date)] = []
+        if notificationsEnabled {
+            notifications = activeSubscriptions
+                .flatMap { subscription in
+                    subscription.recurrence.upcomingPeriods(
+                        after: now,
+                        limit: Self.maximumNotifications
+                    ).map { (subscription, $0, $0.startsAt.addingTimeInterval(-clockOffset)) }
+                }
+                .sorted { $0.1.startsAt < $1.1.startsAt }
+                .prefix(Self.maximumNotifications)
+                .map { $0 }
+            // Moving the clock can make a period due that no pending trigger will ever announce: notify it now.
+            if let previousClockOffset, previousClockOffset != clockOffset {
+                let previousNow = realNow.addingTimeInterval(previousClockOffset)
+                for subscription in activeSubscriptions {
+                    guard let acceptedAt = acceptedAt[subscription.id] else { continue }
+                    for request in subscription.requests(through: now, acceptedAt: acceptedAt)
+                        where pendingRequestIds.contains(request.id) {
+                        guard let period = request.billingPeriod,
+                              period.startsAt > previousNow,
+                              period.startsAt <= now
+                        else { continue }
+                        notifications.append((subscription, period, realNow.addingTimeInterval(2)))
+                    }
+                }
             }
-            .flatMap { subscription in
-                subscription.recurrence.upcomingPeriods(
-                    after: now,
-                    limit: Self.maximumNotifications
-                ).map { (subscription, $0) }
-            }
-            .sorted { $0.1.startsAt < $1.1.startsAt }
-            .prefix(Self.maximumNotifications)) : []
+        }
 
         let desiredIdentifiers = Set(notifications.map {
-            PaykitSubscriptionNotificationIdentifier.identifier(identity: payerIdentity, subscription: $0.0, period: $0.1)
+            PaykitSubscriptionNotificationIdentifier.identifier(identity: payerIdentity, subscription: $0.subscription, period: $0.period)
         })
         let unpaidIdentifiers: Set<String> = notificationsEnabled ? Set(pendingRequestIds.compactMap {
             PaykitSubscriptionNotificationIdentifier.identifier(identity: payerIdentity, requestId: $0)
@@ -753,15 +778,22 @@ actor PaykitSubscriptionNotificationScheduler {
             }
         )
 
-        for (subscription, period) in notifications {
+        for (subscription, period, fireDate) in notifications {
             guard generation == currentGeneration else { return }
             let identifier = PaykitSubscriptionNotificationIdentifier.identifier(
                 identity: payerIdentity,
                 subscription: subscription,
                 period: period
             )
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+            let date = Date(timeIntervalSince1970: ceil(fireDate.timeIntervalSince1970))
+            let components = calendar.dateComponents([.calendar, .timeZone, .year, .month, .day, .hour, .minute, .second], from: date)
             guard !pending.contains(where: {
-                $0.identifier == identifier && $0.trigger is UNCalendarNotificationTrigger
+                guard $0.identifier == identifier,
+                      let scheduled = ($0.trigger as? UNCalendarNotificationTrigger)?.dateComponents
+                else { return false }
+                return [.year, .month, .day, .hour, .minute, .second].allSatisfy { scheduled.value(for: $0) == components.value(for: $0) }
             }) else { continue }
             let content = UNMutableNotificationContent()
             content.title = t("subscriptions__payment_due_title")
@@ -775,10 +807,6 @@ actor PaykitSubscriptionNotificationScheduler {
                 "counterparty_receiver_path": subscription.counterpartyReceiverPath,
                 "billing_period_starts_at": PaykitSubscriptionTimestamp.string(from: period.startsAt),
             ]
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-            let date = Date(timeIntervalSince1970: ceil(period.startsAt.timeIntervalSince1970))
-            let components = calendar.dateComponents([.calendar, .timeZone, .year, .month, .day, .hour, .minute, .second], from: date)
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             let request = UNNotificationRequest(
                 identifier: identifier,
