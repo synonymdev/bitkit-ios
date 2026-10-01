@@ -236,8 +236,8 @@ struct ContactDetailView: View {
     }
 
     /// Shows the change at once, then saves it, one tag change at a time, over the contact's latest profile. It first
-    /// waits for a profile the row is still waiting for, so a tag change never saves a label-only row over the contact's
-    /// bio, links and avatar.
+    /// waits for the lookup of a profile the row is still waiting for, so a tag change keeps the bio, links and avatar
+    /// that lookup finds.
     private func updateTags(_ transform: @escaping ([String]) -> [String]) {
         guard let current = profile else { return }
         profile = current.withTags(transform(current.tags))
