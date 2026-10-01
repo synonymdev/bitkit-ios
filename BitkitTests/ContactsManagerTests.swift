@@ -857,6 +857,69 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(Array(allLanes.dropFirst(importLanes.count)), [.bulk], "The Contacts list still refreshes its profiles in the background")
     }
 
+    func testContactsReloadShowsImportedProfilesAtOnceButStillLooksPlaceholdersUp() async throws {
+        let published = Bitkit.PubkyProfile(
+            publicKey: contactProfileKey, name: "Alice", bio: "Hello", imageUrl: "pubky://alice/avatar", links: [], status: nil
+        )
+        let manager = ContactsManager(
+            fetchFollows: { _ in [contactProfileKey, unresolvedFollowKey] },
+            fetchRemoteProfile: { publicKey, _ in
+                guard publicKey == contactProfileKey else { throw profileTransportError }
+                return published
+            }
+        )
+        await manager.prepareImport(profile: nil, publicKey: "owner")
+        let placeholderName = Bitkit.PubkyProfile.placeholder(publicKey: unresolvedFollowKey).name
+        XCTAssertEqual(Set(manager.pendingImportContacts.map(\.displayName)), ["Alice", placeholderName])
+        try await manager.importContacts(contacts: manager.pendingImportContacts) { _, _ in }
+
+        let bulk = HeldProfileLookups(profiles: [:])
+        await bulk.hold()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Alice"), unprofiledRecord(key: unresolvedFollowKey, label: placeholderName)]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+
+        let alice = try XCTUnwrap(manager.contacts.first { $0.publicKey == contactProfileKey })
+        XCTAssertEqual(alice.profile.imageUrl, "pubky://alice/avatar", "An imported profile shows before the background refresh reaches it")
+        XCTAssertEqual(alice.profile.bio, "Hello")
+        let interactive = ContactProfileFetchStub([.failure(profileTransportError)])
+        await manager.resolvePendingContactProfile(publicKey: unresolvedFollowKey) { try await interactive.fetch($0) }
+        let attempts = await interactive.attempts
+        XCTAssertEqual(attempts, 1, "A follow imported as a placeholder must still have its profile looked up before an edit")
+        await bulk.release()
+        await manager.waitForProfileRefreshForTesting()
+    }
+
+    func testImportFinishingAfterResetDoesNotRememberItsProfiles() async throws {
+        let published = Bitkit.PubkyProfile(
+            publicKey: contactProfileKey, name: "Alice", bio: "Hello", imageUrl: "pubky://alice/avatar", links: [], status: nil
+        )
+        let manager = ContactsManager()
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { [] }, fetchRemoteProfile: { _ in nil })
+        let saves = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        await saves.hold()
+        let importTask = Task {
+            try await manager.importContacts(contacts: [Bitkit.PubkyContact(publicKey: contactProfileKey, profile: published)]) { key, _ in
+                _ = try await saves.fetch(key)
+            }
+        }
+        while await saves.heldCount < 1 {
+            await Task.yield()
+        }
+
+        manager.reset()
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { [] }, fetchRemoteProfile: { _ in nil })
+        await saves.release()
+        try await importTask.value
+
+        let bulk = HeldProfileLookups(profiles: [:])
+        await bulk.hold()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Alice")]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+        XCTAssertNil(manager.contacts.first?.profile.imageUrl, "An import from before the reset must not seed the next session's profiles")
+        await bulk.release()
+        await manager.waitForProfileRefreshForTesting()
+    }
+
     func testShouldDiscardPendingImportWhenLeavingImportFlow() {
         XCTAssertTrue(shouldDiscardPendingImport(currentRoute: .contactImportOverview, destination: .contacts))
         XCTAssertTrue(shouldDiscardPendingImport(currentRoute: .contactImportSelect, destination: nil))

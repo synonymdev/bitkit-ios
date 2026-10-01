@@ -168,6 +168,11 @@ struct PubkyProfile {
         )
     }
 
+    /// Holds nothing beyond what `placeholder(publicKey:)` makes from the key, as for a contact whose lookup failed.
+    var isPlaceholder: Bool {
+        name == Self.truncate(publicKey) && bio.isEmpty && imageUrl == nil && links.isEmpty && tags.isEmpty && status == nil
+    }
+
     static func forDisplay(publicKey: String, name: String?, imageUrl: String?) -> PubkyProfile {
         PubkyProfile(
             publicKey: publicKey,

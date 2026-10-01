@@ -509,12 +509,15 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Import Contacts
 
+    /// Remembers the profiles it saves for this session, so the Contacts list shows them at once rather than only their
+    /// saved labels. A placeholder for a follow whose lookup failed is not remembered, so that profile is still looked up.
     func importContacts(
         contacts selected: [PubkyContact],
         saveContact: (String, String) async throws -> Void = { publicKey, label in
             _ = try await PubkyService.saveContact(publicKey: publicKey, label: label, restorePrivateConnection: true)
         }
     ) async throws {
+        let profilesGeneration = resolvedProfilesGeneration
         var imported: [PubkyContact] = []
         var existingKeys = Set(contacts.map(\.publicKey))
         var firstError: Error?
@@ -539,6 +542,11 @@ class ContactsManager: ObservableObject {
         }
 
         try Task.checkCancellation()
+        if profilesGeneration == resolvedProfilesGeneration {
+            for contact in imported where !contact.profile.isPlaceholder {
+                rememberResolvedProfile(contact.profile, for: contact.publicKey)
+            }
+        }
         let currentKeys = Set(contacts.map(\.publicKey))
         contacts.append(contentsOf: imported.filter { !currentKeys.contains($0.publicKey) })
         contacts.sort(by: Self.isOrderedByName)
