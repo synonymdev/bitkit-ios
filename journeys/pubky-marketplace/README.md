@@ -1,7 +1,7 @@
 # Pubky marketplace wallet leg
 
-This suite covers the two-wallet Bitkit leg of a Pubky marketplace purchase: a seller grants a
-watch-only account claim, a linked buyer receives the resulting Payment Request, and the buyer pays
+This suite covers the two-wallet Bitkit leg of a Pubky marketplace purchase: a seller grants
+Paykit access and a watch-only account, a linked buyer receives the Payment Request, and the buyer pays
 the request on regtest through confirmation. It does not cover marketplace browsing, Locks content
 delivery, fiat payment, or Hypercolor.
 
@@ -24,8 +24,8 @@ the fixture state and must provide:
   delivery state, returns the derived address and expected amount, mines exactly one authorized
   block, and reports signed Paykit and marketplace completion state.
 
-The request and endpoint must satisfy the issuer contract from iOS issue
-[#713](https://github.com/synonymdev/bitkit-ios/issues/713): lowercase `btc`, a network-correct
+The request and endpoint must satisfy the
+[issuer contract](../../Docs/paykit-issuer-interoperability.md): lowercase `btc`, a network-correct
 `btc-regtest-*` endpoint identifier, and a JSON endpoint payload with a non-empty string `value`.
 The fixture must keep watch-only account material and spending authority separate. Evidence records
 the claimed account xpub and account index while omitting wallet seed material and tokens.
@@ -42,17 +42,7 @@ E2E_HOMESERVER_PUBKY=<homeserver-pubky>"
 No stored Electrum override is required: `E2E_BUILD` with the local backend resolves Electrum to
 `tcp://127.0.0.1:60001`. Repeat the command for the seller and buyer simulator identifiers.
 
-## Required app changes
-
-The full journey depends on the sibling work from the parent epic:
-
-- [#713](https://github.com/synonymdev/bitkit-ios/issues/713) defines the issuer interop contract.
-- [#714](https://github.com/synonymdev/bitkit-ios/issues/714) supplies the stable per-request Pay
-  action identifier used by this journey.
-- [#715](https://github.com/synonymdev/bitkit-ios/issues/715) opens the fixture's `pubkyauth` URL
-  directly in Bitkit.
-- [#717](https://github.com/synonymdev/bitkit-ios/issues/717) prevents an Electrum-rejected broadcast
-  from reaching `SendSuccess`.
+## Wallet setup
 
 Before opening the fixture setup auth URL, use the header profile button and Create path to give
 each wallet a Pubky identity. A Ring identity works when its root secret is available through
@@ -90,7 +80,7 @@ artifacts at each boundary:
 
 | Boundary | Bitkit evidence | Integration evidence |
 | --- | --- | --- |
-| Watch-only claim | `PubkyAuthWatchOnlyConsent`, `PubkyAuthWatchOnlyApprove`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | Setup completion and the claimed xpub/account index, with no spending key |
+| Combined claim | `PubkyAuthWatchOnlyConsent`, `PubkyAuthWatchOnlyApprove`, `PubkyAuthPaykitAccess`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | Setup completion and the claimed xpub/account index, with no spending key |
 | Linked buyer | Enabled `ContactPaymentsToggle`, `Contact_<seller-public-key>`, and `Contact_<buyer-public-key>` snapshots | Seller and buyer peer-link state |
 | Incoming request | `ReviewAmount`, `PaymentRequestsBell`, `PaymentRequestsSheet`, and `PaymentRequestRow-<payment-request-id>-one-time` snapshots showing the automatic review, seller, amount, and note when present | Delivery record and exact Payment Request id |
 | Payment approval | `PaymentRequestPay-<payment-request-id>`, `ReviewAmount`, and `ReviewContactRecipient` snapshots | Derived regtest address and expected amount |

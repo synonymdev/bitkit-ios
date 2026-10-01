@@ -8,7 +8,7 @@
     <action>Verify From (id "PaymentRequestFrom") shows the requester's contact name</action>
     <action>Verify For (id "PaymentRequestFor") shows "Lunch last week"</action>
     <action>Tap Show details (id "SendConfirmToggleDetails")</action>
-    <action>Verify From (id "PaymentRequestFrom") and For (id "PaymentRequestFor") are no longer shown, and the recipient (id "ReviewContactRecipient") under Contact is the requester's contact</action>
+    <action>Verify From (id "PaymentRequestFrom") and For (id "PaymentRequestFor") are hidden in details, and the recipient (id "ReviewContactRecipient") under Contact is the requester's contact</action>
     <action>Verify the invoice note (id "PaymentRequestInvoiceNote") shows "Lunch last week"</action>
     <action>Close the Payment Request confirmation screen without paying</action>
     <action>On the requester, send the payer contact a Payment Request for 5,000 sats with no note</action>
