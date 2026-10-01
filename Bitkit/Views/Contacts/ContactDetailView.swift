@@ -240,26 +240,14 @@ struct ContactDetailView: View {
     /// bio, links and avatar.
     private func updateTags(_ transform: @escaping ([String]) -> [String]) {
         guard let current = profile else { return }
-        profile = Self.profile(current, withTags: transform(current.tags))
+        profile = current.withTags(transform(current.tags))
         let previousUpdate = tagUpdate
         tagUpdate = Task {
             await previousUpdate?.value
             await contactsManager.resolvePendingContactProfile(publicKey: publicKey)
             let latest = contactsManager.contacts.first(where: { $0.publicKey == publicKey })?.profile ?? current
-            await persistContact(Self.profile(latest, withTags: transform(latest.tags)))
+            await persistContact(latest.withTags(transform(latest.tags)))
         }
-    }
-
-    private static func profile(_ profile: PubkyProfile, withTags tags: [String]) -> PubkyProfile {
-        PubkyProfile(
-            publicKey: profile.publicKey,
-            name: profile.name,
-            bio: profile.bio,
-            imageUrl: profile.imageUrl,
-            links: profile.links,
-            tags: tags,
-            status: profile.status
-        )
     }
 
     private func persistContact(_ profile: PubkyProfile) async {

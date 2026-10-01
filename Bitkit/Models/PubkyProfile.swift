@@ -179,6 +179,10 @@ struct PubkyProfile {
         )
     }
 
+    func withTags(_ tags: [String]) -> PubkyProfile {
+        PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
+    }
+
     func withNameFallback(_ fallbackName: String?) -> PubkyProfile {
         guard name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let fallbackName,
