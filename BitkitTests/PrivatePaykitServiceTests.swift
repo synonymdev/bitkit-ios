@@ -267,6 +267,37 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(decoded.paykitSdkBackupState, backup.paykitSdkBackupState)
     }
 
+    func testWalletRestoreRetainsRecoveryStateAndConsumedPaymentLists() async throws {
+        let keys: [KeychainEntryType] = [.paykitRecoveryBackup, .paykitSession, .pubkySecretKey]
+        let savedValues = try keys.map { try Keychain.load(key: $0) }
+        addTeardownBlock {
+            for (key, value) in zip(keys, savedValues) {
+                if let value {
+                    try Keychain.upsert(key: key, data: value)
+                } else {
+                    try Keychain.delete(key: key)
+                }
+            }
+        }
+        try Keychain.delete(key: .paykitSession)
+        try Keychain.delete(key: .pubkySecretKey)
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let backup = PrivatePaykitService.Backup(
+            sdkState: "opaque recovery state",
+            consumedPrivatePaymentListVersions: [publicKey: 7]
+        )
+        let encoded = try String(decoding: JSONEncoder().encode(backup), as: UTF8.self)
+        let service = PrivatePaykitService()
+
+        try await service.restoreBackup(encoded)
+
+        XCTAssertEqual(try Keychain.loadString(key: .paykitRecoveryBackup), backup.sdkState)
+        let state = await service.testContactState(publicKey: publicKey)
+        XCTAssertEqual(state?.consumedPrivatePaymentListVersion, 7)
+        XCTAssertNil(try Keychain.load(key: .paykitSession))
+        XCTAssertNil(try Keychain.load(key: .pubkySecretKey))
+    }
+
     func testReservationStoreBacksUpRestoredCeiling() async throws {
         let suiteName = "PrivatePaykitServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

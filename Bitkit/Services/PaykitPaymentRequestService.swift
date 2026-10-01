@@ -978,7 +978,7 @@ struct PaykitPaymentRequestService {
     }
 }
 
-protocol PaykitPaymentRequestPresentationStoring {
+protocol PaykitPaymentRequestIdStoring {
     func load(identity: String) throws -> Set<PaykitPaymentRequest.ID>
     func save(_ ids: Set<PaykitPaymentRequest.ID>, identity: String) throws
 }
@@ -1018,13 +1018,15 @@ enum PaykitPaymentRequestPresentationCoordinator {
     }
 }
 
-struct PaykitPaymentRequestPresentationStore: PaykitPaymentRequestPresentationStoring {
+struct PaykitPaymentRequestIdStore: PaykitPaymentRequestIdStoring {
+    var key: KeychainEntryType = .paykitPresentedPaymentRequests
+
     private struct State: Codable {
         var idsByIdentity: [String: [PaykitPaymentRequest.ID]]
     }
 
     func load(identity: String) throws -> Set<PaykitPaymentRequest.ID> {
-        guard let data = try Keychain.load(key: .paykitPresentedPaymentRequests) else { return [] }
+        guard let data = try Keychain.load(key: key) else { return [] }
         let state = try JSONDecoder().decode(State.self, from: data)
         guard let normalizedIdentity = PubkyPublicKeyFormat.normalized(identity) else { return [] }
         return Set(state.idsByIdentity[normalizedIdentity] ?? [])
@@ -1032,13 +1034,13 @@ struct PaykitPaymentRequestPresentationStore: PaykitPaymentRequestPresentationSt
 
     func save(_ ids: Set<PaykitPaymentRequest.ID>, identity: String) throws {
         guard let normalizedIdentity = PubkyPublicKeyFormat.normalized(identity) else { return }
-        var state: State = if let data = try Keychain.load(key: .paykitPresentedPaymentRequests) {
+        var state: State = if let data = try Keychain.load(key: key) {
             try JSONDecoder().decode(State.self, from: data)
         } else {
             State(idsByIdentity: [:])
         }
         state.idsByIdentity[normalizedIdentity] = Array(ids)
-        try Keychain.upsert(key: .paykitPresentedPaymentRequests, data: JSONEncoder().encode(state))
+        try Keychain.upsert(key: key, data: JSONEncoder().encode(state))
     }
 }
 
@@ -1063,7 +1065,8 @@ final class PaykitPaymentRequestManager {
     private(set) var requestedPresentationUnavailableTrigger = 0
 
     private let service: PaykitPaymentRequestService
-    private let presentationStore: any PaykitPaymentRequestPresentationStoring
+    private let presentationStore: any PaykitPaymentRequestIdStoring
+    private let acceptanceStore: any PaykitPaymentRequestIdStoring
     private let subscriptionStateStore: any PaykitSubscriptionStateStoring
     private let subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler
     private let completedPaymentProofKinds: @Sendable (String) async -> [PaykitPaymentRequest.ID: PaykitPaymentProofKind]
@@ -1078,6 +1081,7 @@ final class PaykitPaymentRequestManager {
     private let isAvailable: @MainActor () -> Bool
     private var processingRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var approvedPaymentRequestIds: Set<PaykitPaymentRequest.ID> = []
+    private var acceptedRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentedRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentationRetryAttempts: [PaykitPaymentRequest.ID: Int] = [:]
     private var presentationRetryDeadlines: [PaykitPaymentRequest.ID: ContinuousClock.Instant] = [:]
@@ -1117,7 +1121,8 @@ final class PaykitPaymentRequestManager {
 
     init(
         service: PaykitPaymentRequestService? = nil,
-        presentationStore: any PaykitPaymentRequestPresentationStoring = PaykitPaymentRequestPresentationStore(),
+        presentationStore: any PaykitPaymentRequestIdStoring = PaykitPaymentRequestIdStore(),
+        acceptanceStore: any PaykitPaymentRequestIdStoring = PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests),
         subscriptionStateStore: any PaykitSubscriptionStateStoring = PaykitSubscriptionStateStore(),
         subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler = PaykitSubscriptionNotificationScheduler(),
         completedPaymentProofKinds: @escaping @Sendable (String) async -> [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = { identity in
@@ -1144,6 +1149,7 @@ final class PaykitPaymentRequestManager {
     ) {
         self.service = service ?? PaykitPaymentRequestService(now: now, logWarning: logWarning)
         self.presentationStore = presentationStore
+        self.acceptanceStore = acceptanceStore
         self.subscriptionStateStore = subscriptionStateStore
         self.subscriptionNotificationScheduler = subscriptionNotificationScheduler
         self.completedPaymentProofKinds = completedPaymentProofKinds
@@ -1160,6 +1166,13 @@ final class PaykitPaymentRequestManager {
         guard !PubkyPublicKeyFormat.matches(activeIdentity, normalizedIdentity) else { return }
         if activeIdentity != nil {
             clear()
+        }
+        do {
+            acceptedRequestIds = try acceptanceStore.load(identity: normalizedIdentity)
+        } catch {
+            acceptedRequestIds = []
+            logWarning("Failed to restore locally accepted Paykit payment requests: \(error)")
+            return
         }
         do {
             presentedRequestIds = try presentationStore.load(identity: normalizedIdentity)
@@ -1465,8 +1478,16 @@ final class PaykitPaymentRequestManager {
     }
 
     func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
+        let generation = stateGeneration
         do {
+            guard let identity = activeIdentity, isApprovedForPayment(request) else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
             try await service.ensurePaymentAllowed(request)
+            guard generation == stateGeneration,
+                  PubkyPublicKeyFormat.matches(activeIdentity, identity),
+                  isApprovedForPayment(request)
+            else { throw PaykitPaymentRequestError.requestUnavailable }
         } catch {
             approvedPaymentRequestIds.remove(request.id)
             throw error
@@ -1477,6 +1498,7 @@ final class PaykitPaymentRequestManager {
         _ request: PaykitPaymentRequest,
         consumePrivatePaymentList: () async throws -> Void = {}
     ) async throws {
+        guard let identity = activeIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
         do {
             if isApprovedForPayment(request) {
                 try await ensurePaymentAllowed(request)
@@ -1488,11 +1510,20 @@ final class PaykitPaymentRequestManager {
                 markApprovedForPayment: true,
                 preservePending: !request.requiresAcceptance
             ) {
-                try await ensurePaymentAllowed($0)
+                guard $0.billingPeriod != nil || $0.requiresAcceptance || acceptedRequestIds.contains($0.id) else {
+                    throw PaykitPaymentRequestError.requestUnavailable
+                }
+                try await service.ensurePaymentAllowed($0)
                 try await service.claimForPayment($0)
                 try await consumePrivatePaymentList()
                 if $0.requiresAcceptance {
                     try await service.accept($0)
+                    var ids = try acceptanceStore.load(identity: identity)
+                    ids.insert($0.id)
+                    try acceptanceStore.save(ids, identity: identity)
+                    if PubkyPublicKeyFormat.matches(activeIdentity, identity) {
+                        acceptedRequestIds = ids
+                    }
                 }
             }
         } catch is CancellationError {
@@ -1699,6 +1730,7 @@ final class PaykitPaymentRequestManager {
         eligibleTargets = []
         processingRequestIds = []
         approvedPaymentRequestIds = []
+        acceptedRequestIds = []
         activeIdentity = nil
         savedPublicKeys = []
         presentedRequestIds = []
@@ -1776,6 +1808,7 @@ final class PaykitPaymentRequestManager {
     func finishPayment(_ request: PaykitPaymentRequest) async {
         approvedPaymentRequestIds.remove(request.id)
         guard request.billingPeriod == nil,
+              acceptedRequestIds.contains(request.id),
               let activeIdentity,
               let acceptedRequest = historyRequests.first(where: {
                   $0.id == request.id && $0.direction == .incoming && $0.lifecycleState == .accepted
@@ -1831,6 +1864,7 @@ final class PaykitPaymentRequestManager {
         let payableStates: [Paykit.PaymentRequestLifecycleState] = pendingRequest == nil ? [.accepted] : [.proposed, .accepted]
         guard let sdkLifecycleState,
               payableStates.contains(sdkLifecycleState),
+              sdkLifecycleState != .accepted || acceptedRequestIds.contains(id),
               actionGeneration == stateGeneration
         else { return nil }
         if let pendingRequest = pendingRequests.first(where: { $0.id == id }) {
@@ -2005,7 +2039,8 @@ final class PaykitPaymentRequestManager {
                 processingRequestIds.contains($0.id) && $0.id != excludingProtectedRequestId
             }
             let oneTimePending = snapshot.incoming.filter {
-                !locallyCompletedRequestIds.contains($0.id) &&
+                ($0.requiresAcceptance || acceptedRequestIds.contains($0.id)) &&
+                    !locallyCompletedRequestIds.contains($0.id) &&
                     !locallyInFlightRequestIds.contains($0.id) &&
                     !approvedPaymentRequestIds.contains($0.id)
             }

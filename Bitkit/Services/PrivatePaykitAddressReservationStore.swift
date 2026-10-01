@@ -15,7 +15,10 @@ actor PrivatePaykitAddressReservationStore {
     private static let schemaVersion = 1
 
     private let defaults: UserDefaults
-    private var ledger: Ledger
+    private(set) var attributionRevision: UInt64 = 0
+    private var ledger: Ledger {
+        didSet { attributionRevision &+= 1 }
+    }
 
     // MARK: - Initialization
 
@@ -70,24 +73,19 @@ actor PrivatePaykitAddressReservationStore {
     // MARK: - Contact Assignments
 
     func contactPublicKey(forReservedAddress address: String) async -> String? {
+        try? await contactPublicKeyForAttribution(forReservedAddress: address)
+    }
+
+    func contactPublicKeyForAttribution(forReservedAddress address: String) async throws -> String? {
         guard !address.isEmpty else { return nil }
-
-        if let publicKey = await currentContactPublicKey(forReservedAddress: address) {
-            return publicKey
-        }
-
-        for (assignmentKey, history) in ledger.contactAssignmentHistory {
-            for assignment in history {
-                guard let addressType = LDKNode.AddressType.from(string: assignment.addressType),
-                      addressType.matchesAddressFormat(address, network: Env.network),
-                      let reservedAddress = try? await self.address(for: addressType, receiveIndex: assignment.receiveIndex),
-                      reservedAddress == address
-                else { continue }
-
-                return assignmentKey
+        for (publicKey, assignment) in contactAssignmentsForAttribution() {
+            guard let addressType = LDKNode.AddressType.from(string: assignment.addressType),
+                  addressType.matchesAddressFormat(address, network: Env.network)
+            else { continue }
+            if try await self.address(for: addressType, receiveIndex: assignment.receiveIndex) == address {
+                return publicKey
             }
         }
-
         return nil
     }
 

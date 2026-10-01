@@ -56,14 +56,14 @@ class ActivityService {
     }
 
     private var privateInvoiceContactResolver: (@Sendable (String) async -> String?)?
-    private var privateOnchainAddressContactResolver: (@Sendable (String) async -> String?)?
+    private var privateOnchainAddressContactResolver: (@Sendable (String, [String]) async -> String?)?
 
     func setPrivatePaykitContactResolvers(
         invoice: (@Sendable (String) async -> String?)?,
-        onchainAddress: (@Sendable (String) async -> String?)?
+        onchainAddresses: (@Sendable (String, [String]) async -> String?)?
     ) {
         privateInvoiceContactResolver = invoice
-        privateOnchainAddressContactResolver = onchainAddress
+        privateOnchainAddressContactResolver = onchainAddresses
     }
 
     // MARK: - Constants
@@ -639,7 +639,14 @@ class ActivityService {
             }
 
             if contact == nil {
-                contact = await privatePaykitContactPublicKey(forReservedAddress: address)
+                let details: BitkitCore.TransactionDetails? = if let transactionDetails {
+                    transactionDetails
+                } else {
+                    await fetchTransactionDetails(txid: txid)
+                }
+                if let details {
+                    contact = await privateOnchainAddressContactResolver?(address, details.outputs.compactMap(\.scriptpubkeyAddress))
+                }
             }
         }
 
@@ -931,10 +938,6 @@ class ActivityService {
     private func privatePaykitContactPublicKey(forReceivedInvoicePaymentHash paymentHash: String, direction: PaymentDirection) async -> String? {
         guard direction == .inbound else { return nil }
         return await privateInvoiceContactResolver?(paymentHash)
-    }
-
-    private func privatePaykitContactPublicKey(forReservedAddress address: String) async -> String? {
-        await privateOnchainAddressContactResolver?(address)
     }
 
     /// Sync all LDK node payments to activities
@@ -1865,7 +1868,9 @@ actor AddressSearchCoordinator {
 
         for (account, isChange, keychain) in searches {
             let addressType = account.addressType
-            let baseKey = isChange ? "addressSearch_lastUsedChangeIndex_\(addressType.stringValue)" : "addressSearch_lastUsedReceiveIndex_\(addressType.stringValue)"
+            let baseKey = isChange
+                ? "addressSearch_lastUsedChangeIndex_\(addressType.stringValue)"
+                : "addressSearch_lastUsedReceiveIndex_\(addressType.stringValue)"
             let key = account.accountIndex == 0 ? baseKey : "\(baseKey)_account\(account.accountIndex)"
             let lastUsed: UInt32? = (defaults.object(forKey: key) as? Int).flatMap {
                 guard $0 >= 0, $0 <= Int(UInt32.max) else { return nil }
@@ -1881,7 +1886,8 @@ actor AddressSearchCoordinator {
                     addresses = try await deriveAddresses(account, keychain, index, batchSize)
                 } catch {
                     Logger.warn(
-                        "Skipping \(addressType.stringValue) account \(account.accountIndex) \(isChange ? "change" : "receive") address search batch \(index): \(error)",
+                        "Skipping \(addressType.stringValue) account \(account.accountIndex) " +
+                            "\(isChange ? "change" : "receive") address search batch \(index): \(error)",
                         context: "CoreService.AddressSearch"
                     )
                     break

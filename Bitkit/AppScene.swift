@@ -234,6 +234,9 @@ struct AppScene: View {
     @State private var hwWalletManager: HwWalletManager
     @State private var calculatorInputManager = CalculatorInputManager()
     @State private var paykitPaymentRequestManager = PaykitPaymentRequestManager()
+    @State private var receivedPaymentBackfillCache = PaykitReceivedPaymentBackfillCache(
+        activityChanges: CoreService.shared.activity.activitiesChangedPublisher
+    )
     @State private var initialPaykitSyncGeneration = 0
 
     @State private var hideSplash = false
@@ -308,13 +311,27 @@ struct AppScene: View {
         _trezorManager = State(initialValue: trezorManager)
         _trezorViewModel = State(initialValue: trezorViewModel)
         _hwWalletManager = State(initialValue: hwWalletManager)
+    }
 
+    private func configurePrivatePaykitContactResolvers() {
         CoreService.shared.activity.setPrivatePaykitContactResolvers(
             invoice: { paymentHash in
                 await PrivatePaykitService.shared.contactPublicKey(forPrivateInvoicePaymentHash: paymentHash)
             },
-            onchainAddress: { address in
-                await PrivatePaykitAddressReservationStore.shared.contactPublicKey(forReservedAddress: address)
+            onchainAddresses: { @MainActor address, outputAddresses in
+                let identity = pubkyProfile.publicKey
+                let contacts = paykitPaymentRequestManager.receivedPaymentContacts
+                let reservations = PrivatePaykitAddressReservationStore.shared
+                let reservationRevision = await reservations.attributionRevision
+                guard let combined = try? await contacts.includingReservations(for: outputAddresses, lookup: {
+                    try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
+                }) else { return nil }
+                guard pubkyProfile.authState == .authenticated,
+                      PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey),
+                      contacts == paykitPaymentRequestManager.receivedPaymentContacts,
+                      await reservations.attributionRevision == reservationRevision
+                else { return nil }
+                return combined.contact(receivingAddress: address, outputAddresses: outputAddresses)
             }
         )
     }
@@ -417,6 +434,7 @@ struct AppScene: View {
     private var appEventContent: some View {
         configuredContent
             .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
+                receivedPaymentBackfillCache.invalidate()
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
                     Task {
@@ -841,6 +859,7 @@ struct AppScene: View {
 
     @Sendable
     private func setupTask() async {
+        configurePrivatePaykitContactResolvers()
         do {
             // Handle orphaned keychain before anything else
             handleOrphanedKeychain()
@@ -1104,13 +1123,20 @@ struct AppScene: View {
         if refreshMaintenance {
             await PaykitPaymentProofService.shared.reconcile()
         }
-        let identity = pubkyProfile.publicKey
+        guard let identity = pubkyProfile.publicKey else { return }
         await paykitPaymentRequestManager.refresh()
         guard pubkyProfile.authState == .authenticated,
               PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
         else { return }
+        let contacts = paykitPaymentRequestManager.receivedPaymentContacts
         do {
-            try await CoreService.shared.activity.backfillReceivedPaykitContacts(paykitPaymentRequestManager.receivedPaymentContacts)
+            try await CoreService.shared.activity.backfillReceivedPaykitContacts(
+                contacts, identity: identity, cache: receivedPaymentBackfillCache
+            ) { @MainActor in
+                pubkyProfile.authState == .authenticated &&
+                    PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey) &&
+                    contacts == paykitPaymentRequestManager.receivedPaymentContacts
+            }
         } catch {
             Logger.warn("Failed to attribute received Paykit payments: \(error)", context: "AppScene")
         }

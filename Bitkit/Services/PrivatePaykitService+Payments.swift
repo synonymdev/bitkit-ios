@@ -205,7 +205,8 @@ extension PrivatePaykitService {
             return acceptedEndpoints.isEmpty ? .noEndpoint : .notOpened
         }
         Logger.info(
-            "Opened private Paykit payment for \(PubkyPublicKeyFormat.redacted(publicKey)) using payment list version \(paymentListVersion.map(String.init) ?? "none")",
+            "Opened private Paykit payment for \(PubkyPublicKeyFormat.redacted(publicKey)) " +
+                "using payment list version \(paymentListVersion.map(String.init) ?? "none")",
             context: "PrivatePaykit"
         )
         return .opened(

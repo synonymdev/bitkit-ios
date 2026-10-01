@@ -90,4 +90,4 @@ artifacts at each boundary:
 `SendSuccess` proves backend acceptance, not confirmation. The integration fixture's chain, signed
 Paykit state, and marketplace state are the confirmation authority. Both platforms open fresh
 requests in payment review automatically, dismiss that review, and open `PaymentRequestsSheet` from
-`PaymentRequestsBell`; iOS uses the review's in-sheet back control instead of Android system back.
+`PaymentRequestsBell`; iOS uses a downward swipe from the sheet drag indicator instead of Android system back.

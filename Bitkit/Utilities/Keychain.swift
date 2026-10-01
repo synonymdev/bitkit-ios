@@ -9,6 +9,7 @@ enum KeychainEntryType {
     case paykitSession
     case paykitPendingPaymentProofs
     case paykitPresentedPaymentRequests
+    case paykitAcceptedPaymentRequests
     case paykitSubscriptionState
     case paykitKeyGeneration(publicKey: String)
     case paykitRecoveryBackup
@@ -24,6 +25,7 @@ enum KeychainEntryType {
         case .paykitSession: "paykit_session"
         case .paykitPendingPaymentProofs: "paykit_pending_payment_proofs"
         case .paykitPresentedPaymentRequests: "paykit_presented_payment_requests"
+        case .paykitAcceptedPaymentRequests: "paykit_accepted_payment_requests"
         case .paykitSubscriptionState: "paykit_subscription_state"
         case let .paykitKeyGeneration(publicKey): "paykit_key_generation_\(publicKey)"
         case .paykitRecoveryBackup: "paykit_recovery_backup"

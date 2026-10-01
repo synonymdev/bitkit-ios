@@ -637,7 +637,8 @@ extension PrivatePaykitService {
         for change in report.failedToQueue {
             let publicKey = PubkyPublicKeyFormat.normalized(change.counterparty) ?? change.counterparty
             Logger.warn(
-                "Failed to queue private Paykit endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(change.error?.redactedContext() ?? "unknown error")",
+                "Failed to queue private Paykit endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): " +
+                    "\(change.error?.redactedContext() ?? "unknown error")",
                 context: "PrivatePaykit"
             )
             firstError = firstError ?? PrivatePaykitError.privateUnavailable

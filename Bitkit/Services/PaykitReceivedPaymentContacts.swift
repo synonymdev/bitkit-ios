@@ -1,6 +1,8 @@
 import BitkitCore
+import Combine
 import Foundation
 import LDKNode
+import os
 import Paykit
 
 struct PaykitReceivedPaymentContacts: Equatable {
@@ -55,13 +57,33 @@ struct PaykitReceivedPaymentContacts: Equatable {
         return contacts.count == 1 ? contacts.first : nil
     }
 
+    func includingReservations(
+        for outputAddresses: [String],
+        lookup: (String) async throws -> String?
+    ) async rethrows -> Self {
+        var combined = self
+        for address in Set(outputAddresses) {
+            guard let reservedContact = try await lookup(address),
+                  let contact = PubkyPublicKeyFormat.normalized(reservedContact)
+            else { continue }
+            combined.onchain[address, default: []].insert(contact)
+        }
+        return combined
+    }
+
+    func contact(receivingAddress: String, outputAddresses: [String]) -> String? {
+        guard !receivingAddress.isEmpty, outputAddresses.contains(receivingAddress),
+              let contact = contact(onchainAddresses: [receivingAddress]),
+              self.contact(onchainAddresses: outputAddresses) == contact
+        else { return nil }
+        return contact
+    }
+
     func attributing(_ activity: Activity, outputAddresses: [String] = []) -> Activity? {
         switch activity {
         case var .onchain(payment):
             guard payment.txType == .received, payment.contact == nil,
-                  outputAddresses.contains(payment.address),
-                  let contact = contact(onchainAddresses: [payment.address]),
-                  self.contact(onchainAddresses: outputAddresses) == contact
+                  let contact = contact(receivingAddress: payment.address, outputAddresses: outputAddresses)
             else { return nil }
             payment.contact = contact
             payment.updatedAt = UInt64(Date().timeIntervalSince1970)
@@ -86,27 +108,102 @@ struct PaykitReceivedPaymentContacts: Equatable {
     }
 }
 
+final class PaykitReceivedPaymentBackfillCache {
+    private struct Snapshot: Equatable {
+        let identity: String
+        let contacts: PaykitReceivedPaymentContacts
+        let activityRevision: UInt64
+        let reservationRevision: UInt64
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: (revision: UInt64(0), snapshot: Snapshot?.none))
+    private var activityChanges: AnyCancellable?
+
+    init(activityChanges: AnyPublisher<Void, Never>) {
+        self.activityChanges = activityChanges.sink { [weak self] in self?.invalidate() }
+    }
+
+    func invalidate() {
+        state.withLock {
+            $0.revision &+= 1
+            $0.snapshot = nil
+        }
+    }
+
+    func scanIfNeeded(
+        identity: String,
+        contacts: PaykitReceivedPaymentContacts,
+        reservationRevision: UInt64,
+        scan: () async throws -> Bool
+    ) async rethrows {
+        let snapshot: Snapshot? = state.withLock {
+            let snapshot = Snapshot(identity: identity, contacts: contacts, activityRevision: $0.revision, reservationRevision: reservationRevision)
+            guard $0.snapshot != snapshot else { return nil }
+            $0.snapshot = nil
+            return snapshot
+        }
+        guard let snapshot, try await scan() else { return }
+        state.withLock {
+            guard $0.revision == snapshot.activityRevision else { return }
+            $0.snapshot = snapshot
+        }
+    }
+}
+
 extension ActivityService {
-    func backfillReceivedPaykitContacts(_ contacts: PaykitReceivedPaymentContacts) async throws {
-        guard !contacts.isEmpty else { return }
-        try await ServiceQueue.background(.core) {
-            let activities = try getActivities(
-                walletId: WalletScope.default, filter: .all, txType: .received,
-                tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil
-            )
-            var changed = false
-            defer { if changed { self.notifyActivitiesChanged() } }
-            for activity in activities {
-                var outputAddresses: [String] = []
-                if case let .onchain(payment) = activity {
-                    guard payment.contact == nil else { continue }
-                    guard let details = try BitkitCore.getTransactionDetails(walletId: payment.walletId, txId: payment.txId) else { continue }
-                    outputAddresses = details.outputs.compactMap(\.scriptpubkeyAddress)
-                }
-                guard let updated = contacts.attributing(activity, outputAddresses: outputAddresses) else { continue }
-                try updateActivity(activityId: activity.activityId, activity: updated)
-                changed = true
+    func backfillReceivedPaykitContacts(
+        _ contacts: PaykitReceivedPaymentContacts,
+        identity: String,
+        cache: PaykitReceivedPaymentBackfillCache,
+        isCurrent: @Sendable () async -> Bool
+    ) async throws {
+        let reservations = PrivatePaykitAddressReservationStore.shared
+        let reservationRevision = await reservations.attributionRevision
+        try await cache.scanIfNeeded(identity: identity, contacts: contacts, reservationRevision: reservationRevision) {
+            let activities = try await ServiceQueue.background(.core) {
+                try getActivities(
+                    walletId: WalletScope.default, filter: .all, txType: .received,
+                    tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil
+                )
             }
+            var changed = false
+            var complete = true
+            defer { if changed { notifyActivitiesChanged() } }
+            for activity in activities {
+                guard !Task.isCancelled, await isCurrent() else { return false }
+                var outputAddresses: [String] = []
+                var combined = contacts
+                switch activity {
+                case let .onchain(payment):
+                    guard payment.contact == nil else { continue }
+                    guard let details = try await getTransactionDetails(txid: payment.txId, walletId: payment.walletId) else {
+                        complete = false
+                        continue
+                    }
+                    outputAddresses = details.outputs.compactMap(\.scriptpubkeyAddress)
+                    guard !outputAddresses.isEmpty else {
+                        complete = false
+                        continue
+                    }
+                    combined = try await contacts.includingReservations(for: outputAddresses) {
+                        try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
+                    }
+                case let .lightning(payment):
+                    guard payment.contact == nil else { continue }
+                }
+                guard let updated = combined.attributing(activity, outputAddresses: outputAddresses) else { continue }
+                guard !Task.isCancelled, await isCurrent(), await reservations.attributionRevision == reservationRevision else { return false }
+                let didUpdate = try await ServiceQueue.background(.core) {
+                    // Async lookups must not overwrite a contact or metadata written in the meantime.
+                    guard try getActivityById(walletId: WalletScope.default, activityId: activity.activityId) == activity else { return false }
+                    try updateActivity(activityId: activity.activityId, activity: updated)
+                    return true
+                }
+                changed = changed || didUpdate
+                complete = complete && didUpdate
+            }
+            guard complete, !Task.isCancelled, await isCurrent(), await reservations.attributionRevision == reservationRevision else { return false }
+            return true
         }
     }
 }
