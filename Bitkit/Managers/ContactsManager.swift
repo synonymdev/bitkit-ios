@@ -119,7 +119,8 @@ class ContactsManager: ObservableObject {
     private var loadGeneration = 0
     private var sessionGeneration = 0
     private var isApplyingProfileRefresh = false
-    private var profileRefreshTask: Task<Void, Never>?
+    private var profileRefresh: ContactProfileRefresh?
+    private var profileRefreshCount = 0
     /// Profiles resolved this session for the owner's contacts, shown in place of stored labels while a load refreshes.
     private var resolvedProfiles: [String: PubkyProfile] = [:]
     private var resolvedProfilesOwner: String?
@@ -174,10 +175,7 @@ class ContactsManager: ObservableObject {
     func reset() {
         loadGeneration += 1
         sessionGeneration += 1
-        profileRefreshTask?.cancel()
-        profileRefreshTask = nil
-        resolvedProfiles = [:]
-        resolvedProfilesOwner = nil
+        forgetResolvedProfiles(owner: nil)
         contacts = []
         isLoading = false
         hasLoaded = false
@@ -220,7 +218,7 @@ class ContactsManager: ObservableObject {
 
     /// Publishes the saved records straight away, each with the best profile already known, then looks the remaining
     /// profiles up in the background on the bulk read lane and updates rows as they resolve. A failed lookup leaves its
-    /// row as it is. A cancelled load publishes nothing.
+    /// row as it is. A cancelled or failed load publishes nothing and leaves a running refresh to finish.
     func loadContacts(
         for publicKey: String,
         fetchContactRecords: @escaping @Sendable () async throws -> [Paykit.ContactRecord],
@@ -233,7 +231,6 @@ class ContactsManager: ObservableObject {
 
         loadGeneration += 1
         let generation = loadGeneration
-        profileRefreshTask?.cancel()
         useResolvedProfiles(of: publicKey)
         isLoading = true
         loadErrorMessage = nil
@@ -259,7 +256,6 @@ class ContactsManager: ObservableObject {
                 hasLoaded = true
                 refreshContactProfiles(
                     for: records.filter { $0.profile == nil && overrides[Self.contactKey(for: $0)] == nil },
-                    generation: generation,
                     fetchRemoteProfile: fetchRemoteProfile
                 )
                 await PrivatePaykitService.shared
@@ -305,37 +301,54 @@ class ContactsManager: ObservableObject {
         return PubkyContact(publicKey: publicKey, profile: PubkyProfile.forDisplay(publicKey: publicKey, name: label, imageUrl: nil))
     }
 
+    /// Keeps a running refresh that already looks up every one of `records`, so reopening Contacts does not start the same
+    /// lookups again; otherwise replaces it.
     private func refreshContactProfiles(
         for records: [Paykit.ContactRecord],
-        generation: Int,
         fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?
     ) {
-        let lookups = records.map { (publicKey: Self.contactKey(for: $0), label: $0.label) }
-        guard !lookups.isEmpty else {
-            profileRefreshTask = nil
+        let labels = Dictionary(records.map { (Self.contactKey(for: $0), $0.label) }, uniquingKeysWith: { first, _ in first })
+        if let running = profileRefresh, Set(running.labels.keys).isSuperset(of: labels.keys) {
             return
         }
+        profileRefresh?.task.cancel()
+        profileRefresh = nil
+        guard !labels.isEmpty else { return }
 
-        profileRefreshTask = Task { [weak self] in
+        profileRefreshCount += 1
+        let refreshID = profileRefreshCount
+        let task = Task { [weak self] in
             await withTaskGroup(of: (publicKey: String, profile: PubkyProfile?).self) { group in
-                for lookup in lookups {
+                for (publicKey, label) in labels {
                     group.addTask {
-                        let profile = try? await Self.resolveContactProfile(publicKey: lookup.publicKey, fetchRemoteProfile: fetchRemoteProfile)
-                        return (lookup.publicKey, profile?.withNameFallback(lookup.label))
+                        let profile = try? await Self.resolveContactProfile(publicKey: publicKey, fetchRemoteProfile: fetchRemoteProfile)
+                        return (publicKey, profile?.withNameFallback(label))
                     }
                 }
 
                 for await result in group {
-                    guard let profile = result.profile else { continue }
-                    self?.applyRefreshedProfile(profile, for: result.publicKey, generation: generation)
+                    self?.finishRefreshLookup(of: result.publicKey, profile: result.profile, refreshID: refreshID)
                 }
             }
+            self?.finishProfileRefresh(refreshID)
+        }
+        profileRefresh = ContactProfileRefresh(id: refreshID, labels: labels, task: task)
+    }
+
+    private func finishRefreshLookup(of publicKey: String, profile: PubkyProfile?, refreshID: Int) {
+        guard profileRefresh?.id == refreshID else { return }
+        if let profile {
+            applyResolvedProfile(profile, for: publicKey)
         }
     }
 
-    /// Runs on the refresh task, so `Task.isCancelled` is that refresh's cancellation.
-    private func applyRefreshedProfile(_ profile: PubkyProfile, for publicKey: String, generation: Int) {
-        guard generation == loadGeneration, !Task.isCancelled else { return }
+    private func finishProfileRefresh(_ refreshID: Int) {
+        if profileRefresh?.id == refreshID {
+            profileRefresh = nil
+        }
+    }
+
+    private func applyResolvedProfile(_ profile: PubkyProfile, for publicKey: String) {
         rememberResolvedProfile(profile, for: publicKey)
         guard Self.loadContactProfileOverrides()[publicKey] == nil,
               let index = contacts.firstIndex(where: { $0.publicKey == publicKey })
@@ -352,6 +365,14 @@ class ContactsManager: ObservableObject {
     private func useResolvedProfiles(of ownerPublicKey: String) {
         let owner = PubkyPublicKeyFormat.normalized(ownerPublicKey) ?? ownerPublicKey
         guard owner != resolvedProfilesOwner else { return }
+        forgetResolvedProfiles(owner: owner)
+    }
+
+    /// Stops every profile lookup still running for the previous owner, so none of them can fill the next owner's rows
+    /// or cache.
+    private func forgetResolvedProfiles(owner: String?) {
+        profileRefresh?.task.cancel()
+        profileRefresh = nil
         resolvedProfiles = [:]
         resolvedProfilesOwner = owner
     }
@@ -363,7 +384,7 @@ class ContactsManager: ObservableObject {
 
     #if DEBUG
         func waitForProfileRefreshForTesting() async {
-            await profileRefreshTask?.value
+            await profileRefresh?.task.value
         }
     #endif
 
@@ -743,6 +764,13 @@ class ContactsManager: ObservableObject {
             pendingImportContacts = []
             pendingImportUnresolvedKeys = []
         }
+    }
+
+    /// A background refresh of saved contacts' profiles. `labels` maps each contact it looks up to its saved label.
+    private struct ContactProfileRefresh {
+        let id: Int
+        let labels: [String: String?]
+        let task: Task<Void, Never>
     }
 
     private enum FollowLookup {

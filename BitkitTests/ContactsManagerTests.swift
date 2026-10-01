@@ -543,6 +543,64 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(changes.last, [contactProfileKey, unresolvedFollowKey, addedKey])
     }
 
+    func testReloadThatPublishesNothingLeavesTheRunningProfileRefreshToFinish() async throws {
+        let manager = ContactsManager()
+        let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        await lookups.hold()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+        while await lookups.heldCount < 1 {
+            await Task.yield()
+        }
+
+        let fetchStarted = expectation(description: "Reload started reading the saved records")
+        let cancelledReload = Task {
+            try await manager.loadContacts(
+                for: "owner",
+                fetchContactRecords: {
+                    fetchStarted.fulfill()
+                    try await Task.sleep(nanoseconds: 60_000_000_000)
+                    return records
+                },
+                fetchRemoteProfile: { try await lookups.fetch($0) }
+            )
+        }
+        await fulfillment(of: [fetchStarted], timeout: 2)
+        cancelledReload.cancel()
+        _ = await cancelledReload.result
+        do {
+            try await manager.loadContacts(
+                for: "owner",
+                fetchContactRecords: { throw PubkyServiceError.sessionNotActive },
+                fetchRemoteProfile: { try await lookups.fetch($0) }
+            )
+            XCTFail("Expected the failing reload to throw")
+        } catch {}
+
+        await lookups.release()
+        await manager.waitForProfileRefreshForTesting()
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Alice"], "A reload that publishes nothing must not stop the refresh")
+    }
+
+    func testReloadKeepsARunningProfileRefreshThatCoversItsContacts() async throws {
+        let manager = ContactsManager()
+        let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        await lookups.hold()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+        while await lookups.heldCount < 1 {
+            await Task.yield()
+        }
+
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+        await lookups.release()
+        await manager.waitForProfileRefreshForTesting()
+
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Alice"])
+        let fetchedKeys = await lookups.fetchedKeys
+        XCTAssertEqual(fetchedKeys, [contactProfileKey], "Reopening Contacts must not look the same contact up again")
+    }
+
     func testImportSavesPreparedProfilesAndKeepsUnresolvedFollowsAsPlaceholders() async throws {
         let manager = ContactsManager()
         let placeholderName = Bitkit.PubkyProfile.placeholder(publicKey: unresolvedFollowKey).name
