@@ -2621,6 +2621,39 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertNil(manager.consumeExpiredRequestedPresentation())
     }
 
+    func testPendingRequestArrivalDispatchesPresentationBeforeRefreshFinishes() async throws {
+        let sdk = PaymentRequestSdkMock(records: [])
+        let notificationCenter = PaykitSubscriptionNotificationCenterMock()
+        let manager = paymentRequestManager(
+            sdk: sdk,
+            subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler(center: notificationCenter)
+        )
+        await manager.refresh()
+        let previous = IncomingPaykitPaymentRequestPresentationState(manager)
+        try await sdk.setRecords([paymentRequestRecord()])
+        await notificationCenter.pauseNextPendingRequests()
+        let refreshTask = Task { await manager.refresh() }
+        try await waitUntil { await notificationCenter.isPendingRequestsPaused }
+
+        let current = IncomingPaykitPaymentRequestPresentationState(manager)
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let dispatches = IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: previous,
+            to: current,
+            manager: manager
+        )
+        XCTAssertEqual(dispatches, [.presentNext])
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+        XCTAssertTrue(IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
+            from: current,
+            to: IncomingPaykitPaymentRequestPresentationState(manager),
+            manager: manager
+        ).isEmpty)
+
+        await notificationCenter.resumePendingRequests()
+        await refreshTask.value
+    }
+
     func testRefreshPreservesUnavailableOutcomeForRequestedPresentation() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
