@@ -8,6 +8,7 @@ struct ContactImportSelectView: View {
     @EnvironmentObject var contactsManager: ContactsManager
 
     @State private var selectedKeys: Set<String> = []
+    @State private var isImporting = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -134,7 +135,7 @@ struct ContactImportSelectView: View {
 
                 CustomButton(
                     title: t("common__continue"),
-                    isLoading: contactsManager.isImportingContacts
+                    isLoading: isImporting
                 ) {
                     await importSelectedContacts()
                 }
@@ -167,6 +168,7 @@ struct ContactImportSelectView: View {
     // MARK: - Actions
 
     private func importSelectedContacts() async {
+        guard !isImporting else { return }
         let selected = contacts.filter { selectedKeys.contains($0.publicKey) }
 
         guard !selected.isEmpty else {
@@ -175,13 +177,13 @@ struct ContactImportSelectView: View {
             return
         }
 
+        isImporting = true
+        defer { isImporting = false }
+
         do {
-            try await contactsManager.importContacts(selected)
-            guard shouldOpenPayContactsAfterImport(currentRoute: navigation.currentRoute) else { return }
+            try await contactsManager.importContacts(contacts: selected)
             contactsManager.clearPendingImport()
             navigation.path = [.payContacts]
-        } catch is CancellationError {
-            return
         } catch {
             app.toast(type: .error, title: t("contacts__import_error"))
         }

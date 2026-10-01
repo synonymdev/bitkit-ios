@@ -9,10 +9,10 @@ struct HwSendSignView: View {
 
     @Binding var navigationPath: [SendRoute]
     let hwSend: HwSendCoordinator
-    let prepareContactPayment: () async throws -> Void
-    let authorizeContactPayment: () async throws -> Void
-    let completeContactPayment: (String) async -> Void
-    let cancelContactPayment: () async -> Void
+    let prepareContactPayment: (ContactPaymentContext?) async throws -> Void
+    let authorizeContactPayment: (ContactPaymentContext?) async throws -> Void
+    let completeContactPayment: (ContactPaymentContext?, String) async -> Void
+    let cancelContactPayment: (ContactPaymentContext?, PrivatePaymentListSendOutcome) async -> Void
     @State private var signingTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
 
@@ -108,7 +108,8 @@ struct HwSendSignView: View {
                 app.toast(type: .error, title: t("common__error"), description: t("other__try_again"))
                 return
             }
-            let contactPublicKey = app.contactPaymentContext?.publicKey
+            let contactPaymentContext = app.contactPaymentContext
+            let contactPublicKey = contactPaymentContext?.publicKey
 
             do {
                 let result = try await hwSend.signAndBroadcast(
@@ -116,10 +117,13 @@ struct HwSendSignView: View {
                     address: invoice.address,
                     sats: amount,
                     satsPerVByte: UInt64(feeRate),
-                    beforeFirstBroadcast: prepareContactPayment,
-                    beforeBroadcastAttempt: authorizeContactPayment,
+                    beforeFirstBroadcast: { try await prepareContactPayment(contactPaymentContext) },
+                    beforeBroadcastAttempt: { try await authorizeContactPayment(contactPaymentContext) },
                     afterBroadcast: { result in
-                        await completeContactPayment(result.txId)
+                        await completeContactPayment(contactPaymentContext, result.txId)
+                    },
+                    afterFailure: { outcome in
+                        await cancelContactPayment(contactPaymentContext, outcome)
                     }
                 )
                 await recordSentPayment(
@@ -132,24 +136,15 @@ struct HwSendSignView: View {
                 hwSend.completeBroadcast()
                 navigationPath.append(.success(paymentId: result.txId, walletId: walletId))
             } catch is CancellationError {
-                await cancelContactPaymentIfBroadcastIsRetryable()
                 return
             } catch is HwPassphraseError {
-                await cancelContactPaymentIfBroadcastIsRetryable()
                 hwSend.requestPassphrase()
             } catch let error as HwTransferError {
-                await cancelContactPaymentIfBroadcastIsRetryable()
                 app.toast(error)
             } catch {
-                await cancelContactPaymentIfBroadcastIsRetryable()
                 showHardwareError(error)
             }
         }
-    }
-
-    private func cancelContactPaymentIfBroadcastIsRetryable() async {
-        guard !hwSend.hasPendingBroadcast else { return }
-        await cancelContactPayment()
     }
 
     private func reconnectWithPassphrase(_ passphrase: String) {

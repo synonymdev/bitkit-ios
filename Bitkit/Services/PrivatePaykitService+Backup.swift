@@ -31,6 +31,7 @@ extension PrivatePaykitService {
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()
         pendingMessageDrainRetryGeneration += 1
+        privatePaymentListConsumptions.removeAll()
         state = PrivatePaykitState(contacts: [:])
         knownSavedContactKeys.removeAll()
         if let backup {

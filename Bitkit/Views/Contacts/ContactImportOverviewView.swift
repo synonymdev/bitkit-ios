@@ -9,6 +9,8 @@ struct ContactImportOverviewView: View {
     @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
+    @State private var isImporting = false
+
     private enum AvatarLayout {
         static let size: CGFloat = 32
         static let overlap: CGFloat = 8
@@ -149,18 +151,15 @@ struct ContactImportOverviewView: View {
 
     private var buttonBar: some View {
         HStack(spacing: 16) {
-            CustomButton(
-                title: t("contacts__import_select"),
-                variant: .secondary,
-                isDisabled: contactsManager.isImportingContacts
-            ) {
+            CustomButton(title: t("contacts__import_select"), variant: .secondary) {
                 navigation.navigate(.contactImportSelect)
             }
+            .disabled(isImporting)
             .accessibilityIdentifier("ContactImportOverviewSelect")
 
             CustomButton(
                 title: t("contacts__import_all"),
-                isLoading: contactsManager.isImportingContacts
+                isLoading: isImporting
             ) {
                 await importAllContacts()
             }
@@ -171,13 +170,14 @@ struct ContactImportOverviewView: View {
     // MARK: - Actions
 
     private func importAllContacts() async {
+        guard !isImporting else { return }
+        isImporting = true
+        defer { isImporting = false }
+
         do {
-            try await contactsManager.importContacts(contacts)
-            guard shouldOpenPayContactsAfterImport(currentRoute: navigation.currentRoute) else { return }
+            try await contactsManager.importContacts(contacts: contacts)
             contactsManager.clearPendingImport()
             navigation.path = [.payContacts]
-        } catch is CancellationError {
-            return
         } catch {
             app.toast(type: .error, title: t("contacts__import_error"))
         }
