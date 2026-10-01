@@ -717,8 +717,7 @@ actor PaykitSdkService {
     func syncPaykitApp(privatePaymentsEnabled: Bool) async throws {
         try await withStateRevisionTracking { sdk in
             var capabilities = try await appCapabilities(using: sdk)
-            capabilities.privatePayments = capabilities.privatePayments &&
-                (privatePaymentsEnabled || UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey))
+            capabilities.privatePayments = capabilities.privatePayments && privatePaymentsEnabled
             _ = try await sdk.publishPaykitApp(displayName: "Bitkit", capabilities: capabilities)
         }
     }
@@ -757,6 +756,12 @@ actor PaykitSdkService {
             if try await sdk.linkedPeers().contains(where: {
                 $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, counterparty)
             }) {
+                return nil
+            }
+            if let publicKey = try await sdk.identityStatus()?.publicKey,
+               let app = try await sdk.paykitAppRegistry(publicKey: publicKey)?.apps.first(where: { $0.appId == "bitkit" }),
+               !app.capabilities.privatePayments
+            {
                 return nil
             }
             return try await sdk.clearPrivatePaymentListAndProcessOutbound(counterparty: counterparty)
@@ -1142,8 +1147,7 @@ actor PaykitSdkService {
         do {
             var capabilities = try await appCapabilities(using: sdk)
             guard capabilities.privatePayments else { return }
-            capabilities.privatePayments = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey) ||
-                UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
+            capabilities.privatePayments = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
             _ = try await sdk.publishPaykitApp(displayName: "Bitkit", capabilities: capabilities)
         } catch {
             Logger.warn("Failed to publish Paykit app: \(error)", context: "PaykitSdkService")

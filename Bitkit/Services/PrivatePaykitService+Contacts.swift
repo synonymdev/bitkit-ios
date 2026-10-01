@@ -20,6 +20,14 @@ extension PrivatePaykitService {
         let syncPaymentLists: (_ updates: [PrivatePaymentListReservationUpdateInput]) async throws -> PrivatePaymentListDeliveryReport
     }
 
+    struct EndpointCleanupOperations {
+        let linkedPeers: () async throws -> [LinkedPeerRecord]
+        let clearPaymentList: (_ publicKey: String) async throws -> PrivatePaymentListDeliveryReport?
+        let drainMessages: (_ publicKeys: [String]) async -> Void
+        let pendingDrainKeys: (_ publicKeys: [String]) async -> Set<String>
+        let syncApp: () async throws -> Void
+    }
+
     @discardableResult
     func prepareSavedContacts(
         _ publicKeys: [String],
@@ -162,17 +170,31 @@ extension PrivatePaykitService {
     }
 
     func removePublishedEndpoints(for publicKeys: [String]) async throws {
+        try await removePublishedEndpoints(for: publicKeys, operations: EndpointCleanupOperations(
+            linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
+            clearPaymentList: { try await PaykitSdkService.shared.clearPrivatePaymentList(to: $0) },
+            drainMessages: { await self.drainPendingPrivateMessages(reason: "cleanup", advancing: $0) },
+            pendingDrainKeys: { await self.pendingPrivateMessageDrainKeys($0) },
+            syncApp: { try await PublicPaykitService.syncPaykitApp() }
+        ))
+    }
+
+    func removePublishedEndpoints(for publicKeys: [String], operations: EndpointCleanupOperations) async throws {
         let publicKeys = normalizedSavedContactKeys(publicKeys)
         guard !publicKeys.isEmpty else { return }
 
-        try await withPublicationLock {
-            try await removePublishedEndpointsLocked(for: publicKeys)
+        do {
+            try await withPublicationLock {
+                try await removePublishedEndpointsLocked(for: publicKeys, operations: operations)
+            }
+        } catch {
+            PublicPaykitService.setCleanupPending(true)
+            throw error
         }
     }
 
-    private func removePublishedEndpointsLocked(for publicKeys: [String]) async throws {
-        try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: true)
-        let linkedPublicKeys = try await Set(PaykitSdkService.shared.linkedPeers()
+    private func removePublishedEndpointsLocked(for publicKeys: [String], operations: EndpointCleanupOperations) async throws {
+        let linkedPublicKeys = try await Set(operations.linkedPeers()
             .filter { $0.state != .notLinked }
             .compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
         let cleanupKeys = privatePaymentListCleanupKeys(publicKeys, linkedPublicKeys: linkedPublicKeys)
@@ -186,7 +208,7 @@ extension PrivatePaykitService {
         var clearedRetryKeys = [String]()
         for publicKey in cleanupKeys {
             do {
-                guard let report = try await PaykitSdkService.shared.clearPrivatePaymentList(to: publicKey) else { continue }
+                guard let report = try await operations.clearPaymentList(publicKey) else { continue }
                 if !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
                     throw PrivatePaykitError.privateUnavailable
                 }
@@ -198,8 +220,8 @@ extension PrivatePaykitService {
         }
 
         if !clearedRetryKeys.isEmpty {
-            await drainPendingPrivateMessages(reason: "cleanup", advancing: clearedRetryKeys)
-            let pendingRetryKeys = await pendingPrivateMessageDrainKeys(clearedRetryKeys)
+            await operations.drainMessages(clearedRetryKeys)
+            let pendingRetryKeys = await operations.pendingDrainKeys(clearedRetryKeys)
             if !pendingRetryKeys.isEmpty {
                 failedPublicKeys.formUnion(pendingRetryKeys)
                 firstError = firstError ?? PrivatePaykitError.privateUnavailable
@@ -229,7 +251,7 @@ extension PrivatePaykitService {
         if let firstError {
             throw firstError
         }
-        try await PublicPaykitService.syncPaykitApp()
+        try await operations.syncApp()
     }
 
     func privatePaymentListCleanupKeys(_ publicKeys: [String], linkedPublicKeys: Set<String>) -> [String] {
