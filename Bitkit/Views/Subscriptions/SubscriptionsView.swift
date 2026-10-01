@@ -50,11 +50,11 @@ struct SubscriptionsView: View {
     }
 
     private var active: [PaykitSubscription] {
-        paymentRequests.subscriptions.filter { $0.isPayer && $0.isActive(at: now) }
+        subscriptionSections(subscriptions: paymentRequests.subscriptions, now: now).active
     }
 
     private var expired: [PaykitSubscription] {
-        paymentRequests.subscriptions.filter { $0.isExpiredVisible(at: now) }
+        subscriptionSections(subscriptions: paymentRequests.subscriptions, now: now).expired
     }
 
     private var created: [PaykitSubscription] {
@@ -248,7 +248,7 @@ func subscriptionMonthlyCostSats(subscriptions: [PaykitSubscription], now: Date)
         }
     }
     let maximum = NSDecimalNumber(value: Int.max)
-    return subscriptions.filter { $0.isPayer && $0.isActive(at: now) }.reduce(into: 0) { total, subscription in
+    return subscriptions.filter { $0.isPayer && $0.runsUntilPaidThrough(at: now) }.reduce(into: 0) { total, subscription in
         var monthlyCost = Decimal(subscription.amountSats) * annualPeriods(subscription.recurrence.unit)
             / Decimal(subscription.recurrence.every) / 12
         var roundedMonthlyCost = Decimal()
@@ -264,6 +264,17 @@ func subscriptionEndDate(subscription: PaykitSubscription) -> Date? {
     subscription.recurrence.endsAt ?? subscription.paidPeriods.map(\.endsAt).max()
 }
 
+/// The ACTIVE and EXPIRED sections: a canceled subscription stays under ACTIVE until it is paid through.
+func subscriptionSections(
+    subscriptions: [PaykitSubscription],
+    now: Date
+) -> (active: [PaykitSubscription], expired: [PaykitSubscription]) {
+    (
+        active: subscriptions.filter { $0.isPayer && $0.runsUntilPaidThrough(at: now) },
+        expired: subscriptions.filter { $0.isExpiredVisible(at: now) && $0.isLapsed(at: now) }
+    )
+}
+
 func subscriptionNextTransitionDate(
     subscriptions: [PaykitSubscription],
     now: Date
@@ -273,6 +284,7 @@ func subscriptionNextTransitionDate(
         [$0.recurrence.startsAt, $0.proposalExpiresAt, $0.recurrence.endsAt].compactMap { $0 }
     }
     dates += activeSubscriptions.compactMap { $0.recurrence.nextPeriod(after: now)?.startsAt }
+    dates += subscriptions.compactMap { $0.canceledPaidThroughDate(at: now) }
     return dates.filter { $0 > now }.min()
 }
 
@@ -318,7 +330,7 @@ struct SubscriptionRow: View {
         .padding(16)
         .background(Color.gray6)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .opacity(subscription.isExpired(at: now) ? 0.5 : 1)
+        .opacity(subscription.isLapsed(at: now) ? 0.5 : 1)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("SubscriptionRow-\(subscription.paymentRequestId)")
@@ -401,7 +413,7 @@ struct SubscriptionDetailView: View {
                     }
                     .padding(.top, 24)
                     .padding(.bottom, 120)
-                    .opacity(subscription.isExpired(at: now) ? 0.5 : 1)
+                    .opacity(subscription.isLapsed(at: now) ? 0.5 : 1)
                 }
 
                 footer(subscription)
@@ -438,7 +450,7 @@ struct SubscriptionDetailView: View {
                 value: subscription.statusLabel(at: now),
                 icon: "check-mark"
             )
-            if subscription.isActive(at: now) || subscription.isExpired(at: now) || subscription.recurrence.endsAt != nil {
+            if subscription.showsTiming(at: now) {
                 LabeledDetailCell(
                     title: subscription.timingTitle(at: now),
                     value: renewalText(subscription),
@@ -520,7 +532,7 @@ struct SubscriptionDetailView: View {
             subscription.recurrence.startsAt,
             subscription.recurrence.endsAt,
             subscription.isActive(at: now) ? subscription.recurrence.nextPeriod(after: now)?.startsAt : nil,
-            subscription.lifecycleState == .canceled ? subscriptionEndDate(subscription: subscription) : nil,
+            subscription.canceledPaidThroughDate(at: now),
         ]
         .compactMap { $0 }
         .filter { $0 > now }
@@ -1049,21 +1061,15 @@ extension PaykitSubscription {
         if isProposalVisible(at: now) {
             return t("subscriptions__pending")
         }
-        if isActive(at: now) {
-            return t("subscriptions__active")
-        }
-        return lifecycleState == .canceled ? t("wallet__payment_request_status_canceled") : t("subscriptions__expired")
+        return runsUntilPaidThrough(at: now) ? t("subscriptions__active") : t("subscriptions__expired")
     }
 
-    /// An inactive subscription still runs until its last paid period ends, so a future date "Expires".
+    /// A canceled subscription that still runs "Expires" on its paid-through date, like one with an end date.
     func timingTitle(at now: Date) -> String {
-        if isActive(at: now) {
-            return recurrence.endsAt == nil ? t("subscriptions__renews") : t("subscriptions__expires")
+        if isActive(at: now) && recurrence.endsAt == nil {
+            return t("subscriptions__renews")
         }
-        if let endDate = subscriptionEndDate(subscription: self), endDate > now {
-            return t("subscriptions__expires")
-        }
-        return t("subscriptions__expired")
+        return runsUntilPaidThrough(at: now) ? t("subscriptions__expires") : t("subscriptions__expired")
     }
 
     func rowSubtitle(at now: Date) -> String {
@@ -1083,8 +1089,9 @@ extension PaykitSubscription {
         if isProposalVisible(at: now) || !recurrence.unit.isSupported {
             return recurrence.subscriptionFrequencyLabel
         }
-        if lifecycleState == .canceled {
-            return t("wallet__payment_request_status_canceled")
+        if let paidThrough = canceledPaidThroughDate(at: now) {
+            let date = paidThrough.formatted(.dateTime.month(.wide).day())
+            return t("subscriptions__expires_date", variables: ["date": date])
         }
         if isExpired(at: now) {
             guard let endsAt = recurrence.endsAt else { return t("subscriptions__expired") }
