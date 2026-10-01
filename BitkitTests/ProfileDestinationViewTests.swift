@@ -5,6 +5,144 @@ import XCTest
 
 @MainActor
 final class ProfileDestinationViewTests: XCTestCase {
+    func testContactsWaitsForIdentityLookupThenShowsRecovery() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: "pubky_profile_name")
+        let manager = ContactsRecoveryProfileManager()
+        manager.isInitialized = false
+        manager.initializationErrorMessage = "offline"
+        let app = AppViewModel()
+        app.hasSeenContactsIntro = false
+        let window = hostContacts(manager, app: app)
+        defer { close(window) }
+
+        await fulfillment(of: [manager.lookup.started], timeout: 3)
+        let (_, pendingLabels) = try snapshot(window, name: "Contacts identity lookup")
+        XCTAssertFalse(pendingLabels.contains(t("contacts__intro_add_contact")))
+        XCTAssertFalse(pendingLabels.contains(t("profile__retry_load")))
+        XCTAssertFalse(manager.didAttemptRecovery)
+
+        manager.lookup.finish()
+        await fulfillment(of: [manager.restoration.started], timeout: 3)
+        try await assertLoadingScreen(window, name: "Contacts restoring saved identity")
+        manager.restoration.finish()
+        try await assertRetryScreen(window, name: "Contacts restoration failed")
+        XCTAssertTrue(manager.didAttemptRecovery)
+    }
+
+    func testContactsPreservesAuthenticatedListAndAbsentIdentityOnboarding() async throws {
+        snapshotAppDefaultsDomain()
+        for authenticated in [false, true] {
+            let manager = ContactsRecoveryProfileManager()
+            manager.identityExists = false
+            manager.authState = authenticated ? .authenticated : .idle
+            manager.publicKey = authenticated ? "pubky_test_identity" : nil
+            let app = AppViewModel()
+            app.hasSeenContactsIntro = authenticated
+            let window = hostContacts(manager, app: app)
+            defer { close(window) }
+            await fulfillment(of: [manager.lookup.started], timeout: 3)
+            manager.lookup.finish()
+            try await Task.sleep(for: .milliseconds(150))
+            let (_, labels) = try snapshot(window, name: authenticated ? "Authenticated Contacts" : "Contacts onboarding")
+            XCTAssertTrue(labels.contains(t(authenticated ? "common__search" : "contacts__intro_add_contact")), "\(labels)")
+            XCTAssertFalse(manager.didAttemptRecovery)
+        }
+    }
+
+    func testContactsIntroWaitsForLookupAndPreservesDestinations() async {
+        snapshotAppDefaultsDomain()
+        for (authenticated, savedIdentity, seenProfileIntro, destination) in [
+            (false, true, false, Route.contacts),
+            (false, true, true, .contacts),
+            (true, true, true, .contacts),
+            (false, false, false, .profileIntro),
+            (false, false, true, .pubkyChoice),
+        ] {
+            let manager = ContactsRecoveryProfileManager()
+            manager.identityExists = savedIdentity
+            manager.authState = authenticated ? .authenticated : .idle
+            manager.publicKey = authenticated ? "pubky_test_identity" : nil
+            let app = AppViewModel()
+            app.hasSeenContactsIntro = false
+            app.hasSeenProfileIntro = seenProfileIntro
+            let contacts = ContactsManager()
+            let navigation = NavigationViewModel()
+            navigation.path = [.contactsIntro]
+            let task = Task {
+                await ContactsIntroView.openContacts(app: app, navigation: navigation, pubkyProfile: manager, contactsManager: contacts)
+            }
+            await fulfillment(of: [manager.lookup.started], timeout: 3)
+            XCTAssertEqual(navigation.path, [.contactsIntro])
+            XCTAssertFalse(app.hasSeenContactsIntro)
+            manager.lookup.finish()
+            await task.value
+            XCTAssertEqual(navigation.path, [.contactsIntro, destination])
+            XCTAssertEqual(contacts.shouldOpenAddContactSheet, authenticated)
+            XCTAssertTrue(app.hasSeenContactsIntro)
+        }
+    }
+
+    func testContactsIntroDiscardsNavigationAfterLeavingOrCancellation() async {
+        snapshotAppDefaultsDomain()
+        for cancel in [false, true] {
+            let manager = ContactsRecoveryProfileManager()
+            let app = AppViewModel()
+            app.hasSeenContactsIntro = false
+            let navigation = NavigationViewModel()
+            navigation.path = [.contactsIntro]
+            let contacts = ContactsManager()
+            let task = Task {
+                await ContactsIntroView.openContacts(app: app, navigation: navigation, pubkyProfile: manager, contactsManager: contacts)
+            }
+            await fulfillment(of: [manager.lookup.started], timeout: 3)
+            if cancel {
+                task.cancel()
+            } else {
+                navigation.path = [.settings]
+            }
+            manager.lookup.finish()
+            await task.value
+            XCTAssertEqual(navigation.path, cancel ? [.contactsIntro] : [.settings])
+            XCTAssertFalse(contacts.shouldOpenAddContactSheet)
+            XCTAssertFalse(app.hasSeenContactsIntro)
+        }
+    }
+
+    func testLeavingContactsDuringLookupDoesNotStartRecovery() async throws {
+        snapshotAppDefaultsDomain()
+        let manager = ContactsRecoveryProfileManager()
+        let window = hostContacts(manager, app: AppViewModel())
+        await fulfillment(of: [manager.lookup.started], timeout: 3)
+        window.rootViewController = UIHostingController(rootView: Color.black)
+        try await Task.sleep(for: .milliseconds(100))
+        manager.lookup.finish()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(manager.didAttemptRecovery)
+        close(window)
+    }
+
+    func testContactsRecoveryReturnsToOnboardingAfterIdentityIsRemoved() async throws {
+        snapshotAppDefaultsDomain()
+        let manager = ContactsRecoveryProfileManager()
+        let app = AppViewModel()
+        app.hasSeenProfileIntro = false
+        let window = hostContacts(manager, app: app)
+        defer { close(window) }
+        await fulfillment(of: [manager.lookup.started], timeout: 3)
+        manager.lookup.finish()
+        await fulfillment(of: [manager.restoration.started], timeout: 3)
+        manager.restoration.finish()
+        try await assertRetryScreen(window, name: "Contacts before disconnect")
+
+        manager.identityExists = false
+        manager.authState = .idle
+        try await Task.sleep(for: .milliseconds(100))
+        let (_, labels) = try snapshot(window, name: "Contacts after disconnect")
+        XCTAssertTrue(labels.contains(t("common__continue")), "\(labels)")
+        XCTAssertFalse(labels.contains(t("profile__retry_load")))
+    }
+
     func testDisconnectedSavedIdentityRendersProfileRetry() async throws {
         snapshotAppDefaultsDomain()
         let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
@@ -14,8 +152,11 @@ final class ProfileDestinationViewTests: XCTestCase {
         defer {
             AdoptedPubkyReference.current = savedReference
             for (key, value) in zip(keys, savedValues) {
-                if let value { try? Keychain.upsert(key: key, data: value) }
-                else { try? Keychain.delete(key: key) }
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
 
@@ -101,6 +242,20 @@ final class ProfileDestinationViewTests: XCTestCase {
         return window
     }
 
+    private func hostContacts(_ manager: PubkyProfileManager, app: AppViewModel) -> UIWindow {
+        let view = ContactsDestinationView()
+            .environmentObject(manager)
+            .environmentObject(app)
+            .environmentObject(NavigationViewModel())
+            .environmentObject(ContactsViewTestManager() as ContactsManager)
+            .preferredColorScheme(.dark)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = UIHostingController(rootView: view)
+        window.makeKeyAndVisible()
+        window.rootViewController?.view.layoutIfNeeded()
+        return window
+    }
+
     private func close(_ window: UIWindow) {
         window.isHidden = true
         window.rootViewController = nil
@@ -153,6 +308,44 @@ final class ProfileDestinationViewTests: XCTestCase {
         XCTAssertTrue(labels.contains(t("profile__retry_load")), "Missing Retry after \(name): \(labels)")
         XCTAssertTrue(labels.contains(t("profile__sign_out")), "Missing Disconnect after \(name): \(labels)")
     }
+}
+
+@MainActor
+private final class ContactsViewTestManager: ContactsManager {
+    override func loadContacts(for publicKey: String) async throws {}
+}
+
+@MainActor
+private final class ContactsRecoveryProfileManager: PubkyProfileManager {
+    var identityExists = true
+    var didAttemptRecovery = false
+    let lookup = ProfileOperationGate(name: "Saved identity lookup")
+    let restoration = ProfileOperationGate(name: "Contacts session restoration")
+
+    override var hasExistingIdentity: Bool {
+        identityExists
+    }
+
+    override func hasExistingIdentityForNavigation() async -> Bool {
+        lookup.started.fulfill()
+        for await _ in lookup.stream {}
+        return identityExists
+    }
+
+    override func restoreSessionIfNeeded(
+        hasStoredIdentity: () throws -> Bool,
+        initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult
+    ) async {
+        didAttemptRecovery = true
+        let gate = restoration
+        await super.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+            gate.started.fulfill()
+            for await _ in gate.stream {}
+            return .restorationFailed
+        }
+    }
+
+    override func loadProfile() async {}
 }
 
 @MainActor

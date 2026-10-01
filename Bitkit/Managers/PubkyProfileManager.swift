@@ -71,9 +71,22 @@ class PubkyProfileManager: ObservableObject {
     }
 
     var hasExistingIdentity: Bool {
-        if isAuthenticated || cachedName != nil { return true }
+        if isAuthenticated || cachedName != nil {
+            return true
+        }
         // Unreadable credentials must not be treated as a new identity.
         return (try? Self.hasStoredIdentity()) != false
+    }
+
+    func hasExistingIdentityForNavigation() async -> Bool {
+        if isAuthenticated || cachedName != nil {
+            return true
+        }
+        let hasStoredIdentity = await Task.detached {
+            // Unreadable credentials must not offer identity creation.
+            (try? Self.hasStoredIdentity()) != false
+        }.value
+        return isAuthenticated || cachedName != nil || hasStoredIdentity
     }
 
     // MARK: - Initialization & Session Restoration
