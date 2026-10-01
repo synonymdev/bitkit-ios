@@ -201,7 +201,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
-    func testFailedPrivateDisableKeepsContactPaymentsDisabled() async throws {
+    func testFailedPrivateDisableReportsFailureAndKeepsContactPaymentsDisabled() async throws {
         try await withIsolatedDefaultsAsync { defaults in
             defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
             defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
@@ -210,13 +210,18 @@ final class ContactPaymentsServiceTests: XCTestCase {
             let operations = OperationsSpy()
             operations.privateRemovalFailures = [1]
 
-            try await ContactPaymentsService.setEnabled(
-                false,
-                contactPublicKeys: ["contact-a"],
-                canUsePrivatePayments: true,
-                operations: operations.makeOperations(),
-                defaults: defaults
-            )
+            do {
+                try await ContactPaymentsService.setEnabled(
+                    false,
+                    contactPublicKeys: ["contact-a"],
+                    canUsePrivatePayments: true,
+                    operations: operations.makeOperations(),
+                    defaults: defaults
+                )
+                XCTFail("Expected private endpoint removal to fail")
+            } catch {
+                XCTAssertEqual(error as? TestError, .operationFailed)
+            }
 
             XCTAssertEqual(operations.publicPublicationValues, [false])
             XCTAssertEqual(operations.privateRemovalCount, 1)

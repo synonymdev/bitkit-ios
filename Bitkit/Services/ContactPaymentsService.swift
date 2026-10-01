@@ -90,6 +90,7 @@ enum ContactPaymentsService {
             privateCleanupPending: defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey)
         )
 
+        var privateCleanupError: Error?
         do {
             if enabled {
                 try await enable(
@@ -99,7 +100,7 @@ enum ContactPaymentsService {
                     defaults: defaults
                 )
             } else {
-                try await disable(operations: operations, defaults: defaults)
+                privateCleanupError = try await disable(operations: operations, defaults: defaults)
             }
         } catch {
             await restore(
@@ -110,6 +111,9 @@ enum ContactPaymentsService {
                 defaults: defaults
             )
             throw error
+        }
+        if let privateCleanupError {
+            throw privateCleanupError
         }
     }
 
@@ -146,16 +150,14 @@ enum ContactPaymentsService {
     }
 
     @MainActor
-    private static func disable(operations: Operations, defaults: UserDefaults) async throws {
+    private static func disable(operations: Operations, defaults: UserDefaults) async throws -> Error? {
+        var privateCleanupError: Error?
         do {
             try await operations.removePrivateEndpoints()
             operations.setPrivateCleanupPending(false)
         } catch {
             operations.setPrivateCleanupPending(true)
-            Logger.warn(
-                "Deferred private Paykit endpoint cleanup after disable failed: \(error)",
-                context: "ContactPaymentsService"
-            )
+            privateCleanupError = error
         }
 
         defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
@@ -169,6 +171,7 @@ enum ContactPaymentsService {
             operations.setPublicCleanupPending(true)
             throw error
         }
+        return privateCleanupError
     }
 
     @MainActor
