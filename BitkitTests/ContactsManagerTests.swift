@@ -839,29 +839,45 @@ final class ContactsManagerTests: XCTestCase {
     }
 
     func testBackgroundResultForAContactAScreenTookOverIsDropped() async throws {
-        let manager = ContactsManager()
-        let bulk = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
-        await bulk.hold()
-        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
-        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
-        while await bulk.heldCount < 1 {
-            await Task.yield()
+        // The background lookup of the contact finds its profile while the screen's own lookup still runs, or only once
+        // that lookup failed, such as while a Save uploads an avatar.
+        for arrivesWhileTheScreenLooksUp in [true, false] {
+            let message = "arrivesWhileTheScreenLooksUp: \(arrivesWhileTheScreenLooksUp)"
+            let manager = ContactsManager()
+            let bulk = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
+            await bulk.hold()
+            let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+            while await bulk.heldCount < 1 {
+                await Task.yield()
+            }
+
+            let interactive = HeldProfileLookups(profiles: [:])
+            await interactive.hold()
+            let screenLookup = Task {
+                await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+            }
+            while await interactive.heldCount < 1 {
+                await Task.yield()
+            }
+            if arrivesWhileTheScreenLooksUp {
+                await bulk.release()
+                await manager.waitForProfileRefreshForTesting()
+                XCTAssertEqual(manager.contacts.map(\.displayName), ["Label only"], "Taken over when the screen's lookup started, \(message)")
+            }
+            await interactive.release()
+            await screenLookup.value
+            await bulk.release()
+            await manager.waitForProfileRefreshForTesting()
+
+            let row = try XCTUnwrap(manager.contacts.first?.profile)
+            XCTAssertEqual(row.name, "Label only", "A background result for a contact a screen took over must not change its row, \(message)")
+            XCTAssertEqual(row.bio, "", message)
+            XCTAssertNil(row.imageUrl, message)
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { _ in throw profileTransportError })
+            XCTAssertEqual(manager.contacts.map(\.displayName), ["Label only"], "Nor may the next load show it, \(message)")
+            await manager.waitForProfileRefreshForTesting()
         }
-
-        let interactive = ContactProfileFetchStub([.failure(profileTransportError)])
-        await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
-
-        // The background lookup of the contact finds its profile only now, such as while a Save uploads an avatar.
-        await bulk.release()
-        await manager.waitForProfileRefreshForTesting()
-
-        let row = try XCTUnwrap(manager.contacts.first?.profile)
-        XCTAssertEqual(row.name, "Label only", "A background result for a contact a screen took over must not change its row")
-        XCTAssertEqual(row.bio, "")
-        XCTAssertNil(row.imageUrl)
-        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { _ in throw profileTransportError })
-        XCTAssertEqual(manager.contacts.map(\.displayName), ["Label only"], "Nor may the next load show it")
-        await manager.waitForProfileRefreshForTesting()
     }
 
     func testInteractiveProfileLookupStartedBeforeResetIsIgnored() async throws {
