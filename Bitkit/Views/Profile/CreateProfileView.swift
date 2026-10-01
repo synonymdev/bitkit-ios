@@ -170,6 +170,8 @@ struct CreateProfileView: View {
                 existingProfile = remote
                 isRestoring = true
             }
+        } catch is CancellationError {
+            return
         } catch {
             Logger.error("Failed to derive pubky keys: \(error)", context: "CreateProfileView")
             app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
@@ -190,6 +192,9 @@ struct CreateProfileView: View {
             return profile
         } catch PubkyServiceError.profileNotFound {
             remoteLookupFailed = false
+            return nil
+        } catch is CancellationError {
+            remoteLookupFailed = true
             return nil
         } catch {
             Logger.warn("Failed to look up the existing profile: \(error)", context: "CreateProfileView")
@@ -223,6 +228,8 @@ struct CreateProfileView: View {
                 avatarImage: avatarImage
             )
             navigation.navigate(.payContacts)
+        } catch is CancellationError {
+            return
         } catch {
             Logger.error("Failed to save profile: \(error)", context: "CreateProfileView")
             app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)

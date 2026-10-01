@@ -536,7 +536,9 @@ class PubkyProfileManager: ObservableObject {
             throw PubkySignupError.alreadySignedIn
         }
 
+        let revision = Self.sessionRevision
         let (publicKey, secretKeyHex) = try await deriveKeys()
+        guard revision == Self.sessionRevision else { throw CancellationError() }
         guard self.publicKey == nil, try !Self.hasStoredIdentity() else {
             throw PubkySignupError.alreadySignedIn
         }
@@ -562,14 +564,15 @@ class PubkyProfileManager: ObservableObject {
 
     private func completeSignupAuthentication(
         publicKey: String,
-        registerIdentity: () async throws -> PubkySessionBootstrapResult,
+        registerIdentity: () async throws -> PubkyRegisteredIdentity,
         approveAuth: @escaping () async throws -> Void,
-        activateIdentity: (PubkySessionBootstrapResult) async throws -> Void,
+        activateIdentity: (PubkyRegisteredIdentity) async throws -> Void,
         authorizationTimeout: Duration = .seconds(30)
     ) async throws {
         guard !isSignupInFlight else { throw PubkySignupError.inProgress }
         isSignupInFlight = true
         Self.beginSessionMutation()
+        let revision = Self.sessionRevision
         defer {
             isSignupInFlight = false
             Self.endSessionMutation()
@@ -577,8 +580,11 @@ class PubkyProfileManager: ObservableObject {
 
         setProfileSetupPending(false)
         let registeredSession = try await registerIdentity()
+        guard revision == Self.sessionRevision else { throw CancellationError() }
         try await approveSignupWithTimeout(authorizationTimeout, operation: approveAuth)
+        guard revision == Self.sessionRevision else { throw CancellationError() }
         try await activateIdentity(registeredSession)
+        guard revision == Self.sessionRevision else { throw CancellationError() }
 
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         reloadCachedProfileMetadata()
@@ -733,9 +739,9 @@ class PubkyProfileManager: ObservableObject {
     #if DEBUG
         func completeSignupAuthenticationForTesting(
             publicKey: String,
-            registerIdentity: () async throws -> PubkySessionBootstrapResult,
+            registerIdentity: () async throws -> PubkyRegisteredIdentity,
             approveAuth: @escaping () async throws -> Void,
-            activateIdentity: (PubkySessionBootstrapResult) async throws -> Void,
+            activateIdentity: (PubkyRegisteredIdentity) async throws -> Void,
             authorizationTimeout: Duration = .seconds(30)
         ) async throws {
             try await completeSignupAuthentication(

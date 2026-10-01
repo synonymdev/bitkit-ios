@@ -731,6 +731,63 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testSignupDoesNotRestoreProfileStateAfterWalletReset() async throws {
+        snapshotAppDefaultsDomain()
+        let keys: [KeychainEntryType] = [.paykitSdkState, .paykitSession, .pubkySecretKey]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        let savedOverrides = ContactsManager.backupContactProfileOverrides()
+        defer {
+            ContactsManager.restoreContactProfileOverrides(savedOverrides)
+            for (key, data) in zip(keys, saved) {
+                if let data { try? Keychain.upsert(key: key, data: data) }
+                else { try? Keychain.delete(key: key) }
+            }
+        }
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
+        for resetStep in ["register", "authorize", "activate"] {
+            let manager = PubkyProfileManager()
+            let session = PubkyRegisteredIdentity(
+                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+                walletGeneration: 0
+            )
+            do {
+                try await manager.completeSignupAuthenticationForTesting(
+                    publicKey: "pubky_test",
+                    registerIdentity: {
+                        if resetStep == "register" { await PubkyProfileManager.clearLocalState() }
+                        return session
+                    },
+                    approveAuth: {
+                        XCTAssertNotEqual(resetStep, "register", "Late registration must not authorize after reset")
+                        if resetStep == "authorize" { await PubkyProfileManager.clearLocalState() }
+                    },
+                    activateIdentity: { _ in
+                        XCTAssertEqual(resetStep, "activate", "Late approval must not activate after reset")
+                        await PubkyProfileManager.clearLocalState()
+                    }
+                )
+                XCTFail("Signup interrupted by reset must be abandoned")
+            } catch is CancellationError {}
+            XCTAssertNil(manager.publicKey)
+            XCTAssertEqual(manager.authState, .idle)
+            XCTAssertFalse(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"))
+        }
+        let manager = KeyDerivationProbeProfileManager()
+        manager.deriveKeysOperation = {
+            await PubkyProfileManager.clearLocalState()
+            return ("pubky_test", "unused")
+        }
+        let homeserver = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let request = try PubkyAuthRequest.parse(url: "pubkyauth://direct_signup?hs=\(homeserver)")
+        do {
+            try await manager.approveSignupAuth(request: request)
+            XCTFail("Keys derived from the wiped wallet must not register an identity")
+        } catch is CancellationError {}
+    }
+
+    @MainActor
     func testSignupFinishesProfileSetupOnlyAfterActivation() async throws {
         let defaults = UserDefaults.standard
         let previousPending = defaults.object(forKey: "pubky_profile_setup_pending")
@@ -743,7 +800,10 @@ final class PubkyProfileManagerTests: XCTestCase {
         for failingStep in [nil, "register", "authorize", "activate"] {
             defaults.set(true, forKey: "pubky_profile_setup_pending")
             let manager = PubkyProfileManager()
-            let session = PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test")
+            let session = PubkyRegisteredIdentity(
+                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+                walletGeneration: 0
+            )
             var events: [String] = []
             func perform(_ step: String) throws {
                 XCTAssertFalse(manager.isProfileSetupPending)
@@ -763,7 +823,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                     },
                     approveAuth: { try perform("authorize") },
                     activateIdentity: {
-                        XCTAssertTrue($0.sessionAccess === session.sessionAccess)
+                        XCTAssertTrue($0.result.sessionAccess === session.result.sessionAccess)
                         try perform("activate")
                     }
                 )
@@ -792,7 +852,10 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
 
         let manager = PubkyProfileManager()
-        let session = PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test")
+        let session = PubkyRegisteredIdentity(
+            result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+            walletGeneration: 0
+        )
         var shouldFailActivation = true
         var activationCount = 0
 
@@ -861,7 +924,10 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         for cancelSignup in [false, true] {
             let manager = PubkyProfileManager()
-            let session = PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_first")
+            let session = PubkyRegisteredIdentity(
+                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_first"),
+                walletGeneration: 0
+            )
             let approvalStarted = expectation(description: "Approval started")
             let signupFinished = expectation(description: "Signup stops without waiting for approval")
             let approvalFinished = expectation(description: "Late approval returns")
@@ -1610,9 +1676,11 @@ final class PubkyProfileManagerTests: XCTestCase {
 @MainActor
 private class KeyDerivationProbeProfileManager: PubkyProfileManager {
     var didDeriveKeys = false
+    var deriveKeysOperation: (() async throws -> (String, String))?
 
     override func deriveKeys() async throws -> (String, String) {
         didDeriveKeys = true
+        if let deriveKeysOperation { return try await deriveKeysOperation() }
         throw PubkyServiceError.authFailed("key derivation probe")
     }
 }
