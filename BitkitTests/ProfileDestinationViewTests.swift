@@ -326,7 +326,7 @@ private final class ContactsRecoveryProfileManager: PubkyProfileManager {
         identityExists
     }
 
-    override func hasExistingIdentityForNavigation() async -> Bool {
+    override func hasExistingIdentityForNavigation(hasStoredIdentity: @escaping @Sendable () throws -> Bool) async -> Bool {
         lookup.started.fulfill()
         for await _ in lookup.stream {}
         return identityExists
