@@ -41,6 +41,11 @@ struct PrivateReceiverPathSelection {
     var error: Error?
 }
 
+struct PubkyRegisteredIdentity {
+    let result: PubkySessionBootstrapResult
+    let walletGeneration: Int
+}
+
 /// Service layer for Pubky sessions, profiles, contacts, and Paykit SDK workflows.
 enum PubkyService {
     static func initialize() async throws {
@@ -233,7 +238,7 @@ enum PubkyService {
         secretKeyHex: String,
         homeserverZ32: String,
         signupCode: String? = nil
-    ) async throws -> PubkySessionBootstrapResult {
+    ) async throws -> PubkyRegisteredIdentity {
         try await PaykitSdkService.shared.registerIdentity(
             secretKeyHex: secretKeyHex,
             homeserverPublicKey: homeserverZ32,
@@ -241,8 +246,8 @@ enum PubkyService {
         )
     }
 
-    static func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
-        try await PaykitSdkService.shared.activateRegisteredIdentity(result)
+    static func activateRegisteredIdentity(_ identity: PubkyRegisteredIdentity) async throws {
+        try await PaykitSdkService.shared.activateRegisteredIdentity(identity)
     }
 
     /// Sign in with an existing secret key. Returns new session secret.
@@ -551,22 +556,24 @@ actor PaykitSdkService {
         secretKeyHex: String,
         homeserverPublicKey: String,
         signupCode: String?
-    ) async throws -> PubkySessionBootstrapResult {
+    ) async throws -> PubkyRegisteredIdentity {
         try await operationLock.withLock {
-            try await bootstrap().signUp(
+            let generation = try operationLock.walletGeneration()
+            let result = try await bootstrap().signUp(
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
                 receiverNoiseSecretKey: sessionProvider.loadOrDeriveReceiverNoiseSecretKey(),
                 homeserverPublicKey: homeserverPublicKey,
                 signupCode: signupCode,
                 requiredCapabilities: Self.requiredCapabilities()
             )
+            return PubkyRegisteredIdentity(result: result, walletGeneration: generation)
         }
     }
 
-    func activateRegisteredIdentity(_ result: PubkySessionBootstrapResult) async throws {
-        try await operationLock.withLock {
+    func activateRegisteredIdentity(_ identity: PubkyRegisteredIdentity) async throws {
+        try await operationLock.withLock(generation: identity.walletGeneration) {
             let previousPublicKey = try await currentSdkStatePublicKey()
-            try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
+            try await activateBootstrapResult(identity.result, previousPublicKey: previousPublicKey)
             markWalletBackupDataChanged()
         }
     }
@@ -1059,9 +1066,24 @@ actor PaykitSdkService {
         }
     }
 
+    func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
+        try await operationLock.withWalletWipe {
+            resetRuntime()
+            defer {
+                sessionProvider.clearLiveSessionAccess()
+                resetRuntime()
+            }
+            return try await operation()
+        }
+    }
+
     func clearState() async {
-        await operationLock.withLock {
-            clearStateLocked()
+        do {
+            try await operationLock.withLock {
+                clearStateLocked()
+            }
+        } catch {
+            Logger.warn("Skipped Paykit state cleanup during wallet wipe", context: "PaykitSdkService")
         }
     }
 
@@ -1336,18 +1358,85 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     private let lock = NSLock()
     private var isLocked = false
     private var waiters: [Waiter] = []
+    private var generation = 0
+    private var isWiping = false
+    private var activeWipeID: UUID?
+    @TaskLocal private static var walletWipeOwner: UUID?
 
-    func withLock<T>(_ operation: () async throws -> T) async rethrows -> T {
+    func withLock<T>(generation expectedGeneration: Int? = nil, _ operation: () async throws -> T) async throws -> T {
+        if ownsWipe() { return try await operation() }
+        let admittedGeneration = try admit()
         await acquire()
         defer { release() }
+        try validate(expectedGeneration ?? admittedGeneration)
+        try Task.checkCancellation()
         return try await operation()
+    }
+
+    func walletGeneration() throws -> Int {
+        try admit()
+    }
+
+    func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
+        let wipeID = try beginWipe()
+        defer { endWipe() }
+        await acquire()
+        defer { release() }
+        try Task.checkCancellation()
+        return try await Self.$walletWipeOwner.withValue(wipeID) {
+            try await operation()
+        }
+    }
+
+    private func ownsWipe() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return isWiping && activeWipeID != nil && Self.walletWipeOwner == activeWipeID
+    }
+
+    private func admit() throws -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isWiping else { throw wipeError() }
+        return generation
+    }
+
+    private func validate(_ admittedGeneration: Int) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isWiping, generation == admittedGeneration else { throw wipeError() }
+    }
+
+    private func beginWipe() throws -> UUID {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isWiping else { throw wipeError() }
+        isWiping = true
+        generation += 1
+        let wipeID = UUID()
+        activeWipeID = wipeID
+        return wipeID
+    }
+
+    private func endWipe() {
+        lock.lock()
+        isWiping = false
+        activeWipeID = nil
+        lock.unlock()
+    }
+
+    private func wipeError() -> PaykitError {
+        .Storage(code: "wallet_wipe_in_progress", context: "Paykit operation interrupted by wallet wipe")
     }
 
     /// Leaves the queue as soon as the caller is cancelled and never runs `operation` for a cancelled caller,
     /// so an abandoned read cannot take the lock ahead of work queued after it.
     func withCancellableLock<T>(_ operation: () async throws -> T) async throws -> T {
+        if ownsWipe() { return try await operation() }
+        let admittedGeneration = try admit()
         try await acquireCancellable()
         defer { release() }
+        try validate(admittedGeneration)
         try Task.checkCancellation()
         return try await operation()
     }
@@ -1492,45 +1581,68 @@ extension PublicPaykitService.Endpoint {
     }
 }
 
-private final class PaykitSdkStateBlobStore: SdkStateBlobStore, @unchecked Sendable {
+final class PaykitSdkStateBlobStore: SdkStateBlobStore, @unchecked Sendable {
     private let lock = NSLock()
 
-    init() {}
+    private let loadData: () throws -> Data?
+    private let saveData: (Data) throws -> Void
+
+    init(
+        loadData: @escaping () throws -> Data? = { try Keychain.load(key: .paykitSdkState) },
+        saveData: @escaping (Data) throws -> Void = { try Keychain.upsert(key: .paykitSdkState, data: $0) }
+    ) {
+        self.loadData = loadData
+        self.saveData = saveData
+    }
 
     func loadStateBlob() throws -> SdkStateBlobSnapshot? {
-        lock.lock()
-        defer { lock.unlock() }
+        try paykitStorageCallback(code: "state_load_failed") {
+            lock.lock()
+            defer { lock.unlock() }
 
-        guard let data = try Keychain.load(key: .paykitSdkState) else {
-            return nil
+            guard let data = try loadData() else {
+                return nil
+            }
+
+            return try decodeSdkStateBlobSnapshot(bytes: data)
         }
-
-        return try decodeSdkStateBlobSnapshot(bytes: data)
     }
 
     func saveStateBlobAtomically(blob: SdkStateBlob, expectedRevision: String?) throws -> String {
-        lock.lock()
-        defer { lock.unlock() }
+        try paykitStorageCallback(code: "state_save_failed") {
+            lock.lock()
+            defer { lock.unlock() }
 
-        let currentRevision = try Keychain.load(key: .paykitSdkState)
-            .map { try decodeSdkStateBlobSnapshot(bytes: $0).revision }
-        guard currentRevision == expectedRevision else {
-            throw PaykitError.Storage(code: "revision_conflict", context: "SDK state revision changed")
+            let currentRevision = try loadData()
+                .map { try decodeSdkStateBlobSnapshot(bytes: $0).revision }
+            guard currentRevision == expectedRevision else {
+                throw PaykitError.Storage(code: "revision_conflict", context: "SDK state revision changed")
+            }
+
+            let nextRevision = UUID().uuidString
+            let snapshot = SdkStateBlobSnapshot(blob: blob, revision: nextRevision)
+            let encoded = try encodeSdkStateBlobSnapshot(snapshot: snapshot)
+            try saveData(encoded)
+            return nextRevision
         }
-
-        let nextRevision = UUID().uuidString
-        let snapshot = SdkStateBlobSnapshot(blob: blob, revision: nextRevision)
-        let encoded = try encodeSdkStateBlobSnapshot(snapshot: snapshot)
-        try Keychain.upsert(key: .paykitSdkState, data: encoded)
-        return nextRevision
     }
 }
 
-private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendable {
+final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendable {
     private let lock = NSLock()
     private let receiverNoiseKeyStore = PaykitReceiverNoiseKeyStore()
+    private let loadSessionSecret: () throws -> String?
+    private let deleteKeychainValue: (KeychainEntryType) throws -> Void
     private var liveSessionAccess: PubkySessionAccess?
     private var isStoredSessionAccessSuspended = false
+
+    init(
+        loadSessionSecret: @escaping () throws -> String? = { try Keychain.loadString(key: .paykitSession) },
+        deleteKeychainValue: @escaping (KeychainEntryType) throws -> Void = { try Keychain.delete(key: $0) }
+    ) {
+        self.loadSessionSecret = loadSessionSecret
+        self.deleteKeychainValue = deleteKeychainValue
+    }
 
     func setLiveSessionAccess(_ access: PubkySessionAccess) {
         lock.lock()
@@ -1545,29 +1657,31 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
     }
 
     func loadSessionAccess() throws -> PubkySessionAccess? {
-        lock.lock()
-        defer { lock.unlock() }
+        try paykitStorageCallback(code: "session_load_failed") {
+            lock.lock()
+            defer { lock.unlock() }
 
-        guard !isStoredSessionAccessSuspended else {
-            return nil
+            guard !isStoredSessionAccessSuspended else {
+                return nil
+            }
+
+            guard let sessionSecret = try loadSessionSecret(), !sessionSecret.isEmpty else {
+                return nil
+            }
+
+            let liveAccess = liveSessionAccess
+
+            if liveAccess?.exportSessionSecret() == sessionSecret {
+                return liveAccess
+            }
+
+            return try PubkySessionAccess(
+                clientId: PaykitSdkService.clientID,
+                sessionSecret: sessionSecret,
+                localSecretKey: loadLocalSecretKey(),
+                receiverNoiseSecretKey: loadOrDeriveReceiverNoiseSecretKey()
+            )
         }
-
-        guard let sessionSecret = try Keychain.loadString(key: .paykitSession), !sessionSecret.isEmpty else {
-            return nil
-        }
-
-        let liveAccess = liveSessionAccess
-
-        if liveAccess?.exportSessionSecret() == sessionSecret {
-            return liveAccess
-        }
-
-        return try PubkySessionAccess(
-            clientId: PaykitSdkService.clientID,
-            sessionSecret: sessionSecret,
-            localSecretKey: loadLocalSecretKey(),
-            receiverNoiseSecretKey: loadOrDeriveReceiverNoiseSecretKey()
-        )
     }
 
     func publicStorageAvailable() throws -> Bool {
@@ -1575,7 +1689,7 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
     }
 
     func canDeferStaleSession(error: Error) throws -> Bool {
-        let hasStoredSession = try Keychain.loadString(key: .paykitSession)?.isEmpty == false
+        let hasStoredSession = try loadSessionSecret()?.isEmpty == false
         return PaykitSdkService.shouldDeferStaleSession(error: error, hasStoredSession: hasStoredSession)
     }
 
@@ -1593,8 +1707,10 @@ private final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecke
     }
 
     func clearSessionAccess() throws {
-        clearLiveSessionAccess()
-        try PubkySessionAccessTeardown.clear { try Keychain.delete(key: $0) }
+        try paykitStorageCallback(code: "session_clear_failed") {
+            clearLiveSessionAccess()
+            try PubkySessionAccessTeardown.clear(deleteKeychainValue: deleteKeychainValue)
+        }
     }
 
     func loadLocalSecretKey() throws -> PubkyLocalSecretKey? {
@@ -1791,5 +1907,15 @@ private final class PaykitSdkPaymentAdapter: SdkPaymentAdapter, @unchecked Senda
 
     func buildPrivatePaymentTarget(endpoint: PrivatePaymentEndpointCandidate) throws -> PaymentTarget {
         PaymentTarget(payload: endpoint.payload)
+    }
+}
+
+func paykitStorageCallback<T>(code: String, operation: () throws -> T) throws -> T {
+    do {
+        return try operation()
+    } catch let error as PaykitError {
+        throw error
+    } catch {
+        throw PaykitError.Storage(code: code, context: "Platform Paykit storage operation failed")
     }
 }

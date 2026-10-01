@@ -1,0 +1,20 @@
+<journey name="create profile after signup">
+  <description>
+    Precondition: a disposable, unfunded fresh wallet with Paykit enabled, no existing
+    Pubky identity, a reachable staging Pubky signup site and an English device.
+    Open the signup site in a browser and keep the app process alive throughout this journey.
+    This iOS journey checks profile creation after an external signup authorization.
+  </description>
+  <actions>
+    <action>Open staging.pubky.app in the browser, begin signup and copy the pubkyauth://signup link</action>
+    <action>Open Bitkit Scan, paste the signup link and verify the signup authorization sheet appears</action>
+    <action>Tap Authorize and wait for signup authorization to complete</action>
+    <action>Return to the browser and verify the site has continued with the authorized public Pubky key; record that key</action>
+    <action>Return to Bitkit and wait for Create Profile to finish loading</action>
+    <action>Enter "Test" in the username field (identifier "CreateProfileUsername") and dismiss the keyboard</action>
+    <action>Tap Continue (identifier "CreateProfileSave") and wait for profile creation to finish</action>
+    <action>Verify no Profile Error toast appears when profile creation completes</action>
+    <action>Open Profile and verify it shows "Test" and the same public Pubky key recorded from the signup site</action>
+    <action>Return Home and reopen Profile; verify the new profile is still available without restarting the app</action>
+  </actions>
+</journey>

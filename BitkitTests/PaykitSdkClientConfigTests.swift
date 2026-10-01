@@ -8,6 +8,42 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s" +
         "&cid=paykit.test&cpk=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
 
+    func testRegisteredIdentityCannotActivateAfterWalletWipe() async throws {
+        let keys: [KeychainEntryType] = [
+            .paykitSession, .paykitReceiverNoiseSecretKey,
+            .bip39Mnemonic(index: 0), .bip39Passphrase(index: 0),
+        ]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        defer {
+            for (key, data) in zip(keys, saved) {
+                if let data { try? Keychain.upsert(key: key, data: data) }
+                else { try? Keychain.delete(key: key) }
+            }
+        }
+        let mnemonic = Array(repeating: "abandon", count: 11).joined(separator: " ") + " about"
+        try Keychain.upsert(key: .bip39Mnemonic(index: 0), data: Data(mnemonic.utf8))
+        try Keychain.delete(key: .bip39Passphrase(index: 0))
+        try Keychain.delete(key: .paykitReceiverNoiseSecretKey)
+        let bootstrap = CacheActivationBootstrap(noPointer: .init())
+        let service = PaykitSdkService(sdkFactory: { CacheActivationSdk(noPointer: .init()) }) { _, _ in bootstrap }
+        let identity = try await service.registerIdentity(
+            secretKeyHex: String(repeating: "01", count: 32), homeserverPublicKey: "test", signupCode: nil
+        )
+
+        try await service.withWalletWipe { try Keychain.delete(key: .paykitSession) }
+        do {
+            try await service.activateRegisteredIdentity(identity)
+            XCTFail("Registration from the wiped wallet must not persist a session")
+        } catch let PaykitError.Storage(code, _) {
+            XCTAssertEqual(code, "wallet_wipe_in_progress")
+        }
+        XCTAssertNil(try Keychain.load(key: .paykitSession))
+        let freshIdentity = try await service.registerIdentity(
+            secretKeyHex: String(repeating: "02", count: 32), homeserverPublicKey: "test", signupCode: nil
+        )
+        XCTAssertNotEqual(identity.walletGeneration, freshIdentity.walletGeneration)
+    }
+
     func testIdentityReadFailurePreservesSavedStateAndSession() async throws {
         let savedState = try Keychain.load(key: .paykitSdkState)
         let savedSession = try Keychain.load(key: .paykitSession)
@@ -90,7 +126,7 @@ final class PaykitSdkClientConfigTests: XCTestCase {
             session.noiseBytes = noiseBytes
             let result = PubkySessionBootstrapResult(sessionAccess: session, publicKey: "pubky\(originalKey)")
 
-            try await service.activateRegisteredIdentity(result)
+            try await service.activateRegisteredIdentity(.init(result: result, walletGeneration: 0))
             await manager.initialize { .restored(publicKey: "pubky\(originalKey)") }
 
             XCTAssertEqual(manager.publicKey, "pubky\(originalKey)")
@@ -168,7 +204,9 @@ final class PaykitSdkClientConfigTests: XCTestCase {
             session.noiseBytes = noise
 
             do {
-                try await service.activateRegisteredIdentity(.init(sessionAccess: session, publicKey: newKey))
+                try await service.activateRegisteredIdentity(.init(
+                    result: .init(sessionAccess: session, publicKey: newKey), walletGeneration: 0
+                ))
                 XCTFail("Expected initialization to fail after staging the new session")
             } catch {
                 XCTAssertEqual(error.localizedDescription, sdk.initializationError?.localizedDescription)
@@ -229,7 +267,7 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         let result = PubkySessionBootstrapResult(sessionAccess: session, publicKey: publicKey)
 
         let activation = Task {
-            try await service.activateRegisteredIdentity(result)
+            try await service.activateRegisteredIdentity(.init(result: result, walletGeneration: 0))
             activationReturned.fulfill()
         }
         // Shorter than the republish timeout, so an activation that awaited the publication would miss it.
@@ -415,6 +453,16 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
 private final class CacheActivationBootstrap: PubkySessionBootstrap, @unchecked Sendable {
     var republishedKeys: [String] = []
     var republishOperation: () async -> Bool = { true }
+
+    override func signUp(
+        localSecretKey _: PubkyLocalSecretKey,
+        receiverNoiseSecretKey _: ReceiverNoiseSecretKey,
+        homeserverPublicKey _: String,
+        signupCode _: String?,
+        requiredCapabilities _: String
+    ) async throws -> PubkySessionBootstrapResult {
+        PubkySessionBootstrapResult(sessionAccess: CacheActivationSession(noPointer: .init()), publicKey: "pubky_test")
+    }
 
     override func republishIdentity(publicKey: String) async throws -> Bool {
         republishedKeys.append(publicKey)
