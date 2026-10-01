@@ -107,12 +107,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testReceivedPaymentAttributionPreservesExistingContactsAndMetadata() throws {
         let record = try receivedPaymentRecord()
         let contacts = PaykitReceivedPaymentContacts(records: [record], network: .regtest)
-        var payment = OnchainActivity(
-            walletId: WalletScope.default, id: "received", txType: .received, txId: "tx", value: 15000,
-            fee: 0, feeRate: 0, address: "bcrt1qfn50lqawrce0evh66qrnlt8j447lwmeyqp5gmd", confirmed: true, timestamp: 123,
-            isBoosted: false, boostTxIds: [], isTransfer: false, doesExist: true, confirmTimestamp: 124,
-            channelId: nil, transferTxId: nil, contact: nil, createdAt: 123, updatedAt: 124, seenAt: 125
-        )
+        var payment = receivedOnchainActivity()
         XCTAssertNil(contacts.attributing(.onchain(payment)), "Wait for complete transaction outputs")
         guard case let .onchain(updated) = contacts.attributing(.onchain(payment), outputAddresses: [payment.address]) else {
             return XCTFail("Expected received contact attribution")
@@ -126,6 +121,46 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         payment.contact = nil
         payment.txType = .sent
         XCTAssertNil(contacts.attributing(.onchain(payment), outputAddresses: [payment.address]))
+    }
+
+    func testReceivedPaymentAttributionRequiresReceivingAddressInRequestAndOutputs() throws {
+        let contacts = try PaykitReceivedPaymentContacts(records: [receivedPaymentRecord()], network: .regtest)
+        var payment = receivedOnchainActivity()
+        let requestAddress = payment.address
+        let otherAddress = "bcrt1qpsps9chsjnnd3veems9phzlvw42em682rsj8hh"
+        XCTAssertNil(contacts.attributing(.onchain(payment), outputAddresses: [otherAddress]))
+        payment.address = otherAddress
+        XCTAssertNil(contacts.attributing(.onchain(payment), outputAddresses: [otherAddress, requestAddress]))
+    }
+
+    func testReceivedPaymentAttributionKeepsAmbiguityVetoAcrossOutputs() throws {
+        let payment = receivedOnchainActivity()
+        var other = try receivedPaymentRecord(counterparty: "pubky7don8zi885feihpjsyx7t53srod6z1n4xjiyaaxucpqarm6sh85o")
+        let otherAddress = "bcrt1qpsps9chsjnnd3veems9phzlvw42em682rsj8hh"
+        other.terms?.paymentEndpoints = try ["btc-regtest-p2wpkh": PublicPaykitService.serializePayload(value: otherAddress)]
+        let contacts = try PaykitReceivedPaymentContacts(records: [receivedPaymentRecord(), other], network: .regtest)
+        XCTAssertNil(contacts.attributing(.onchain(payment), outputAddresses: [payment.address, otherAddress]))
+    }
+
+    func testReceivedPaymentAttributionMatchesLateServerInvoiceAfterChangeOutput() throws {
+        var record = try receivedPaymentRecord()
+        record.proposalAppId = "paykit-server"
+        record.state = .canceled
+        let payment = receivedOnchainActivity()
+        let contacts = PaykitReceivedPaymentContacts(records: [record], network: .regtest)
+        guard case let .onchain(updated) = contacts.attributing(
+            .onchain(payment), outputAddresses: ["bcrt1qpsps9chsjnnd3veems9phzlvw42em682rsj8hh", payment.address]
+        ) else { return XCTFail("Expected the receiving server invoice to identify its contact") }
+        XCTAssertEqual(updated.contact, record.counterparty)
+    }
+
+    private func receivedOnchainActivity() -> OnchainActivity {
+        OnchainActivity(
+            walletId: WalletScope.default, id: "received", txType: .received, txId: "tx", value: 15000,
+            fee: 0, feeRate: 0, address: "bcrt1qfn50lqawrce0evh66qrnlt8j447lwmeyqp5gmd", confirmed: true, timestamp: 123,
+            isBoosted: false, boostTxIds: [], isTransfer: false, doesExist: true, confirmTimestamp: 124,
+            channelId: nil, transferTxId: nil, contact: nil, createdAt: 123, updatedAt: 124, seenAt: 125
+        )
     }
 
     func testReceivedPaymentContactsRefreshAndClearWithIdentity() async throws {

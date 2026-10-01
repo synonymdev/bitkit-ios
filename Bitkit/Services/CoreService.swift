@@ -1140,16 +1140,12 @@ class ActivityService {
         let currentWalletAddress = UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
         let selectedAddressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
 
-        if let address = try await addressSearchCoordinator.runAddressSearch(
+        return try await addressSearchCoordinator.runAddressSearch(
             details: details,
             value: value,
             currentWalletAddress: currentWalletAddress,
             selectedAddressType: selectedAddressType
-        ) {
-            return address
-        }
-
-        return details.outputs.first?.scriptpubkeyAddress
+        )
     }
 
     func getActivity(id: String, walletId: String = WalletScope.default) async throws -> Activity? {
@@ -1770,9 +1766,29 @@ class ActivityService {
 
 // MARK: - Address search (actor for single-flight concurrency)
 
-private actor AddressSearchCoordinator {
+actor AddressSearchCoordinator {
     private var isSearching = false
     private var waitQueue: [CheckedContinuation<Void, Never>] = []
+    private let defaults: UserDefaults
+    private let listAccounts: @Sendable () async throws -> [LDKNode.OnchainWalletAccount]
+    private let deriveAddresses: @Sendable (LDKNode.OnchainWalletAccount, LDKNode.KeychainKind, UInt32, UInt32) async throws -> [String]
+
+    init(
+        defaults: UserDefaults = .standard,
+        listAccounts: @escaping @Sendable () async throws -> [LDKNode.OnchainWalletAccount] = {
+            try await LightningService.shared.listOnchainWalletAccounts()
+        },
+        deriveAddresses: @escaping @Sendable (LDKNode.OnchainWalletAccount, LDKNode.KeychainKind, UInt32, UInt32) async throws -> [String] = {
+            account, keychain, startIndex, count in
+            try await LightningService.shared.addressInfosForType(
+                account.addressType, keychain: keychain, startIndex: startIndex, count: count, accountIndex: account.accountIndex
+            ).map(\.address)
+        }
+    ) {
+        self.defaults = defaults
+        self.listAccounts = listAccounts
+        self.deriveAddresses = deriveAddresses
+    }
 
     /// Runs the batch address search at most one at a time. Enqueues if a search is already in progress.
     func runAddressSearch(
@@ -1830,47 +1846,61 @@ private actor AddressSearchCoordinator {
             (false, .external),
             (true, .internal),
         ]
+        let primaryAccounts = addressTypesToSearch.map { LDKNode.OnchainWalletAccount(addressType: $0, accountIndex: 0) }
+        let companionAccounts: [LDKNode.OnchainWalletAccount]
+        do {
+            companionAccounts = try await listAccounts().filter { $0.accountIndex > 0 }.sorted {
+                ($0.accountIndex, $0.addressType.stringValue) < ($1.accountIndex, $1.addressType.stringValue)
+            }
+        } catch {
+            Logger.warn("Failed to list companion accounts for address search: \(error)", context: "CoreService.AddressSearch")
+            companionAccounts = []
+        }
+        // Preserve account-zero priority, including its change addresses, before searching companion accounts.
+        let searches = [primaryAccounts, companionAccounts].flatMap { accounts in
+            keychains.flatMap { isChange, keychain in
+                accounts.map { (account: $0, isChange: isChange, keychain: keychain) }
+            }
+        }
 
-        for (isChange, keychain) in keychains {
-            for addressType in addressTypesToSearch {
-                let key = isChange ? "addressSearch_lastUsedChangeIndex_\(addressType.stringValue)" : "addressSearch_lastUsedReceiveIndex_\(addressType.stringValue)"
-                let lastUsed: UInt32? = (UserDefaults.standard.object(forKey: key) as? Int).flatMap {
-                    guard $0 >= 0, $0 <= Int(UInt32.max) else { return nil }
-                    return UInt32($0)
+        for (account, isChange, keychain) in searches {
+            let addressType = account.addressType
+            let baseKey = isChange ? "addressSearch_lastUsedChangeIndex_\(addressType.stringValue)" : "addressSearch_lastUsedReceiveIndex_\(addressType.stringValue)"
+            let key = account.accountIndex == 0 ? baseKey : "\(baseKey)_account\(account.accountIndex)"
+            let lastUsed: UInt32? = (defaults.object(forKey: key) as? Int).flatMap {
+                guard $0 >= 0, $0 <= Int(UInt32.max) else { return nil }
+                return UInt32($0)
+            }
+            let endIndex = lastUsed.map { $0 > UInt32.max - searchWindow ? UInt32.max : $0 + searchWindow } ?? searchWindow
+
+            var index: UInt32 = 0
+            var currentAddressBatch: UInt32?
+            while index < endIndex {
+                let addresses: [String]
+                do {
+                    addresses = try await deriveAddresses(account, keychain, index, batchSize)
+                } catch {
+                    Logger.warn(
+                        "Skipping \(addressType.stringValue) account \(account.accountIndex) \(isChange ? "change" : "receive") address search batch \(index): \(error)",
+                        context: "CoreService.AddressSearch"
+                    )
+                    break
                 }
-                let endIndex = lastUsed.map { $0 > UInt32.max - searchWindow ? UInt32.max : $0 + searchWindow } ?? searchWindow
 
-                var index: UInt32 = 0
-                var currentAddressBatch: UInt32?
-                while index < endIndex {
-                    let addresses: [String]
-                    do {
-                        addresses = try await LightningService.shared
-                            .addressInfosForType(addressType, keychain: keychain, startIndex: index, count: batchSize)
-                            .map(\.address)
-                    } catch {
-                        Logger.warn(
-                            "Skipping \(addressType.stringValue) \(isChange ? "change" : "receive") address search batch \(index): \(error)",
-                            context: "CoreService.AddressSearch"
-                        )
+                if !currentWalletAddress.isEmpty, currentAddressBatch == nil, addresses.contains(currentWalletAddress) {
+                    currentAddressBatch = index
+                }
+                if let match = findMatch(in: addresses) {
+                    defaults.set(Int(index), forKey: key)
+                    return match
+                }
+                if let found = currentAddressBatch {
+                    let stopIndex = found > UInt32.max - batchSize ? UInt32.max : found + batchSize
+                    if index >= stopIndex {
                         break
                     }
-
-                    if !currentWalletAddress.isEmpty, currentAddressBatch == nil, addresses.contains(currentWalletAddress) {
-                        currentAddressBatch = index
-                    }
-                    if let match = findMatch(in: addresses) {
-                        UserDefaults.standard.set(Int(index), forKey: key)
-                        return match
-                    }
-                    if let found = currentAddressBatch {
-                        let stopIndex = found > UInt32.max - batchSize ? UInt32.max : found + batchSize
-                        if index >= stopIndex {
-                            break
-                        }
-                    }
-                    index += batchSize
                 }
+                index += batchSize
             }
         }
         return nil

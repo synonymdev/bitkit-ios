@@ -59,7 +59,9 @@ struct PaykitReceivedPaymentContacts: Equatable {
         switch activity {
         case var .onchain(payment):
             guard payment.txType == .received, payment.contact == nil,
-                  let contact = contact(onchainAddresses: outputAddresses)
+                  outputAddresses.contains(payment.address),
+                  let contact = contact(onchainAddresses: [payment.address]),
+                  self.contact(onchainAddresses: outputAddresses) == contact
             else { return nil }
             payment.contact = contact
             payment.updatedAt = UInt64(Date().timeIntervalSince1970)
