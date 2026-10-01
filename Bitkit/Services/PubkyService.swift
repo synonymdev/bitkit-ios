@@ -47,7 +47,8 @@ struct PubkyRegisteredIdentity {
 }
 
 /// Which public read slots a read may use. Background work that reads for many contacts at once is `bulk`, so it can
-/// never take every read slot from reads for what the user is looking at.
+/// never take every read slot from reads for what the user is looking at. Reads the user is waiting on are
+/// `interactive` even when there are many of them, such as the follow lookups that prepare a contact import.
 enum PaykitPublicReadPriority {
     case interactive
     case bulk

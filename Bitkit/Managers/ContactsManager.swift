@@ -127,9 +127,19 @@ class ContactsManager: ObservableObject {
     private var resolvedProfilesOwner: String?
     private var resolvedProfilesGeneration = 0
     private let contactRecords: @Sendable () async throws -> [ContactRecord]
+    private let fetchFollows: @Sendable (String) async throws -> [String]
+    private let fetchRemoteProfile: @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile?
 
-    init(contactRecords: @escaping @Sendable () async throws -> [ContactRecord] = PubkyService.contactRecords) {
+    init(
+        contactRecords: @escaping @Sendable () async throws -> [ContactRecord] = PubkyService.contactRecords,
+        fetchFollows: @escaping @Sendable (String) async throws -> [String] = { try await PubkyService.getContacts(publicKey: $0) },
+        fetchRemoteProfile: @escaping @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile? = {
+            try await ContactsManager.remoteContactProfile(publicKey: $0, priority: $1)
+        }
+    ) {
         self.contactRecords = contactRecords
+        self.fetchFollows = fetchFollows
+        self.fetchRemoteProfile = fetchRemoteProfile
     }
 
     /// Profile refreshes replace rows without counting as a change to the saved contacts.
@@ -217,7 +227,7 @@ class ContactsManager: ObservableObject {
         try await loadContacts(
             for: publicKey,
             fetchContactRecords: contactRecords,
-            fetchRemoteProfile: Self.fetchRemoteContactProfileInBulk
+            fetchRemoteProfile: remoteProfileLookup(on: .bulk)
         )
     }
 
@@ -358,7 +368,7 @@ class ContactsManager: ObservableObject {
     /// reads and an edit made there keeps the contact's avatar, bio and links. Returns at once for any other row, and
     /// joins a lookup already running for the contact. When the lookup fails, the row keeps its label.
     func resolvePendingContactProfile(publicKey: String) async {
-        await resolvePendingContactProfile(publicKey: publicKey, fetchRemoteProfile: Self.fetchRemoteContactProfile)
+        await resolvePendingContactProfile(publicKey: publicKey, fetchRemoteProfile: remoteProfileLookup(on: .interactive))
     }
 
     func resolvePendingContactProfile(
@@ -717,6 +727,8 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Remote Contact Discovery
 
+    /// Looks every follow's profile up on the interactive read lane: the user waits on the choice screen until the import
+    /// overview opens, and the bulk lane would use only four of the six read slots for those lookups.
     @discardableResult
     func prepareImport(profile: PubkyProfile?, publicKey: String) async -> Bool {
         clearPendingImport()
@@ -739,8 +751,8 @@ class ContactsManager: ObservableObject {
     func discoverRemoteContacts(publicKey: String) async {
         await discoverRemoteContacts(
             publicKey: publicKey,
-            fetchFollows: { try await PubkyService.getContacts(publicKey: $0) },
-            fetchRemoteProfile: Self.fetchRemoteContactProfileInBulk
+            fetchFollows: fetchFollows,
+            fetchRemoteProfile: remoteProfileLookup(on: .interactive)
         )
     }
 
@@ -864,12 +876,17 @@ class ContactsManager: ObservableObject {
     }
 
     nonisolated static let fetchRemoteContactProfile: @Sendable (String) async throws -> PubkyProfile? = {
-        try await PubkyService.resolveContactProfile(publicKey: $0, allowPubkyProfileFallback: true).map(PubkyProfile.init(resolution:))
+        try await remoteContactProfile(publicKey: $0, priority: .interactive)
     }
 
-    nonisolated static let fetchRemoteContactProfileInBulk: @Sendable (String) async throws -> PubkyProfile? = {
-        try await PubkyService.resolveContactProfile(publicKey: $0, allowPubkyProfileFallback: true, priority: .bulk)
+    nonisolated static func remoteContactProfile(publicKey: String, priority: PaykitPublicReadPriority) async throws -> PubkyProfile? {
+        try await PubkyService.resolveContactProfile(publicKey: publicKey, allowPubkyProfileFallback: true, priority: priority)
             .map(PubkyProfile.init(resolution:))
+    }
+
+    private func remoteProfileLookup(on priority: PaykitPublicReadPriority) -> @Sendable (String) async throws -> PubkyProfile? {
+        let fetchRemoteProfile = fetchRemoteProfile
+        return { try await fetchRemoteProfile($0, priority) }
     }
 
     /// A missing profile is never retried. `retryTransient` retries any other failure once and is for user-initiated

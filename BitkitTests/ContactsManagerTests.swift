@@ -733,6 +733,27 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(Set(manager.contacts.map(\.displayName)), ["Alice", placeholderName])
     }
 
+    func testPreparingAnImportLooksFollowsUpOnTheInteractiveLane() async throws {
+        let lanes = ProfileLookupLanes()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        let manager = ContactsManager(
+            contactRecords: { records },
+            fetchFollows: { _ in [contactProfileKey, unresolvedFollowKey] },
+            fetchRemoteProfile: { try await lanes.fetch($0, priority: $1) }
+        )
+
+        let hasImportData = await manager.prepareImport(profile: nil, publicKey: "owner")
+
+        XCTAssertTrue(hasImportData)
+        let importLanes = await lanes.priorities
+        XCTAssertEqual(importLanes, [.interactive, .interactive], "The user waits on the choice screen while the import is prepared")
+
+        try await manager.loadContacts(for: "owner")
+        await manager.waitForProfileRefreshForTesting()
+        let allLanes = await lanes.priorities
+        XCTAssertEqual(Array(allLanes.dropFirst(importLanes.count)), [.bulk], "The Contacts list still refreshes its profiles in the background")
+    }
+
     func testImportSkipsOnlyContactsWhoseSaveFails() async throws {
         let alice = makeContact(publicKey: contactProfileKey)
         let other = makeContact(publicKey: unresolvedFollowKey)
@@ -985,6 +1006,17 @@ private actor HeldProfileLookups {
         }
         guard let name = profiles[publicKey] else { throw profileTransportError }
         return Bitkit.PubkyProfile(publicKey: publicKey, name: name, bio: "", imageUrl: nil, links: [], status: nil)
+    }
+}
+
+/// Records the read lane of each profile lookup, answering for `contactProfileKey` and failing for any other key.
+private actor ProfileLookupLanes {
+    private(set) var priorities: [PaykitPublicReadPriority] = []
+
+    func fetch(_ publicKey: String, priority: PaykitPublicReadPriority) throws -> Bitkit.PubkyProfile? {
+        priorities.append(priority)
+        guard publicKey == contactProfileKey else { throw profileTransportError }
+        return Bitkit.PubkyProfile(publicKey: publicKey, name: "Alice", bio: "", imageUrl: nil, links: [], status: nil)
     }
 }
 
