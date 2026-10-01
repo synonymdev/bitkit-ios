@@ -10,8 +10,8 @@
 
     Precondition: an onboarded E2E Bitkit build with Paykit UI enabled and a Pubky identity with at
     least five saved contacts, at least one of them with a published profile name and bio and one
-    with no published profile. The contact import journey leaves exactly that. Use the test simulator UDID
-    for &lt;UDID&gt;.
+    with no published profile. Importing such follows with journeys/contacts/import-all-contacts.xml
+    leaves exactly that. Use the test simulator UDID for &lt;UDID&gt;.
 
     A warm network can resolve every profile before the first snapshot; report "already resolved"
     rather than failing. See README.md.

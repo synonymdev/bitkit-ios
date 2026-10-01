@@ -1,7 +1,8 @@
 # Pubky profile loading
 
-This suite covers what Profile, the Pubky Ring choice screen, the contact import and Contacts show
-while profiles are still loading from the network. Where Android differs, see
+This suite covers what Profile, the Pubky Ring choice screen and Contacts show while profiles are
+still loading from the network, and a contact import that finishes after you leave it. Importing
+contacts itself is covered by [`journeys/contacts`](../contacts/README.md). Where Android differs, see
 [iOS vs Android](#ios-vs-android).
 
 - `cached-profile-header.xml` opens Profile straight after a relaunch, while the signed-in profile is
@@ -13,12 +14,9 @@ while profiles are still loading from the network. Where Android differs, see
   identity has no profile. A lookup for an identity with no profile can take several seconds to give
   up. Tapping a row adopts that identity: only the tapped row shows a spinner, and every row is
   disabled until adoption finishes.
-- `contact-import.xml` adopts a Ring identity that follows other pubkys and imports its follows with
-  Import All. The import saves the profiles the overview already looked up instead of looking every
-  follow up again, so it takes seconds rather than tens of seconds. A follow with no published
-  profile is imported under its truncated key. While the import runs, Select and Import All are
-  disabled. Leaving the screen does not stop the import, and an import that finishes after you left
-  does not take you to Pay Contacts.
+- `contact-import-after-leaving.xml` adopts a Ring identity with many follows, taps Import All and
+  leaves the import overview straight away. Leaving does not stop the import, and an import that
+  finishes after you left does not take you to Pay Contacts. Contacts then lists every follow.
 - `contacts-list-loading.xml` relaunches and opens Contacts. The saved contacts show straight away
   under the names they were saved with, and each fills in its profile name and avatar as its lookup
   finishes. Reopening Contacts in the same session shows the profiles already found straight away.
@@ -48,13 +46,14 @@ header.
 Without Pubky Ring, run the steps as a manual test and name the missing capability in the PR.
 Tapping a row signs in with that Ring identity, so use identities you are happy to adopt.
 
-**Contact import.** The Ring setup above, with an identity that follows at least five pubkys on
-pubky.app, at least one of them with no published profile, and no Pubky identity in Bitkit. The
-journey saves the follows as contacts; sign out in Bitkit before running it again.
+**Contact import after leaving.** The Ring setup above, with an identity that follows many pubkys
+on pubky.app (62, as in [`import-all-contacts.xml`](../contacts/import-all-contacts.xml)), so the
+import takes long enough to leave, and no Pubky identity in Bitkit. The journey saves the follows as
+contacts; sign out in Bitkit before running it again.
 
 **Contacts list loading.** A Pubky identity with at least five saved contacts, at least one with a
-published profile name and bio and one with no published profile. Running the contact import journey
-first leaves exactly that if one of the follows publishes a bio.
+published profile name and bio and one with no published profile. Importing such follows with
+[`import-all-contacts.xml`](../contacts/import-all-contacts.xml) leaves exactly that.
 
 ## Timing
 
@@ -62,8 +61,10 @@ Every loading state here can finish faster than a snapshot round trip on a warm 
 journey reports that ("already loaded", "already resolved", "already adopted" or "already imported")
 rather than failing. The cached-header journey repeats the relaunch once, and the others continue.
 
-A follow or contact with no published profile is the slow case: its lookup can take several seconds
-to give up, and before this change the import and Contacts both waited for every such lookup.
+A contact with no published profile is the slow case: its lookup can take several seconds to give
+up, and before this change Contacts waited for every such lookup before showing any row. A contact
+import saves only to the device, so it can finish before you leave it; the journey then reports
+"already imported".
 
 Opening Profile in the first few seconds after launch can show a bare spinner, with no "Profile"
 title, before the cached header. That spinner is the Pubky initialization wait in `MainNavView`. The
@@ -76,18 +77,16 @@ header showed.
 - **Profile while loading.** iOS shows the cached name and avatar read-only under
   `ProfileCachedHeader`, with no edit, copy, share, QR code or tag controls, and then the full
   profile under `ProfileViewName`.
-- **Contact import and Contacts list.** `contact-import.xml` and `contacts-list-loading.xml` are new
-  on both platforms at once: synonymdev/bitkit-android#1399 adds both to Android with the same file
-  names, journey names and prose, changing only identifiers and `adb` commands, and adds the
-  testTags `ContactImportOverviewSelect`, `ContactImportOverviewImportAll` and
-  `ContactImportSelectContinue`, so once it merges the two platforms share the journeys and those
-  identifiers. Android master has neither until then. `Contact_<pubky>`, `HeaderMenu`,
-  `DrawerContacts`, `PayContactsContinue`, `ContactViewNotes`, `ContactEdit`, `ProfileEditCancel`
-  and `NavigationBack` already match Android. Android has no identifier for the overview profile and
-  summary (`ContactImportOverviewProfile`, `ContactImportOverviewSummary`) or the selection rows
-  (`ContactImportSelect_<pubky>`), and names the Ring rows differently; see
-  [Identifiers](../README.md#identifiers). iOS has always kept a follow with no published profile in
-  the import; it shows under its truncated key.
+- **Contact import after leaving and Contacts list.** `contact-import-after-leaving.xml` and
+  `contacts-list-loading.xml` are new on both platforms at once: synonymdev/bitkit-android#1399 adds
+  both to Android with the same file names, journey names and prose, changing only identifiers and
+  `adb` commands, and adds the testTag `ContactImportOverviewImportAll`, so once it merges the two
+  platforms share the journeys and that identifier. Android master has neither until then.
+  `Contact_<pubky>`, `HeaderMenu`, `DrawerContacts`, `PayContactsContinue`, `ContactViewNotes`,
+  `ContactEdit`, `ProfileEditCancel` and `NavigationBack` already match Android. Android has no
+  identifier for the overview profile and summary (`ContactImportOverviewProfile`,
+  `ContactImportOverviewSummary`) and names the Ring rows differently; see
+  [Identifiers](../README.md#identifiers).
 - **Ring choice rows.** Android names the rows and their lookup spinners differently; see
   [Identifiers](../README.md#identifiers). iOS keeps the rows up, spins only the tapped row, and
   tags each row `PubkyChoiceRing_<pubky>`, using the bare z32 key without the `pubky` prefix.
@@ -106,8 +105,7 @@ header showed.
   `PubkyChoiceRingLookup_<pubky>`, and the create option `PubkyChoiceCreate`.
 - After adopting: the contact import overview `ContactImportOverviewProfile`, or Pay Contacts
   `PayContactsContinue`.
-- Contact import: overview summary `ContactImportOverviewSummary`, Select `ContactImportOverviewSelect`
-  and Import All `ContactImportOverviewImportAll`; selection rows `ContactImportSelect_<pubky>` and
-  Continue `ContactImportSelectContinue`.
+- Contact import: overview summary `ContactImportOverviewSummary`, Import All
+  `ContactImportOverviewImportAll` and Back `NavigationBack`.
 - Contacts: the menu button `HeaderMenu` and drawer item `DrawerContacts`; contact rows
   `Contact_<pubky>`, using the full key with its `pubky` prefix.
