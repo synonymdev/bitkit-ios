@@ -69,7 +69,7 @@ struct SendContactSelectView: View {
                     publicKey: contact.publicKey,
                     privatePaymentContext: privatePaymentContext
                 )
-            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
+            case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
                         type: .warning,

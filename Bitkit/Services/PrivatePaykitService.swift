@@ -37,6 +37,17 @@ struct PrivateMessageDrainRetryKey: Hashable {
     let receiverPath: String
 }
 
+struct PrivatePaymentListConsumptionKey: Hashable {
+    let attemptId: UUID
+    let publicKey: String
+    let receiverPath: String
+}
+
+struct PrivatePaymentListConsumption {
+    let paymentListVersion: UInt64
+    let previousPaymentListVersion: UInt64?
+}
+
 // MARK: - Core Actor
 
 actor PrivatePaykitService {
@@ -75,6 +86,8 @@ actor PrivatePaykitService {
     var pendingMessageDrainRetryTask: Task<Void, Never>?
     var pendingMessageDrainRetryKeys: Set<PrivateMessageDrainRetryKey> = []
     var pendingMessageDrainRetryGeneration = 0
+    // A restart makes the send outcome uncertain, so only live attempts may release a consumed list.
+    var privatePaymentListConsumptions: [PrivatePaymentListConsumptionKey: PrivatePaymentListConsumption] = [:]
     var initialLinkBurstTask: Task<Void, Never>?
     var initialLinkBurstPublicKeys: Set<String> = []
     var initialLinkBurstGeneration = 0

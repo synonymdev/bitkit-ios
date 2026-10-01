@@ -127,8 +127,14 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             return .failure(.unsupportedLocalRole)
         }
 
-        if requiresActionableRequest, record.state != .proposed, record.state != .accepted {
-            return .failure(.nonActionableState)
+        let lifecycleState: Paykit.PaymentRequestLifecycleState
+        if requiresActionableRequest {
+            guard let actionableState = actionableLifecycleState(for: record) else {
+                return .failure(.nonActionableState)
+            }
+            lifecycleState = actionableState
+        } else {
+            lifecycleState = record.state
         }
 
         guard record.state != .activeRecurring else { return .failure(.recurringRequest) }
@@ -152,7 +158,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         let expiresAt: Date?
         if let proposalExpiresAt = terms.proposalExpiresAt {
             guard let parsedExpiration = Self.parseDate(proposalExpiresAt) else { return .failure(.invalidExpiration) }
-            guard !requiresActionableRequest || record.state != .proposed || parsedExpiration > now else {
+            guard !requiresActionableRequest || lifecycleState != .proposed || parsedExpiration > now else {
                 return .failure(.expired)
             }
             expiresAt = parsedExpiration
@@ -172,12 +178,29 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             acceptedPaymentEndpointIdentifiers: acceptedPaymentEndpointIdentifiers,
             deliveryStatus: expectedRole == .payee ? Self.deliveryStatus(from: record.proposalOutboundStatus) : nil,
             direction: expectedRole == .payer ? .incoming : .outgoing,
-            lifecycleState: record.state,
+            lifecycleState: lifecycleState,
             billingPeriod: nil,
             paymentProofKind: record.paymentProofs.last.flatMap {
                 PaykitPaymentProofKind(paymentEndpointIdentifier: $0.paymentEndpointIdentifier)
             }
         ))
+    }
+
+    private static func actionableLifecycleState(
+        for record: Paykit.PaymentRequestRecord
+    ) -> Paykit.PaymentRequestLifecycleState? {
+        switch record.state {
+        case .proposed, .accepted:
+            return record.state
+        case .recoveryRequired:
+            guard record.paymentProofs.isEmpty,
+                  record.rejectedEventId == nil,
+                  record.canceledEventId == nil
+            else { return nil }
+            return record.acceptedEventId == nil ? .proposed : .accepted
+        case .proposalExpired, .rejected, .canceled, .proofSubmitted, .activeRecurring, .invalidConflict, .unknown:
+            return nil
+        }
     }
 
     init(

@@ -267,7 +267,7 @@ struct AddContactView: View {
             switch result {
             case let .opened(paymentRequest, _):
                 _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey)
-            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
+            case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
                         type: .warning,

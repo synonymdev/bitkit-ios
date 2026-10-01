@@ -1,5 +1,47 @@
 import SwiftUI
 
+enum PaymentRequestDisplay {
+    static func paymentDirection(for request: PaykitPaymentRequest) -> PaykitPaymentRequest.Direction? {
+        request.lifecycleState == .proofSubmitted ? request.direction : nil
+    }
+
+    static func statusKey(
+        for request: PaykitPaymentRequest,
+        isActionable: Bool,
+        now: Date = Date()
+    ) -> String {
+        if request.isExpired(at: now), request.lifecycleState == .proposed {
+            return "wallet__payment_request_status_expired"
+        }
+
+        switch request.lifecycleState {
+        case .proposed:
+            if request.direction == .incoming {
+                return isActionable
+                    ? "wallet__payment_request_waiting"
+                    : "wallet__payment_request_status_unavailable"
+            }
+            return request.deliveryStatus == .sent
+                ? "wallet__payment_request_waiting"
+                : "wallet__payment_request_sending"
+        case .proposalExpired:
+            return "wallet__payment_request_status_expired"
+        case .accepted:
+            return "wallet__payment_request_status_pending"
+        case .rejected:
+            return "wallet__payment_request_status_rejected"
+        case .canceled:
+            return "wallet__payment_request_status_canceled"
+        case .proofSubmitted:
+            return "wallet__payment_request_status_paid"
+        case .recoveryRequired:
+            return "wallet__payment_request_status_action_required"
+        case .invalidConflict, .activeRecurring, .unknown:
+            return "wallet__payment_request_status_unavailable"
+        }
+    }
+}
+
 struct PaymentRequestsSheetItem: SheetItem {
     let id: SheetID = .paymentRequests
     let size: SheetSize = .large
@@ -334,7 +376,7 @@ struct PaymentRequestsView: View {
                                 request: request,
                                 subtitleOverride: historyDate(for: request),
                                 isHighlighted: false,
-                                paymentDirection: request.lifecycleState == .proofSubmitted ? request.direction : nil,
+                                paymentDirection: PaymentRequestDisplay.paymentDirection(for: request),
                                 onOpen: { navigation.navigate(.paymentRequestDetail(request.id)) }
                             )
                         }
@@ -405,33 +447,7 @@ struct PaymentRequestsView: View {
     }
 
     private func status(for request: PaykitPaymentRequest) -> String {
-        if request.isExpired(at: Date()), request.lifecycleState == .proposed {
-            return t("wallet__payment_request_status_expired")
-        }
-
-        switch request.lifecycleState {
-        case .proposed:
-            if request.direction == .incoming {
-                return t("wallet__payment_request_status_unavailable")
-            }
-            return request.deliveryStatus == .sent
-                ? t("wallet__payment_request_waiting")
-                : t("wallet__payment_request_sending")
-        case .proposalExpired:
-            return t("wallet__payment_request_status_expired")
-        case .accepted:
-            return t("wallet__payment_request_status_pending")
-        case .rejected:
-            return t("wallet__payment_request_status_rejected")
-        case .canceled:
-            return t("wallet__payment_request_status_canceled")
-        case .proofSubmitted:
-            return t("wallet__payment_request_status_paid")
-        case .recoveryRequired:
-            return t("wallet__payment_request_status_action_required")
-        case .invalidConflict, .activeRecurring, .unknown:
-            return t("wallet__payment_request_status_unavailable")
-        }
+        t(PaymentRequestDisplay.statusKey(for: request, isActionable: isActionable(request)))
     }
 
     @ViewBuilder
@@ -556,19 +572,7 @@ struct PaymentRequestDetailView: View {
     }
 
     private func amount(_ request: PaykitPaymentRequest) -> some View {
-        let isCompleted = request.lifecycleState == .proofSubmitted
-        let icon = if isCompleted {
-            request.direction == .incoming ? "arrow-up" : "arrow-down"
-        } else {
-            request.direction == .incoming ? "arrow-down" : "arrow-up"
-        }
-        let colors: (icon: Color, background: Color) = if isCompleted {
-            request.paymentRailColors
-        } else {
-            request.direction == .incoming
-                ? (.purpleAccent, .purple16)
-                : (.brandAccent, .brand16)
-        }
+        let paymentDirection = PaymentRequestDisplay.paymentDirection(for: request)
 
         return VStack(alignment: .leading, spacing: 8) {
             MoneyText(
@@ -584,18 +588,30 @@ struct PaymentRequestDetailView: View {
                     unitType: .primary,
                     size: .display,
                     symbol: true,
-                    prefix: request.direction == .incoming ? "-" : "",
+                    prefix: paymentDirection == .incoming ? "-" : paymentDirection == .outgoing ? "+" : "",
                     color: .textPrimary,
                     symbolColor: .textSecondary
                 )
+                .accessibilityIdentifier("PaymentRequestDetailsAmount")
                 Spacer()
-                CircularIcon(
-                    icon: icon,
-                    iconColor: colors.icon,
-                    backgroundColor: colors.background,
-                    size: 48
-                )
+                if let paymentDirection {
+                    CircularIcon(
+                        icon: paymentDirection == .incoming ? "arrow-up" : "arrow-down",
+                        iconColor: request.paymentRailColors.icon,
+                        backgroundColor: request.paymentRailColors.background,
+                        size: 48
+                    )
+                } else if let contact {
+                    PubkyContactAvatar(contact: contact, size: 48)
+                } else {
+                    ContactAvatarLetter(source: request.counterparty, size: 48)
+                }
             }
+            BodyMText(
+                t(PaymentRequestDisplay.statusKey(for: request, isActionable: isActionable(request))),
+                textColor: .white64
+            )
+            .accessibilityIdentifier("PaymentRequestDetailsStatus")
         }
     }
 
