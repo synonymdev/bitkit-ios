@@ -151,10 +151,15 @@ final class PaykitSdkReadLimiterTests: XCTestCase {
             await fulfillment(of: [abandonedThrew], timeout: 2)
 
             holderGate.open()
-            try await abandoned.value
-            try await holder.value
-            try await next.value
-            try await testCase.queue { await recorder.record("after") }
+            for read in [abandoned, holder, next] {
+                let result = await read.result
+                XCTAssertNoThrow(try result.get(), testCase.name)
+            }
+            do {
+                try await testCase.queue { await recorder.record("after") }
+            } catch {
+                XCTFail("\(testCase.name): \(error)")
+            }
             let events = await recorder.events
             XCTAssertEqual(events, ["holder", "next", "after"], testCase.name)
         }

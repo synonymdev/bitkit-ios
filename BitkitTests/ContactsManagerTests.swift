@@ -216,7 +216,8 @@ final class ContactsManagerTests: XCTestCase {
             } else {
                 XCTAssertNoThrow(try cancelledResult.get(), testCase.name)
             }
-            try await enable.value
+            let enableResult = await enable.result
+            XCTAssertNoThrow(try enableResult.get(), testCase.name)
             XCTAssertTrue(manager.hasLoaded, testCase.name)
             XCTAssertEqual(manager.contacts.map(\.publicKey), [record.publicKey], testCase.name)
             XCTAssertNil(manager.loadErrorMessage, testCase.name)
@@ -498,27 +499,41 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
-    func testOnlyAUserInitiatedContactProfileLookupRetriesATransportErrorAndOnlyOnce() async throws {
+    func testBulkContactProfileLookupDoesNotRetryTransportError() async throws {
+        let stub = ContactProfileFetchStub([.failure(profileTransportError), .success(makeProfile(publicKey: contactProfileKey))])
+
+        // Bulk and screen lookups leave retryTransient out, so this pins its default.
+        let profile = try await ContactsManager.resolveContactProfile(
+            publicKey: contactProfileKey,
+            includePlaceholder: true,
+            fetchRemoteProfile: { try await stub.fetch($0) }
+        )
+
+        XCTAssertEqual(profile.name, Bitkit.PubkyProfile.placeholder(publicKey: contactProfileKey).name)
+        let attempts = await stub.attempts
+        XCTAssertEqual(attempts, 1)
+    }
+
+    func testUserInitiatedContactProfileLookupRetriesATransportErrorOnlyOnce() async {
         let placeholderName = Bitkit.PubkyProfile.placeholder(publicKey: contactProfileKey).name
         let found: Result<Bitkit.PubkyProfile?, Error> = .success(makeProfile(publicKey: contactProfileKey))
-        let cases: [(name: String, retryTransient: Bool, outcomes: [Result<Bitkit.PubkyProfile?, Error>], expectedName: String, attempts: Int)] = [
-            ("bulk lookup does not retry", false, [.failure(profileTransportError), found], placeholderName, 1),
-            ("user-initiated lookup retries once", true, [.failure(profileTransportError), found], "Alice", 2),
-            ("user-initiated lookup falls back to the placeholder after one retry", true, [.failure(profileTransportError)], placeholderName, 2),
+        let cases: [(name: String, outcomes: [Result<Bitkit.PubkyProfile?, Error>], expectedName: String)] = [
+            ("user-initiated lookup retries once", [.failure(profileTransportError), found], "Alice"),
+            ("user-initiated lookup falls back to the placeholder after one retry", [.failure(profileTransportError)], placeholderName),
         ]
         for testCase in cases {
             let stub = ContactProfileFetchStub(testCase.outcomes)
 
-            let profile = try await ContactsManager.resolveContactProfile(
+            let profile = try? await ContactsManager.resolveContactProfile(
                 publicKey: contactProfileKey,
                 includePlaceholder: true,
-                retryTransient: testCase.retryTransient,
+                retryTransient: true,
                 fetchRemoteProfile: { try await stub.fetch($0) }
             )
 
-            XCTAssertEqual(profile.name, testCase.expectedName, testCase.name)
+            XCTAssertEqual(profile?.name, testCase.expectedName, testCase.name)
             let attempts = await stub.attempts
-            XCTAssertEqual(attempts, testCase.attempts, testCase.name)
+            XCTAssertEqual(attempts, 2, testCase.name)
         }
     }
 
@@ -731,11 +746,11 @@ final class ContactsManagerTests: XCTestCase {
 
             let attempts = await interactive.attempts
             XCTAssertEqual(attempts, 1, "\(testCase.name): concurrent callers share one lookup, and the contact is not looked up again")
-            let row = try XCTUnwrap(manager.contacts.first { $0.publicKey == contactProfileKey }?.profile, testCase.name)
-            XCTAssertEqual(row.name, testCase.row.name, testCase.name)
-            XCTAssertEqual(row.bio, testCase.row.bio, "\(testCase.name): an edit made now keeps the bio the lookup found")
-            XCTAssertEqual(row.imageUrl, testCase.row.imageUrl, testCase.name)
-            XCTAssertEqual(row.links.map(\.url), testCase.row.links.map(\.url), testCase.name)
+            let row = manager.contacts.first { $0.publicKey == contactProfileKey }?.profile
+            XCTAssertEqual(row?.name, testCase.row.name, testCase.name)
+            XCTAssertEqual(row?.bio, testCase.row.bio, "\(testCase.name): an edit made now keeps the bio the lookup found")
+            XCTAssertEqual(row?.imageUrl, testCase.row.imageUrl, testCase.name)
+            XCTAssertEqual(row?.links.map(\.url), testCase.row.links.map(\.url), testCase.name)
             XCTAssertEqual(manager.contacts.map(\.displayName), testCase.names, testCase.name)
             await bulk.release()
             await manager.waitForProfileRefreshForTesting()
@@ -833,10 +848,10 @@ final class ContactsManagerTests: XCTestCase {
             await bulk.release()
             await manager.waitForProfileRefreshForTesting()
 
-            let row = try XCTUnwrap(manager.contacts.first?.profile)
-            XCTAssertEqual(row.name, "Label only", "A background result for a contact a screen took over must not change its row, \(message)")
-            XCTAssertEqual(row.bio, "", message)
-            XCTAssertNil(row.imageUrl, message)
+            let row = manager.contacts.first?.profile
+            XCTAssertEqual(row?.name, "Label only", "A background result for a contact a screen took over must not change its row, \(message)")
+            XCTAssertEqual(row?.bio, "", message)
+            XCTAssertNil(row?.imageUrl, message)
             try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { _ in throw profileTransportError })
             XCTAssertEqual(manager.contacts.map(\.displayName), ["Label only"], "Nor may the next load show it, \(message)")
             await manager.waitForProfileRefreshForTesting()

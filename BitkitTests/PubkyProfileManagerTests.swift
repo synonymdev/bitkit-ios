@@ -1331,7 +1331,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         for testCase in cases {
             AdoptedPubkyReference.current = nil
             await withRestoredProfileDefaults {
-                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")], caseName: testCase.name)
                 let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
                 await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
                 await stub.setHoldsRequests(true)
@@ -1371,11 +1371,11 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testRingAdoptionReusesTheFoundRowProfileWhateverFormTheAdoptedKeyTakesAndClearsTheRows() async throws {
+    func testRingAdoptionReusesTheFoundRowProfileWhateverFormTheAdoptedKeyTakesAndClearsTheRows() async {
         // Rows are cached under the normalized pubky.
         for (name, adoptedKey) in [("prefixed key", ringKeyA), ("bare key", bareRingKeyA)] {
-            try await withRestoredProfileDefaults {
-                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+            await withRestoredProfileDefaults(case: name) {
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")], caseName: name)
                 let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
                 await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
                 // Held from here on, so adoption only returns if it reads nothing remote itself.
@@ -1392,18 +1392,18 @@ final class PubkyProfileManagerTests: XCTestCase {
                 XCTAssertTrue(manager.ringIdentityProfiles.isEmpty, name)
 
                 await stub.waitForRequests(3)
+                await stub.release(request: 2)
+                await waitUntil("\(name): the background refresh finishes") { !manager.isLoadingProfile }
                 let requests = await stub.requests
                 XCTAssertEqual(Set(requests.prefix(2)), [ringKeyA, ringKeyB], name)
                 XCTAssertEqual(requests.dropFirst(2), [adoptedKey], "\(name): only the background refresh reads the row's profile again")
-                await stub.release(request: 2)
-                await waitUntil("\(name): the background refresh finishes") { !manager.isLoadingProfile }
             }
         }
     }
 
     /// Only a definitive not-found undoes the reused row profile and starts profile setup; an offline refresh keeps it.
     @MainActor
-    func testRingAdoptionRefreshOfAReusedRowProfile() async throws {
+    func testRingAdoptionRefreshOfAReusedRowProfile() async {
         let renamed = makeProfile(publicKey: ringKeyA, name: "Alice Renamed")
         let cases: [(name: String, change: (RemoteProfileStub) async -> Void, expectedName: String?)] = [
             ("renamed", { await $0.setProfile(renamed, for: ringKeyA) }, "Alice Renamed"),
@@ -1411,8 +1411,8 @@ final class PubkyProfileManagerTests: XCTestCase {
             ("offline", { await $0.makeUnreachable(ringKeyA) }, "Alice"),
         ]
         for testCase in cases {
-            try await withRestoredProfileDefaults {
-                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+            await withRestoredProfileDefaults(case: testCase.name) {
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")], caseName: testCase.name)
                 let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
                 await manager.loadRingIdentityProfiles([bareRingKeyA])
                 await testCase.change(stub)
@@ -1584,11 +1584,11 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testRingAdoptionWaitsForTheTappedRowLookupAndFetchesOnlyWhenItMisses() async throws {
+    func testRingAdoptionWaitsForTheTappedRowLookupAndFetchesOnlyWhenItMisses() async {
         for rowLookupFinds in [true, false] {
             let name = "rowLookupFinds: \(rowLookupFinds)"
-            try await withRestoredProfileDefaults {
-                let stub = RemoteProfileStub(holdsRequests: true)
+            await withRestoredProfileDefaults(case: name) {
+                let stub = RemoteProfileStub(holdsRequests: true, caseName: name)
                 let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
                 let rows = Task { await manager.loadRingIdentityProfiles([bareRingKeyA]) }
                 await stub.waitForRequests(1)
@@ -1604,12 +1604,16 @@ final class PubkyProfileManagerTests: XCTestCase {
                 // row miss can mean offline, so then the fresh fetch still decides profile setup.
                 await stub.setProfile(makeProfile(publicKey: ringKeyA, name: rowLookupFinds ? "Alice Refetched" : "Alice"), for: ringKeyA)
                 // The second request is the background refresh of a reused profile, or adoption's own fetch after a miss.
+                // Adoption waits for its own fetch, but must return while that refresh is still held.
                 await stub.waitForRequests(2)
-                await stub.release(request: 1)
+                if !rowLookupFinds {
+                    await stub.release(request: 1)
+                }
 
                 let adopted = try await adoption.value
                 XCTAssertEqual(adopted?.name, "Alice", name)
                 XCTAssertFalse(manager.isProfileSetupPending, name)
+                await stub.release(request: 1)
                 await waitUntil("\(name): the background refresh finishes") { !manager.isLoadingProfile }
                 let requests = await stub.requests
                 XCTAssertEqual(requests, [ringKeyA, ringKeyA], name)
@@ -2280,6 +2284,21 @@ final class PubkyProfileManagerTests: XCTestCase {
         try await body()
     }
 
+    /// Runs one case of a table-driven test, so an error it throws fails that case by name and the next case still runs.
+    @MainActor
+    private func withRestoredProfileDefaults(
+        case name: String,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ body: () async throws -> Void
+    ) async {
+        do {
+            try await withRestoredProfileDefaults(body)
+        } catch {
+            XCTFail("\(name): \(error)", file: file, line: line)
+        }
+    }
+
     /// Fails the test instead of hanging it when `condition` does not hold before the deadline.
     @MainActor
     private func waitUntil(
@@ -2373,10 +2392,12 @@ private actor RemoteProfileStub {
     private var isHolding: Bool
     private var heldRequests: [Int: CheckedContinuation<Void, Never>] = [:]
     private var requestWaiters: [UUID: (count: Int, continuation: CheckedContinuation<Void, Never>)] = [:]
+    private let caseName: String?
 
-    init(profiles: [String: PubkyProfile] = [:], holdsRequests: Bool = false) {
+    init(profiles: [String: PubkyProfile] = [:], holdsRequests: Bool = false, caseName: String? = nil) {
         self.profiles = profiles
         isHolding = holdsRequests
+        self.caseName = caseName
     }
 
     func resolve(_ key: String) async throws -> PubkyProfile {
@@ -2435,14 +2456,18 @@ private actor RemoteProfileStub {
 
     private func expireHeldRequest(_ index: Int) {
         guard let continuation = heldRequests.removeValue(forKey: index) else { return }
-        XCTFail("Request \(index) was never released")
+        XCTFail(named("Request \(index) was never released"))
         continuation.resume()
     }
 
     private func expireRequestWaiter(_ id: UUID, file: StaticString, line: UInt) {
         guard let waiter = requestWaiters.removeValue(forKey: id) else { return }
-        XCTFail("Timed out waiting for \(waiter.count) requests; saw \(requests.count)", file: file, line: line)
+        XCTFail(named("Timed out waiting for \(waiter.count) requests; saw \(requests.count)"), file: file, line: line)
         waiter.continuation.resume()
+    }
+
+    private func named(_ message: String) -> String {
+        caseName.map { "\($0): \(message)" } ?? message
     }
 }
 

@@ -3,8 +3,9 @@ import Paykit
 import XCTest
 
 final class PaykitPublicReadLaneTests: XCTestCase {
-    /// Five bulk reads of each kind start, each blocked on its first network read. Only four may run, and a contact record
-    /// read under the SDK lock and an interactive fetch must both finish meanwhile.
+    /// Six bulk reads of each kind start, each blocked on its first network read. Only four may run. The two waiting for a
+    /// bulk slot must hold no read slot, or the six reads would take all six read slots. A contact record read under the
+    /// SDK lock and an interactive fetch must both finish meanwhile.
     func testBulkReadsLeaveTheSdkLockAndReadSlotsFree() async throws {
         let cases: [(name: String, read: @Sendable (PaykitSdkService, String) async throws -> Void)] = [
             ("profile lookup", { service, publicKey in
@@ -30,7 +31,7 @@ final class PaykitPublicReadLaneTests: XCTestCase {
         for testCase in cases {
             let sdk = PublicReadLaneSdk(noPointer: .init())
             let service = PaykitSdkService(sdkFactory: { sdk })
-            let reads = (0 ..< 5).map { index in
+            let reads = (0 ..< 6).map { index in
                 Task { try await testCase.read(service, "contact\(index)") }
             }
             try await sdk.log.waitForEntries(count: 4)
@@ -51,10 +52,9 @@ final class PaykitPublicReadLaneTests: XCTestCase {
             await fulfillment(of: [lockedReadFinished, fetched], timeout: 2)
 
             await sdk.gate.open()
-            try await lockedRead.value
-            try await fetch.value
-            for read in reads {
-                try await read.value
+            for task in [lockedRead, fetch] + reads {
+                let result = await task.result
+                XCTAssertNoThrow(try result.get(), testCase.name)
             }
         }
     }
