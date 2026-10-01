@@ -1,5 +1,8 @@
 @testable import Bitkit
 import BitkitCore
+import LDKNode
+import Paykit
+import SwiftUI
 import XCTest
 
 /// Regression coverage for the hardware-wallet pending transfer activity. `OnchainActivity.channelId`
@@ -35,12 +38,704 @@ final class TransferServiceActivityTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: testDbPath)
     }
 
+    private func paymentRequestRecord(
+        endpoints: [String] = [PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue],
+        paymentProofs: [PaymentProofRecord] = [],
+        paymentRequestId: String = "550e8400-e29b-41d4-a716-446655440000",
+        state: PaymentRequestLifecycleState = .proposed,
+        recurrence: PaymentRequestRecurrence? = nil
+    ) throws -> PaymentRequestRecord {
+        try PaymentRequestRecord(
+            counterparty: "pubky" + String(repeating: "y", count: 52),
+            counterpartyReceiverPath: "bitkit/server",
+            paymentRequestId: paymentRequestId,
+            localRole: .payer,
+            state: state,
+            proposalStreamItemId: 1,
+            proposalOutboundMessageId: nil,
+            proposalOutboundStatus: nil,
+            proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
+            terms: PaymentRequestTerms(
+                amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
+                paymentReference: PaymentReference(text: "invoice-123"),
+                proposalExpiresAt: nil,
+                recurrence: recurrence,
+                acceptedPaymentEndpointIdentifiers: endpoints,
+                conversion: nil,
+                paymentDeadline: nil,
+                metadata: PrivateJsonObject(text: "{}")
+            ),
+            acceptedEventId: nil,
+            acceptedOutboundStatus: nil,
+            rejectedEventId: nil,
+            rejectedOutboundStatus: nil,
+            canceledEventId: nil,
+            canceledOutboundStatus: nil,
+            conversionQuotes: [],
+            paymentProofs: paymentProofs,
+            lastStreamItemId: 1,
+            lastOutboundMessageId: nil,
+            lastOutboundStatus: nil,
+            lastEventAt: "2027-01-15T08:00:00Z",
+            invalidReason: nil
+        )
+    }
+
     private func makeService() -> Bitkit.TransferService {
         Bitkit.TransferService(
             storage: Bitkit.TransferStorage(defaults: transferDefaults),
             lightningService: .shared,
-            blocktankService: Bitkit.CoreService.shared.blocktank
+            blocktankService: Bitkit.CoreService.shared.blocktank,
+            isGeoBlocked: { false }
         )
+    }
+
+    @MainActor
+    private func makeWallet(attempts: OnchainSendAttemptService) -> WalletViewModel {
+        WalletViewModel(
+            transferService: makeService(), sheetViewModel: SheetViewModel(),
+            feeEstimatesManager: FeeEstimatesManager(), onchainAttemptService: attempts
+        )
+    }
+
+    @MainActor
+    func testPendingResumeShowsEarlierActivityWithoutSuccessForNewUnsentAmount() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ab", count: 32)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        let original = OnchainSendAttemptService(store: store)
+        _ = try await original.send(
+            using: node, address: "bcrt1qoriginal", amountSats: 4321, satsPerVbyte: 2,
+            utxosToSpend: nil, isMaxAmount: false,
+            followupContext: OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100)
+        )
+        let restarted = OnchainSendAttemptService(store: store)
+        do {
+            _ = try await restarted.send(
+                using: node, address: "bcrt1qnew-unsent", amountSats: 9999,
+                satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false
+            )
+            XCTFail("New ordinary payment reused old acceptance")
+        } catch {}
+        let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmedCallback
+            Bitkit.LightningService.shared.onchainTransactionReceived = receivedCallback
+        }
+        let wallet = makeWallet(attempts: restarted)
+        wallet.sendAmountSats = 9999
+        var path: [SendRoute] = []
+        let resolutionReady = expectation(description: "Actual Pending task durably finishes original activity")
+        let subscription = OnchainSendAttemptService.localResolutionPublisher.sink { resolution in
+            if resolution.txid == txid {
+                resolutionReady.fulfill()
+            }
+        }
+        defer { subscription.cancel() }
+        let view = SendPendingScreen(
+            paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: nil,
+            routingCacheResetAttempted: false, attemptService: restarted,
+            navigationPath: Binding(get: { path }, set: { path = $0 })
+        )
+        .environmentObject(CurrencyViewModel())
+        .environmentObject(SettingsViewModel.shared)
+        .environmentObject(ActivityListViewModel())
+        .environmentObject(AppViewModel())
+        .environmentObject(NavigationViewModel())
+        .environmentObject(PubkyProfileManager())
+        .environmentObject(SheetViewModel())
+        .environmentObject(wallet)
+        let controller = UIHostingController(rootView: view)
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.rootViewController = controller
+        window.isHidden = false
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        await fulfillment(of: [resolutionReady], timeout: 5)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(path.isEmpty, "Original local resume must not navigate to success for the new unsent payment")
+        XCTAssertEqual(wallet.sendAmountSats, 9999, "Original resume overwrote the new payment's amount")
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+        XCTAssertEqual(node.calls, 1)
+        let saved = try await activity.getOnchainActivityByTxId(txid: txid)
+        XCTAssertEqual(saved?.value, 4321)
+    }
+
+    @MainActor
+    func testHardwareShopCandidateDoesNotCreateSentActivityUntilVerified() async throws {
+        let requestId = PaykitPaymentRequest.ID(
+            paymentRequestId: UUID().uuidString, counterparty: "pubky" + String(repeating: "y", count: 52),
+            counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil
+        )
+        let walletId = "trezor:original-ios-wallet"
+        for (index, request, verified) in [(0, Optional(requestId), false), (1, Optional(requestId), true), (2, nil, false)] {
+            let txid = String(repeating: ["ab", "cd", "ef"][index], count: 32)
+            let result = HwFundingBroadcastResult(txId: txid, miningFeeSats: 100, feeRate: 2, totalSpent: 1334)
+            await HwSendSignView.recordPaymentResult(
+                result, walletId: walletId, address: "bcrt1qoriginal", amount: 1234,
+                contactPublicKey: requestId.counterparty, tags: ["original tag"], requestId: request, proofVerified: verified
+            )
+            let sent = try await activity.getOnchainActivityByTxId(txid: txid, walletId: walletId)
+            if request != nil, !verified {
+                XCTAssertNil(sent, "The local hardware txid must not become Sent activity without positive observation")
+                let metadata = try await ServiceQueue.background(.core) {
+                    try BitkitCore.getPreActivityMetadata(walletId: walletId, searchKey: txid, searchByAddress: false)
+                }
+                XCTAssertEqual(metadata?.walletId, walletId)
+                XCTAssertEqual(metadata?.txId, txid)
+                XCTAssertEqual(metadata?.address, "bcrt1qoriginal")
+                XCTAssertEqual(metadata?.tags, ["original tag"])
+                // A later positive observation resumes this exact result and existing metadata.
+                await HwSendSignView.recordPaymentResult(
+                    result, walletId: walletId, address: "bcrt1qoriginal", amount: 1234,
+                    contactPublicKey: requestId.counterparty, tags: ["original tag"], requestId: request, proofVerified: true
+                )
+            }
+            let completed = try await activity.getOnchainActivityByTxId(txid: txid, walletId: walletId)
+            XCTAssertEqual(completed?.walletId, walletId)
+            XCTAssertEqual(completed?.txId, txid)
+            XCTAssertEqual(completed?.value, 1234)
+            XCTAssertEqual(completed?.fee, 100)
+        }
+    }
+
+    @MainActor
+    func testDelayedHardwareProofRestoresOriginalSentActivityTagsAndReopenedPending() async throws {
+        let identity = "pubky" + String(repeating: "z", count: 52)
+        let requestId = PaykitPaymentRequest.ID(
+            paymentRequestId: UUID().uuidString, counterparty: "pubky" + String(repeating: "y", count: 52),
+            counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil
+        )
+        let walletId = "trezor:original-ios-wallet"
+        let txid = String(repeating: "ab", count: 32)
+        let result = HwFundingBroadcastResult(txId: txid, miningFeeSats: 100, feeRate: 2, totalSpent: 1334)
+        await HwSendSignView.recordPaymentResult(
+            result, walletId: walletId, address: "bcrt1qoriginal", amount: 1234,
+            contactPublicKey: requestId.counterparty, tags: ["original tag"], requestId: requestId, proofVerified: false
+        )
+        let proof = PendingPaykitPaymentProof(
+            identity: identity, requestId: requestId, paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+            kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: nil,
+            onchainAddress: "bcrt1qoriginal", onchainAmountSats: 1234, onchainWalletId: walletId
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [])
+        let lookup = PaymentProofHardwareLookup(result: .success(TransactionDetail(
+            txid: txid, received: 0, sent: 1334, net: -1334, amount: 1234, fee: 100, direction: .sent,
+            blockHeight: nil, timestamp: nil, confirmations: 0, inputs: [], outputs: [], size: 112, vsize: 112, weight: 448, feeRate: 2
+        )))
+        let service = PaykitPaymentProofService(
+            sdk: sdk, store: store, hardwareTransactionLookup: lookup,
+            attemptService: OnchainSendAttemptService(store: MemoryAttemptStore()), logInfo: { _ in }, logWarning: { _ in }
+        )
+        await service.reconcile()
+        let sent = try await activity.getOnchainActivityByTxId(txid: txid, walletId: walletId)
+        XCTAssertEqual(sent?.txId, txid)
+        XCTAssertEqual(sent?.walletId, walletId)
+        XCTAssertEqual(sent?.value, 1234)
+        XCTAssertEqual(sent?.fee, 100)
+        XCTAssertEqual(sent?.contact, PubkyPublicKeyFormat.normalized(requestId.counterparty))
+        let tags = try await activity.tags(forActivity: txid, walletId: walletId)
+        XCTAssertEqual(tags, ["original tag"])
+        await service.consumeOnchainPaymentResolution(.init(identity: identity, requestId: requestId, transactionId: txid, walletId: walletId))
+        let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmedCallback
+            Bitkit.LightningService.shared.onchainTransactionReceived = receivedCallback
+        }
+        let wallet = makeWallet(attempts: OnchainSendAttemptService(store: MemoryAttemptStore()))
+        wallet.sendAmountSats = 9999
+        let profile = PubkyProfileManager()
+        profile.publicKey = identity
+        var path: [SendRoute] = []
+        let view = SendPendingScreen(
+            paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId,
+            routingCacheResetAttempted: false, hardwareWalletId: walletId, hardwareTransactionId: txid,
+            hardwarePaymentIdentity: identity, proofService: service,
+            navigationPath: Binding(get: { path }, set: { path = $0 })
+        )
+        .environmentObject(CurrencyViewModel()).environmentObject(SettingsViewModel.shared)
+        .environmentObject(ActivityListViewModel()).environmentObject(AppViewModel())
+        .environmentObject(NavigationViewModel()).environmentObject(profile)
+        .environmentObject(SheetViewModel()).environmentObject(wallet)
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.rootViewController = UIHostingController(rootView: view)
+        window.isHidden = false
+        defer { window.isHidden = true; window.rootViewController = nil }
+        for _ in 0 ..< 30 where path.isEmpty {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertEqual(path, [.success(paymentId: txid, walletId: walletId)], "Consumed publisher must not strand durable verified Pending")
+        XCTAssertEqual(wallet.sendAmountSats, 9999)
+    }
+
+    @MainActor
+    func testHardwareProofSubmissionRetryPreservesContactEdits() async throws {
+        let identity = "pubky" + String(repeating: "z", count: 52)
+        let original = "pubky" + String(repeating: "y", count: 52)
+        let reassigned = "pubky" + String(repeating: "x", count: 52)
+        for (index, editedContact) in [String?.none, Optional(reassigned)].enumerated() {
+            let requestId = PaykitPaymentRequest.ID(paymentRequestId: UUID().uuidString, counterparty: original,
+                                                    counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil)
+            let walletId = "trezor:original-ios-wallet"
+            let txid = String(repeating: index == 0 ? "ab" : "cd", count: 32)
+            let store = PaymentProofMemoryStore()
+            await store.seed([PendingPaykitPaymentProof(identity: identity, requestId: requestId,
+                                                        paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+                                                        kind: .onchain,
+                                                        paymentStarted: true, paymentIdentifier: txid, proofData: nil,
+                                                        onchainAddress: "bcrt1qoriginal",
+                                                        onchainAmountSats: 1234, onchainWalletId: walletId)])
+            let sdk = try PaymentProofSdkMock(identity: identity, records: [paymentRequestRecord(
+                endpoints: [PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue], paymentRequestId: requestId.paymentRequestId
+            )])
+            await sdk.setSubmissionFailure(true)
+            let lookup = PaymentProofHardwareLookup(result: .success(TransactionDetail(
+                txid: txid, received: 0, sent: 1334, net: -1334, amount: 1234, fee: 100, direction: .sent,
+                blockHeight: nil, timestamp: nil, confirmations: 0, inputs: [], outputs: [], size: 112, vsize: 112, weight: 448, feeRate: 2
+            )))
+            func service() -> PaykitPaymentProofService {
+                PaykitPaymentProofService(sdk: sdk, store: store, hardwareTransactionLookup: lookup,
+                                          attemptService: OnchainSendAttemptService(store: MemoryAttemptStore()), logInfo: { _ in },
+                                          logWarning: { _ in })
+            }
+            await service().reconcile()
+            let sent = try await activity.getOnchainActivityByTxId(txid: txid, walletId: walletId)
+            XCTAssertEqual(sent?.contact, PubkyPublicKeyFormat.normalized(original))
+            let completedProofs = await store.snapshot()
+            XCTAssertEqual(completedProofs.first?.onchainLocalFollowupComplete, true)
+            let failedSubmissions = await sdk.submissionCount()
+            XCTAssertEqual(failedSubmissions, 1, "Fixture must exercise actual failed SDK submission after local follow-up")
+            try await activity.setContact(editedContact, forActivity: txid, walletId: walletId)
+            await service().reconcile() // restart after SDK failure; original durable proof retained
+            let saved = try await activity.getOnchainActivityByTxId(txid: txid, walletId: walletId)
+            XCTAssertEqual(
+                saved?.contact,
+                editedContact.flatMap(PubkyPublicKeyFormat.normalized),
+                "Proof delivery retry overwrote a later Details contact edit"
+            )
+            let retrySubmissions = await sdk.submissionCount()
+            XCTAssertEqual(retrySubmissions, 2)
+            let lookups = await lookup.calls()
+            XCTAssertEqual(lookups.count, 1, "Verified proof delivery retry must not repeat transaction observation or payment")
+        }
+    }
+
+    @MainActor
+    func testReceivedEventPreservesCompletedOrdinaryContactEdits() async throws {
+        let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmedCallback
+            Bitkit.LightningService.shared.onchainTransactionReceived = receivedCallback
+        }
+        let original = "pubky" + String(repeating: "y", count: 52)
+        let reassigned = "pubky" + String(repeating: "x", count: 52)
+        for (index, editedContact) in [String?.none, Optional(reassigned)].enumerated() {
+            let store = MemoryAttemptStore()
+            let txid = String(repeating: index == 0 ? "ab" : "cd", count: 32)
+            let node = AttemptNodeMock(result: .accepted(txid: txid))
+            let attempts = OnchainSendAttemptService(store: store)
+            _ = try await attempts.send(using: node, address: "bcrt1qoriginal", amountSats: 4321, satsPerVbyte: 2,
+                                        utxosToSpend: nil, isMaxAmount: false,
+                                        followupContext: OnchainSendFollowupContext(
+                                            feeSats: 123,
+                                            feeRate: 2,
+                                            tags: [],
+                                            contact: original,
+                                            createdAt: 100
+                                        ))
+            _ = try await attempts.resumeAcceptedOrdinarySend(walletId: OnchainSendAttemptService.walletId(index: node.currentWalletIndex))
+            XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+            try await activity.setContact(editedContact, forActivity: txid)
+            let wallet = makeWallet(attempts: OnchainSendAttemptService(store: store))
+            await Bitkit.LightningService.shared.onchainTransactionReceived?(txid.uppercased())
+            let saved = try await activity.getOnchainActivityByTxId(txid: txid)
+            XCTAssertEqual(
+                saved?.contact,
+                editedContact.flatMap(PubkyPublicKeyFormat.normalized),
+                "Delayed native event overwrote a later Details contact edit"
+            )
+            XCTAssertEqual(node.calls, 1, "Completed follow-up must not dispatch another payment")
+            withExtendedLifetime(wallet) {}
+        }
+    }
+
+    @MainActor
+    func testHardwarePendingSkipsSavingsGuardAndResolvesOnlyOriginalWalletAndTxid() async throws {
+        let identity = "pubky" + String(repeating: "z", count: 52)
+        let requestId = PaykitPaymentRequest.ID(
+            paymentRequestId: UUID().uuidString, counterparty: "pubky" + String(repeating: "y", count: 52),
+            counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil
+        )
+        let walletId = "trezor:original-ios-wallet"
+        let txid = String(repeating: "ab", count: 32)
+        let proof = PendingPaykitPaymentProof(
+            identity: identity, requestId: requestId, paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+            kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: nil,
+            onchainAddress: "bcrt1qoriginal", onchainAmountSats: 1234, onchainWalletId: walletId
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [])
+        func lookup(_ txid: String) -> PaymentProofHardwareLookup {
+            PaymentProofHardwareLookup(result: .success(TransactionDetail(
+                txid: txid, received: 0, sent: 1334, net: -1334, amount: 1234, fee: 100, direction: .sent,
+                blockHeight: nil, timestamp: nil, confirmations: 0, inputs: [], outputs: [], size: 112, vsize: 112, weight: 448, feeRate: 1
+            )))
+        }
+        let service = PaykitPaymentProofService(
+            sdk: sdk, store: store, hardwareTransactionLookup: lookup(txid),
+            attemptService: OnchainSendAttemptService(store: MemoryAttemptStore()), logInfo: { _ in }, logWarning: { _ in }
+        )
+        let savingsStore = HardwarePendingSavingsSpy()
+        let attempts = OnchainSendAttemptService(store: savingsStore)
+        let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmedCallback
+            Bitkit.LightningService.shared.onchainTransactionReceived = receivedCallback
+        }
+        // The spy belongs to Pending, so wallet startup's independent transfer recovery
+        // cannot be mistaken for a lookup made by the screen.
+        let wallet = makeWallet(attempts: OnchainSendAttemptService(store: MemoryAttemptStore()))
+        wallet.sendAmountSats = 9999
+        let profile = PubkyProfileManager()
+        profile.publicKey = identity
+        var path: [SendRoute] = []
+        let view = SendPendingScreen(
+            paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId,
+            routingCacheResetAttempted: false, attemptService: attempts,
+            hardwareWalletId: walletId, hardwareTransactionId: txid, hardwarePaymentIdentity: identity, proofService: service,
+            navigationPath: Binding(get: { path }, set: { path = $0 })
+        )
+        .environmentObject(CurrencyViewModel())
+        .environmentObject(SettingsViewModel.shared)
+        .environmentObject(ActivityListViewModel())
+        .environmentObject(AppViewModel())
+        .environmentObject(NavigationViewModel())
+        .environmentObject(profile)
+        .environmentObject(SheetViewModel())
+        .environmentObject(wallet)
+        let controller = UIHostingController(rootView: view)
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.rootViewController = controller
+        window.isHidden = false
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(savingsStore.loadCount, 0, "Hardware Pending must not inspect an unrelated selected node guard")
+        XCTAssertTrue(path.isEmpty, "The candidate txid alone must not open Bitcoin Sent")
+        let original = try await service.pendingOnchainPayment(requestId: requestId, identity: identity)
+        XCTAssertEqual(original?.onchainAmountSats, 1234)
+        XCTAssertEqual(original?.onchainWalletId, walletId)
+
+        let wrongTxid = String(repeating: "cd", count: 32)
+        var wrongProof = proof
+        wrongProof.paymentIdentifier = wrongTxid
+        await store.seed([wrongProof])
+        let wrongService = PaykitPaymentProofService(
+            sdk: sdk, store: store, hardwareTransactionLookup: lookup(wrongTxid),
+            attemptService: OnchainSendAttemptService(store: MemoryAttemptStore()), logInfo: { _ in }, logWarning: { _ in }
+        )
+        await wrongService.reconcile()
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(path.isEmpty, "Another txid for the same request must not resolve the original hardware wait")
+
+        let otherIdentity = "pubky" + String(repeating: "x", count: 52)
+        let otherProof = PendingPaykitPaymentProof(
+            identity: otherIdentity, requestId: requestId, paymentEndpointIdentifier: proof.paymentEndpointIdentifier,
+            kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: nil,
+            onchainAddress: proof.onchainAddress, onchainAmountSats: 7777, onchainWalletId: walletId
+        )
+        profile.publicKey = otherIdentity
+        await sdk.setIdentity(otherIdentity)
+        await store.seed([otherProof])
+        await service.reconcile()
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(path.isEmpty, "A profile switch must not resolve another identity's same request/wallet/txid")
+
+        profile.publicKey = identity
+        await sdk.setIdentity(identity)
+        await store.seed([proof])
+        await service.reconcile()
+        for _ in 0 ..< 20 where path.isEmpty {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertEqual(path, [.success(paymentId: txid, walletId: walletId)])
+        XCTAssertEqual(wallet.sendAmountSats, 9999)
+        XCTAssertEqual(savingsStore.loadCount, 0)
+    }
+
+    @MainActor
+    func testNativeExactObservationFinishesUnknownAndRejectedOrdinaryActivityAndAck() async throws {
+        let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmedCallback
+            Bitkit.LightningService.shared.onchainTransactionReceived = receivedCallback
+        }
+        for (index, status) in [OnchainSendResult.unknown(txid: String(repeating: "ab", count: 32)),
+                                .rejected(txid: String(repeating: "cd", count: 32), reason: "fixture refusal")].enumerated()
+        {
+            let store = MemoryAttemptStore()
+            let txid = index == 0 ? String(repeating: "ab", count: 32) : String(repeating: "cd", count: 32)
+            let node = AttemptNodeMock(result: status)
+            _ = try await OnchainSendAttemptService(store: store).send(
+                using: node, address: "bcrt1qoriginal", amountSats: 4321, satsPerVbyte: 2,
+                utxosToSpend: nil, isMaxAmount: false,
+                followupContext: OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100)
+            )
+            let restarted = OnchainSendAttemptService(store: store)
+            let wallet = makeWallet(attempts: restarted)
+            XCTAssertNotNil(Bitkit.LightningService.shared.onchainTransactionReceived, "App observation callback must be installed")
+            await Bitkit.LightningService.shared.onchainTransactionReceived?(String(repeating: "ef", count: 32))
+            XCTAssertEqual(store.snapshot().first?.localFollowupComplete, false)
+            await Bitkit.LightningService.shared.onchainTransactionReceived?(txid.uppercased())
+            XCTAssertEqual(store.snapshot().first?.status, .accepted)
+            XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+            let saved = try await activity.getOnchainActivityByTxId(txid: txid)
+            XCTAssertEqual(saved?.value, 4321)
+            XCTAssertEqual(saved?.fee, 123)
+            _ = try await restarted.send(
+                using: node, address: "bcrt1qnew", amountSats: 9999, satsPerVbyte: 1,
+                utxosToSpend: nil, isMaxAmount: false
+            )
+            XCTAssertEqual(node.calls, 2, "Exact durable follow-up did not release the guard")
+            withExtendedLifetime(wallet) {}
+        }
+    }
+
+    @MainActor
+    func testTransferResumeRetainsOriginalBalanceMetadataAfterTrackingFailure() async throws {
+        for isMax in [false, true] {
+            transferDefaults.removeObject(forKey: "transfers")
+            let store = MemoryAttemptStore()
+            let txid = String(repeating: isMax ? "cd" : "ab", count: 32)
+            let node = AttemptNodeMock(result: .accepted(txid: txid))
+            let attempts = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
+            let order = IBtOrder.mock()
+            let initialTotal = isMax ? UInt64(20000) : order.feeSat + 123
+            let vm = TransferViewModel(
+                transferService: makeService(), sheetViewModel: SheetViewModel(),
+                onchainAttemptService: attempts, onchainSender: node, onchainBalanceProvider: { 50000 }
+            )
+            transferDefaults.set(Data("broken-test-transfer-store".utf8), forKey: "transfers")
+            do {
+                try await vm.payOrder(
+                    order: order, speed: .normal, txFee: 123, satsPerVbyte: 2,
+                    isMaxAmount: isMax, maxSendableAmount: isMax ? initialTotal - 123 : nil
+                )
+                XCTFail("Tracking failure was not surfaced")
+            } catch {}
+            XCTAssertEqual(node.calls, 1)
+            transferDefaults.removeObject(forKey: "transfers")
+            let restarted = TransferViewModel(
+                transferService: makeService(), sheetViewModel: SheetViewModel(),
+                onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
+                onchainSender: node, onchainBalanceProvider: { 4000 }
+            )
+            try await restarted.payOrder(
+                order: order, speed: .normal, txFee: 999, satsPerVbyte: 9,
+                isMaxAmount: false, maxSendableAmount: nil
+            )
+            let tracking = try XCTUnwrap(Bitkit.TransferStorage(defaults: transferDefaults).getAll().first)
+            XCTAssertEqual(tracking.txTotalSats, initialTotal)
+            XCTAssertEqual(tracking.preTransferOnchainSats, 50000)
+            XCTAssertEqual(tracking.fundingTxId, txid)
+            XCTAssertEqual(node.calls, 1, "Transfer local resume dispatched funding twice")
+        }
+    }
+
+    @MainActor
+    func testAcceptedOrderFollowupKeepsAdmissionContextWhenWalletChangesAfterDispatch() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ab", count: 32)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        let order = IBtOrder.mock()
+        node.onSend = {
+            XCTAssertEqual(store.snapshot().first?.walletId, OnchainSendAttemptService.walletId(index: 0))
+            node.currentWalletIndex = 1
+            node.dispatchNode = NSObject()
+        }
+        let vm = TransferViewModel(
+            transferService: makeService(), sheetViewModel: SheetViewModel(),
+            onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
+            onchainSender: node, onchainBalanceProvider: { node.currentWalletIndex == 0 ? 50000 : 4000 }
+        )
+        do {
+            try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2)
+        } catch {
+            XCTFail("Accepted original order used the selected wallet after dispatch: \(error)")
+        }
+        let original = store.snapshot().first
+        XCTAssertEqual(original?.walletId, OnchainSendAttemptService.walletId(index: 0))
+        XCTAssertEqual(original?.txid, txid)
+        XCTAssertEqual(original?.localFollowupComplete, true)
+        let tracking = try Bitkit.TransferStorage(defaults: transferDefaults).getAll().first
+        XCTAssertEqual(tracking?.fundingTxId, txid)
+        XCTAssertEqual(tracking?.txTotalSats, order.feeSat + 123)
+        XCTAssertEqual(tracking?.preTransferOnchainSats, 50000)
+        XCTAssertEqual(node.calls, 1)
+    }
+
+    @MainActor
+    func testConfirmedAcceptedOrderRestoresTrackingAndAckWithoutRepayment() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ab", count: 32)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        let order = IBtOrder.mock()
+        let vm = TransferViewModel(
+            transferService: makeService(), sheetViewModel: SheetViewModel(),
+            onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
+            onchainSender: node, onchainBalanceProvider: { 50000 }
+        )
+        transferDefaults.set(Data("broken-test-transfer-store".utf8), forKey: "transfers")
+        do {
+            try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2)
+            XCTFail("Tracking failure was not surfaced")
+        } catch {}
+        transferDefaults.removeObject(forKey: "transfers")
+        let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmedCallback
+            Bitkit.LightningService.shared.onchainTransactionReceived = receivedCallback
+        }
+        let wallet = makeWallet(attempts: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }))
+        await Bitkit.LightningService.shared.onchainTransactionConfirmed?(txid)
+        let tracking = try Bitkit.TransferStorage(defaults: transferDefaults).getAll().first
+        XCTAssertEqual(tracking?.fundingTxId, txid)
+        XCTAssertEqual(tracking?.txTotalSats, order.feeSat + 123)
+        XCTAssertEqual(tracking?.preTransferOnchainSats, 50000)
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+        XCTAssertEqual(node.calls, 1)
+        withExtendedLifetime(wallet) {}
+    }
+
+    func testAcceptedOrdinaryRestartResumesStoredContextAndDurablyAcknowledgesActivity() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ab", count: 32)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        let original = OnchainSendAttemptService(store: store)
+        let context = OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: ["saved-tag"], contact: nil, createdAt: 100)
+        _ = try await original.send(
+            using: node, address: "bcrt1qoriginal", amountSats: 4321, satsPerVbyte: 2,
+            utxosToSpend: nil, isMaxAmount: true, followupContext: context
+        )
+        let walletId = OnchainSendAttemptService.walletId(index: 0)
+        let restarted = OnchainSendAttemptService(store: store)
+        let unrelatedTxid = String(repeating: "cd", count: 32)
+        let unrelatedSaved = await activity.createSentOnchainActivityFromSendResult(
+            txid: unrelatedTxid, address: "bcrt1qoriginal", amount: 4321, fee: 999, feeRate: 99
+        )
+        XCTAssertTrue(unrelatedSaved)
+        store.failSave = true
+        do {
+            _ = try await restarted.resumeAcceptedOrdinarySend(walletId: walletId)
+            XCTFail("Failed acknowledgement released the accepted guard")
+        } catch {}
+        XCTAssertEqual(store.snapshot().first?.status, .accepted)
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, false)
+        let exactSaved = try await activity.getOnchainActivityByTxId(txid: txid)
+        XCTAssertEqual(exactSaved?.value, 4321)
+        XCTAssertEqual(exactSaved?.address, "bcrt1qoriginal")
+        XCTAssertEqual(exactSaved?.fee, 123)
+        store.failSave = false
+        let restartedAgain = OnchainSendAttemptService(store: store)
+        do {
+            _ = try await restartedAgain.send(
+                using: node,
+                address: "bcrt1qfresh-ui",
+                amountSats: 9999,
+                satsPerVbyte: 99,
+                utxosToSpend: nil,
+                isMaxAmount: false
+            )
+            XCTFail("Fresh UI dispatched before the original local follow-up was acknowledged")
+        } catch {}
+        let firstResolution = try await restartedAgain.resumeAcceptedOrdinarySend(walletId: walletId)
+        let repeatedResolution = try await restartedAgain.resumeAcceptedOrdinarySend(walletId: walletId)
+        XCTAssertEqual(firstResolution?.txid, txid)
+        XCTAssertEqual(firstResolution?.amountSats, 4321)
+        XCTAssertEqual(repeatedResolution?.txid, txid)
+        XCTAssertEqual(node.calls, 1, "Local resume invoked node dispatch")
+        let metadata = try await activity.getPreActivityMetadata(searchKey: txid)
+        XCTAssertEqual(metadata?.address, "bcrt1qoriginal")
+        XCTAssertEqual(metadata?.tags, ["saved-tag"])
+        XCTAssertEqual(metadata?.feeRate, 2)
+        let activities = try await activity.get(filter: .onchain, limit: 50, sortDirection: .desc)
+        XCTAssertEqual(activities.count, 2, "Repeated follow-up duplicated a durable activity")
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+        _ = try await restartedAgain.send(using: node, address: "bcrt1qnew", amountSats: 1000, satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+        XCTAssertEqual(node.calls, 2)
+        XCTAssertEqual(store.snapshot().count, 1)
+    }
+
+    func testExactConfirmationCanFinishAcceptedIncompleteOrdinaryFollowup() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let txid = String(repeating: "ab", count: 32)
+        let walletId = OnchainSendAttemptService.walletId(index: 0)
+        let id = try await service.admit(
+            walletId: walletId, requestId: nil, orderId: nil, address: "bcrt1qoriginal", amountSats: 1000, isMaxAmount: false,
+            followupContext: OnchainSendFollowupContext(feeSats: 100, feeRate: 1, tags: [], contact: nil, createdAt: 100)
+        )
+        try await service.record(.accepted(txid: txid), attemptId: id)
+        let unrelated = try await service.observeConfirmedTransaction(txid: String(repeating: "cd", count: 32))
+        XCTAssertFalse(unrelated)
+        let observed = try await service.observeConfirmedTransaction(txid: txid)
+        XCTAssertTrue(observed, "Exact confirmation ignored the accepted incomplete guard")
+        let resolution = try await service.resumeAcceptedOrdinarySend(walletId: walletId)
+        XCTAssertEqual(resolution?.txid, txid)
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+    }
+
+    func testAcceptedOrdinaryWithoutContextOrExactDurableDetailsStaysGuarded() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let walletId = OnchainSendAttemptService.walletId(index: 0)
+        let id = try await service.admit(
+            walletId: walletId,
+            requestId: nil,
+            orderId: nil,
+            address: "bcrt1qoriginal",
+            amountSats: 1000,
+            isMaxAmount: false
+        )
+        try await service.record(.accepted(txid: String(repeating: "ab", count: 32)), attemptId: id)
+        do {
+            _ = try await OnchainSendAttemptService(store: store).resumeAcceptedOrdinarySend(walletId: walletId)
+            XCTFail("Missing local context was reconstructed from a fresh UI")
+        } catch {}
+        XCTAssertEqual(store.snapshot().first?.status, .accepted)
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, false)
+    }
+
+    func testPaidOrderFollowupIsIdempotentAndRejectsDifferentFundingTxid() async throws {
+        let service = makeService()
+        let txid = String(repeating: "ab", count: 32)
+        let first = try await service.createTransfer(type: .toSpending, amountSats: 1000, fundingTxId: txid, lspOrderId: "paid-order")
+        let resumed = try await service.createTransfer(type: .toSpending, amountSats: 1000, fundingTxId: txid, lspOrderId: "paid-order")
+        XCTAssertEqual(first, resumed)
+        XCTAssertEqual(try Bitkit.TransferStorage(defaults: transferDefaults).getAll().count, 1)
+        do {
+            _ = try await service.createTransfer(
+                type: .toSpending,
+                amountSats: 1000,
+                fundingTxId: String(repeating: "cd", count: 32),
+                lspOrderId: "paid-order"
+            )
+            XCTFail("Paid order was associated with another funding transaction")
+        } catch {}
+        XCTAssertEqual(try Bitkit.TransferStorage(defaults: transferDefaults).getAll().first?.fundingTxId, txid)
     }
 
     func testPendingToSpendingActivityDoesNotStoreShortChannelId() async throws {
@@ -94,4 +789,18 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertTrue(onchain.confirmed, "confirmation must be preserved")
         XCTAssertEqual(onchain.fee, 500, "fee must be preserved")
     }
+}
+
+private final class HardwarePendingSavingsSpy: OnchainSendAttemptStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var loadCount: Int {
+        lock.withLock { count }
+    }
+
+    func load() -> [OnchainSendAttempt] {
+        lock.withLock { count += 1 }; return []
+    }
+
+    func save(_: [OnchainSendAttempt]) {}
 }

@@ -456,6 +456,7 @@ final class HwSendCoordinator {
         satsPerVByte: UInt64,
         beforeFirstBroadcast: @escaping () async throws -> Void = {},
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
+        onFirstBroadcastAuthorizationFailure: @escaping () async -> Void = {},
         afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in }
     ) async throws -> HwFundingBroadcastResult {
         guard let walletId else {
@@ -495,6 +496,7 @@ final class HwSendCoordinator {
                 try await beforeBroadcastAttempt()
             } catch {
                 if pendingPayment?.hasBroadcastAttempted != true {
+                    await onFirstBroadcastAuthorizationFailure()
                     pendingPayment = nil
                 }
                 throw error
@@ -542,6 +544,20 @@ final class HwSendCoordinator {
 
     func dismissPassphrase() {
         isPassphraseRequired = false
+    }
+
+    func completionRoute(
+        result: HwFundingBroadcastResult,
+        walletId: String,
+        requestId: PaykitPaymentRequest.ID?,
+        paymentIdentity: String?,
+        completeContactPayment: (String) async -> Bool
+    ) async -> SendRoute {
+        let verified = await completeContactPayment(result.txId)
+        if let requestId, !verified {
+            return .hardwarePending(requestId: requestId, walletId: walletId, transactionId: result.txId, paymentIdentity: paymentIdentity)
+        }
+        return .success(paymentId: result.txId, walletId: walletId)
     }
 
     func completeBroadcast() {

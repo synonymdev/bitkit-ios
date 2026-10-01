@@ -115,6 +115,36 @@ final class HwWalletManagerTests: XCTestCase {
 
     // MARK: - Factories
 
+    func testPersistedFundingAccountResolvesOriginalWalletAndFailsWhenUnpaired() throws {
+        let key = "trezor.knownDevices"
+        let previous = UserDefaults.standard.data(forKey: key)
+        defer {
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        let original = TrezorKnownDevice(
+            id: "original-device", name: "original", path: "ble:original", transportType: "bluetooth",
+            lastConnectedAt: Date(timeIntervalSince1970: 1), xpubs: ["nativeSegwit": "original-account"],
+            walletId: "trezor:original-ios-wallet"
+        )
+        let later = TrezorKnownDevice(
+            id: "later-device", name: "later", path: "ble:later", transportType: "bluetooth",
+            lastConnectedAt: Date(timeIntervalSince1970: 2), xpubs: ["nativeSegwit": "later-account"],
+            walletId: "trezor:later-ios-wallet"
+        )
+        try UserDefaults.standard.set(JSONEncoder().encode([later, original]), forKey: key)
+        let account = try HwWalletManager.persistedFundingAccount(walletId: "trezor:original-ios-wallet")
+        XCTAssertEqual(account.xpub, "original-account")
+        XCTAssertEqual(account.accountType, .nativeSegwit)
+
+        try UserDefaults.standard.set(JSONEncoder().encode([later]), forKey: key)
+        XCTAssertThrowsError(try HwWalletManager.persistedFundingAccount(walletId: "trezor:original-ios-wallet"))
+        XCTAssertEqual(account.xpub, "original-account", "An account captured before suspension cannot follow the new wallet")
+    }
+
     private func makeViewModel(
         watcherService: OnChainWatcherServicing = MockWatcherService(),
         monitored: Set<String> = ["legacy", "nestedSegwit", "nativeSegwit", "taproot"],

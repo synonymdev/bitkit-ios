@@ -1,0 +1,40 @@
+<journey name="onchain accepted result">
+  <description>
+    Verifies that fixed-amount and send-all sends show success after the configured backend
+    acknowledges the transaction, and that an accepted send finishes its local activity before a
+    new send is admitted. Precondition: an onboarded E2E wallet on regtest with confirmed Savings
+    funds sufficient for both sends and fees, a synced running node, and a second test wallet's
+    regtest receiving address. Start with Autopilot coin selection. The wallet, recipient and
+    backend must be test fixtures. The Max leg uses the existing Manual coin-selection route:
+    an amount-less payment link followed by Max currently fails in Autopilot's Branch and Bound
+    selection with CoinSelectionFailed before Confirm or native dispatch, even with confirmed
+    funds. This journey verifies actual send-all acceptance through Manual; it does not claim
+    that the Autopilot limitation is fixed or that fixture confirmation proves acceptance.
+    Rejected or missing-result cases need controlled broadcast-refusal/response-loss fixtures,
+    which the Capabilities table does not provide, and belong in Manual Tests.
+  </description>
+  <actions>
+    <action>Hand the receiving test wallet address to the app with xcrun simctl openurl &lt;simulator-id&gt; "bitcoin:&lt;test recipient address&gt;?amount=0.00001"</action>
+    <action>If iOS asks whether to open the payment link in Bitkit, choose Open</action>
+    <action>Verify the Send Amount screen (id "SendAmount") is visible with 1 000 sats and Savings selected</action>
+    <action>Tap Continue (id "ContinueAmount"), tap Show Details (id "SendConfirmToggleDetails"), and verify the Confirm screen shows the receiving test wallet address (id "ReviewUri")</action>
+    <action>Swipe the send handle (id "GRAB") fully to the right</action>
+    <action>Wait for the sent screen (id "SendSuccess") and verify it shows the accepted payment amount</action>
+    <action>Tap Details (id "Details"), tap Explore (id "ActivityTxDetails"), and record the exact transaction ID (id "TXID") without selecting a different transaction by address or amount</action>
+    <action>Use the configured regtest backend to query that exact recorded txid and verify the acknowledged transaction pays 1 000 sats to the receiving test wallet</action>
+    <action>Navigate back from Transaction Details, then back from the activity to the wallet home screen</action>
+    <action>If the Wallet Backup introduction appears, choose Later (id "BackupIntroViewCancel") before continuing with the fixture send</action>
+    <action>Mine one block with the configured regtest fixture backend and wait for the fixed transaction's exact recorded txid to confirm before sending the change output</action>
+    <action>Open the menu (id "HeaderMenu"), Settings (id "DrawerSettings"), Advanced (id "Tab-advanced"), Coin Selection (id "CoinSelectPreference"), and choose Manual; return to Wallet from the menu (id "DrawerWallet")</action>
+    <action>Hand the receiving test wallet address to the app again with xcrun simctl openurl &lt;simulator-id&gt; "bitcoin:&lt;test recipient address&gt;"</action>
+    <action>If iOS asks whether to open the payment link in Bitkit, choose Open</action>
+    <action>Tap the available balance (id "AvailableAmount") on Send Amount to choose Max, then tap Continue (id "ContinueAmount")</action>
+    <action>On Coin Selection, select all the fixture's spendable outputs with their switches, verify Total Selected covers Total Required, and tap Continue</action>
+    <action>Tap Show Details (id "SendConfirmToggleDetails") and verify the Confirm screen shows the receiving test wallet address and the drain amount and fee</action>
+    <action>Swipe the send handle (id "GRAB") fully to the right</action>
+    <action>If the Are You Sure? alert warns that the payment exceeds half the fixture balance, choose Yes, Send</action>
+    <action>Wait for the sent screen (id "SendSuccess"), tap Details (id "Details"), tap Explore (id "ActivityTxDetails"), and verify this send-all transaction has its own exact transaction ID (id "TXID")</action>
+    <action>Query this exact txid on the configured regtest backend and verify it spends the selected fixture outputs and pays the remaining balance minus the actual fee to the recipient</action>
+    <action>Return to Settings, Advanced, Coin Selection and restore Autopilot; stop recording and shut down only the task-owned simulator</action>
+  </actions>
+</journey>

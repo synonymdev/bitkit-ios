@@ -959,6 +959,14 @@ final class HwWalletManager {
         )
     }
 
+    nonisolated static func persistedFundingAccount(walletId: String) throws -> HwFundingAccount {
+        let entries = TrezorKnownDeviceStorage.loadAll(walletId: walletId)
+        guard let xpub = entries.compactMap({ $0.xpubs[hwFundingDefaultAddressType.stringValue] }).first else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        return HwFundingAccount(xpub: xpub, addressType: hwFundingDefaultAddressType, balanceSats: 0)
+    }
+
     func watcherReceiveAddress(
         walletId: String,
         addressType: AddressScriptType = hwFundingDefaultAddressType

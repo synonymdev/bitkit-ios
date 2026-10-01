@@ -9,6 +9,10 @@ class LightningService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
     private var node: Node?
+    var onchainDispatchNode: AnyObject? {
+        node
+    }
+
     var currentWalletIndex: Int = 0
 
     private let syncStatusChangedSubject = PassthroughSubject<UInt64, Never>()
@@ -23,6 +27,8 @@ class LightningService {
     @MainActor private var cachedChannels: [ChannelDetails]?
 
     private var storedEventCallback: ((Event) -> Void)?
+    var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
+    var onchainTransactionReceived: (@Sendable (String) async -> Void)?
 
     var syncStatusChangedPublisher: AnyPublisher<UInt64, Never> {
         syncStatusChangedSubject.eraseToAnyPublisher()
@@ -775,26 +781,31 @@ class LightningService {
         sats: UInt64,
         satsPerVbyte: UInt32,
         utxosToSpend: [SpendableUtxo]? = nil,
-        isMaxAmount: Bool = false
-    ) async throws -> Txid {
+        isMaxAmount: Bool = false,
+        expectedWalletIndex: Int? = nil,
+        expectedNode: AnyObject? = nil
+    ) async throws -> OnchainSendResult {
         guard let node else {
-            throw AppError(serviceError: .nodeNotSetup)
+            throw NodeError.NotRunning(message: "Node not set up")
         }
 
         Logger.info("Sending \(sats) sats to \(address) with fee rate \(satsPerVbyte) sats/vbyte (isMaxAmount: \(isMaxAmount))")
 
         do {
-            return try await ServiceQueue.background(.ldk) {
+            return try await ServiceQueue.background(.ldk, wrapErrors: false) {
+                if let expectedWalletIndex {
+                    guard self.currentWalletIndex == expectedWalletIndex, self.node === node, expectedNode === node else {
+                        throw NodeError.NotRunning(message: "Wallet or node changed before on-chain dispatch")
+                    }
+                }
                 if isMaxAmount {
-                    // For max amount sends, use sendAllToAddress to send all available funds
-                    try node.onchainPayment().sendAllToAddress(
+                    return try node.onchainPayment().sendAllToAddressWithBroadcastResult(
                         address: address,
-                        retainReserve: true,
+                        retainReserves: true,
                         feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte)
                     )
                 } else {
-                    // For normal sends, use sendToAddress with specific amount
-                    try node.onchainPayment().sendToAddress(
+                    return try node.onchainPayment().sendToAddressWithBroadcastResult(
                         address: address,
                         amountSats: sats,
                         feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
@@ -1459,6 +1470,7 @@ extension LightningService {
                 case let .onchainTransactionReceived(txid, details):
                     Logger.info("📥 Onchain transaction received: txid=\(txid) amountSats=\(details.amountSats)")
                     Task {
+                        await self.onchainTransactionReceived?(txid)
                         do {
                             try await CoreService.shared.activity.handleOnchainTransactionReceived(txid: txid, details: details)
                         } catch {
@@ -1468,6 +1480,9 @@ extension LightningService {
                 case let .onchainTransactionConfirmed(txid, _, blockHeight, _, details):
                     Logger.info("✅ Onchain transaction confirmed: txid=\(txid) blockHeight=\(blockHeight) amountSats=\(details.amountSats)")
                     Task {
+                        if let onchainTransactionConfirmed = self.onchainTransactionConfirmed {
+                            await onchainTransactionConfirmed(txid)
+                        }
                         do {
                             try await CoreService.shared.activity.handleOnchainTransactionConfirmed(
                                 txid: txid,

@@ -152,6 +152,9 @@ class TransferViewModel: ObservableObject {
 
     private let coreService: CoreService
     private let lightningService: LightningService
+    private let onchainAttemptService: OnchainSendAttemptService
+    private let onchainSender: any OnchainSending
+    private let onchainBalanceProvider: () -> UInt64
     private let currencyService: CurrencyService
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
@@ -201,10 +204,16 @@ class TransferViewModel: ObservableObject {
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
         hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
-        onBalanceRefresh: (() async -> Void)? = nil
+        onBalanceRefresh: (() async -> Void)? = nil,
+        onchainAttemptService: OnchainSendAttemptService = .shared,
+        onchainSender: (any OnchainSending)? = nil,
+        onchainBalanceProvider: (() -> UInt64)? = nil
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
+        self.onchainAttemptService = onchainAttemptService
+        self.onchainSender = onchainSender ?? lightningService
+        self.onchainBalanceProvider = onchainBalanceProvider ?? { lightningService.balances?.totalOnchainBalanceSats ?? 0 }
         self.currencyService = currencyService
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
@@ -422,7 +431,7 @@ class TransferViewModel: ObservableObject {
             throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
         }
 
-        let preTransferOnchainSats = lightningService.balances?.totalOnchainBalanceSats ?? 0
+        let preTransferOnchainSats = onchainBalanceProvider()
 
         // Verify we can afford the transfer when using sendAll
         if isMaxAmount, let maxSendable = maxSendableAmount, maxSendable < order.feeSat {
@@ -432,16 +441,6 @@ class TransferViewModel: ObservableObject {
             )
         }
 
-        // For sendAll (change would be dust), send entire balance
-        // Otherwise, send exact order.feeSat amount
-        let txid = try await lightningService.send(
-            address: address,
-            sats: order.feeSat,
-            satsPerVbyte: satsPerVbyte,
-            utxosToSpend: utxosToSpend,
-            isMaxAmount: isMaxAmount
-        )
-
         let txTotalSats = SpendingConfirmTotal.leavingAmount(
             orderFeeSat: order.feeSat,
             networkFeeSat: txFee,
@@ -449,31 +448,60 @@ class TransferViewModel: ObservableObject {
             maxSendable: maxSendableAmount
         )
 
-        // Pre-activity metadata lets the LDK activity sync recognize this send as a transfer.
-        let currentTime = UInt64(Date().timeIntervalSince1970)
-        let preActivityMetadata = BitkitCore.PreActivityMetadata(
-            walletId: WalletScope.default,
-            paymentId: txid,
-            tags: [],
-            paymentHash: nil,
-            txId: txid,
+        // For sendAll (change would be dust), send entire balance
+        // Otherwise, send exact order.feeSat amount
+        let result = try await onchainAttemptService.send(
+            using: onchainSender,
             address: address,
-            isReceive: false,
-            feeRate: UInt64(satsPerVbyte),
-            isTransfer: true,
-            channelId: nil,
-            createdAt: currentTime
+            amountSats: order.feeSat,
+            satsPerVbyte: satsPerVbyte,
+            utxosToSpend: utxosToSpend,
+            isMaxAmount: isMaxAmount,
+            orderId: order.id,
+            followupContext: OnchainSendFollowupContext(
+                feeSats: txFee, feeRate: satsPerVbyte, tags: [], contact: nil,
+                createdAt: UInt64(Date().timeIntervalSince1970)
+            ),
+            transferContext: OnchainSendTransferContext(
+                clientBalanceSats: order.clientBalanceSat,
+                txTotalSats: txTotalSats,
+                preTransferOnchainSats: preTransferOnchainSats
+            )
         )
-        try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
+        let txid: String
+        switch result {
+        case let .accepted(acceptedTxid):
+            txid = acceptedTxid
+        case let .rejected(rejectedTxid, reason):
+            throw AppError(
+                message: "The funding transaction was rejected. Do not try to fund this order again.",
+                debugMessage: "Broadcast rejected for \(rejectedTxid): \(reason)"
+            )
+        case let .unknown(unknownTxid):
+            throw AppError(
+                message: "The funding transaction may have been sent. Do not try to fund this order again.",
+                debugMessage: "Broadcast outcome unknown for \(unknownTxid)"
+            )
+        }
 
-        await fundPaidOrder(
-            order: order,
-            txId: txid,
-            txTotalSats: txTotalSats,
-            preTransferOnchainSats: preTransferOnchainSats
-        )
+        do {
+            guard try await onchainAttemptService.resumeAcceptedTransfer(
+                orderId: order.id, txid: txid, using: transferService
+            ) else { throw OnchainSendAttemptError.localFollowupNotSaved }
+        } catch {
+            Logger.warn("Accepted funding local follow-up remains guarded: \(error)", context: "TransferViewModel")
+            throw AppError(
+                message: "Funding was sent, but local order tracking could not be saved. Do not fund this order again.",
+                debugMessage: "Accepted funding transaction \(txid) for order \(order.id)"
+            )
+        }
+        fundedOrderId = order.id
+        lightningSetupStep = 0
+        await onBalanceRefresh?()
+        watchOrder(orderId: order.id)
     }
 
+    @discardableResult
     private func fundPaidOrder(
         order: IBtOrder,
         txId: String,
@@ -483,8 +511,9 @@ class TransferViewModel: ObservableObject {
         txTotalSats: UInt64? = nil,
         preTransferOnchainSats: UInt64? = nil,
         activityWalletId: String = WalletScope.default
-    ) async {
+    ) async -> Bool {
         fundedOrderId = order.id
+        var trackingSaved = false
         do {
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
@@ -495,6 +524,7 @@ class TransferViewModel: ObservableObject {
                 preTransferOnchainSats: preTransferOnchainSats
             )
             Logger.info("Created transfer tracking record: \(transferId)", context: "TransferViewModel")
+            trackingSaved = true
         } catch {
             Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
         }
@@ -512,6 +542,7 @@ class TransferViewModel: ObservableObject {
         lightningSetupStep = 0
         await onBalanceRefresh?()
         watchOrder(orderId: order.id)
+        return trackingSaved
     }
 
     func startWatchingOrderFromRestart(_ order: IBtOrder) async {
