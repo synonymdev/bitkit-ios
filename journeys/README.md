@@ -124,9 +124,9 @@ Known naming differences:
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
 | Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
-| Pubky Ring choice row | `PubkyChoiceIdentity` (the same tag on every row) | `PubkyChoiceRing_<pubky>` (bare z32 key) |
-| Pubky Ring choice row lookup spinner | `PubkyChoiceIdentityLookup` | `PubkyChoiceRingLookup_<pubky>` (bare z32 key) |
-| Contact import overview profile and friend count | — | `ContactImportOverviewProfile`, `ContactImportOverviewSummary` |
+| Pubky Ring choice row | `PubkyChoiceIdentity` (the same tag on every row; tell rows apart by their key caption) | `PubkyChoiceRing_<pubky>` (bare z32 key) |
+| Pubky Ring choice row lookup spinner | `PubkyChoiceIdentityLookup` (the same tag on every row) | `PubkyChoiceRingLookup_<pubky>` (bare z32 key) |
+| Contact import overview profile and friend count | — *(no tag; read the "Import" title and the "N friends" text)* | `ContactImportOverviewProfile`, `ContactImportOverviewSummary` |
 | Contact import selection row | — | `ContactImportSelect_<pubky>` |
 
 `SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix
