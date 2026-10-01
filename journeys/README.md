@@ -127,6 +127,8 @@ Known naming differences:
 | Pubky Ring choice row | `PubkyChoiceIdentity` (the same tag on every row) | `PubkyChoiceRing_<pubky>` (bare z32 key) |
 | Pubky Ring choice row lookup spinner | `PubkyChoiceIdentityLookup` | `PubkyChoiceRingLookup_<pubky>` (bare z32 key) |
 | Cached profile header while the profile loads | — | `ProfileCachedHeader`, with the name `ProfileCachedName` |
+| Contact import overview profile and friend count | — | `ContactImportOverviewProfile`, `ContactImportOverviewSummary` |
+| Contact import selection row | — | `ContactImportSelect_<pubky>` |
 
 `SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix
 but appends the billing period (`-one-time` for a one-off), because every recurring payment of one
@@ -188,8 +190,10 @@ iOS-only — a Bitkit-specific OS handoff into watch-only consent, with no Andro
 `profile/signup-create-profile.xml` is currently iOS-only. It covers the iOS Profile Error regression
 after staging signup. Android also supports this signup flow, but this journey has not been ported there.
 
-`pubky-profile/contact-import.xml` and `pubky-profile/contacts-list-loading.xml` started on iOS. They
-use identifiers Android already shares, so they can be ported under the same names.
+`pubky-profile/contact-import.xml` is new on both platforms at once: synonymdev/bitkit-android#1399
+carries an Android journey with the same name but its own steps, and adds the import button testTags
+it shares with iOS. `pubky-profile/contacts-list-loading.xml` is iOS-only for now. The identifiers
+the two journeys use that Android does not have are in the Identifiers table above.
 
 A journey is a shared spec, so a behaviour that is meant to match Android can be checked by running
 the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `bitkit-android`
