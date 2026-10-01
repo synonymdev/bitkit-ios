@@ -148,6 +148,9 @@ class ContactsManager: ObservableObject {
 
     @Published var isLoading = false
     @Published var hasLoaded = false
+    /// An import runs on its own task and outlives the import screens, which read this to keep a second import from starting.
+    @Published private(set) var isImportingContacts = false
+    private var activeImportCount = 0
     @Published var loadErrorMessage: String?
     @Published var shouldOpenAddContactSheet = false
 
@@ -462,6 +465,12 @@ class ContactsManager: ObservableObject {
     ) async throws {
         let session = sessionGeneration
         let unresolvedKeys = pendingImportUnresolvedKeys
+        activeImportCount += 1
+        isImportingContacts = true
+        defer {
+            activeImportCount -= 1
+            isImportingContacts = activeImportCount > 0
+        }
         var seenKeys = Set<String>()
         let imports: [(contact: PubkyContact, isResolved: Bool)] = contactsToImport.compactMap { contact in
             guard let key = PubkyPublicKeyFormat.normalized(contact.publicKey), seenKeys.insert(key).inserted else { return nil }

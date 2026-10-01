@@ -8,7 +8,6 @@ struct ContactImportSelectView: View {
     @EnvironmentObject var contactsManager: ContactsManager
 
     @State private var selectedKeys: Set<String> = []
-    @State private var isImporting = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -135,7 +134,7 @@ struct ContactImportSelectView: View {
 
                 CustomButton(
                     title: t("common__continue"),
-                    isLoading: isImporting
+                    isLoading: contactsManager.isImportingContacts
                 ) {
                     await importSelectedContacts()
                 }
@@ -175,9 +174,6 @@ struct ContactImportSelectView: View {
             navigation.path = [.payContacts]
             return
         }
-
-        isImporting = true
-        defer { isImporting = false }
 
         do {
             try await contactsManager.importContacts(selected)

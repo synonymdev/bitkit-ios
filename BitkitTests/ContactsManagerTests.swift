@@ -628,6 +628,30 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertTrue(manager.contacts.isEmpty)
     }
 
+    func testImportIsReportedAsRunningUntilItFinishes() async {
+        let manager = ContactsManager()
+        let stub = ImportStub()
+        await stub.holdDiscovery()
+        await stub.failSaves(for: [contactProfileKey])
+        XCTAssertFalse(manager.isImportingContacts)
+
+        let importTask = Task {
+            try await manager.importContacts(
+                [makeContact(publicKey: contactProfileKey)],
+                discoverReceiverPaths: { await stub.discover($0) },
+                saveContact: { try await stub.save($0, label: $1, receiverPaths: $2) }
+            )
+        }
+        while await stub.heldDiscoveryCount < 1 {
+            await Task.yield()
+        }
+        XCTAssertTrue(manager.isImportingContacts, "The import screens disable Select and Import All while this is set")
+
+        await stub.releaseDiscovery()
+        _ = await importTask.result
+        XCTAssertFalse(manager.isImportingContacts, "A failed import must not leave the import screens disabled")
+    }
+
     func testShouldDiscardPendingImportWhenLeavingImportFlow() {
         XCTAssertTrue(shouldDiscardPendingImport(currentRoute: .contactImportOverview, destination: .contacts))
         XCTAssertTrue(shouldDiscardPendingImport(currentRoute: .contactImportSelect, destination: nil))
