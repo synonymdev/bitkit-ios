@@ -8,9 +8,8 @@
     identity whose profile has a name. Profile must have loaded fully once on this build, so the
     cache records which key the name belongs to. Use the test simulator UDID for &lt;UDID&gt;.
 
-    iOS-only, with no Android counterpart. Android shows a spinner until the profile loads. A warm
-    network can finish the load before the first snapshot, so an "already loaded" result repeats
-    the relaunch once instead of failing. See README.md.
+    A warm network can finish the load before the first snapshot, so an "already loaded" result
+    repeats the relaunch once instead of failing. See README.md.
   </description>
   <actions>
     <action>Tap the header profile button (id "ProfileButton")</action>

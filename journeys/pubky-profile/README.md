@@ -50,9 +50,9 @@ header showed.
 
 ## iOS vs Android
 
-- **Profile while loading.** Android shows only a spinner until the profile loads. iOS shows the
-  cached name and avatar read-only under `ProfileCachedHeader`, with no edit, copy, share, QR code
-  or tag controls, and then the full profile under `ProfileViewName`.
+- **Profile while loading.** iOS shows the cached name and avatar read-only under
+  `ProfileCachedHeader`, with no edit, copy, share, QR code or tag controls, and then the full
+  profile under `ProfileViewName`.
 - **Ring choice rows.** Android names the rows and their lookup spinners differently; see
   [Identifiers](../README.md#identifiers). iOS keeps the rows up, spins only the tapped row, and
   tags each row `PubkyChoiceRing_<pubky>`, using the bare z32 key without the `pubky` prefix.
