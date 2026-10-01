@@ -454,7 +454,9 @@ actor PaykitAllowanceExecutor {
 
         do {
             try await ensureReconciled(identity: identity)
-            return try await admitAndPay(request, allowances: allowances, identity: identity)
+            // An unstructured task survives a cancelled caller: stopping after the acceptance would leave the request unpaid.
+            let payment = Task { try await admitAndPay(request, allowances: allowances, identity: identity) }
+            return try await payment.value
         } catch {
             Logger.warn("Automatic allowance payment stayed manual: \(error)", context: "PaykitAllowance")
             return .manual

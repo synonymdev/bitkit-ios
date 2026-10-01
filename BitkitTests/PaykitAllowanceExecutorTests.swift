@@ -261,6 +261,51 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertTrue(harness.log.entries.contains("failLightningPayment"))
     }
 
+    // MARK: Cancellation
+
+    func testLightningPaymentStillStartsWhenItsCallerIsCancelledDuringTheSend() async throws {
+        let harness = AllowanceHarness()
+        let gate = await harness.payer.holdLightning()
+        let request = try Fixtures.paymentRequest()
+
+        let caller = Task { await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey) }
+        await Self.waitUntil { harness.log.entries.contains("payLightning") }
+        caller.cancel()
+        gate.open()
+        let result = await caller.value
+
+        XCTAssertEqual(result, .started)
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.sent])
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [], "The settlement event, not the caller, records a Lightning outcome")
+        let listOutcomes = await harness.payer.paymentListOutcomes
+        XCTAssertEqual(listOutcomes, [.uncertain])
+    }
+
+    func testOnchainPaymentCompletesWhenItsCallerIsCancelledDuringTheSend() async throws {
+        let harness = AllowanceHarness(payment: AllowanceHarness.onchainPayment())
+        let gate = await harness.payer.holdOnchain()
+        let request = try Fixtures.paymentRequest()
+
+        let caller = Task { await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey) }
+        await Self.waitUntil { harness.log.entries.contains("payOnchain") }
+        let sendingStage = await harness.executor.localState(identity: Fixtures.identityKey).journal.map(\.stage)
+        XCTAssertEqual(sendingStage, [.sending])
+        caller.cancel()
+        gate.open()
+        let result = await caller.value
+
+        XCTAssertEqual(result, .completed)
+        XCTAssertTrue(harness.log.entries.contains("completeOnchainPayment"))
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: AllowanceSdkMock.automaticAttemptId, outcome: .succeeded)])
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.succeeded])
+        let listOutcomes = await harness.payer.paymentListOutcomes
+        XCTAssertEqual(listOutcomes, [.succeeded])
+    }
+
     // MARK: Settlement and recovery
 
     func testLightningSettlementRecordsSuccessForTheJournaledAttempt() async throws {
@@ -565,6 +610,13 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
     // MARK: Helpers
 
+    private static func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
     /// Three succeeded automatic payments this month total 49,500 sats of the 50,000 sat cap.
     private static func stateNearTheMonthlyCap() throws -> Paykit.AllowanceAccountingState {
         try Fixtures.accountingState(occurrences: [
@@ -739,6 +791,35 @@ private final class AllowanceEventRecorder: @unchecked Sendable {
     }
 }
 
+/// A latch a test holds closed to stop a mocked payment mid-send.
+private final class AllowanceGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if isOpen {
+                lock.unlock()
+                continuation.resume()
+            } else {
+                waiters.append(continuation)
+                lock.unlock()
+            }
+        }
+    }
+
+    func open() {
+        lock.lock()
+        isOpen = true
+        let pending = waiters
+        waiters = []
+        lock.unlock()
+        pending.forEach { $0.resume() }
+    }
+}
+
 private enum AllowanceMockError: Error {
     case unsupported
 }
@@ -778,6 +859,8 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
     private var resolveError: Error?
     private var claimError: Error?
     private var lightningError: Error?
+    private var lightningGate: AllowanceGate?
+    private var onchainGate: AllowanceGate?
     private(set) var callCount = 0
     private(set) var claimedRequestIds: [PaykitPaymentRequest.ID] = []
     private(set) var paymentListOutcomes: [PrivatePaymentListSendOutcome] = []
@@ -805,6 +888,19 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
 
     func setLightningError(_ error: Error?) {
         lightningError = error
+    }
+
+    /// Holds `payLightning` until the returned gate opens, so a test can act while the send is in progress.
+    func holdLightning() -> AllowanceGate {
+        let gate = AllowanceGate()
+        lightningGate = gate
+        return gate
+    }
+
+    func holdOnchain() -> AllowanceGate {
+        let gate = AllowanceGate()
+        onchainGate = gate
+        return gate
     }
 
     func resolve(_ request: PaykitPaymentRequest, eligibleIdentifiers: [String]) async throws -> PrivatePaykitAllowancePayment? {
@@ -854,11 +950,20 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
     func payLightning(bolt11: String, sats: UInt64?) async throws {
         called("payLightning")
         lightningPayments.append(LightningPayment(bolt11: bolt11, sats: sats))
+        if let lightningGate {
+            await lightningGate.wait()
+            // The real node call is cancellable, so a cancelled caller must not be able to stop the payment here.
+            try Task.checkCancellation()
+        }
         if let lightningError { throw lightningError }
     }
 
     func payOnchain(address: String, sats: UInt64) async throws -> String {
         called("payOnchain")
+        if let onchainGate {
+            await onchainGate.wait()
+            try Task.checkCancellation()
+        }
         return String(repeating: "c", count: 64)
     }
 
