@@ -50,8 +50,8 @@ killed right after handing the payment to the node never paid twice after relaun
   automatic payment
 - Incoming request: `PaymentRequestsBell`, `PaymentRequestsSheet`
 
-The payee's wallet accepts the payer's offer as soon as it arrives, about a second after the
-proposal is received, and posts "<payer> set up an allowance for you"; no review sheet opens and no
-tap is needed. The file names, journey names and step prose match
+The payee's wallet accepts the payer's offer by itself once the offer has arrived, which can take a
+while between contacts that have never exchanged a private message, and posts "<payer> set up an
+allowance for you"; no review sheet opens and no tap is needed. The file names, journey names and step prose match
 [`bitkit-android/journeys/allowances`](https://github.com/synonymdev/bitkit-android/tree/master/journeys/allowances);
 only the identifier annotations and the kill, relaunch and notification mechanics differ.
