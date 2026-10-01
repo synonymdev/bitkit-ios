@@ -192,8 +192,8 @@ final class PaykitPublicReadLaneTests: XCTestCase {
         await assertWipeError(read.result, "A read that a wipe overtook must not return its result across the wipe")
     }
 
-    private func assertWipeError<T>(
-        _ result: Result<T, Error>,
+    private func assertWipeError(
+        _ result: Result<[String], Error>,
         _ message: String,
         file: StaticString = #filePath,
         line: UInt = #line
