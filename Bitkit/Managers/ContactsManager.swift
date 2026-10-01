@@ -152,8 +152,11 @@ class ContactsManager: ObservableObject {
     @Published var isLoading = false
     @Published var hasLoaded = false
     /// An import runs on its own task and outlives the import screens, which read this to keep a second import from starting.
-    @Published private(set) var isImportingContacts = false
-    private var activeImportCount = 0
+    var isImportingContacts: Bool {
+        activeImportCount > 0
+    }
+
+    @Published private var activeImportCount = 0
     @Published var loadErrorMessage: String?
     @Published var shouldOpenAddContactSheet = false
 
@@ -253,8 +256,7 @@ class ContactsManager: ObservableObject {
                 Logger.debug("Loaded \(records.count) SDK contact records", context: "ContactsManager")
 
                 let overrides = Self.loadContactProfileOverrides()
-                contacts = records.map { savedContact(from: $0, overrides: overrides) }
-                    .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+                contacts = records.map { savedContact(from: $0, overrides: overrides) }.sorted(by: Self.isOrderedByName)
                 hasLoaded = true
                 refreshContactProfiles(
                     for: records.filter { $0.profile == nil && overrides[Self.contactKey(for: $0)] == nil },
@@ -400,7 +402,7 @@ class ContactsManager: ObservableObject {
 
         var refreshed = contacts
         refreshed[index] = PubkyContact(publicKey: publicKey, profile: profile)
-        refreshed.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        refreshed.sort(by: Self.isOrderedByName)
         isApplyingProfileRefresh = true
         contacts = refreshed
         isApplyingProfileRefresh = false
@@ -477,7 +479,7 @@ class ContactsManager: ObservableObject {
         rememberResolvedProfile(profile, for: prefixedKey)
         let contact = PubkyContact(publicKey: prefixedKey, profile: profile)
         contacts.append(contact)
-        contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        contacts.sort(by: Self.isOrderedByName)
     }
 
     func refreshContactReceiverPaths(publicKey: String, wallet: WalletViewModel) async {
@@ -534,11 +536,7 @@ class ContactsManager: ObservableObject {
         let session = sessionGeneration
         let unresolvedKeys = pendingImportUnresolvedKeys
         activeImportCount += 1
-        isImportingContacts = true
-        defer {
-            activeImportCount -= 1
-            isImportingContacts = activeImportCount > 0
-        }
+        defer { activeImportCount -= 1 }
         var seenKeys = Set<String>()
         let imports: [(contact: PubkyContact, isResolved: Bool)] = contactsToImport.compactMap { contact in
             guard let key = PubkyPublicKeyFormat.normalized(contact.publicKey), seenKeys.insert(key).inserted else { return nil }
@@ -598,7 +596,7 @@ class ContactsManager: ObservableObject {
         let existingKeys = Set(contacts.map(\.publicKey))
         let newContacts = loadedResult.contacts.filter { !existingKeys.contains($0.publicKey) }
         contacts.append(contentsOf: newContacts)
-        contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        contacts.sort(by: Self.isOrderedByName)
 
         if loadedResult.failures > 0 {
             Logger.warn("Skipped \(loadedResult.failures) contacts during import", context: "ContactsManager")
@@ -632,7 +630,7 @@ class ContactsManager: ObservableObject {
         let updatedProfile = contactData.toProfile(publicKey: prefixedKey)
         if let index = contacts.firstIndex(where: { $0.publicKey == prefixedKey }) {
             contacts[index] = PubkyContact(publicKey: prefixedKey, profile: updatedProfile)
-            contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+            contacts.sort(by: Self.isOrderedByName)
         }
 
         Logger.info("Updated contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
@@ -802,9 +800,7 @@ class ContactsManager: ObservableObject {
                 Logger.warn("Skipped \(failures) remote contacts during discovery", context: "ContactsManager")
             }
 
-            pendingImportContacts = discovered.sorted {
-                $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
-            }
+            pendingImportContacts = discovered.sorted(by: Self.isOrderedByName)
             pendingImportUnresolvedKeys = unresolvedKeys
         } catch {
             Logger.warn("Failed to discover remote contacts: \(error)", context: "ContactsManager")
@@ -952,6 +948,10 @@ class ContactsManager: ObservableObject {
     }
 
     private nonisolated static let contactProfileOverridesKey = "pubkyContactProfileOverrides"
+
+    private nonisolated static func isOrderedByName(_ lhs: PubkyContact, _ rhs: PubkyContact) -> Bool {
+        lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+    }
 
     private nonisolated static func contactKey(for record: Paykit.ContactRecord) -> String {
         PubkyPublicKeyFormat.normalized(record.publicKey) ?? ensurePubkyPrefix(record.publicKey)
