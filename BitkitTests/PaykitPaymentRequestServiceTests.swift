@@ -3498,6 +3498,54 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(acceptedCalls.count, 1)
     }
 
+    func testAcceptanceCleanupOnlyRemovesConfirmedFinishedRequests() async throws {
+        let identity = "pubky\(String(repeating: "z", count: 52))"
+        let records = try [
+            paymentRequestRecord(id: "paid", state: .proofSubmitted),
+            paymentRequestRecord(id: "canceled", state: .canceled),
+            paymentRequestRecord(id: "rejected", state: .rejected),
+            paymentRequestRecord(id: "retry", state: .accepted, expiresAt: "2020-01-01T00:00:00Z"),
+            paymentRequestRecord(id: "recovery", state: .recoveryRequired),
+            paymentRequestRecord(id: "conflict", state: .invalidConflict),
+        ]
+        let missingId = PaykitPaymentRequest.ID(paymentRequestId: "missing", counterparty: "pubkypayee")
+        let ids = Set(records.map { PaykitPaymentRequest.ID(paymentRequestId: $0.paymentRequestId, counterparty: $0.counterparty) })
+            .union([missingId])
+        let store = PaymentRequestPresentationMemoryStore(ids: ids)
+        let sdk = PaymentRequestSdkMock(records: [])
+        let manager = paymentRequestManager(sdk: sdk, acceptanceStore: store)
+
+        await manager.refresh()
+        XCTAssertEqual(try store.load(identity: identity), ids, "An empty refresh must not remove execution ownership")
+        await sdk.setRecords(records)
+        await manager.refresh()
+
+        let remaining = try store.load(identity: identity)
+        XCTAssertEqual(Set(remaining.map(\.paymentRequestId)), ["retry", "recovery", "conflict", "missing"])
+        let restarted = paymentRequestManager(sdk: sdk, acceptanceStore: store)
+        await restarted.refresh()
+        let retry = try XCTUnwrap(restarted.pendingRequests.first)
+        XCTAssertEqual(retry.paymentRequestId, "retry")
+        try await restarted.prepareForPayment(retry)
+        try await restarted.ensurePaymentAllowed(retry)
+    }
+
+    func testFailedAcceptanceCleanupRetainsIdsAndRetries() async throws {
+        let identity = "pubky\(String(repeating: "z", count: 52))"
+        let record = try paymentRequestRecord(state: .proofSubmitted)
+        let id = PaykitPaymentRequest.ID(paymentRequestId: record.paymentRequestId, counterparty: record.counterparty)
+        let store = PaymentRequestPresentationMemoryStore(ids: [id])
+        store.shouldFailSave = true
+        let manager = paymentRequestManager(sdk: PaymentRequestSdkMock(records: [record]), acceptanceStore: store)
+
+        await manager.refresh()
+        XCTAssertEqual(try store.load(identity: identity), [id])
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        store.shouldFailSave = false
+        await manager.refresh()
+        XCTAssertTrue(try store.load(identity: identity).isEmpty)
+    }
+
     func testIdentitySwitchPreventsExecutionOfPreparedProposal() async throws {
         for switchDuringAuthorization in [false, true] {
             let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])

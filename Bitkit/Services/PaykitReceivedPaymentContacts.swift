@@ -155,9 +155,9 @@ extension ActivityService {
         _ contacts: PaykitReceivedPaymentContacts,
         identity: String,
         cache: PaykitReceivedPaymentBackfillCache,
+        reservations: PrivatePaykitAddressReservationStore = .shared,
         isCurrent: @Sendable () async -> Bool
     ) async throws {
-        let reservations = PrivatePaykitAddressReservationStore.shared
         let reservationRevision = await reservations.attributionRevision
         try await cache.scanIfNeeded(identity: identity, contacts: contacts, reservationRevision: reservationRevision) {
             let activities = try await ServiceQueue.background(.core) {

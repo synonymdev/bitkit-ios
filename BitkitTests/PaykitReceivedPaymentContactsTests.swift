@@ -121,18 +121,55 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
         XCTAssertEqual(scans, 5)
     }
 
-    func testIncompleteScanRetriesWithoutInputChanges() async {
-        let changes = PassthroughSubject<Void, Never>()
-        let cache = PaykitReceivedPaymentBackfillCache(activityChanges: changes.eraseToAnyPublisher())
-        let contacts = PaykitReceivedPaymentContacts()
-        var scans = 0
-        for detailsAvailable in [false, true, true] {
-            await cache.scanIfNeeded(identity: alice, contacts: contacts, reservationRevision: 0) {
-                scans += 1
-                return detailsAvailable
-            }
+    func testBackfillRetriesMissingTransactionDetailsPersistsContactAndSkipsCompletedScan() async throws {
+        let service = Bitkit.CoreService.shared.activity
+        let testDbPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PaykitReceivedPaymentContactsTests-\(UUID().uuidString)", isDirectory: true).path
+        try FileManager.default.createDirectory(atPath: testDbPath, withIntermediateDirectories: true)
+        addTeardownBlock {
+            await self.drainCoreServiceQueue()
+            await self.repointCoreToAppStorage()
+            try? FileManager.default.removeItem(atPath: testDbPath)
         }
-        XCTAssertEqual(scans, 2, "Missing transaction details must be retried before caching completion")
+        await drainCoreServiceQueue()
+        _ = try await Bitkit.ServiceQueue.background(.core) { try initDb(basePath: testDbPath) }
+
+        let reservations = try PrivatePaykitAddressReservationStore(defaults: makeIsolatedDefaults())
+        let contacts = try contacts(address: receivingAddress, counterparty: alice)
+        let activity = payment()
+        try await service.insert(activity)
+        let inserted = try await service.getActivity(id: activity.activityId)
+        let baseline = try XCTUnwrap(inserted)
+        guard case let .onchain(baselinePayment) = baseline else { return XCTFail("Expected the inserted received payment") }
+        let cache = PaykitReceivedPaymentBackfillCache(activityChanges: service.activitiesChangedPublisher)
+        let missingDetails = try await service.getTransactionDetails(txid: "tx-received")
+        XCTAssertNil(missingDetails)
+
+        try await service.backfillReceivedPaykitContacts(contacts, identity: alice, cache: cache, reservations: reservations) { true }
+        let unattributed = try await service.getActivity(id: activity.activityId)
+        XCTAssertEqual(unattributed, baseline, "Missing details must leave the received payment unchanged")
+
+        let details = BitkitCore.TransactionDetails(
+            walletId: WalletScope.default, txId: "tx-received", amountSats: 15000, inputs: [],
+            outputs: [TxOutput(scriptpubkey: "", scriptpubkeyType: "v0_p2wpkh", scriptpubkeyAddress: receivingAddress, value: 15000, n: 0)]
+        )
+        // No activity notification: incomplete scans must retry even when all cache inputs stay unchanged.
+        try await Bitkit.ServiceQueue.background(.core) { try upsertTransactionDetails(detailsList: [details]) }
+        try await service.backfillReceivedPaykitContacts(contacts, identity: alice, cache: cache, reservations: reservations) { true }
+        let persisted = try await service.getActivity(id: activity.activityId)
+        guard case let .onchain(payment) = persisted else { return XCTFail("Expected the stored received payment") }
+        XCTAssertEqual(payment.contact, alice, "Retry must persist the attributed contact in BitkitCore")
+        XCTAssertEqual(payment.value, baselinePayment.value)
+        XCTAssertEqual(payment.seenAt, baselinePayment.seenAt)
+
+        // The write publishes an activity change; complete one scan at that new revision before checking the skip.
+        try await service.backfillReceivedPaykitContacts(contacts, identity: alice, cache: cache, reservations: reservations) { true }
+        try await service.backfillReceivedPaykitContacts(contacts, identity: alice, cache: cache, reservations: reservations) {
+            XCTFail("An unchanged completed backfill must skip the scan")
+            return false
+        }
+        let afterSkippedScan = try await service.getActivity(id: activity.activityId)
+        XCTAssertEqual(afterSkippedScan, persisted)
     }
 
     func testUnavailableReservationsCannotCacheNegativeMatch() async {

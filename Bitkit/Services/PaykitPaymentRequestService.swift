@@ -1984,6 +1984,7 @@ final class PaykitPaymentRequestManager {
             guard generation == refreshGeneration,
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
             else { return }
+            pruneAcceptedRequestIds(snapshot.history, identity: activeIdentity)
             let refreshDate = now()
             let handledRequestedExpirationId = recordRequestedPresentationExpiration(at: refreshDate)
             let previousPending = pendingRequests
@@ -2194,6 +2195,26 @@ final class PaykitPaymentRequestManager {
         refreshGeneration += 1
         refreshTask?.cancel()
         refreshTask = nil
+    }
+
+    private func pruneAcceptedRequestIds(_ requests: [PaykitPaymentRequest], identity: String) {
+        let finishedIds = Set(requests.compactMap { request -> PaykitPaymentRequest.ID? in
+            guard request.direction == .incoming, request.billingPeriod == nil,
+                  acceptedRequestIds.contains(request.id)
+            else { return nil }
+            switch request.lifecycleState {
+            case .proofSubmitted, .canceled, .rejected: return request.id
+            default: return nil
+            }
+        })
+        guard !finishedIds.isEmpty else { return }
+        do {
+            let remaining = try acceptanceStore.load(identity: identity).subtracting(finishedIds)
+            try acceptanceStore.save(remaining, identity: identity)
+            acceptedRequestIds = remaining
+        } catch {
+            logWarning("Failed to prune accepted Paykit payment requests: \(error)")
+        }
     }
 
     private func discardExpiredRequests(
