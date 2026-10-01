@@ -207,8 +207,13 @@ struct PaykitPaymentRequestPollingSchedule {
 struct AppScene: View {
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
 
-    static func shouldRetryNodeStart(state: NodeLifecycleState, isConnected: Bool, walletExists: Bool?) -> Bool {
-        guard isConnected, walletExists == true, case .errorStarting = state else { return false }
+    static func shouldRetryNodeStart(
+        state: NodeLifecycleState,
+        isConnected: Bool,
+        walletExists: Bool?,
+        isRecoveryShown: Bool
+    ) -> Bool {
+        guard isConnected, walletExists == true, !isRecoveryShown, case .errorStarting = state else { return false }
         return true
     }
 
@@ -1078,7 +1083,8 @@ struct AppScene: View {
                 if Self.shouldRetryNodeStart(
                     state: wallet.nodeLifecycleState,
                     isConnected: network.isConnected,
-                    walletExists: wallet.walletExists
+                    walletExists: wallet.walletExists,
+                    isRecoveryShown: showRecoveryScreen
                 ) {
                     restartNode(reason: "App returned to foreground")
                 }
