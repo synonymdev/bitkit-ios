@@ -122,6 +122,10 @@ protocol PaykitAllowancePaying: Sendable {
     func consumePaymentList(publicKey: String, context: PrivatePaykitPaymentContext, attemptId: UUID) async throws
     func resolvePaymentList(publicKey: String, context: PrivatePaykitPaymentContext, attemptId: UUID, outcome: PrivatePaymentListSendOutcome) async
     func claimForExecution(_ request: PaykitPaymentRequest) async throws
+    /// Keeps this device the local owner of the request across the automatic Acceptance, as the manual flow does, so a
+    /// request that was accepted but never paid comes back to the payer as an ordinary Payment Request.
+    func recordAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async throws
+    func discardAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async
     func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws
     func prepareProof(_ request: PaykitPaymentRequest, paymentAppId: String, paymentEndpointIdentifier: String, allowanceId: String?) async throws
     func associateLightningPayment(_ request: PaykitPaymentRequest, paymentHash: String) async throws
@@ -162,6 +166,22 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
 
     func claimForExecution(_ request: PaykitPaymentRequest) async throws {
         try await PaykitPaymentRequestService().claimForPayment(request)
+    }
+
+    func recordAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async throws {
+        let store = PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
+        var ids = try store.load(identity: identity)
+        ids.insert(request.id)
+        try store.save(ids, identity: identity)
+    }
+
+    func discardAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async {
+        let store = PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
+        do {
+            try store.save(store.load(identity: identity).subtracting([request.id]), identity: identity)
+        } catch {
+            Logger.warn("Failed to discard an allowance acceptance intent: \(error)", context: "PaykitAllowance")
+        }
     }
 
     func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
@@ -505,11 +525,24 @@ actor PaykitAllowanceExecutor {
         let paymentAppId = try payment.context.paymentAppId(for: endpointIdentifier)
         // The SDK requires this app to hold the shared execution claim before it queues an automatic Acceptance.
         try await payer.claimForExecution(request)
-        let association = try await sdk.acceptPaymentRequestAutomatically(
-            scope: scope,
-            selection: Paykit.AllowanceSelectionInput(allowanceId: candidate.allowanceId, expectedRevision: nil, trustedTime: selectionTime),
-            checks: checks(request, endpointIdentifier: endpointIdentifier, trustedTime: selectionTime)
-        )
+        try await payer.recordAcceptanceIntent(request, identity: identity)
+        let association: Paykit.AllowanceAssociationRecord
+        do {
+            association = try await sdk.acceptPaymentRequestAutomatically(
+                scope: scope,
+                selection: Paykit.AllowanceSelectionInput(allowanceId: candidate.allowanceId, expectedRevision: nil, trustedTime: selectionTime),
+                checks: checks(request, endpointIdentifier: endpointIdentifier, trustedTime: selectionTime)
+            )
+        } catch {
+            // An interrupted response may follow a committed acceptance, so only a definite refusal drops the intent.
+            switch error {
+            case is CancellationError, PaykitError.Transport, PaykitError.Storage, PaykitError.Identity:
+                break
+            default:
+                await payer.discardAcceptanceIntent(request, identity: identity)
+            }
+            throw error
+        }
         try? await sdk.processOutboundPrivateMessages(counterparty: request.counterparty)
 
         let occurrence = Paykit.PaymentOccurrence(request: scope, billingPeriod: nil)

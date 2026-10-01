@@ -1133,7 +1133,9 @@ struct AppScene: View {
         guard let identity = pubkyProfile.publicKey else { return }
         await paykitPaymentRequestManager.refresh()
         await paykitAllowanceManager.refresh()
-        if await paykitAllowanceManager.processIncomingRequests(paykitPaymentRequestManager.pendingRequests) {
+        let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(paykitPaymentRequestManager.pendingRequests)
+        let adoptedAcceptances = paykitPaymentRequestManager.reloadAcceptedRequestIds()
+        if handledAutomatically || adoptedAcceptances {
             await paykitPaymentRequestManager.refresh()
         }
         guard pubkyProfile.authState == .authenticated,

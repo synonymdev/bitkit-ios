@@ -10,6 +10,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     private static let admissionCalls = [
         "evaluateAllowanceCandidates",
         "claimForExecution",
+        "recordAcceptanceIntent",
         "acceptPaymentRequestAutomatically",
         "reserveAutomaticPayment",
         "receivePrivateMessages",
@@ -71,6 +72,9 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         )
         let claimed = await harness.payer.claimedRequestIds
         XCTAssertEqual(claimed, [request.id])
+        let intents = await harness.payer.acceptanceIntents
+        XCTAssertEqual(intents, [request.id], "The request stays this device's own once accepted, so a failed payment comes back as manual")
+        XCTAssertFalse(harness.log.entries.contains("discardAcceptanceIntent"))
         let listOutcomes = await harness.payer.paymentListOutcomes
         XCTAssertEqual(listOutcomes, [.uncertain], "A hand-off to the node keeps the payment list consumed")
         let associatedHashes = await harness.payer.associatedPaymentHashes
@@ -245,6 +249,26 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(log.contains("acceptPaymentRequestAutomatically"))
         XCTAssertFalse(log.contains("reserveAutomaticPayment"))
         XCTAssertFalse(log.contains("payLightning"))
+    }
+
+    func testRefusedAcceptanceDropsTheIntentButAnInterruptedOneKeepsIt() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        await harness.sdk.setAcceptError(PaykitError.Policy(code: "refused", context: "refused"))
+
+        let refused = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(refused, .manual)
+        var intents = await harness.payer.acceptanceIntents
+        XCTAssertEqual(intents, [], "A refused Acceptance leaves nothing to reconcile")
+
+        await harness.sdk.setAcceptError(PaykitError.Transport(code: "timeout", context: "interrupted"))
+        let interrupted = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(interrupted, .manual)
+        intents = await harness.payer.acceptanceIntents
+        XCTAssertEqual(intents, [request.id], "An interrupted response may follow a committed Acceptance")
+        XCTAssertFalse(harness.log.entries.contains("reserveAutomaticPayment"))
     }
 
     func testNodeRejectionBeforeRoutingReleasesThePaymentListAndRecordsAFailure() async throws {
@@ -863,6 +887,7 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
     private var onchainGate: AllowanceGate?
     private(set) var callCount = 0
     private(set) var claimedRequestIds: [PaykitPaymentRequest.ID] = []
+    private(set) var acceptanceIntents: [PaykitPaymentRequest.ID] = []
     private(set) var paymentListOutcomes: [PrivatePaymentListSendOutcome] = []
     private(set) var preparedProofs: [PreparedProof] = []
     private(set) var associatedPaymentHashes: [String] = []
@@ -927,6 +952,16 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         called("claimForExecution")
         if let claimError { throw claimError }
         claimedRequestIds.append(request.id)
+    }
+
+    func recordAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async throws {
+        called("recordAcceptanceIntent")
+        acceptanceIntents.append(request.id)
+    }
+
+    func discardAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async {
+        called("discardAcceptanceIntent")
+        acceptanceIntents.removeAll { $0 == request.id }
     }
 
     func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
@@ -998,6 +1033,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
     private var automaticReservation: Paykit.PaymentAttemptDecision?
     private var manualReservation: Paykit.PaymentAttemptDecision?
     private var beginDecision: Paykit.PaymentAttemptDecision?
+    private var acceptError: Error?
     private(set) var evaluatedTrustedTimes: [String] = []
     private(set) var selections: [Paykit.AllowanceSelectionInput] = []
     private(set) var acceptedEndpointIdentifiers: [String] = []
@@ -1037,6 +1073,10 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
 
     func setBeginDecision(_ decision: Paykit.PaymentAttemptDecision) {
         beginDecision = decision
+    }
+
+    func setAcceptError(_ error: Error?) {
+        acceptError = error
     }
 
     func linkedPeers() async throws -> [LinkedPeerRecord] {
@@ -1121,6 +1161,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         checks: Paykit.PaymentExecutionChecks
     ) async throws -> Paykit.AllowanceAssociationRecord {
         log.append("acceptPaymentRequestAutomatically")
+        if let acceptError { throw acceptError }
         selections.append(selection)
         acceptedEndpointIdentifiers.append(checks.paymentEndpointIdentifier)
         return Paykit.AllowanceAssociationRecord(
