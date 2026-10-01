@@ -198,6 +198,30 @@ final class PaykitContactLifecycleTests: XCTestCase {
         XCTAssertNil(report)
         XCTAssertEqual(sdk.events, eventsBeforeCleanup)
     }
+
+    func testDisabledPrivateCapabilityDoesNotQueueWithdrawal() async throws {
+        let sdk = ContactLifecycleSdk(noPointer: .init())
+        sdk.capabilities.privatePayments = false
+        let service = PaykitSdkService(sdkFactory: { sdk })
+
+        let report = try await service.clearPrivatePaymentList(to: sdk.publicKey)
+
+        XCTAssertNil(report)
+        XCTAssertTrue(sdk.events.isEmpty)
+        XCTAssertFalse(sdk.capabilities.privatePayments)
+    }
+
+    func testCleanupPendingDoesNotEnablePrivateCapability() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.set(true, forKey: PrivatePaykitService.cleanupPendingKey)
+        let sdk = ContactLifecycleSdk(noPointer: .init())
+        sdk.capabilities.privatePayments = false
+        let service = PaykitSdkService(sdkFactory: { sdk })
+
+        try await service.syncPaykitApp(privatePaymentsEnabled: false)
+
+        XCTAssertFalse(sdk.capabilities.privatePayments)
+    }
 }
 
 private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
@@ -209,6 +233,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     var failLinkedPeers = false
     var failUnblock = false
     var failSaveContact = false
+    var capabilities = PaykitAppCapabilities(privatePayments: true, paymentRequests: true, receipts: false, outgoingPayments: true)
     lazy var record: ContactRecord? = ContactRecord(
         publicKey: publicKey, label: "Contact", profile: nil,
         profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
@@ -223,11 +248,30 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     ]
 
     override func paykitAppRegistry(publicKey _: String) async throws -> PaykitAppRegistry? {
-        nil
+        registry
+    }
+
+    private var registry: PaykitAppRegistry {
+        PaykitAppRegistry(keyGeneration: 1, noisePublicKey: nil,
+                          apps: [PaykitApp(appId: "bitkit", displayName: "Bitkit", capabilities: capabilities)],
+                          defaultAppId: nil, defaultAppsByEndpoint: [:])
+    }
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        IdentityStatus(publicKey: publicKey, capability: .privateLinkCapable)
+    }
+
+    override func publishPaykitApp(displayName _: String, capabilities: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
+        self.capabilities = capabilities
+        return registry
     }
 
     override func backupStateRevision() async throws -> String {
         "revision"
+    }
+
+    override func stateRevision() throws -> String? {
+        nil
     }
 
     override func paymentRequests() async throws -> [PaymentRequestRecord] {

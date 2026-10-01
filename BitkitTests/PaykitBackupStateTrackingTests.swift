@@ -75,4 +75,71 @@ final class PaykitBackupStateTrackingTests: XCTestCase {
         XCTAssertEqual(revision, "after")
         XCTAssertEqual(changes, 1)
     }
+
+    func testUnchangedOperationsReuseBackupFingerprintWithoutRemoteReads() async throws {
+        var snapshot: PaykitSdkService.BackupStateSnapshot?
+        var reads = 0
+        var changes = 0
+        for _ in 0 ..< 3 {
+            try await PaykitSdkService.withBackupStateRevisionTracking(
+                readRevision: { reads += 1; return "content" },
+                readStateRevision: { "state" },
+                cachedSnapshot: snapshot,
+                onSnapshot: { snapshot = $0 },
+                onChange: { changes += 1 },
+                operation: {}
+            )
+        }
+        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(changes, 0)
+        XCTAssertEqual(snapshot?.backupRevision, "content")
+    }
+
+    func testStorageRevisionChangesStillCompareBackupContent() async throws {
+        for (cachedState, finalContent, expectedReads, expectedChanges) in [
+            ("before", "content", 1, 0),
+            ("before", "changed", 1, 1),
+            ("stale", "changed", 2, 1),
+        ] {
+            var state = "before"
+            var content = "content"
+            var reads = 0
+            var changes = 0
+            var snapshot: PaykitSdkService.BackupStateSnapshot?
+            try await PaykitSdkService.withBackupStateRevisionTracking(
+                readRevision: { reads += 1; return content },
+                readStateRevision: { state },
+                cachedSnapshot: .init(stateRevision: cachedState, backupRevision: "content"),
+                onSnapshot: { snapshot = $0 },
+                onChange: { changes += 1 },
+                operation: { state = "after"; content = finalContent }
+            )
+            XCTAssertEqual(reads, expectedReads)
+            XCTAssertEqual(changes, expectedChanges)
+            XCTAssertEqual(snapshot?.stateRevision, "after")
+            XCTAssertEqual(snapshot?.backupRevision, finalContent)
+        }
+    }
+
+    func testFailedWriteChecksBackupDespiteUnchangedLocalRevision() async {
+        var snapshot: PaykitSdkService.BackupStateSnapshot? = .init(stateRevision: "state", backupRevision: "before")
+        var reads = 0
+        var changes = 0
+        do {
+            try await PaykitSdkService.withBackupStateRevisionTracking(
+                readRevision: { reads += 1; return "after" },
+                readStateRevision: { "state" },
+                cachedSnapshot: snapshot,
+                onSnapshot: { snapshot = $0 },
+                onChange: { changes += 1 },
+                operation: { throw Failure.operation }
+            )
+            XCTFail("Expected unconfirmed write failure")
+        } catch {
+            XCTAssertEqual(error as? Failure, .operation)
+        }
+        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(changes, 1)
+        XCTAssertNil(snapshot)
+    }
 }

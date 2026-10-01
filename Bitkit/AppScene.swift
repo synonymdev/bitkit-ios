@@ -81,17 +81,20 @@ struct IncomingPaykitPaymentRequestPresentationState: Equatable {
     let retryTrigger: Int
     let expirationTrigger: Int
     let unavailableTrigger: Int
+    let pendingRequestIds: [PaykitPaymentRequest.ID]
 
     init(
         requestedPresentationId: PaykitPaymentRequest.ID?,
         retryTrigger: Int,
         expirationTrigger: Int,
-        unavailableTrigger: Int
+        unavailableTrigger: Int,
+        pendingRequestIds: [PaykitPaymentRequest.ID] = []
     ) {
         self.requestedPresentationId = requestedPresentationId
         self.retryTrigger = retryTrigger
         self.expirationTrigger = expirationTrigger
         self.unavailableTrigger = unavailableTrigger
+        self.pendingRequestIds = pendingRequestIds
     }
 
     @MainActor
@@ -100,7 +103,8 @@ struct IncomingPaykitPaymentRequestPresentationState: Equatable {
             requestedPresentationId: manager.requestedPresentationId,
             retryTrigger: manager.presentationRetryTrigger,
             expirationTrigger: manager.requestedPresentationExpirationTrigger,
-            unavailableTrigger: manager.requestedPresentationUnavailableTrigger
+            unavailableTrigger: manager.requestedPresentationUnavailableTrigger,
+            pendingRequestIds: manager.pendingRequests.map(\.id)
         )
     }
 }
@@ -168,7 +172,8 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
         }
         if current.retryTrigger != previous.retryTrigger ||
             previous.requestedPresentationId != current.requestedPresentationId && current.requestedPresentationId != nil ||
-            current.expirationTrigger != previous.expirationTrigger
+            current.expirationTrigger != previous.expirationTrigger ||
+            current.pendingRequestIds.contains(where: { !previous.pendingRequestIds.contains($0) })
         {
             dispatches.append(.presentNext)
         }
@@ -380,6 +385,7 @@ struct AppScene: View {
             .onChange(of: isPinVerified) { _, verified in
                 if verified {
                     Task { await trezorManager.autoReconnect() }
+                    Task { await presentNextIncomingPaykitItem() }
                 }
             }
             .onReceive(settings.settingsPublisher) { _ in hwWalletManager.reconcileForSettingsChange() }
@@ -1239,7 +1245,9 @@ struct AppScene: View {
     }
 
     private func presentNextIncomingPaykitPaymentRequest() async {
-        guard sheets.activeSheetConfiguration == nil,
+        guard scenePhase == .active,
+              isPinVerified || !settings.pinEnabled,
+              sheets.activeSheetConfiguration == nil,
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
         else { return }
@@ -1354,6 +1362,15 @@ struct AppScene: View {
                         continue
                     }
 
+                    guard PaykitPaymentRequestPresentationCoordinator.canPresentPreparedRequest(
+                        isSceneActive: scenePhase == .active,
+                        isUnlocked: isPinVerified || !settings.pinEnabled,
+                        context: contactPaymentContext,
+                        app: app,
+                        resetWalletSendState: {
+                            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        }
+                    ) else { return }
                     guard let route = PaymentNavigationHelper.contactPaymentRoute(
                         app: app,
                         currency: currency,
@@ -1512,7 +1529,11 @@ struct AppScene: View {
     }
 
     private func presentNextIncomingPaykitItem() async {
-        guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet else { return }
+        guard scenePhase == .active,
+              isPinVerified || !settings.pinEnabled,
+              sheets.activeSheetConfiguration == nil,
+              !sheets.isReplacingSheet
+        else { return }
         if PaykitSubscriptionNotificationTargetStore.load() != nil {
             await handlePendingPaykitSubscriptionNotification()
             guard PaykitSubscriptionNotificationTargetStore.load() == nil,

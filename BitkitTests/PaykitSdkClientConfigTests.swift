@@ -13,8 +13,11 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         let saved = try keys.map { try Keychain.load(key: $0) }
         defer {
             for (key, data) in zip(keys, saved) {
-                if let data { try? Keychain.upsert(key: key, data: data) }
-                else { try? Keychain.delete(key: key) }
+                if let data {
+                    try? Keychain.upsert(key: key, data: data)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
         let bootstrap = CacheActivationBootstrap(noPointer: .init())
@@ -113,6 +116,62 @@ final class PaykitSdkClientConfigTests: XCTestCase {
                 XCTAssertEqual(persistedValues, previousValues, "Rejected authorization must preserve the high-water entries")
             }
         }
+    }
+
+    @MainActor
+    func testSessionKeyCacheRefreshesForIdentityGenerationAndRuntimeChanges() async throws {
+        let secrets = [String(repeating: "21", count: 32), String(repeating: "22", count: 32)]
+        let publicKeys = try secrets.map { try PubkyProfileManager.publicKeyFromSecretKey($0) }
+        let keys: [KeychainEntryType] = [.pubkySecretKey] + publicKeys.map { .paykitKeyGeneration(publicKey: $0) }
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        let savedReference = AdoptedPubkyReference.current
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            for (key, value) in zip(keys, saved) {
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
+            }
+        }
+        AdoptedPubkyReference.current = nil
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(secrets[0].utf8))
+        let sdk = CacheActivationSdk(noPointer: .init())
+        let service = PaykitSdkService(sdkFactory: { sdk }) { _, _ in CacheActivationBootstrap(noPointer: .init()) }
+
+        _ = try await service.contactRecords()
+        _ = try await service.contactRecords()
+        XCTAssertEqual(sdk.registryPublicKeys, [publicKeys[0]])
+
+        sdk.registry = PaykitAppRegistry(keyGeneration: 2, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
+        let authorizationKey = try await service.paykitKeyForAuthorization(secretKeyHex: secrets[0])
+        XCTAssertEqual(authorizationKey.keyGeneration(), 2)
+        _ = try await service.contactRecords()
+        XCTAssertEqual(sdk.registryPublicKeys.count, 3)
+
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(secrets[1].utf8))
+        _ = try await service.contactRecords()
+        XCTAssertEqual(sdk.registryPublicKeys.last, publicKeys[1])
+        XCTAssertEqual(sdk.registryPublicKeys.count, 4)
+
+        await service.clearState()
+        _ = try await service.contactRecords()
+        XCTAssertEqual(sdk.registryPublicKeys.count, 5)
+
+        sdk.registryError = PubkyServiceError.authFailed("Registry unavailable")
+        do {
+            try await service.initialize()
+            XCTFail("Forced validation must report the registry failure")
+        } catch {}
+        do {
+            _ = try await service.contactRecords()
+            XCTFail("Failed forced validation must not reuse the previous key cache")
+        } catch {}
+        XCTAssertEqual(sdk.registryPublicKeys.count, 7)
     }
 
     func testIdentityReadFailurePreservesSavedCredentials() async throws {
@@ -487,6 +546,10 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
         }
         return IdentityStatus(publicKey: previousKey, capability: .signedOut)
     }
+
+    override func contactRecords() async throws -> [ContactRecord] {
+        []
+    }
 }
 
 private final class CacheActivationBootstrap: PubkySessionBootstrap, @unchecked Sendable {
@@ -541,6 +604,10 @@ private final class RecoverySdk: PaykitSdk, @unchecked Sendable {
 
     override func backupStateRevision() async throws -> String {
         "unchanged"
+    }
+
+    override func stateRevision() throws -> String? {
+        nil
     }
 
     override func forgetSessionAccess() async throws -> IdentityStatus {

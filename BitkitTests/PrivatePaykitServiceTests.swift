@@ -564,6 +564,54 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(PrivatePaykitService.pendingDeletedContactCleanupKeys(), [failedPublicKey])
     }
 
+    func testCleanupFailuresKeepRegistryReconciliationPending() async throws {
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        for failureStage in ["lookup", "withdraw", "registry"] {
+            let service = PrivatePaykitService()
+            var contactState = PrivatePaykitService.ContactState()
+            contactState.hasPublishedPrivatePaymentList = true
+            await service.setTestContactState(contactState, publicKey: publicKey)
+            PrivatePaykitService.markDeletedContactCleanupPending([publicKey])
+            PublicPaykitService.setCleanupPending(false)
+            var shouldFail = true
+            var registryUpdates = 0
+            let operations = PrivatePaykitService.EndpointCleanupOperations(
+                linkedPeers: {
+                    if shouldFail, failureStage == "lookup" { throw PrivatePaykitError.privateUnavailable }
+                    return []
+                },
+                clearPaymentList: { _ in
+                    if shouldFail, failureStage == "withdraw" { throw PrivatePaykitError.privateUnavailable }
+                    return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                },
+                drainMessages: { _ in },
+                pendingDrainKeys: { _ in [] },
+                syncApp: {
+                    registryUpdates += 1
+                    if shouldFail, failureStage == "registry" { throw PrivatePaykitError.privateUnavailable }
+                }
+            )
+
+            do {
+                try await service.removePublishedEndpoints(for: [publicKey], operations: operations)
+                XCTFail("Expected \(failureStage) failure")
+            } catch {
+                XCTAssertTrue(PublicPaykitService.isCleanupPending)
+            }
+            XCTAssertEqual(registryUpdates, failureStage == "registry" ? 1 : 0)
+            let retainedState = await service.testContactState(publicKey: publicKey)
+            XCTAssertEqual(retainedState?.hasPublishedPrivatePaymentList == true, failureStage != "registry")
+
+            shouldFail = false
+            try await service.removePublishedEndpoints(for: [publicKey], operations: operations)
+            let clearedState = await service.testContactState(publicKey: publicKey)
+            XCTAssertFalse(clearedState?.hasPublishedPrivatePaymentList == true)
+            XCTAssertFalse(PrivatePaykitService.pendingDeletedContactCleanupKeys().contains(publicKey))
+            XCTAssertEqual(registryUpdates, failureStage == "registry" ? 2 : 1)
+        }
+    }
+
     func testCleanupSkipsNeverLinkedContactsWithoutPublishedDetails() async {
         let service = PrivatePaykitService()
         var publishedState = PrivatePaykitService.ContactState()
