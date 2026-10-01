@@ -151,9 +151,9 @@ final class PaykitSdkClientConfigTests: XCTestCase {
     }
 
     @MainActor
-    func testIdentityActivationSeparatesCacheAndPreservesSameOwnerOrLegacyBackup() async throws {
+    func testIdentityActivationSeparatesCacheAndPreservesSameOwner() async throws {
         let defaults = UserDefaults.standard
-        let metadataKeys = ["pubky_profile_name", "pubky_profile_image_uri"]
+        let metadataKeys = ["pubky_profile_name", "pubky_profile_image_uri", "pubky_profile_identity"]
         let savedMetadata = metadataKeys.map { defaults.object(forKey: $0) }
         let savedOverrides = ContactsManager.backupContactProfileOverrides()
         let savedReference = AdoptedPubkyReference.current
@@ -183,6 +183,7 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         let differentKey = try PubkyProfileManager.publicKeyFromSecretKey(String(repeating: "02", count: 32))
         let overrides = [originalKey: PubkyProfileData(name: "Private label", bio: "", image: nil, links: [], tags: [])]
         for previousKey in [originalKey, "pubky\(originalKey)", differentKey, nil] {
+            defaults.removeObject(forKey: metadataKeys[2])
             defaults.set("Original profile", forKey: metadataKeys[0])
             defaults.set("pubky://original/avatar", forKey: metadataKeys[1])
             ContactsManager.restoreContactProfileOverrides(overrides)
@@ -214,6 +215,14 @@ final class PaykitSdkClientConfigTests: XCTestCase {
                 XCTAssertEqual(ContactsManager.backupContactProfileOverrides(), overrides)
             }
         }
+
+        defaults.set(differentKey, forKey: metadataKeys[2])
+        defaults.set("Other identity", forKey: metadataKeys[0])
+        ContactsManager.restoreContactProfileOverrides(overrides)
+        PubkyProfileManager.activateCachedIdentity(publicKey: publicKey, previousPublicKey: nil)
+        XCTAssertNil(defaults.string(forKey: metadataKeys[0]))
+        XCTAssertNil(ContactsManager.backupContactProfileOverrides())
+        XCTAssertEqual(defaults.string(forKey: metadataKeys[2]), publicKey)
     }
 
     @MainActor

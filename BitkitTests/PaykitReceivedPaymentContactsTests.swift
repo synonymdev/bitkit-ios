@@ -170,6 +170,15 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
         }
         let afterSkippedScan = try await service.getActivity(id: activity.activityId)
         XCTAssertEqual(afterSkippedScan, persisted)
+
+        defer { service.setContactDetached(false, activityId: activity.activityId, walletId: WalletScope.default) }
+        try await service.setContact(nil, forActivity: activity.activityId)
+        try await service.backfillReceivedPaykitContacts(contacts, identity: alice, cache: cache, reservations: reservations) { true }
+        let detached = try await service.getActivity(id: activity.activityId)
+        guard case let .onchain(detachedPayment) = detached else { return XCTFail("Expected the detached payment") }
+        XCTAssertNil(detachedPayment.contact)
+        try await service.setContact(bob, forActivity: activity.activityId)
+        XCTAssertFalse(service.isContactDetached(activityId: activity.activityId, walletId: WalletScope.default))
     }
 
     func testUnavailableReservationsCannotCacheNegativeMatch() async {

@@ -4,6 +4,7 @@ import Paykit
 struct PaykitPaymentStateBackup: Codable {
     let subscriptions: [String: Subscription]
     let pendingProofs: [Proof]
+    var acceptedOneTimeRequests: [String: [RequestID]]? = nil
 
     struct RequestID: Codable {
         let paymentRequestId: String

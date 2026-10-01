@@ -36,6 +36,20 @@ struct AccountAddresses {
 
 class ActivityService {
     private let coreService: CoreService
+    private static let detachedContactsKey = "activityDetachedContacts"
+
+    func isContactDetached(activityId: String, walletId: String) -> Bool {
+        let detached = UserDefaults.standard.dictionary(forKey: Self.detachedContactsKey) as? [String: [String]] ?? [:]
+        return detached[walletId]?.contains(activityId) == true
+    }
+
+    func setContactDetached(_ detached: Bool, activityId: String, walletId: String) {
+        var entries = UserDefaults.standard.dictionary(forKey: Self.detachedContactsKey) as? [String: [String]] ?? [:]
+        var ids = Set(entries[walletId] ?? [])
+        if detached { ids.insert(activityId) } else { ids.remove(activityId) }
+        entries[walletId] = ids.isEmpty ? nil : Array(ids)
+        UserDefaults.standard.set(entries, forKey: Self.detachedContactsKey)
+    }
 
     private let activitiesChangedSubject = PassthroughSubject<Void, Never>()
 
@@ -638,7 +652,7 @@ class ActivityService {
                 Logger.error("Failed to find address for txid \(txid): \(error)", context: "CoreService.processOnchainPayment")
             }
 
-            if contact == nil {
+            if contact == nil, !isContactDetached(activityId: payment.id, walletId: WalletScope.default) {
                 let details: BitkitCore.TransactionDetails? = if let transactionDetails {
                     transactionDetails
                 } else {
@@ -687,7 +701,18 @@ class ActivityService {
         )
 
         if let existingActivity, case let .onchain(existing) = existingActivity {
-            try await update(id: existing.id, activity: .onchain(onchain))
+            try await ServiceQueue.background(.core) {
+                var updated = onchain
+                if case let .onchain(latest)? = try getActivityById(walletId: existing.walletId, activityId: existing.id),
+                   latest.contact != existing.contact
+                {
+                    updated.contact = latest.contact
+                }
+                if self.isContactDetached(activityId: existing.id, walletId: existing.walletId) { updated.contact = nil }
+                try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                self.updateBoostTxIdsCache(for: .onchain(updated))
+                self.activitiesChangedSubject.send()
+            }
         } else {
             try await upsert(.onchain(onchain))
         }
@@ -929,14 +954,24 @@ class ActivityService {
         )
 
         if existingActivity != nil {
-            try await update(id: payment.id, activity: .lightning(ln))
+            try await ServiceQueue.background(.core) {
+                var updated = ln
+                if case let .lightning(latest)? = try getActivityById(walletId: ln.walletId, activityId: payment.id),
+                   latest.contact != existingLightning?.contact
+                {
+                    updated.contact = latest.contact
+                }
+                if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) { updated.contact = nil }
+                try updateActivity(activityId: payment.id, activity: .lightning(updated))
+                self.activitiesChangedSubject.send()
+            }
         } else {
             try await upsert(.lightning(ln))
         }
     }
 
     private func privatePaykitContactPublicKey(forReceivedInvoicePaymentHash paymentHash: String, direction: PaymentDirection) async -> String? {
-        guard direction == .inbound else { return nil }
+        guard direction == .inbound, !isContactDetached(activityId: paymentHash, walletId: WalletScope.default) else { return nil }
         return await privateInvoiceContactResolver?(paymentHash)
     }
 
@@ -1403,6 +1438,7 @@ class ActivityService {
                 throw AppError(message: "Activity not found", debugMessage: "Activity with ID \(id) not found")
             }
 
+            self.setContactDetached(normalizedContact == nil, activityId: ActivityScope.id(of: activity), walletId: walletId)
             switch activity {
             case var .lightning(lightning):
                 guard lightning.contact != normalizedContact else { return }

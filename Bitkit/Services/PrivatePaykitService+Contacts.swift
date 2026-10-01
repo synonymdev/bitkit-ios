@@ -171,6 +171,7 @@ extension PrivatePaykitService {
     }
 
     private func removePublishedEndpointsLocked(for publicKeys: [String]) async throws {
+        try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: true)
         let linkedPublicKeys = try await Set(PaykitSdkService.shared.linkedPeers()
             .filter { $0.state != .notLinked }
             .compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
@@ -228,6 +229,7 @@ extension PrivatePaykitService {
         if let firstError {
             throw firstError
         }
+        try await PublicPaykitService.syncPaykitApp()
     }
 
     func privatePaymentListCleanupKeys(_ publicKeys: [String], linkedPublicKeys: Set<String>) -> [String] {
@@ -437,6 +439,8 @@ extension PrivatePaykitService {
                     "Failed to prepare private Paykit link for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(error)",
                     context: "PrivatePaykit"
                 )
+                linkRetryKeys.append(publicKey)
+                continue
             }
             linkRetryKeys.append(publicKey)
             do {

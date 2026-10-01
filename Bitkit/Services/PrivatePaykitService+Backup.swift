@@ -4,7 +4,7 @@ import Foundation
 
 extension PrivatePaykitService {
     func backupSnapshot() async throws -> String? {
-        guard await PubkyService.currentPublicKey() != nil else {
+        guard try await PaykitSdkService.shared.currentPublicKey() != nil else {
             return nil
         }
         let backup = try await Backup(

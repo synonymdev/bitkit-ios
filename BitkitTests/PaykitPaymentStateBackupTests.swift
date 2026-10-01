@@ -24,6 +24,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         try Keychain.delete(key: .paykitSubscriptionState)
         try Keychain.delete(key: .paykitPendingPaymentProofs)
         try Keychain.delete(key: .paykitPendingBackupRestore)
+        try Keychain.delete(key: .paykitAcceptedPaymentRequests)
     }
 
     func testPaymentStateBackupRoundTrip() async throws {
@@ -56,15 +57,22 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             onchainWalletId: "trezor:android",
             onchainMatchingTransactionIdsBeforeAttempt: ["previous-transaction"]
         )
-        let backup = PaykitPaymentStateBackup(
+        let acceptedId = PaykitPaymentRequest.ID(paymentRequestId: "one-time", counterparty: identity)
+        let acceptanceStore = PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
+        try acceptanceStore.save([acceptedId], identity: identity)
+        let backup = try PaykitPaymentStateBackup(
             subscriptions: [identity: .init(subscriptions)],
-            pendingProofs: [.init(proof)]
+            pendingProofs: [.init(proof)],
+            acceptedOneTimeRequests: acceptanceStore.backupSnapshot()
         )
         let data = try JSONEncoder().encode(backup)
         let decoded = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: data)
         XCTAssertEqual(decoded.pendingProofs.first?.requestId.billingPeriodStartsAt, "2026-09-24T10:00:00.100Z")
         try PaykitSubscriptionStateStore().restoreBackup(decoded.subscriptions)
         try await PaykitPaymentProofService.shared.restoreBackup(decoded.pendingProofs)
+        try Keychain.delete(key: .paykitAcceptedPaymentRequests)
+        try acceptanceStore.restoreBackup(XCTUnwrap(decoded.acceptedOneTimeRequests))
+        XCTAssertEqual(try acceptanceStore.load(identity: identity), [acceptedId])
 
         XCTAssertEqual(try PaykitSubscriptionStateStore().load(identity: identity), subscriptions)
         let loaded = try await PaykitPaymentProofStore().load()

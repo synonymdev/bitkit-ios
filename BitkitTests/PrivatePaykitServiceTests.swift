@@ -578,29 +578,34 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(keys, ["linked", "published"])
     }
 
-    func testImmediatePublicationSkipsContactsWithoutPaykit() async {
-        let service = PrivatePaykitService()
-        let operations = PrivatePaykitService.EndpointPublicationOperations(
-            currentPublicKey: { "pubkylocal" },
-            ensureLink: { _ in throw PaykitError.NotFound(code: "not_found", context: "No App Registry") },
-            buildEndpoints: { _ in
-                XCTFail("An unsupported contact should not reserve wallet addresses")
-                return []
-            },
-            syncPaymentLists: { _ in
-                XCTFail("An unsupported contact should not receive a private list")
-                return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
-            }
-        )
+    func testImmediatePublicationSkipsContactsWithoutPaykitOrUnavailableLinks() async {
+        for linkError in [
+            PaykitError.NotFound(code: "not_found", context: "No App Registry"),
+            PaykitError.Transport(code: "offline", context: "Unavailable homeserver"),
+        ] {
+            let service = PrivatePaykitService()
+            let operations = PrivatePaykitService.EndpointPublicationOperations(
+                currentPublicKey: { "pubkylocal" },
+                ensureLink: { _ in throw linkError },
+                buildEndpoints: { _ in
+                    XCTFail("An unsupported contact should not reserve wallet addresses")
+                    return []
+                },
+                syncPaymentLists: { _ in
+                    XCTFail("An unsupported contact should not receive a private list")
+                    return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                }
+            )
 
-        let error = await service.syncLocalEndpointPublication(
-            for: ["pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"],
-            reason: "test",
-            requireImmediatePublication: true,
-            operations: operations
-        )
+            let error = await service.syncLocalEndpointPublication(
+                for: ["pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"],
+                reason: "test",
+                requireImmediatePublication: true,
+                operations: operations
+            )
 
-        XCTAssertNil(error)
+            XCTAssertNil(error)
+        }
     }
 
     func testImmediatePublicationContinuesAfterEndpointPreparationFailure() async throws {

@@ -372,6 +372,16 @@ actor PaykitPaymentProofService {
         paymentAppId: String,
         paymentEndpointIdentifier: String
     ) async {
+        let prepared = try? await loadProofs().filter {
+            $0.requestId == request.id && $0.paymentAppId == paymentAppId &&
+                $0.paymentEndpointIdentifier == paymentEndpointIdentifier &&
+                $0.kind == .onchain && $0.paymentStarted && !$0.hasUnsupportedOnchainWallet &&
+                $0.paymentIdentifier == nil && $0.proofData == nil
+        }
+        if let prepared, prepared.count == 1, let proof = prepared.first {
+            await completeOnchainPayment(requestId: request.id, identity: proof.identity, txid: txid, fallbackProof: proof)
+            return
+        }
         guard let identity = try? await currentIdentity() else { return }
         let fallbackProof = try? await pendingProof(
             request: request,

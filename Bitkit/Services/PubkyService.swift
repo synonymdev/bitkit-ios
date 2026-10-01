@@ -610,7 +610,7 @@ actor PaykitSdkService {
 
     func fetchPubkyFollows(publicKey: String) async throws -> [String] {
         try await operationLock.withLock {
-            try await handle().fetchPubkyFollows(publicKey: publicKey, maxEntries: 1000)
+            try await handle().fetchPubkyFollows(publicKey: publicKey, maxEntries: 10000)
         }
     }
 
@@ -1105,7 +1105,6 @@ actor PaykitSdkService {
     ) async throws {
         let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let previousValues = try keys.map { try Keychain.load(key: $0) }
-        let isDifferentIdentity = !Self.publicKeysMatch(previousPublicKey, result.publicKey)
         let sdk: PaykitSdk
         do {
             try persistSessionAccess(result.sessionAccess)
@@ -1131,9 +1130,7 @@ actor PaykitSdkService {
             resetRuntime()
             throw rollbackError ?? error
         }
-        if isDifferentIdentity, previousPublicKey != nil {
-            await PubkyProfileManager.clearCachedIdentityMetadata()
-        }
+        await PubkyProfileManager.activateCachedIdentity(publicKey: result.publicKey, previousPublicKey: previousPublicKey)
         if AdoptedPubkyReference.current != nil || result.sessionAccess.exportLocalSecretKey() == nil {
             SharedPubkyKeychain.removeAllOwn()
         }
@@ -1168,16 +1165,6 @@ actor PaykitSdkService {
         sessionProvider.suspendStoredSessionAccess()
         defer { sessionProvider.resumeStoredSessionAccess() }
         return try await handle().identityStatus()?.publicKey
-    }
-
-    private nonisolated static func publicKeysMatch(_ lhs: String?, _ rhs: String) -> Bool {
-        guard let lhs,
-              let normalizedLhs = try? Paykit.normalizePubkyPublicKey(value: lhs),
-              let normalizedRhs = try? Paykit.normalizePubkyPublicKey(value: rhs)
-        else {
-            return false
-        }
-        return normalizedLhs == normalizedRhs
     }
 
     nonisolated static func shouldDeferStaleSession(error: Error, hasStoredSession: Bool) -> Bool {
@@ -1500,7 +1487,7 @@ final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendab
     func setPaykitIdentitySecretKey(_ key: PaykitIdentitySecretKey) {
         lock.lock()
         defer { lock.unlock() }
-        if (paykitIdentitySecretKey?.keyGeneration() ?? 1) != key.keyGeneration() {
+        if paykitIdentitySecretKey?.keyGeneration() != key.keyGeneration() {
             liveSessionAccess = nil
         }
         paykitIdentitySecretKey = key

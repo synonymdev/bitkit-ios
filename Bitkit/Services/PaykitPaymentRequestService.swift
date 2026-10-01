@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import ImageIO
 import LDKNode
@@ -1019,6 +1020,11 @@ enum PaykitPaymentRequestPresentationCoordinator {
 }
 
 struct PaykitPaymentRequestIdStore: PaykitPaymentRequestIdStoring {
+    private static let backupChanged = PassthroughSubject<Void, Never>()
+    static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
+        backupChanged.eraseToAnyPublisher()
+    }
+
     var key: KeychainEntryType = .paykitPresentedPaymentRequests
 
     private struct State: Codable {
@@ -1040,6 +1046,21 @@ struct PaykitPaymentRequestIdStore: PaykitPaymentRequestIdStoring {
             State(idsByIdentity: [:])
         }
         state.idsByIdentity[normalizedIdentity] = Array(ids)
+        try Keychain.upsert(key: key, data: JSONEncoder().encode(state))
+        if case .paykitAcceptedPaymentRequests = key {
+            Self.backupChanged.send()
+        }
+    }
+
+    func backupSnapshot() throws -> [String: [PaykitPaymentStateBackup.RequestID]] {
+        guard let data = try Keychain.load(key: key) else { return [:] }
+        return try JSONDecoder().decode(State.self, from: data).idsByIdentity.mapValues {
+            $0.map { PaykitPaymentStateBackup.RequestID($0, billingPeriod: nil) }
+        }
+    }
+
+    func restoreBackup(_ snapshot: [String: [PaykitPaymentStateBackup.RequestID]]) throws {
+        let state = State(idsByIdentity: snapshot.mapValues { $0.map { $0.restored(billingPeriod: nil) } })
         try Keychain.upsert(key: key, data: JSONEncoder().encode(state))
     }
 }
@@ -1489,7 +1510,9 @@ final class PaykitPaymentRequestManager {
                   isApprovedForPayment(request)
             else { throw PaykitPaymentRequestError.requestUnavailable }
         } catch {
-            approvedPaymentRequestIds.remove(request.id)
+            if error as? PaykitPaymentRequestError == .requestUnavailable {
+                approvedPaymentRequestIds.remove(request.id)
+            }
             throw error
         }
     }
@@ -1517,12 +1540,28 @@ final class PaykitPaymentRequestManager {
                 try await service.claimForPayment($0)
                 try await consumePrivatePaymentList()
                 if $0.requiresAcceptance {
-                    try await service.accept($0)
                     var ids = try acceptanceStore.load(identity: identity)
+                    let alreadySaved = ids.contains($0.id)
                     ids.insert($0.id)
                     try acceptanceStore.save(ids, identity: identity)
                     if PubkyPublicKeyFormat.matches(activeIdentity, identity) {
                         acceptedRequestIds = ids
+                    }
+                    do {
+                        try await service.accept($0)
+                    } catch {
+                        // An interrupted response may follow a committed acceptance. Keep its local owner for reconciliation.
+                        switch error {
+                        case is CancellationError, PaykitError.Transport, PaykitError.Storage, PaykitError.Identity:
+                            break
+                        default:
+                            if !alreadySaved {
+                                ids.remove($0.id)
+                                try acceptanceStore.save(ids, identity: identity)
+                                if PubkyPublicKeyFormat.matches(activeIdentity, identity) { acceptedRequestIds = ids }
+                            }
+                        }
+                        throw error
                     }
                 }
             }

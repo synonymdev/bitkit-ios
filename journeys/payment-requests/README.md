@@ -31,6 +31,11 @@ That run established the issuer shapes captured by the fixture: lowercase `btc`,
 
 ## Accepting install
 
+Acceptance intent is saved before the remote operation and included in wallet backups.
+An interrupted response is reconciled against the shared request before payment. Restoring
+the wallet restores its pending acceptances; this does not support running the same wallet
+on multiple devices concurrently.
+
 `accepted-device-ownership.xml` uses two separate E2E Bitkit installs with Paykit UI enabled,
 sharing one Pubky identity and App ID `bitkit`. Fund each regtest Lightning wallet for 21,000 sats
 plus fees, and save and link the fixture issuer. Do not copy app-private storage between installs.

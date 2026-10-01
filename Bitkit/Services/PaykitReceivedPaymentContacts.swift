@@ -171,6 +171,7 @@ extension ActivityService {
             defer { if changed { notifyActivitiesChanged() } }
             for activity in activities {
                 guard !Task.isCancelled, await isCurrent() else { return false }
+                guard !isContactDetached(activityId: ActivityScope.id(of: activity), walletId: ActivityScope.walletId(of: activity)) else { continue }
                 var outputAddresses: [String] = []
                 var combined = contacts
                 switch activity {
@@ -195,7 +196,9 @@ extension ActivityService {
                 guard !Task.isCancelled, await isCurrent(), await reservations.attributionRevision == reservationRevision else { return false }
                 let didUpdate = try await ServiceQueue.background(.core) {
                     // Async lookups must not overwrite a contact or metadata written in the meantime.
-                    guard try getActivityById(walletId: WalletScope.default, activityId: activity.activityId) == activity else { return false }
+                    guard !self.isContactDetached(activityId: activity.activityId, walletId: WalletScope.default),
+                          try getActivityById(walletId: WalletScope.default, activityId: activity.activityId) == activity
+                    else { return false }
                     try updateActivity(activityId: activity.activityId, activity: updated)
                     return true
                 }

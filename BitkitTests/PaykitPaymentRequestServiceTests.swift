@@ -3211,6 +3211,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                     XCTAssertEqual(error as? PaymentRequestSdkMockError, .linkedPeers)
                 }
                 await sdk.setLinkedPeersError(nil)
+                try await manager.ensurePaymentAllowed(request)
             }
             if !testCase.ownsContext {
                 app.contactPaymentContext = ContactPaymentContext(publicKey: counterparty)
@@ -3616,6 +3617,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             XCTAssertEqual(error as? PaymentRequestSdkMockError, .process)
         }
         XCTAssertFalse(manager.isApprovedForPayment(request))
+        let calls = await sdk.snapshot().acceptedRequests
+        XCTAssertTrue(calls.isEmpty, "Do not accept remotely until the local intent is durable")
         record.state = .accepted
         await sdk.setRecords([record])
         await manager.refresh()
@@ -3632,6 +3635,29 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+    }
+
+    func testInterruptedAcceptanceCanResumeAfterRefresh() async throws {
+        let record = try paymentRequestRecord()
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let store = PaymentRequestPresentationMemoryStore()
+        let manager = paymentRequestManager(sdk: sdk, acceptanceStore: store)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        await sdk.setAcceptanceResponseError(PaykitError.Transport(code: "transport_error", context: "response lost"))
+
+        do {
+            try await manager.prepareForPayment(request)
+            XCTFail("The interrupted call must not authorize execution")
+        } catch {}
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        var accepted = record
+        accepted.state = .accepted
+        await sdk.setRecords([accepted])
+        await manager.refresh()
+        let retry = try XCTUnwrap(manager.pendingRequests.first)
+        try await manager.prepareForPayment(retry)
+        try await manager.ensurePaymentAllowed(retry)
     }
 
     func testClearingDuringRetryDoesNotReopenRequest() async throws {
@@ -4873,6 +4899,8 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var acceptedRequests: [PaymentRequestInvocation] = []
     private var rejectedRequests: [PaymentRequestInvocation] = []
     private var acceptFailuresAfterRemoval = 0
+    private var acceptanceResponseError: Error?
+
     private var rejectFailuresAfterRemoval = 0
     private var proposedRequests: [ProposedPaymentRequestInvocation] = []
     private var shouldPauseNextPaymentRequestList = false
@@ -5065,6 +5093,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
                 id: paymentRequestId
             )
         }
+        if let acceptanceResponseError { throw acceptanceResponseError }
         if acceptFailuresAfterRemoval > 0 {
             acceptFailuresAfterRemoval -= 1
             throw PaymentRequestSdkMockError.process
@@ -5109,6 +5138,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func failNextProcess() {
         processFailuresRemaining += 1
+    }
+
+    func setAcceptanceResponseError(_ error: Error) {
+        acceptanceResponseError = error
     }
 
     func pauseNextProcess() {
