@@ -58,6 +58,8 @@ final class PaykitSubscriptionProposalTests: XCTestCase {
                 endsAt: nil
             ),
             acceptedPaymentEndpointIdentifiers: ["bitcoin:regtest", "lightning:bolt11", "lightning:lnurl"],
+            paymentEndpoints: nil,
+            requiredAppId: "bitkit",
             conversion: nil,
             paymentDeadline: nil,
             metadata: PrivateJsonObject(text: String(decoding: data, as: UTF8.self))

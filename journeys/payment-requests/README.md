@@ -10,7 +10,7 @@ The resolution-failure journey is ported alongside Android's matching `requested
 
 ### Setup
 
-Run Bitkit against regtest with Paykit UI enabled. Authenticate a Pubky identity, save the fixture issuer as a contact, link its server receiver on `bitkit/server`, and give the wallet enough on-chain balance to pay 100,000 sats. The fixture issuer must be able to publish a Paykit endpoint and send a one-time Payment Request to that linked peer. A Bitkit app acting as the issuer exposes `bitkit/wallet` instead, so a Bitkit-to-Bitkit run uses that negotiated path throughout.
+Run Bitkit against regtest with Paykit UI enabled. Authenticate a Pubky identity, save and link the fixture issuer as a contact, and give the wallet enough on-chain balance to pay 100,000 sats. The fixture issuer must be able to publish a Paykit endpoint and send a one-time Payment Request to that linked peer. Its App ID is `paykit-server`; Bitkit uses `bitkit`.
 
 The accepted journey uses:
 
@@ -76,8 +76,8 @@ correctly prevents it from entering the presentation queue.
 ### Setup
 
 Use a second Bitkit instance as the requester instead of the fixture issuer: both instances are
-authenticated Pubky identities, saved as each other's contacts and linked on receiver path
-`bitkit/wallet`, and the payer holds enough balance to pay 21,000 sats.
+authenticated Pubky identities, saved as each other's contacts and linked, and the payer holds
+enough balance to pay 21,000 sats.
 
 ## Definite pre-broadcast retry
 

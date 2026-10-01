@@ -4,6 +4,7 @@ enum ContactPaymentsService {
     static let confirmedPreferenceKey = "hasConfirmedPublicPaykitEndpoints"
 
     struct Operations {
+        let syncPaykitApp: (_ privatePaymentsEnabled: Bool) async throws -> Void
         let syncPublicEndpoints: (_ publish: Bool) async throws -> Void
         let preparePrivateEndpoints: (_ contactPublicKeys: [String], _ requireImmediatePublication: Bool) async -> Error?
         let removePrivateEndpoints: () async throws -> Void
@@ -13,6 +14,9 @@ enum ContactPaymentsService {
         @MainActor
         static func live(wallet: WalletViewModel) -> Operations {
             Operations(
+                syncPaykitApp: { enabled in
+                    try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: enabled)
+                },
                 syncPublicEndpoints: { publish in
                     try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: publish)
                 },
@@ -123,6 +127,7 @@ enum ContactPaymentsService {
         defaults.set(canUsePrivatePayments, forKey: PrivatePaykitService.publishingEnabledKey)
         defaults.set(true, forKey: confirmedPreferenceKey)
 
+        try await operations.syncPaykitApp(canUsePrivatePayments)
         if canUsePrivatePayments,
            let error = await operations.preparePrivateEndpoints(
                contactPublicKeys,
@@ -153,6 +158,10 @@ enum ContactPaymentsService {
             )
         }
 
+        defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+        defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set(true, forKey: confirmedPreferenceKey)
+
         do {
             try await operations.syncPublicEndpoints(false)
             operations.setPublicCleanupPending(false)
@@ -160,10 +169,6 @@ enum ContactPaymentsService {
             operations.setPublicCleanupPending(true)
             throw error
         }
-
-        defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
-        defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
-        defaults.set(true, forKey: confirmedPreferenceKey)
     }
 
     @MainActor
@@ -178,6 +183,16 @@ enum ContactPaymentsService {
         defaults.set(state.sharesPublicEndpoints, forKey: PublicPaykitService.publishingEnabledKey)
         defaults.set(restoresPrivateEndpoints, forKey: PrivatePaykitService.publishingEnabledKey)
         defaults.set(state.hasConfirmedPreference, forKey: confirmedPreferenceKey)
+
+        if !restoresPrivateEndpoints {
+            do {
+                try await operations.removePrivateEndpoints()
+                operations.setPrivateCleanupPending(state.privateCleanupPending)
+            } catch {
+                operations.setPrivateCleanupPending(true)
+                Logger.warn("Failed to clean up private contact payments: \(error)", context: "ContactPaymentsService")
+            }
+        }
 
         do {
             try await operations.syncPublicEndpoints(state.sharesPublicEndpoints)
@@ -196,14 +211,6 @@ enum ContactPaymentsService {
                 Logger.warn("Failed to restore private contact payments: \(error)", context: "ContactPaymentsService")
             } else {
                 operations.setPrivateCleanupPending(state.privateCleanupPending)
-            }
-        } else {
-            do {
-                try await operations.removePrivateEndpoints()
-                operations.setPrivateCleanupPending(state.privateCleanupPending)
-            } catch {
-                operations.setPrivateCleanupPending(true)
-                Logger.warn("Failed to clean up private contact payments: \(error)", context: "ContactPaymentsService")
             }
         }
     }

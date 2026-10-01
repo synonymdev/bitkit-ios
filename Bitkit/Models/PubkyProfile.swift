@@ -134,7 +134,7 @@ struct PubkyProfile {
         self = PubkyProfileData.from(paykitProfile: paykitProfile).toProfile(publicKey: publicKey)
     }
 
-    init(resolution: Paykit.ContactProfileResolution) {
+    init(resolution: Paykit.ProfileResolution) {
         let publicKey = Self.normalizedPublicKey(resolution.publicKey)
         if let paykitProfile = resolution.paykitProfile {
             self.init(publicKey: publicKey, paykitProfile: paykitProfile)

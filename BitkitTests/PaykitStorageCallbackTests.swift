@@ -3,38 +3,6 @@ import Paykit
 import XCTest
 
 final class PaykitStorageCallbackTests: XCTestCase {
-    private final class Storage: @unchecked Sendable {
-        var data: Data?
-        var failLoad = false
-        var failSave = false
-
-        func load() throws -> Data? {
-            if failLoad {
-                throw KeychainError.failedToLoad
-            }
-            return data
-        }
-
-        func save(_ data: Data) throws {
-            if failSave {
-                throw KeychainError.failedToSave
-            }
-            self.data = data
-        }
-    }
-
-    private final class NoSession: SdkPubkySessionProvider, @unchecked Sendable {
-        func loadSessionAccess() throws -> PubkySessionAccess? {
-            nil
-        }
-
-        func publicStorageAvailable() throws -> Bool {
-            false
-        }
-
-        func clearSessionAccess() throws {}
-    }
-
     private final class SessionStorage: @unchecked Sendable {
         var failLoad = false
         var failDelete = false
@@ -56,17 +24,12 @@ final class PaykitStorageCallbackTests: XCTestCase {
     }
 
     func testNativeSdkCanRetryAfterProductionSessionLoadFailure() async throws {
-        let storage = Storage()
         let sessionStorage = SessionStorage()
         let provider = PaykitSdkSessionProvider(
             loadSessionSecret: sessionStorage.loadSessionSecret,
             deleteKeychainValue: sessionStorage.deleteKeychainValue
         )
-        let sdk = try PaykitSdk(
-            stateStore: PaykitSdkStateBlobStore(loadData: storage.load, saveData: storage.save),
-            sessionProvider: provider,
-            config: Paykit.defaultConfig(receiverPath: PaykitReceiverPath.wallet)
-        )
+        let sdk = try PaykitSdk.withPubkySharedState(sessionProvider: provider, config: Paykit.defaultConfig(appId: "bitkit"))
 
         sessionStorage.failLoad = true
         do {
@@ -80,21 +43,15 @@ final class PaykitStorageCallbackTests: XCTestCase {
         let identity = try await sdk.identityStatus()
         XCTAssertNil(identity)
         _ = try await sdk.forgetSessionAccess()
-        XCTAssertNotNil(storage.data)
     }
 
     func testNativeSdkCanRetryAfterProductionSessionClearFailure() async throws {
-        let storage = Storage()
         let sessionStorage = SessionStorage()
         let provider = PaykitSdkSessionProvider(
             loadSessionSecret: sessionStorage.loadSessionSecret,
             deleteKeychainValue: sessionStorage.deleteKeychainValue
         )
-        let sdk = try PaykitSdk(
-            stateStore: PaykitSdkStateBlobStore(loadData: storage.load, saveData: storage.save),
-            sessionProvider: provider,
-            config: Paykit.defaultConfig(receiverPath: PaykitReceiverPath.wallet)
-        )
+        let sdk = try PaykitSdk.withPubkySharedState(sessionProvider: provider, config: Paykit.defaultConfig(appId: "bitkit"))
 
         sessionStorage.failDelete = true
         do {
@@ -110,32 +67,7 @@ final class PaykitStorageCallbackTests: XCTestCase {
         let status = try await sdk.identityStatus()
         let identity = try XCTUnwrap(status)
         XCTAssertNil(identity.publicKey)
-        XCTAssertFalse(identity.liveSessionAvailable)
-        XCTAssertNotNil(storage.data)
-    }
-
-    func testNativeSdkCanRetryAfterPlatformStorageFailure() async throws {
-        for failLoad in [false, true] {
-            let storage = Storage()
-            let store = PaykitSdkStateBlobStore(loadData: storage.load, saveData: storage.save)
-            let sdk = try PaykitSdk(
-                stateStore: store, sessionProvider: NoSession(),
-                config: Paykit.defaultConfig(receiverPath: PaykitReceiverPath.wallet)
-            )
-            storage.failLoad = failLoad
-            storage.failSave = !failLoad
-            do {
-                _ = try await sdk.forgetSessionAccess()
-                XCTFail("Expected injected storage failure")
-            } catch let PaykitError.Storage(code, _) {
-                XCTAssertEqual(code, failLoad ? "state_load_failed" : "state_save_failed")
-            }
-            storage.failLoad = false
-            storage.failSave = false
-            _ = try await sdk.forgetSessionAccess()
-            _ = try await sdk.identityStatus()
-            XCTAssertNotNil(storage.data)
-        }
+        XCTAssertEqual(identity.capability, .signedOut)
     }
 
     func testPlatformFailuresBecomeDeclaredStorageErrorsAndSdkErrorsArePreserved() throws {

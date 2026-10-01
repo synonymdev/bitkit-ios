@@ -63,6 +63,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let service = paymentProofService(sdk: sdk, store: store)
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -107,6 +108,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -133,6 +135,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -154,6 +157,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -175,6 +179,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -207,6 +212,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             let service = paymentProofService(sdk: sdk, store: store)
             try await service.prepare(
                 request: request,
+                paymentAppId: "bitkit",
                 paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
                 kind: .lightning
             )
@@ -248,6 +254,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             let service = paymentProofService(sdk: sdk, store: store)
             try await service.prepare(
                 request: request,
+                paymentAppId: "bitkit",
                 paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
                 kind: .lightning
             )
@@ -281,6 +288,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -312,7 +320,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             sdk: PaymentProofSdkMock(identity: identity, records: [record]),
             store: store
         )
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
 
         let protectedRequestIds = try await service.protectedRequestIdsForSubscriptionCancellation(
@@ -332,6 +340,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let otherIdentityProof = PendingPaykitPaymentProof(
             identity: "pubky\(String(repeating: "x", count: 52))",
             requestId: request.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning,
             paymentIdentifier: nil,
@@ -345,6 +354,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -368,16 +378,17 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let service = paymentProofService(sdk: sdk, store: store)
         let txid = String(repeating: "ab", count: 32)
 
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "paykit-server", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         let inFlightRequestIds = await service.inFlightRequestIds(identity: identity)
         XCTAssertEqual(inFlightRequestIds, [request.id])
-        await service.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: endpoint)
+        await service.completeOnchainPayment(request, txid: txid, paymentAppId: "paykit-server", paymentEndpointIdentifier: endpoint)
         await sdk.waitForSubmissionStart()
         await fulfillment(of: [proofRemoved], timeout: 1)
 
         let submittedProof = await sdk.lastSubmission()
         let submission = try XCTUnwrap(submittedProof)
+        XCTAssertEqual(submission.paymentAppId, "paykit-server")
         XCTAssertEqual(submission.paymentEndpointIdentifier, endpoint)
         XCTAssertEqual(
             try proofValues(submission.proof.exportText()),
@@ -397,11 +408,11 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let txid = String(repeating: "ab", count: 32)
         let completion = expectation(description: "On-chain proof state persisted")
 
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await sdk.suspendSubmission()
         let completionTask = Task {
-            await service.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: endpoint)
+            await service.completeOnchainPayment(request, txid: txid, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint)
             completion.fulfill()
         }
 
@@ -423,7 +434,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let store = PaymentProofMemoryStore()
         let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
 
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await service.cancelPreparation(request)
 
@@ -458,7 +469,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
                 resolutionExpectation.fulfill()
             }
 
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await service.reconcile()
         await sdk.waitForSubmissionStart()
@@ -490,7 +501,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             existingOnchainTxids: [oldTransactionId]
         )
 
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await service.reconcile()
 
@@ -509,6 +520,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let proof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint,
             kind: .onchain,
             paymentStarted: true,
@@ -532,12 +544,13 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         await service.completeOnchainPayment(
             request,
             txid: String(repeating: "cd", count: 32),
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint
         )
         await service.failOnchainPayment(request)
 
         do {
-            try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+            try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
             XCTFail("A foreign-wallet proof must keep duplicate-payment protection")
         } catch let error as PaykitPaymentRequestError {
             XCTAssertEqual(error, .operationInProgress)
@@ -565,6 +578,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let proof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint,
             kind: .onchain,
             paymentStarted: true,
@@ -608,6 +622,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let proof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint,
             kind: .onchain,
             paymentStarted: true,
@@ -659,6 +674,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let proof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint,
             kind: .onchain,
             billingPeriod: request.billingPeriod,
@@ -694,6 +710,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let originalProof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint,
             kind: .onchain,
             paymentStarted: true,
@@ -704,6 +721,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let replacementProof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint,
             kind: .onchain,
             paymentStarted: true,
@@ -735,6 +753,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let proof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint,
             kind: .onchain,
             paymentStarted: true,
@@ -776,6 +795,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let proof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint,
             kind: .onchain,
             billingPeriod: request.billingPeriod,
@@ -809,6 +829,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let foreignProof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint,
             kind: .onchain,
             paymentStarted: false,
@@ -826,11 +847,12 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
 
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await service.completeOnchainPayment(
             request,
             txid: String(repeating: "ab", count: 32),
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint
         )
         await sdk.waitForSubmissionStart()
@@ -856,6 +878,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let onchainProof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: onchainRequest.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: onchainEndpoint,
             kind: .onchain,
             paymentStarted: true,
@@ -868,6 +891,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let lightningProof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: lightningRequest.id,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: lightningEndpoint,
             kind: .lightning,
             paymentStarted: true,
@@ -910,7 +934,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let store = PaymentProofMemoryStore()
         let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
 
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await service.failOnchainPayment(request)
 
@@ -925,7 +949,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let store = PaymentProofMemoryStore()
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await sdk.setIdentityAvailable(false)
 
@@ -942,7 +966,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let store = PaymentProofMemoryStore()
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .lightning)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .lightning)
         await sdk.setIdentityAvailable(false)
 
         await service.cancelPreparation(request)
@@ -971,6 +995,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -1011,6 +1036,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -1032,6 +1058,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -1039,6 +1066,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         do {
             try await service.prepare(
                 request: request,
+                paymentAppId: "bitkit",
                 paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
                 kind: .lightning
             )
@@ -1054,6 +1082,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         await service.failLightningPayment(paymentHash: paymentHash)
         try await service.prepare(
             request: request,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -1073,12 +1102,14 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         try await service.prepare(
             request: firstRequest,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
         await store.clear()
         try await service.prepare(
             request: secondRequest,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning
         )
@@ -1101,12 +1132,13 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
 
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await store.failNextSave()
         await service.completeOnchainPayment(
             request,
             txid: String(repeating: "ab", count: 32),
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint
         )
         await sdk.waitForSubmissionStart()
@@ -1127,11 +1159,11 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let service = paymentProofService(sdk: sdk, store: store)
         let txid = String(repeating: "ab", count: 32)
 
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await store.failNextSave()
         await sdk.setSubmissionFailure(true)
-        await service.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: endpoint)
+        await service.completeOnchainPayment(request, txid: txid, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint)
         await sdk.waitForSubmissionStart()
 
         let storedProofs = await store.snapshot()
@@ -1155,10 +1187,10 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let service = paymentProofService(sdk: sdk, store: store)
         let txid = String(repeating: "ab", count: 32)
 
-        try await service.prepare(request: request, paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
         await store.failNextLoad()
-        await service.completeOnchainPayment(request, txid: txid, paymentEndpointIdentifier: endpoint)
+        await service.completeOnchainPayment(request, txid: txid, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint)
         await sdk.waitForSubmissionStart()
         await fulfillment(of: [proofRemoved], timeout: 1)
 
@@ -1215,7 +1247,6 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
     ) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: counterparty,
-            counterpartyReceiverPath: PaykitReceiverPath.wallet,
             paymentRequestId: paymentRequestId,
             localRole: .payer,
             state: state,
@@ -1223,12 +1254,17 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             proposalOutboundMessageId: nil,
             proposalOutboundStatus: nil,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
+            proposalAppId: "bitkit",
+            payerAppId: nil,
+            executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
                 paymentReference: PaymentReference(text: "invoice-123"),
                 proposalExpiresAt: nil,
                 recurrence: recurrence,
                 acceptedPaymentEndpointIdentifiers: endpoints,
+                paymentEndpoints: nil,
+                requiredAppId: "bitkit",
                 conversion: nil,
                 paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
@@ -1262,6 +1298,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             streamItemId: 2,
             paymentReference: PaymentReference(text: "invoice-123"),
             billingPeriod: billingPeriod,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: endpoint,
             allowanceId: nil,
             conversionQuoteId: nil,
@@ -1373,7 +1410,7 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     func identityStatus() -> IdentityStatus? {
         identityStatusCalls += 1
         guard isIdentityAvailable else { return nil }
-        return IdentityStatus(publicKey: identity, liveSessionAvailable: true)
+        return IdentityStatus(publicKey: identity, capability: .privateLinkCapable)
     }
 
     func setIdentityAvailable(_ isAvailable: Bool) {
@@ -1416,7 +1453,6 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
 
     func submitPaymentProof(
         counterparty: String,
-        counterpartyReceiverPath: String,
         paymentRequestId: String,
         proof: PaymentProofSubmission
     ) async throws -> PaymentRequestRecord {
@@ -1434,7 +1470,6 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
 
         guard let index = records.firstIndex(where: {
             $0.counterparty == counterparty &&
-                $0.counterpartyReceiverPath == counterpartyReceiverPath &&
                 $0.paymentRequestId == paymentRequestId
         }), let paymentReference = records[index].terms?.paymentReference else {
             throw PaymentProofSdkMockError.requestMissing
@@ -1446,6 +1481,7 @@ private actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
             streamItemId: nil,
             paymentReference: paymentReference,
             billingPeriod: proof.billingPeriod,
+            paymentAppId: proof.paymentAppId,
             paymentEndpointIdentifier: proof.paymentEndpointIdentifier,
             allowanceId: nil,
             conversionQuoteId: nil,

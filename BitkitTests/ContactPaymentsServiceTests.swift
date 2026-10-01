@@ -57,7 +57,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             XCTAssertEqual(operations.privatePublications.count, 1)
             XCTAssertEqual(operations.privatePublications[0].contactPublicKeys, ["contact-a", "contact-b"])
             XCTAssertTrue(operations.privatePublications[0].requiresImmediatePublication)
-            XCTAssertEqual(operations.calls, ["private:publish", "public:true"])
+            XCTAssertEqual(operations.calls, ["app:true", "private:publish", "public:true"])
             XCTAssertEqual(operations.privateRemovalCount, 0)
             XCTAssertEqual(operations.publicCleanupValues, [false])
             XCTAssertEqual(operations.privateCleanupValues, [false])
@@ -273,6 +273,9 @@ final class ContactPaymentsServiceTests: XCTestCase {
 
         func makeOperations() -> ContactPaymentsService.Operations {
             ContactPaymentsService.Operations(
+                syncPaykitApp: { enabled in
+                    self.calls.append("app:\(enabled)")
+                },
                 syncPublicEndpoints: { publish in
                     self.calls.append("public:\(publish)")
                     self.publicPublicationValues.append(publish)

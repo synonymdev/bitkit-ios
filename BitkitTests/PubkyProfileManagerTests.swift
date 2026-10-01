@@ -208,7 +208,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     func testFailedRingAdoptionDoesNotRestoreIdentityAfterLocalReset() async throws {
         let savedReference = AdoptedPubkyReference.current
-        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let savedCredentials = try keys.map { try Keychain.load(key: $0) }
         let defaults = UserDefaults.standard
         let preferenceKeys = [
@@ -387,7 +387,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     func testRingAdoptionDropsLateProfileAfterSessionTeardown() async throws {
         let savedReference = AdoptedPubkyReference.current
-        let keychainKeys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let keychainKeys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let savedCredentials = try keychainKeys.map { try Keychain.load(key: $0) }
         let defaults = UserDefaults.standard
         let preferenceKeys = [
@@ -733,7 +733,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     func testSignupDoesNotRestoreProfileStateAfterWalletReset() async throws {
         snapshotAppDefaultsDomain()
-        let keys: [KeychainEntryType] = [.paykitSdkState, .paykitSession, .pubkySecretKey]
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let saved = try keys.map { try Keychain.load(key: $0) }
         let savedOverrides = ContactsManager.backupContactProfileOverrides()
         defer {
@@ -749,7 +749,9 @@ final class PubkyProfileManagerTests: XCTestCase {
         for resetStep in ["register", "authorize", "activate"] {
             let manager = PubkyProfileManager()
             let session = PubkyRegisteredIdentity(
-                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+                result: PubkySessionBootstrapResult(
+                    sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test", capability: .privateLinkCapable
+                ),
                 walletGeneration: 0
             )
             do {
@@ -801,7 +803,9 @@ final class PubkyProfileManagerTests: XCTestCase {
             defaults.set(true, forKey: "pubky_profile_setup_pending")
             let manager = PubkyProfileManager()
             let session = PubkyRegisteredIdentity(
-                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+                result: PubkySessionBootstrapResult(
+                    sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test", capability: .privateLinkCapable
+                ),
                 walletGeneration: 0
             )
             var events: [String] = []
@@ -853,7 +857,9 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         let manager = PubkyProfileManager()
         let session = PubkyRegisteredIdentity(
-            result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+            result: PubkySessionBootstrapResult(
+                sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test", capability: .privateLinkCapable
+            ),
             walletGeneration: 0
         )
         var shouldFailActivation = true
@@ -925,7 +931,9 @@ final class PubkyProfileManagerTests: XCTestCase {
         for cancelSignup in [false, true] {
             let manager = PubkyProfileManager()
             let session = PubkyRegisteredIdentity(
-                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_first"),
+                result: PubkySessionBootstrapResult(
+                    sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_first", capability: .privateLinkCapable
+                ),
                 walletGeneration: 0
             )
             let approvalStarted = expectation(description: "Approval started")

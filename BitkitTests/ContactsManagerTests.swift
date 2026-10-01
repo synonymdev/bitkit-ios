@@ -190,10 +190,10 @@ final class ContactsManagerTests: XCTestCase {
 
     private func contactRecord(key: String, name: String) -> ContactRecord {
         ContactRecord(
-            publicKey: key, receiverPaths: [PaykitReceiverPath.wallet], label: name,
+            publicKey: key, label: name,
             profile: PaykitProfile(displayName: name, imageUri: nil, extraJson: nil),
             profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
-            publicContactMarkerStatus: .notPublished, publicContactMarkerReceiverPath: nil,
+            publicContactMarkerStatus: .notPublished,
             publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
         )
     }

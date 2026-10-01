@@ -777,7 +777,7 @@ struct MainNavView: View {
                 ) {
                     navigation.navigate(route)
                     if case let .contactDetail(publicKey) = route {
-                        await contactsManager.refreshContactReceiverPaths(publicKey: publicKey, wallet: wallet)
+                        await contactsManager.refreshContactLink(publicKey: publicKey, wallet: wallet)
                     }
                     clipboardUri = nil
                     return

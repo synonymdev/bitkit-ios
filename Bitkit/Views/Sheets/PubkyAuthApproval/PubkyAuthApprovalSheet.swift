@@ -85,7 +85,7 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     static func initialState(for request: PubkyAuthRequest) -> ApprovalState {
-        request.bitkitClaim == .watchOnlyAccountV1 ? .watchOnlyConsent : .authorize
+        request.bitkitClaim?.includesWatchOnlyAccount == true ? .watchOnlyConsent : .authorize
     }
 
     private var headerTitle: String {
@@ -257,6 +257,17 @@ struct PubkyAuthApprovalSheet: View {
 
                     if !config.request.permissions.isEmpty {
                         permissionsSection
+                    }
+
+                    if config.request.bitkitClaim?.includesPaykitAccess == true {
+                        VStack(alignment: .leading, spacing: 8) {
+                            CaptionMText(t("pubky_auth__paykit_access_title"), textColor: .white64)
+                            BodySText(t("pubky_auth__paykit_access_description"))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.top, 24)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("PubkyAuthPaykitAccess")
                     }
 
                     Spacer(minLength: 32)
@@ -490,7 +501,7 @@ struct PubkyAuthApprovalSheet: View {
 
     private func onBack() {
         guard state.canDismiss else { return }
-        if state == .authorize, config.request.bitkitClaim == .watchOnlyAccountV1 {
+        if state == .authorize, config.request.bitkitClaim?.includesWatchOnlyAccount == true {
             state = .watchOnlyConsent
         } else {
             sheets.hideSheet()

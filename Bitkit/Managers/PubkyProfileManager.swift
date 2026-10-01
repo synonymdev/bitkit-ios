@@ -854,9 +854,9 @@ class PubkyProfileManager: ObservableObject {
         }
 
         do {
-            try await PublicPaykitService.syncLocalReceiverMarker(publicSharingEnabled: false, privateSharingEnabled: false)
+            try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: false)
         } catch PubkyServiceError.sessionNotActive {
-            Logger.debug("Skipping Paykit receiver marker cleanup because no session is active", context: context)
+            Logger.debug("Skipping Paykit app capability update because no session is active", context: context)
         } catch {
             firstError = firstError ?? error
         }
