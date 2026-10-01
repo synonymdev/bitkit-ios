@@ -114,7 +114,18 @@ struct ContactSection: Identifiable {
 
 @MainActor
 class ContactsManager: ObservableObject {
-    @Published var contacts: [PubkyContact] = []
+    private var contactsRevision = 0
+    private var loadGeneration = 0
+    private let contactRecords: @Sendable () async throws -> [ContactRecord]
+
+    init(contactRecords: @escaping @Sendable () async throws -> [ContactRecord] = PubkyService.contactRecords) {
+        self.contactRecords = contactRecords
+    }
+
+    @Published var contacts: [PubkyContact] = [] {
+        didSet { contactsRevision += 1 }
+    }
+
     @Published var isLoading = false
     @Published var hasLoaded = false
     @Published var loadErrorMessage: String?
@@ -136,6 +147,7 @@ class ContactsManager: ObservableObject {
     }
 
     func reset() {
+        loadGeneration += 1
         contacts = []
         isLoading = false
         hasLoaded = false
@@ -173,97 +185,109 @@ class ContactsManager: ObservableObject {
             return
         }
 
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
         loadErrorMessage = nil
-        defer { isLoading = false }
+        defer {
+            if generation == loadGeneration {
+                isLoading = false
+            }
+        }
 
         Logger.info("Loading contacts for \(PubkyPublicKeyFormat.redacted(publicKey))", context: "ContactsManager")
 
-        do {
-            let records = try await Task.detached {
-                try await PubkyService.contactRecords()
-            }.value
+        while generation == loadGeneration {
+            try Task.checkCancellation()
+            let revision = contactsRevision
+            do {
+                let records = try await contactRecords()
 
-            Logger.debug("Loaded \(records.count) SDK contact records", context: "ContactsManager")
+                Logger.debug("Loaded \(records.count) SDK contact records", context: "ContactsManager")
 
-            let loadedResult: (contacts: [PubkyContact], failures: Int,
-                               missingFailures: Int, firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
-                let overrides = Self.loadContactProfileOverrides()
-                for record in records {
-                    group.addTask {
-                        do {
-                            let contact = try await Self.contact(from: record, overrides: overrides, includePlaceholder: true)
-                            return .success(contact)
-                        } catch {
-                            Logger.warn(
-                                "Failed to load contact data for '\(PubkyPublicKeyFormat.redacted(record.publicKey))': \(error)",
-                                context: "ContactsManager"
-                            )
-                            return .failure(error)
+                let loadedResult: (contacts: [PubkyContact], failures: Int,
+                                   missingFailures: Int, firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
+                    let overrides = Self.loadContactProfileOverrides()
+                    for record in records {
+                        group.addTask {
+                            do {
+                                let contact = try await Self.contact(from: record, overrides: overrides, includePlaceholder: true)
+                                return .success(contact)
+                            } catch {
+                                Logger.warn(
+                                    "Failed to load contact data for '\(PubkyPublicKeyFormat.redacted(record.publicKey))': \(error)",
+                                    context: "ContactsManager"
+                                )
+                                return .failure(error)
+                            }
                         }
                     }
-                }
 
-                var results: [PubkyContact] = []
-                var failures = 0
-                var missingFailures = 0
-                var firstError: Error?
+                    var results: [PubkyContact] = []
+                    var failures = 0
+                    var missingFailures = 0
+                    var firstError: Error?
 
-                for await result in group {
-                    switch result {
-                    case let .success(contact):
-                        results.append(contact)
-                    case let .failure(error):
-                        failures += 1
-                        if Self.isMissingContactsDataError(error) {
-                            missingFailures += 1
+                    for await result in group {
+                        switch result {
+                        case let .success(contact):
+                            results.append(contact)
+                        case let .failure(error):
+                            failures += 1
+                            if Self.isMissingContactsDataError(error) {
+                                missingFailures += 1
+                            }
+                            firstError = firstError ?? error
                         }
-                        firstError = firstError ?? error
                     }
+
+                    return (results, failures, missingFailures, firstError)
                 }
 
-                return (results, failures, missingFailures, firstError)
-            }
+                guard contactsRevision == revision else { continue }
 
-            if !records.isEmpty, loadedResult.contacts.isEmpty {
-                if loadedResult.failures == loadedResult.missingFailures {
-                    await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
+                if !records.isEmpty, loadedResult.contacts.isEmpty {
+                    if loadedResult.failures == loadedResult.missingFailures {
+                        contacts = []
+                        hasLoaded = true
+                        await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
+                        Logger.info("Contacts storage entries were missing, treating list as empty", context: "ContactsManager")
+                        return
+                    }
+                    throw loadedResult.firstError ?? PubkyServiceError.profileNotFound
+                }
+
+                contacts = loadedResult.contacts.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+                hasLoaded = true
+                await PrivatePaykitService.shared
+                    .pruneUnsavedContactState(savedPublicKeys: records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) })
+
+                if loadedResult.failures > 0 {
+                    Logger.warn(
+                        "Skipped \(loadedResult.failures) unreadable contacts while loading list",
+                        context: "ContactsManager"
+                    )
+                }
+
+                Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
+                return
+            } catch {
+                guard contactsRevision == revision else { continue }
+                if Self.isMissingContactsDataError(error) {
                     contacts = []
                     hasLoaded = true
-                    Logger.info("Contacts storage entries were missing, treating list as empty", context: "ContactsManager")
+                    loadErrorMessage = nil
+                    await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
+                    Logger.info("Contacts storage missing, treating list as empty", context: "ContactsManager")
                     return
                 }
-                throw loadedResult.firstError ?? PubkyServiceError.profileNotFound
-            }
 
-            contacts = loadedResult.contacts.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-            await PrivatePaykitService.shared
-                .pruneUnsavedContactState(savedPublicKeys: records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) })
-            hasLoaded = true
-
-            if loadedResult.failures > 0 {
-                Logger.warn(
-                    "Skipped \(loadedResult.failures) unreadable contacts while loading list",
-                    context: "ContactsManager"
-                )
+                Logger.error("Failed to load contacts: \(error)", context: "ContactsManager")
+                if contacts.isEmpty {
+                    loadErrorMessage = error.localizedDescription
+                }
+                throw error
             }
-
-            Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
-        } catch {
-            if Self.isMissingContactsDataError(error) {
-                await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
-                contacts = []
-                hasLoaded = true
-                loadErrorMessage = nil
-                Logger.info("Contacts storage missing, treating list as empty", context: "ContactsManager")
-                return
-            }
-
-            Logger.error("Failed to load contacts: \(error)", context: "ContactsManager")
-            if contacts.isEmpty {
-                loadErrorMessage = error.localizedDescription
-            }
-            throw error
         }
     }
 
@@ -297,7 +321,12 @@ class ContactsManager: ObservableObject {
         }
 
         let receiverPaths = try await Self.relevantReceiverPaths(for: prefixedKey)
-        _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: profile.name, receiverPaths: receiverPaths)
+        _ = try await PubkyService.saveContact(
+            publicKey: prefixedKey,
+            label: profile.name,
+            receiverPaths: receiverPaths,
+            restorePrivateConnection: true
+        )
 
         Logger.info("Added contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
 
@@ -332,60 +361,43 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Import Contacts
 
-    func importContacts(publicKeys: [String]) async throws {
-        let prefixedKeys = Array(Set(publicKeys.compactMap(PubkyPublicKeyFormat.normalized)))
+    func importContacts(
+        contacts selected: [PubkyContact],
+        saveContact: (String, String) async throws -> Void = { publicKey, label in
+            _ = try await PubkyService.saveContact(publicKey: publicKey, label: label, restorePrivateConnection: true)
+        }
+    ) async throws {
+        var imported: [PubkyContact] = []
+        var existingKeys = Set(contacts.map(\.publicKey))
+        var firstError: Error?
 
-        let loadedResult: (contacts: [PubkyContact], failures: Int,
-                           firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
-            for key in prefixedKeys {
-                group.addTask { [self] in
-                    do {
-                        let profile = try await resolveContactProfile(publicKey: key, includePlaceholder: true)
-                        let receiverPaths = try await Self.relevantReceiverPaths(for: key)
-                        _ = try await PubkyService.saveContact(publicKey: key, label: profile.name, receiverPaths: receiverPaths)
-                        return .success(PubkyContact(publicKey: key, profile: profile))
-                    } catch is CancellationError {
-                        return .failure(CancellationError())
-                    } catch {
-                        Logger.warn("Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(key))': \(error)", context: "ContactsManager")
-                        return .failure(error)
-                    }
-                }
+        for contact in selected {
+            try Task.checkCancellation()
+            guard !existingKeys.contains(contact.publicKey) else { continue }
+            do {
+                // The preview already resolved this profile. Receiver discovery runs during contact refresh.
+                try await saveContact(contact.publicKey, contact.displayName)
+                imported.append(contact)
+                existingKeys.insert(contact.publicKey)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                firstError = firstError ?? error
+                Logger.warn(
+                    "Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(contact.publicKey))': \(error)",
+                    context: "ContactsManager"
+                )
             }
-
-            var results: [PubkyContact] = []
-            var failures = 0
-            var firstError: Error?
-
-            for await result in group {
-                switch result {
-                case let .success(contact):
-                    results.append(contact)
-                case let .failure(error):
-                    failures += 1
-                    firstError = firstError ?? error
-                }
-            }
-
-            return (results, failures, firstError)
         }
 
         try Task.checkCancellation()
-
-        if !prefixedKeys.isEmpty, loadedResult.contacts.isEmpty {
-            throw loadedResult.firstError ?? PubkyServiceError.profileNotFound
-        }
-
-        let existingKeys = Set(contacts.map(\.publicKey))
-        let newContacts = loadedResult.contacts.filter { !existingKeys.contains($0.publicKey) }
-        contacts.append(contentsOf: newContacts)
+        let currentKeys = Set(contacts.map(\.publicKey))
+        contacts.append(contentsOf: imported.filter { !currentKeys.contains($0.publicKey) })
         contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-
-        if loadedResult.failures > 0 {
-            Logger.warn("Skipped \(loadedResult.failures) contacts during import", context: "ContactsManager")
+        Logger.info("Imported \(imported.count) new contacts", context: "ContactsManager")
+        if let firstError {
+            throw firstError
         }
-
-        Logger.info("Imported \(newContacts.count) new contacts", context: "ContactsManager")
     }
 
     // MARK: - Update Contact
@@ -423,12 +435,11 @@ class ContactsManager: ObservableObject {
         try await Task.detached {
             _ = try await PubkyService.removeContact(publicKey: prefixedKey)
         }.value
-        await PrivatePaykitService.shared.removeSavedContact(publicKey: prefixedKey)
+        contacts.removeAll { $0.publicKey == prefixedKey }
         Self.removeContactProfileOverride(publicKey: prefixedKey)
+        await PrivatePaykitService.shared.removeSavedContact(publicKey: prefixedKey)
 
         Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
-
-        contacts.removeAll { $0.publicKey == prefixedKey }
     }
 
     func deleteAllContacts() async throws {
@@ -515,12 +526,18 @@ class ContactsManager: ObservableObject {
         return hasImportData ? .contactImportOverview : .payContacts
     }
 
-    func discoverRemoteContacts(publicKey: String) async {
+    func discoverRemoteContacts(
+        publicKey: String,
+        fetchContactKeys: @escaping @Sendable (String) async throws -> [String] = { try await PubkyService.getContacts(publicKey: $0) },
+        resolveProfile: @escaping @Sendable (String) async throws -> PubkyProfile = {
+            try await ContactsManager.resolveContactProfile(publicKey: $0, includePlaceholder: true)
+        }
+    ) async {
         let prefixedKey = ensurePubkyPrefix(publicKey)
 
         do {
             let contactKeys = try await Task.detached {
-                try await PubkyService.getContacts(publicKey: prefixedKey)
+                try await fetchContactKeys(prefixedKey)
             }.value
 
             Logger.info("Discovered \(contactKeys.count) contacts from pubky.app", context: "ContactsManager")
@@ -528,9 +545,10 @@ class ContactsManager: ObservableObject {
             let discoveryResult: (contacts: [PubkyContact], failures: Int) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
                 for key in contactKeys {
                     let pk = ensurePubkyPrefix(key)
-                    group.addTask { [self] in
+                    guard !PubkyPublicKeyFormat.matches(pk, prefixedKey) else { continue }
+                    group.addTask {
                         do {
-                            let profile = try await resolveContactProfile(publicKey: pk, includePlaceholder: true)
+                            let profile = try await resolveProfile(pk)
                             return .success(PubkyContact(publicKey: pk, profile: profile))
                         } catch {
                             return .failure(error)

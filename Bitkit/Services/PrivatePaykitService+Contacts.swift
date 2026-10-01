@@ -191,7 +191,8 @@ extension PrivatePaykitService {
             )
             for receiverPath in cleanupReceiverPaths {
                 do {
-                    let report = try await PaykitSdkService.shared.clearPrivatePaymentList(to: publicKey, receiverPath: receiverPath)
+                    guard let report = try await PaykitSdkService.shared.clearPrivatePaymentList(to: publicKey, receiverPath: receiverPath)
+                    else { continue }
                     if !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
                         throw PrivatePaykitError.privateUnavailable
                     }

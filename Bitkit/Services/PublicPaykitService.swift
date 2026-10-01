@@ -54,13 +54,14 @@ enum PublicPaykitPaymentLaunchResult {
     case opened(paymentRequest: String, privatePaymentContext: PrivatePaykitPaymentContext?)
     case noEndpoint
     case notOpened
+    case privateLinkPending
     case waitingForUpdatedPaymentList
 
     var contactPaymentFailureMessageKey: String? {
         switch self {
         case .opened:
             nil
-        case .noEndpoint, .waitingForUpdatedPaymentList:
+        case .noEndpoint, .privateLinkPending, .waitingForUpdatedPaymentList:
             "slashtags__error_pay_empty_msg"
         case .notOpened:
             "slashtags__error_pay_not_opened_msg"
@@ -75,7 +76,7 @@ enum PublicPaykitPaymentLaunchResult {
             .noSupportedEndpoint
         case .notOpened:
             .endpointNotPayable
-        case .waitingForUpdatedPaymentList:
+        case .privateLinkPending, .waitingForUpdatedPaymentList:
             .paymentDetailsPending
         }
     }

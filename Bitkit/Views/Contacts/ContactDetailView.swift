@@ -282,6 +282,11 @@ struct ContactDetailView: View {
                 accessibilityIdentifier: "ContactDeletedToast"
             )
             navigation.path = [.contacts]
+        } catch let PubkyServiceError.activeSubscription(endsAt) {
+            let description = endsAt.map {
+                t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
+            }
+            app.toast(type: .error, title: t("contacts__delete_active_subscription"), description: description)
         } catch {
             Logger.error("Failed to delete contact: \(error)", context: "ContactDetailView")
             app.toast(type: .error, title: t("contacts__delete_error"))
