@@ -54,6 +54,9 @@ class PubkyProfileManager: ObservableObject {
     @Published private(set) var isProfileSetupPending: Bool
     /// Public profiles found for the Pubky Ring rows on the choice screen, keyed by normalized pubky. Display-only.
     @Published private(set) var ringIdentityProfiles: [String: PubkyProfile] = [:]
+    /// Ring rows whose lookup is still running, keyed like `ringIdentityProfiles`. A stopped lookup leaves without waiting
+    /// for its task to end.
+    @Published private(set) var ringIdentityLookupsInFlight: Set<String> = []
     /// Covers a Ring adoption from before its reference is written, which already makes `hasExistingIdentity` true, until
     /// it succeeds, fails or is cancelled.
     @Published private(set) var isAdoptingRingIdentity = false
@@ -916,6 +919,8 @@ class PubkyProfileManager: ObservableObject {
             }
         } onCancel: {
             lookups.forEach { $0.cancel() }
+            // This handler runs off the main actor, so the stopped rows leave the published set on it.
+            Task { @MainActor [weak self] in self?.publishRingIdentityLookupsInFlight() }
         }
     }
 
@@ -931,6 +936,7 @@ class PubkyProfileManager: ObservableObject {
         for (key, lookup) in ringIdentityLookups where key != keptKey {
             lookup.task.cancel()
         }
+        publishRingIdentityLookupsInFlight()
     }
 
     private func needsRingIdentityLookup(_ key: String) -> Bool {
@@ -952,6 +958,7 @@ class PubkyProfileManager: ObservableObject {
             finishRingIdentityLookup(key, id: id, foundProfile: foundProfile)
         }
         ringIdentityLookups[key] = (id, task)
+        publishRingIdentityLookupsInFlight()
         return task
     }
 
@@ -966,6 +973,7 @@ class PubkyProfileManager: ObservableObject {
         } else if !Task.isCancelled {
             ringIdentityMisses.insert(key)
         }
+        publishRingIdentityLookupsInFlight()
     }
 
     private func clearRingIdentityProfiles() {
@@ -973,6 +981,11 @@ class PubkyProfileManager: ObservableObject {
         ringIdentityLookups.removeAll()
         ringIdentityMisses.removeAll()
         ringIdentityProfiles.removeAll()
+        publishRingIdentityLookupsInFlight()
+    }
+
+    private func publishRingIdentityLookupsInFlight() {
+        ringIdentityLookupsInFlight = Set(ringIdentityLookups.filter { !$0.value.task.isCancelled }.keys)
     }
 
     // MARK: - Sign Out

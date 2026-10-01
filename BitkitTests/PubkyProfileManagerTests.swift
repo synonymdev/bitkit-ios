@@ -1147,6 +1147,50 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testRingIdentityLookupsInFlightListEachRowUntilItsLookupFinishes() async throws {
+        let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")], holdsRequests: true)
+        await stub.makeUnreachable(ringKeyC)
+        let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+        let rows = Task { await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB, bareRingKeyC]) }
+        await stub.waitForRequests(3)
+        var running: Set = [ringKeyA, ringKeyB, ringKeyC]
+        XCTAssertEqual(manager.ringIdentityLookupsInFlight, running, "Rows are listed under the normalized pubky")
+
+        // A found profile, a miss and an offline error each end only their own row's lookup.
+        let requests = await stub.requests
+        for key in [ringKeyA, ringKeyB, ringKeyC] {
+            try await stub.release(request: XCTUnwrap(requests.firstIndex(of: key)))
+            running.remove(key)
+            await waitUntil("only the finished row leaves the in-flight set") { manager.ringIdentityLookupsInFlight == running }
+        }
+        await rows.value
+        XCTAssertTrue(manager.ringIdentityLookupsInFlight.isEmpty)
+        XCTAssertEqual(manager.ringIdentityProfiles[ringKeyA]?.name, "Alice")
+    }
+
+    @MainActor
+    func testStoppedRingIdentityLookupLeavesTheInFlightSetAndAReplacedOneKeepsTheNewerListed() async {
+        let stub = RemoteProfileStub(holdsRequests: true)
+        let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+
+        let abandoned = Task { await manager.loadRingIdentityProfiles([bareRingKeyA]) }
+        await stub.waitForRequests(1)
+        abandoned.cancel()
+        await waitUntil("the stopped row leaves before its lookup ends") { manager.ringIdentityLookupsInFlight.isEmpty }
+
+        let current = Task { await manager.loadRingIdentityProfiles([bareRingKeyA]) }
+        await stub.waitForRequests(2)
+        XCTAssertEqual(manager.ringIdentityLookupsInFlight, [ringKeyA])
+        await stub.release(request: 0)
+        await abandoned.value
+        XCTAssertEqual(manager.ringIdentityLookupsInFlight, [ringKeyA], "A replaced lookup ending leaves the newer one listed")
+
+        await stub.release(request: 1)
+        await current.value
+        XCTAssertTrue(manager.ringIdentityLookupsInFlight.isEmpty)
+    }
+
+    @MainActor
     func testClearingAuthenticatedStateDropsRingIdentityProfilesAndLookups() async {
         await withRestoredProfileDefaults {
             let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
@@ -1156,12 +1200,15 @@ final class PubkyProfileManagerTests: XCTestCase {
             let inFlight = Task { await manager.loadRingIdentityProfiles([bareRingKeyC]) }
             await stub.waitForRequests(3)
 
+            XCTAssertEqual(manager.ringIdentityLookupsInFlight, [ringKeyC])
             manager.publicKey = ringKeyA
             manager.clearAuthenticatedStateForTesting()
+            XCTAssertTrue(manager.ringIdentityLookupsInFlight.isEmpty, "The reset drops a row lookup before its task ends")
             await stub.setProfile(makeProfile(publicKey: ringKeyC, name: "Carol"), for: ringKeyC)
             await stub.release(request: 2)
             await inFlight.value
             XCTAssertTrue(manager.ringIdentityProfiles.isEmpty)
+            XCTAssertTrue(manager.ringIdentityLookupsInFlight.isEmpty)
 
             await stub.setHoldsRequests(false)
             await manager.loadRingIdentityProfiles([bareRingKeyA, bareRingKeyB])
@@ -1344,6 +1391,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             XCTFail("Expected adopting without a Pubky Ring key to fail")
         } catch {}
         XCTAssertEqual(rowReloads, 1, "A failed adopt reloads the rows")
+        XCTAssertEqual(manager.ringIdentityLookupsInFlight, [ringKeyA], "The other row leaves before its lookup ends; the tapped row stays")
 
         await stub.release(request: 0)
         await stub.release(request: 1)
@@ -1352,6 +1400,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         let cancelledRequests = await stub.cancelledRequests
         XCTAssertEqual(cancelledRequests, Set(requests.indices.filter { requests[$0] == ringKeyB }), "Only the other row's lookup stops")
         XCTAssertEqual(manager.ringIdentityProfiles[ringKeyA]?.name, "Alice", "The tapped row's lookup still lands")
+        XCTAssertTrue(manager.ringIdentityLookupsInFlight.isEmpty)
 
         await stub.setHoldsRequests(false)
         await stub.setProfile(makeProfile(publicKey: ringKeyB, name: "Bob"), for: ringKeyB)

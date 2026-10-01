@@ -9,6 +9,8 @@ struct PubkyChoiceRow: View {
     var avatarName: String?
     var avatarImageUrl: String?
     var isLoading = false
+    var isLookingUp = false
+    var lookupAccessibilityId: String?
     let accessibilityId: String
     let action: () -> Void
 
@@ -27,7 +29,13 @@ struct PubkyChoiceRow: View {
 
                 Spacer()
 
-                if let avatarName {
+                if isLookingUp {
+                    ActivityIndicator(size: 20)
+                        .frame(width: 32, height: 32)
+                        .accessibilityElement()
+                        .accessibilityLabel(t("profile__choice_loading_profile"))
+                        .accessibilityIdentifier(lookupAccessibilityId ?? "")
+                } else if let avatarName {
                     PubkyContactAvatar(name: avatarName, imageUrl: avatarImageUrl, size: 32)
                 }
             }

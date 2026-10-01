@@ -35,6 +35,26 @@ final class PubkyChoiceViewTests: XCTestCase {
         XCTAssertEqual(merged.mapValues(\.name), ["alice": "Alice Renamed", "bob": "Bob", "carol": "Carol"])
     }
 
+    func testRingLookupShowsOnlyForARowStillLookingUpWithoutAProfileThatIsNotBeingAdopted() {
+        XCTAssertTrue(PubkyChoiceView.showsRingLookup(isLookingUp: true, hasProfile: false, isAdoptingRow: false))
+        XCTAssertFalse(
+            PubkyChoiceView.showsRingLookup(isLookingUp: false, hasProfile: false, isAdoptingRow: false),
+            "A finished lookup brings back the avatar"
+        )
+        XCTAssertFalse(
+            PubkyChoiceView.showsRingLookup(isLookingUp: true, hasProfile: true, isAdoptingRow: false),
+            "A found profile replaces the spinner"
+        )
+        XCTAssertFalse(
+            PubkyChoiceView.showsRingLookup(isLookingUp: true, hasProfile: false, isAdoptingRow: true),
+            "The adopting row shows only its key-icon spinner"
+        )
+        XCTAssertFalse(PubkyChoiceView.showsRingLookup(isLookingUp: true, hasProfile: true, isAdoptingRow: true))
+        XCTAssertFalse(PubkyChoiceView.showsRingLookup(isLookingUp: false, hasProfile: true, isAdoptingRow: false))
+        XCTAssertFalse(PubkyChoiceView.showsRingLookup(isLookingUp: false, hasProfile: false, isAdoptingRow: true))
+        XCTAssertFalse(PubkyChoiceView.showsRingLookup(isLookingUp: false, hasProfile: true, isAdoptingRow: true))
+    }
+
     private func profile(_ publicKey: String, name: String) -> PubkyProfile {
         .forDisplay(publicKey: publicKey, name: name, imageUrl: nil)
     }

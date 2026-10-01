@@ -37,6 +37,11 @@ struct PubkyChoiceView: View {
         return shown.merging(found) { _, latest in latest }
     }
 
+    /// The row being adopted shows only its key-icon spinner.
+    static func showsRingLookup(isLookingUp: Bool, hasProfile: Bool, isAdoptingRow: Bool) -> Bool {
+        isLookingUp && !hasProfile && !isAdoptingRow
+    }
+
     /// Only the other rows' lookups stop, since they would compete with sign-in while the tapped row's can still land in
     /// time to be reused. A failed adopt reloads the rows so none is left on a bare key.
     @MainActor
@@ -134,9 +139,11 @@ struct PubkyChoiceView: View {
 
     private func ringRow(_ pubky: String) -> some View {
         let truncatedKey = PubkyPublicKeyFormat.displayTruncated(pubky)
-        let profile = PubkyPublicKeyFormat.normalized(pubky).flatMap { ringProfiles[$0] }
+        let key = PubkyPublicKeyFormat.normalized(pubky)
+        let profile = key.flatMap { ringProfiles[$0] }
         let name = profile?.name ?? ""
         let title = name.isEmpty ? truncatedKey : name
+        let isAdoptingRow = adoptingPubky == pubky
 
         return PubkyChoiceRow(
             systemIcon: "key.fill",
@@ -144,7 +151,13 @@ struct PubkyChoiceView: View {
             title: title,
             avatarName: title,
             avatarImageUrl: profile?.imageUrl,
-            isLoading: adoptingPubky == pubky,
+            isLoading: isAdoptingRow,
+            isLookingUp: Self.showsRingLookup(
+                isLookingUp: key.map { pubkyProfile.ringIdentityLookupsInFlight.contains($0) } ?? false,
+                hasProfile: profile != nil,
+                isAdoptingRow: isAdoptingRow
+            ),
+            lookupAccessibilityId: "PubkyChoiceRingLookup_\(pubky)",
             accessibilityId: "PubkyChoiceRing_\(pubky)"
         ) {
             startAdopting(pubky)

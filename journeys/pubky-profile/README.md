@@ -8,8 +8,11 @@ it behaves differently in both places (see [iOS vs Android](#ios-vs-android)).
   still loading. Profile shows the name cached from the last load, read-only, then swaps in the full
   profile in place.
 - `ring-choice-rows.xml` opens the choice screen with Pubky Ring identities. The rows show straight
-  away under truncated keys and fill in names as each lookup finishes. Tapping a row adopts that
-  identity: only the tapped row shows a spinner, and every row is disabled until adoption finishes.
+  away under truncated keys and fill in names as each lookup finishes. While a row's lookup runs, a
+  spinner stands in for its avatar, so a row still looking up does not look like a row whose
+  identity has no profile. A lookup for an identity with no profile can take several seconds to give
+  up. Tapping a row adopts that identity: only the tapped row shows a spinner, and every row is
+  disabled until adoption finishes.
 
 ## Preconditions
 
@@ -54,7 +57,9 @@ header showed.
 - **Ring choice rows.** Android's `PubkyChoiceScreen` replaces the rows with one loading line while
   it loads and while it adopts, and tags every row `PubkyChoiceIdentity`. iOS keeps the rows up,
   spins only the tapped row, and tags each row `PubkyChoiceRing_<pubky>`, using the bare z32 key
-  without the `pubky` prefix.
+  without the `pubky` prefix. While a row's lookup runs, iOS shows a spinner in place of its avatar,
+  tagged `PubkyChoiceRingLookup_<pubky>`. Adopting a row stops the other rows' lookups, so their
+  spinners go, and the tapped row keeps its avatar.
 
 ## Identifiers used
 
@@ -63,6 +68,7 @@ header showed.
 - Profile: cached header `ProfileCachedHeader` and its name `ProfileCachedName`; full profile name
   `ProfileViewName`; actions `ProfileEdit`, `ProfileCopy`, `ProfileShare`, `ProfileQRCode` and
   `ProfileAddTag`.
-- Choice screen: Ring rows `PubkyChoiceRing_<pubky>` and the create option `PubkyChoiceCreate`.
+- Choice screen: Ring rows `PubkyChoiceRing_<pubky>`, a row's lookup spinner
+  `PubkyChoiceRingLookup_<pubky>`, and the create option `PubkyChoiceCreate`.
 - After adopting: the contact import overview `ContactImportOverviewProfile`, or Pay Contacts
   `PayContactsContinue`.
