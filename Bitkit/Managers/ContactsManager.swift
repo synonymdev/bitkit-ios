@@ -367,9 +367,9 @@ class ContactsManager: ObservableObject {
     /// Looks a saved contact's profile up on the interactive read lane while its row still shows only its saved label
     /// because the background refresh has not reached it, so a screen showing that contact does not wait behind bulk
     /// reads and an edit made there keeps the contact's avatar, bio and links. The lookup takes the contact over from the
-    /// background refresh, which then drops its own result for it, so that result cannot change the row under an edit.
-    /// Returns at once for any other row, and joins a lookup already running for the contact. When the lookup fails, the
-    /// row keeps its label.
+    /// running background refresh, which then drops its own result for it, so that refresh cannot change the row under an
+    /// edit. Returns at once for any other row, and joins a lookup already running for the contact. When the lookup fails,
+    /// the row keeps its label.
     func resolvePendingContactProfile(publicKey: String) async {
         await resolvePendingContactProfile(publicKey: publicKey, fetchRemoteProfile: remoteProfileLookup(on: .interactive))
     }
