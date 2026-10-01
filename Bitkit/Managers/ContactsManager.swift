@@ -118,7 +118,11 @@ class ContactsManager: ObservableObject {
     private var contactsRevision = 0
     private var loadGeneration = 0
     private var isApplyingProfileRefresh = false
-    private var profileRefresh: ContactProfileRefresh?
+    private var profileRefresh: ContactProfileRefresh? {
+        didSet { resumeProfileRefreshWaiters() }
+    }
+
+    private var profileRefreshWaiters: [CheckedContinuation<Void, Never>] = []
     private var profileRefreshCount = 0
     private var pendingProfileLookups: [String: Task<Void, Never>] = [:]
     /// Profiles resolved this session for the owner's contacts, shown in place of stored labels while a load refreshes.
@@ -366,7 +370,9 @@ class ContactsManager: ObservableObject {
     /// Looks a saved contact's profile up on the interactive read lane while its row still shows only its saved label
     /// because the background refresh has not reached it, so a screen showing that contact does not wait behind bulk
     /// reads and an edit made there keeps the contact's avatar, bio and links. Returns at once for any other row, and
-    /// joins a lookup already running for the contact. When the lookup fails, the row keeps its label.
+    /// joins a lookup already running for the contact. When the lookup fails, the contact stays unresolved and this waits
+    /// for the background refresh's own lookup of it, so an edit saved afterwards never writes the label-only row over a
+    /// profile that is still arriving. The row keeps its label only when that lookup fails too.
     func resolvePendingContactProfile(publicKey: String) async {
         await resolvePendingContactProfile(publicKey: publicKey, fetchRemoteProfile: remoteProfileLookup(on: .interactive))
     }
@@ -389,19 +395,36 @@ class ContactsManager: ObservableObject {
         let generation = resolvedProfilesGeneration
         let lookup = Task { [weak self] in
             let profile = try? await Self.resolveContactProfile(publicKey: key, fetchRemoteProfile: fetchRemoteProfile)
-            self?.finishPendingProfileLookup(of: key, profile: profile?.withNameFallback(label), generation: generation)
+            await self?.finishPendingProfileLookup(of: key, profile: profile?.withNameFallback(label), generation: generation)
         }
         pendingProfileLookups[key] = lookup
         await lookup.value
     }
 
-    private func finishPendingProfileLookup(of publicKey: String, profile: PubkyProfile?, generation: Int) {
+    private func finishPendingProfileLookup(of publicKey: String, profile: PubkyProfile?, generation: Int) async {
         guard generation == resolvedProfilesGeneration else { return }
-        pendingProfileLookups[publicKey] = nil
-        profileRefresh?.pendingKeys.remove(publicKey)
         if let profile {
+            profileRefresh?.pendingKeys.remove(publicKey)
             applyResolvedProfile(profile, for: publicKey)
+        } else {
+            await waitForRefreshLookup(of: publicKey)
+            guard generation == resolvedProfilesGeneration else { return }
         }
+        pendingProfileLookups[publicKey] = nil
+    }
+
+    /// Returns once no background refresh is looking `publicKey` up any more: its lookup finished, or the refresh was
+    /// replaced by one that does not look it up or stopped.
+    private func waitForRefreshLookup(of publicKey: String) async {
+        while profileRefresh?.pendingKeys.contains(publicKey) == true {
+            await withCheckedContinuation { profileRefreshWaiters.append($0) }
+        }
+    }
+
+    private func resumeProfileRefreshWaiters() {
+        let waiters = profileRefreshWaiters
+        profileRefreshWaiters = []
+        waiters.forEach { $0.resume() }
     }
 
     private func applyResolvedProfile(_ profile: PubkyProfile, for publicKey: String) {
@@ -763,7 +786,8 @@ class ContactsManager: ObservableObject {
     }
 
     /// A background refresh of saved contacts' profiles. `labels` maps each contact it looks up to its saved label, and
-    /// `pendingKeys` holds those whose lookup has not finished, whose rows may still show only that label.
+    /// `pendingKeys` holds those whose lookup has not finished and that no interactive lookup has resolved, whose rows
+    /// may still show only that label.
     private struct ContactProfileRefresh {
         let id: Int
         let labels: [String: String?]

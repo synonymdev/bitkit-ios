@@ -779,13 +779,70 @@ final class ContactsManagerTests: XCTestCase {
         let storedAttempts = await interactive.attempts
         XCTAssertEqual(storedAttempts, 0, "A stored profile is not looked up")
 
-        await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+        let lookup = Task {
+            await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+        }
+        while await interactive.attempts < 1 {
+            await Task.yield()
+        }
+        await bulk.release()
+        await lookup.value
         await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
         let attempts = await interactive.attempts
         XCTAssertEqual(attempts, 1, "A failed lookup is left to the background refresh")
-        XCTAssertEqual(manager.contacts.map(\.displayName), ["Bob", "Label only"])
-        await bulk.release()
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Bob", "Label only"], "A row keeps its label once every lookup fails")
         await manager.waitForProfileRefreshForTesting()
+    }
+
+    func testEditWaitsForTheBackgroundLookupWhenTheContactsOwnLookupFails() async throws {
+        let manager = ContactsManager()
+        let published = Bitkit.PubkyProfile(
+            publicKey: contactProfileKey,
+            name: "Alice",
+            bio: "Hello",
+            imageUrl: "pubky://alice/avatar",
+            links: [PubkyProfileLink(label: "Site", url: "https://alice.example")],
+            tags: [],
+            status: nil
+        )
+        let bulk = HeldProfileLookups(publishedProfiles: [published])
+        await bulk.hold()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+        while await bulk.heldCount < 1 {
+            await Task.yield()
+        }
+
+        // Opening the edit screen looks the label-only row up on the interactive lane, and that lookup fails.
+        let interactive = ContactProfileFetchStub([.failure(profileTransportError)])
+        let opening = Task {
+            await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+        }
+        while await interactive.attempts < 1 {
+            await Task.yield()
+        }
+
+        // The user renames the row and saves while the background lookup is still running.
+        var form = ContactEditForm()
+        try form.fill(from: XCTUnwrap(manager.contacts.first?.profile))
+        form.name = "My Alice"
+        let save = Task {
+            await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+            return manager.contacts.first?.profile
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        await bulk.release()
+        let saved = await save.value
+        try form.fill(from: XCTUnwrap(saved))
+        await opening.value
+        await manager.waitForProfileRefreshForTesting()
+
+        XCTAssertEqual(form.name, "My Alice")
+        XCTAssertEqual(form.bio, "Hello", "Save must wait for the background lookup, not save the label-only row's empty bio")
+        XCTAssertEqual(form.imageUrl, "pubky://alice/avatar")
+        XCTAssertEqual(form.links.map(\.url), ["https://alice.example"])
+        let attempts = await interactive.attempts
+        XCTAssertEqual(attempts, 1, "Save joins the failed lookup's wait instead of looking the contact up again")
     }
 
     func testInteractiveProfileLookupStartedBeforeResetIsIgnored() async throws {
@@ -882,10 +939,16 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(alice.profile.imageUrl, "pubky://alice/avatar", "An imported profile shows before the background refresh reaches it")
         XCTAssertEqual(alice.profile.bio, "Hello")
         let interactive = ContactProfileFetchStub([.failure(profileTransportError)])
-        await manager.resolvePendingContactProfile(publicKey: unresolvedFollowKey) { try await interactive.fetch($0) }
+        let lookup = Task {
+            await manager.resolvePendingContactProfile(publicKey: unresolvedFollowKey) { try await interactive.fetch($0) }
+        }
+        while await interactive.attempts < 1 {
+            await Task.yield()
+        }
+        await bulk.release()
+        await lookup.value
         let attempts = await interactive.attempts
         XCTAssertEqual(attempts, 1, "A follow imported as a placeholder must still have its profile looked up before an edit")
-        await bulk.release()
         await manager.waitForProfileRefreshForTesting()
     }
 
@@ -1098,10 +1161,10 @@ private let profileTransportError = PaykitError.Transport(code: "transport_error
 
 private let unresolvedFollowKey = "pubky" + String(repeating: "y", count: 52)
 
-/// Answers profile lookups with the scripted names, failing for any other key like a key with no profile, and can hold
+/// Answers profile lookups with the scripted profiles, failing for any other key like a key with no profile, and can hold
 /// lookups until released.
 private actor HeldProfileLookups {
-    private let profiles: [String: String]
+    private let profiles: [String: Bitkit.PubkyProfile]
     private(set) var fetchedKeys: [String] = []
     private var isHolding = false
     private var held: [CheckedContinuation<Void, Never>] = []
@@ -1110,8 +1173,14 @@ private actor HeldProfileLookups {
         held.count
     }
 
-    init(profiles: [String: String]) {
-        self.profiles = profiles
+    init(profiles names: [String: String]) {
+        profiles = Dictionary(uniqueKeysWithValues: names.map { publicKey, name in
+            (publicKey, Bitkit.PubkyProfile(publicKey: publicKey, name: name, bio: "", imageUrl: nil, links: [], status: nil))
+        })
+    }
+
+    init(publishedProfiles: [Bitkit.PubkyProfile]) {
+        profiles = Dictionary(uniqueKeysWithValues: publishedProfiles.map { ($0.publicKey, $0) })
     }
 
     func hold() {
@@ -1129,8 +1198,8 @@ private actor HeldProfileLookups {
         if isHolding {
             await withCheckedContinuation { held.append($0) }
         }
-        guard let name = profiles[publicKey] else { throw profileTransportError }
-        return Bitkit.PubkyProfile(publicKey: publicKey, name: name, bio: "", imageUrl: nil, links: [], status: nil)
+        guard let profile = profiles[publicKey] else { throw profileTransportError }
+        return profile
     }
 }
 
