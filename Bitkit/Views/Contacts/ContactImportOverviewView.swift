@@ -173,6 +173,7 @@ struct ContactImportOverviewView: View {
     private func importAllContacts() async {
         do {
             try await contactsManager.importContacts(contacts)
+            guard shouldOpenPayContactsAfterImport(currentRoute: navigation.currentRoute) else { return }
             contactsManager.clearPendingImport()
             navigation.path = [.payContacts]
         } catch is CancellationError {

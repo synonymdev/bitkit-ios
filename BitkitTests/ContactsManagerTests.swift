@@ -662,6 +662,13 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(shouldDiscardPendingImport(currentRoute: .contacts, destination: .profile))
     }
 
+    func testFinishedImportOpensPayContactsOnlyFromTheImportFlow() {
+        XCTAssertTrue(shouldOpenPayContactsAfterImport(currentRoute: .contactImportOverview))
+        XCTAssertTrue(shouldOpenPayContactsAfterImport(currentRoute: .contactImportSelect))
+        XCTAssertFalse(shouldOpenPayContactsAfterImport(currentRoute: .settings), "An import finishing after Back must not pull the user away")
+        XCTAssertFalse(shouldOpenPayContactsAfterImport(currentRoute: nil), "An import finishing on Home must not pull the user away")
+    }
+
     func testDeleteAllContactsThrowsWithoutActiveSession() async {
         let manager = ContactsManager()
         manager.contacts = [

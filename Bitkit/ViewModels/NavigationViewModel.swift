@@ -155,6 +155,11 @@ func shouldDiscardPendingImport(currentRoute: Route?, destination: Route?) -> Bo
     return destination?.isContactImportRoute != true
 }
 
+/// A contact import outlives its screens, so when it finishes it opens Pay Contacts only if the user is still in the import flow.
+func shouldOpenPayContactsAfterImport(currentRoute: Route?) -> Bool {
+    currentRoute?.isContactImportRoute == true
+}
+
 func fallbackRouteForMissingPendingImport(hasPendingImport: Bool) -> Route? {
     hasPendingImport ? nil : .payContacts
 }

@@ -177,6 +177,7 @@ struct ContactImportSelectView: View {
 
         do {
             try await contactsManager.importContacts(selected)
+            guard shouldOpenPayContactsAfterImport(currentRoute: navigation.currentRoute) else { return }
             contactsManager.clearPendingImport()
             navigation.path = [.payContacts]
         } catch is CancellationError {

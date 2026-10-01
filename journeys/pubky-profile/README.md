@@ -17,7 +17,8 @@ while profiles are still loading from the network. Where Android differs, see
   Import All. The import saves the profiles the overview already looked up instead of looking every
   follow up again, so it takes seconds rather than tens of seconds. A follow with no published
   profile is imported under its truncated key. While the import runs, Select and Import All are
-  disabled, and leaving the screen does not stop it.
+  disabled. Leaving the screen does not stop the import, and an import that finishes after you left
+  does not take you to Pay Contacts.
 - `contacts-list-loading.xml` relaunches and opens Contacts. The saved contacts show straight away
   under the names they were saved with, and each fills in its profile name and avatar as its lookup
   finishes. Reopening Contacts in the same session shows the profiles already found straight away.
