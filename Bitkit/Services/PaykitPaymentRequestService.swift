@@ -1522,6 +1522,7 @@ final class PaykitPaymentRequestManager {
         consumePrivatePaymentList: () async throws -> Void = {}
     ) async throws {
         guard let identity = activeIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+        let actionGeneration = stateGeneration
         do {
             if isApprovedForPayment(request) {
                 try await ensurePaymentAllowed(request)
@@ -1540,13 +1541,14 @@ final class PaykitPaymentRequestManager {
                 try await service.claimForPayment($0)
                 try await consumePrivatePaymentList()
                 if $0.requiresAcceptance {
+                    guard actionGeneration == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity) else {
+                        throw PaykitPaymentRequestError.requestUnavailable
+                    }
                     var ids = try acceptanceStore.load(identity: identity)
                     let alreadySaved = ids.contains($0.id)
                     ids.insert($0.id)
                     try acceptanceStore.save(ids, identity: identity)
-                    if PubkyPublicKeyFormat.matches(activeIdentity, identity) {
-                        acceptedRequestIds = ids
-                    }
+                    acceptedRequestIds = ids
                     do {
                         try await service.accept($0)
                     } catch {
@@ -1555,10 +1557,10 @@ final class PaykitPaymentRequestManager {
                         case is CancellationError, PaykitError.Transport, PaykitError.Storage, PaykitError.Identity:
                             break
                         default:
-                            if !alreadySaved {
-                                ids.remove($0.id)
-                                try acceptanceStore.save(ids, identity: identity)
-                                if PubkyPublicKeyFormat.matches(activeIdentity, identity) { acceptedRequestIds = ids }
+                            if !alreadySaved, actionGeneration == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity) {
+                                let remaining = try acceptanceStore.load(identity: identity).subtracting([$0.id])
+                                try acceptanceStore.save(remaining, identity: identity)
+                                acceptedRequestIds = remaining
                             }
                         }
                         throw error

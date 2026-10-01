@@ -3660,6 +3660,67 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await manager.ensurePaymentAllowed(retry)
     }
 
+    func testFailedAcceptancePreservesAnotherRequestsIntent() async throws {
+        let identity = "pubky\(String(repeating: "z", count: 52))"
+        let firstRecord = try paymentRequestRecord(id: "first")
+        var secondRecord = try paymentRequestRecord(id: "second")
+        let sdk = PaymentRequestSdkMock(records: [firstRecord, secondRecord])
+        let store = PaymentRequestPresentationMemoryStore()
+        let manager = paymentRequestManager(sdk: sdk, acceptanceStore: store)
+        await manager.refresh()
+        let first = try XCTUnwrap(manager.pendingRequests.first { $0.paymentRequestId == "first" })
+        let second = try XCTUnwrap(manager.pendingRequests.first { $0.paymentRequestId == "second" })
+        await sdk.pauseNextAccept()
+
+        let acceptance = Task { try await manager.prepareForPayment(first) }
+        try await waitUntil { await sdk.acceptIsPaused() }
+        try await manager.prepareForPayment(second)
+        await sdk.failNextAcceptAfterRemoval()
+        await sdk.resumeAccept()
+        do {
+            try await acceptance.value
+            XCTFail("Expected the first acceptance to fail")
+        } catch {
+            XCTAssertEqual(error as? PaymentRequestSdkMockError, .process)
+        }
+
+        XCTAssertEqual(try store.load(identity: identity), [second.id])
+        secondRecord.state = .accepted
+        await sdk.setRecords([secondRecord])
+        let restarted = paymentRequestManager(sdk: sdk, acceptanceStore: store)
+        await restarted.refresh()
+        XCTAssertEqual(restarted.pendingRequests.map(\.id), [second.id])
+    }
+
+    func testFailedAcceptanceDoesNotRemoveIntentFromNewManagerGeneration() async throws {
+        let identity = "pubky\(String(repeating: "z", count: 52))"
+        let record = try paymentRequestRecord()
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let store = PaymentRequestPresentationMemoryStore()
+        let manager = paymentRequestManager(sdk: sdk, acceptanceStore: store)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        await sdk.pauseNextAccept()
+
+        let acceptance = Task { try await manager.prepareForPayment(request) }
+        try await waitUntil { await sdk.acceptIsPaused() }
+        manager.clear()
+        manager.activate(identity: identity)
+        await manager.refresh()
+        let current = try XCTUnwrap(manager.pendingRequests.first)
+        try await manager.prepareForPayment(current)
+        await sdk.resumeAccept()
+        do {
+            try await acceptance.value
+            XCTFail("Expected the superseded acceptance to fail")
+        } catch {
+            XCTAssertEqual(error as? PaymentRequestSdkMockError, .requestMissing)
+        }
+
+        XCTAssertEqual(try store.load(identity: identity), [current.id])
+        XCTAssertTrue(manager.isApprovedForPayment(current))
+    }
+
     func testClearingDuringRetryDoesNotReopenRequest() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
