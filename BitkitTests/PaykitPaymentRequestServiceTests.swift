@@ -1504,10 +1504,15 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
-    private func canceledSubscription(paid: Bool, endsAt: String? = nil) throws -> PaykitSubscription {
+    private func canceledSubscription(
+        paid: Bool,
+        endsAt: String? = nil,
+        role: PaymentRequestLocalRole = .payer
+    ) throws -> PaykitSubscription {
         let period = BillingPeriod(startsAt: "2027-01-01T08:00:00Z", endsAt: "2027-02-01T08:00:00Z")
         return try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
             state: .canceled,
+            role: role,
             amount: "0.000012",
             recurrence: PaymentRequestRecurrence(
                 every: 1,
@@ -1555,6 +1560,32 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(sections.active.isEmpty)
         XCTAssertEqual(sections.expired.map(\.id), [canceled.id])
         XCTAssertEqual(subscriptionMonthlyCostSats(subscriptions: [canceled], now: paidThrough), 0)
+    }
+
+    func testCanceledSubscriptionEndsAtItsLastPaidPeriodWhateverItsFixedEndDate() throws {
+        let canceled = try canceledSubscription(paid: true, endsAt: "2027-06-01T08:00:00Z")
+        let beforePaidThrough = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let paidThrough = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-01T08:00:00Z"))
+
+        XCTAssertEqual(subscriptionEndDate(subscription: canceled), paidThrough)
+        XCTAssertEqual(canceled.statusLabel(at: beforePaidThrough), t("subscriptions__active"))
+        XCTAssertEqual(canceled.timingTitle(at: beforePaidThrough), t("subscriptions__expires"))
+        XCTAssertEqual(subscriptionNextTransitionDate(subscriptions: [canceled], now: beforePaidThrough), paidThrough)
+
+        XCTAssertEqual(canceled.statusLabel(at: paidThrough), t("subscriptions__expired"))
+        XCTAssertEqual(canceled.timingTitle(at: paidThrough), t("subscriptions__expired"))
+        XCTAssertTrue(subscriptionSections(subscriptions: [canceled], now: paidThrough).active.isEmpty)
+        XCTAssertEqual(subscriptionSections(subscriptions: [canceled], now: paidThrough).expired.map(\.id), [canceled.id])
+        XCTAssertEqual(subscriptionMonthlyCostSats(subscriptions: [canceled], now: paidThrough), 0)
+    }
+
+    func testCanceledSubscriptionCreatedByTheUserStaysExpiredAndListed() throws {
+        let canceled = try canceledSubscription(paid: true, role: .payee)
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+
+        XCTAssertEqual(canceled.statusLabel(at: now), t("subscriptions__expired"))
+        XCTAssertTrue(subscriptionSections(subscriptions: [canceled], now: now).active.isEmpty)
+        XCTAssertEqual(subscriptionSections(subscriptions: [canceled], now: now).expired.map(\.id), [canceled.id])
     }
 
     func testCanceledSubscriptionTimerFlipsAtThePaidThroughDate() throws {

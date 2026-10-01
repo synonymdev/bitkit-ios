@@ -258,10 +258,10 @@ func subscriptionMonthlyCostSats(subscriptions: [PaykitSubscription], now: Date)
     }
 }
 
-/// When a subscription stopped running. An open-ended one has no end date of its own, so the last
-/// period it was paid for is when it lapsed.
+/// When a subscription stopped running. A canceled one ends with its last paid period; an open-ended
+/// one has no end date of its own, so the last period it was paid for is when it lapsed.
 func subscriptionEndDate(subscription: PaykitSubscription) -> Date? {
-    subscription.recurrence.endsAt ?? subscription.paidPeriods.map(\.endsAt).max()
+    subscription.canceledPaidThrough ?? subscription.recurrence.endsAt ?? subscription.paidPeriods.map(\.endsAt).max()
 }
 
 /// The ACTIVE and EXPIRED sections: a canceled subscription stays under ACTIVE until it is paid through.
