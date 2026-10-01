@@ -109,6 +109,15 @@ final class ContactsManagerTests: XCTestCase {
         )
     }
 
+    private func unprofiledRecord(key: String, label: String?) -> ContactRecord {
+        ContactRecord(
+            publicKey: key, receiverPaths: [PaykitReceiverPath.wallet], label: label, profile: nil,
+            profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
+            publicContactMarkerStatus: .notPublished, publicContactMarkerReceiverPath: nil,
+            publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
+        )
+    }
+
     func testPubkyPublicKeyFormatNormalizesPrefixedAndUnprefixedKeys() {
         let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         let prefixedKey = "pubky\(rawKey)"
@@ -429,45 +438,109 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(attempts, 1)
     }
 
-    func testCancelledContactsReloadKeepsLoadedContacts() async throws {
+    func testLoadPublishesSavedContactsBeforeTheirProfilesResolve() async throws {
         let manager = ContactsManager()
-        manager.contacts = [makeContact(publicKey: contactProfileKey)]
-        let hasLoadedBefore = manager.hasLoaded
-        let record = ContactRecord(
-            publicKey: contactProfileKey,
-            receiverPaths: [],
-            label: "Label only",
-            profile: nil,
-            profileFetchedAt: nil,
-            createdAt: "",
-            updatedAt: "",
-            publicContactMarkerStatus: .notPublished,
-            publicContactMarkerReceiverPath: nil,
-            publicContactPublishedAt: nil,
-            publicContactRemovedAt: nil,
-            publicContactLastError: nil
-        )
-        let lookupStarted = expectation(description: "profile lookup started")
+        let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        await lookups.hold()
+        let stored = contactRecord(key: unresolvedFollowKey, name: "Bob")
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only"), stored]
 
-        let reload = Task {
-            try await manager.loadContacts(
-                for: contactProfileKey,
-                fetchContactRecords: { [record] },
-                fetchRemoteProfile: { _ in
-                    lookupStarted.fulfill()
-                    try await Task.sleep(nanoseconds: 60_000_000_000)
-                    return nil
-                }
-            )
+        let loadReturned = expectation(description: "Load returned while the profile lookup was still running")
+        let load = Task {
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+            loadReturned.fulfill()
         }
-        await fulfillment(of: [lookupStarted], timeout: 2)
-        reload.cancel()
-        try await reload.value
+        await fulfillment(of: [loadReturned], timeout: 2)
 
-        XCTAssertEqual(manager.contacts.map(\.profile.name), ["Alice"])
-        XCTAssertEqual(manager.hasLoaded, hasLoadedBefore)
-        XCTAssertNil(manager.loadErrorMessage)
+        XCTAssertTrue(manager.hasLoaded)
         XCTAssertFalse(manager.isLoading)
+        XCTAssertEqual(Set(manager.contacts.map(\.displayName)), ["Label only", "Bob"])
+
+        await lookups.release()
+        try await load.value
+        await manager.waitForProfileRefreshForTesting()
+        XCTAssertEqual(Set(manager.contacts.map(\.displayName)), ["Alice", "Bob"])
+        let fetchedKeys = await lookups.fetchedKeys
+        XCTAssertEqual(fetchedKeys, [contactProfileKey], "A stored profile is not looked up again")
+    }
+
+    func testReloadShowsProfilesResolvedEarlierThisSessionWhenItsLookupsFail() async throws {
+        let manager = ContactsManager()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        let resolving = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await resolving.fetch($0) })
+        await manager.waitForProfileRefreshForTesting()
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Alice"])
+
+        let failing = HeldProfileLookups(profiles: [:])
+        await failing.hold()
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await failing.fetch($0) })
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Alice"], "A reload starts from the profile resolved earlier")
+
+        await failing.release()
+        await manager.waitForProfileRefreshForTesting()
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Alice"], "A failed lookup leaves the row as it is")
+        XCTAssertTrue(manager.hasLoaded)
+        XCTAssertNil(manager.loadErrorMessage)
+    }
+
+    func testResolvedProfilesAreForgottenOnResetAndForAnotherOwner() async throws {
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        let resolving = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        let failing = HeldProfileLookups(profiles: [:])
+        let manager = ContactsManager()
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await resolving.fetch($0) })
+        await manager.waitForProfileRefreshForTesting()
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Alice"])
+
+        try await manager.loadContacts(for: "another-owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await failing.fetch($0) })
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Label only"], "Another owner's load must not show the first owner's profiles")
+
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await resolving.fetch($0) })
+        await manager.waitForProfileRefreshForTesting()
+        manager.reset()
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await failing.fetch($0) })
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Label only"], "Reset forgets the profiles resolved before it")
+    }
+
+    func testProfileRefreshStartedBeforeResetIsIgnored() async throws {
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        let held = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        await held.hold()
+        let failing = HeldProfileLookups(profiles: [:])
+        let manager = ContactsManager()
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await held.fetch($0) })
+        while await held.heldCount < 1 {
+            await Task.yield()
+        }
+
+        manager.reset()
+        try await manager.loadContacts(for: "next-owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await failing.fetch($0) })
+        await held.release()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Label only"], "A refresh from before the reset must not update rows")
+
+        try await manager.loadContacts(for: "next-owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await failing.fetch($0) })
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Label only"], "A refresh from before the reset must not seed resolved profiles")
+    }
+
+    func testProfileRefreshDoesNotReportASavedContactsChange() async throws {
+        let manager = ContactsManager()
+        var changes: [Set<String>] = []
+        let subscription = manager.savedContactsChangedPublisher.sink { changes.append(Set($0.map(\.publicKey))) }
+        defer { subscription.cancel() }
+        let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice", unresolvedFollowKey: "Bob"])
+        let records = [unprofiledRecord(key: contactProfileKey, label: nil), unprofiledRecord(key: unresolvedFollowKey, label: nil)]
+
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+        await manager.waitForProfileRefreshForTesting()
+
+        XCTAssertEqual(Set(manager.contacts.map(\.displayName)), ["Alice", "Bob"])
+        XCTAssertEqual(changes, [[contactProfileKey, unresolvedFollowKey]], "Only the load itself may report a change")
+
+        let addedKey = "pubky" + String(repeating: "r", count: 52)
+        manager.contacts.append(makeContact(publicKey: addedKey))
+        XCTAssertEqual(changes.last, [contactProfileKey, unresolvedFollowKey, addedKey])
     }
 
     func testImportSavesPreparedProfilesAndKeepsUnresolvedFollowsAsPlaceholders() async throws {
@@ -687,6 +760,42 @@ private let contactProfileKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64
 private let profileTransportError = PaykitError.Transport(code: "transport_error", context: "fetch profile")
 
 private let unresolvedFollowKey = "pubky" + String(repeating: "y", count: 52)
+
+/// Answers profile lookups with the scripted names, failing for any other key like a key with no profile, and can hold
+/// lookups until released.
+private actor HeldProfileLookups {
+    private let profiles: [String: String]
+    private(set) var fetchedKeys: [String] = []
+    private var isHolding = false
+    private var held: [CheckedContinuation<Void, Never>] = []
+
+    var heldCount: Int {
+        held.count
+    }
+
+    init(profiles: [String: String]) {
+        self.profiles = profiles
+    }
+
+    func hold() {
+        isHolding = true
+    }
+
+    func release() {
+        isHolding = false
+        held.forEach { $0.resume() }
+        held.removeAll()
+    }
+
+    func fetch(_ publicKey: String) async throws -> Bitkit.PubkyProfile? {
+        fetchedKeys.append(publicKey)
+        if isHolding {
+            await withCheckedContinuation { held.append($0) }
+        }
+        guard let name = profiles[publicKey] else { throw profileTransportError }
+        return Bitkit.PubkyProfile(publicKey: publicKey, name: name, bio: "", imageUrl: nil, links: [], status: nil)
+    }
+}
 
 /// Records an import's receiver discovery and saves, and can fail saves or hold discovery until released.
 private actor ImportStub {
