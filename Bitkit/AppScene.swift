@@ -1568,8 +1568,13 @@ struct AppScene: View {
     }
 
     private func restartNode(reason: String) {
-        Logger.info("\(reason), retrying wallet start...", context: "AppScene")
         Task {
+            // Checked when the task runs, because the Recovery quick action can be handled after the caller decided to restart.
+            guard !showRecoveryScreen else {
+                Logger.info("\(reason), skipping wallet start in recovery mode", context: "AppScene")
+                return
+            }
+            Logger.info("\(reason), retrying wallet start...", context: "AppScene")
             await startWallet()
         }
     }
