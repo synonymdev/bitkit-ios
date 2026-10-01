@@ -882,12 +882,9 @@ class ContactsManager: ObservableObject {
         return true
     }
 
-    private nonisolated static func relevantReceiverPaths(
-        for publicKey: String,
-        priority: PaykitPublicReadPriority = .interactive
-    ) async throws -> [String] {
+    private nonisolated static func relevantReceiverPaths(for publicKey: String) async throws -> [String] {
         do {
-            return try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey, priority: priority)
+            return try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
