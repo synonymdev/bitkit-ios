@@ -80,8 +80,10 @@ header showed.
 - **Contact import after leaving and Contacts list.** `contact-import-after-leaving.xml` and
   `contacts-list-loading.xml` are new on both platforms at once: synonymdev/bitkit-android#1399 adds
   both to Android with the same file names, journey names and prose, changing only identifiers and
-  `adb` commands, and adds the testTag `ContactImportOverviewImportAll`, so once it merges the two
-  platforms share the journeys and that identifier. Android master has neither until then.
+  `adb` commands, and adds `ContactImportOverviewImportAll`, the only contact import testTag the
+  journeys use, so once it merges the two platforms share the journeys and that identifier. Android
+  master has neither until then. On iOS, `ContactImportUITests` also leaves an import while its save
+  is held, so that check does not depend on the import being slow.
   `Contact_<pubky>`, `HeaderMenu`, `DrawerContacts`, `PayContactsContinue`, `ContactViewNotes`,
   `ContactEdit`, `ProfileEditCancel` and `NavigationBack` already match Android. Android has no
   identifier for the overview profile and summary (`ContactImportOverviewProfile`,
