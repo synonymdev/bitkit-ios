@@ -188,6 +188,9 @@ iOS-only — a Bitkit-specific OS handoff into watch-only consent, with no Andro
 `profile/signup-create-profile.xml` is currently iOS-only. It covers the iOS Profile Error regression
 after staging signup. Android also supports this signup flow, but this journey has not been ported there.
 
+`pubky-profile/contact-import.xml` and `pubky-profile/contacts-list-loading.xml` started on iOS. They
+use identifiers Android already shares, so they can be ported under the same names.
+
 A journey is a shared spec, so a behaviour that is meant to match Android can be checked by running
 the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `bitkit-android`
 checkout there (`android layout` is the `snapshot-ui` equivalent). A disagreement is worth writing
