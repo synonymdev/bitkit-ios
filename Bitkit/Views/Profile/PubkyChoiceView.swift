@@ -59,6 +59,25 @@ struct PubkyChoiceView: View {
         }
     }
 
+    /// Contact discovery can outlast the refresh of a reused row profile. When that refresh finds the profile removed,
+    /// Create Profile opens while discovery runs, so this returns no route then and the discovered one does not replace it.
+    @MainActor
+    static func destinationAfterAdoption(
+        of adopted: PubkyProfile,
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager
+    ) async -> Route? {
+        let destination = await contactsManager.destinationAfterAuthentication(
+            profile: pubkyProfile.profile,
+            publicKey: adopted.publicKey
+        )
+        guard !pubkyProfile.isProfileSetupPending else {
+            contactsManager.clearPendingImport()
+            return nil
+        }
+        return destination
+    }
+
     var body: some View {
         ZStack {
             backgroundIllustrations
@@ -180,11 +199,9 @@ struct PubkyChoiceView: View {
                 return
             }
 
-            let destination = await contactsManager.destinationAfterAuthentication(
-                profile: pubkyProfile.profile,
-                publicKey: adopted.publicKey
-            )
-            navigation.path = [destination]
+            if let destination = await Self.destinationAfterAdoption(of: adopted, pubkyProfile: pubkyProfile, contactsManager: contactsManager) {
+                navigation.path = [destination]
+            }
         } catch is CancellationError {
             return
         } catch {

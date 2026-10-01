@@ -1500,6 +1500,50 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testContactDiscoveryFinishingAfterProfileSetupStartsDoesNotReplaceCreateProfile() async throws {
+        for profileWasRemoved in [true, false] {
+            try await withRestoredProfileDefaults {
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+                await manager.loadRingIdentityProfiles([bareRingKeyA])
+                if profileWasRemoved {
+                    await stub.setProfile(nil, for: ringKeyA)
+                }
+                let follow = makeProfile(publicKey: ringKeyB, name: "Bob")
+                let (followsGate, openFollows) = AsyncStream<Void>.makeStream()
+                defer { openFollows.finish() }
+                let contactsManager = ContactsManager(
+                    fetchFollows: { _ in
+                        for await _ in followsGate {}
+                        return [follow.publicKey]
+                    },
+                    fetchRemoteProfile: { _, _ in follow }
+                )
+
+                let adopted = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
+                let reused = try XCTUnwrap(adopted)
+                let routing = Task {
+                    await PubkyChoiceView.destinationAfterAdoption(of: reused, pubkyProfile: manager, contactsManager: contactsManager)
+                }
+                // The refresh of the reused row profile lands while discovery still waits for the follows.
+                await stub.waitForRequests(2)
+                await waitUntil("the refresh of the reused row profile finishes") { !manager.isLoadingProfile }
+                XCTAssertEqual(manager.isProfileSetupPending, profileWasRemoved)
+                openFollows.finish()
+                let destination = await routing.value
+
+                if profileWasRemoved {
+                    XCTAssertNil(destination, "Discovery finishing after Create Profile opened must not replace it")
+                    XCTAssertFalse(contactsManager.hasPendingImport, "The import found for a profile that is gone is dropped")
+                } else {
+                    XCTAssertEqual(destination, .contactImportOverview)
+                    XCTAssertTrue(contactsManager.hasPendingImport)
+                }
+            }
+        }
+    }
+
+    @MainActor
     func testAdoptingStopsOnlyTheOtherRowLookupsAndAFailedAdoptReloadsTheRows() async {
         let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")], holdsRequests: true)
         let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
