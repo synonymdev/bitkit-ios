@@ -588,7 +588,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
     func testCleanupFailuresKeepRegistryReconciliationPending() async throws {
         let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
-        for failureStage in ["lookup", "withdraw", "registry"] {
+        for failureStage in ["lookup", "withdraw", "queue", "pending", "registry"] {
             let service = PrivatePaykitService()
             var contactState = PrivatePaykitService.ContactState()
             contactState.hasPublishedPrivatePaymentList = true
@@ -604,10 +604,17 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 },
                 clearPaymentList: { _ in
                     if shouldFail, failureStage == "withdraw" { throw PrivatePaykitError.privateUnavailable }
+                    if shouldFail, failureStage == "queue" {
+                        return PrivatePaymentListDeliveryReport(
+                            queued: [], cleared: [],
+                            failedToQueue: [PrivatePaymentListSyncChange(counterparty: publicKey, outboundMessageId: nil, error: nil)],
+                            failedToDeliver: []
+                        )
+                    }
                     return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
                 },
                 drainMessages: { _ in },
-                pendingDrainKeys: { _ in [] },
+                pendingDrainKeys: { _ in shouldFail && failureStage == "pending" ? [publicKey] : [] },
                 syncApp: {
                     registryUpdates += 1
                     if shouldFail, failureStage == "registry" { throw PrivatePaykitError.privateUnavailable }
