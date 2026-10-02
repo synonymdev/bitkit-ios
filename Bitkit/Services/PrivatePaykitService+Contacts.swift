@@ -193,14 +193,18 @@ extension PrivatePaykitService {
     }
 
     private func removePublishedEndpointsLocked(for publicKeys: [String]?, operations: EndpointCleanupOperations) async throws {
-        let linkedPublicKeys = try await Set(operations.linkedPeers()
+        let peers = try await operations.linkedPeers()
+        let linkedPublicKeys = Set(peers
             .filter { $0.state != .notLinked }
             .compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
+        let discoveredPublicKeys = peers
+            .filter { $0.state == .linked }
+            .compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) }
         let publicKeys = publicKeys ?? normalizedSavedContactKeys(Array(
             Set(knownSavedContactKeys)
                 .union(state.contacts.keys)
                 .union(Self.pendingDeletedContactCleanupKeys())
-                .union(linkedPublicKeys)
+                .union(discoveredPublicKeys)
         ))
         let cleanupKeys = privatePaymentListCleanupKeys(publicKeys, linkedPublicKeys: linkedPublicKeys)
         let publicKeySet = Set(publicKeys)
