@@ -1157,7 +1157,7 @@ final class ContactsManagerTests: XCTestCase {
         let savedLabels = SavedContactLabels()
         let manager = ContactsManager(
             fetchRemoteProfile: { _, _ in throw profileTransportError },
-            saveContactLabel: { await savedLabels.save($0, label: $1) }
+            saveContactLabel: { publicKey, label, _ in await savedLabels.save(publicKey, label: label) }
         )
         let bulk = HeldProfileLookups(profiles: [:])
         await bulk.hold()
@@ -1176,9 +1176,11 @@ final class ContactsManagerTests: XCTestCase {
 
         // The user adds two tags while it is still held.
         let shown = try XCTUnwrap(manager.contacts.first?.profile)
-        let first = manager.updateContactTags(publicKey: contactProfileKey, shownProfile: shown, isSessionCurrent: { true }) { $0 + ["friend"] }
+        let first = manager.updateContactTags(
+            publicKey: contactProfileKey, shownProfile: shown, expectedIdentity: "owner", isSessionCurrent: { true }
+        ) { $0 + ["friend"] }
         let second = manager.updateContactTags(
-            publicKey: contactProfileKey, shownProfile: shown.withTags(["friend"]), isSessionCurrent: { true }
+            publicKey: contactProfileKey, shownProfile: shown.withTags(["friend"]), expectedIdentity: "owner", isSessionCurrent: { true }
         ) { $0 + ["work"] }
         await interactive.release()
         await screenLookup.value
@@ -1210,12 +1212,12 @@ final class ContactsManagerTests: XCTestCase {
             let message = nextIdentityHasContact ? "when the next identity saved the same contact" : "when it has no such contact"
             ContactsManager.restoreContactProfileOverrides(nil)
             let session = TestPubkySession()
-            let store = SignedInContactStore(savedKeys: [contactProfileKey])
+            let store = SignedInContactStore(identity: "owner-a", savedKeys: [contactProfileKey])
             let interactive = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
             await interactive.hold()
             let manager = ContactsManager(
                 fetchRemoteProfile: { publicKey, _ in try await interactive.fetch(publicKey) },
-                saveContactLabel: { try await store.save($0, label: $1) }
+                saveContactLabel: { try await store.save($0, label: $1, expectedIdentity: $2) }
             )
             let bulk = HeldProfileLookups(profiles: [:])
             await bulk.hold()
@@ -1223,11 +1225,12 @@ final class ContactsManagerTests: XCTestCase {
             try await manager.loadContacts(for: "owner-a", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
 
             let shown = try XCTUnwrap(manager.contacts.first?.profile)
-            let first = manager.updateContactTags(publicKey: contactProfileKey, shownProfile: shown, isSessionCurrent: session.check()) {
-                $0 + ["friend"]
-            }
+            let first = manager.updateContactTags(
+                publicKey: contactProfileKey, shownProfile: shown, expectedIdentity: "owner-a", isSessionCurrent: session.check()
+            ) { $0 + ["friend"] }
             let second = manager.updateContactTags(
-                publicKey: contactProfileKey, shownProfile: shown.withTags(["friend"]), isSessionCurrent: session.check()
+                publicKey: contactProfileKey, shownProfile: shown.withTags(["friend"]), expectedIdentity: "owner-a",
+                isSessionCurrent: session.check()
             ) { $0 + ["work"] }
             // The first change takes the contact's lookup over, and the lookup is held.
             while await interactive.heldCount < 1 {
@@ -1240,7 +1243,7 @@ final class ContactsManagerTests: XCTestCase {
             ContactsManager.restoreContactProfileOverrides(nil)
             // Another identity signs in and loads its contacts, whose own lookups are held.
             session.change()
-            await store.signIn(savedKeys: nextIdentityHasContact ? [contactProfileKey] : [])
+            await store.signIn(identity: "owner-b", savedKeys: nextIdentityHasContact ? [contactProfileKey] : [])
             let nextRecords = nextIdentityHasContact ? [unprofiledRecord(key: contactProfileKey, label: "Bob's label")] : []
             let nextBulk = HeldProfileLookups(profiles: [:])
             await nextBulk.hold()
@@ -1279,12 +1282,12 @@ final class ContactsManagerTests: XCTestCase {
             let message = resetsContacts ? "after a reset" : "once the session ends"
             ContactsManager.restoreContactProfileOverrides(nil)
             let session = TestPubkySession()
-            let store = SignedInContactStore(savedKeys: [contactProfileKey])
+            let store = SignedInContactStore(identity: "owner", savedKeys: [contactProfileKey])
             let interactive = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
             await interactive.hold()
             let manager = ContactsManager(
                 fetchRemoteProfile: { publicKey, _ in try await interactive.fetch(publicKey) },
-                saveContactLabel: { try await store.save($0, label: $1) }
+                saveContactLabel: { try await store.save($0, label: $1, expectedIdentity: $2) }
             )
             let bulk = HeldProfileLookups(profiles: [:])
             await bulk.hold()
@@ -1295,6 +1298,7 @@ final class ContactsManagerTests: XCTestCase {
             let stale = manager.updateContactTags(
                 publicKey: contactProfileKey,
                 shownProfile: shown,
+                expectedIdentity: "owner",
                 isSessionCurrent: resetsContacts ? { true } : session.check()
             ) { $0 + ["friend"] }
             while await interactive.heldCount < 1 {
@@ -1309,9 +1313,9 @@ final class ContactsManagerTests: XCTestCase {
                 let nextRecords = [contactRecord(key: contactProfileKey, name: "Alice")]
                 try await manager.loadContacts(for: "owner", fetchContactRecords: { nextRecords }, fetchRemoteProfile: { _ in nil })
                 let next = try XCTUnwrap(manager.contacts.first?.profile)
-                let change = manager.updateContactTags(publicKey: contactProfileKey, shownProfile: next, isSessionCurrent: { true }) {
-                    $0 + ["new"]
-                }
+                let change = manager.updateContactTags(
+                    publicKey: contactProfileKey, shownProfile: next, expectedIdentity: "owner", isSessionCurrent: { true }
+                ) { $0 + ["new"] }
                 let nextSaved = expectation(description: "The next session's change saves while the old lookup is still held")
                 Task {
                     _ = await change.result
@@ -1342,26 +1346,28 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
-    /// The save itself was admitted, so it runs, but a sign-out and another identity's sign-in land before it returns. The
-    /// save may then succeed or fail; either way nothing is published for the next identity.
+    /// The save itself was admitted and waits for the SDK lock, but a sign-out and another identity's sign-in land before it
+    /// gets it: after the last check before the save, before the SDK writes. The next identity may have saved a contact with
+    /// the same key, which the SDK would accept a save for, or not. Either way the SDK refuses the save, since it is for the
+    /// identity that signed out, so it writes nothing and nothing is published for the next identity.
     func testTagSaveThatASessionChangeOvertakesPublishesNothing() async throws {
         let savedOverrides = ContactsManager.backupContactProfileOverrides()
         addTeardownBlock { ContactsManager.restoreContactProfileOverrides(savedOverrides) }
 
-        for heldSaveSucceeds in [true, false] {
-            let message = heldSaveSucceeds ? "after a save that succeeds" : "after a save that fails"
+        for nextIdentityHasContact in [true, false] {
+            let message = nextIdentityHasContact ? "when the next identity saved the same contact" : "when it has no such contact"
             ContactsManager.restoreContactProfileOverrides(nil)
             let session = TestPubkySession()
-            let store = SignedInContactStore(savedKeys: [contactProfileKey])
+            let store = SignedInContactStore(identity: "owner-a", savedKeys: [contactProfileKey])
             await store.hold()
-            let manager = ContactsManager(saveContactLabel: { try await store.save($0, label: $1) })
+            let manager = ContactsManager(saveContactLabel: { try await store.save($0, label: $1, expectedIdentity: $2) })
             let records = [contactRecord(key: contactProfileKey, name: "Alice")]
             try await manager.loadContacts(for: "owner-a", fetchContactRecords: { records }, fetchRemoteProfile: { _ in nil })
 
             let shown = try XCTUnwrap(manager.contacts.first?.profile)
-            let change = manager.updateContactTags(publicKey: contactProfileKey, shownProfile: shown, isSessionCurrent: session.check()) {
-                $0 + ["friend"]
-            }
+            let change = manager.updateContactTags(
+                publicKey: contactProfileKey, shownProfile: shown, expectedIdentity: "owner-a", isSessionCurrent: session.check()
+            ) { $0 + ["friend"] }
             while await store.heldCount < 1 {
                 await Task.yield()
             }
@@ -1370,7 +1376,7 @@ final class ContactsManagerTests: XCTestCase {
             manager.reset()
             ContactsManager.restoreContactProfileOverrides(nil)
             session.change()
-            await store.signIn(savedKeys: heldSaveSucceeds ? [contactProfileKey] : [])
+            await store.signIn(identity: "owner-b", savedKeys: nextIdentityHasContact ? [contactProfileKey] : [])
             let nextRecords = [contactRecord(key: contactProfileKey, name: "Bob's Alice")]
             try await manager.loadContacts(for: "owner-b", fetchContactRecords: { nextRecords }, fetchRemoteProfile: { _ in nil })
 
@@ -1381,22 +1387,118 @@ final class ContactsManagerTests: XCTestCase {
                 XCTFail("A save the sign-out overtook must not report an error \(message): \(error)")
             }
 
+            let saved = await store.savedLabels
+            XCTAssertEqual(saved, [], "Nothing is written to the next identity's contacts \(message)")
+            let refused = await store.refusedIdentities
+            XCTAssertEqual(refused, ["owner-a"], "The SDK refuses the save for the identity that signed out \(message)")
             XCTAssertNil(ContactsManager.backupContactProfileOverrides(), "No override is written back \(message)")
             XCTAssertEqual(manager.contacts.map(\.displayName), ["Bob's Alice"], "The next identity's row is unchanged \(message)")
             XCTAssertEqual(manager.contacts.map(\.profile.tags), [[]], message)
         }
     }
 
+    /// Like a tag change, an edit's save that waits for the SDK lock while a sign-out and another identity's sign-in land is
+    /// refused for the identity that signed out, writes nothing and reports nothing.
+    func testContactEditThatASessionChangeOvertakesWhileItSavesWritesNothing() async throws {
+        let savedOverrides = ContactsManager.backupContactProfileOverrides()
+        addTeardownBlock { ContactsManager.restoreContactProfileOverrides(savedOverrides) }
+        ContactsManager.restoreContactProfileOverrides(nil)
+        let session = TestPubkySession()
+        let store = SignedInContactStore(identity: "owner-a", savedKeys: [contactProfileKey])
+        await store.hold()
+        let manager = ContactsManager(saveContactLabel: { try await store.save($0, label: $1, expectedIdentity: $2) })
+        let records = [contactRecord(key: contactProfileKey, name: "Alice")]
+        try await manager.loadContacts(for: "owner-a", fetchContactRecords: { records }, fetchRemoteProfile: { _ in nil })
+
+        let screen = ContactEditScreen(manager: manager, publicKey: contactProfileKey)
+        screen.edit {
+            $0.name = "My Alice"
+            $0.tags = ["friend"]
+        }
+        let save = Task {
+            try await manager.saveContactEdit(publicKey: contactProfileKey, expectedIdentity: "owner-a", isSessionCurrent: session.check()) {
+                try await screen.makeEdit()
+            }
+        }
+        while await store.heldCount < 1 {
+            await Task.yield()
+        }
+
+        session.change()
+        manager.reset()
+        ContactsManager.restoreContactProfileOverrides(nil)
+        session.change()
+        await store.signIn(identity: "owner-b", savedKeys: [contactProfileKey])
+        let nextRecords = [contactRecord(key: contactProfileKey, name: "Bob's Alice")]
+        try await manager.loadContacts(for: "owner-b", fetchContactRecords: { nextRecords }, fetchRemoteProfile: { _ in nil })
+
+        await store.release()
+        var savedProfile: Bitkit.PubkyProfile?
+        do {
+            savedProfile = try await save.value
+        } catch {
+            XCTFail("An edit the sign-out overtook must not report an error, so no toast shows: \(error)")
+        }
+
+        XCTAssertNil(savedProfile, "Nothing is reported saved, so no toast shows and the screen does not navigate")
+        let saved = await store.savedLabels
+        XCTAssertEqual(saved, [], "Nothing is written to the next identity's contact")
+        let refused = await store.refusedIdentities
+        XCTAssertEqual(refused, ["owner-a"], "The SDK refuses the save for the identity that signed out")
+        XCTAssertNil(ContactsManager.backupContactProfileOverrides(), "No override is written back")
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Bob's Alice"])
+        XCTAssertEqual(manager.contacts.map(\.profile.tags), [[]])
+    }
+
+    /// The SDK refuses a save because another identity is signed in while the session check still holds, as it can for a
+    /// sign-in the session check has not seen yet. A tag change and an edit treat the refusal as stale and drop it quietly.
+    func testContactSaveTheSdkRefusesForAnotherIdentityIsDroppedQuietly() async throws {
+        let savedOverrides = ContactsManager.backupContactProfileOverrides()
+        addTeardownBlock { ContactsManager.restoreContactProfileOverrides(savedOverrides) }
+        ContactsManager.restoreContactProfileOverrides(nil)
+        let store = SignedInContactStore(identity: "owner-b", savedKeys: [contactProfileKey])
+        let manager = ContactsManager(saveContactLabel: { try await store.save($0, label: $1, expectedIdentity: $2) })
+        let records = [contactRecord(key: contactProfileKey, name: "Alice")]
+        try await manager.loadContacts(for: "owner-a", fetchContactRecords: { records }, fetchRemoteProfile: { _ in nil })
+        let shown = try XCTUnwrap(manager.contacts.first?.profile)
+
+        let change = manager.updateContactTags(
+            publicKey: contactProfileKey, shownProfile: shown, expectedIdentity: "owner-a", isSessionCurrent: { true }
+        ) { $0 + ["friend"] }
+        do {
+            try await change.value
+        } catch {
+            XCTFail("A refused tag change must not report an error, so no toast shows: \(error)")
+        }
+        var savedProfile: Bitkit.PubkyProfile?
+        do {
+            savedProfile = try await manager.saveContactEdit(publicKey: contactProfileKey, expectedIdentity: "owner-a", isSessionCurrent: { true }) {
+                ContactEdit(name: "My Alice", bio: "", imageUrl: nil, links: [], tags: ["friend"])
+            }
+        } catch {
+            XCTFail("A refused edit must not report an error, so no toast shows: \(error)")
+        }
+
+        XCTAssertNil(savedProfile, "Nothing is reported saved, so Edit Contact shows no toast and does not navigate")
+        let refused = await store.refusedIdentities
+        XCTAssertEqual(refused, ["owner-a", "owner-a"])
+        let saved = await store.savedLabels
+        XCTAssertEqual(saved, [])
+        XCTAssertNil(ContactsManager.backupContactProfileOverrides(), "No override is written")
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Alice"], "The row is unchanged")
+        XCTAssertEqual(manager.contacts.map(\.profile.tags), [[]])
+    }
+
     func testContactEditWaitsForTheContactsLookupAndSavesOverTheProfileItFinds() async throws {
         let savedOverrides = ContactsManager.backupContactProfileOverrides()
         addTeardownBlock { ContactsManager.restoreContactProfileOverrides(savedOverrides) }
         ContactsManager.restoreContactProfileOverrides(nil)
-        let store = SignedInContactStore(savedKeys: [contactProfileKey])
+        let store = SignedInContactStore(identity: "owner", savedKeys: [contactProfileKey])
         let interactive = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
         await interactive.hold()
         let manager = ContactsManager(
             fetchRemoteProfile: { publicKey, _ in try await interactive.fetch(publicKey) },
-            saveContactLabel: { try await store.save($0, label: $1) }
+            saveContactLabel: { try await store.save($0, label: $1, expectedIdentity: $2) }
         )
         let bulk = HeldProfileLookups(profiles: [:])
         await bulk.hold()
@@ -1406,7 +1508,7 @@ final class ContactsManagerTests: XCTestCase {
         let screen = ContactEditScreen(manager: manager, publicKey: contactProfileKey)
         screen.edit { $0.tags = ["friend"] }
         let save = Task {
-            try await manager.saveContactEdit(publicKey: contactProfileKey, isSessionCurrent: { true }) {
+            try await manager.saveContactEdit(publicKey: contactProfileKey, expectedIdentity: "owner", isSessionCurrent: { true }) {
                 try await screen.makeEdit()
             }
         }
@@ -1444,12 +1546,12 @@ final class ContactsManagerTests: XCTestCase {
             let message = nextIdentityHasContact ? "when the next identity saved the same contact" : "when it has no such contact"
             ContactsManager.restoreContactProfileOverrides(nil)
             let session = TestPubkySession()
-            let store = SignedInContactStore(savedKeys: [contactProfileKey])
+            let store = SignedInContactStore(identity: "owner-a", savedKeys: [contactProfileKey])
             let interactive = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
             await interactive.hold()
             let manager = ContactsManager(
                 fetchRemoteProfile: { publicKey, _ in try await interactive.fetch(publicKey) },
-                saveContactLabel: { try await store.save($0, label: $1) }
+                saveContactLabel: { try await store.save($0, label: $1, expectedIdentity: $2) }
             )
             let bulk = HeldProfileLookups(profiles: [:])
             await bulk.hold()
@@ -1465,7 +1567,9 @@ final class ContactsManagerTests: XCTestCase {
                 $0.tags = ["friend"]
             }
             let save = Task {
-                try await manager.saveContactEdit(publicKey: contactProfileKey, isSessionCurrent: session.check()) {
+                try await manager.saveContactEdit(
+                    publicKey: contactProfileKey, expectedIdentity: "owner-a", isSessionCurrent: session.check()
+                ) {
                     try await screen.makeEdit()
                 }
             }
@@ -1479,7 +1583,7 @@ final class ContactsManagerTests: XCTestCase {
             ContactsManager.restoreContactProfileOverrides(nil)
             // Another identity signs in and loads its contacts, whose own lookups are held.
             session.change()
-            await store.signIn(savedKeys: nextIdentityHasContact ? [contactProfileKey] : [])
+            await store.signIn(identity: "owner-b", savedKeys: nextIdentityHasContact ? [contactProfileKey] : [])
             let nextRecords = nextIdentityHasContact ? [unprofiledRecord(key: contactProfileKey, label: "Bob's label")] : []
             let nextBulk = HeldProfileLookups(profiles: [:])
             await nextBulk.hold()
@@ -1522,14 +1626,14 @@ final class ContactsManagerTests: XCTestCase {
                 let message = "\(resetsContacts ? "after a reset" : "once the session ends") during the \(wait)"
                 ContactsManager.restoreContactProfileOverrides(nil)
                 let session = TestPubkySession()
-                let store = SignedInContactStore(savedKeys: [contactProfileKey])
+                let store = SignedInContactStore(identity: "owner", savedKeys: [contactProfileKey])
                 let interactive = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
                 if wait == "lookup" {
                     await interactive.hold()
                 }
                 let manager = ContactsManager(
                     fetchRemoteProfile: { publicKey, _ in try await interactive.fetch(publicKey) },
-                    saveContactLabel: { try await store.save($0, label: $1) }
+                    saveContactLabel: { try await store.save($0, label: $1, expectedIdentity: $2) }
                 )
                 let bulk = HeldProfileLookups(profiles: [:])
                 await bulk.hold()
@@ -1556,6 +1660,7 @@ final class ContactsManagerTests: XCTestCase {
                 let save = Task {
                     try await manager.saveContactEdit(
                         publicKey: contactProfileKey,
+                        expectedIdentity: "owner",
                         isSessionCurrent: resetsContacts ? { true } : session.check()
                     ) {
                         guard wait != "lookup" else { return try await screen.makeEdit() }
@@ -2102,10 +2207,14 @@ private final class ContactEditScreen {
 private struct ContactNotSavedError: Error {}
 
 /// Stands in for the SDK's contact storage of whichever identity is signed in. Like the SDK, it saves a label only for a
-/// contact that identity has saved. It can hold saves until released.
+/// contact that identity has saved, and only while the identity the save is for is signed in, checked together with the
+/// write. It can hold saves, as the SDK lock would, until released.
 private actor SignedInContactStore {
+    private var identity: String
     private var savedKeys: Set<String>
     private(set) var savedLabels: [String] = []
+    /// The identity each save it refused was for.
+    private(set) var refusedIdentities: [String] = []
     private var isHolding = false
     private var held: [CheckedContinuation<Void, Never>] = []
 
@@ -2113,11 +2222,13 @@ private actor SignedInContactStore {
         held.count
     }
 
-    init(savedKeys: Set<String>) {
+    init(identity: String, savedKeys: Set<String>) {
+        self.identity = identity
         self.savedKeys = savedKeys
     }
 
-    func signIn(savedKeys: Set<String>) {
+    func signIn(identity: String, savedKeys: Set<String>) {
+        self.identity = identity
         self.savedKeys = savedKeys
     }
 
@@ -2131,9 +2242,13 @@ private actor SignedInContactStore {
         held.removeAll()
     }
 
-    func save(_ publicKey: String, label: String) async throws {
+    func save(_ publicKey: String, label: String, expectedIdentity: String) async throws {
         if isHolding {
             await withCheckedContinuation { held.append($0) }
+        }
+        guard expectedIdentity == identity else {
+            refusedIdentities.append(expectedIdentity)
+            throw PubkyServiceError.identityChanged
         }
         guard savedKeys.contains(publicKey) else { throw ContactNotSavedError() }
         savedLabels.append(label)

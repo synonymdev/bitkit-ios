@@ -141,7 +141,8 @@ struct EditContactView: View {
     // MARK: - Save
 
     /// The save belongs to the Pubky session Save was tapped in. Once that session ends, even while the save still waits
-    /// for the contact's profile or uploads the avatar, it stops quietly, with no toast and no navigation.
+    /// for the contact's profile or uploads the avatar, it stops quietly, with no toast and no navigation. The avatar upload
+    /// and the contact save each write nothing once another identity is signed in.
     private func saveContact() async {
         let pubkyProfile = pubkyProfile
         guard !form.trimmedName.isEmpty, let session = pubkyProfile.currentSession else { return }
@@ -152,11 +153,12 @@ struct EditContactView: View {
         do {
             let savedProfile = try await contactsManager.saveContactEdit(
                 publicKey: publicKey,
+                expectedIdentity: session.publicKey,
                 isSessionCurrent: { pubkyProfile.currentSession == session }
             ) {
                 fillFormFromContact()
                 let uploadedImageUrl = if let avatarImage {
-                    try await pubkyProfile.uploadAvatar(image: avatarImage)
+                    try await pubkyProfile.uploadAvatar(image: avatarImage, expectedIdentity: session.publicKey)
                 } else {
                     form.imageUrl
                 }

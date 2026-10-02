@@ -244,6 +244,7 @@ struct ContactDetailView: View {
         let change = contactsManager.updateContactTags(
             publicKey: publicKey,
             shownProfile: current,
+            expectedIdentity: session.publicKey,
             isSessionCurrent: { pubkyProfile.currentSession == session },
             transform: transform
         )

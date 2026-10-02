@@ -10,6 +10,8 @@ enum PubkyServiceError: LocalizedError {
     case authFailed(String)
     case profileNotFound
     case activeSubscription(endsAt: Date?)
+    /// A write was for an identity that is no longer the signed-in one, so it wrote nothing.
+    case identityChanged
 
     var errorDescription: String? {
         switch self {
@@ -23,6 +25,8 @@ enum PubkyServiceError: LocalizedError {
             return "Profile not found"
         case .activeSubscription:
             return "Contact has an active subscription"
+        case .identityChanged:
+            return "The Pubky identity changed"
         }
     }
 }
@@ -278,8 +282,8 @@ enum PubkyService {
         _ = try await PaykitSdkService.shared.publishPaykitProfile(profile)
     }
 
-    static func uploadProfileAvatar(bytes: Data, contentType: String) async throws -> String {
-        try await PaykitSdkService.shared.uploadProfileAvatar(bytes: bytes, contentType: contentType)
+    static func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String? = nil) async throws -> String {
+        try await PaykitSdkService.shared.uploadProfileAvatar(bytes: bytes, contentType: contentType, expectedIdentity: expectedIdentity)
     }
 
     static func deletePaykitProfile() async throws {
@@ -297,13 +301,14 @@ enum PubkyService {
     }
 
     static func saveContact(publicKey: String, label: String?, receiverPaths: [String]? = nil,
-                            restorePrivateConnection: Bool = false) async throws -> Paykit.ContactRecord
+                            restorePrivateConnection: Bool = false, expectedIdentity: String? = nil) async throws -> Paykit.ContactRecord
     {
         try await PaykitSdkService.shared.saveContact(
             publicKey: publicKey,
             label: label,
             receiverPaths: receiverPaths,
-            restorePrivateConnection: restorePrivateConnection
+            restorePrivateConnection: restorePrivateConnection,
+            expectedIdentity: expectedIdentity
         )
     }
 
@@ -689,13 +694,19 @@ actor PaykitSdkService {
         }
     }
 
+    /// With `expectedIdentity`, it saves only while that identity is signed in, checked in the same locked operation as the
+    /// save, so a save that a sign-out or another identity's sign-in overtakes writes nothing and throws `identityChanged`.
     func saveContact(
         publicKey: String,
         label: String?,
         receiverPaths: [String]? = nil,
-        restorePrivateConnection: Bool = false
+        restorePrivateConnection: Bool = false,
+        expectedIdentity: String? = nil
     ) async throws -> Paykit.ContactRecord {
         try await withStateRevisionTracking { sdk in
+            if let expectedIdentity {
+                try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            }
             let existing = try await sdk.contactRecord(publicKey: publicKey)
             guard restorePrivateConnection || existing != nil else { throw PubkyServiceError.profileNotFound }
             let existingPaths = existing?.receiverPaths ?? []
@@ -1307,6 +1318,16 @@ actor PaykitSdkService {
         sessionProvider.suspendStoredSessionAccess()
         defer { sessionProvider.resumeStoredSessionAccess() }
         return try await handle().identityStatus()?.publicKey
+    }
+
+    /// Throws `identityChanged` unless `expectedIdentity` is the identity `sdk` is signed in as. Run it inside the locked
+    /// operation of the write it guards: sign-in and sign-out also take `operationLock`, so neither can land between this
+    /// check and the write.
+    private nonisolated static func requireSignedInIdentity(_ expectedIdentity: String, in sdk: PaykitSdk) async throws {
+        let signedInIdentity = try await sdk.identityStatus()?.publicKey
+        guard PubkyPublicKeyFormat.matches(signedInIdentity, expectedIdentity) else {
+            throw PubkyServiceError.identityChanged
+        }
     }
 
     private nonisolated static func publicKeysMatch(_ lhs: String?, _ rhs: String) -> Bool {

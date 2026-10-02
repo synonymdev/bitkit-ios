@@ -146,7 +146,7 @@ class ContactsManager: ObservableObject {
     private let contactRecords: @Sendable () async throws -> [ContactRecord]
     private let fetchFollows: @Sendable (String) async throws -> [String]
     private let fetchRemoteProfile: @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile?
-    private let saveContactLabel: @Sendable (_ publicKey: String, _ label: String) async throws -> Void
+    private let saveContactLabel: @Sendable (_ publicKey: String, _ label: String, _ expectedIdentity: String) async throws -> Void
     private let removeContactRecord: @Sendable (_ publicKey: String) async throws -> Void
     private let forgetRemovedContacts: @Sendable (_ publicKeys: [String]) async -> Void
     private let currentDate: @Sendable () -> Date
@@ -157,8 +157,8 @@ class ContactsManager: ObservableObject {
         fetchRemoteProfile: @escaping @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile? = {
             try await ContactsManager.remoteContactProfile(publicKey: $0, priority: $1)
         },
-        saveContactLabel: @escaping @Sendable (_ publicKey: String, _ label: String) async throws -> Void = {
-            _ = try await PubkyService.saveContact(publicKey: $0, label: $1)
+        saveContactLabel: @escaping @Sendable (_ publicKey: String, _ label: String, _ expectedIdentity: String) async throws -> Void = {
+            _ = try await PubkyService.saveContact(publicKey: $0, label: $1, expectedIdentity: $2)
         },
         removeContactRecord: @escaping @Sendable (_ publicKey: String) async throws -> Void = {
             _ = try await PubkyService.removeContact(publicKey: $0)
@@ -699,8 +699,11 @@ class ContactsManager: ObservableObject {
     /// false, or a reset or another owner's load has run, it stops quietly and returns nil: `makeEdit` does not run, or its
     /// result or error is dropped, and it saves nothing, writes no local override and reports no error. The lookup or
     /// upload it waits for can finish after a sign-out, and the next identity may have saved a contact with the same key.
+    /// `expectedIdentity` is the pubky signed in when Save was tapped. The save is refused unless it is still signed in
+    /// when the save runs, and that refusal is dropped just as quietly.
     func saveContactEdit(
         publicKey: String,
+        expectedIdentity: String,
         isSessionCurrent: @escaping @MainActor () -> Bool,
         makeEdit: @MainActor () async throws -> ContactEdit
     ) async throws -> PubkyProfile? {
@@ -721,6 +724,7 @@ class ContactsManager: ObservableObject {
             imageUrl: edit.imageUrl,
             links: edit.links,
             tags: edit.tags,
+            expectedIdentity: expectedIdentity,
             isCurrent: isCurrent
         )
     }
@@ -729,6 +733,10 @@ class ContactsManager: ObservableObject {
     /// and the writes after it. Sign-out clears the local overrides, so a save that lands after the session changed must
     /// not write one back, and its error, if any, belongs to a session the user has left. Returns the saved profile, or
     /// nil when the save was dropped.
+    ///
+    /// The session can still change after that first check, while the save waits for the SDK. So the SDK checks that
+    /// `expectedIdentity` is still signed in, in the same locked operation as its write, and otherwise writes nothing and
+    /// throws `identityChanged`, which is dropped like any other save `isCurrent` no longer holds for.
     @discardableResult
     private func updateContact(
         publicKey: String,
@@ -737,6 +745,7 @@ class ContactsManager: ObservableObject {
         imageUrl: String?,
         links: [PubkyProfileLink],
         tags: [String],
+        expectedIdentity: String,
         isCurrent: @MainActor () -> Bool
     ) async throws -> PubkyProfile? {
         let prefixedKey = ensurePubkyPrefix(publicKey)
@@ -753,8 +762,11 @@ class ContactsManager: ObservableObject {
         let saveContactLabel = saveContactLabel
         do {
             try await Task.detached {
-                try await saveContactLabel(prefixedKey, name)
+                try await saveContactLabel(prefixedKey, name, expectedIdentity)
             }.value
+        } catch PubkyServiceError.identityChanged {
+            Logger.info("Dropped a contact update for an identity that is no longer signed in", context: "ContactsManager")
+            return nil
         } catch {
             guard isCurrent() else { return nil }
             throw error
@@ -783,9 +795,12 @@ class ContactsManager: ObservableObject {
     /// A change belongs to the session it was queued in. Once `isSessionCurrent` is false, or a reset or another owner's
     /// load has run, it stops quietly: it saves nothing, writes no local override and reports no error. A lookup it waits
     /// for can still finish after a sign-out, and the next identity may have saved a contact with the same key.
+    /// `expectedIdentity` is the pubky signed in when the change was queued. The save is refused unless it is still signed
+    /// in when the save runs, and that refusal is dropped just as quietly.
     func updateContactTags(
         publicKey: String,
         shownProfile: PubkyProfile,
+        expectedIdentity: String,
         isSessionCurrent: @escaping @MainActor () -> Bool,
         transform: @escaping ([String]) -> [String]
     ) -> Task<Void, Error> {
@@ -805,6 +820,7 @@ class ContactsManager: ObservableObject {
                 imageUrl: latest.imageUrl,
                 links: latest.links,
                 tags: transform(latest.tags),
+                expectedIdentity: expectedIdentity,
                 isCurrent: isCurrent
             )
         }

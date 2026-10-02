@@ -57,6 +57,7 @@ class PubkyProfileManager: ObservableObject {
 
     typealias RemoteProfileResolver = @Sendable (String) async throws -> PubkyProfile
     typealias ProfilePublisher = @Sendable (PubkyProfileData) async throws -> Void
+    typealias AvatarUploader = @Sendable (_ jpegData: Data, _ expectedIdentity: String?) async throws -> String
 
     private enum SessionInitializationMode {
         case userVisible
@@ -94,6 +95,7 @@ class PubkyProfileManager: ObservableObject {
     private static var sessionMutationCount = 0
     private let remoteProfileResolver: RemoteProfileResolver
     private let profilePublisher: ProfilePublisher
+    private let avatarUploader: AvatarUploader
     /// Bumped whenever a profile save starts, `profile` is written or the identity changes, so a remote read that started
     /// earlier is dropped.
     private var profileWriteGeneration = 0
@@ -114,10 +116,14 @@ class PubkyProfileManager: ObservableObject {
 
     init(
         remoteProfileResolver: @escaping RemoteProfileResolver = { try await PubkyProfileManager.resolveRemoteProfile(publicKey: $0) },
-        profilePublisher: @escaping ProfilePublisher = { try await PubkyService.publishPaykitProfile($0.toPaykitProfile()) }
+        profilePublisher: @escaping ProfilePublisher = { try await PubkyService.publishPaykitProfile($0.toPaykitProfile()) },
+        avatarUploader: @escaping AvatarUploader = {
+            try await PubkyService.uploadProfileAvatar(bytes: $0, contentType: "image/jpeg", expectedIdentity: $1)
+        }
     ) {
         self.remoteProfileResolver = remoteProfileResolver
         self.profilePublisher = profilePublisher
+        self.avatarUploader = avatarUploader
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
         cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
         cachedProfileOwner = UserDefaults.standard.string(forKey: Self.cachedProfileOwnerKey)
@@ -345,11 +351,12 @@ class PubkyProfileManager: ObservableObject {
         return try decoder.decode(HomegateResponse.self, from: data)
     }
 
-    /// Upload an avatar image to the user's homeserver blob storage. Returns the `pubky://` URI.
-    func uploadAvatar(image: UIImage) async throws -> String {
+    /// Upload an avatar image to the user's homeserver blob storage. Returns the `pubky://` URI. With `expectedIdentity`,
+    /// the upload writes nothing and fails unless that identity is still signed in, with a live session, when it runs.
+    func uploadAvatar(image: UIImage, expectedIdentity: String? = nil) async throws -> String {
         _ = try activeSessionSecret()
         let imageData = try compressAvatar(image)
-        return try await PubkyService.uploadProfileAvatar(bytes: imageData, contentType: "image/jpeg")
+        return try await avatarUploader(imageData, expectedIdentity)
     }
 
     private func compressAvatar(_ image: UIImage, maxSize: CGFloat = 400) throws -> Data {

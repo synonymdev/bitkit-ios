@@ -1,6 +1,7 @@
 @testable import Bitkit
 import class Paykit.PubkySessionAccess
 import struct Paykit.PubkySessionBootstrapResult
+import UIKit
 import XCTest
 
 final class PubkyProfileManagerTests: XCTestCase {
@@ -1337,6 +1338,24 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
     }
 
+    // MARK: - Avatar uploads
+
+    /// Edit Contact uploads a new avatar for the identity Save was tapped in. The upload hands that identity to the SDK,
+    /// which writes nothing once another identity is signed in.
+    @MainActor
+    func testAvatarUploadIsForTheIdentityItWasStartedFor() async throws {
+        try await withStoredSessionSecret {
+            let uploads = AvatarUploads()
+            let manager = PubkyProfileManager(avatarUploader: { try await uploads.upload($0, expectedIdentity: $1) })
+
+            let uri = try await manager.uploadAvatar(image: makeAvatarImage(), expectedIdentity: ringKeyA)
+
+            XCTAssertEqual(uri, uploadedAvatarUri)
+            let identities = await uploads.expectedIdentities
+            XCTAssertEqual(identities, [ringKeyA])
+        }
+    }
+
     // MARK: - Cached profile preview
 
     @MainActor
@@ -2508,6 +2527,28 @@ final class PubkyProfileManagerTests: XCTestCase {
         )
     }
 
+    /// Runs `body` with a stored Pubky session secret, restoring whatever was stored before.
+    @MainActor
+    private func withStoredSessionSecret(_ body: () async throws -> Void) async throws {
+        let savedSession = try Keychain.load(key: .paykitSession)
+        defer {
+            if let savedSession {
+                try? Keychain.upsert(key: .paykitSession, data: savedSession)
+            } else {
+                try? Keychain.delete(key: .paykitSession)
+            }
+        }
+        try Keychain.upsert(key: .paykitSession, data: Data("saved-session".utf8))
+        try await body()
+    }
+
+    private func makeAvatarImage() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+    }
+
     /// Profile commits and clears write these keys to the standard defaults.
     @MainActor
     private func withRestoredProfileDefaults(_ body: () async throws -> Void) async rethrows {
@@ -2707,6 +2748,18 @@ private actor RemoteProfileStub {
 
     private func named(_ message: String) -> String {
         caseName.map { "\($0): \(message)" } ?? message
+    }
+}
+
+private let uploadedAvatarUri = "pubky://uploaded/avatar.jpg"
+
+/// Stands in for the SDK's avatar upload: records the identity each upload is for.
+private actor AvatarUploads {
+    private(set) var expectedIdentities: [String?] = []
+
+    func upload(_: Data, expectedIdentity: String?) -> String {
+        expectedIdentities.append(expectedIdentity)
+        return uploadedAvatarUri
     }
 }
 
