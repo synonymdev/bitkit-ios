@@ -52,8 +52,6 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var isProcessingRequests = false
     @ObservationIgnored private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
-    /// Covered requests waiting to be paid automatically: kept off the Send sheet until paid or found manual.
-    @ObservationIgnored private var waitingRequestIds: Set<PaykitPaymentRequest.ID> = []
 
     init(
         sdk: any PaykitAllowanceSdkHandling = PaykitSdkService.shared,
@@ -104,7 +102,6 @@ final class PaykitAllowanceManager {
         await executor.activate(identity: identity)
         if identityChanged {
             manualRequestIds = [:]
-            waitingRequestIds = []
             await executor.recover(identity: identity)
         }
         await refresh()
@@ -118,7 +115,6 @@ final class PaykitAllowanceManager {
         autoPaidRequestIds = []
         autoPaidSatsByAllowanceId = [:]
         manualRequestIds = [:]
-        waitingRequestIds = []
     }
 
     func refresh() async {
@@ -264,14 +260,9 @@ final class PaykitAllowanceManager {
     func processIncomingRequests(_ requests: [PaykitPaymentRequest]) async -> Bool {
         guard let identity, !isProcessingRequests else { return false }
         let signature = allowancesSignature
-        let covered = requests.filter {
-            $0.requiresAcceptance && coversRequest($0) && manualRequestIds[$0.id] != signature
-        }
+        let covered = requests.filter(isAwaitingAutomaticPayment)
         guard !covered.isEmpty else { return false }
-        guard canPayNow() else {
-            waitingRequestIds.formUnion(covered.map(\.id))
-            return false
-        }
+        guard canPayNow() else { return false }
 
         isProcessingRequests = true
         defer { isProcessingRequests = false }
@@ -281,14 +272,10 @@ final class PaykitAllowanceManager {
             switch result {
             case .started, .completed:
                 handledAny = true
-                waitingRequestIds.remove(request.id)
-            case .manual:
+            case .manual, .notCovered:
                 manualRequestIds[request.id] = signature
-                waitingRequestIds.remove(request.id)
             case .deferred:
-                waitingRequestIds.insert(request.id)
-            case .notCovered:
-                waitingRequestIds.remove(request.id)
+                break
             }
         }
         if handledAny {
@@ -297,9 +284,15 @@ final class PaykitAllowanceManager {
         return handledAny
     }
 
+    /// Whether the allowance flow owns the request, so no sheet may open for it. A covered request belongs to the flow
+    /// from the moment it arrives, even before the first pass over it, until that pass finds it manual.
     func isAutomaticallyHandling(_ request: PaykitPaymentRequest) async -> Bool {
-        if waitingRequestIds.contains(request.id), coversRequest(request) { return true }
+        if isAwaitingAutomaticPayment(request) { return true }
         return await executor.isHandling(request.id)
+    }
+
+    private func isAwaitingAutomaticPayment(_ request: PaykitPaymentRequest) -> Bool {
+        request.requiresAcceptance && request.billingPeriod == nil && coversRequest(request) && manualRequestIds[request.id] != allowancesSignature
     }
 
     static let acceptanceClockTolerance: TimeInterval = 30

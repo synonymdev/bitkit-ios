@@ -139,6 +139,33 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerOwnsACoveredRequestBeforeTheFirstPassAndReleasesItOnceFoundManual() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        await harness.sdk.setCandidates([AllowanceHarness.candidate(blocked: .sharedRule(code: "amount_outside_range"))])
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            canPayNow: { true }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let covered = try Fixtures.paymentRequest()
+        let uncovered = try Fixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440002", counterparty: Fixtures.otherCounterpartyKey)
+
+        let ownsBeforeAnyPass = await manager.isAutomaticallyHandling(covered)
+        let ownsUncovered = await manager.isAutomaticallyHandling(uncovered)
+
+        XCTAssertTrue(ownsBeforeAnyPass, "No sheet may open between the request arriving and the first pass over it")
+        XCTAssertFalse(ownsUncovered)
+
+        _ = await manager.processIncomingRequests([covered, uncovered])
+
+        let ownsAfterManual = await manager.isAutomaticallyHandling(covered)
+        XCTAssertFalse(ownsAfterManual, "A request the pass found manual goes to the Send sheet")
+    }
+
+    @MainActor
     func testManagerKeepsADeferredRequestOffTheSendSheet() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
