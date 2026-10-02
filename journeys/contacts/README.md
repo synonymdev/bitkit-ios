@@ -1,9 +1,10 @@
 # Contacts
 
 `contacts-entry-points.xml` checks onboarding without an identity and the authenticated
-Contacts list. It is iOS-only. Saved-identity recovery from the drawer and Contacts intro,
-pending lookup, and leaving while lookup waits require storage or network fault injection,
-which the journey runner does not provide. Check those cases using the PR manual checks.
+Contacts list. It has not yet been ported to Android. Saved-identity recovery from the
+drawer and Contacts intro, pending lookup, and leaving while lookup waits require storage
+or network fault injection, which the journey runner does not provide. Check those cases
+using the PR manual checks.
 
 Import journeys require a disposable identity with a known following list. They save local Bitkit contacts; payment sharing remains a separate step.
 
