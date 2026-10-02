@@ -1259,7 +1259,11 @@ struct AppScene: View {
             guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet, app.contactPaymentContext == nil else { return }
             for request in requests {
                 guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
-                if await paykitAllowanceManager.isAutomaticallyHandling(request) { continue }
+                if await paykitAllowanceManager.isAutomaticallyHandling(request) {
+                    // The next refresh presents it if the allowance flow hands it back; presenting again now would spin on it.
+                    shouldPresentNextRequest = false
+                    continue
+                }
                 do {
                     let result = try await PrivatePaykitService.shared.beginPaymentRequest(request)
                     guard paykitPaymentRequestManager.isCurrentPresentation(request),
