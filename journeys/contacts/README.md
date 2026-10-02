@@ -8,6 +8,11 @@ using the PR manual checks.
 
 Import journeys require a disposable identity with a known following list. They save local Bitkit contacts; payment sharing remains a separate step.
 
+Continue waits for public payment setup, not private linking with every imported contact.
+Private preparation runs in the background. Repeat Import All with a large following list containing
+unavailable profiles, then delete a contact while preparation is running. It must not be republished
+after deletion. Unavailable private-link lookups are retried after five minutes rather than on each refresh.
+
 Network and storage fault injection are outside journey-runner capabilities. Manually disable
 connectivity after the preview has loaded: importing the prepared contacts must still finish.
 Simulate a failed local save: stay on import, preserve successful saves, and retry only missing

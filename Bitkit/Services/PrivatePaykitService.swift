@@ -71,6 +71,12 @@ actor PrivatePaykitService {
 
     var state: PrivatePaykitState
     var knownSavedContactKeys: Set<String> = []
+    var pendingPreparationKeys: Set<String> = []
+    var activePreparationKeys: Set<String> = []
+    var preparationTask: Task<Void, Never>?
+    var preparationGeneration = 0
+    var pendingForceRefreshLightning = false
+    var unavailableLinkRetryAt: [String: Date] = [:]
     var pendingMessageDrainRetryTask: Task<Void, Never>?
     var pendingMessageDrainRetryKeys: Set<String> = []
     var pendingMessageDrainRetryGeneration = 0

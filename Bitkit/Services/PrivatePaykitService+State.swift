@@ -4,6 +4,8 @@ import Foundation
 
 extension PrivatePaykitService {
     func closeAndClear() async {
+        invalidateContactPreparation()
+        unavailableLinkRetryAt.removeAll()
         pendingMessageDrainRetryTask?.cancel()
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()
