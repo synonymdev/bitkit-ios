@@ -11,7 +11,9 @@ struct PubkyChoiceView: View {
     @State private var ringProfiles: [String: PubkyProfile] = [:]
     @State private var didLoad = false
     @State private var adoptingPubky: String?
-    @State private var loadTask: Task<Void, Never>?
+    /// Bumped to look the rows up again. The `.task` keyed on it stops the previous lookup, and SwiftUI stops it when the
+    /// screen goes away.
+    @State private var ringLoadGeneration = 0
 
     private var hasRingIdentities: Bool {
         !ringPubkys.isEmpty
@@ -103,8 +105,7 @@ struct PubkyChoiceView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
-        .onAppear(perform: reloadIdentities)
-        .onDisappear(perform: cancelLoad)
+        .task(id: ringLoadGeneration) { await loadIdentities() }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             pubkyProfile.forgetRingIdentityMisses()
@@ -210,17 +211,13 @@ struct PubkyChoiceView: View {
     }
 
     private func reloadIdentities() {
-        loadTask?.cancel()
-        ringPubkys = SharedPubkyKeychain.listRingIdentities()
-        didLoad = true
-
-        let pubkys = ringPubkys
-        loadTask = Task { await pubkyProfile.loadRingIdentityProfiles(pubkys) }
+        ringLoadGeneration += 1
     }
 
-    private func cancelLoad() {
-        loadTask?.cancel()
-        loadTask = nil
+    private func loadIdentities() async {
+        ringPubkys = SharedPubkyKeychain.listRingIdentities()
+        didLoad = true
+        await pubkyProfile.loadRingIdentityProfiles(ringPubkys)
     }
 
     // MARK: - Background Illustrations
