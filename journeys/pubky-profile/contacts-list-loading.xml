@@ -14,7 +14,10 @@
     leaves exactly that. Use the test simulator UDID for &lt;UDID&gt;.
 
     A warm network can resolve every profile before the first snapshot; report "already resolved"
-    rather than failing. See README.md.
+    rather than failing. If the Pubky session is still restoring when Contacts is tapped, Contacts
+    shows the Profile loading screen first (id "ProfileLoading" under the "Profile" title) and moves
+    on to the list by itself once the session is back. That is the session restore, not the contacts
+    list. See README.md.
   </description>
   <actions>
     <action>Run `xcrun simctl terminate &lt;UDID&gt; to.bitkit`</action>

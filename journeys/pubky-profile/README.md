@@ -72,6 +72,11 @@ cached header needs initialization to finish, so wait for it to clear and do not
 header failing. A spinner under the "Profile" title with no name is different: it means no cached
 header showed.
 
+Contacts opened while the Pubky session is still restoring after a relaunch shows the Profile
+loading screen first (`ProfileLoading` under the "Profile" title) and moves on to the list by itself
+once the session is back. That is the session restore, not the contacts list, so wait for the list
+rather than reporting the spinner.
+
 ## iOS vs Android
 
 - **Profile while loading.** iOS shows the cached name and avatar read-only under
