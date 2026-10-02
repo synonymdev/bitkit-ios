@@ -1357,6 +1357,24 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(proposed.recurrence?.anchor, timestamp(now))
     }
 
+    func testReviewNamesTheFirstPeriodThatAcceptingPaysUnderTheClockOffset() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-02T08:00:30Z"))
+        let oneMonthLater = now.addingTimeInterval(31 * 24 * 60 * 60)
+        let recurrence = PaymentRequestRecurrence(
+            every: 1,
+            unit: "month",
+            startsAt: "2027-01-02T08:00:00Z",
+            anchor: "2027-01-02T08:00:00Z",
+            endsAt: nil
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(recurrence: recurrence)))
+
+        let reviewed = try XCTUnwrap(subscription.paymentDueOnAcceptance(at: oneMonthLater, acceptedAt: now))
+
+        XCTAssertEqual(reviewed.billingPeriod?.sdkValue.startsAt, "2027-01-02T08:00:00Z")
+        XCTAssertEqual(reviewed.billingPeriod?.sdkValue.endsAt, "2027-02-02T08:00:00Z")
+    }
+
     func testAcceptingSubscriptionWithClockOffsetKeepsFirstPeriodDue() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-01T08:00:30Z"))
         let oneMonthLater = now.addingTimeInterval(31 * 24 * 60 * 60)

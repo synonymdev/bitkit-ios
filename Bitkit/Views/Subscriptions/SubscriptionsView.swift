@@ -633,7 +633,7 @@ struct SubscriptionSheet: View {
     }
 
     private func review(_ subscription: PaykitSubscription) -> some View {
-        let payOnAcceptance = subscription.paymentDueOnAcceptance(at: now) != nil
+        let payOnAcceptance = subscription.paymentDueOnAcceptance(at: now, acceptedAt: Date()) != nil
         return VStack(spacing: 0) {
             SheetHeader(title: t("subscriptions__review_and_subscribe"))
             SubscriptionAmountHeader(subscription: subscription)
@@ -644,7 +644,7 @@ struct SubscriptionSheet: View {
             }
             .allowsHitTesting(!isAccepting)
 
-            if let period = subscription.paymentDueOnAcceptance(at: now)?.billingPeriod {
+            if let period = subscription.paymentDueOnAcceptance(at: now, acceptedAt: Date())?.billingPeriod {
                 BodySText(
                     t("subscriptions__first_period_ends", variables: ["date": period.endsAt.formatted(date: .abbreviated, time: .shortened)]),
                     textColor: .white64
@@ -806,7 +806,7 @@ struct SubscriptionSheet: View {
             subscription.recurrence.startsAt,
             subscription.proposalExpiresAt,
             subscription.recurrence.endsAt,
-            subscription.paymentDueOnAcceptance(at: now)?.billingPeriod?.endsAt,
+            subscription.paymentDueOnAcceptance(at: now, acceptedAt: Date())?.billingPeriod?.endsAt,
         ]
         .compactMap { $0 }
         .filter { $0 > now }

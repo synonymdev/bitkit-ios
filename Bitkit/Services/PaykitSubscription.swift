@@ -596,9 +596,12 @@ struct PaykitSubscription: Identifiable, Hashable {
         }
     }
 
-    func paymentDueOnAcceptance(at date: Date) -> PaykitPaymentRequest? {
+    /// The period that accepting at `acceptedAt` makes due on the schedule clock `date`; `acceptedAt` is real time, which
+    /// differs from `date` only while the subscription clock offset is on.
+    func paymentDueOnAcceptance(at date: Date, acceptedAt: Date? = nil) -> PaykitPaymentRequest? {
         guard isPayer, !hasPaymentDeadline else { return nil }
-        guard let period = recurrence.periods(through: date, acceptedAt: PaykitPreciseInstant(date: date)).first else { return nil }
+        let acceptedAt = PaykitPreciseInstant(date: acceptedAt ?? date)
+        guard let period = recurrence.periods(through: date, acceptedAt: acceptedAt).first else { return nil }
         return PaykitPaymentRequest(subscription: self, billingPeriod: period, lifecycleState: .activeRecurring)
     }
 
