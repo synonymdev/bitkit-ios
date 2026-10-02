@@ -207,6 +207,22 @@ struct PaykitPaymentRequestPollingSchedule {
 struct AppScene: View {
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
 
+    static func shouldRetryNodeStart(
+        state: NodeLifecycleState,
+        isConnected: Bool,
+        walletExists: Bool?,
+        isRecoveryShown: Bool,
+        returnedFromBackground: Bool
+    ) -> Bool {
+        guard returnedFromBackground, isConnected, walletExists == true, !isRecoveryShown, case .errorStarting = state else { return false }
+        return true
+    }
+
+    /// A restart can still be in flight when the Recovery quick action lands; the node it started must not keep running under Recovery.
+    static func shouldStopNodeStartedUnderRecovery(state: NodeLifecycleState, isRecoveryShown: Bool) -> Bool {
+        isRecoveryShown && state == .running
+    }
+
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject private var session: SessionManager
 
@@ -248,6 +264,9 @@ struct AppScene: View {
     @State private var didWalletBackupRestoreFail = false
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
+    /// Set when the app enters the background, so that only a return from the background retries a failed node start,
+    /// not a brief inactive phase (Control Center, notification shade, Face ID).
+    @State private var wasInBackground = false
 
     /// Check if there's a critical update available
     private var hasCriticalUpdate: Bool {
@@ -1043,6 +1062,7 @@ struct AppScene: View {
         Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
 
         if newPhase == .background {
+            wasInBackground = true
             if settings.pinEnabled {
                 // If PIN is enabled, lock the app when the app goes to the background
                 isPinVerified = false
@@ -1050,6 +1070,8 @@ struct AppScene: View {
         }
 
         if newPhase == .active {
+            let returnedFromBackground = wasInBackground
+            wasInBackground = false
             // Reconnect a known hardware device so its connection indicator turns green again;
             if isPinVerified || !settings.pinEnabled {
                 Task { await trezorManager.autoReconnect() }
@@ -1057,6 +1079,15 @@ struct AppScene: View {
             if wallet.walletExists == true {
                 if retryPendingWalletRestoreIfNeeded() {
                     return
+                }
+                if Self.shouldRetryNodeStart(
+                    state: wallet.nodeLifecycleState,
+                    isConnected: network.isConnected,
+                    walletExists: wallet.walletExists,
+                    isRecoveryShown: showRecoveryScreen,
+                    returnedFromBackground: returnedFromBackground
+                ) {
+                    restartNode(reason: "App returned to foreground")
                 }
                 Task {
                     if pubkyProfile.isInitialized {
@@ -1542,12 +1573,31 @@ struct AppScene: View {
             // Restart node if necessary (e.g. create/restore was skipped due to offline)
             switch wallet.nodeLifecycleState {
             case .stopped, .initializing, .errorStarting:
-                Logger.info("Network restored, retrying wallet start...", context: "AppScene")
-                Task {
-                    await startWallet()
-                }
+                restartNode(reason: "Network restored")
             default:
                 break
+            }
+        }
+    }
+
+    private func restartNode(reason: String) {
+        Task {
+            // Checked when the task runs, because the Recovery quick action can be handled after the caller decided to restart.
+            guard !showRecoveryScreen else {
+                Logger.info("\(reason), skipping wallet start in recovery mode", context: "AppScene")
+                return
+            }
+            Logger.info("\(reason), retrying wallet start...", context: "AppScene")
+            await startWallet()
+
+            // Recovery can open while the start is in flight; stop the node this restart started instead of leaving it running under Recovery.
+            if Self.shouldStopNodeStartedUnderRecovery(state: wallet.nodeLifecycleState, isRecoveryShown: showRecoveryScreen) {
+                Logger.info("\(reason), stopping the node started while recovery mode opened", context: "AppScene")
+                do {
+                    try await wallet.stopLightningNode()
+                } catch {
+                    Logger.warn("Failed to stop the node under recovery mode: \(error)", context: "AppScene")
+                }
             }
         }
     }
