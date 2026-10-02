@@ -317,7 +317,8 @@ enum PublicPaykitService {
     @MainActor
     static func syncPublishedEndpoints(
         wallet: WalletViewModel,
-        publish: Bool
+        publish: Bool,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async throws {
         guard publish else {
             var firstError: Error?
@@ -338,8 +339,10 @@ enum PublicPaykitService {
         }
 
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true)
-        try await syncLocalReceiverMarker(publicSharingEnabled: true)
-        try await applyPublishedEndpoints(desiredEndpoints)
+        // Under the lock, so sign-out's marker removal, which follows its locked endpoint removal, comes after it.
+        try await applyPublishedEndpoints(desiredEndpoints, unlessSessionEnded: isSessionCurrent) {
+            try await syncLocalReceiverMarker(publicSharingEnabled: true)
+        }
     }
 
     @MainActor
@@ -446,8 +449,28 @@ enum PublicPaykitService {
         return invoice.routeHints().contains { !$0.isEmpty }
     }
 
-    private static func applyPublishedEndpoints(_ desiredEndpoints: [Endpoint]) async throws {
+    /// Runs `operation` under the lock that publishing and removing public endpoints share. Sign-out changes the current
+    /// Pubky session before it removes endpoints under this lock, so checking `isSessionCurrent` once the lock is held
+    /// stops a publish that would otherwise write endpoints back after that removal.
+    static func withEndpointLock<T>(
+        unlessSessionEnded isSessionCurrent: (@MainActor () -> Bool)? = nil,
+        _ operation: () async throws -> T
+    ) async throws -> T {
         try await endpointLock.withLock {
+            if let isSessionCurrent, await !isSessionCurrent() {
+                throw PubkyServiceError.sessionNotActive
+            }
+            return try await operation()
+        }
+    }
+
+    private static func applyPublishedEndpoints(
+        _ desiredEndpoints: [Endpoint],
+        unlessSessionEnded isSessionCurrent: (@MainActor () -> Bool)? = nil,
+        beforeApplying: () async throws -> Void = {}
+    ) async throws {
+        try await withEndpointLock(unlessSessionEnded: isSessionCurrent) {
+            try await beforeApplying()
             let report = try await PaykitSdkService.shared.syncPublicEndpoints(desiredEndpoints)
             guard report.failed.isEmpty else {
                 throw PublicPaykitError.publicationFailed

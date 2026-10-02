@@ -27,7 +27,8 @@ extension PrivatePaykitService {
     func prepareSavedContacts(
         _ publicKeys: [String],
         wallet: WalletViewModel,
-        requireImmediatePublication: Bool = false
+        requireImmediatePublication: Bool = false,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
         await prepareSavedContacts(
             publicKeys,
@@ -39,7 +40,8 @@ extension PrivatePaykitService {
                     for: publicKeys,
                     wallet: wallet,
                     reason: "prepare",
-                    requireImmediatePublication: requireImmediatePublication
+                    requireImmediatePublication: requireImmediatePublication,
+                    isSessionCurrent: isSessionCurrent
                 )
             }
         )
@@ -351,7 +353,8 @@ extension PrivatePaykitService {
         wallet: WalletViewModel,
         reason: String,
         forceRefreshLightning: Bool = false,
-        requireImmediatePublication: Bool
+        requireImmediatePublication: Bool,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
         let operations = endpointPublicationOperations(
             wallet: wallet,
@@ -361,19 +364,27 @@ extension PrivatePaykitService {
             for: publicKeys,
             reason: reason,
             requireImmediatePublication: requireImmediatePublication,
+            isSessionCurrent: isSessionCurrent,
             operations: operations
         )
     }
 
+    /// Sign-out changes the current Pubky session before it removes private endpoints under the publication lock, so
+    /// checking `isSessionCurrent` once the lock is held stops a publish that would otherwise write them back after that
+    /// removal.
     func syncLocalEndpointPublication(
         for publicKeys: [String],
         reason: String,
         requireImmediatePublication: Bool,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil,
         operations: EndpointPublicationOperations
     ) async -> Error? {
         do {
             return try await withPublicationLock {
-                await syncLocalEndpointPublicationLocked(
+                if let isSessionCurrent, await !isSessionCurrent() {
+                    throw PubkyServiceError.sessionNotActive
+                }
+                return await syncLocalEndpointPublicationLocked(
                     for: publicKeys,
                     reason: reason,
                     requireImmediatePublication: requireImmediatePublication,
