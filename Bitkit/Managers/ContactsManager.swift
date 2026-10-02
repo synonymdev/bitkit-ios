@@ -111,6 +111,15 @@ struct ContactSection: Identifiable {
     let contacts: [PubkyContact]
 }
 
+/// The fields an edit on a contact's edit screen saves.
+struct ContactEdit {
+    let name: String
+    let bio: String
+    let imageUrl: String?
+    let links: [PubkyProfileLink]
+    let tags: [String]
+}
+
 // MARK: - ContactsManager
 
 @MainActor
@@ -673,17 +682,54 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Update Contact
 
-    /// A reset or owner change while the save runs stops it quietly: it writes no local override and reports no error.
-    func updateContact(publicKey: String, name: String, bio: String, imageUrl: String?, links: [PubkyProfileLink], tags: [String]) async throws {
+    /// True while work started now still belongs to its session: `isSessionCurrent` still holds and no reset or other
+    /// owner's load has run since.
+    private func sessionCheck(_ isSessionCurrent: @escaping @MainActor () -> Bool) -> @MainActor () -> Bool {
         let generation = resolvedProfilesGeneration
-        try await updateContact(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags) {
-            self.resolvedProfilesGeneration == generation
+        return { [weak self] in
+            self?.resolvedProfilesGeneration == generation && isSessionCurrent()
         }
+    }
+
+    /// Saves an edit made on a contact's edit screen once the lookup of a profile the row is still waiting for is done, so
+    /// the save keeps the bio, links and avatar that lookup finds. `makeEdit` runs only then and returns the fields to
+    /// save, such as by filling the form again from the row and uploading a new avatar. Returns the saved profile.
+    ///
+    /// An edit belongs to the session Save was tapped in, bound before it waits for anything. Once `isSessionCurrent` is
+    /// false, or a reset or another owner's load has run, it stops quietly and returns nil: `makeEdit` does not run, or its
+    /// result or error is dropped, and it saves nothing, writes no local override and reports no error. The lookup or
+    /// upload it waits for can finish after a sign-out, and the next identity may have saved a contact with the same key.
+    func saveContactEdit(
+        publicKey: String,
+        isSessionCurrent: @escaping @MainActor () -> Bool,
+        makeEdit: @MainActor () async throws -> ContactEdit
+    ) async throws -> PubkyProfile? {
+        let isCurrent = sessionCheck(isSessionCurrent)
+        await resolvePendingContactProfile(publicKey: publicKey)
+        guard isCurrent() else { return nil }
+        let edit: ContactEdit
+        do {
+            edit = try await makeEdit()
+        } catch {
+            guard isCurrent() else { return nil }
+            throw error
+        }
+        return try await updateContact(
+            publicKey: publicKey,
+            name: edit.name,
+            bio: edit.bio,
+            imageUrl: edit.imageUrl,
+            links: edit.links,
+            tags: edit.tags,
+            isCurrent: isCurrent
+        )
     }
 
     /// `isCurrent` is checked right before the save and again once it returns, with nothing suspending between that check
     /// and the writes after it. Sign-out clears the local overrides, so a save that lands after the session changed must
-    /// not write one back, and its error, if any, belongs to a session the user has left.
+    /// not write one back, and its error, if any, belongs to a session the user has left. Returns the saved profile, or
+    /// nil when the save was dropped.
+    @discardableResult
     private func updateContact(
         publicKey: String,
         name: String,
@@ -692,7 +738,7 @@ class ContactsManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String],
         isCurrent: @MainActor () -> Bool
-    ) async throws {
+    ) async throws -> PubkyProfile? {
         let prefixedKey = ensurePubkyPrefix(publicKey)
 
         let contactData = PubkyProfileData(
@@ -703,19 +749,19 @@ class ContactsManager: ObservableObject {
             tags: tags
         )
 
-        guard isCurrent() else { return }
+        guard isCurrent() else { return nil }
         let saveContactLabel = saveContactLabel
         do {
             try await Task.detached {
                 try await saveContactLabel(prefixedKey, name)
             }.value
         } catch {
-            guard isCurrent() else { return }
+            guard isCurrent() else { return nil }
             throw error
         }
         guard isCurrent() else {
             Logger.info("Dropped a contact update that a session change overtook", context: "ContactsManager")
-            return
+            return nil
         }
         Self.upsertContactProfileOverride(publicKey: prefixedKey, data: contactData)
 
@@ -726,6 +772,7 @@ class ContactsManager: ObservableObject {
         }
 
         Logger.info("Updated contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
+        return updatedProfile
     }
 
     /// Saves a tag change made on a contact's screen over the contact's latest profile once the changes queued before it
@@ -743,10 +790,7 @@ class ContactsManager: ObservableObject {
         transform: @escaping ([String]) -> [String]
     ) -> Task<Void, Error> {
         let key = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
-        let generation = resolvedProfilesGeneration
-        let isCurrent: @MainActor () -> Bool = { [weak self] in
-            self?.resolvedProfilesGeneration == generation && isSessionCurrent()
-        }
+        let isCurrent = sessionCheck(isSessionCurrent)
         let previousChange = tagChanges[key]
         let change = Task {
             _ = await previousChange?.result

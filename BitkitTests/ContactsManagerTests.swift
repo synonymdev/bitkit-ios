@@ -1387,6 +1387,213 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
+    func testContactEditWaitsForTheContactsLookupAndSavesOverTheProfileItFinds() async throws {
+        let savedOverrides = ContactsManager.backupContactProfileOverrides()
+        addTeardownBlock { ContactsManager.restoreContactProfileOverrides(savedOverrides) }
+        ContactsManager.restoreContactProfileOverrides(nil)
+        let store = SignedInContactStore(savedKeys: [contactProfileKey])
+        let interactive = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
+        await interactive.hold()
+        let manager = ContactsManager(
+            fetchRemoteProfile: { publicKey, _ in try await interactive.fetch(publicKey) },
+            saveContactLabel: { try await store.save($0, label: $1) }
+        )
+        let bulk = HeldProfileLookups(profiles: [:])
+        await bulk.hold()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+
+        let screen = ContactEditScreen(manager: manager, publicKey: contactProfileKey)
+        screen.edit { $0.tags = ["friend"] }
+        let save = Task {
+            try await manager.saveContactEdit(publicKey: contactProfileKey, isSessionCurrent: { true }) {
+                try await screen.makeEdit()
+            }
+        }
+        while await interactive.heldCount < 1 {
+            await Task.yield()
+        }
+        XCTAssertEqual(screen.editsMade, 0, "Save builds the edit only once the contact's lookup is done")
+
+        await interactive.release()
+        let savedProfile = try await save.value
+
+        XCTAssertEqual(screen.editsMade, 1)
+        XCTAssertEqual(savedProfile?.name, "Alice", "A field the user left alone takes the profile the lookup found")
+        XCTAssertEqual(savedProfile?.bio, "Hello")
+        XCTAssertEqual(savedProfile?.imageUrl, "pubky://alice/avatar")
+        XCTAssertEqual(savedProfile?.links.map(\.url), ["https://alice.example"])
+        XCTAssertEqual(savedProfile?.tags, ["friend"], "The user's change is kept")
+        let saved = await store.savedLabels
+        XCTAssertEqual(saved, ["Alice"])
+        XCTAssertEqual(ContactsManager.backupContactProfileOverrides()?[contactProfileKey], savedProfile.map { PubkyProfileData.from(profile: $0) })
+        XCTAssertEqual(manager.contacts.first?.profile.tags, ["friend"], "The row shows what was saved")
+
+        await bulk.release()
+        await manager.waitForProfileRefreshForTesting()
+    }
+
+    /// The review regression for an edit: Save waits for the contact's held lookup, the user leaves, signs out and adopts
+    /// another identity, and the lookup finishes only then. The next identity may have saved a contact with the same key,
+    /// which the SDK would accept a save for, or not, which it rejects.
+    func testContactEditSavedBeforeASignOutSavesNothingForTheNextIdentity() async throws {
+        let savedOverrides = ContactsManager.backupContactProfileOverrides()
+        addTeardownBlock { ContactsManager.restoreContactProfileOverrides(savedOverrides) }
+
+        for nextIdentityHasContact in [true, false] {
+            let message = nextIdentityHasContact ? "when the next identity saved the same contact" : "when it has no such contact"
+            ContactsManager.restoreContactProfileOverrides(nil)
+            let session = TestPubkySession()
+            let store = SignedInContactStore(savedKeys: [contactProfileKey])
+            let interactive = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
+            await interactive.hold()
+            let manager = ContactsManager(
+                fetchRemoteProfile: { publicKey, _ in try await interactive.fetch(publicKey) },
+                saveContactLabel: { try await store.save($0, label: $1) }
+            )
+            let bulk = HeldProfileLookups(profiles: [:])
+            await bulk.hold()
+            let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+            try await manager.loadContacts(for: "owner-a", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+
+            // The user changes every field but the avatar and taps Save, which waits for the contact's held lookup.
+            let screen = ContactEditScreen(manager: manager, publicKey: contactProfileKey)
+            screen.edit {
+                $0.name = "My Alice"
+                $0.bio = "Met at the meetup"
+                $0.links = [ProfileLinkInput(label: "Site", url: "https://old.example")]
+                $0.tags = ["friend"]
+            }
+            let save = Task {
+                try await manager.saveContactEdit(publicKey: contactProfileKey, isSessionCurrent: session.check()) {
+                    try await screen.makeEdit()
+                }
+            }
+            while await interactive.heldCount < 1 {
+                await Task.yield()
+            }
+
+            // The user leaves and signs out, AppScene resets Contacts, and the sign-out clears the overrides.
+            session.change()
+            manager.reset()
+            ContactsManager.restoreContactProfileOverrides(nil)
+            // Another identity signs in and loads its contacts, whose own lookups are held.
+            session.change()
+            await store.signIn(savedKeys: nextIdentityHasContact ? [contactProfileKey] : [])
+            let nextRecords = nextIdentityHasContact ? [unprofiledRecord(key: contactProfileKey, label: "Bob's label")] : []
+            let nextBulk = HeldProfileLookups(profiles: [:])
+            await nextBulk.hold()
+            try await manager.loadContacts(for: "owner-b", fetchContactRecords: { nextRecords }, fetchRemoteProfile: { try await nextBulk.fetch($0) })
+
+            // The cancelled read finishes anyway.
+            await interactive.release()
+            var savedProfile: Bitkit.PubkyProfile?
+            do {
+                savedProfile = try await save.value
+            } catch {
+                XCTFail("An edit from before the sign-out must not report an error, so no toast shows, \(message): \(error)")
+            }
+
+            XCTAssertNil(savedProfile, "Nothing is reported saved, so no toast shows and the screen does not navigate, \(message)")
+            XCTAssertEqual(screen.editsMade, 0, "The form is not filled from the next identity's contact, nor an avatar uploaded, \(message)")
+            let saved = await store.savedLabels
+            XCTAssertEqual(saved, [], "Nothing saves through the next identity's session, \(message)")
+            XCTAssertNil(ContactsManager.backupContactProfileOverrides(), "No override is written back, \(message)")
+            XCTAssertEqual(manager.contacts.map(\.displayName), nextIdentityHasContact ? ["Bob's label"] : [], message)
+            XCTAssertEqual(manager.contacts.map(\.profile.bio), nextIdentityHasContact ? [""] : [], message)
+            XCTAssertEqual(manager.contacts.map(\.profile.links.count), nextIdentityHasContact ? [0] : [], message)
+            XCTAssertEqual(manager.contacts.map(\.profile.tags), nextIdentityHasContact ? [[]] : [], message)
+
+            await bulk.release()
+            await nextBulk.release()
+            await manager.waitForProfileRefreshForTesting()
+        }
+    }
+
+    /// Covers each half of a session change on its own: the session ending before AppScene resets Contacts, and a reset with
+    /// the same identity signing straight back in. Each lands while Save waits for the contact's lookup or uploads the
+    /// avatar, which then succeeds or fails.
+    func testContactEditStopsOnceItsSessionEndsOrContactsResetWhileItWaits() async throws {
+        let savedOverrides = ContactsManager.backupContactProfileOverrides()
+        addTeardownBlock { ContactsManager.restoreContactProfileOverrides(savedOverrides) }
+
+        for wait in ["lookup", "avatar upload", "failed avatar upload"] {
+            for resetsContacts in [false, true] {
+                let message = "\(resetsContacts ? "after a reset" : "once the session ends") during the \(wait)"
+                ContactsManager.restoreContactProfileOverrides(nil)
+                let session = TestPubkySession()
+                let store = SignedInContactStore(savedKeys: [contactProfileKey])
+                let interactive = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
+                if wait == "lookup" {
+                    await interactive.hold()
+                }
+                let manager = ContactsManager(
+                    fetchRemoteProfile: { publicKey, _ in try await interactive.fetch(publicKey) },
+                    saveContactLabel: { try await store.save($0, label: $1) }
+                )
+                let bulk = HeldProfileLookups(profiles: [:])
+                await bulk.hold()
+                let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+                try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+                let endSession: @MainActor () async throws -> Void = {
+                    if resetsContacts {
+                        manager.reset()
+                        try await manager.loadContacts(
+                            for: "owner",
+                            fetchContactRecords: { records },
+                            fetchRemoteProfile: { try await bulk.fetch($0) }
+                        )
+                    } else {
+                        session.change()
+                    }
+                }
+
+                let screen = ContactEditScreen(manager: manager, publicKey: contactProfileKey)
+                screen.edit {
+                    $0.name = "My Alice"
+                    $0.tags = ["friend"]
+                }
+                let save = Task {
+                    try await manager.saveContactEdit(
+                        publicKey: contactProfileKey,
+                        isSessionCurrent: resetsContacts ? { true } : session.check()
+                    ) {
+                        guard wait != "lookup" else { return try await screen.makeEdit() }
+                        return try await screen.makeEdit {
+                            try await endSession()
+                            guard wait == "avatar upload" else { throw profileTransportError }
+                            return "pubky://owner/new-avatar"
+                        }
+                    }
+                }
+                if wait == "lookup" {
+                    while await interactive.heldCount < 1 {
+                        await Task.yield()
+                    }
+                    try await endSession()
+                    await interactive.release()
+                }
+                var savedProfile: Bitkit.PubkyProfile?
+                do {
+                    savedProfile = try await save.value
+                } catch {
+                    XCTFail("A stale edit must not report an error \(message): \(error)")
+                }
+
+                XCTAssertNil(savedProfile, message)
+                XCTAssertEqual(screen.editsMade, wait == "lookup" ? 0 : 1, message)
+                let saved = await store.savedLabels
+                XCTAssertEqual(saved, [], "The stale edit saves nothing \(message)")
+                XCTAssertNil(ContactsManager.backupContactProfileOverrides(), message)
+                XCTAssertFalse(manager.contacts.map(\.displayName).contains("My Alice"), message)
+                XCTAssertEqual(manager.contacts.map(\.profile.tags), [[]], message)
+
+                await bulk.release()
+                await manager.waitForProfileRefreshForTesting()
+            }
+        }
+    }
+
     func testPreparingAnImportLooksFollowsUpOnTheInteractiveLane() async throws {
         let lanes = ProfileLookupLanes()
         let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
@@ -1857,6 +2064,38 @@ private final class TestPubkySession {
     func check() -> @MainActor () -> Bool {
         let started = revision
         return { self.revision == started }
+    }
+}
+
+/// Stands in for `EditContactView`: the form the user edited, and the edit its Save builds once the contact's lookup is
+/// done, by filling the form again from the contact's row and uploading a new avatar.
+@MainActor
+private final class ContactEditScreen {
+    private(set) var form = ContactEditForm()
+    private(set) var editsMade = 0
+    private let manager: ContactsManager
+    private let publicKey: String
+
+    init(manager: ContactsManager, publicKey: String) {
+        self.manager = manager
+        self.publicKey = publicKey
+        fillFromRow()
+    }
+
+    func edit(_ change: (inout ContactEditForm) -> Void) {
+        change(&form)
+    }
+
+    func makeEdit(uploadAvatar: () async throws -> String? = { nil }) async throws -> ContactEdit {
+        editsMade += 1
+        fillFromRow()
+        let uploadedImageUrl = try await uploadAvatar() ?? form.imageUrl
+        return form.edit(imageUrl: uploadedImageUrl)
+    }
+
+    private func fillFromRow() {
+        guard let row = manager.contacts.first(where: { $0.publicKey == publicKey }) else { return }
+        form.fill(from: row.profile)
     }
 }
 

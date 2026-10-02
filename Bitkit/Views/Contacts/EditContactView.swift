@@ -140,31 +140,30 @@ struct EditContactView: View {
 
     // MARK: - Save
 
+    /// The save belongs to the Pubky session Save was tapped in. Once that session ends, even while the save still waits
+    /// for the contact's profile or uploads the avatar, it stops quietly, with no toast and no navigation.
     private func saveContact() async {
-        guard !form.trimmedName.isEmpty else { return }
+        let pubkyProfile = pubkyProfile
+        guard !form.trimmedName.isEmpty, let session = pubkyProfile.currentSession else { return }
 
         isSaving = true
         defer { isSaving = false }
 
-        await contactsManager.resolvePendingContactProfile(publicKey: publicKey)
-        fillFormFromContact()
-
         do {
-            let uploadedImageUrl = if let avatarImage {
-                try await pubkyProfile.uploadAvatar(image: avatarImage)
-            } else {
-                form.imageUrl
-            }
-
-            try await contactsManager.updateContact(
+            let savedProfile = try await contactsManager.saveContactEdit(
                 publicKey: publicKey,
-                name: form.trimmedName,
-                bio: form.bio.trimmingCharacters(in: .whitespacesAndNewlines),
-                imageUrl: uploadedImageUrl,
-                links: form.links.map { PubkyProfileLink(label: $0.label, url: $0.url) },
-                tags: form.tags
-            )
-            form.imageUrl = uploadedImageUrl
+                isSessionCurrent: { pubkyProfile.currentSession == session }
+            ) {
+                fillFormFromContact()
+                let uploadedImageUrl = if let avatarImage {
+                    try await pubkyProfile.uploadAvatar(image: avatarImage)
+                } else {
+                    form.imageUrl
+                }
+                return form.edit(imageUrl: uploadedImageUrl)
+            }
+            guard let savedProfile else { return }
+            form.imageUrl = savedProfile.imageUrl
             app.toast(
                 type: .success,
                 title: t("contacts__edit_saved"),
@@ -190,6 +189,16 @@ struct ContactEditForm {
 
     var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func edit(imageUrl: String?) -> ContactEdit {
+        ContactEdit(
+            name: trimmedName,
+            bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
+            imageUrl: imageUrl,
+            links: links.map { PubkyProfileLink(label: $0.label, url: $0.url) },
+            tags: tags
+        )
     }
 
     mutating func fill(from profile: PubkyProfile) {
