@@ -7,6 +7,9 @@ struct DevSettingsView: View {
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
     @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
+    @AppStorage(OfflineReceiveSettings.enabledKey) private var isOfflineReceiveEnabled = false
+    @AppStorage(OfflineReceiveSettings.settlementNodeIdKey) private var offlineReceiveSettlementNodeId = ""
+    @AppStorage(OfflineReceiveSettings.witnessNodeIdsKey) private var offlineReceiveWitnessNodeIds = ""
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
@@ -72,6 +75,10 @@ struct DevSettingsView: View {
                         toggle: $isSavingsSwapEnabled,
                         testIdentifier: "SavingsSwapToggle"
                     )
+
+                    if OfflineReceiveSettings.isBuildAvailable {
+                        offlineReceiveSection
+                    }
 
                     SettingsSectionHeader("RECOVERY")
                         .padding(.top, 16)
@@ -215,6 +222,43 @@ struct DevSettingsView: View {
             }
         } message: {
             Text("Paykit features are experimental and may not work reliably.")
+        }
+    }
+
+    private var offlineReceiveSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsSectionHeader("OFFLINE RECEIVE")
+                .padding(.top, 16)
+
+            SettingsRow(
+                title: "Offline receive (experimental)",
+                rightIcon: nil,
+                toggle: $isOfflineReceiveEnabled,
+                testIdentifier: "OfflineReceiveToggle"
+            )
+
+            if isOfflineReceiveEnabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    CaptionMText("Settlement node id (blank uses the Blocktank LSP for this network)")
+                    TextField("Settlement node id", text: $offlineReceiveSettlementNodeId)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .accessibilityIdentifier("OfflineReceiveSettlementNodeId")
+
+                    CaptionMText("Witness node ids (comma separated)")
+                    TextField("Witness node ids", text: $offlineReceiveWitnessNodeIds)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .accessibilityIdentifier("OfflineReceiveWitnessNodeIds")
+
+                    CaptionMText("Node configuration applies after the app restarts. Invalid ids are ignored.")
+                }
+                .padding(.top, 8)
+            }
         }
     }
 

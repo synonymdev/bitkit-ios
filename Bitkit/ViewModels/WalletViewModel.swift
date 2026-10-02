@@ -15,8 +15,26 @@ class WalletViewModel: ObservableObject {
 
     // Receive flow
     @AppStorage("onchainAddress") var onchainAddress = ""
-    @AppStorage("bolt11") var bolt11 = ""
-    @AppStorage("bip21") var bip21 = ""
+    @AppStorage("bolt11") private var ordinaryBolt11 = ""
+    @AppStorage("bip21") private var ordinaryBip21 = ""
+    @Published private var offlineBolt11 = ""
+    @Published private var offlineBip21 = ""
+    var bolt11: String {
+        get { invoiceReceiveOffline ? offlineBolt11 : ordinaryBolt11 }
+        set {
+            if invoiceReceiveOffline { offlineBolt11 = newValue }
+            else { ordinaryBolt11 = newValue }
+        }
+    }
+
+    var bip21: String {
+        get { invoiceReceiveOffline ? offlineBip21 : ordinaryBip21 }
+        set {
+            if invoiceReceiveOffline { offlineBip21 = newValue }
+            else { ordinaryBip21 = newValue }
+        }
+    }
+
     @AppStorage("publicPaykitBolt11") var publicPaykitBolt11 = ""
     @AppStorage("publicPaykitBolt11PaymentHash") var publicPaykitBolt11PaymentHash = ""
     @AppStorage("publicPaykitBolt11ExpiresAt") var publicPaykitBolt11ExpiresAt = 0.0
@@ -48,6 +66,32 @@ class WalletViewModel: ObservableObject {
     // For bolt11 details and bip21 params
     var invoiceAmountSats: UInt64 = 0
     var invoiceNote: String = ""
+    @Published var invoiceReceiveOffline = false {
+        didSet {
+            if invoiceReceiveOffline != oldValue {
+                offlineBolt11 = ""
+                offlineBip21 = ""
+                offlineInvoice = nil
+                offlineInvoiceRegistration.reset()
+            }
+        }
+    }
+
+    @Published private(set) var offlineInvoice: OfflineReceiveInvoice?
+    let offlineReceive: OfflineReceiveSession
+    let offlineInvoiceRegistration: OfflineReceiveRegistration
+    private var receiveRefreshRevision = UUID()
+    private var currentReceiveInvoice: ReceiveInvoiceRequest?
+
+    private struct ReceiveInvoiceRequest: Equatable {
+        let amountSats: UInt64
+        let note: String
+        let receiveOffline: Bool
+    }
+
+    private var receiveInvoiceRequest: ReceiveInvoiceRequest {
+        ReceiveInvoiceRequest(amountSats: invoiceAmountSats, note: invoiceNote, receiveOffline: invoiceReceiveOffline)
+    }
 
     @Published var nodeLifecycleState: NodeLifecycleState = .stopped
     @Published var nodeStatus: NodeStatus?
@@ -101,8 +145,12 @@ class WalletViewModel: ObservableObject {
         rgsConfigService: RgsConfigService = RgsConfigService(),
         transferService: TransferService,
         sheetViewModel: SheetViewModel,
-        feeEstimatesManager: FeeEstimatesManager
+        feeEstimatesManager: FeeEstimatesManager,
+        offlineReceiveProvider: any OfflineReceiveProviding = UnavailableOfflineReceiveProvider(),
+        offlineReceivePayments: (@MainActor () async -> [PaymentDetails]?)? = nil
     ) {
+        offlineReceive = OfflineReceiveSession(provider: offlineReceiveProvider)
+        offlineInvoiceRegistration = OfflineReceiveRegistration(payments: offlineReceivePayments ?? { await lightningService.listPayments() })
         self.lightningService = lightningService
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
@@ -118,12 +166,15 @@ class WalletViewModel: ObservableObject {
     }
 
     /// Convenience initializer for previews and testing
-    convenience init() {
+    convenience init(offlineReceivePayments: (@MainActor () async -> [PaymentDetails]?)? = nil) {
         let transferService = TransferService(
             lightningService: .shared,
             blocktankService: CoreService.shared.blocktank
         )
-        self.init(transferService: transferService, sheetViewModel: SheetViewModel(), feeEstimatesManager: FeeEstimatesManager())
+        self.init(
+            transferService: transferService, sheetViewModel: SheetViewModel(), feeEstimatesManager: FeeEstimatesManager(),
+            offlineReceivePayments: offlineReceivePayments
+        )
     }
 
     func setWalletExistsState() throws {
@@ -206,7 +257,7 @@ class WalletViewModel: ObservableObject {
                             routeFeeMsat: routeFeeMsat
                         )
                     case let .paymentReceived(_, paymentHash, _, _):
-                        self.bolt11 = ""
+                        self.receiveInvoicePaymentReceived(hash: paymentHash)
                         if self.isPaykitUIActive {
                             self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
                         }
@@ -218,7 +269,7 @@ class WalletViewModel: ObservableObject {
                             try? await self.refreshBip21()
                         }
                     case .channelReady:
-                        self.bolt11 = ""
+                        if !self.hasPreparedOfflineInvoice { self.bolt11 = "" }
                         Task {
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21()
@@ -235,7 +286,7 @@ class WalletViewModel: ObservableObject {
                         }
 
                     case let .channelClosed(channelId, _, _, reason):
-                        self.bolt11 = ""
+                        if !self.hasPreparedOfflineInvoice { self.bolt11 = "" }
                         Task {
                             await self.refreshAndSyncState()
                             await self.handleChannelClosed(channelId: channelId, reason: reason)
@@ -529,6 +580,95 @@ class WalletViewModel: ObservableObject {
         let finalExpirySecs = expirySecs ?? 60 * 60 * 24
         let invoice = try await lightningService.receiveMsats(amountMsats: amountMsats, description: note, expirySecs: finalExpirySecs)
         return invoice.lowercased()
+    }
+
+    func offlineReceiveEligibility(amountSats: UInt64, supportsLightning: Bool = true) -> OfflineReceiveEligibility {
+        OfflineReceiveEligibility(
+            amountSats: amountSats,
+            inboundCapacitySats: totalReadyInboundLightningSats,
+            isNodeRunning: nodeLifecycleState == .running,
+            supportsLightning: supportsLightning
+        )
+    }
+
+    func resetOfflineReceive() {
+        invoiceReceiveOffline = false
+        offlineInvoice = nil
+        offlineBolt11 = ""
+        offlineBip21 = ""
+        offlineInvoiceRegistration.reset()
+        offlineReceive.reset()
+        receiveRefreshRevision = UUID()
+    }
+
+    func receiveInvoicePaymentReceived(hash: String) {
+        offlineInvoiceRegistration.paymentReceived(hash: hash)
+        if invoiceReceiveOffline {
+            ordinaryBolt11 = ""
+            ordinaryBip21 = ""
+            guard offlineInvoice?.paymentHash == hash else { return }
+            offlineInvoice = nil
+            bolt11 = ""
+            bip21 = ""
+            offlineReceive.expirePreparation()
+            receiveRefreshRevision = UUID()
+        } else {
+            bolt11 = ""
+        }
+    }
+
+    func createReceiveInvoice(amountSats: UInt64?, note: String, receiveOffline: Bool) async throws -> String {
+        guard receiveOffline else { return try await createInvoice(amountSats: amountSats, note: note) }
+        let invoice = try await prepareOfflineReceiveInvoice(amountSats: amountSats ?? 0, note: note)
+        guard offlineInvoiceRegistration.contains(invoice) else { throw OfflineReceiveError.unavailable }
+        return invoice.bolt11
+    }
+
+    private func prepareOfflineReceiveInvoice(amountSats: UInt64, note: String) async throws -> OfflineReceiveInvoice {
+        let revision = offlineInvoiceRegistration.beginPreparation()
+        let invoice = try await offlineReceive.prepareInvoice(
+            eligibility: offlineReceiveEligibility(amountSats: amountSats),
+            description: note
+        )
+        let validatedInvoice = try await ServiceQueue.background(.ldk) {
+            let parsed = try Bolt11Invoice.fromStr(invoiceStr: invoice.bolt11)
+            let (amountMsats, overflow) = amountSats.multipliedReportingOverflow(by: 1000)
+            guard !overflow,
+                  parsed.amountMilliSatoshis() == amountMsats,
+                  parsed.network() == Env.network,
+                  case let .direct(description) = parsed.invoiceDescription(),
+                  description == note,
+                  !parsed.isExpired()
+            else { throw OfflineReceiveError.invalidInvoice }
+            return OfflineReceiveInvoice(
+                bolt11: invoice.bolt11.lowercased(),
+                amountSats: amountSats,
+                note: note,
+                paymentHash: parsed.paymentHash(),
+                expiresAt: Date(timeIntervalSince1970: Double(parsed.secondsSinceEpoch()) + Double(parsed.expiryTimeSeconds()))
+            )
+        }
+        try await offlineInvoiceRegistration.register(validatedInvoice, revision: revision)
+        return validatedInvoice
+    }
+
+    var hasPreparedOfflineInvoice: Bool {
+        guard invoiceReceiveOffline, let offlineInvoice else { return false }
+        return offlineInvoice.bolt11 == bolt11 &&
+            offlineInvoice.canDisplay(amountSats: invoiceAmountSats, note: invoiceNote) &&
+            offlineInvoiceRegistration.contains(offlineInvoice)
+    }
+
+    func expireOfflineInvoice(now: Date = .now) {
+        guard let offlineInvoice, offlineInvoice.expiresAt <= now else { return }
+        self.offlineInvoice = nil
+        offlineInvoiceRegistration.reset()
+        offlineReceive.expirePreparation()
+        if bolt11 == offlineInvoice.bolt11 {
+            bolt11 = ""
+            bip21 = ""
+        }
+        receiveRefreshRevision = UUID()
     }
 
     @discardableResult
@@ -1230,6 +1370,7 @@ class WalletViewModel: ObservableObject {
     }
 
     var canCreateReceiveLightningInvoice: Bool {
+        if hasPreparedOfflineInvoice { return true }
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
         return canCreateReceiveLightningInvoice(amountSats: amountSats)
     }
@@ -1383,8 +1524,22 @@ class WalletViewModel: ObservableObject {
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
+        if !forceRefreshBolt11, hasPreparedOfflineInvoice { return }
+        let revision = UUID()
+        receiveRefreshRevision = revision
+        let request = receiveInvoiceRequest
+        let mustReplaceInvoice = forceRefreshBolt11 || currentReceiveInvoice != request
+        var nextBolt11 = mustReplaceInvoice ? "" : bolt11
+        var nextOfflineInvoice: OfflineReceiveInvoice?
         // Get old payment ID and tags before refreshing (which may change payment ID)
         let oldPaymentId = await paymentId()
+        guard receiveRefreshRevision == revision, receiveInvoiceRequest == request else { return }
+        if (request.receiveOffline && (mustReplaceInvoice || bolt11.isEmpty)) ||
+            (mustReplaceInvoice && currentReceiveInvoice?.receiveOffline == true)
+        {
+            bolt11 = ""
+            bip21 = ""
+        }
         var tagsToMigrate: [String] = []
         if let oldPaymentId, !oldPaymentId.isEmpty {
             if let oldMetadata = try? await coreService.activity.getPreActivityMetadata(searchKey: oldPaymentId, searchByAddress: false) {
@@ -1393,45 +1548,61 @@ class WalletViewModel: ObservableObject {
         }
 
         try await refreshReusableOnchainAddress()
+        guard receiveRefreshRevision == revision, receiveInvoiceRequest == request else { return }
 
         var newBip21 = "bitcoin:\(onchainAddress)"
 
-        let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
+        let amountSats = request.amountSats > 0 ? request.amountSats : nil
 
-        if canCreateReceiveLightningInvoice(amountSats: amountSats) {
-            if forceRefreshBolt11 || bolt11.isEmpty {
-                bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
+        if request.receiveOffline {
+            if !forceRefreshBolt11,
+               let offlineInvoice,
+               offlineInvoice.canDisplay(amountSats: request.amountSats, note: request.note)
+            {
+                nextOfflineInvoice = offlineInvoice
             } else {
-                // Existing invoice needs to be checked for expiry
-                if case let .lightning(lightningInvoice) = try await decode(invoice: bolt11) {
-                    if lightningInvoice.isExpired {
-                        bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
-                    }
-                }
+                expireOfflineInvoice()
+                receiveRefreshRevision = revision
+                nextOfflineInvoice = try await prepareOfflineReceiveInvoice(amountSats: request.amountSats, note: request.note)
+            }
+            nextBolt11 = nextOfflineInvoice?.bolt11 ?? ""
+        } else if canCreateReceiveLightningInvoice(amountSats: amountSats) {
+            if !nextBolt11.isEmpty,
+               case let .lightning(lightningInvoice) = try await decode(invoice: nextBolt11),
+               lightningInvoice.isExpired
+            {
+                nextBolt11 = ""
+                guard receiveRefreshRevision == revision, receiveInvoiceRequest == request else { return }
+                bolt11 = ""
+                bip21 = ""
+            }
+            if nextBolt11.isEmpty {
+                nextBolt11 = try await createReceiveInvoice(amountSats: amountSats, note: request.note, receiveOffline: request.receiveOffline)
             }
         } else {
-            bolt11 = ""
+            nextBolt11 = ""
         }
 
-        if !bolt11.isEmpty {
-            newBip21 += "?lightning=\(bolt11)"
+        guard receiveRefreshRevision == revision, receiveInvoiceRequest == request else { return }
+        if !nextBolt11.isEmpty {
+            newBip21 += "?lightning=\(nextBolt11)"
         }
 
         // Add amount and note if available
-        if invoiceAmountSats > 0 {
+        if request.amountSats > 0 {
             let separator = newBip21.contains("?") ? "&" : "?"
-            let formattedAmount = Self.formatBitcoinAmount(sats: invoiceAmountSats)
+            let formattedAmount = Self.formatBitcoinAmount(sats: request.amountSats)
             newBip21 += "\(separator)amount=\(formattedAmount)"
         }
 
-        if !invoiceNote.isEmpty {
+        if !request.note.isEmpty {
             let separator = newBip21.contains("?") ? "&" : "?"
-            if let encodedNote = invoiceNote.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            if let encodedNote = request.note.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
                 newBip21 += "\(separator)message=\(encodedNote)"
             }
         }
 
-        bip21 = newBip21
+        try applyReceiveInvoice(bolt11: nextBolt11, offlineInvoice: nextOfflineInvoice, bip21: newBip21)
 
         // Persist metadata with migrated tags
         await persistPreActivityMetadata(tags: tagsToMigrate)
@@ -1443,6 +1614,21 @@ class WalletViewModel: ObservableObject {
                 Logger.warn("Failed to refresh public paykit endpoints after receive refresh: \(error)", context: "WalletViewModel")
             }
         }
+    }
+
+    func applyReceiveInvoice(bolt11: String, offlineInvoice: OfflineReceiveInvoice?, bip21: String) throws {
+        if invoiceReceiveOffline {
+            guard let offlineInvoice, offlineInvoice.bolt11 == bolt11,
+                  offlineInvoice.canDisplay(amountSats: invoiceAmountSats, note: invoiceNote),
+                  offlineInvoiceRegistration.contains(offlineInvoice)
+            else { throw OfflineReceiveError.unavailable }
+        } else if offlineInvoice != nil {
+            throw OfflineReceiveError.unavailable
+        }
+        self.bolt11 = bolt11
+        self.offlineInvoice = offlineInvoice
+        currentReceiveInvoice = receiveInvoiceRequest
+        self.bip21 = bip21
     }
 
     /// Payment hash from the current bolt11 invoice, if available
@@ -1603,6 +1789,7 @@ class WalletViewModel: ObservableObject {
         maxSendLightningSats = 0
         channelCount = 0
 
+        resetOfflineReceive()
         onchainAddress = ""
         bolt11 = ""
         bip21 = ""
