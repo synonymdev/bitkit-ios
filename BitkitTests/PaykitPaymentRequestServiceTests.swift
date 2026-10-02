@@ -9,6 +9,72 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentRequestServiceTests: XCTestCase {
+    func testSharedStateRefreshSkipsPrivateMessages() async throws {
+        let record = try paymentRequestRecord()
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk)
+
+        await manager.refresh(syncPrivateMessages: false)
+
+        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), [record.paymentRequestId])
+        var snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.processCallCount, 0)
+        XCTAssertEqual(snapshot.receiveCallCount, 0)
+
+        await manager.refresh()
+
+        snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.processCallCount, 1)
+        XCTAssertEqual(snapshot.receiveCallCount, 1)
+    }
+
+    func testFullRefreshAfterOverlappingSharedStateRefreshReceivesMessages() async throws {
+        let sdk = PaymentRequestSdkMock(records: [])
+        let manager = paymentRequestManager(sdk: sdk)
+        await sdk.pauseNextPaymentRequestList()
+        let sharedStateRefresh = Task { await manager.refresh(syncPrivateMessages: false) }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        let fullRefreshStarted = expectation(description: "Full refresh started")
+        let fullRefresh = Task {
+            fullRefreshStarted.fulfill()
+            await manager.refresh()
+        }
+        await fulfillment(of: [fullRefreshStarted], timeout: 1)
+
+        await sdk.resumePaymentRequestList()
+        await sharedStateRefresh.value
+        await fullRefresh.value
+
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.processCallCount, 1)
+        XCTAssertEqual(snapshot.receiveCallCount, 1)
+    }
+
+    func testClearInvalidatesFullRefreshWaitingForSharedState() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await sdk.pauseNextPaymentRequestList()
+        let sharedStateRefresh = Task { await manager.refresh(syncPrivateMessages: false) }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        let fullRefreshStarted = expectation(description: "Full refresh started")
+        let fullRefresh = Task {
+            fullRefreshStarted.fulfill()
+            await manager.refresh()
+        }
+        await fulfillment(of: [fullRefreshStarted], timeout: 1)
+
+        manager.clear()
+        await sdk.resumePaymentRequestList()
+        await sharedStateRefresh.value
+        await fullRefresh.value
+
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertTrue(manager.historyRequests.isEmpty)
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.processCallCount, 0)
+        XCTAssertEqual(snapshot.receiveCallCount, 0)
+    }
+
     func testReceivedPaymentContactsIncludeSharedServerRequestsAndLatePayments() throws {
         let payer = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         var record = try receivedPaymentRecord(counterparty: payer)
