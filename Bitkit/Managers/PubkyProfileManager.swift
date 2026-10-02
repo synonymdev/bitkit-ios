@@ -1291,8 +1291,8 @@ class PubkyProfileManager: ObservableObject {
         fileprivate let revision: UUID
     }
 
-    /// Nil while signed out and while a sign-in, sign-out or other session change runs, and different after one, from
-    /// the moment it starts and before it clears any state.
+    /// Nil while signed out, and from the moment a sign-in, sign-out or other session change starts until it ends, so
+    /// before that change clears any state. The session after a change compares different from the one before.
     var currentSession: SignedInSession? {
         guard let publicKey, Self.sessionMutationCount == 0 else { return nil }
         return SignedInSession(publicKey: publicKey, revision: Self.sessionRevision)
