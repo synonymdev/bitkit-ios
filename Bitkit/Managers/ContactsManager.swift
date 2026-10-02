@@ -340,11 +340,10 @@ class ContactsManager: ObservableObject {
 
         do {
             _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name)
-            await PrivatePaykitService.shared.startInitialLinkBurst(
+            await PrivatePaykitService.shared.refreshSavedContactEndpoints(
                 for: [prefixedKey],
                 savedPublicKeys: contacts.map(\.publicKey),
-                wallet: wallet,
-                reason: "contact link refresh"
+                wallet: wallet
             )
         } catch is CancellationError {
             return
