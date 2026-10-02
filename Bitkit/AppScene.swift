@@ -1429,7 +1429,7 @@ struct AppScene: View {
                 $0.paymentRequestId == target.paymentRequestId &&
                     PubkyPublicKeyFormat.matches($0.counterparty, target.counterparty) &&
                     $0.counterpartyReceiverPath == target.counterpartyReceiverPath &&
-                    $0.isActive(at: Date())
+                    $0.isActive(at: SubscriptionClock.subscriptionNow())
             }) {
                 PaykitSubscriptionNotificationTargetStore.clear()
             }

@@ -536,6 +536,7 @@ extension PaykitSdkService: PaykitPaymentRequestSdkHandling {}
 struct PaykitPaymentRequestService {
     private let sdk: any PaykitPaymentRequestSdkHandling
     private let now: @Sendable () -> Date
+    private let subscriptionNow: @Sendable () -> Date
     private let isPrivatePaymentPublishingEnabled: @Sendable () -> Bool
     private let logWarning: @Sendable (String) -> Void
     private let incomingRejectionLog = IncomingPaykitPaymentRequestRejectionLog()
@@ -543,6 +544,7 @@ struct PaykitPaymentRequestService {
     init(
         sdk: any PaykitPaymentRequestSdkHandling = PaykitSdkService.shared,
         now: @escaping @Sendable () -> Date = { Date() },
+        subscriptionNow: (@Sendable () -> Date)? = nil,
         isPrivatePaymentPublishingEnabled: @escaping @Sendable () -> Bool = {
             UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
         },
@@ -552,6 +554,7 @@ struct PaykitPaymentRequestService {
     ) {
         self.sdk = sdk
         self.now = now
+        self.subscriptionNow = subscriptionNow ?? { SubscriptionClock.subscriptionDate(from: now()) }
         self.isPrivatePaymentPublishingEnabled = isPrivatePaymentPublishingEnabled
         self.logWarning = logWarning
     }
@@ -881,7 +884,7 @@ struct PaykitPaymentRequestService {
     }
 
     func accept(_ subscription: PaykitSubscription) async throws -> PaykitSubscription {
-        guard subscription.isProposalActionable(at: now()) else {
+        guard subscription.isProposalActionable(at: subscriptionNow()) else {
             throw PaykitPaymentRequestError.requestExpired
         }
 
@@ -898,7 +901,7 @@ struct PaykitPaymentRequestService {
     }
 
     func cancel(_ subscription: PaykitSubscription) async throws -> PaykitSubscription {
-        guard subscription.canCancel(at: now()) else {
+        guard subscription.canCancel(at: subscriptionNow()) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
 
@@ -1112,6 +1115,7 @@ final class PaykitPaymentRequestManager {
     ) async throws -> Set<PaykitPaymentRequest.ID>
     private let retryNow: @Sendable () -> ContinuousClock.Instant
     private let now: @Sendable () -> Date
+    private let subscriptionNow: @Sendable () -> Date
     private let logWarning: @Sendable (String) -> Void
     private let isAvailable: @MainActor () -> Bool
     private var processingRequestIds: Set<PaykitPaymentRequest.ID> = []
@@ -1141,6 +1145,9 @@ final class PaykitPaymentRequestManager {
     private var savedPublicKeys: [String] = []
     private var persistedPresentedRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var subscriptionAcceptedAt: [PaykitSubscription.ID: PaykitPreciseInstant] = [:]
+    private var subscriptionClockOffset: TimeInterval {
+        subscriptionNow().timeIntervalSince(now())
+    }
     private var presentedSubscriptionProposalIds: Set<PaykitSubscription.ID> = []
     private var dismissedSubscriptionPaymentIds: Set<PaykitPaymentRequest.ID> = []
     private var persistedSubscriptionState = PaykitSubscriptionState()
@@ -1174,13 +1181,15 @@ final class PaykitPaymentRequestManager {
             )
         },
         now: @escaping @Sendable () -> Date = { Date() },
+        subscriptionNow: (@Sendable () -> Date)? = nil,
         retryNow: @escaping @Sendable () -> ContinuousClock.Instant = { .now },
         isAvailable: @escaping @MainActor () -> Bool = { PaykitFeatureFlags.isUIEnabled },
         logWarning: @escaping @Sendable (String) -> Void = {
             Logger.warn($0, context: "PaykitPaymentRequest")
         }
     ) {
-        self.service = service ?? PaykitPaymentRequestService(now: now, logWarning: logWarning)
+        let subscriptionNow = subscriptionNow ?? { SubscriptionClock.subscriptionDate(from: now()) }
+        self.service = service ?? PaykitPaymentRequestService(now: now, subscriptionNow: subscriptionNow, logWarning: logWarning)
         self.presentationStore = presentationStore
         self.subscriptionStateStore = subscriptionStateStore
         self.subscriptionNotificationScheduler = subscriptionNotificationScheduler
@@ -1188,6 +1197,7 @@ final class PaykitPaymentRequestManager {
         self.inFlightPaymentRequestIds = inFlightPaymentRequestIds
         self.protectedRequestIdsForSubscriptionCancellation = protectedRequestIdsForSubscriptionCancellation
         self.now = now
+        self.subscriptionNow = subscriptionNow
         self.retryNow = retryNow
         self.isAvailable = isAvailable
         self.logWarning = logWarning
@@ -1471,6 +1481,14 @@ final class PaykitPaymentRequestManager {
         await refresh(excludingProtectedRequestId: nil)
     }
 
+    /// Applies a changed subscription clock offset: waits for a refresh already reading the old clock, then refreshes again.
+    func refreshAfterSubscriptionClockChange() async {
+        if let refreshTask {
+            await refreshTask.value
+        }
+        await refresh()
+    }
+
     func synchronizeSubscriptionNotifications(enabled: Bool) async {
         guard let activeIdentity else { return }
         await subscriptionNotificationScheduler.synchronize(
@@ -1479,7 +1497,8 @@ final class PaykitPaymentRequestManager {
             pendingRequestIds: Set(pendingRequests.map(\.id)),
             payerIdentity: activeIdentity,
             notificationsEnabled: enabled,
-            now: now()
+            now: subscriptionNow(),
+            clockOffset: subscriptionClockOffset
         )
     }
 
@@ -1582,20 +1601,21 @@ final class PaykitPaymentRequestManager {
     func requestSubscriptionPresentation(_ subscription: PaykitSubscription) {
         guard subscriptions.contains(where: { $0.id == subscription.id }),
               subscription.isPayer,
-              subscription.isProposalVisible(at: now()),
+              subscription.isProposalVisible(at: subscriptionNow()),
               !isProcessingSubscription
         else { return }
         requestedSubscriptionProposalId = subscription.id
     }
 
     func subscriptionProposalForPresentation() -> PaykitSubscription? {
+        let date = subscriptionNow()
         if let requestedSubscriptionProposalId {
             return subscriptions.first {
-                $0.id == requestedSubscriptionProposalId && $0.isPayer && $0.isProposalVisible(at: now())
+                $0.id == requestedSubscriptionProposalId && $0.isPayer && $0.isProposalVisible(at: date)
             }
         }
         return subscriptions.first {
-            $0.isPayer && $0.isProposalVisible(at: now()) && !presentedSubscriptionProposalIds.contains($0.id)
+            $0.isPayer && $0.isProposalVisible(at: date) && !presentedSubscriptionProposalIds.contains($0.id)
         }
     }
 
@@ -1637,7 +1657,7 @@ final class PaykitPaymentRequestManager {
         guard let current = subscriptions.first(where: { $0.id == subscription.id }),
               current == subscription,
               current.isPayer,
-              current.isProposalActionable(at: now()),
+              current.isProposalActionable(at: subscriptionNow()),
               let activeIdentity
         else { throw PaykitPaymentRequestError.requestUnavailable }
 
@@ -1649,8 +1669,7 @@ final class PaykitPaymentRequestManager {
             }
         }
         let acceptedSubscription = try await service.accept(current)
-        let acceptanceDate = now()
-        let acceptanceInstant = PaykitPreciseInstant(date: acceptanceDate)
+        let acceptanceInstant = PaykitPreciseInstant(date: now())
         guard actionGeneration == stateGeneration,
               PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
         else { return nil }
@@ -1658,7 +1677,7 @@ final class PaykitPaymentRequestManager {
         presentedSubscriptionProposalIds.insert(current.id)
         requestedSubscriptionProposalId = nil
         persistSubscriptionState(identity: activeIdentity)
-        await applyCommittedSubscription(acceptedSubscription, at: acceptanceDate)
+        await applyCommittedSubscription(acceptedSubscription, at: subscriptionNow())
         invalidateRefresh()
         await refresh()
         return pendingRequests
@@ -1669,7 +1688,7 @@ final class PaykitPaymentRequestManager {
     func cancel(_ subscription: PaykitSubscription) async throws {
         guard !isProcessingSubscription else { throw PaykitPaymentRequestError.operationInProgress }
         guard let current = subscriptions.first(where: { $0.id == subscription.id }),
-              current.canCancel(at: now()),
+              current.canCancel(at: subscriptionNow()),
               let activeIdentity
         else {
             throw PaykitPaymentRequestError.requestUnavailable
@@ -1697,7 +1716,7 @@ final class PaykitPaymentRequestManager {
         guard actionGeneration == stateGeneration,
               PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
         else { return }
-        await applyCommittedSubscription(canceledSubscription, at: now())
+        await applyCommittedSubscription(canceledSubscription, at: subscriptionNow())
         invalidateRefresh()
         await refresh()
     }
@@ -1987,11 +2006,12 @@ final class PaykitPaymentRequestManager {
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
             else { return }
             let refreshDate = now()
+            let subscriptionDate = subscriptionNow()
             let handledRequestedExpirationId = recordRequestedPresentationExpiration(at: refreshDate)
             let previousPending = pendingRequests
-            subscriptions = snapshot.subscriptions.map { $0.withExpiredLifecycle(at: refreshDate) }
+            subscriptions = snapshot.subscriptions.map { $0.withExpiredLifecycle(at: subscriptionDate) }
             let visibleProposalIds = Set(subscriptions.filter {
-                $0.isPayer && $0.isProposalVisible(at: refreshDate)
+                $0.isPayer && $0.isProposalVisible(at: subscriptionDate)
             }.map(\.id))
             presentedSubscriptionProposalIds.formIntersection(visibleProposalIds)
             for subscription in subscriptions
@@ -2005,7 +2025,7 @@ final class PaykitPaymentRequestManager {
             }
             let recurringRequestsBySubscription = subscriptions.filter(\.isPayer).map { subscription in
                 let requests: [PaykitPaymentRequest] = if let acceptedAt = subscriptionAcceptedAt[subscription.id] {
-                    subscription.requests(through: refreshDate, acceptedAt: acceptedAt)
+                    subscription.requests(through: subscriptionDate, acceptedAt: acceptedAt)
                 } else {
                     []
                 }
@@ -2072,7 +2092,8 @@ final class PaykitPaymentRequestManager {
                 pendingRequestIds: synchronizedRequestIds,
                 payerIdentity: activeIdentity,
                 notificationsEnabled: SettingsViewModel.shared.enableNotifications,
-                now: refreshDate
+                now: subscriptionDate,
+                clockOffset: subscriptionClockOffset
             )
             let currentRequestIds = Set(pendingRequests.map(\.id))
             presentedRequestIds.formIntersection(currentRequestIds)
@@ -2103,7 +2124,8 @@ final class PaykitPaymentRequestManager {
                 pendingRequestIds: Set(pendingRequests.map(\.id)),
                 payerIdentity: activeIdentity,
                 notificationsEnabled: SettingsViewModel.shared.enableNotifications,
-                now: date
+                now: date,
+                clockOffset: subscriptionClockOffset
             )
             discardExpiredRequests()
             return
@@ -2126,7 +2148,8 @@ final class PaykitPaymentRequestManager {
             pendingRequestIds: Set(pendingRequests.map(\.id)),
             payerIdentity: activeIdentity,
             notificationsEnabled: SettingsViewModel.shared.enableNotifications,
-            now: date
+            now: date,
+            clockOffset: subscriptionClockOffset
         )
         discardExpiredRequests()
     }
@@ -2201,15 +2224,16 @@ final class PaykitPaymentRequestManager {
         handledRequestedExpirationId: PaykitPaymentRequest.ID? = nil
     ) {
         let date = at ?? now()
+        let subscriptionDate = subscriptionNow()
         recordRequestedPresentationExpiration(at: date, excluding: handledRequestedExpirationId)
         pendingRequests.removeAll { $0.isExpired(at: date) }
-        subscriptions = subscriptions.map { $0.withExpiredLifecycle(at: date) }
+        subscriptions = subscriptions.map { $0.withExpiredLifecycle(at: subscriptionDate) }
         presentedSubscriptionProposalIds.formIntersection(
-            Set(subscriptions.filter { $0.isPayer && $0.isProposalVisible(at: date) }.map(\.id))
+            Set(subscriptions.filter { $0.isPayer && $0.isProposalVisible(at: subscriptionDate) }.map(\.id))
         )
         persistSubscriptionState()
         if requestedSubscriptionProposalId.map({ id in
-            subscriptions.contains { $0.id == id && $0.isProposalVisible(at: date) }
+            subscriptions.contains { $0.id == id && $0.isProposalVisible(at: subscriptionDate) }
         }) == false {
             requestedSubscriptionProposalId = nil
         }
@@ -2266,14 +2290,20 @@ final class PaykitPaymentRequestManager {
         expirationTask?.cancel()
         expirationTask = nil
 
-        let requestExpirations = pendingRequests.filter { $0.lifecycleState == .proposed }.compactMap(\.expiresAt)
-        let subscriptionExpirations = subscriptions.filter {
+        let date = now()
+        let subscriptionDate = subscriptionNow()
+        let requestDelays = pendingRequests.filter { $0.lifecycleState == .proposed }.compactMap(\.expiresAt).map {
+            $0.timeIntervalSince(date)
+        }
+        let subscriptionDelays = subscriptions.filter {
             $0.isProposal || $0.lifecycleState == .activeRecurring
         }.flatMap {
             [$0.proposalExpiresAt, $0.recurrence.endsAt].compactMap { $0 }
-        }.filter { $0 > now() }
-        guard let nextExpiration = (requestExpirations + subscriptionExpirations).min() else { return }
-        let delay = max(0, nextExpiration.timeIntervalSince(now()))
+        }.filter { $0 > subscriptionDate }.map {
+            $0.timeIntervalSince(subscriptionDate)
+        }
+        guard let nextDelay = (requestDelays + subscriptionDelays).min() else { return }
+        let delay = max(0, nextDelay)
         expirationTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: .seconds(delay))
