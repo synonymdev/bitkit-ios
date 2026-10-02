@@ -68,6 +68,40 @@ enum ContactPaymentsService {
         )
     }
 
+    /// Turns contact payments on or off for the signed-in Pubky session. Private endpoints are prepared for the saved
+    /// contacts, so it first waits for the first contacts load. If the session ended or changed by the end of that wait,
+    /// it returns without writing the preference or touching endpoints, so a change started before a sign-out never
+    /// turns sharing back on after it. Nothing suspends between that check and the enable's preference writes, so a
+    /// sign-out that starts after the check clears what the enable wrote.
+    @MainActor
+    static func setEnabled(
+        _ enabled: Bool,
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager,
+        operations: Operations,
+        defaults: UserDefaults = .standard
+    ) async throws {
+        guard let session = pubkyProfile.currentSession else { return }
+        let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
+        if canUsePrivatePayments {
+            do {
+                try await contactsManager.loadContactsIfNeeded(for: session.publicKey)
+            } catch {
+                guard pubkyProfile.currentSession == session else { return }
+                throw error
+            }
+        }
+        guard pubkyProfile.currentSession == session else { return }
+
+        try await setEnabled(
+            enabled,
+            contactPublicKeys: contactsManager.contacts.map(\.publicKey),
+            canUsePrivatePayments: canUsePrivatePayments,
+            operations: operations,
+            defaults: defaults
+        )
+    }
+
     @MainActor
     static func setEnabled(
         _ enabled: Bool,

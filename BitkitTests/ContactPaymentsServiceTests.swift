@@ -1,5 +1,7 @@
 @testable import Bitkit
 import Foundation
+import struct Paykit.ContactRecord
+import struct Paykit.PaykitProfile
 import XCTest
 
 @MainActor
@@ -228,6 +230,108 @@ final class ContactPaymentsServiceTests: XCTestCase {
             XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
             XCTAssertTrue(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey))
             XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+        }
+    }
+
+    /// General Settings turns contact payments on in a task that outlives the screen, after the first contacts load. A
+    /// Pubky sign-out during that load, finished or still running, stops the change before it writes the preference or
+    /// publishes anything, and a load that then fails reports nothing.
+    func testContactPaymentsChangeStopsWhenPubkySignsOutDuringTheContactsLoad() async throws {
+        enum SignOut {
+            case never, finished, running
+        }
+        let cases: [(name: String, signOut: SignOut, loadFails: Bool)] = [
+            ("still signed in", .never, false),
+            ("signed out", .finished, false),
+            ("sign-out still running", .running, false),
+            ("signed out, then the load failed", .finished, true),
+        ]
+        snapshotAppDefaultsDomain()
+        let savedReference = AdoptedPubkyReference.current
+        let savedSecretKey = try Keychain.load(key: .pubkySecretKey)
+        addTeardownBlock {
+            AdoptedPubkyReference.current = savedReference
+            if let savedSecretKey {
+                try? Keychain.upsert(key: .pubkySecretKey, data: savedSecretKey)
+            } else {
+                try? Keychain.delete(key: .pubkySecretKey)
+            }
+        }
+        let secretKeyHex = String(repeating: "01", count: 32)
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(secretKeyHex.utf8))
+        let rawOwnerKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        let ownerKey = rawOwnerKey.hasPrefix("pubky") ? rawOwnerKey : "pubky\(rawOwnerKey)"
+        let contactKey = "pubky" + String(repeating: "y", count: 52)
+        let record = ContactRecord(
+            publicKey: contactKey, receiverPaths: [PaykitReceiverPath.wallet], label: "Contact",
+            profile: PaykitProfile(displayName: "Contact", imageUri: nil, extraJson: nil),
+            profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
+            publicContactMarkerStatus: .notPublished, publicContactMarkerReceiverPath: nil,
+            publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
+        )
+
+        for testCase in cases {
+            try await withIsolatedDefaultsAsync { defaults in
+                let pubkyProfile = PubkyProfileManager()
+                pubkyProfile.publicKey = ownerKey
+                pubkyProfile.authState = .authenticated
+                XCTAssertTrue(pubkyProfile.hasLocalSecretKeyForCurrentProfile, testCase.name)
+                let loadStarted = expectation(description: "\(testCase.name): contacts load started")
+                let (loadGate, releaseLoad) = AsyncStream<Void>.makeStream()
+                let loadFails = testCase.loadFails
+                let contactsManager = ContactsManager(contactRecords: {
+                    loadStarted.fulfill()
+                    for await _ in loadGate {}
+                    if loadFails {
+                        throw PubkyServiceError.sessionNotActive
+                    }
+                    return [record]
+                })
+                let operations = OperationsSpy()
+                let change = Task {
+                    try await ContactPaymentsService.setEnabled(
+                        true,
+                        pubkyProfile: pubkyProfile,
+                        contactsManager: contactsManager,
+                        operations: operations.makeOperations(),
+                        defaults: defaults
+                    )
+                }
+                await fulfillment(of: [loadStarted], timeout: 2)
+
+                var runningSignOut: (task: Task<Void, Error>, release: AsyncStream<Void>.Continuation)?
+                switch testCase.signOut {
+                case .never:
+                    break
+                case .finished:
+                    try await pubkyProfile.signOut(performSessionCleanup: {})
+                case .running:
+                    let cleanupStarted = expectation(description: "\(testCase.name): sign-out started")
+                    let (cleanupGate, releaseCleanup) = AsyncStream<Void>.makeStream()
+                    let signOut = Task {
+                        try await pubkyProfile.signOut(performSessionCleanup: {
+                            cleanupStarted.fulfill()
+                            for await _ in cleanupGate {}
+                        })
+                    }
+                    await fulfillment(of: [cleanupStarted], timeout: 2)
+                    runningSignOut = (signOut, releaseCleanup)
+                }
+                releaseLoad.finish()
+                let result = await change.result
+                XCTAssertNoThrow(try result.get(), testCase.name)
+                if let runningSignOut {
+                    runningSignOut.release.finish()
+                    try await runningSignOut.task.value
+                }
+
+                let enabled = testCase.signOut == .never
+                XCTAssertEqual(operations.calls, enabled ? ["private:publish", "public:true"] : [], testCase.name)
+                XCTAssertEqual(operations.privatePublications.map(\.contactPublicKeys), enabled ? [[contactKey]] : [], testCase.name)
+                XCTAssertEqual(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey), enabled, testCase.name)
+                XCTAssertEqual(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey), enabled, testCase.name)
+                XCTAssertEqual(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey), enabled, testCase.name)
+            }
         }
     }
 

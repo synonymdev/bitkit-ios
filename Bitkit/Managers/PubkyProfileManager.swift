@@ -1284,6 +1284,20 @@ class PubkyProfileManager: ObservableObject {
         publicKey != nil
     }
 
+    /// The signed-in session as work that started for it saw it. Work that waits compares it with `currentSession`
+    /// afterwards to tell whether that session ended or changed meanwhile.
+    struct SignedInSession: Equatable {
+        let publicKey: String
+        fileprivate let revision: UUID
+    }
+
+    /// Nil while signed out and while a sign-in, sign-out or other session change runs, and different after one, from
+    /// the moment it starts and before it clears any state.
+    var currentSession: SignedInSession? {
+        guard let publicKey, Self.sessionMutationCount == 0 else { return nil }
+        return SignedInSession(publicKey: publicKey, revision: Self.sessionRevision)
+    }
+
     var hasLocalSecretKeyForCurrentProfile: Bool {
         Self.hasLocalSecretKey(for: publicKey)
     }
