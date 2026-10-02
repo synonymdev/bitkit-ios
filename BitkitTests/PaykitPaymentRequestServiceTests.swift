@@ -298,7 +298,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 publicKey: publicKey,
                 paymentRequest: request,
                 resolution: resolution,
-                validateEndpoints: { endpoints in
+                validateEndpoints: { endpoints, allowUsedOnchainAddress in
+                    XCTAssertFalse(allowUsedOnchainAddress)
                     XCTAssertEqual(endpoints.map(\.value), [address])
                     return endpoints
                 }
@@ -328,14 +329,14 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             publicKey: request.counterparty,
             paymentRequest: request,
             resolution: resolution,
-            validateEndpoints: { _ in [] }
+            validateEndpoints: { _, _ in [] }
         )
         guard case .notOpened = rejected else { return XCTFail("Wallet validation must reject the target") }
         let generic = await service.privatePaymentResult(
             publicKey: request.counterparty,
             paymentRequest: nil,
             resolution: resolution,
-            validateEndpoints: { $0 }
+            validateEndpoints: { endpoints, _ in endpoints }
         )
         guard case .notOpened = generic else { return XCTFail("Contact payments require a list version") }
         resolution.payableEndpoints = []
@@ -343,9 +344,72 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             publicKey: request.counterparty,
             paymentRequest: request,
             resolution: resolution,
-            validateEndpoints: { $0 }
+            validateEndpoints: { endpoints, _ in endpoints }
         )
         guard case .noEndpoint = missing else { return XCTFail("Missing bound endpoints must not fall back") }
+    }
+
+    func testUsedOnchainAddressIsPayableOnlyForBoundRecurringRequest() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        let service = PrivatePaykitService()
+        let address = "bcrt1qfn50lqawrce0evh66qrnlt8j447lwmeyqp5gmd"
+        let method = PublicPaykitService.MethodId.regtestOnchainP2wpkh
+        let payload = try PublicPaykitService.serializePayload(value: address)
+        let now = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-15T08:00:00Z"))
+        let record = try paymentRequestRecord(
+            counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg",
+            state: .activeRecurring,
+            recurrence: PaymentRequestRecurrence(
+                every: 1, unit: "month", startsAt: "2027-01-01T08:00:00Z", anchor: "2027-01-01T08:00:00Z", endsAt: nil
+            ),
+            endpoints: [method.rawValue],
+            paymentEndpoints: [method.rawValue: payload]
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let recurring = try XCTUnwrap(subscription.requests(through: now, acceptedAt: PaykitPreciseInstant(date: now)).first)
+        let oneTime = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(
+            counterparty: record.counterparty, endpoints: [method.rawValue], paymentEndpoints: [method.rawValue: payload]
+        ), now: now))
+        let cases: [(request: PaykitPaymentRequest?, version: UInt64?, opens: Bool)] = [
+            (recurring, nil, true),
+            (recurring, 7, false),
+            (oneTime, nil, false),
+            (oneTime, 7, false),
+            (nil, 7, false),
+        ]
+
+        for testCase in cases {
+            var resolution = try boundResolution(publicKey: record.counterparty, method: method, payload: payload)
+            resolution.privatePaymentListVersion = testCase.version
+            var usageChecks = 0
+            let result = await service.privatePaymentResult(
+                publicKey: record.counterparty,
+                paymentRequest: testCase.request,
+                resolution: resolution,
+                validateEndpoints: { endpoints, allowUsedOnchainAddress in
+                    XCTAssertEqual(allowUsedOnchainAddress, testCase.opens)
+                    return await service.privatePayableEndpoints(
+                        from: endpoints,
+                        publicKey: record.counterparty,
+                        allowUsedOnchainAddress: allowUsedOnchainAddress,
+                        isAddressUsed: {
+                            XCTAssertEqual($0, address)
+                            usageChecks += 1
+                            return true
+                        }
+                    )
+                }
+            )
+            XCTAssertEqual(usageChecks, testCase.opens ? 0 : 1)
+            if testCase.opens {
+                guard case let .opened(target, context) = result else { return XCTFail("Expected the recurring fixed address") }
+                XCTAssertEqual(target, address)
+                XCTAssertNil(try XCTUnwrap(context).paymentListVersion)
+            } else {
+                guard case .notOpened = result else { return XCTFail("Used list and one-time addresses must remain unavailable") }
+            }
+        }
     }
 
     func testRequestEndpointCannotBypassExecutionClaimRejection() async throws {
@@ -1239,6 +1303,72 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertFalse(request.requiresAcceptance)
         XCTAssertEqual(request.billingPeriod?.startsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-01T08:00:00Z")))
         XCTAssertEqual(request.billingPeriod?.endsAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-02-01T08:00:00Z")))
+    }
+
+    func testPaidSubscriptionPeriodStaysBlockedWhileNextUnpaidPeriodIsAuthorized() async throws {
+        actor InFlightPayments {
+            var ids = Set<PaykitPaymentRequest.ID>()
+
+            func insert(_ id: PaykitPaymentRequest.ID) {
+                ids.insert(id)
+            }
+        }
+
+        let clock = try PaymentRequestTestClock(XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-15T08:00:00Z")))
+        let method = PublicPaykitService.MethodId.regtestOnchainP2wpkh
+        var record = try paymentRequestRecord(
+            state: .activeRecurring,
+            recurrence: PaymentRequestRecurrence(
+                every: 1, unit: "month", startsAt: "2027-01-01T08:00:00Z", anchor: "2027-01-01T08:00:00Z", endsAt: nil
+            ),
+            endpoints: [method.rawValue],
+            paymentEndpoints: [method.rawValue: PublicPaykitService.serializePayload(value: "bcrt1qfn50lqawrce0evh66qrnlt8j447lwmeyqp5gmd")]
+        )
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let inFlightPayments = InFlightPayments()
+        let manager = PaykitPaymentRequestManager(
+            service: PaykitPaymentRequestService(sdk: sdk, now: { clock.now() }, logWarning: { _ in }),
+            presentationStore: PaymentRequestPresentationMemoryStore(),
+            acceptanceStore: PaymentRequestPresentationMemoryStore(),
+            subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore(),
+            completedPaymentProofKinds: { _ in [:] },
+            inFlightPaymentRequestIds: { _ in await inFlightPayments.ids },
+            now: { clock.now() },
+            isAvailable: { true },
+            logWarning: { _ in }
+        )
+        manager.activate(identity: "pubky\(String(repeating: "z", count: 52))")
+        await manager.refresh()
+        let firstPeriod = try XCTUnwrap(manager.pendingRequests.first)
+        try await manager.prepareForPayment(firstPeriod)
+        try await manager.ensurePaymentAllowed(firstPeriod)
+        await inFlightPayments.insert(firstPeriod.id)
+        await manager.refresh()
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        try await manager.ensurePaymentAllowed(firstPeriod)
+        record.paymentProofs = try [paymentProofRecord(
+            endpoint: method.rawValue, kind: .onchain, billingPeriod: XCTUnwrap(firstPeriod.billingPeriod).sdkValue
+        )]
+        await sdk.setRecords([record])
+        clock.advance(by: 31 * 24 * 60 * 60)
+        await manager.refresh()
+
+        do {
+            try await manager.ensurePaymentAllowed(firstPeriod)
+            XCTFail("A paid billing period must not authorize another payment")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        do {
+            try await manager.prepareForPayment(firstPeriod)
+            XCTFail("A paid billing period must not be approved again")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        let nextPeriod = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertEqual(nextPeriod.billingPeriod?.sdkValue.startsAt, "2027-02-01T08:00:00Z")
+        try await manager.prepareForPayment(nextPeriod)
+        try await manager.ensurePaymentAllowed(nextPeriod)
     }
 
     func testRefreshKeepsCreatorSubscriptionWithoutGeneratingPayerPayment() async throws {
