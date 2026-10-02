@@ -9,26 +9,26 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentRequestServiceTests: XCTestCase {
-    func testSharedStateRefreshSkipsPrivateMessages() async throws {
+    func testInboxRefreshReceivesMessagesWithoutDrainingOutboundWork() async throws {
         let record = try paymentRequestRecord()
         let sdk = PaymentRequestSdkMock(records: [])
         let manager = paymentRequestManager(sdk: sdk)
 
         await manager.refresh()
         await sdk.setRecords([record])
-        await manager.refresh(syncPrivateMessages: false)
+        await manager.refresh(processOutgoingMessages: false)
 
         XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), [record.paymentRequestId])
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.processCallCount, 1)
-        XCTAssertEqual(snapshot.receiveCallCount, 1)
+        XCTAssertEqual(snapshot.receiveCallCount, 2)
     }
 
-    func testFullRefreshAfterOverlappingSharedStateRefreshReceivesMessages() async throws {
+    func testFullRefreshAfterOverlappingInboxRefreshDrainsOutboundWork() async throws {
         let sdk = PaymentRequestSdkMock(records: [])
         let manager = paymentRequestManager(sdk: sdk)
         await sdk.pauseNextPaymentRequestList()
-        let sharedStateRefresh = Task { await manager.refresh(syncPrivateMessages: false) }
+        let inboxRefresh = Task { await manager.refresh(processOutgoingMessages: false) }
         try await waitUntil { await sdk.paymentRequestListIsPaused() }
         let fullRefreshStarted = expectation(description: "Full refresh started")
         let fullRefresh = Task {
@@ -38,19 +38,19 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await fulfillment(of: [fullRefreshStarted], timeout: 1)
 
         await sdk.resumePaymentRequestList()
-        await sharedStateRefresh.value
+        await inboxRefresh.value
         await fullRefresh.value
 
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.processCallCount, 1)
-        XCTAssertEqual(snapshot.receiveCallCount, 1)
+        XCTAssertEqual(snapshot.receiveCallCount, 2)
     }
 
-    func testClearInvalidatesFullRefreshWaitingForSharedState() async throws {
+    func testClearInvalidatesFullRefreshWaitingForInbox() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
         await sdk.pauseNextPaymentRequestList()
-        let sharedStateRefresh = Task { await manager.refresh(syncPrivateMessages: false) }
+        let inboxRefresh = Task { await manager.refresh(processOutgoingMessages: false) }
         try await waitUntil { await sdk.paymentRequestListIsPaused() }
         let fullRefreshStarted = expectation(description: "Full refresh started")
         let fullRefresh = Task {
@@ -61,14 +61,14 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         manager.clear()
         await sdk.resumePaymentRequestList()
-        await sharedStateRefresh.value
+        await inboxRefresh.value
         await fullRefresh.value
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertTrue(manager.historyRequests.isEmpty)
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.processCallCount, 0)
-        XCTAssertEqual(snapshot.receiveCallCount, 0)
+        XCTAssertEqual(snapshot.receiveCallCount, 1)
     }
 
     func testReceivedPaymentContactsIncludeSharedServerRequestsAndLatePayments() throws {
@@ -698,7 +698,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         let offset: TimeInterval = 10 * 24 * 60 * 60
         let shiftedNow = now.addingTimeInterval(offset)
-        let dueRequests = subscription.requests(through: shiftedNow, acceptedAt: acceptedAt[subscription.id]!)
+        let dueRequests = try subscription.requests(through: shiftedNow, acceptedAt: XCTUnwrap(acceptedAt[subscription.id]))
         let jumpedRequest = try XCTUnwrap(dueRequests.first { $0.billingPeriod?.sdkValue.startsAt == "2027-01-22T08:00:00Z" })
         await scheduler.synchronize(
             [subscription],
@@ -737,7 +737,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         let offset: TimeInterval = 365 * 24 * 60 * 60
         let shiftedNow = now.addingTimeInterval(offset)
-        let dueRequests = subscription.requests(through: shiftedNow, acceptedAt: acceptedAt[subscription.id]!)
+        let dueRequests = try subscription.requests(through: shiftedNow, acceptedAt: XCTUnwrap(acceptedAt[subscription.id]))
         XCTAssertGreaterThan(dueRequests.count, 300)
         await scheduler.synchronize(
             [subscription],
@@ -809,7 +809,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         let offset: TimeInterval = 20 * 24 * 60 * 60
         let shiftedNow = now.addingTimeInterval(offset)
-        let dueRequests = subscription.requests(through: shiftedNow, acceptedAt: acceptedAt[subscription.id]!)
+        let dueRequests = try subscription.requests(through: shiftedNow, acceptedAt: XCTUnwrap(acceptedAt[subscription.id]))
         XCTAssertFalse(subscription.isActive(at: shiftedNow))
         await scheduler.synchronize(
             [subscription],
@@ -843,7 +843,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         let offset: TimeInterval = 10 * 24 * 60 * 60
         let shiftedNow = now.addingTimeInterval(offset)
-        let dueIds = Set(subscription.requests(through: shiftedNow, acceptedAt: acceptedAt[subscription.id]!).map(\.id))
+        let dueIds = try Set(subscription.requests(through: shiftedNow, acceptedAt: XCTUnwrap(acceptedAt[subscription.id])).map(\.id))
         await center.pauseNextPendingRequests()
         let first = Task {
             await scheduler.synchronize(
@@ -1387,7 +1387,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await waitUntil { await sdk.linkedPeersIsPaused() }
         record.state = .canceled
         await sdk.setRecords([record])
-        await manager.refresh(syncPrivateMessages: false)
+        await manager.refresh(processOutgoingMessages: false)
         await sdk.resumeLinkedPeers()
 
         XCTAssertFalse(manager.isApprovedForPayment(request))
