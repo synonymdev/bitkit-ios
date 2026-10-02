@@ -7,6 +7,7 @@ struct DevSettingsView: View {
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
     @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
+    @AppStorage(SubscriptionClock.offsetDaysKey) private var subscriptionClockOffsetDays = 0
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
@@ -14,6 +15,7 @@ struct DevSettingsView: View {
     @EnvironmentObject var notificationManager: PushNotificationManager
     @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     @State private var showPaykitWarning = false
 
@@ -102,6 +104,10 @@ struct DevSettingsView: View {
                             ),
                             testIdentifier: "PaykitUiToggle"
                         )
+
+                        if SubscriptionClock.isAvailable {
+                            subscriptionClockOffsetMenu
+                        }
                     }
 
                     Button {
@@ -218,6 +224,29 @@ struct DevSettingsView: View {
         }
     }
 
+    private var subscriptionClockOffsetMenu: some View {
+        Menu {
+            ForEach(SubscriptionClock.offsetDaysPresets, id: \.self) { days in
+                Button(Self.subscriptionClockOffsetLabel(days)) {
+                    subscriptionClockOffsetDays = days
+                    Task { await paymentRequests.refreshAfterSubscriptionClockChange() }
+                }
+                .accessibilityIdentifier("SubscriptionClockOffset-\(days)")
+            }
+        } label: {
+            SettingsRow(
+                title: "Subscription clock offset (days)",
+                rightText: Self.subscriptionClockOffsetLabel(SubscriptionClock.clampedOffsetDays(subscriptionClockOffsetDays)),
+                rightIcon: nil
+            )
+        }
+        .accessibilityIdentifier("SubscriptionClockOffset")
+    }
+
+    private static func subscriptionClockOffsetLabel(_ days: Int) -> String {
+        days == 0 ? "Off" : "\(days)"
+    }
+
     @MainActor
     private func disablePaykitUI() async {
         let hadPublicPaykitState = PaykitFeatureFlags.hasPublicPublishedState() ||
@@ -282,5 +311,6 @@ struct DevSettingsView: View {
         .environmentObject(NavigationViewModel())
         .environmentObject(WalletViewModel())
         .environmentObject(WidgetsViewModel())
+        .environment(PaykitPaymentRequestManager())
         .preferredColorScheme(.dark)
 }

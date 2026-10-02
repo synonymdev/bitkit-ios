@@ -326,7 +326,7 @@ struct SubscriptionProposalSentView: View {
                         }
                         SubscriptionRow(
                             subscription: subscription,
-                            now: Date(),
+                            now: SubscriptionClock.subscriptionNow(),
                             subtitle: subscription.recurrence.subscriptionFrequencyLabel
                         )
                         .padding(.top, 16)
