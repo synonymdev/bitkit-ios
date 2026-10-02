@@ -162,14 +162,7 @@ extension PrivatePaykitService {
         )
     }
 
-    func removePublishedEndpoints() async throws {
-        let publicKeys = Set(knownSavedContactKeys)
-            .union(state.contacts.keys)
-            .union(Self.pendingDeletedContactCleanupKeys())
-        try await removePublishedEndpoints(for: Array(publicKeys))
-    }
-
-    func removePublishedEndpoints(for publicKeys: [String]) async throws {
+    func removePublishedEndpoints(for publicKeys: [String]? = nil) async throws {
         try await removePublishedEndpoints(for: publicKeys, operations: EndpointCleanupOperations(
             linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
             clearPaymentList: { try await PaykitSdkService.shared.clearPrivatePaymentList(to: $0) },
@@ -179,9 +172,9 @@ extension PrivatePaykitService {
         ))
     }
 
-    func removePublishedEndpoints(for publicKeys: [String], operations: EndpointCleanupOperations) async throws {
-        let publicKeys = normalizedSavedContactKeys(publicKeys)
-        guard !publicKeys.isEmpty else { return }
+    func removePublishedEndpoints(for publicKeys: [String]? = nil, operations: EndpointCleanupOperations) async throws {
+        let publicKeys = publicKeys.map { normalizedSavedContactKeys($0) }
+        guard publicKeys?.isEmpty != true else { return }
 
         do {
             try await withPublicationLock {
@@ -193,10 +186,16 @@ extension PrivatePaykitService {
         }
     }
 
-    private func removePublishedEndpointsLocked(for publicKeys: [String], operations: EndpointCleanupOperations) async throws {
+    private func removePublishedEndpointsLocked(for publicKeys: [String]?, operations: EndpointCleanupOperations) async throws {
         let linkedPublicKeys = try await Set(operations.linkedPeers()
             .filter { $0.state != .notLinked }
             .compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
+        let publicKeys = publicKeys ?? normalizedSavedContactKeys(Array(
+            Set(knownSavedContactKeys)
+                .union(state.contacts.keys)
+                .union(Self.pendingDeletedContactCleanupKeys())
+                .union(linkedPublicKeys)
+        ))
         let cleanupKeys = privatePaymentListCleanupKeys(publicKeys, linkedPublicKeys: linkedPublicKeys)
         let publicKeySet = Set(publicKeys)
         let cleanupStateSnapshots = Dictionary(uniqueKeysWithValues: publicKeys.map { publicKey in
@@ -343,15 +342,10 @@ extension PrivatePaykitService {
             ? Set(knownSavedContactKeys).union(state.contacts.keys).union(Self.pendingDeletedContactCleanupKeys())
             : Set(pendingPrivateEndpointRemovalKeys(savedPublicKeys: publicKeys))
 
-        guard !cleanupKeys.isEmpty else {
-            if isFullCleanupPending {
-                Self.setContactSharingCleanupPending(false)
-            }
-            return
-        }
+        guard isFullCleanupPending || !cleanupKeys.isEmpty else { return }
 
         do {
-            try await removePublishedEndpoints(for: Array(cleanupKeys))
+            try await removePublishedEndpoints(for: isFullCleanupPending ? nil : Array(cleanupKeys))
             for publicKey in cleanupKeys where !savedKeys.contains(publicKey) {
                 await clearContactState(publicKey: publicKey)
             }

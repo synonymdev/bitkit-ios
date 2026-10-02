@@ -1810,19 +1810,21 @@ actor AddressSearchCoordinator {
     private var waitQueue: [CheckedContinuation<Void, Never>] = []
     private let defaults: UserDefaults
     private let listAccounts: @Sendable () async throws -> [LDKNode.OnchainWalletAccount]
-    private let deriveAddresses: @Sendable (LDKNode.OnchainWalletAccount, LDKNode.KeychainKind, UInt32, UInt32) async throws -> [String]
+    private let deriveAddresses: @Sendable (LDKNode.OnchainWalletAccount, LDKNode.KeychainKind, UInt32, UInt32) async throws
+        -> [LightningService.AddressDerivationInfo]
 
     init(
         defaults: UserDefaults = .standard,
         listAccounts: @escaping @Sendable () async throws -> [LDKNode.OnchainWalletAccount] = {
             try await LightningService.shared.listOnchainWalletAccounts()
         },
-        deriveAddresses: @escaping @Sendable (LDKNode.OnchainWalletAccount, LDKNode.KeychainKind, UInt32, UInt32) async throws -> [String] = {
-            account, keychain, startIndex, count in
-            try await LightningService.shared.addressInfosForType(
-                account.addressType, keychain: keychain, startIndex: startIndex, count: count, accountIndex: account.accountIndex
-            ).map(\.address)
-        }
+        deriveAddresses: @escaping @Sendable (LDKNode.OnchainWalletAccount, LDKNode.KeychainKind, UInt32, UInt32) async throws
+            -> [LightningService.AddressDerivationInfo] = {
+                account, keychain, startIndex, count in
+                try await LightningService.shared.addressInfosForType(
+                    account.addressType, keychain: keychain, startIndex: startIndex, count: count, accountIndex: account.accountIndex
+                )
+            }
     ) {
         self.defaults = defaults
         self.listAccounts = listAccounts
@@ -1866,13 +1868,13 @@ actor AddressSearchCoordinator {
             details.outputs.contains { $0.scriptpubkeyAddress == address }
         }
 
-        func findMatch(in addresses: [String]) -> String? {
+        func findMatch(in addresses: [LightningService.AddressDerivationInfo]) -> LightningService.AddressDerivationInfo? {
             if let exact = details.outputs.first(where: { $0.value == value }),
-               let addr = exact.scriptpubkeyAddress, addresses.contains(addr)
+               let match = addresses.first(where: { $0.address == exact.scriptpubkeyAddress })
             {
-                return addr
+                return match
             }
-            return addresses.first { matchesTransaction($0) }
+            return addresses.first { matchesTransaction($0.address) }
         }
 
         if !currentWalletAddress.isEmpty, matchesTransaction(currentWalletAddress) {
@@ -1912,14 +1914,16 @@ actor AddressSearchCoordinator {
                 guard $0 >= 0, $0 <= Int(UInt32.max) else { return nil }
                 return UInt32($0)
             }
-            let endIndex = lastUsed.map { $0 > UInt32.max - searchWindow ? UInt32.max : $0 + searchWindow } ?? searchWindow
+            // Include the address exactly searchWindow indexes after the last match.
+            let endIndex = lastUsed.map { $0 > UInt32.max - searchWindow - 1 ? UInt32.max : $0 + searchWindow + 1 } ?? searchWindow
 
             var index: UInt32 = 0
             var currentAddressBatch: UInt32?
             while index < endIndex {
-                let addresses: [String]
+                let count = min(batchSize, endIndex - index)
+                let addresses: [LightningService.AddressDerivationInfo]
                 do {
-                    addresses = try await deriveAddresses(account, keychain, index, batchSize)
+                    addresses = try await deriveAddresses(account, keychain, index, count)
                 } catch {
                     Logger.warn(
                         "Skipping \(addressType.stringValue) account \(account.accountIndex) " +
@@ -1929,12 +1933,12 @@ actor AddressSearchCoordinator {
                     break
                 }
 
-                if !currentWalletAddress.isEmpty, currentAddressBatch == nil, addresses.contains(currentWalletAddress) {
+                if !currentWalletAddress.isEmpty, currentAddressBatch == nil, addresses.contains(where: { $0.address == currentWalletAddress }) {
                     currentAddressBatch = index
                 }
                 if let match = findMatch(in: addresses) {
-                    defaults.set(Int(index), forKey: key)
-                    return match
+                    defaults.set(Int(match.index), forKey: key)
+                    return match.address
                 }
                 if let found = currentAddressBatch {
                     let stopIndex = found > UInt32.max - batchSize ? UInt32.max : found + batchSize
@@ -1942,7 +1946,7 @@ actor AddressSearchCoordinator {
                         break
                     }
                 }
-                index += batchSize
+                index += count
             }
         }
         return nil
