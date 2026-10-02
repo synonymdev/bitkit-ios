@@ -752,7 +752,7 @@ actor PaykitSdkService {
 
     func ensureLinkWithPeer(
         _ counterparty: String,
-        maxAdvanceSteps: UInt32 = 8
+        maxAdvanceSteps: UInt32 = 1
     ) async throws -> LinkedPeerHandshakeReport {
         try await withStateRevisionTracking { sdk in
             try await sdk.ensureLinkWithPeer(counterparty: counterparty, maxAdvanceSteps: maxAdvanceSteps)
@@ -922,7 +922,7 @@ actor PaykitSdkService {
                 counterparty: counterparty,
                 amount: amount,
                 afterPrivatePaymentListVersion: afterPrivatePaymentListVersion,
-                maxAdvanceSteps: 8
+                maxAdvanceSteps: 1
             )
         }
     }
@@ -937,7 +937,7 @@ actor PaykitSdkService {
                 counterparty: counterparty,
                 paymentRequestId: paymentRequestId,
                 afterPrivatePaymentListVersion: afterPrivatePaymentListVersion,
-                maxAdvanceSteps: 8
+                maxAdvanceSteps: 1
             )
         }
     }
